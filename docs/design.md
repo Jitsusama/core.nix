@@ -95,6 +95,15 @@ for judging before it's been judged here first.
   went, and why.
 - **Accounted for.** Every check in [Every Pixel Accounted For][pixel] has
   its answer, and the answers are shown with it.
+- **Judged whole, before it merges.** A change that moves anything on a
+  surface carries its shots at 1.5 and 2, cropped where it changed, and a
+  table of what it changed measured to the ink: each gap by its rung, each
+  edge by its column, each baseline by its pitch, each run by its level, each
+  ink by its colour role. A design review judges type, space, alignment and
+  colour together on those shots and answers within half an hour, and the
+  change merges only on its pass (Joel, 2026-11-05: "you are not
+  considering enough design elements when changing things"). A change that
+  draws nothing differently says so and needs none.
 - **Said, where it's unfinished.** Whatever hasn't met all of this is called
   unfinished when it's shown, never done.
 
@@ -186,20 +195,21 @@ of each kind of line it sets, and a row's pitch is its height.
 ### Whitespace
 
 - **Every gap has a name.** Every space between two inks, inside a frame
-  and outside it, is a step of [Space][space], a line pitch, or what a row
-  leaves above and below its text once the text is centred in it, measured
-  to the ink (a capital's top, a baseline, a mark's edge), never to a text
-  box. **Check:** the screenshot with each gap measured in device pixels and
-  named. A gap off its step by more than a device pixel, or one nobody can
-  name, is a fault.
+  and outside it, is a rung of [the ladder][space], a level's pitch, a
+  number of beats, or what a row leaves above and below its text once the
+  text is centred in it, measured to the ink (a capital's top, a baseline, a
+  mark's edge), never to a text box. **Check:** the screenshot with each gap
+  measured in device pixels and named by its rung. A gap off its rung by more
+  than a device pixel, or one nobody can name, is a fault.
 - **Equal where it says it is.** The room round a thing is the same on every
   side, measured to the ink: a frame's padding, a notice's, the margin round
   a highlight. **Check:** its four measurements, within a device pixel.
 - **Space groups.** What belongs together sits closer than anything else
-  does to it: a group's inner gap is at most the step of Space below the gap
-  round it, each gap taken as the step it's nearest. **Check:** each
-  group's two gaps. A pair closer than that is a fault, and the surface
-  reads as cluttered.
+  does to it: each gap is its level's rung, and every rung is wider than the
+  one inside it, so two levels never share a space and nothing inside a thing
+  is wider than the space round it. **Check:** each group's inner and outer
+  gaps, by rung. A pair equal or inverted is a fault, and the surface reads as
+  cluttered.
 - **Never cluttered.** A surface has only what Joel would act on or wonder
   about (2026-11-02, of the notices: "whitespace issues ... feeling quite
   cluttered"). **Check:** every element listed with what he'd do with it or
@@ -432,21 +442,90 @@ few values. At a display scale of 2, every edge lands on a whole device pixel.
 The unit is 4 logical pixels, and the steps sit one unit apart where a pixel
 shows and further apart as they grow:
 
-| Step | Units | Pixels | For                                                |
+| Step | Units | Pixels | Taken by                                           |
 | ---- | ----- | ------ | -------------------------------------------------- |
-| xs   | 1     | 4      | between lines that belong together, a part's inset |
-| s    | 2     | 8      | between a mark and its text                        |
-| m    | 3     | 12     | between windows, between notices, a field's glyph  |
-| l    | 4     | 16     | text inside its row, a terminal's padding          |
-| xl   | 6     | 24     | a terminal's padding at the sides, between columns |
-| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name, a footer with no row pitch |
-| xxxl | 12    | 48     | a row of the launcher or a prompt, the launcher's footer, a meter |
-| huge | 16    | 64     | an overlay's distance from the edge, as a meter's from the bottom |
+| xs   | 1     | 4      | the tie rung                                       |
+| s    | 2     | 8      | the mark rung                                      |
+| m    | 3     | 12     | the apart rung, the beat, niri's gap between tiles |
+| l    | 4     | 16     | the items rung                                     |
+| xl   | 6     | 24     | the inset rung, the large pitch                    |
+| xxl  | 8     | 32     | the frames rung, a glyph's column in a list        |
+| xxxl | 12    | 48     | the screen rung, a row of the launcher or a prompt |
+| huge | 16    | 64     | the screen rung where the room allows              |
 
 Whitespace groups things before borders or boxes do. Start with too much space
 and take it away. Density follows the moment: dense and scannable where Joel is
 mid-task (a launcher, a status line, a prompt), roomier where he reads (a
 notification, a dialog, the greeter).
+
+### The Ladder
+
+A step says how big a space is; a rung says why it's there. Joel, 2026-11-05:
+"do more research on design, particularly around not just how typography but
+white space gives topology and hierarchy awareness." Space is how the eye
+learns what belongs together and what outranks what, ahead of colour or a box,
+so every gap belongs to one level of structure, and **each level's gap is wider
+than the one inside it**: inner at one level is outer at the next, from a mark
+to the screen's edge, the same on every surface (Bureau Gorbunov's inner and
+outer; NN/g on proximity). A surface names the rung, `Theme.space.rung.items`,
+never the step, and `space-is-set-by-rung` refuses a step where a rung belongs;
+the theme refuses a ladder that doesn't widen outward.
+
+| Rung | Pixels | Between |
+| ---- | ------ | ------- |
+| tie | 4 (xs) | the parts of one token: a chord's keys, "Space ?" |
+| mark | 8 (s) | a mark and its text, a key and its word, "? keys", the gutter's numbers and the text |
+| apart | 12 (m) | two runs of one thing: a name and its words, typed text and its count, a title and its hint, chord and chord |
+| items | 16 (l) | things on one line: hint and hint, fact and fact |
+| groups | 20 | groups on one line (the facts, the state, the hints), and column and column |
+| inset | 24 (xl) | a frame and its text, on every side, to the ink |
+| frames | 32 (xxl) | floating frames that belong together: the launcher and its drawer, notices in a stack |
+| screen | 48 (xxxl) at least | a floating frame and the screen's edge; huge where the room allows |
+
+Groups take 20, the one rung off the scale, since the ladder needs one between
+things on a line and a frame's own room: no gap inside a frame passes the room
+round its text. A drawn boundary outranks space, so a region may take a hairline
+rather than a wider gap, and tiled windows, each bounded by its border, keep
+niri's gap between them with their own text at the inset.
+
+Down a surface, space counts in lines, as a page's does (Bringhurst;
+Müller-Brockmann). The **beat** is 12, half the large pitch, and every space between
+blocks is a whole number of beats, so a row (48), a drawer's line (24) and
+home's group gap (12) fall on one grid and lines at two pitches side by side
+meet on it. Each level carries its **pitch**, baseline to baseline,
+`Theme.level.note.pitch`: Note and Label 20; Name, Figure, Words and Voice 24;
+Title 32; Display 56.
+
+- **Lines of one thing** sit at their level's pitch.
+- **Things of a kind** sit a row or a pitch apart, and a beat further where any
+  can take two lines, so a wrapped line is nearer its own thing than the next
+  thing is.
+- **Groups** take a beat more between groups of rows, an empty line between
+  groups of lines. A group's heading sits a pitch above its first thing, its
+  group's gap above it: a heading belongs to what follows.
+- **Regions** of a frame part at a hairline: the head over the rows and the
+  foot under them alike, the foot's baseline a row below the last row's. A
+  plate's head is a region of its own: its eyebrow a Title pitch above the
+  title, the body two below it, back on the beat.
+- **A frame's bottom is set**, never what whole lines happen to leave.
+
+The rest follows from the ladder:
+
+- **One baseline a line.** A line's pieces share one baseline, found by
+  centring its largest level's capitals in the line; a smaller level takes that
+  baseline, never the centre of its own capitals.
+- **Held room at the far end.** A place that keeps the widest room it's needed
+  keeps it after its cluster's last item, never between items, so every gap is
+  its rung: Return holds no room before it.
+- **A chosen line's ground hugs its ink**, as Joel liked (the skill's "Margin
+  round a highlight, not padding inside it"): a mark (8) round its first and
+  last ink and above its capitals and below its baseline, square, with more
+  room outside it than in, so it neither presses on the frame nor floats. One
+  shape for the rows, the command menu, the held list, the drawer's lines and
+  the reader's lists. A selection inside a line covers its characters exactly,
+  as Vim's Visual does, and so does a find's wash.
+- **One hairline**: a logical pixel snapped to the device, from the frame's
+  inside edge to its inside edge, never touched by a ground.
 
 ## Colour
 
@@ -646,22 +725,20 @@ stand in one column, clear of the widest of those, the name giving way to
 it before anything else does.
 
 **The space from text to its frame is the same on every side, and on every
-surface,** the launcher's. Each region of a floating thing (a row, a field,
-a footer, a notice's message, a drawer's facts) sits `shape.inset` inside the
-border, and its text `space.l` inside the region, so letters start the same
-distance from every frame. Nothing is nudged by a number off the scale to
-even out the ink. Large type sits in rows of `space.xxxl`, as a meter's row
-does; a line of body type is 20 pixels and of large type 24, five and six
-units. A footer takes its surface's pitch: `space.xxxl` in the launcher, whose
-field and rows are that tall, and `space.xxl` on a surface with no row pitch
-of its own, as the picker, the keyboard map and the prompts. Lines that
-belong together, as who
-asks and why, keep `space.xs` between them.
+surface:** the inset rung, measured to the ink, so letters start the same
+distance from every frame (a row, a field, a footer, a notice's message, a
+drawer's facts). Nothing is nudged by a number off the scale to even out the
+ink. Large type sits in rows of `space.xxxl`, as a meter's row does; lines of
+one thing sit at their level's pitch, Note's 20 and the large levels' 24. A
+footer is a region, a hairline over it, its baseline a row below the last
+row's in the launcher and a large pitch below the last line on a surface with
+no row pitch of its own, as the picker, the keyboard map and the prompts.
 
-**A notice sits a step inside the windows' edge,** `space.s` past their
-gap, so it never lines up with a window's border by chance and reads as its
-own thing. The margin's marks sit at the top centre instead, on the line
-the launcher is centred on.
+**A notice sits the screen rung from the screen's edge,** further than the
+windows' gap, so it never lines up with a window's border by chance and reads
+as its own thing, and notices in a stack sit the frames rung apart. The
+margin's marks sit at the top centre instead, on the line the launcher is
+centred on.
 
 **The margin** is how the desktop shows what's on that Joel would otherwise
 forget, without covering a window or taking a pixel from one. It isn't a
