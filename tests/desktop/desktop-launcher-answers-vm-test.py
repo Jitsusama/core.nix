@@ -1017,7 +1017,31 @@ def time_inside(desktop: Desktop) -> None:
 
 
 def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
-    """The time here says how chrony keeps the clock, each server a thing to dig into."""
+    """The time here says how chrony keeps the clock, each server a thing to dig into.
+
+    The same reader reckons the date in other calendars, which Date steps into.
+    """
+    # Today in the Chinese, Japanese, Hebrew and Islamic calendars, each a thing whose
+    # plate is titled with its date in its own script.
+    desktop.answer("date")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: any(
+            str(thing["reads"]).startswith("Calendars \u00b7 4") for thing in shown["things"]
+        )
+    )
+    desktop.down_to("Calendars")
+    desktop.step_in()
+    calendars = ["Chinese", "Japanese", "Hebrew", "Islamic"]
+    desktop.launcher_until(lambda shown: shown["rows"][: len(calendars)] == calendars)
+    desktop.down_to("Hebrew")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and any("\u0590" <= letter <= "\u05ff" for letter in shown["drawer"]["title"])
+        )
+    )
+    desktop.close_launcher()
     kept_by_the_stand_in(desktop)
     time_inside(desktop)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]

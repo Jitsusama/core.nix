@@ -71,8 +71,8 @@ ShellRoot {
             ids: ["apart", "clock", "day", "gps", "servers", "sidereal", "tai", "unix",
                 "utc", "zone"] },
         { scope: "today", from: today, typed: ["date"],
-            ids: ["iso", "julian", "mjd", "moon", "ordinal", "quarter", "season", "unix-day",
-                "week"] },
+            ids: ["calendars", "iso", "julian", "mjd", "moon", "ordinal", "quarter", "season",
+                "unix-day", "week"] },
         { scope: "waits", from: waits, typed: ["lag"], ids: ["typical", "work"] },
         { scope: "vendors", from: vendors, typed: ["3c:22:fb:12:34:56"],
             ids: ["colons", "dotted", "kind"] },
@@ -131,6 +131,53 @@ ShellRoot {
             clock.filter(name => calendar.includes(name)).join(", "));
         asNowShows();
         asKept();
+        asReckoned();
+    }
+
+    // The day in other calendars, from a reading as timekeeping gives it
+    // (tests/calendars-reading.json): Date's Calendars steps into the
+    // Chinese, Japanese, Hebrew and Islamic, each a thing saying its date
+    // in Latin letters, stepping into its figures, each named by the
+    // vocabulary, and its plate in its own script: titled with its date
+    // there, its figures there where it has them, a day it's reckoned from
+    // as the launcher says a day, and a count in its words.
+    function asReckoned() {
+        const date = today.answer("date");
+        const held = date.rows.find(row => row.name === Words.name("today:calendars"));
+        expect("Date holds Calendars", held !== undefined && typeof held.verbs === "function",
+            JSON.stringify(held));
+        const calendars = held.verbs();
+        expect("Calendars holds the Chinese, Japanese, Hebrew and Islamic, by their dates",
+            calendars.map(each => `${each.name} ${each.side}`).join(", ")
+                === "Chinese 27 Ninth Month, Japanese Reiwa 8, Hebrew 25 Heshvan 5787, "
+                    + "Islamic 25 Jumada I 1448 AH",
+            calendars.map(each => `${each.name} ${each.side}`).join(", "));
+        const plates = calendars.map(each => each.drawer());
+        expect("each plate is in its own script",
+            plates.map(plate => plate.script).join(", ") === "chinese, japanese, hebrew, arabic",
+            plates.map(plate => plate.script).join(", "));
+        expect("each plate is titled with its date there",
+            plates[2].title === "\u05db\u05f4\u05d4 \u05d1\u05d7\u05e9\u05d5\u05d5\u05df "
+                + "\u05d4\u05f3\u05ea\u05e9\u05e4\u05f4\u05d6", plates[2].title);
+        const names = Object.keys(Words.things)
+            .filter(id => Words.things[id].in === "today:calendars")
+            .map(id => Words.things[id].name);
+        const named = calendars.every(each => each.verbs().every(row => names.includes(row.name)));
+        expect("each calendar's figures are named by the vocabulary", named,
+            calendars.map(each => each.verbs().map(row => row.name).join(" ")).join(", "));
+        const chinese = calendars[0];
+        const figures = chinese.verbs().map(row => `${row.name} ${row.side}`);
+        const term = Qt.formatDate(new Date(2026, 9, 23),
+            new Date().getFullYear() === 2026 ? "d MMM" : "d MMM yyyy");
+        expect("the Chinese figures are said in Latin letters, a count in its words",
+            figures.join(", ") === "Year B\u01d0ngw\u01d4, Animal Horse, Month Ninth Month, "
+                + `Day 27, Month Length 30 days, Solar Term Shu\u0101ngji\u00e0ng, Term Began ${
+                    term}`, figures.join(", "));
+        const facts = plates[0].facts.map(fact => `${fact.label} ${fact.value}`);
+        expect("its plate says them in characters where they have them",
+            facts.join(", ") === "Year \u4e19\u5348, Animal \u9a6c, Month \u4e5d\u6708, "
+                + "Day \u5eff\u4e03\u65e5, Month Length \u5927\u6708, "
+                + `Solar Term \u971c\u964d, Term Began ${term}`, facts.join(", "));
     }
 
     // How chrony keeps the clock, from a reading as timekeeping gives it

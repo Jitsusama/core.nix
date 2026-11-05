@@ -922,6 +922,33 @@ def test_a_question_is_asked_on_return_and_answered_where_it_was_typed(desktop: 
     close()
 
 
+def photograph_the_calendars(desktop: Desktop) -> None:
+    """Photograph each calendar's plate in its own script, its names whole and on one line.
+
+    Its title is in the script's cut beside the serif and its figures in the one beside the mono.
+    """
+    for calendar in ["Chinese", "Japanese", "Hebrew", "Islamic"]:
+        desktop.answer("date")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
+        desktop.down_to("Calendars")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: calendar in shown["rows"])  # noqa: B023
+        desktop.down_to(calendar)
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and (shown["selected"] or {}).get("name") == calendar  # noqa: B023
+                and len(shown["drawer"]["facts"]) > 1
+            )
+        )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["labelsWhole"], f"a {calendar} fact's name is broken: {drawer}"
+        assert drawer["besideOnOneLine"], f"a {calendar} value wraps beside its name: {drawer}"
+        desktop.photograph(f"launcher-date-{calendar.lower()}")
+        desktop.close_launcher()
+
+
 def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
     """The launcher's answers are photographed for the gallery, and only there.
 
@@ -954,6 +981,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
         desktop.photograph(picture)
         desktop.close_launcher()
+    photograph_the_calendars(desktop)
     # How chrony keeps the clock, once it keeps it by the VM's own time server: inside Clock,
     # and inside Servers with the chosen one's plate out beside it.
     desktop.machine.wait_until_succeeds(
