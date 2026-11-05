@@ -400,6 +400,10 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
             ),
         )
         desktop.photograph(f"launcher-drawer-cursor-at-{named}")
+        # Scrolled a line further, for a person to judge the top's inset by: the first line
+        # shown on the eyebrow's baseline, its capitals the inset under the frame.
+        page.until("ctrl-e", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
+        desktop.photograph(f"launcher-drawer-scrolled-at-{named}")
     page.press("3")
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
