@@ -2016,7 +2016,8 @@
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
     from a level of the theme's type, but those listed as not yet moved, and none is listed that
-    no longer needs to be
+    no longer needs to be; nor does the reader's page or its foot say a size, a weight, a
+    tracking or an axis of their own in the Typst they set
   '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
