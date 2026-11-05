@@ -4846,6 +4846,12 @@ Scope {
             landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
             landedFresh: root.landedJustNow(),
             returned: root.returned,
+            // What the foot says for a key in place of the keys, as q's words
+            // or "not here", in the foot's order, until the next key.
+            saying: root.sayingNow ? root.saying.slice(1).concat([root.saying[0]])
+                .map(key => root.saidKey(key)) : [],
+            // The places Ctrl+O and Ctrl+I go back and forward through.
+            jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
@@ -5687,6 +5693,11 @@ Scope {
                         onCancelled: {
                             if (root.listing)
                                 root.listing = false;
+                            // Words asked for, as a password, are given up,
+                            // back to the row that asked, as Vim's
+                            // inputsecret() gives up on Escape.
+                            else if (root.asking)
+                                root.back();
                             else
                                 root.open = false;
                         }
