@@ -30,9 +30,9 @@ pub const AT: u64 = 100;
 
 /// A window's weight while a pi in it is starting, ten times an app's.
 /// On 5 November a pi starting in a window at 100, among 60 in the
-/// agents' slice, took 16.7 to 26.8 s to a usable screen at 52 to 68% CPU
-/// pressure, using 8.5 to 13.0 s of CPU, against 2.5 to 3.5 s idle: it
-/// spent most of its start waiting its turn, while Joel waited on it.
+/// agents' slice, took 6.1 to 13.5 s to a usable screen at 54 to 65% CPU
+/// pressure, using 5.7 to 8.8 s of CPU: much of its start was spent
+/// waiting its turn, while Joel waited on it.
 pub const STARTING: u64 = 1000;
 
 /// How long a pi counts as starting: past the slowest start under load,
