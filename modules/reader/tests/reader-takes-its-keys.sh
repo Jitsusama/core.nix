@@ -479,11 +479,12 @@ awk "BEGIN { exit !($(cursor) < $paragraph) }" || fail "{ left the cursor at $(c
 press ']]'
 logged '^key HeadingOn None' 1
 part=$(cursor)
-awk "BEGIN { exit !($part > $paragraph && $(heading) > 0 && $(heading) < $part) }" \
-  || fail "]] put the cursor at $part pt and the view at $(heading) pt"
+awk "BEGIN { exit !($part > $paragraph) }" || fail "]] put the cursor at $part pt"
+near "$(heading)" 0 || fail "]] moved the view to $(heading) pt, though its heading showed"
 press '2]]'
 logged '^key HeadingOn Some\(2\)' 1
-awk "BEGIN { exit !($(cursor) > $part) }" || fail "2]] put the cursor at $(cursor) pt"
+awk "BEGIN { exit !($(cursor) > $part && $(heading) > 0 && $(heading) < $(cursor)) }" \
+  || fail "2]] put the cursor at $(cursor) pt and the view at $(heading) pt"
 press '[['
 logged '^key HeadingBack None' 1
 

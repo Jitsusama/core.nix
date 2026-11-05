@@ -212,6 +212,48 @@ fn marker(text: &str) -> bool {
     !text.is_empty() && (text.chars().all(|c| MARKS.contains(c)) || numbered)
 }
 
+/// The piece each line is of. A line is its piece's when the piece's mark
+/// is the last above it and no block starts between the two: the line a
+/// block starts with but no piece of it marks, an alert's kind or a
+/// picture's caption, is no piece's.
+fn pieces_of(lines: &[Line], units: &[Unit], starts: &[f64]) -> Vec<Option<usize>> {
+    lines
+        .iter()
+        .map(|line| {
+            let below = line.baseline_pt + NEAR_PT;
+            let unit = units.iter().rposition(|unit| unit.top_pt <= below)?;
+            let block = starts
+                .iter()
+                .copied()
+                .filter(|top| *top <= below)
+                .fold(f64::MIN, f64::max);
+            (units[unit].top_pt + NEAR_PT >= block).then_some(unit)
+        })
+        .collect()
+}
+
+/// Where each of the file's lines is in it, by its bytes, without its
+/// line's end.
+fn ranges_of_lines(source: &str) -> Vec<std::ops::Range<usize>> {
+    let mut at = 0;
+    source
+        .split('\n')
+        .map(|line| {
+            let range = at..at + line.len();
+            at += line.len() + 1;
+            range
+        })
+        .collect()
+}
+
+/// Takes an item's marker off its first line, and a task's box after its
+/// bullet, where both are drawn.
+fn unmark_item(line: &mut Line, chars: &mut Vec<char>) {
+    if unmark(line, chars, marker) {
+        unmark(line, chars, |mark| mark.chars().all(|c| MARKS.contains(c)));
+    }
+}
+
 /// Takes a list's marker and the blank after it off the front of a line
 /// of words, so the line starts where its words do.
 fn unmark(line: &mut Line, chars: &mut Vec<char>, is_mark: impl Fn(&str) -> bool) -> bool {
@@ -319,29 +361,8 @@ impl Layout {
             .iter()
             .map(|line| line.text.chars().collect())
             .collect();
-        // A line is its piece's when the piece's mark is the last above it
-        // and no block starts between the two: the line a block starts
-        // with but no piece of it marks, an alert's kind or a picture's
-        // caption, is no piece's.
-        let mut of_line: Vec<Option<usize>> = lines
-            .iter()
-            .map(|line| {
-                let below = line.baseline_pt + NEAR_PT;
-                let unit = units.iter().rposition(|unit| unit.top_pt <= below)?;
-                let block = starts
-                    .iter()
-                    .copied()
-                    .filter(|top| *top <= below)
-                    .fold(f64::MIN, f64::max);
-                (units[unit].top_pt + NEAR_PT >= block).then_some(unit)
-            })
-            .collect();
-        let mut source_lines = Vec::new();
-        let mut at = 0;
-        for line in source.split('\n') {
-            source_lines.push(at..at + line.len());
-            at += line.len() + 1;
-        }
+        let mut of_line = pieces_of(&lines, &units, starts);
+        let source_lines = ranges_of_lines(&source);
         let blank = |line: usize| {
             line == 0
                 || source_lines
@@ -406,17 +427,13 @@ impl Layout {
             let Some(unit) = of_line[line] else {
                 continue;
             };
-            if std::mem::replace(&mut seen[unit], true) {
-                continue;
-            }
-            let first = source_lines
-                .get(units[unit].first.saturating_sub(1))
-                .map(|range| &source[range.clone()]);
-            // A task's box comes after its bullet, where both are drawn.
-            if first.is_some_and(listed) && unmark(&mut lines[line], &mut chars[line], marker) {
-                unmark(&mut lines[line], &mut chars[line], |mark| {
-                    mark.chars().all(|c| MARKS.contains(c))
-                });
+            if !std::mem::replace(&mut seen[unit], true) {
+                let first = source_lines
+                    .get(units[unit].first.saturating_sub(1))
+                    .map(|range| &source[range.clone()]);
+                if first.is_some_and(listed) {
+                    unmark_item(&mut lines[line], &mut chars[line]);
+                }
             }
         }
         let mut unit_lines: Vec<Option<(usize, usize)>> = vec![None; units.len()];
