@@ -6627,6 +6627,10 @@
       "clear": "clear",
       "restore": "restore"
     },
+    "drawer": {
+      "back": "back",
+      "keys": "keys"
+    },
     "listed": {
       "eyebrow": "Keys",
       "title": "The Launcher's Keys",

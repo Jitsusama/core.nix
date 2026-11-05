@@ -1818,7 +1818,25 @@ Scope {
         return !!choice && prompt.modal && prompt.mode === "insert" && Catalogue.ends(choice);
     }
 
+    // The keys the foot names while the drawer holds them, where the row's
+    // Return and arrows do nothing: the way back to the rows (or, while
+    // choosing, back to the page), and the key list where it's bound there,
+    // each as the table first names it (VKCF3Z, 2026-11-05: a lone Return
+    // in the drawer named a key that did nothing).
+    function drawerKeys(mode) {
+        const words = Words.field.drawer ?? {};
+        const named = act => QueryKeys.table.find(one => one.act === act
+            && QueryKeys.inMode(one, mode));
+        const back = named(QueryKeys.chosen(mode) ? "back" : "rows");
+        const list = named("keys");
+        return [back ? [ListedKeys.sequenceFace(back.keys[0]), words.back ?? ""] : null,
+            list ? [ListedKeys.sequenceFace(list.keys[0]), words.keys ?? ""] : null]
+            .filter(key => key !== null);
+    }
+
     function keysFor(choice) {
+        if (QueryKeys.paged(prompt.mode))
+            return drawerKeys(prompt.mode);
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
@@ -1922,6 +1940,10 @@ Scope {
     function noteKeys() {
         const rows = asking ? matches.concat([asking]) : matches;
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
+        // Room for the drawer's own only once the keys have gone in, so
+        // the rows' foot never gives up room to keys they don't show.
+        if (QueryKeys.paged(prompt.mode))
+            said.push(drawerKeys(prompt.mode));
         const place = Math.max(footReturnWidest,
             ...said.map(keys => measure.advanceWidth(saidKey(keys[0]))));
         if (place > footReturnWidest)
@@ -1991,6 +2013,12 @@ Scope {
         noteFigures();
     }
     onAskingChanged: noteKeys()
+    Connections {
+        target: prompt
+        function onModeChanged() {
+            root.noteKeys();
+        }
+    }
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
