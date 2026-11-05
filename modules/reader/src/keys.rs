@@ -30,13 +30,15 @@ pub enum Key {
 /// What a key asks of the reader.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Act {
-    /// Down or up by lines, or across by columns, as vi's j, k, l and h;
-    /// while selecting, the selection's cursor.
+    /// The cursor down or up by the lines shown, the view following it, or
+    /// across by columns, as vi's j, k, l and h; while selecting, the
+    /// selection's cursor.
     Down,
     Up,
     Left,
     Right,
-    /// Down or up a line, keeping where the eye rests, as Ctrl+E and Ctrl+Y.
+    /// The view alone down or up a line, as Ctrl+E and Ctrl+Y: the cursor
+    /// stays on its line while that shows.
     ScrollDown,
     ScrollUp,
     HalfDown,
@@ -55,9 +57,8 @@ pub enum Act {
     /// ]] and [[: the view's top to the next heading, or the one before.
     HeadingOn,
     HeadingBack,
-    /// H, M and L: the cursor, a line the page doesn't show at rest, to the
-    /// top, middle or bottom line in view; what acts on the line here (zt,
-    /// *, gf) acts on it.
+    /// H, M and L: the cursor to the top, middle or bottom line in view;
+    /// what acts on the line here (zt, *, gf) acts on it.
     ViewTop,
     ViewMiddle,
     ViewBottom,
@@ -101,7 +102,8 @@ pub enum Act {
     Close,
     /// Labels every link in view, as flash labels a jump in his Neovim; the
     /// label typed follows it. Neovim's gx opens the link under the cursor,
-    /// and a page has no cursor, so the label stands for it.
+    /// and the cursor here is a line, which may hold several, so the label
+    /// says which.
     Links,
     /// The page larger, smaller, or at its own size again, as a browser's
     /// Ctrl+=, Ctrl+- and Ctrl+0.
@@ -111,9 +113,9 @@ pub enum Act {
     /// Lists every key here, as Space ? in Joel's Neovim.
     ShowKeys,
     /// v and V: a selection, of characters or of whole paragraphs, items
-    /// and lines of code, from the first word in view, with the cursor
-    /// there; the same key again ends it, and the other turns it into one
-    /// of the other kind.
+    /// and lines of code, from the first word on the cursor's line, with
+    /// the block cursor there; the same key again ends it, and the other
+    /// turns it into one of the other kind.
     Select,
     SelectPieces,
     /// While selecting, the cursor on by words as w, b and e, and to a
@@ -130,10 +132,14 @@ pub enum Act {
     /// y, and Ctrl+C as everywhere else: copies the selection as the
     /// file's markdown, and ends it.
     Copy,
-    /// y y and y i p: copies the first paragraph, item or line of code
-    /// wholly in view, or its paragraph, since a page at rest has no cursor.
+    /// y y, y i p and y a p: copies the paragraph, item or line of code the
+    /// cursor's line is in, or its paragraph, or that with the blank line
+    /// after it.
     CopyPiece,
     CopyParagraph,
+    CopyAParagraph,
+    /// y }: copies from the cursor's piece to its paragraph's end.
+    CopyToParagraphEnd,
     /// Escape at rest: nothing was in progress. In a window it does
     /// nothing, so a habitual second Escape never closes a page; while
     /// selecting, it ends the selection.
@@ -235,6 +241,8 @@ const SPOKEN: &[(&str, Act)] = &[
     ("copy-selection", Act::Copy),
     ("copy", Act::CopyPiece),
     ("copy-paragraph", Act::CopyParagraph),
+    ("copy-a-paragraph", Act::CopyAParagraph),
+    ("copy-to-paragraph-end", Act::CopyToParagraphEnd),
     ("close", Act::Close),
     ("show-keys", Act::ShowKeys),
 ];
@@ -245,13 +253,13 @@ type Slot = fn(char) -> Act;
 /// The acts whose key takes a letter after it, by their names.
 const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
 
-/// The reader's own keys, for what Vim has nothing for: a browser's zoom,
-/// at rest and while selecting.
-const OWN: &[(&[Key], Act)] = &[
-    (&[Ctrl('=')], Act::ZoomIn),
-    (&[Ctrl('+')], Act::ZoomIn),
-    (&[Ctrl('-')], Act::ZoomOut),
-    (&[Ctrl('0')], Act::ZoomBack),
+/// The reader's own keys: a browser's zoom, at rest and while selecting,
+/// for what Vim has nothing for.
+const OWN: &[(&[Key], Act, In)] = &[
+    (&[Ctrl('=')], Act::ZoomIn, In::Both),
+    (&[Ctrl('+')], Act::ZoomIn, In::Both),
+    (&[Ctrl('-')], Act::ZoomOut, In::Both),
+    (&[Ctrl('0')], Act::ZoomBack, In::Both),
 ];
 
 /// A sequence of keys, where it works and what it does.
@@ -330,7 +338,7 @@ fn read(language: &str) -> Table {
         .collect();
     sequences.extend(
         OWN.iter()
-            .map(|(keys, act)| (keys.to_vec(), *act, In::Both)),
+            .map(|(keys, act, held)| (keys.to_vec(), *act, *held)),
     );
     let slots = SLOTS
         .iter()
@@ -426,8 +434,10 @@ pub const GROUPS: &[&str] = &[
 /// since the page fits the window, so they're listed with selecting.
 pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
     Some(match act {
-        Act::Down | Act::ScrollDown => ("Moving", "Down a line"),
-        Act::Up | Act::ScrollUp => ("Moving", "Up a line"),
+        Act::Down => ("Moving", "Down a line"),
+        Act::Up => ("Moving", "Up a line"),
+        Act::ScrollDown => ("Moving", "The view down a line"),
+        Act::ScrollUp => ("Moving", "The view up a line"),
         Act::HalfDown => ("Moving", "Down half a screen"),
         Act::HalfUp => ("Moving", "Up half a screen"),
         Act::ScreenDown => ("Moving", "Down a screen"),
@@ -463,7 +473,7 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::Previous => ("Searching", "Back to the match before"),
         Act::SetMark(_) => ("Marks", "Mark this place with a letter"),
         Act::GoToMark(_) => ("Marks", "Go to a letter's mark"),
-        Act::Select => ("Selecting", "Select from the first word in view"),
+        Act::Select => ("Selecting", "Select from the cursor's line"),
         Act::SelectPieces => ("Selecting", "Select whole paragraphs, items and lines"),
         Act::Left => ("Selecting", "A character left"),
         Act::Right => ("Selecting", "A character right"),
@@ -484,8 +494,10 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::Object(Object::InCode) => ("Text Objects", "The code between backticks"),
         Act::Object(Object::ACode) => ("Text Objects", "The code, its backticks and a space"),
         Act::Copy => ("Copying", "Copy the selection as markdown"),
-        Act::CopyPiece => ("Copying", "Copy the first block in view"),
-        Act::CopyParagraph => ("Copying", "Copy the paragraph in view"),
+        Act::CopyPiece => ("Copying", "Copy the block here"),
+        Act::CopyParagraph => ("Copying", "Copy the paragraph here"),
+        Act::CopyAParagraph => ("Copying", "Copy the paragraph and the blank line after it"),
+        Act::CopyToParagraphEnd => ("Copying", "Copy to the paragraph's end"),
         Act::ZoomIn => ("The Page", "Larger"),
         Act::ZoomOut => ("The Page", "Smaller"),
         Act::ZoomBack => ("The Page", "Back to its own size"),
@@ -661,8 +673,8 @@ impl Machine {
         }
         if let Char(digit @ '0'..='9') = key {
             // A 0 starts no count, as vi's 0 is its own motion: to the
-            // line's start while selecting, and nothing at rest, where
-            // there's no cursor to move.
+            // line's start while selecting, and nothing at rest, where the
+            // cursor is a whole line.
             if self.pending.is_empty() && (digit != '0' || self.count.is_some()) {
                 let value = digit.to_digit(10).unwrap_or(0);
                 let count = self
@@ -734,11 +746,9 @@ mod tests {
             .iter()
             .find(|(_, does)| *does == "Down a line")
             .expect("a line down");
-        assert_eq!(
-            down.0,
-            ["Down", "j", "Ctrl+E"],
-            "the arrow before its letter"
-        );
+        assert_eq!(down.0, ["Down", "j"], "the arrow before its letter");
+        assert!(moving.iter().any(|(ways, _)| ways == &["Ctrl+E"]));
+        assert!(moving.iter().any(|(ways, _)| ways == &["Ctrl+Y"]));
         assert!(rows_of("Jumping").iter().any(|(ways, _)| ways == &["gg"]));
         assert!(rows_of("In View").iter().any(|(ways, _)| ways == &["zz"]));
         assert!(
@@ -770,6 +780,8 @@ mod tests {
         assert!(copying.iter().any(|(ways, _)| ways == &["y", "Ctrl+C"]));
         assert!(copying.iter().any(|(ways, _)| ways == &["yy"]));
         assert!(copying.iter().any(|(ways, _)| ways == &["yip"]));
+        assert!(copying.iter().any(|(ways, _)| ways == &["yap"]));
+        assert!(copying.iter().any(|(ways, _)| ways == &["y}"]));
     }
 
     #[test]
@@ -914,6 +926,16 @@ mod tests {
         assert_eq!(typed(&mut machine, "y"), [(Act::CopyPiece, None)]);
         assert_eq!(typed(&mut machine, "3yy"), [(Act::CopyPiece, Some(3))]);
         assert_eq!(typed(&mut machine, "yip"), [(Act::CopyParagraph, None)]);
+        assert_eq!(typed(&mut machine, "yap"), [(Act::CopyAParagraph, None)]);
+        assert_eq!(
+            typed(&mut machine, "2y}"),
+            [(Act::CopyToParagraphEnd, Some(2))]
+        );
+        assert_eq!(
+            typed_in(&mut machine, "y}", true),
+            [(Act::Copy, None), (Act::ParagraphOn, None)],
+            "while selecting, y copies at once"
+        );
     }
 
     #[test]

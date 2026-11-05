@@ -558,7 +558,7 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N gives it the launcher's keys, its acts showing under a rule |
+| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 
@@ -1322,8 +1322,9 @@ works the same way everywhere.
   of thing it is at its right edge (Shape and Kinds).
   The windows, the copies and the notices are whole at home, and most have
   a chord that opens them: Super+V the
-  copies, Super+E the emoji, Super+N the notices (the stack on screen
-  first, by the keys, then the history), Super+Shift+/ the shortcuts.
+  copies, Super+E the emoji, Super+N the notices (the stack on screen,
+  by the keys, where :e Notices opens the history), Super+Shift+/ the
+  shortcuts.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and Shift+Print and Alt+Print are Capture's rows.
@@ -1469,6 +1470,18 @@ works the same way everywhere.
   sizes by its items. Folders come first in every order and what was
   opened lately stays apart on top. One order serves every ask and
   outlasts a restart, starting on name (VKCF3Z, 2026-11-04).
+- **A save is named on the line** (VKCF3Z's vi-paradigm spec, The File
+  Picker). Asked to save, the line holds the name the program gave, a
+  prompt's words in insert rather than a find, the caret before its
+  extension so typing renames it; Ctrl+W, Ctrl+U and Ctrl+H edit it, and
+  Escape gives normal on it, where h l w b e 0 $ x dw cw and u edit it
+  as Vim's do. The name leads every folder, its first row, and the rows
+  under it are never narrowed by it: j goes down into the folders,
+  Return on one opens it and - steps out, as oil's do, the name kept,
+  and Return on the name saves there. A name already there asks once in the line's place, "Replace
+  notes.md? (y/n)", as Vim's :w says E13: y saves over it, n, Escape or
+  Ctrl+C let it go, and any other key, or one in its first 300 ms, does
+  nothing.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected
@@ -1620,8 +1633,8 @@ top beside a layer named as it is, the program stands for both, so one
 Neovim is listed.
 
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
-the margin's glyphs in words, and Super+N takes the notices on screen by
-the launcher's keys, then gathers every notice into the launcher. Either
+the margin's glyphs in words, and Super+N takes the notices on screen as
+lines, where :e Notices gathers every notice into the launcher. Either
 way Return goes to who sent one, and l steps into its verbs: its own
 actions (Reply, Mark as read), copying what it said, and forgetting it; j
 and k choose, h steps back.

@@ -23,7 +23,8 @@
     when it changed by how long ago, a folder its count; its plate says its kind with its numbers,
     its preview and its facts, each number kept to its unit, and only its facts before it's said;
     every word is the launcher's words', and text past what's counted says it's over its count; a
-    folder's entries order by name, change or size, folders first, 2 before 10
+    folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
+    the caret before its extension
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -1142,12 +1143,13 @@
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
-    zoom, / and n, Space ? and Escape, copies the first block in view and its paragraph with y y and
-    y i p, selects with v and V and every visual-mode key, v's cursor a block in the terminal's
-    cursor colours on a title's letter, copies each selection's markdown onto the clipboard with y
-    and Ctrl+C, a paragraph the page wraps as its one line, and follows a link by g x's label, to
-    a heading and to another
-    markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
+    zoom, / and n, Space ? and Escape, marks the cursor's line with a rule in the accent, copies the
+    block at the cursor, its paragraph, that with its blank line and to its end with y y, y i p,
+    y a p and y }, moves the cursor and not the view with j and k and the view alone with Ctrl+E and
+    Ctrl+Y, selects from the cursor's line with v and V and every visual-mode key, v's cursor a
+    block in the terminal's cursor colours on a title's letter, copies each selection's markdown
+    onto the clipboard with y and Ctrl+C, a paragraph the page wraps as its one line, and follows
+    a link by g x's label, to a heading, putting the cursor on it, and to another markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
     [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, a mark kept between openings, and
     closes on :q; markdown files open in it
   '';
@@ -1515,14 +1517,17 @@
     the launcher chooses the files a program opens or saves in the folder it asks for, the files
     opened lately first, then its folders and files, then its filters, and answers what was picked;
     a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
-    fetched before they're answered; saving there, its folders take the name, ask before replacing
-    one, and answer the path the place stages it at once its folder is made, marked beside it with
-    the program that asked; the files selected in one ask are previewed by one file-preview; where
-    several may be opened, the lead counts and names what's marked, Return on it saying nothing
+    fetched before they're answered; saving, the line holds the name, kept from folder to folder,
+    each folder leading with it unnarrowed, a name already there asking once, no saving nothing;
+    saving there, its folders take the name, ask once before replacing one, and answer the path
+    the place stages it at once its folder is made, marked beside it with the program that asked;
+    the files selected in one ask are previewed by one file-preview; where several may be opened,
+    the lead counts and names what's marked, Return on it saying nothing
     until one is, and inside it each can be unmarked; a folder's Copy the Path comes last; in every
     folder the field asks for one file, several, a folder or where to save, in the program's word;
     its Order row lists it by name, change or size, made afresh, and a restart keeps the order; ]b
-    and [b go to the folder beside it, round from the last to the first, once its holder is read
+    and [b go to the folder beside it, round from the last to the first, once its holder is read;
+    a file holds gx, opening it in its own program
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
@@ -1601,6 +1606,12 @@
     says it, a part's after its thing's name; each one that doesn't is printed, and the check
     refuses a stand-in vocabulary breaking each of its rules
   '';
+  the-launcher-names-every-verb-a-command = ''
+    every launcher verb names a command the key language has, with :set's whole word as its
+    argument and % only on an act taking rows, but for one Return alone does, which names none,
+    and no two verbs on one row make the same line; each one that doesn't is printed, and the
+    check refuses a stand-in vocabulary breaking each of its rules
+  '';
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
@@ -1674,6 +1685,11 @@
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';
+  the-notices-are-a-quickfix-list = ''
+    the held notices are Vim's quickfix list: the newest first, each motion's landing, what an
+    operator takes, the view kept around the cursor, the gutter's numbers, u and Ctrl+R, and the
+    command line's menu
+  '';
   the-notices-keep-their-order = ''
     the notices' stack puts a critical one in front and the rest in the order they came, one unheard
     at the back, and turns and brings one forward as the keys and a click ask
@@ -1685,8 +1701,9 @@
     x-answers hint, while its failure is missed
   '';
   the-notices-take-vi-keys = ''
-    the notices' stack reads vi's keys beside the arrows from one table: dd and gg as sequences,
-    counts before a motion, and an Escape that cancels what's begun before it steps out
+    the held notices read Vim's keys in each mode from one table: motions, operators and objects
+    with counts, visual's operator taken with a second press, fresh presses only for what acts, the
+    find and command lines, a reply's editing, Space ?'s list and the foot's hints
   '';
   the-notices-wait-while-joel-is-away = ''
     a notice that comes while nothing has been typed or moved stays on niri past the time its sender
@@ -1760,14 +1777,17 @@
   '';
   the-query-field-takes-vi-modes = ''
     the launcher's field reads its keys from one table in two modes: insert's caret moves,
-    Ctrl+W and Ctrl+U, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I A, cc and
-    S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c or a
-    count begun before it steps back, normal's moves through the rows as Vim's, with counts:
-    j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and Space w closing, its : opening the
-    command line with the range a count before it gives, Tab to the place used last, and Space ?
-    and F1 listing every key, while / ? n N search nothing on the rows; and Vim's d and y over
-    the rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending action and copy, the (y/n) ask
-    once before what can't be put back, and yG or dG over 400 rows within half a key's 4 ms
+    Ctrl+W, Ctrl+U and Ctrl+H, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I
+    A, cc and S into insert, normal's ]b and [b to the place beside and gx, on a prompt's words
+    h l w b e 0 $ x dw cw and u editing them as Vim's do and - stepping out with them, a question
+    asked once answered by y alone and let go by n, Escape or Ctrl+C, but not in its first moment,
+    with an Escape that cancels a c or a count begun before it steps back, normal's moves through
+    the rows as Vim's, with counts: j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and
+    Space w closing, its : opening the command line with the range a count before it gives, Tab
+    to the place used last, and Space ? and F1 listing every key, while / ? n N search nothing on
+    the rows; and Vim's d and y over the rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending
+    action and copy, the (y/n) ask once before what can't be put back, and yG or dG over 400 rows
+    within half a key's 4 ms
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
@@ -2227,9 +2247,10 @@
     sets the power profile, scales displays, joins Wi-Fi and names each connection's addresses
   '';
   vm-desktop-opens-files = ''
-    the desktop opens files: a screenshot found by typing, the portal's chooser and Google Drive
-    through it, a picture in swayimg, a document in zathura, markdown in the reader, and a folder
-    from kitty's Recent, while the launcher's home keeps its shape
+    the desktop opens files: a screenshot found by typing, the portal's chooser, its save's name
+    edited on the line and a name taken asked once, and Google Drive through it, a picture in
+    swayimg, a document in zathura, markdown in the reader, and a folder from kitty's Recent, while
+    the launcher's home keeps its shape
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the

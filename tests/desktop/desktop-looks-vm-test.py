@@ -690,6 +690,52 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
         desktop.as_account(f"rm -rf {folder}")
 
 
+def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A save's name is the line's words, in insert and in normal, and a name taken asks once."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/saving"
+    chose = "/run/user/1000/portal-chose"
+    desktop.as_account(f"mkdir -p {folder}/drafts && printf 'one\\n' > {folder}/a.md")
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            shot = scale.replace(".", "-")
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-to-save"
+                f" {desktop.values['choose_a_file']} save {folder} a.md"
+            )
+            asked_in(desktop, "~/saving", {"a.md", "drafts"})
+            # The caret before the extension, so typing renames it.
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["typed"] == "a.md" and shown["caret"] == 1 and shown["mode"] == "insert"
+                )
+            )
+            desktop.photograph(f"file-picker-save-name-at-{shot}")
+            desktop.normal()
+            desktop.photograph(f"file-picker-save-name-normal-at-{shot}")
+            machine.send_key("ret")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["question"] == "Replace a.md? (y/n)"
+                    and shown["takesAnswer"]
+                    # Read whole, the path giving way, never cut.
+                    and shown["questionWhole"]
+                )
+            )
+            desktop.photograph(f"file-picker-save-replace-at-{shot}")
+            machine.send_chars("n")
+            desktop.launcher_until(lambda shown: shown["question"] == "" and shown["open"])
+            # Escape, from normal on the name, refuses the ask from the folder it opened in.
+            desktop.close_launcher()
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")
+
+
 def test_the_file_picker_says_whats_marked_and_what_return_does(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:

@@ -88,11 +88,15 @@ onLinux {
     '';
 
   # The reader draws a long page in the account's theme and takes Neovim's
-  # keys: G goes to the end, gg to the top, 5j five lines, Ctrl+F a screen,
-  # Ctrl+O back, Ctrl+Equal and Ctrl+0 zoom in and back, / finds and n goes
-  # on, y y and y i p copy the title and its paragraph as markdown and
-  # flash them, v and V select from the first word in view and every key
-  # of visual mode moves the selection or takes a text object, y and
+  # keys: G goes to the end, gg to the top, where the cursor's line has its
+  # rule in the accent in the margin, Ctrl+F a screen, Ctrl+O back,
+  # Ctrl+Equal and Ctrl+0 zoom in and back, / finds and n goes on, y y,
+  # y i p, y a p and y } copy the block at the cursor, its paragraph, that
+  # with its blank line and to its end, as markdown, and flash them, 2j
+  # and k move the cursor and not the view, so y y copies the line it
+  # reaches, Ctrl+E and Ctrl+Y move the view a line alone, v and V select
+  # from the cursor's line, where a selection's end leaves it, and every
+  # key of visual mode moves the selection or takes a text object, y and
   # Ctrl+C copy the file's own markdown for it onto the clipboard,
   # Escape ends it, Space ? lists the keys, Escape puts the list away, g x labels the
   # link at the page's end and its label follows it to the heading, a link
@@ -160,6 +164,7 @@ onLinux {
         printf '# The Second Page\n\nWhat the first page sends here.\n' > second.md
         timeout 600 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
           '${srgb colours.strong}' '${srgb terminal.cursor}' '${srgb terminal.cursor_text}' \
+          '${srgb colours.accent}' \
           > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran said 2> /dev/null; exit 1; fi
 

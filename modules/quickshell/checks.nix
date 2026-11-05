@@ -511,6 +511,21 @@ onLinux {
       touch $out
     '';
 
+  # Every launcher verb names the command the : line runs it by, one the key
+  # language has, with what follows it, and no two on a row alike
+  # (tests/launcher-commands.py), as the account writes the vocabulary.
+  the-launcher-names-every-verb-a-command =
+    let
+      words =
+        pkgs.writeText "words.json"
+          (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+      language = ../keys/language.toml;
+    in
+    pkgs.runCommandLocal "the-launcher-names-every-verb-a-command" { } ''
+      ${lib.getExe pkgs.python3} ${../../tests/launcher-commands.py} ${words} ${language}
+      touch $out
+    '';
+
   # What the launcher shows says the glossary's words, never a name it
   # replaces, but what tests/launcher-shown.py lists as another sense or a
   # rename still waiting.
@@ -2581,6 +2596,7 @@ onLinux {
       cp ${./Prompt.qml} Prompt.qml
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Typing.js} Typing.js
+      cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
@@ -2942,10 +2958,12 @@ onLinux {
       touch $out
     '';
 
-  # The notices' stack takes vi's keys beside the arrows, from one table,
-  # as tests/notice-keys.qml holds NoticeKeys.js to: sequences, counts, and
-  # an Escape that cancels what's begun before it steps out; and Search.js,
-  # which their / searches through, to what it finds and washes.
+  # The held notices take Vim's keys in each mode from one table, as
+  # tests/notice-keys.qml holds NoticeKeys.js to: motions, operators and
+  # objects with their counts, visual's operator taken with a second press,
+  # fresh presses only for what acts, the lines typed on, a prompt's
+  # editing, Space ?'s list and the foot's hints; and Search.js, which
+  # their / shares with the launcher's, to what it finds.
   the-notices-take-vi-keys =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2953,6 +2971,7 @@ onLinux {
     pkgs.runCommandLocal "the-notices-take-vi-keys" { } ''
       cp ${../../tests/notice-keys.qml} notice-keys.qml
       cp ${./NoticeKeys.js} NoticeKeys.js
+      cp ${./LineEditing.js} LineEditing.js
       cp ${./Search.js} Search.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -2979,9 +2998,27 @@ onLinux {
       touch $out
     '';
 
+  # The held notices are Vim's quickfix list, as tests/notice-list.qml
+  # holds NoticeList.js to: the newest first, where each motion lands, what
+  # an operator takes, the view kept around the cursor, the gutter's
+  # numbers, what u and Ctrl+R move between, and the command line's menu.
+  the-notices-are-a-quickfix-list =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
+      cp ${../../tests/notice-list.qml} notice-list.qml
+      cp ${./NoticeList.js} NoticeList.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-list.qml
+      touch $out
+    '';
+
   # The launcher's query line takes vi's two modes from one table, as
-  # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
-  # ways back into insert, its moves through the rows with counts and
+  # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's
+  # keys, normal's ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
   # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
   # to the keys Space ? lists; Operators.js to what d and y do to the rows
@@ -2994,6 +3031,7 @@ onLinux {
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../tests/query-keys.qml} query-keys.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Typing.js} Typing.js
       cp ${./Operators.js} Operators.js

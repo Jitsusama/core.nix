@@ -20,7 +20,7 @@ const table = [
     { act: "caretRight", mode: "insert", keys: ["Right"] },
     { act: "caretStart", mode: "insert", keys: ["Home"] },
     { act: "caretEnd", mode: "insert", keys: ["End"] },
-    { act: "deleteBack", mode: "insert", keys: ["Backspace"] },
+    { act: "deleteBack", mode: "insert", keys: ["Backspace", "Ctrl+h"] },
     { act: "deleteWord", mode: "insert", keys: ["Ctrl+w"] },
     { act: "deleteToStart", mode: "insert", keys: ["Ctrl+u"] },
     // The rows below are his completion menu's (modules/neovim/keys.nix):
@@ -83,8 +83,33 @@ const table = [
     // beside it, as the file picker's folders do; elsewhere they do nothing.
     { act: "nextFile", mode: "normal", keys: [["]", "b"]] },
     { act: "previousFile", mode: "normal", keys: [["[", "b"]] },
+    // The row's file opened in its own program, as his oil's gx opens the
+    // file under the cursor; a row that isn't a file does nothing.
+    { act: "openOwn", mode: "normal", keys: [["g", "x"]] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
+
+    // A prompt's words in normal, as Vim edits a line: w, b and e to the
+    // next word's start, back to a word's start and on to its end, 0 and $
+    // to the line's ends, x the letter under the caret, dw and cw the word
+    // it's on, cw going into insert, and u back to before the last change.
+    // They're read in normal only while the line holds a prompt's words
+    // rather than a find (Prompt.qml, `words`), and before normal's own,
+    // so u there undoes rather than bringing a find back.
+    // h and l move the caret a letter, as Vim's do, rather than stepping
+    // out of the place and into the row, and so do \u2190 and \u2192, each its
+    // letter in normal; - and Backspace still step out.
+    { act: "letterBack", mode: "words", keys: ["h", "Left"] },
+    { act: "letterNext", mode: "words", keys: ["l", "Right"] },
+    { act: "wordNext", mode: "words", keys: ["w"] },
+    { act: "wordBack", mode: "words", keys: ["b"] },
+    { act: "wordEnd", mode: "words", keys: ["e"] },
+    { act: "lineStart", mode: "words", keys: ["0"] },
+    { act: "lineEnd", mode: "words", keys: ["$"] },
+    { act: "deleteLetter", mode: "words", keys: ["x"] },
+    { act: "deleteWordOn", mode: "words", keys: [["d", "w"]] },
+    { act: "changeWord", mode: "words", keys: [["c", "w"]] },
+    { act: "undo", mode: "words", keys: ["u"] },
 
     // Both modes: Return does the row or steps into it, as everywhere of
     // ours, with Shift below the window in focus and with Ctrl closing
@@ -102,7 +127,8 @@ const table = [
 // held, as Vim's motions do; every other act is done once a press, so a
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
-    "halfDown", "halfUp", "pageDown", "pageUp", "drawerUp", "drawerDown"];
+    "halfDown", "halfUp", "pageDown", "pageUp", "drawerUp", "drawerDown", "wordNext",
+    "wordBack", "wordEnd", "letterBack", "letterNext"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -188,11 +214,19 @@ function inMode(row, mode) {
     return row.mode === mode || row.mode === "both";
 }
 
+// The rows a mode reads, in the order it reads them: in normal on a line
+// holding a prompt's words, the words' own first.
+function readIn(mode, words) {
+    const own = table.filter(one => inMode(one, mode));
+    return words && mode === "normal" ? table.filter(one => one.mode === "words").concat(own)
+        : own;
+}
+
 // Whether a key typed so far is a whole sequence of a mode's, or begins
 // one: the act it ends, if any, and whether it's begun another.
-function matching(typed, mode) {
+function matching(typed, mode, words) {
     let begun = false;
-    for (const row of table.filter(one => inMode(one, mode))) {
+    for (const row of readIn(mode, words)) {
         for (const keys of row.keys) {
             const sequence = Array.isArray(keys) ? keys : [keys];
             if (same(sequence, typed)) {
@@ -208,8 +242,9 @@ function matching(typed, mode) {
 // count is typed where nothing types: 0 alone is Vim's first column,
 // which rows haven't, so it counts only after another digit, and one after
 // an operator is its motion's. An operator's key at rest begins it, with
-// the count before it.
-function beforeTable(standing, key) {
+// the count before it, but on a prompt's words (`words`), where d and c
+// are the words' own, as dw and cw.
+function beforeTable(standing, key, words) {
     const atRest = standing.typed.length === 0;
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,
@@ -218,7 +253,7 @@ function beforeTable(standing, key) {
     if (standing.operator !== undefined) {
         return operated(standing, key);
     }
-    if (atRest && key in operators) {
+    if (atRest && !words && key in operators) {
         const operator = { key, count: standing.count };
         return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
     }
@@ -229,8 +264,9 @@ function beforeTable(standing, key) {
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and steps back out of anything on the next press.
-function read(standing, key, mode) {
+// does, and steps back out of anything on the next press. Words says the
+// line holds a prompt's words rather than a find, which normal edits.
+function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
     // changes nothing, so a sequence or a count begun carries on past it.
     if (key === "") {
@@ -247,13 +283,13 @@ function read(standing, key, mode) {
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
-    const before = mode === "normal" ? beforeTable(standing, key) : null;
+    const before = mode === "normal" ? beforeTable(standing, key, words) : null;
     if (before !== null) {
         return before;
     }
     const typed = standing.typed.concat([key]);
     const count = standing.count === "" ? 0 : Number(standing.count);
-    const { act, begun } = matching(typed, mode);
+    const { act, begun } = matching(typed, mode, words);
     if (act !== "") {
         return { act, count, standing: rest(), ours: true };
     }
@@ -342,7 +378,8 @@ function modeAfter(act, mode) {
     if (act === "normal") {
         return "normal";
     }
-    if (["insert", "append", "insertStart", "appendEnd", "change"].includes(act)) {
+    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]
+        .includes(act)) {
         return "insert";
     }
     return mode;

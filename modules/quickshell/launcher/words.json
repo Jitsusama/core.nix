@@ -151,6 +151,8 @@
     },
     {
       "id": "verb:agents:to-reopen:all",
+      "command": "reopen",
+      "range": "%",
       "in": "agents:to-reopen",
       "name": "Reopen Them All",
       "verb": "reopen",
@@ -158,6 +160,7 @@
     },
     {
       "id": "verb:agents:to-reopen:one",
+      "command": "reopen",
       "in": "agents:to-reopen",
       "name": "Reopen",
       "verb": "reopen",
@@ -168,6 +171,7 @@
     },
     {
       "id": "verb:agents:to-reopen:notNow",
+      "command": "snooze",
       "in": "agents:to-reopen",
       "name": "Not Now",
       "verb": "later",
@@ -362,6 +366,7 @@
     },
     {
       "id": "verb:job:go",
+      "command": "buffer",
       "in": "jobs",
       "name": "Go To",
       "verb": "go"
@@ -751,6 +756,8 @@
     },
     {
       "id": "verb:disk:open",
+      "command": "open",
+      "argument": "folder",
       "in": "machine:disk:filling",
       "name": "Open Its Folder",
       "verb": "open",
@@ -758,6 +765,7 @@
     },
     {
       "id": "verb:disk:keep",
+      "command": "snooze",
       "in": "machine:disk:filling",
       "name": "Keep",
       "verb": "keep",
@@ -771,6 +779,7 @@
     },
     {
       "id": "verb:disk:clear",
+      "command": "delete",
       "in": "machine:disk:filling",
       "name": "Clear",
       "verb": "clear",
@@ -779,6 +788,7 @@
     },
     {
       "id": "verb:disk:copy-path",
+      "command": "yank",
       "in": "machine:disk:filling",
       "name": "Copy the Path",
       "verb": "copy",
@@ -1255,6 +1265,7 @@
     },
     {
       "id": "verb:firmware:install",
+      "command": "install",
       "in": "firmware",
       "name": "Install {version}",
       "verb": "install",
@@ -1303,30 +1314,40 @@
     },
     {
       "id": "verb:brighter",
+      "command": "set",
+      "argument": "deskbrightness+=10",
       "in": "light:desk:brightness",
       "name": "Brighter",
       "verb": "brighter"
     },
     {
       "id": "verb:dimmer",
+      "command": "set",
+      "argument": "deskbrightness-=10",
       "in": "light:desk:brightness",
       "name": "Dimmer",
       "verb": "dimmer"
     },
     {
       "id": "verb:warmer",
+      "command": "set",
+      "argument": "deskwarmth+=500",
       "in": "light:desk:warmth",
       "name": "Warmer",
       "verb": "warmer"
     },
     {
       "id": "verb:cooler",
+      "command": "set",
+      "argument": "deskwarmth-=500",
       "in": "light:desk:warmth",
       "name": "Cooler",
       "verb": "cooler"
     },
     {
       "id": "verb:turn",
+      "command": "set",
+      "argument": "desklight!",
       "in": "light",
       "name": "Turn It Off",
       "verb": "off",
@@ -2001,6 +2022,7 @@
     },
     {
       "id": "verb:ask:onward",
+      "command": "new",
       "in": "ask",
       "name": "Ask in a Session",
       "verb": "open",
@@ -2008,6 +2030,7 @@
     },
     {
       "id": "verb:ask:talk",
+      "command": "talk",
       "in": "ask",
       "name": "Talk to {name}",
       "verb": "talk",
@@ -2094,6 +2117,7 @@
     },
     {
       "id": "verb:location:copy",
+      "command": "yank",
       "in": "location",
       "name": "Copy",
       "verb": "copy",
@@ -2101,6 +2125,8 @@
     },
     {
       "id": "verb:time:put-back",
+      "command": "set",
+      "argument": "time&",
       "in": "time",
       "name": "Put It Back",
       "verb": "put back",
@@ -2108,6 +2134,8 @@
     },
     {
       "id": "verb:location:set",
+      "command": "set",
+      "argument": "location=",
       "in": "location",
       "name": "Set It by Hand",
       "verb": "set",
@@ -2116,6 +2144,8 @@
     },
     {
       "id": "verb:location:again",
+      "command": "set",
+      "argument": "location&",
       "in": "location",
       "name": "Find It Again",
       "verb": "find",
@@ -2643,18 +2673,24 @@
     },
     {
       "id": "verb:sound-louder",
+      "command": "set",
+      "argument": "volume+=5",
       "in": "sound",
       "name": "Louder",
       "verb": "louder"
     },
     {
       "id": "verb:sound-quieter",
+      "command": "set",
+      "argument": "volume-=5",
       "in": "sound",
       "name": "Quieter",
       "verb": "quieter"
     },
     {
       "id": "verb:sound-to",
+      "command": "set",
+      "argument": "volume=",
       "in": "sound",
       "name": "Volume to {level}",
       "verb": "set",
@@ -2666,6 +2702,8 @@
     },
     {
       "id": "verb:sound-use",
+      "command": "set",
+      "argument": "output={name}",
       "in": "sound",
       "name": "Play Sound Through It",
       "verb": "use",
@@ -2677,6 +2715,8 @@
     },
     {
       "id": "verb:sound-port",
+      "command": "set",
+      "argument": "port={port}",
       "in": "sound",
       "name": "Use {port}",
       "verb": "use"
@@ -3680,6 +3720,7 @@
     },
     {
       "id": "verb:on:waiting:go",
+      "command": "buffer",
       "in": "on",
       "name": "Go To",
       "verb": "go",
@@ -3687,6 +3728,7 @@
     },
     {
       "id": "verb:on:waiting:done",
+      "command": "delete",
       "in": "on",
       "name": "Done",
       "verb": "done",
@@ -3694,6 +3736,7 @@
     },
     {
       "id": "verb:on:waiting:notNow",
+      "command": "snooze",
       "in": "on",
       "name": "Not Now",
       "verb": "later",
@@ -3701,6 +3744,7 @@
     },
     {
       "id": "verb:on:layer:release",
+      "command": "release",
       "in": "on",
       "name": "Release It",
       "verb": "release",
@@ -3708,6 +3752,8 @@
     },
     {
       "id": "verb:on:awake:open",
+      "command": "set",
+      "argument": "awake=open",
       "in": "on",
       "name": "Only While the Lid Is Open",
       "verb": "keep",
@@ -3715,6 +3761,8 @@
     },
     {
       "id": "verb:on:awake:shut",
+      "command": "set",
+      "argument": "awake=shut",
       "in": "on",
       "name": "With the Lid Shut Too",
       "verb": "keep",
@@ -3722,6 +3770,8 @@
     },
     {
       "id": "verb:on:quiet:more",
+      "command": "set",
+      "argument": "quiet",
       "in": "on",
       "name": "An Hour More",
       "verb": "extend",
@@ -3729,6 +3779,8 @@
     },
     {
       "id": "verb:on:quiet:held",
+      "command": "edit",
+      "argument": "Held",
       "in": "on",
       "name": "Show What's Held",
       "verb": "show",
@@ -3736,6 +3788,8 @@
     },
     {
       "id": "verb:on:low:save",
+      "command": "set",
+      "argument": "powersave",
       "in": "on",
       "name": "Save Power",
       "verb": "save",
@@ -3743,6 +3797,8 @@
     },
     {
       "id": "verb:on:device:show",
+      "command": "edit",
+      "argument": "Bluetooth",
       "in": "on",
       "name": "Show in Bluetooth",
       "verb": "show",
@@ -3750,6 +3806,8 @@
     },
     {
       "id": "verb:on:muted:unmute",
+      "command": "set",
+      "argument": "nomute",
       "in": "on",
       "name": "Unmute It",
       "verb": "unmute",
@@ -3757,6 +3815,7 @@
     },
     {
       "id": "verb:on:network:check",
+      "command": "retry",
       "in": "on",
       "name": "Check It Again",
       "verb": "check",
@@ -3764,6 +3823,7 @@
     },
     {
       "id": "verb:on:playing:pause",
+      "command": "pause",
       "in": "on",
       "name": "Pause",
       "verb": "pause",
@@ -3771,6 +3831,7 @@
     },
     {
       "id": "verb:on:playing:next",
+      "command": "skip",
       "in": "on",
       "name": "Next Track",
       "verb": "next",
@@ -3778,6 +3839,8 @@
     },
     {
       "id": "verb:on:playing:previous",
+      "command": "skip",
+      "bang": true,
       "in": "on",
       "name": "Previous Track",
       "verb": "previous",
@@ -3785,12 +3848,15 @@
     },
     {
       "id": "verb:on:playing:show",
+      "command": "buffer",
       "in": "on",
       "name": "Show {player}",
       "verb": "show"
     },
     {
       "id": "verb:on:playing:pauseOther",
+      "command": "pause",
+      "argument": "{player}",
       "in": "on",
       "name": "Pause {player} Too",
       "verb": "pause",
@@ -3798,6 +3864,7 @@
     },
     {
       "id": "verb:on:sharing:stop",
+      "command": "halt",
       "in": "on",
       "name": "Stop Sharing",
       "verb": "stop",
@@ -3827,6 +3894,7 @@
     },
     {
       "id": "verb:notice:open",
+      "command": "open",
       "in": "notices",
       "name": "Open",
       "verb": "open",
@@ -3834,6 +3902,7 @@
     },
     {
       "id": "verb:notice:goTo",
+      "command": "buffer",
       "in": "notices",
       "name": "Go To",
       "verb": "go",
@@ -3841,6 +3910,7 @@
     },
     {
       "id": "verb:notice:copy",
+      "command": "yank",
       "in": "notices",
       "name": "Copy What It Said",
       "verb": "copy",
@@ -3848,6 +3918,7 @@
     },
     {
       "id": "verb:notice:read",
+      "command": "delete",
       "in": "notices",
       "name": "Read",
       "verb": "mark",
@@ -3860,6 +3931,7 @@
     },
     {
       "id": "verb:notice:forget",
+      "command": "forget",
       "in": "notices",
       "name": "Forget It",
       "verb": "forget",
@@ -3870,6 +3942,8 @@
     },
     {
       "id": "verb:notices:forget",
+      "command": "forget",
+      "range": "%",
       "in": "notices",
       "name": "Forget Them All",
       "verb": "forget",
@@ -3877,6 +3951,8 @@
     },
     {
       "id": "verb:notices:all",
+      "command": "edit",
+      "argument": "Notices",
       "in": "notices",
       "name": "All the Notices",
       "verb": "see",
@@ -3884,6 +3960,8 @@
     },
     {
       "id": "verb:notices:show",
+      "command": "edit",
+      "argument": "Waiting",
       "in": "notices",
       "name": "Show Them",
       "verb": "show",
@@ -3891,6 +3969,8 @@
     },
     {
       "id": "verb:notices:seen",
+      "command": "forget",
+      "argument": "seen",
       "in": "notices",
       "name": "Forget Them",
       "verb": "forget",
@@ -4245,6 +4325,7 @@
     },
     {
       "id": "verb:person:call",
+      "command": "dial",
       "in": "people",
       "name": "Call Them",
       "verb": "call",
@@ -4252,6 +4333,7 @@
     },
     {
       "id": "verb:person:join",
+      "command": "meet",
       "in": "people",
       "name": "Join Their Call",
       "verb": "join",
@@ -4259,6 +4341,8 @@
     },
     {
       "id": "verb:person:mail",
+      "command": "compose",
+      "argument": "mail",
       "in": "people",
       "name": "Write a Mail",
       "verb": "write",
@@ -4266,6 +4350,7 @@
     },
     {
       "id": "verb:person:page",
+      "command": "open",
       "in": "people",
       "name": "Open in {source}",
       "verb": "open",
@@ -4276,6 +4361,8 @@
     },
     {
       "id": "verb:person:slack",
+      "command": "compose",
+      "argument": "slack",
       "in": "people",
       "name": "Write in Slack",
       "verb": "write",
@@ -4301,6 +4388,7 @@
     },
     {
       "id": "verb:slack:open",
+      "command": "open",
       "in": "slack:conversation",
       "name": "Open in Slack",
       "verb": "open",
@@ -4308,6 +4396,7 @@
     },
     {
       "id": "verb:slack:link",
+      "command": "yank",
       "in": "slack:conversation",
       "name": "Copy the Link",
       "verb": "copy",
@@ -4315,6 +4404,7 @@
     },
     {
       "id": "verb:slack:sign-in",
+      "command": "open",
       "in": "applications",
       "name": "Sign In",
       "verb": "open",
@@ -4322,6 +4412,7 @@
     },
     {
       "id": "verb:slack:search",
+      "command": "search",
       "of": "program:slack",
       "name": "Search Slack for {words}",
       "verb": "search",
@@ -4329,6 +4420,7 @@
     },
     {
       "id": "verb:slack:search:again",
+      "command": "retry",
       "in": "slack:message",
       "name": "Try Again",
       "verb": "retry",
@@ -4353,6 +4445,7 @@
     },
     {
       "id": "verb:slack:message:open",
+      "command": "open",
       "in": "slack:message",
       "name": "Open in Slack",
       "verb": "open",
@@ -4360,6 +4453,7 @@
     },
     {
       "id": "verb:slack:message:link",
+      "command": "yank",
       "in": "slack:message",
       "name": "Copy the Link",
       "verb": "copy",
@@ -4367,6 +4461,7 @@
     },
     {
       "id": "verb:person:favourite",
+      "command": "favourite",
       "in": "people",
       "name": "Favourite",
       "verb": "star",
@@ -4434,6 +4529,7 @@
     },
     {
       "id": "verb:transcript:open",
+      "command": "open",
       "in": "transcript",
       "name": "Open the Transcript",
       "verb": "open",
@@ -4441,6 +4537,8 @@
     },
     {
       "id": "verb:transcript:folder",
+      "command": "open",
+      "argument": "folder",
       "in": "transcript",
       "name": "Open Its Folder",
       "verb": "open",
@@ -4448,6 +4546,7 @@
     },
     {
       "id": "verb:transcript:copy",
+      "command": "yank",
       "in": "transcript",
       "name": "Copy the Path",
       "verb": "copy",
@@ -4471,6 +4570,8 @@
     },
     {
       "id": "verb:gimp:edit",
+      "command": "open",
+      "argument": "gimp",
       "in": "path:file",
       "name": "Edit in GIMP",
       "verb": "edit"
@@ -4649,6 +4750,7 @@
     },
     {
       "id": "verb:wifi-leave",
+      "command": "disconnect",
       "in": "wifi",
       "name": "Disconnect It",
       "ends": "disconnect",
@@ -4656,21 +4758,28 @@
     },
     {
       "id": "verb:wifi-join",
+      "command": "set",
+      "argument": "wifi={name}",
       "in": "wifi",
       "name": "Connect It"
     },
     {
       "id": "verb:wifi-password",
+      "command": "password",
       "in": "wifi",
       "name": "Connect It with a New Password"
     },
     {
       "id": "verb:wifi-account",
+      "command": "signin",
+      "argument": "{method}",
       "in": "wifi",
       "name": "Connect It with an Account Over {method}"
     },
     {
       "id": "verb:wifi-trust",
+      "command": "set",
+      "argument": "trust!",
       "in": "wifi",
       "name": "Trust It",
       "states": {
@@ -4681,6 +4790,7 @@
     },
     {
       "id": "verb:wifi-forget",
+      "command": "forget",
       "in": "wifi",
       "name": "Forget It",
       "act": "ending",
@@ -4689,6 +4799,7 @@
     },
     {
       "id": "verb:wifi-sign-in",
+      "command": "open",
       "in": "wifi",
       "name": "Sign in to It",
       "verb": "open",
@@ -4995,63 +5106,85 @@
     },
     {
       "id": "verb:bluetooth-trust",
+      "command": "set",
+      "argument": "reconnect",
       "in": "bluetooth",
       "name": "Let It Reconnect by Itself",
       "verb": "reconnect"
     },
     {
       "id": "verb:bluetooth-untrust",
+      "command": "set",
+      "argument": "noreconnect",
       "in": "bluetooth",
       "name": "Only Connect It When Asked",
       "verb": "ask"
     },
     {
       "id": "verb:bluetooth-wake",
+      "command": "set",
+      "argument": "wake",
       "in": "bluetooth",
       "name": "Let It Wake the Machine",
       "verb": "wake"
     },
     {
       "id": "verb:bluetooth-no-wake",
+      "command": "set",
+      "argument": "nowake",
       "in": "bluetooth",
       "name": "Keep It From Waking the Machine",
       "verb": "refuse"
     },
     {
       "id": "verb:bluetooth-radio-on",
+      "command": "set",
+      "argument": "bluetooth",
       "in": "bluetooth",
       "name": "Turn the Radio On"
     },
     {
       "id": "verb:bluetooth-radio-off",
+      "command": "set",
+      "argument": "nobluetooth",
       "in": "bluetooth",
       "name": "Turn the Radio Off"
     },
     {
       "id": "verb:bluetooth-visible",
+      "command": "set",
+      "argument": "discoverable",
       "in": "bluetooth",
       "name": "Let Others Find It",
       "verb": "show"
     },
     {
       "id": "verb:bluetooth-hidden",
+      "command": "set",
+      "argument": "nodiscoverable",
       "in": "bluetooth",
       "name": "Keep It Hidden",
       "verb": "hide"
     },
     {
       "id": "verb:bluetooth-pairable",
+      "command": "set",
+      "argument": "pairable",
       "in": "bluetooth",
       "name": "Let Others Pair with It",
       "verb": "allow"
     },
     {
       "id": "verb:bluetooth-unpairable",
+      "command": "set",
+      "argument": "nopairable",
       "in": "bluetooth",
       "name": "Refuse New Pairings"
     },
     {
       "id": "verb:bluetooth-connect",
+      "command": "set",
+      "argument": "bluetooth+={name}",
       "in": "bluetooth",
       "name": "Connect It",
       "states": {
@@ -5062,6 +5195,7 @@
     },
     {
       "id": "verb:bluetooth-disconnect",
+      "command": "disconnect",
       "in": "bluetooth",
       "name": "Disconnect It",
       "ends": "disconnect",
@@ -5069,11 +5203,13 @@
     },
     {
       "id": "verb:bluetooth-passkey",
+      "command": "pair",
       "in": "bluetooth",
       "name": "Pair It with a Passkey"
     },
     {
       "id": "verb:bluetooth-forget",
+      "command": "forget",
       "in": "bluetooth",
       "name": "Forget It",
       "act": "ending",
@@ -5082,6 +5218,7 @@
     },
     {
       "id": "verb:copy:paste",
+      "command": "put",
       "in": "clipboard",
       "name": "Paste",
       "verb": "paste",
@@ -5089,6 +5226,7 @@
     },
     {
       "id": "verb:copy:copy",
+      "command": "yank",
       "in": "clipboard",
       "name": "Copy",
       "verb": "copy",
@@ -5096,6 +5234,7 @@
     },
     {
       "id": "verb:emoji:paste",
+      "command": "put",
       "in": "emoji",
       "name": "Paste",
       "verb": "paste",
@@ -5103,6 +5242,7 @@
     },
     {
       "id": "verb:emoji:copy",
+      "command": "yank",
       "in": "emoji",
       "name": "Copy",
       "verb": "copy",
@@ -5136,6 +5276,7 @@
     },
     {
       "id": "verb:calendar:join",
+      "command": "meet",
       "in": "calendar:meeting",
       "name": "Join the Meeting",
       "verb": "join",
@@ -5143,6 +5284,7 @@
     },
     {
       "id": "verb:calendar:write",
+      "command": "compose",
       "in": "calendar:meeting",
       "name": "Write to the Guests",
       "verb": "write",
@@ -5150,6 +5292,7 @@
     },
     {
       "id": "verb:calendar:link",
+      "command": "yank",
       "in": "calendar:meeting",
       "name": "Copy the Link",
       "verb": "copy",
@@ -5157,6 +5300,7 @@
     },
     {
       "id": "verb:calendar:open",
+      "command": "open",
       "in": "calendar:meeting",
       "name": "Open in Calendar",
       "verb": "open",
@@ -5164,6 +5308,7 @@
     },
     {
       "id": "verb:calendar:see",
+      "command": "edit",
       "in": "calendar:meeting",
       "name": "See It",
       "verb": "see",
@@ -5171,6 +5316,8 @@
     },
     {
       "id": "verb:calendar:transcript",
+      "command": "open",
+      "argument": "transcript",
       "in": "calendar:meeting",
       "name": "Open the Transcript",
       "verb": "open",
@@ -5178,6 +5325,8 @@
     },
     {
       "id": "verb:calendar:guests",
+      "command": "edit",
+      "argument": "Guests",
       "in": "calendar:meeting",
       "name": "Guests",
       "verb": "more",
@@ -5185,6 +5334,8 @@
     },
     {
       "id": "verb:calendar:attachments",
+      "command": "edit",
+      "argument": "Attachments",
       "in": "calendar:meeting",
       "name": "Attachments",
       "verb": "more",
@@ -5199,6 +5350,7 @@
     },
     {
       "id": "verb:calendar:cancel",
+      "command": "cancel",
       "in": "calendar:meeting",
       "name": "Cancel the Meeting",
       "verb": "cancel",
@@ -5207,6 +5359,7 @@
     },
     {
       "id": "verb:calendar:move",
+      "command": "move",
       "in": "calendar:meeting",
       "name": "Move the Meeting",
       "verb": "move",
@@ -5215,6 +5368,8 @@
     },
     {
       "id": "verb:calendar:yes",
+      "command": "answer",
+      "argument": "yes",
       "in": "calendar:meeting",
       "name": "Going",
       "words": ["yes"],
@@ -5223,6 +5378,8 @@
     },
     {
       "id": "verb:calendar:maybe",
+      "command": "answer",
+      "argument": "maybe",
       "in": "calendar:meeting",
       "name": "Maybe",
       "verb": "answer",
@@ -5230,6 +5387,8 @@
     },
     {
       "id": "verb:calendar:no",
+      "command": "answer",
+      "argument": "no",
       "in": "calendar:meeting",
       "name": "Not Going",
       "words": ["no"],
@@ -5255,6 +5414,7 @@
     },
     {
       "id": "verb:mail:open",
+      "command": "open",
       "in": "mail:message",
       "name": "Open in Mail",
       "verb": "open",
@@ -5262,6 +5422,7 @@
     },
     {
       "id": "verb:mail:reply",
+      "command": "reply",
       "in": "mail:message",
       "name": "Reply",
       "verb": "reply",
@@ -5269,6 +5430,8 @@
     },
     {
       "id": "verb:mail:replyAll",
+      "command": "reply",
+      "argument": "all",
       "in": "mail:message",
       "name": "Reply All",
       "verb": "reply",
@@ -5276,6 +5439,7 @@
     },
     {
       "id": "verb:mail:read",
+      "command": "delete",
       "in": "mail:message",
       "name": "Read",
       "verb": "read",
@@ -5288,6 +5452,7 @@
     },
     {
       "id": "verb:mail:link",
+      "command": "yank",
       "in": "mail:message",
       "name": "Copy the Link",
       "verb": "copy",
@@ -5295,6 +5460,7 @@
     },
     {
       "id": "verb:mail:archive",
+      "command": "archive",
       "in": "mail:message",
       "name": "Archive",
       "verb": "archive",
@@ -5302,6 +5468,8 @@
     },
     {
       "id": "verb:mail:attachments",
+      "command": "edit",
+      "argument": "Attachments",
       "in": "mail:message",
       "name": "Attachments",
       "verb": "more",
@@ -5316,6 +5484,7 @@
     },
     {
       "id": "verb:attachment:open",
+      "command": "open",
       "in": "mail:attachment",
       "name": "Open",
       "verb": "open",
@@ -5323,6 +5492,7 @@
     },
     {
       "id": "verb:attachment:save",
+      "command": "write",
       "in": "mail:attachment",
       "name": "Save a Copy",
       "verb": "save",
@@ -5330,6 +5500,7 @@
     },
     {
       "id": "verb:meet:code",
+      "command": "meet",
       "in": "applications",
       "name": "Join by Code",
       "verb": "join",
@@ -5338,6 +5509,7 @@
     },
     {
       "id": "verb:meet:link",
+      "command": "yank",
       "in": "applications",
       "name": "Copy a New Meeting's Link",
       "verb": "copy",
@@ -5357,6 +5529,7 @@
     },
     {
       "id": "verb:docs:open",
+      "command": "open",
       "in": "docs:document",
       "name": "Open in Docs",
       "verb": "open",
@@ -5364,6 +5537,7 @@
     },
     {
       "id": "verb:docs:link",
+      "command": "yank",
       "in": "docs:document",
       "name": "Copy the Link",
       "verb": "copy",
@@ -5383,6 +5557,7 @@
     },
     {
       "id": "verb:sheets:open",
+      "command": "open",
       "in": "sheets:spreadsheet",
       "name": "Open in Sheets",
       "verb": "open",
@@ -5390,6 +5565,7 @@
     },
     {
       "id": "verb:sheets:link",
+      "command": "yank",
       "in": "sheets:spreadsheet",
       "name": "Copy the Link",
       "verb": "copy",
@@ -5409,6 +5585,7 @@
     },
     {
       "id": "verb:slides:open",
+      "command": "open",
       "in": "slides:presentation",
       "name": "Open in Slides",
       "verb": "open",
@@ -5416,6 +5593,7 @@
     },
     {
       "id": "verb:slides:link",
+      "command": "yank",
       "in": "slides:presentation",
       "name": "Copy the Link",
       "verb": "copy",
@@ -5423,6 +5601,7 @@
     },
     {
       "id": "verb:switch",
+      "command": "buffer",
       "in": "windows",
       "name": "Go To",
       "verb": "go",
@@ -5430,6 +5609,7 @@
     },
     {
       "id": "verb:bring",
+      "command": "bring",
       "in": "windows",
       "name": "Bring Here",
       "verb": "bring",
@@ -5437,6 +5617,7 @@
     },
     {
       "id": "verb:move",
+      "command": "move",
       "in": "windows",
       "name": "Move to a Workspace",
       "verb": "choose",
@@ -5444,6 +5625,8 @@
     },
     {
       "id": "verb:screen",
+      "command": "move",
+      "argument": "screen",
       "in": "windows",
       "name": "Move to a Screen",
       "verb": "choose",
@@ -5451,6 +5634,7 @@
     },
     {
       "id": "verb:size",
+      "command": "resize",
       "in": "windows",
       "name": "Size",
       "verb": "choose",
@@ -5458,24 +5642,31 @@
     },
     {
       "id": "verb:size:third",
+      "command": "resize",
+      "argument": "third",
       "in": "windows",
       "name": "A Third of the Screen",
       "verb": "size"
     },
     {
       "id": "verb:size:half",
+      "command": "resize",
+      "argument": "half",
       "in": "windows",
       "name": "Half the Screen",
       "verb": "size"
     },
     {
       "id": "verb:size:two-thirds",
+      "command": "resize",
+      "argument": "twothirds",
       "in": "windows",
       "name": "Two Thirds of the Screen",
       "verb": "size"
     },
     {
       "id": "verb:below",
+      "command": "split",
       "in": "windows",
       "name": "New Window Below",
       "verb": "start",
@@ -5483,6 +5674,7 @@
     },
     {
       "id": "verb:start",
+      "command": "new",
       "in": "applications",
       "name": "New Window",
       "verb": "start",
@@ -5490,6 +5682,7 @@
     },
     {
       "id": "verb:program:switch",
+      "command": "buffer",
       "in": "applications",
       "name": "Go To",
       "verb": "go",
@@ -5497,6 +5690,7 @@
     },
     {
       "id": "verb:program:quit",
+      "command": "halt",
       "in": "applications",
       "name": "Quit",
       "verb": "quit",
@@ -5515,6 +5709,7 @@
     },
     {
       "id": "verb:program:play",
+      "command": "resume",
       "in": "program:media",
       "name": "Play",
       "verb": "play",
@@ -5527,12 +5722,15 @@
     },
     {
       "id": "verb:program:next",
+      "command": "skip",
       "in": "program:media",
       "name": "Next",
       "verb": "next"
     },
     {
       "id": "verb:program:previous",
+      "command": "skip",
+      "bang": true,
       "in": "program:media",
       "name": "Previous",
       "verb": "previous"
@@ -5553,6 +5751,8 @@
     },
     {
       "id": "verb:program:mute",
+      "command": "set",
+      "argument": "mute!",
       "in": "program:sound",
       "name": "Muted",
       "verb": "mute",
@@ -5566,12 +5766,16 @@
     },
     {
       "id": "verb:program:louder",
+      "command": "set",
+      "argument": "volume+=5",
       "in": "program:sound",
       "name": "Louder",
       "verb": "louder"
     },
     {
       "id": "verb:program:quieter",
+      "command": "set",
+      "argument": "volume-=5",
       "in": "program:sound",
       "name": "Quieter",
       "verb": "quieter"
@@ -5634,6 +5838,7 @@
     },
     {
       "id": "verb:recent:site:go",
+      "command": "buffer",
       "in": "recent:site",
       "name": "Go To",
       "verb": "go",
@@ -5641,6 +5846,7 @@
     },
     {
       "id": "verb:recent:site:open",
+      "command": "open",
       "in": "recent:site",
       "name": "Open",
       "verb": "open",
@@ -5648,6 +5854,7 @@
     },
     {
       "id": "verb:recent:site:close",
+      "command": "close",
       "in": "recent:site",
       "name": "Close It",
       "verb": "close",
@@ -5658,6 +5865,7 @@
     },
     {
       "id": "verb:recent:site:link",
+      "command": "yank",
       "in": "recent:site",
       "name": "Copy the Link",
       "verb": "copy",
@@ -5672,6 +5880,7 @@
     },
     {
       "id": "verb:path:file:copy",
+      "command": "yank",
       "in": "path:file",
       "name": "Copy the Path",
       "verb": "copy",
@@ -5679,6 +5888,7 @@
     },
     {
       "id": "verb:path:folder:copy",
+      "command": "yank",
       "in": "path:folder",
       "name": "Copy the Path",
       "verb": "copy",
@@ -5686,6 +5896,7 @@
     },
     {
       "id": "verb:path:file:open",
+      "command": "open",
       "in": "path:file",
       "name": "Open",
       "verb": "open",
@@ -5693,6 +5904,7 @@
     },
     {
       "id": "verb:path:file:go",
+      "command": "buffer",
       "in": "path:file",
       "name": "Go To",
       "verb": "go",
@@ -5700,6 +5912,7 @@
     },
     {
       "id": "verb:path:file:close",
+      "command": "close",
       "in": "path:file",
       "name": "Close It",
       "verb": "close",
@@ -5710,6 +5923,8 @@
     },
     {
       "id": "verb:path:folder:window",
+      "command": "new",
+      "argument": ".",
       "in": "path:folder",
       "name": "New Window Here",
       "verb": "open",
@@ -5745,6 +5960,7 @@
     },
     {
       "id": "verb:file-chooser:folder",
+      "command": "cd",
       "in": "path:folder",
       "name": "Open This Folder",
       "verb": "open",
@@ -5752,6 +5968,7 @@
     },
     {
       "id": "verb:file-chooser:here",
+      "command": "write",
       "in": "path:folder",
       "name": "Save Here",
       "verb": "save",
@@ -5759,6 +5976,8 @@
     },
     {
       "id": "verb:file-chooser:replace",
+      "command": "write",
+      "bang": true,
       "in": "path:file",
       "name": "Replace It",
       "verb": "replace",
@@ -5792,6 +6011,7 @@
     },
     {
       "id": "verb:file-chooser:marked",
+      "act": "do",
       "in": "path:folder",
       "name": "Open the Marked",
       "verb": "open",
@@ -5803,6 +6023,8 @@
     },
     {
       "id": "verb:file-chooser:unmark-all",
+      "command": "argdelete",
+      "argument": "*",
       "in": "verb:file-chooser:marked",
       "name": "Unmark All",
       "verb": "unmark",
@@ -5810,6 +6032,7 @@
     },
     {
       "id": "verb:file-chooser:copy-marked",
+      "command": "yank",
       "in": "verb:file-chooser:marked",
       "name": "Copy the Paths",
       "verb": "copy",
@@ -5901,6 +6124,7 @@
     },
     {
       "id": "verb:float",
+      "command": "float",
       "in": "windows",
       "name": "Float",
       "verb": "float",
@@ -5914,6 +6138,8 @@
     },
     {
       "id": "verb:full-width",
+      "command": "resize",
+      "argument": "full",
       "in": "windows",
       "name": "Full Width",
       "verb": "widen",
@@ -5921,6 +6147,7 @@
     },
     {
       "id": "verb:title",
+      "command": "yank",
       "in": "windows",
       "name": "Copy Title",
       "verb": "copy",
@@ -5928,6 +6155,7 @@
     },
     {
       "id": "verb:close",
+      "command": "close",
       "in": "windows",
       "name": "Close",
       "verb": "close",
@@ -5938,6 +6166,7 @@
     },
     {
       "id": "verb:agent:switch",
+      "command": "buffer",
       "in": "agents",
       "name": "Go To",
       "verb": "go",
@@ -5945,6 +6174,7 @@
     },
     {
       "id": "verb:agent:talk",
+      "command": "talk",
       "in": "agents",
       "name": "Talk",
       "verb": "talk",
@@ -5953,6 +6183,7 @@
     },
     {
       "id": "verb:agent:pause",
+      "command": "pause",
       "in": "agents",
       "name": "Pause",
       "verb": "pause",
@@ -5960,6 +6191,7 @@
     },
     {
       "id": "verb:agent:resume",
+      "command": "resume",
       "in": "agents",
       "name": "Resume",
       "verb": "resume",
@@ -5967,6 +6199,7 @@
     },
     {
       "id": "verb:agent:stop",
+      "command": "interrupt",
       "in": "agents",
       "name": "Stop",
       "verb": "stop",
@@ -6017,6 +6250,7 @@
     },
     {
       "id": "verb:orchestrator:resume",
+      "command": "resume",
       "in": "orchestrators",
       "name": "Resume",
       "verb": "resume",
@@ -6029,6 +6263,7 @@
     },
     {
       "id": "verb:quest:switch",
+      "command": "buffer",
       "in": "quests",
       "name": "Go To Its Session",
       "verb": "go",
@@ -6036,6 +6271,7 @@
     },
     {
       "id": "verb:quest:open",
+      "command": "new",
       "in": "quests",
       "name": "Start a Session",
       "verb": "start",
@@ -6043,6 +6279,7 @@
     },
     {
       "id": "verb:quest:start-anywhere",
+      "command": "new",
       "in": "verb:quest:open",
       "name": "Wherever It Fits",
       "verb": "start",
@@ -6050,6 +6287,7 @@
     },
     {
       "id": "verb:run:switch",
+      "command": "buffer",
       "in": "runs",
       "name": "Go To",
       "verb": "go",
@@ -6262,6 +6500,7 @@
         "run": "Do it",
         "lastPlace": "The place used last",
         "beside": "The place beside",
+        "own": "Open in its program",
         "insert": "Type",
         "change": "Clear it and type",
         "ending": "Close or forget it",
@@ -6284,6 +6523,9 @@
       "help": "List the Keys",
       "row": "Go to a Row",
       "on": "on {things}"
+    },
+    "asked": {
+      "replace": "Replace {name}? (y/n)"
     }
   },
   "meant": [
