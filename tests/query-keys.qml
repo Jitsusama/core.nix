@@ -284,6 +284,7 @@ QtObject {
             Confirm.answer(ask, "", 1400, 300), "early");
         pending(holds);
         visual(holds);
+        changes(holds);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
@@ -409,6 +410,32 @@ QtObject {
 
     // Visual line, Vim's V over the rows: its keys, the rows it takes and
     // what Return over them says.
+    // Changes to the rows, as Vim's to lines: Ctrl+R does again what u took
+    // back, and . the last change with its count, or the count typed
+    // before it in its place, each once a press. d's actions that say how
+    // they're put back are what u takes back, and the foot says so.
+    function changes(holds) {
+        holds("Ctrl+R does again what u took back, and . the last change",
+            typed(["Escape", "Ctrl+r", "3", "."]).acts, ["normal", "redoChange", "3 again"]);
+        for (const act of ["redoChange", "again"])
+            holds(`${act} is once a press`, Keys.repeats(act), false);
+        const dd = { count: 2, motion: null };
+        const dj = { count: 0, motion: { act: "next", count: 3 } };
+        holds(". does the last change as it was", Operators.again(dd, 0), dd);
+        holds("and a count before it stands in for its count", [Operators.again(dd, 4),
+            Operators.again(dj, 4)], [{ count: 4, motion: null },
+            { count: 0, motion: { act: "next", count: 4 } }]);
+        const run = () => {};
+        const back = () => {};
+        holds("u takes back what d did that says how it's put back",
+            Operators.undoable([{ run, undo: back }, { run }]), [{ redo: run, undo: back }]);
+        const words = { done: "{count} done \u00b7 u brings them back",
+            doneOne: "1 done \u00b7 u brings it back" };
+        holds("and the foot says so until the next key",
+            [Operators.doneSaid(3, words), Operators.doneSaid(1, words)],
+            ["3 done \u00b7 u brings them back", "1 done \u00b7 u brings it back"]);
+    }
+
     function visual(holds) {
         const doing = [
             ["V begins visual line", ["Escape", "V"], ["normal", "selectLines"], "visual"],
