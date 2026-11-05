@@ -98,6 +98,8 @@ const table = [
     { act: "paragraphBack", mode: "normal", keys: ["{"] },
     { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
     { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
+    // The gutter's numbers, relative or absolute, as his u l switches them.
+    { act: "numbers", mode: "normal", keys: [["Space", "u", "l"]] },
     // Back to the find: / and ? afresh, as a find has no direction; i a I A
     // holding the find, at the caret, after it, at the line's start and its
     // end; or cleared first, as cc clears a line.

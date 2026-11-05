@@ -2576,6 +2576,35 @@ Scope {
     // (VKCF3Z), which puts that list away as :pclose puts a window away.
     property bool listing: false
     property bool listedInDrawer: false
+    // Whether the gutter counts from the cursor row or numbers each row
+    // as it is, which Space u l switches, as his u l does.
+    property bool numbersRelative: true
+    // Whether the gutter numbers the rows: in normal, on a list, never on
+    // the find or the command line (the vi-paradigm spec, Normal).
+    readonly property bool numbered: prompt.modal && prompt.mode === "normal"
+        && commanding === null && matches.length > 0
+    onNumberedChanged: placeNumbers()
+    onRowsDrawnChanged: Qt.callLater(placeNumbers)
+
+    // Tells the gutter where each row in view has its name's baseline, from
+    // the rows the list has drawn, so its numbers sit on the rows' lines.
+    function placeNumbers() {
+        if (!numbered) {
+            if (rowsGutter.rows.length > 0)
+                rowsGutter.rows = [];
+            return;
+        }
+        const from = list.contentY;
+        const placed = [];
+        for (let at = Math.max(0, list.indexAt(list.width / 2, from));
+            at < matches.length && placed.length < rowsGutter.slots; at += 1) {
+            const entry = list.itemAtIndex(at);
+            if (!entry || entry.y - from >= list.height)
+                break;
+            placed.push({ at, base: entry.y - from + entry.nameBaseline });
+        }
+        rowsGutter.rows = placed;
+    }
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
         const only = listedInDrawer ? ["page", "pageVisual"] : null;
@@ -4964,6 +4993,15 @@ Scope {
             // Whether Space ? lists the keys in the drawer, and whether
             // there's a place used last for Tab to go back to.
             listing: root.listing,
+            // Normal's gutter: whether it shows, its numbers top to bottom,
+            // the cursor row's, how many it made and how wide its room is.
+            gutter: {
+                shown: rowsGutter.shown, relative: root.numbersRelative,
+                numbers: rowsGutter.said().map(number => number.text),
+                cursor: (rowsGutter.said().find(number => number.ink === "text") ?? {}).text
+                    ?? "",
+                made: rowsGutter.made, room: Math.round(rowsGutter.width)
+            },
             lastPlace: root.lastPlace !== null,
             // An operator waiting for its motion, as d's first d, and the
             // foot's word for one done, as d's ask, its mark and its word;
@@ -5643,9 +5681,11 @@ Scope {
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
                         keyWords: Words.field.keys ?? {}
-                        x: Theme.inset
+                        // After the gutter's room, so the / stands over the
+                        // rows' glyphs (VKCF3Z, 2026-11-05).
+                        x: Theme.inset + rowsGutter.width
                         y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        width: parent.width - 2 * Theme.inset - rowsGutter.width
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
@@ -5833,6 +5873,9 @@ Scope {
                             case "commandAgain":
                                 root.commandAgain();
                                 return;
+                            case "numbers":
+                                root.numbersRelative = !root.numbersRelative;
+                                return;
                             case "keys":
                                 root.listing = !root.listing;
                                 return;
@@ -5893,9 +5936,9 @@ Scope {
                     // : is open, made only then.
                     Loader {
                         id: commandLoader
-                        x: Theme.inset
+                        x: Theme.inset + rowsGutter.width
                         y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        width: parent.width - 2 * Theme.inset - rowsGutter.width
                         height: prompt.height
                         active: root.commanding !== null
                         onLoaded: item.take(root.commanding?.range ?? "")
@@ -5920,9 +5963,9 @@ Scope {
                     // column, and for what went wrong the failed mark in
                     // the alert.
                     Item {
-                        x: Theme.inset
+                        x: Theme.inset + rowsGutter.width
                         y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        width: parent.width - 2 * Theme.inset - rowsGutter.width
                         height: prompt.height
                         visible: root.commandSays
 
@@ -6001,11 +6044,38 @@ Scope {
                             }
                         }
 
+                        // Normal's numbers beside the rows (Gutter.qml), in a
+                        // room kept in every mode, so no row moves on a mode
+                        // change; empty on the find and the command line.
+                        Gutter {
+                            id: rowsGutter
+                            height: parent.height
+                            clip: true
+                            slots: Math.ceil(height / Theme.space.xxxl) + 1
+                            current: root.current
+                            relative: root.numbersRelative
+                            shown: root.numbered
+                        }
+
+                        // Where the rows are drawn moves the gutter's numbers
+                        // with them, a glide's every frame included.
+                        Connections {
+                            target: list
+                            function onContentYChanged() { root.placeNumbers(); }
+                            function onContentHeightChanged() { root.placeNumbers(); }
+                            function onOriginYChanged() { root.placeNumbers(); }
+                        }
+
                         ListView {
                             id: list
 
                             visible: root.over === null
-                            anchors.fill: parent
+                            // Beside the gutter, which numbers its rows in
+                            // normal and keeps its room everywhere else.
+                            x: rowsGutter.width
+                            width: parent.width - rowsGutter.width
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
                             anchors.bottomMargin: commandMenu.height
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice

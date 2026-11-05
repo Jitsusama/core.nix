@@ -2704,6 +2704,7 @@ onLinux {
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Gutter.qml} Gutter.qml
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
