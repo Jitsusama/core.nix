@@ -483,6 +483,16 @@ kinds = ["page"]
 keys = ["yip"]
 kinds = ["page"]
 
+# The same with the blank line after it, as yap copies.
+[acts.copy-a-paragraph]
+keys = ["yap"]
+kinds = ["page"]
+
+# From the block here on to its paragraph's end, as y} copies.
+[acts.copy-to-paragraph-end]
+keys = ["y}"]
+kinds = ["page"]
+
 # Onto a line, from normal: into the find line on a list, which has no text
 # of its own, holding the current find, and into insert on a prompt, at the
 # caret, after it, at the line's start or its end.

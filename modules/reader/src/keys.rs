@@ -241,6 +241,8 @@ const SPOKEN: &[(&str, Act)] = &[
     ("copy-selection", Act::Copy),
     ("copy", Act::CopyPiece),
     ("copy-paragraph", Act::CopyParagraph),
+    ("copy-a-paragraph", Act::CopyAParagraph),
+    ("copy-to-paragraph-end", Act::CopyToParagraphEnd),
     ("close", Act::Close),
     ("show-keys", Act::ShowKeys),
 ];
@@ -252,19 +254,12 @@ type Slot = fn(char) -> Act;
 const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
 
 /// The reader's own keys: a browser's zoom, at rest and while selecting,
-/// for what Vim has nothing for, and Vim's y a p and y } at rest, which
-/// the language names no act for until its find and command modes land.
+/// for what Vim has nothing for.
 const OWN: &[(&[Key], Act, In)] = &[
     (&[Ctrl('=')], Act::ZoomIn, In::Both),
     (&[Ctrl('+')], Act::ZoomIn, In::Both),
     (&[Ctrl('-')], Act::ZoomOut, In::Both),
     (&[Ctrl('0')], Act::ZoomBack, In::Both),
-    (
-        &[Char('y'), Char('a'), Char('p')],
-        Act::CopyAParagraph,
-        In::Rest,
-    ),
-    (&[Char('y'), Char('}')], Act::CopyToParagraphEnd, In::Rest),
 ];
 
 /// A sequence of keys, where it works and what it does.
