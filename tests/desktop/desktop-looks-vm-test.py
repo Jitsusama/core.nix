@@ -782,11 +782,18 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
                 "systemd-run --user --collect --unit=choose-to-save"
                 f" {desktop.values['choose_a_file']} save {folder} a.md"
             )
-            asked_in(desktop, "~/saving", {"a.md", "drafts"})
-            # The caret before the extension, so typing renames it.
+            asked_in(desktop, "~/saving", {"drafts"})
+            # The caret before the extension, so typing renames it. The line is
+            # the row Return stands on, above the rows, the name never said
+            # again among them (VKCF3Z, #1812).
             desktop.launcher_until(
                 lambda shown: (
-                    shown["typed"] == "a.md" and shown["caret"] == 1 and shown["mode"] == "insert"
+                    shown["typed"] == "a.md"
+                    and shown["caret"] == 1
+                    and shown["mode"] == "insert"
+                    and shown["current"] == -1
+                    and (shown["selected"] or {}).get("name") == "a.md"
+                    and "a.md" not in shown["rows"]
                 )
             )
             desktop.photograph(f"file-picker-save-name-at-{shot}")

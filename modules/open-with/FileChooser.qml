@@ -230,14 +230,14 @@ Provider {
         const own = shown.filter(entry => entry.folder).map(entry => folderRow(entry.path))
             .concat(folders ? [] : shown.filter(entry => !entry.folder && passes(entry.name))
                 .map(entry => fileRow(entry.path)));
-        // The name the line holds leads, and a file it already names isn't
-        // listed again below.
+        // The name the line holds is the line's own row (naming), so a file
+        // it already names isn't listed again below.
         const lead = saving && path !== "/" ? savingRow(path, provider.saveName) : null;
         const named = lead ? fileRow(lead.path).key : "";
         // The filters and choices wait for the folder's read as its Copy
         // the Path does (folderRow), to come after its files. What was
         // opened lately keeps its own order, apart and on top.
-        return apart([(lead ? [lead] : []).concat(path === start ? recent(path) : []),
+        return apart([path === start ? recent(path) : [],
             own.filter(row => row.key !== named), path === Files.home ? places.slice() : [],
             path in listed ? options() : []]);
     }
@@ -293,7 +293,8 @@ Provider {
             commands: () => provider.commandsIn(path),
             standing: () => provider.gatheredSaid(),
             takes: rows => provider.takes(rows)
-        }, saving ? naming(() => rowsOf(readIn(path))) : {});
+        }, saving ? naming(() => rowsOf(readIn(path)),
+            () => path !== "/" ? savingRow(path, provider.saveName) : null) : {});
         // Until the folder's read, it holds no Copy the Path: rows shown
         // keep their place and those that come go below them, so a Copy
         // shown before its files were read headed the list for good, where
@@ -312,10 +313,13 @@ Provider {
     // What a folder a save is asked in gives the launcher's line: the name
     // it saves as, a prompt's words rather than a find, kept from folder to
     // folder, the caret starting before its extension, and every row it
-    // holds, led by the name, never narrowed by it (VKCF3Z's vi-paradigm
-    // spec, The File Picker).
-    function naming(rows) {
+    // holds, never narrowed by it (VKCF3Z's vi-paradigm spec, The File
+    // Picker). The name is the line's own row, the one Return stands on
+    // above the rows, as an answer's headline is, rather than a row
+    // saying the name again below it (VKCF3Z, #1812).
+    function naming(rows, line) {
         return {
+            line: line,
             words: () => provider.saveName,
             worded: letters => {
                 provider.saveName = letters;
@@ -521,12 +525,10 @@ Provider {
     function folderElsewhere(fields) {
         elsewhere[fields.key] = { name: fields.name, folder: true };
         const saves = saving && typeof fields.saveTo === "function";
-        const inside = !saves ? () => fields.inside() : () => {
-            const named = provider.namingElsewhere(fields, provider.saveName);
-            return provider.apart([named ? [named] : [], fields.inside()]);
-        };
+        const inside = () => fields.inside();
         const row = Object.assign(Files.elsewhere("folder", fields, thing, [], inside),
-            saves ? naming(inside) : {});
+            saves ? naming(inside, () => provider.namingElsewhere(fields, provider.saveName))
+                : {});
         Object.defineProperties(row, {
             title: { get: () => provider.titled(fields.name), enumerable: true },
             ask: { get: () => provider.question(), enumerable: true },
