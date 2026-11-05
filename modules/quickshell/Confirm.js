@@ -35,10 +35,19 @@ function answer(ask, key, now, guard) {
 // they are (VKCF3Z, 2026-11-05).
 function question(rows, words) {
     const said = rows.length === 1
-        ? (words.ask ?? "").replace("{ends}", verbOf(rows[0], words))
-            .replace("{name}", rows[0].name ?? "")
+        ? (words.ask ?? "").replace("{ends}", saysItself(rows[0], words) ? ""
+            : verbOf(rows[0], words)).replace("{name}", rows[0].name ?? "").trim()
         : (words.asks ?? "").replace("{what}", listed(parts(rows, words), words));
     return said.charAt(0).toUpperCase() + said.slice(1);
+}
+
+// Whether a row's name already begins with what's done to it, as Forget
+// the Clipboard does, so the ask names it alone rather than "Forget
+// Forget the Clipboard".
+function saysItself(row, words) {
+    const verb = verbOf(row, words).toLowerCase();
+    const first = String(row.name ?? "").split(" ")[0].toLowerCase();
+    return verb !== "" && first === verb;
 }
 
 // What a row's ending does, or the words' own where it says none.

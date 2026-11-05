@@ -1894,11 +1894,15 @@ Scope {
     }
 
     // The line Return writes for a row that ends something, as the menu
-    // would write its act chosen: "disconnect", "set nowifi".
+    // would write its act chosen: "disconnect", "set nowifi". A step that
+    // asked Joel to be sure, as Log Out Now, was the asking, so its line is
+    // banged, "logout!", and runs past its confirm rather than asking again.
     function endsLine(choice) {
         const thing = held.length > 0 ? held[held.length - 1].row : choice;
-        return Commands.written(Commands.actLine(choice, true, { called: commandWords,
-            table: Options.commands, thing }), "");
+        const line = Commands.actLine(choice, true, { called: commandWords,
+            table: Options.commands, thing });
+        const asked = (!!choice.sure || sureOf()) && line.bang;
+        return Commands.written(asked ? Object.assign({}, line, { banged: true }) : line, "");
     }
 
     // What an ending row's side names for the key that carries it: d with
@@ -5786,10 +5790,13 @@ Scope {
 
     onOpenChanged: {
         // A viewer's line is over once the launcher closes (viewerCommandLine),
-        // and gv has nothing to bring back in the rows it opens on.
+        // and gv has nothing to bring back in the rows it opens on; nor is a
+        // line Return wrote and Joel left, which would hold the next
+        // opening's rows still and take its next line's place.
         if (!open) {
             over = null;
             lastVisual = null;
+            commanding = null;
         }
         madeSince(open ? "opening" : "closing");
         if (open)
