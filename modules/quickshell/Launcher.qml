@@ -4002,7 +4002,7 @@ Scope {
         if (hit === null || !row)
             return "";
         const words = Words.field.operators ?? {};
-        const act = QueryKeys.operators[prompt.standing.operator.key];
+        const act = Operators.operators[prompt.standing.operator.key];
         const actions = actionsOf(row);
         const copy = act === "copy"
             && Operators.copyOf(row, actions, one => verbOf(one) === "copy" && !!one.run);

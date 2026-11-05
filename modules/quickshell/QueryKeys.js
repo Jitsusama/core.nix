@@ -53,22 +53,18 @@ const table = [
     { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
-    // l steps into the row and h out of the place, back onto the row stepped
-    // in from with its find, - and Backspace as his oil's do, and the arrows
-    // as their letters.
+    // l steps into the row, h out onto the row stepped in from, with its
+    // find, - and Backspace as his oil's do, the arrows as their letters.
     { act: "into", mode: "normal", keys: ["l", "Right"] },
     { act: "out", mode: "normal", keys: ["h", "-", "Backspace", "Left"] },
-    // ZZ closes, as his Neovim closes a buffer, and Space w as his leader
-    // closes a split; :q is the command line's (CommandLine.qml), which :
-    // opens (read, below). q closes nothing,
-    // since recording is an unseen mode there are no macros for, and says
-    // so once, until the next key (the vi-paradigm spec, Normal).
+    // ZZ closes, as his Neovim closes a buffer, Space w as his leader closes a
+    // split, and :q (CommandLine.qml); q closes nothing, there being no
+    // macros, and says so until the next key (the vi-paradigm spec, Normal).
     { act: "close", mode: "normal", keys: [["Z", "Z"], ["Space", "w"]] },
     { act: "quitSaid", mode: "normal", keys: ["q"] },
-    // Ctrl+O and Ctrl+I go back and forward through the places stepped
-    // into, as Vim's jump list does, Tab being Ctrl+I to a terminal; Space
-    // Tab goes back to the place used last, as his goes to the file used
-    // last.
+    // Ctrl+O and Ctrl+I go back and forward through the places stepped into,
+    // as Vim's jump list, Tab being Ctrl+I; Space Tab goes to the place used
+    // last, as his goes to the file used last.
     { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
     { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
     { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
@@ -122,9 +118,8 @@ const table = [
     // Vim's Ctrl+W l and w go into the drawer, and his Neovim's Space and the
     // right arrow over them (Joel, 2026-11-05: "leader stuff can overlay").
     { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
-    // Escape at rest closes the launcher, a popup, as his Neovim closes its
-    // floats, from any depth: it never steps out (the vi-paradigm spec's
-    // Normal), and cancels whatever's begun first (read, below).
+    // Escape at rest closes the launcher from any depth, as his Neovim closes
+    // its floats, never stepping out (the spec's Normal); read cancels first.
     { act: "dismiss", mode: "normal", keys: ["Escape"] },
 
     // A prompt's words in normal, as Vim edits a line: w, b and e to the
@@ -241,10 +236,6 @@ function pending(standing) {
         || standing.operator !== undefined || standing.seek !== undefined;
 }
 
-// The operators, by their key, and the act each does over the rows it
-// takes (Operators.js, which reads a key while one waits).
-const operators = Operators.operators;
-
 // The range a count before a colon gives the command line, as Vim's 3:
 // gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
 function counted(count) {
@@ -354,37 +345,13 @@ function matching(typed, mode, words) {
     return { act: "", begun };
 }
 
-// What normal and visual read before their table, or null for a key they
-// don't. A count is typed where nothing types: 0 alone is Vim's first
-// column, which rows haven't, so it counts only after another digit, and
-// one after an operator is its motion's. An operator's key at rest in
-// normal begins it, with the count before it, but on a prompt's words
-// (`words`), where d and c are the words' own, as dw and cw; visual's
-// take no motion.
-function beforeTable(standing, key, mode, words) {
-    const atRest = standing.typed.length === 0;
-    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
-        return { act: "", count: 0, standing: Object.assign({}, standing,
-            { count: standing.count + key, typed: [] }), ours: true };
-    }
-    if (standing.operator !== undefined) {
-        return Operators.operated(standing, key, matching, rest());
-    }
-    if (mode === "normal" && atRest && !words && key in operators) {
-        const operator = { key, count: standing.count };
-        return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
-    }
-    return null;
-}
-
 // What a key does in a mode from where the keys stand: the act, if one's
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and closes on the next press. A key that means nothing in normal
-// is `idle`, which the foot answers with "not here", so none is silent.
-// Words says the line holds a prompt's words rather than a find, which
-// normal edits.
+// does, and closes on the next press; one meaning nothing in normal is
+// `idle`, said "not here". Words says the line holds a prompt's words
+// rather than a find, which normal edits.
 function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
     // changes nothing, so a sequence or a count begun carries on past it.
@@ -416,7 +383,7 @@ function read(standing, key, mode, words = false) {
     // Normal's and visual's counts and operators, which keep an operator's
     // count apart from its motion's.
     const before = mode === "normal" || mode === "visual"
-        ? beforeTable(standing, key, mode, words) : null;
+        ? Operators.beforeTable(standing, key, mode, words, matching, rest()) : null;
     if (before !== null) {
         return before;
     }
@@ -442,10 +409,8 @@ function read(standing, key, mode, words = false) {
     return { act: "", count: 0, standing: rest(), ours: still(mode), idle: still(mode) };
 }
 
-// Whether a key opens the command line from the line as it stands: a
-// colon as the find's first letter does, as Vim's colon does from
-// anywhere, so a command is a colon away on opening; after letters it's
-// one of the find's, and a prompt's words are their own.
+// Whether a key opens the command line: a colon as the find's first
+// letter, as Vim's from anywhere; after letters it's the find's.
 function opensCommands(key, mode, text) {
     return key === ":" && mode === "find" && text === "";
 }
