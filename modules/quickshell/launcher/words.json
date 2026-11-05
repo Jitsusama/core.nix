@@ -2166,32 +2166,132 @@
       "name": "Time Zone"
     },
     {
-      "id": "time:synchronised",
+      "id": "time:clock",
       "in": "time",
-      "name": "Synchronised"
-    },
-    {
-      "id": "time:server",
-      "in": "time",
-      "name": "Server",
+      "name": "Clock",
       "said": {
-        "nothing": "no, nothing keeps the time",
-        "no": "no",
-        "yes": "yes",
-        "stratum": "stratum {stratum}",
-        "asOfLastPoll": "as of the last poll",
-        "between": "between {least} and {most}",
-        "running": "running",
-        "system": "configured",
-        "link": "from the network",
-        "runtime": "set while running",
-        "fallback": "fallback"
+        "synchronised": "synchronised",
+        "unsynchronised": "not synchronised",
+        "nothing": "nothing keeps the time",
+        "onTime": "on time",
+        "fast": "{offset} fast",
+        "slow": "{offset} slow",
+        "gains": "gains {seconds} a day",
+        "loses": "loses {seconds} a day",
+        "lastOffset": "last update {offset}",
+        "residual": "{ppm} still to correct",
+        "leap:normal": "none announced",
+        "leap:insert": "one added at midnight",
+        "leap:delete": "one taken at midnight",
+        "leap:unsynchronised": "unknown until synchronised",
+        "never": "never",
+        "by": "by {server}",
+        "next": "in {span}",
+        "every": "every {span}",
+        "running": "running"
       }
     },
     {
-      "id": "time:server:name",
-      "in": "time:server",
-      "name": "Name"
+      "id": "time:clock:offset",
+      "in": "time:clock",
+      "name": "Offset"
+    },
+    {
+      "id": "time:clock:frequency",
+      "in": "time:clock",
+      "name": "Frequency"
+    },
+    {
+      "id": "time:clock:skew",
+      "in": "time:clock",
+      "name": "Skew"
+    },
+    {
+      "id": "time:clock:root-delay",
+      "in": "time:clock",
+      "name": "Root Delay"
+    },
+    {
+      "id": "time:clock:root-dispersion",
+      "in": "time:clock",
+      "name": "Root Dispersion"
+    },
+    {
+      "id": "time:clock:leap",
+      "in": "time:clock",
+      "name": "Leap Second"
+    },
+    {
+      "id": "time:clock:last-sync",
+      "in": "time:clock",
+      "name": "Last Sync"
+    },
+    {
+      "id": "time:clock:next-poll",
+      "in": "time:clock",
+      "name": "Next Poll"
+    },
+    {
+      "id": "time:clock:hardware",
+      "in": "time:clock",
+      "name": "Hardware Clock"
+    },
+    {
+      "id": "time:clock:drift",
+      "in": "time:clock",
+      "name": "Hardware Clock Drift"
+    },
+    {
+      "id": "time:clock:service",
+      "in": "time:clock",
+      "name": "Service"
+    },
+    {
+      "id": "time:servers",
+      "in": "time",
+      "name": "Servers",
+      "said": {
+        "outOfReach": "{count} out of reach",
+        "standing:chosen": "chosen",
+        "standing:combined": "agrees",
+        "standing:notCombined": "agrees, not combined",
+        "standing:tooVariable": "set aside: too variable",
+        "standing:disagrees": "set aside: disagrees",
+        "unreachable": "out of reach",
+        "unusable": "set aside",
+        "aside": "set aside: {why}",
+        "why:noSelect": "never to be chosen",
+        "why:tooFewSamples": "too few samples yet",
+        "why:unsynchronised": "not synchronised itself",
+        "why:stratum": "its stratum is out of range",
+        "why:tooDistant": "too far from its own reference",
+        "why:tooVariable": "too variable",
+        "why:waitingForOthers": "waiting on the others' samples",
+        "why:stale": "its samples are too old",
+        "why:orphan": "an orphan's stratum",
+        "why:untrusted": "disagrees with the trusted servers",
+        "why:disagrees": "disagrees with the others",
+        "why:waitingForSources": "waiting for more servers",
+        "why:notPreferred": "another is preferred",
+        "why:waitingForSample": "waiting for a new sample",
+        "why:tooFarToCombine": "too far to combine",
+        "why:combined": "combined with the chosen one",
+        "why:chosen": "the clock is kept by it",
+        "why:other": "for a reason chrony gives no name",
+        "every": "every {span}",
+        "ago": "{span} ago",
+        "reach": "{count} of the last 8",
+        "within": "within {error}",
+        "interval": "{low} to {high}",
+        "samples": "{samples} over {span}",
+        "tests": "{passed} of 10",
+        "packets": "{sent} sent, {received} received, {good} good"
+      }
+    },
+    {
+      "id": "time:server",
+      "in": "time:servers",
+      "name": "Time Server"
     },
     {
       "id": "time:server:address",
@@ -2199,14 +2299,29 @@
       "name": "Address"
     },
     {
+      "id": "time:server:why",
+      "in": "time:server",
+      "name": "Why"
+    },
+    {
       "id": "time:server:stratum",
       "in": "time:server",
       "name": "Stratum"
     },
     {
-      "id": "time:server:reference",
+      "id": "time:server:poll",
       "in": "time:server",
-      "name": "Reference"
+      "name": "Poll Interval"
+    },
+    {
+      "id": "time:server:reach",
+      "in": "time:server",
+      "name": "Reach"
+    },
+    {
+      "id": "time:server:last-sample",
+      "in": "time:server",
+      "name": "Last Sample"
     },
     {
       "id": "time:server:offset",
@@ -2214,14 +2329,49 @@
       "name": "Offset"
     },
     {
-      "id": "time:server:delay",
+      "id": "time:server:interval",
       "in": "time:server",
-      "name": "Delay"
+      "name": "True Time Within"
     },
     {
-      "id": "time:server:jitter",
+      "id": "time:server:samples",
       "in": "time:server",
-      "name": "Jitter"
+      "name": "Samples"
+    },
+    {
+      "id": "time:server:estimate",
+      "in": "time:server",
+      "name": "Estimated Offset"
+    },
+    {
+      "id": "time:server:deviation",
+      "in": "time:server",
+      "name": "Standard Deviation"
+    },
+    {
+      "id": "time:server:frequency",
+      "in": "time:server",
+      "name": "Frequency"
+    },
+    {
+      "id": "time:server:skew",
+      "in": "time:server",
+      "name": "Skew"
+    },
+    {
+      "id": "time:server:reference",
+      "in": "time:server",
+      "name": "Reference"
+    },
+    {
+      "id": "time:server:ntp-version",
+      "in": "time:server",
+      "name": "NTP Version"
+    },
+    {
+      "id": "time:server:precision",
+      "in": "time:server",
+      "name": "Precision"
     },
     {
       "id": "time:server:root-delay",
@@ -2234,49 +2384,29 @@
       "name": "Root Dispersion"
     },
     {
-      "id": "time:server:precision",
+      "id": "time:server:delay",
       "in": "time:server",
-      "name": "Precision"
+      "name": "Delay"
     },
     {
-      "id": "time:server:leap",
+      "id": "time:server:dispersion",
       "in": "time:server",
-      "name": "Leap Second"
+      "name": "Dispersion"
     },
     {
-      "id": "time:server:ntp-version",
+      "id": "time:server:response",
       "in": "time:server",
-      "name": "NTP Version"
+      "name": "Response Time"
     },
     {
-      "id": "time:server:last-sync",
+      "id": "time:server:tests",
       "in": "time:server",
-      "name": "Last Sync"
-    },
-    {
-      "id": "time:server:poll",
-      "in": "time:server",
-      "name": "Poll Interval"
+      "name": "Tests Passed"
     },
     {
       "id": "time:server:packets",
       "in": "time:server",
       "name": "Packets"
-    },
-    {
-      "id": "time:server:frequency",
-      "in": "time:server",
-      "name": "Frequency"
-    },
-    {
-      "id": "time:service",
-      "in": "time",
-      "name": "Service"
-    },
-    {
-      "id": "time:servers",
-      "in": "time",
-      "name": "Other Servers"
     },
     {
       "id": "sound",

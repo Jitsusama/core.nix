@@ -17,17 +17,17 @@
 // while it's shown or stepped into, reckoned as Moment.js says. "utc",
 // "epoch", "tai" and the rest of Time's words ask it whole.
 //
-// The time here goes on to how the clock is kept, as timekeeping last
-// heard systemd-timesyncd say (timekeeping/src/main.rs): whether it's
-// synchronised and since when, then the server it asks, a thing Return
-// steps into for all it says (its address, stratum and reference, the
-// offset, delay and jitter, its root delay and dispersion, precision, leap
-// second and NTP version, the last sync, the poll and its bounds, the
-// packets and the clock's frequency), its drawer saying them all; then
-// the service keeping it, and the other servers it's given (VKCF3Z's
-// design, 2026-10-29, for Joel's "for time i want to be able to dig into
-// ntp server details"). Each figure is one Return copies. The file is
-// watched, never asked; with nothing keeping the time that way, Time says
+// The time here goes on to how chrony keeps the clock, as timekeeping
+// reads it from chronyd (Timekeeping.qml, timekeeping/src/main.rs): Clock,
+// stepping into its offset, frequency, skew, root delay and dispersion,
+// leap second, last sync, next poll, the hardware clock and its drift and
+// the service; then Servers, every server chrony asks, the chosen first,
+// each a thing whose side is its offset, whose note says where it stands,
+// and whose drawer and inside give every figure chronyd has of it and why
+// it was chosen or set aside (VKCF3Z's design, for Joel's "for time i want
+// to be able to dig into ntp server details"). Keeping.js words each
+// figure, and each is one Return copies. It's asked only while home or the
+// time here is shown; with nothing keeping the time that way, Clock says
 // so and no more.
 import qs
 import Quickshell
@@ -37,6 +37,7 @@ import "Zones.js" as Zones
 import "Ago.js" as Ago
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
+import "Keeping.js" as Keeping
 
 Provider {
     id: provider
@@ -232,146 +233,165 @@ Provider {
         onTriggered: provider.answered()
     }
 
-    // How timesyncd keeps the clock, as timekeeping last wrote it, or null
-    // while nothing keeps it that way.
-    property var kept: null
+    // While home or the time here is shown, chrony's keeping is watched,
+    // so stepping into Clock or Servers finds it there; never while the
+    // launcher is closed or elsewhere.
+    readonly property bool keepingWatched: launcher !== null && launcher.open
+        && (launcher.atHome === true || shown)
+    onKeepingWatchedChanged: Timekeeping.watching += keepingWatched ? 1 : -1
 
-    // Milliseconds from microseconds, to a tenth.
-    function millis(micros, signed) {
-        const said = `${(Math.abs(micros) / 1000).toFixed(1)} ms`;
-        return !signed ? said : `${micros < 0 ? "\u2212" : "+"}${said}`;
-    }
+    // How chrony keeps the clock, as timekeeping last said, or null while
+    // it hasn't, or nothing keeps it that way.
+    readonly property var kept: Timekeeping.reading
 
-    // A poll's seconds as minutes and seconds, as timedatectl says them.
-    function span(seconds) {
-        const minutes = Math.floor(seconds / 60);
-        const left = seconds % 60;
-        if (minutes === 0)
-            return `${left} s`;
-        return left === 0 ? `${minutes} min` : `${minutes} min ${left} s`;
-    }
+    // What Time says of its keeping, in the vocabulary's words: the
+    // clock's and the servers'.
+    readonly property var clockSaid: Words.of("time:clock").said ?? {}
+    readonly property var serversSaid: Words.of("time:servers").said ?? {}
 
-    // A precision, a power of two of a second, in the unit that reads it.
-    function finest(power) {
-        const seconds = Math.pow(2, power);
-        if (seconds < 1e-6)
-            return `${Math.round(seconds * 1e9)} ns`;
-        return seconds < 1e-3 ? `${Math.round(seconds * 1e6)} \u00b5s`
-            : `${(seconds * 1000).toFixed(1)} ms`;
-    }
-
-    // What Time says of its keeping, in the vocabulary's words.
-    function keptWord(key) {
-        return String((Words.of("time:server").said ?? {})[key] ?? "");
-    }
-
-    // What the server says, each a part named and its figure, in the order
-    // its inside lists them; the drawer shows the same, so both read alike.
-    function serverParts() {
-        const at = kept?.exchange;
-        if (!at)
-            return [];
-        const part = (id, side, copy, note) => ({ id: id, side: side, copy: copy ?? side,
-            note: note ?? "" });
-        const micros = value => `${value} \u00b5s`;
-        const lastPoll = keptWord("asOfLastPoll");
-        const poll = kept.poll ?? {};
-        return [
-            part("name", at.server),
-            part("address", at.address),
-            part("stratum", String(at.stratum)),
-            part("reference", at.reference),
-            part("offset", millis(at.offset, true), micros(at.offset), lastPoll),
-            part("delay", millis(at.delay, false), micros(at.delay)),
-            part("jitter", millis(at.jitter, false), micros(at.jitter), lastPoll),
-            part("root-delay", millis(at.rootDelay, false), micros(at.rootDelay)),
-            part("root-dispersion", millis(at.rootDispersion, false), micros(at.rootDispersion)),
-            part("precision", finest(at.precision), `2^${at.precision} s`),
-            part("leap", at.leap),
-            part("ntp-version", String(at.ntpVersion)),
-            part("last-sync", Ago.ago(at.last, Date.now()), new Date(at.last).toISOString()),
-            part("poll", `every ${span(poll.now ?? 0)}`, `${poll.now ?? 0} s`,
-                keptWord("between").replace("{least}", span(poll.least ?? 0))
-                    .replace("{most}", span(poll.most ?? 0))),
-            part("packets", String(at.packets)),
-            part("frequency", `${kept.frequency < 0 ? "\u2212" : "+"}`
-                + `${Math.abs(kept.frequency).toFixed(3)} ppm`)
-        ].filter(each => each.side !== "");
-    }
-
-    // The other servers timesyncd is given, each where it's given from,
-    // but for the one it asks now.
-    function otherServers() {
-        const current = kept?.exchange?.server ?? "";
-        const from = kept?.servers ?? {};
-        return ["system", "link", "runtime", "fallback"].reduce((listed, source) => listed.concat(
-            (from[source] ?? []).filter(name => name !== current
-                && !listed.some(one => one.name === name))
-                .map(name => ({ name: name, note: keptWord(source) }))), []);
-    }
-
-    // The clock's keeping: whether it's synchronised, the server, the
-    // service and the other servers, in that order (VKCF3Z). A figure wears
-    // no mark; the server, holding more, wears its mark dimmed.
-    function keeping() {
-        const figure = (part, side, copy, note) => copyRow({
-            name: Words.name(`time:${part}`),
+    // A figure of the keeping, a row that copies what it shows.
+    function figure(id, side, note) {
+        return copyRow({
+            name: Words.name(id),
             side: side,
-            copy: copy ?? side,
+            copy: side,
             note: note ?? "",
             glyph: ""
         });
-        if (!kept)
-            return [figure("synchronised", keptWord("nothing"))];
-        const at = kept.exchange ?? null;
-        const synced = !kept.synchronised ? keptWord("no")
-            : at ? `${keptWord("yes")}, ${Ago.ago(at.last, Date.now())}` : keptWord("yes");
-        const parts = serverParts();
-        const server = at ? thingRow({
+    }
+
+    // The clock's figures, each a part named and its figure, in the order
+    // Clock's inside lists them (VKCF3Z): how far it's out and how fast it
+    // runs, the skew, root delay and dispersion its reference gives, the
+    // leap second, the last sync and the next poll, the hardware clock and
+    // its drift, and the service keeping it.
+    function clockParts(now) {
+        const clock = kept.clock;
+        const said = clockSaid;
+        const chosen = kept.servers.find(server => server.standing === "chosen") ?? null;
+        const hardware = kept.hardwareClock ?? null;
+        const part = (id, side, note) => ({ id: id, side: side, note: note ?? "" });
+        // chronyd's correction is how far the clock is behind true time.
+        return [
+            part("offset", Keeping.out(-clock.correction, said), said.lastOffset
+                .replace("{offset}", Keeping.seconds(clock.lastOffset, true))),
+            part("frequency", Keeping.runs(clock.frequency, said), said.residual
+                .replace("{ppm}", Keeping.ppm(clock.residualFrequency, true))),
+            part("skew", Keeping.ppm(clock.skew, false)),
+            part("root-delay", Keeping.seconds(clock.rootDelay, false)),
+            part("root-dispersion", Keeping.seconds(clock.rootDispersion, false)),
+            part("leap", Keeping.leap(clock.leap, said)),
+            part("last-sync", clock.lastSync ? Ago.ago(clock.lastSync, now) : said.never,
+                clock.reference ? said.by.replace("{server}", clock.reference) : ""),
+            part("next-poll", chosen ? said.next.replace("{span}",
+                Keeping.span(Keeping.nextPoll(chosen))) : "",
+                chosen ? said.every.replace("{span}", Keeping.span(chosen.poll)) : ""),
+            part("hardware", hardware ? Keeping.out(hardware.fast, said) : ""),
+            part("drift", hardware ? Keeping.daily(hardware.gain, said) : "",
+                hardware ? Keeping.ppm(hardware.gain, true) : ""),
+            part("service", settings.chrony ? `chrony ${settings.chrony}` : "chrony",
+                said.running)
+        ].filter(each => each.side !== "");
+    }
+
+    // What a server says, each a part named and its figure, in the order
+    // its inside lists them; its drawer shows the same, so both read alike.
+    function serverParts(server) {
+        const said = serversSaid;
+        const samples = server.samples ?? null;
+        const exchange = server.exchange ?? null;
+        const chosen = server.chosen ?? null;
+        const part = (id, side, note) => ({ id: id, side: side, note: note ?? "" });
+        const exchanged = exchange ? [
+            part("reference", exchange.reference),
+            part("ntp-version", String(exchange.version)),
+            part("precision", Keeping.seconds(exchange.precision, false)),
+            part("root-delay", Keeping.seconds(exchange.rootDelay, false)),
+            part("root-dispersion", Keeping.seconds(exchange.rootDispersion, false)),
+            part("delay", Keeping.seconds(exchange.delay, false)),
+            part("dispersion", Keeping.seconds(exchange.dispersion, false)),
+            part("response", Keeping.seconds(exchange.responseTime, false)),
+            part("tests", said.tests.replace("{passed}", String(exchange.testsPassed))),
+            part("packets", said.packets.replace("{sent}", String(exchange.sent))
+                .replace("{received}", String(exchange.received))
+                .replace("{good}", String(exchange.good)))
+        ] : [];
+        const sampled = samples ? [
+            part("samples", said.samples.replace("{samples}", String(samples.count))
+                .replace("{span}", Keeping.span(samples.span))),
+            part("estimate", Keeping.seconds(samples.offset, true), said.within
+                .replace("{error}", Keeping.seconds(samples.offsetError, false))),
+            part("deviation", Keeping.seconds(samples.deviation, false)),
+            part("frequency", Keeping.ppm(samples.residualFrequency, true)),
+            part("skew", Keeping.ppm(samples.skew, false))
+        ] : [];
+        return [
+            part("address", server.address !== server.name ? server.address : ""),
+            part("why", Keeping.why(server, said)),
+            part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
+            part("poll", said.every.replace("{span}", Keeping.span(server.poll))),
+            part("reach", Keeping.reach(server.reach, said)),
+            part("last-sample", server.lastSample !== null && server.lastSample !== undefined
+                ? said.ago.replace("{span}", Keeping.span(server.lastSample)) : ""),
+            part("offset", server.lastSample !== null && server.lastSample !== undefined
+                ? Keeping.seconds(server.offset, true) : "", said.within
+                    .replace("{error}", Keeping.seconds(server.error, false))),
+            part("interval", chosen && chosen.high > chosen.low ? said.interval
+                .replace("{low}", Keeping.seconds(chosen.low, true))
+                .replace("{high}", Keeping.seconds(chosen.high, true)) : "")
+        ].concat(sampled, exchanged).filter(each => each.side !== "");
+    }
+
+    // One server chrony asks, a thing: its side its last offset, its note
+    // where it stands, its drawer and its inside every figure (VKCF3Z).
+    function serverThing(server) {
+        const parts = serverParts(server);
+        const name = server.name || server.address;
+        const sampled = server.lastSample !== null && server.lastSample !== undefined;
+        return thingRow({
             key: "time:server",
-            name: at.server || at.address,
-            side: [keptWord("stratum").replace("{stratum}", at.stratum), millis(at.offset, true)]
-                .join(", "),
+            name: name,
+            side: sampled ? Keeping.seconds(server.offset, true) : "",
+            note: Keeping.standing(server, serversSaid),
             glyph: Theme.glyph.clock,
-            // The server is a thing, one Joel digs into, so its drawer is
-            // out beside it.
             thing: true,
             drawer: () => ({
-                title: at.server || at.address,
+                eyebrow: Words.name("time:server"),
+                title: name,
                 facts: parts.map(each => ({ label: Words.name(`time:server:${each.id}`),
                     value: each.side }))
             })
-        }, () => parts.map(each => figure(`server:${each.id}`, each.side, each.copy,
-            each.note))) : null;
-        const others = otherServers();
-        return [
-            figure("synchronised", synced),
-            server,
-            figure("service", "systemd-timesyncd", "systemd-timesyncd", keptWord("running")),
-            others.length > 0 ? holderRow({
-                key: "time:servers",
-                name: Words.name("time:servers"),
-                side: String(others.length),
-                glyph: Theme.glyph.clock
-            }, () => others.map(one => copyRow({ name: one.name, note: one.note, glyph: "" })))
-                : null
-        ].filter(row => row !== null);
+        }, () => parts.map(each => figure(`time:server:${each.id}`, each.side, each.note)));
     }
 
-    FileView {
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/timekeeping.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: {
-            try {
-                const said = JSON.parse(text());
-                provider.kept = said.version === 2 ? said : null;
-            } catch (e) {
-                provider.kept = null;
-            }
+    // The clock's keeping: Clock, stepping into its figures, and Servers,
+    // stepping into every server chrony asks, the chosen first (VKCF3Z).
+    // With nothing keeping the time, Clock says so and no more.
+    function keeping() {
+        const said = clockSaid;
+        if (!kept) {
+            const waiting = Timekeeping.watching > 0 && !Timekeeping.refused;
+            return [figure("time:clock", waiting ? "\u2026" : said.nothing)];
         }
-        onLoadFailed: provider.kept = null
+        const now = Date.now();
+        const parts = clockParts(now);
+        const servers = kept.servers;
+        const out = servers.filter(server => Keeping.answered(server.reach) === 0).length;
+        return [
+            thingRow({
+                key: "time:clock",
+                name: Words.name("time:clock"),
+                side: kept.synchronised ? said.synchronised : said.unsynchronised,
+                glyph: Theme.glyph.clock
+            }, () => parts.map(each => figure(`time:clock:${each.id}`, each.side, each.note))),
+            servers.length > 0 ? holderRow({
+                key: "time:servers",
+                name: Words.name("time:servers"),
+                side: String(servers.length),
+                note: out > 0 ? serversSaid.outOfReach.replace("{count}", String(out)) : "",
+                glyph: Theme.glyph.clock
+            }, () => servers.map(server => serverThing(server))) : null
+        ].filter(row => row !== null);
     }
 
     // Read a moment after the shell starts, so the first question doesn't
