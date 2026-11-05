@@ -51,6 +51,7 @@ import KeyTimes
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
+import "Operators.js" as Operators
 import "QueryKeys.js" as QueryKeys
 import "Search.js" as Search
 import "launcher/Catalogue.js" as Catalogue
@@ -362,6 +363,7 @@ Scope {
             stays: said.stays ?? false,
             reads: said.reads ?? "",
             note: said.note ?? "",
+            copies: said.run ? "" : said.copy ?? said.headline,
             run: said.run ?? (() => {
                 const copy = said.copy ?? said.headline;
                 if (copy !== "")
@@ -496,6 +498,7 @@ Scope {
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
         once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
+        copies: answer.run ? "" : answer.copy ?? answer.headline,
         run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
@@ -3231,6 +3234,123 @@ Scope {
     function searchGone() {
         washing = "";
         searchSaid = null;
+        asked = null;
+    }
+
+    // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
+    // says what each does to a row): d does each row's ending action, as
+    // dd deletes a line, and y copies each, as yy yanks one. What d does
+    // that can't be put back it asks about once, in Return's place in the
+    // foot, as a search's "not found" is said there: { act, from, to,
+    // rows, said }, the rows being the list it asked over, so a list made
+    // again meanwhile lets it go. The next key decides: the same operator
+    // over the same rows does it, and anything else lets it go, with
+    // nothing to dismiss and no time to wait out.
+    property var asked: null
+    property int askedFor: -1
+    // Whether the ask still stands: said for the key just taken, or for
+    // the one before keys that begin its answer, as dd's first d.
+    readonly property bool askStands: asked !== null && (askedFor === prompt.keysTaken
+        || prompt.begunAt === askedFor + 1 && QueryKeys.pending(prompt.standing))
+    // An operator's word for the key it was said for, as a search's is:
+    // [mark, word, colour], for d over nothing to end or y over nothing to
+    // copy.
+    property var operatorSaid: null
+    property int operatorSaidFor: -1
+    // The rows y just copied, by their place, flashed for the key timing's
+    // yank-flash as his Neovim's on_yank flashes a yank.
+    property var flashing: ({})
+
+    Timer {
+        id: flash
+        interval: Options.keyTiming["yank-flash"]
+        onTriggered: root.flashing = {}
+    }
+
+    function operatorSays(word) {
+        operatorSaid = [Theme.glyph.nothingFound, word ?? "", Theme.warning];
+        operatorSaidFor = prompt.keysTaken;
+    }
+
+    // A row's actions, as the right arrow lists them.
+    function actionsOf(row) {
+        return typeof row.verbs === "function" ? row.verbs() ?? [] : [];
+    }
+
+    // d or y (Prompt.qml's operated), over the rows from the selection to
+    // where the motion goes, or as many as the count says.
+    function operated(act, count, motion) {
+        searchNow();
+        const view = list.inView();
+        const span = Operators.spanned(count, motion, {
+            at: current,
+            highest: prompt.highest,
+            last: matches.length - 1,
+            top: view.top,
+            bottom: view.bottom,
+            screen: rows
+        });
+        const taken = Operators.taken(matches, span, headline);
+        if (act === "copy")
+            yanked(taken);
+        else
+            ended(taken, span, Operators.typedAs(act, count, motion));
+    }
+
+    // y: every copy over the rows joined a line each and put on the
+    // clipboard at once, which takes text while the launcher holds the
+    // keys, so the launcher stays as Vim's buffer does. A single copy that
+    // says no text, as a picture, is done by its own act.
+    function yanked(taken) {
+        const words = Words.field.operators ?? {};
+        const copies = Operators.copiesIn(taken, actionsOf,
+            row => verbOf(row) === "copy" && !!row.run);
+        const text = Operators.copied(copies.map(copy => copy.action));
+        if (text !== "")
+            Quickshell.clipboardText = text;
+        else if (copies.length === 1)
+            copies[0].action.run();
+        else {
+            operatorSays(words.noCopy);
+            return;
+        }
+        const flashed = {};
+        for (const copy of copies)
+            flashed[copy.at] = true;
+        flashing = flashed;
+        flash.restart();
+        Report.say(`yanked ${copies.length}`);
+    }
+
+    // d: every ending action over the rows, asked about once where any
+    // can't be put back, the rows with none passed over.
+    function ended(taken, span, typed) {
+        const words = Words.field.operators ?? {};
+        const endings = Operators.endings(taken, actionsOf);
+        if (endings.length === 0) {
+            asked = null;
+            operatorSays(words.nothing);
+            return;
+        }
+        const actions = endings.map(ending => ending.action);
+        const answered = askStands && asked.rows === matches
+            && Operators.answers(asked, "ending", span);
+        if (Operators.asks(actions) && !answered) {
+            const unsure = actions.filter(action => typeof action.undo !== "function");
+            const ends = unsure.every(action => action.ends === unsure[0].ends)
+                && (unsure[0].ends ?? "") !== "" ? unsure[0].ends : words.ends ?? "";
+            const said = (actions.length === 1 ? words.ask ?? "" : words.asks ?? "")
+                .replace("{ends}", ends).replace("{count}", String(actions.length));
+            asked = { act: "ending", from: span.from, to: span.to, rows: matches,
+                said: [typed, said, Theme.warning] };
+            askedFor = prompt.keysTaken;
+            Report.say(`asked ${said}`);
+            return;
+        }
+        asked = null;
+        for (const action of actions)
+            Operators.doing(action)();
+        Report.say(`ended ${actions.length}`);
     }
 
     // Text typed faster than it's searched, as a program types it, reaches
@@ -3861,6 +3981,13 @@ Scope {
             // there's a place used last for Tab to go back to.
             listing: root.listing,
             lastPlace: root.lastPlace !== null,
+            // An operator waiting for its motion, as d's first d, and the
+            // foot's word for one done, as d's ask, its mark and its word;
+            // and the rows y flashes, by their place.
+            operator: prompt.standing.operator?.key ?? "",
+            operated: foot.operatorWord === null ? ""
+                : `${foot.operatorWord[0]} ${foot.operatorWord[1]}`,
+            flashing: Object.keys(root.flashing).map(Number),
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4499,6 +4626,12 @@ Scope {
                         // rungs (docs/design.md, Vi's Keys): a step back out,
                         // or, at the level it opened on, closing it.
                         onCancelled: {
+                            // d's ask, said for the key before this one,
+                            // is the rung this Escape takes.
+                            if (root.asked !== null && root.askedFor === prompt.keysTaken - 1) {
+                                root.asked = null;
+                                return;
+                            }
                             if (root.listing)
                                 root.listing = false;
                             else if (root.held.length > root.homeDepth)
@@ -4518,6 +4651,7 @@ Scope {
                         }
                         onSearched: (pattern, forward, count, how) =>
                             root.rowsSought(pattern, forward, count, how)
+                        onOperated: (act, count, motion) => root.operated(act, count, motion)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
@@ -4924,6 +5058,7 @@ Scope {
                                     id: choice
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
+                                    flashed: root.flashing[entry.index] === true
                                     // Seen until the closing card has faded.
                                     shown: card.opacity > 0
                                     fills: false
@@ -4943,7 +5078,7 @@ Scope {
                                     warns: !!entry.modelData.warns
                                     figures: list.figures
                                     sides: list.sides
-                                    name: selected ? entry.modelData.name
+                                    name: selected || flashed ? entry.modelData.name
                                         : root.marked(entry.modelData)
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
@@ -5007,12 +5142,17 @@ Scope {
                         // A search's word, for the key that said it.
                         readonly property string searchWord: root.searchSaid !== null
                             && root.searchSaidFor === prompt.keysTaken ? root.searchSaid[1] : ""
+                        // An operator's word, or d's ask while it stands.
+                        readonly property var operatorWord: root.operatorSaid !== null
+                            && root.operatorSaidFor === prompt.keysTaken ? root.operatorSaid
+                            : root.askStands ? root.asked.said : null
                         // A parting word stands where Return was, its
                         // mark in the success colour, and a search's word
                         // there too, for its key, as a search typed says
                         // what Return does to it.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
+                            : operatorWord !== null ? [operatorWord]
                             : searchWord !== "" ? [root.searchSaid]
                             : prompt.searching !== null
                                 ? [["\u21b5", (Words.field.search ?? {}).find ?? ""]]
