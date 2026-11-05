@@ -491,14 +491,16 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     desktop.reported("yanked 2", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline") == "\n".join(rows[:2])
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["tinted"] == [])
-    # A colon opens the command line on the selection, and Escape gives
-    # the selection back, as it stood.
+    # A colon opens the command line on the selection, as Vim's '<,'>,
+    # and Escape gives the selection back, as it stood.
     machine.send_chars("k")
     desktop.launcher_until(lambda shown: shown["current"] == 0)
     machine.send_chars("Vj:")
     desktop.launcher_until(
         lambda shown: (
-            (shown["command"] or {}).get("from") == "visual" and shown["command"]["line"] == "'<,'>"
+            (shown["command"] or {}).get("from") == "visual"
+            and shown["command"]["range"] == "'<,'>"
+            and shown["command"]["things"] == len(rows[:2])
         )
     )
     machine.send_key("esc")

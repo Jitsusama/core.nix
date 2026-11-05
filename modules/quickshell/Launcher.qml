@@ -4100,7 +4100,11 @@ Scope {
                 caret: commandLoader.item.caret,
                 chosen: commandLoader.item.choosing.at,
                 menu: commandLoader.item.shown.map(line => `${line.command} ${line.title}`),
-                from: root.commanding?.from ?? ""
+                from: root.commanding?.from ?? "",
+                // The range it was opened with, as visual's '<,'>, and
+                // how many rows its acts act on.
+                range: root.commanding?.range ?? "",
+                things: root.commanding?.things.length ?? 0
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
