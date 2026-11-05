@@ -222,6 +222,12 @@ QtObject {
             expect(`${what} ends something`, ending(row), true);
         expect("Wi-Fi Off, :set nowifi, ends something",
             ending({ verb: "off", command: "set", run: does }, true), true);
+        // What calls someone or starts something new is the spec's other
+        // rule for Return, the language's starts flag, and goes to the line
+        // as an ending does (VKCF3Z, 2026-11-05).
+        expect("what starts something, as :share, goes to the line",
+            Catalogue.endsSomething({ verb: "share", run: does },
+                { command: "share", flags: { starts: true } }), true);
         const lasting = [
             ["Wi-Fi On, :set wifi", { verb: "on", command: "set", run: does }],
             ["a copy", { verb: "copy", command: "yank", run: does }],
