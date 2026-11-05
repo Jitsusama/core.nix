@@ -1945,8 +1945,13 @@ by mode and row, so none names a key that does nothing, and a check
 presses every hint drawn. The mode word's room is as wide as its widest
 word in its own font, set before the facts, which give way around it, so
 it's never cut (Joel, 2026-11-04: "the mode text is truncated so I only see
-...rt instead of insert"). Space ?, F1 and :help open the key list, grouped
-by mode under its purpose ("Normal: moving and acting", "The find: the /
+...rt instead of insert"). While an operator waits no hint applies, so the
+mode word takes the hints' room too and names its target whole,
+"d · close Notes for Tuesday", cut only at a whole word with an ellipsis
+when even that won't hold it. A landing is normal, so its foot keeps
+normal's hints, only its Return in the accent. Space ?, F1 and :help open
+the key list, grouped by mode under its purpose ("Normal: moving and
+acting", "The find: the /
 line", "Commands: the : line", "Visual: choosing several", "Insert: writing
 words"), each line its keys at Note in text and what they do at Note,
 muted: a saying of about 17 letters at most and a chord of 14, so a line
