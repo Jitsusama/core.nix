@@ -28,6 +28,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "Reading.js" as Reading
 import "Editing.js" as Editing
+import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
@@ -449,9 +450,9 @@ Item {
         [Qt.Key_Space]: "Space",
         [Qt.Key_F1]: "F1"
     })
-    // A key as the table names it (QueryKeys.js's nameOf).
+    // A key as the table names it (KeyNames.js).
     function named(event: KeyEvent): string {
-        return QueryKeys.nameOf({
+        return KeyNames.nameOf({
             control: (event.modifiers & Qt.ControlModifier) !== 0,
             shift: (event.modifiers & Qt.ShiftModifier) !== 0,
             alt: (event.modifiers & Qt.AltModifier) !== 0,

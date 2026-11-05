@@ -3,11 +3,9 @@
 // tests/query-keys.qml can hold it in Qt's own engine, and so the desktop's
 // one language of keys can take it in later. The line is Vim's / line, the
 // rows a buffer below it: it opens on the find, where letters type and the
-// rows narrow, and Escape gives normal, where nothing types. A row asking
-// for words (a password, a name) is a prompt, typed in insert, its words
-// handed over rather than found. The find and insert edit their line with
-// the same keys, Vim's command line's. Letters go by what they type,
-// wherever they sit on the layout.
+// rows narrow, and Escape gives normal, where nothing types. Words a row
+// asks for are typed in insert, edited with the find's keys. Letters go by
+// what they type, wherever they sit on the layout.
 .pragma library
 .import "LineEditing.js" as LineEditing
 .import "Operators.js" as Operators
@@ -16,11 +14,9 @@
 // the field names it (Prompt.qml, `named`): a modifier, then the letter it
 // typed, or else its name, with Shift unnamed beside a letter, which says it
 // by its case. A list of keys is a sequence typed one after another, as vi's
-// cc. A row's mode is "find", "insert" or "normal"; "line" is the find's and
-// insert's both, and "both" every mode's. A key a mode doesn't
-// name is the field's own on the find and in insert, where it types, and
-// does nothing in normal. Where one differs from Neovim, the reason is
-// beside it.
+// cc. A row's mode "line" is the find's and insert's, "both" every mode's. A
+// key a mode doesn't name is the field's own where it types, and does
+// nothing in normal. Where one differs from Neovim, the reason is beside it.
 const table = [
     // The line, as Vim's command line: the caret's moves and deleting
     // before it, Ctrl+H as Backspace.
@@ -146,9 +142,8 @@ const table = [
     { act: "undo", mode: "words", keys: ["u"] },
 
     // Every mode: Return opens the row or steps into it, as everywhere of
-    // ours; with Shift, Ctrl or Alt it does nothing, since a Return that
-    // means something else is one more way to do what wasn't meant (the
-    // vi-paradigm spec's Return). Page Up and Page Down page the rows.
+    // ours; with Shift, Ctrl or Alt it does nothing (the vi-paradigm
+    // spec's Return). Page Up and Page Down page the rows.
     // Shift and the arrows do nothing: the drawer is gone into with Space
     // and the right arrow and moved through there, as an arrow is its
     // letter and has no act of its own (VKCF3Z's spec v2, The Arrows).
@@ -311,37 +306,9 @@ function chosen(mode) {
     return mode === "pageVisual" || mode === "pageVisualLine";
 }
 
-// A key typing one of the letters, digits and marks the table names keys by.
-const printable = /^[!-~]$/;
-
-// A key pressed as the table names it, from what the press says
-// (`pressed`): whether Ctrl, Shift and Alt were held, the text it typed,
-// the letter its key is on the layout ("" for a key that isn't a letter's)
-// and the name of a key that types nothing. With Ctrl a letter types a
-// control character, so it goes by its key. "" for a key the table can't
-// name, which is the field's own.
-function nameOf(pressed) {
-    const bare = !pressed.control && printable.test(pressed.text);
-    const letter = bare ? pressed.text : pressed.control ? pressed.letter : "";
-    const name = letter || pressed.named;
-    if (name === "") {
-        return "";
-    }
-    // Alt is named beside a key that types nothing, so Alt+Return is
-    // never Return, and beside a letter it typed as the key's own, so
-    // Alt+d is Vim's M-d and never d; a letter it shifts to another on the
-    // layout goes by what it typed.
-    const own = bare && pressed.letter !== "" && pressed.text.toLowerCase() === pressed.letter;
-    return (pressed.control ? "Ctrl+" : "") + (pressed.alt && (!letter || own) ? "Alt+" : "")
-        + (pressed.shift && !bare ? "Shift+" : "") + name;
-}
-
-// The modes a line is typed in, where a key the table doesn't name is the
-// field's own to type.
-const lines = ["find", "insert"];
-
+// Whether a line is typed in, a key the table doesn't name the field's.
 function typedIn(mode) {
-    return lines.includes(mode);
+    return mode === "find" || mode === "insert";
 }
 
 // Whether a row's keys are a mode's: "line" is the find's and insert's,
@@ -500,8 +467,7 @@ function takesSelection(act) {
     return act === "ending" || act === "copy" || act === "run";
 }
 
-// The mode an act leaves the line in. Typing again goes back to the find,
-// or to insert where the line holds a prompt's words (`typing`).
+// The mode an act leaves the line in, typing going back to `typing`'s.
 function modeAfter(act, mode, typing = "find") {
     if (act === "normal" || act === "rows") {
         return "normal";

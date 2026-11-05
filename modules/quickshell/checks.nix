@@ -2656,6 +2656,7 @@ onLinux {
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
+      cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Operators.js} Operators.js
       cp ${./Typing.js} Typing.js
@@ -3100,6 +3101,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../tests/query-keys.qml} query-keys.qml
+      cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js

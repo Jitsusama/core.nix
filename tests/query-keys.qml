@@ -8,6 +8,7 @@
 import QtQuick
 import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
+import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as Keys
 import "Typing.js" as Typing
 import "Operators.js" as Operators
@@ -1164,7 +1165,7 @@ QtObject {
             ["Shift with Tab", press({ shift: true }, "", "", "Tab"), "Shift+Tab"]
         ];
         for (const [what, pressed, want] of names)
-            holds(`${what} is named ${want}`, Keys.nameOf(pressed), want);
+            holds(`${what} is named ${want}`, KeyNames.nameOf(pressed), want);
 
         // [what, the keys typed from the opening, each act with its count]
         const counting = [

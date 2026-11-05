@@ -105,6 +105,7 @@ let
   qml = [
     "shell.qml"
     "Prompt.qml"
+    "KeyNames.js"
     "QueryKeys.js"
     "CommandLine.qml"
     "CommandMenu.qml"
