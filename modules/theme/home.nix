@@ -232,6 +232,15 @@ let
 
   illegible = lib.filter (pair: contrast.ratio pair.fg.value pair.bg.value < 4.5) readable;
 
+  # Each pair of neighbouring rungs whose outer isn't wider than its inner,
+  # which would let two levels of structure share a space.
+  widening = lib.filter (pair: cfg.space.rung.${pair.inner} >= cfg.space.rung.${pair.outer}) (
+    lib.zipListsWith (inner: outer: {
+      inner = inner.name;
+      outer = outer.name;
+    }) spaceRungs (lib.tail spaceRungs)
+  );
+
   # The text roles on the grounds they're read on, held to APCA as well:
   # WCAG's ratio passes a dark theme's dim text that APCA, weighing how
   # light the background is, finds too dim for reading. Text and strong are
@@ -313,6 +322,54 @@ let
     huge = 16;
   };
 
+  # Each rung of the space ladder, in units, inside out: the space one level
+  # of structure sits apart by, each wider than the one inside it, so space
+  # alone says what belongs together (docs/design.md, Space). Groups take
+  # five units, the one rung off the scale, since the ladder needs a rung
+  # between things on a line and a frame's own room.
+  spaceRungs = [
+    {
+      name = "tie";
+      units = 1;
+      between = "the parts of one token, such as a chord's keys";
+    }
+    {
+      name = "mark";
+      units = 2;
+      between = "a mark and its text, or a key and its word";
+    }
+    {
+      name = "apart";
+      units = 3;
+      between = "two runs of one thing, such as a name and its words";
+    }
+    {
+      name = "items";
+      units = 4;
+      between = "things on one line, such as hint and hint";
+    }
+    {
+      name = "groups";
+      units = 5;
+      between = "groups on one line, and column and column";
+    }
+    {
+      name = "inset";
+      units = 6;
+      between = "a frame and its text, on every side, to the ink";
+    }
+    {
+      name = "frames";
+      units = 8;
+      between = "floating frames that belong together, such as the launcher and its drawer";
+    }
+    {
+      name = "screen";
+      units = 12;
+      between = "a floating frame and the screen's edge, at the least";
+    }
+  ];
+
   # Each step of the type scale, as a power of its ratio: body is the face's
   # own size, and each step up multiplies it by the ratio once more. The
   # steps between are left out on purpose, so every step taken reads as one
@@ -391,6 +448,13 @@ let
       step = lib.mkOption {
         type = lib.types.str;
         description = "The type scale's step it's set at, by name.";
+      };
+      pitch = lib.mkOption {
+        type = lib.types.ints.positive;
+        description = ''
+          Its line pitch in logical pixels, baseline to baseline: how far
+          apart two lines of one thing set at it sit (docs/design.md, Space).
+        '';
       };
       wallpaper = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -830,7 +894,36 @@ in
           margins and gaps name a step, never a number.
         '';
       }
-    ) spaceSteps;
+    ) spaceSteps
+    // {
+      beat = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = given "space" "beat" cfg.space.m;
+        defaultText = lib.literalMD "`space.m`";
+        description = ''
+          The beat, in logical pixels: half the large pitch, and what every
+          space between blocks down a surface is a whole number of, so lines
+          at different pitches side by side meet on one grid.
+        '';
+      };
+      rung = lib.listToAttrs (
+        map (
+          rung:
+          lib.nameValuePair rung.name (
+            lib.mkOption {
+              type = lib.types.ints.positive;
+              default = cfg.space.unit * rung.units;
+              defaultText = lib.literalMD "${toString rung.units} × `space.unit`";
+              description = ''
+                The ${rung.name} rung of the space ladder, in logical pixels:
+                the space between ${rung.between}. A surface names a rung,
+                never a step.
+              '';
+            }
+          )
+        ) spaceRungs
+      );
+    };
 
     type = {
       ratio = lib.mkOption {
@@ -893,6 +986,8 @@ in
           display = {
             face = "mono";
             step = "display";
+            # Figures alone, which never descend, so they sit close.
+            pitch = 56;
             wallpaper = "hero";
             tracking = -1.0e-2;
             features = [ "tnum" ];
@@ -903,6 +998,8 @@ in
           title = {
             face = "serif";
             step = "title";
+            # A heading's lines sit tighter than the words' (design.md, Space).
+            pitch = 32;
             axes = {
               wght = 560;
               opsz = 21;
@@ -918,18 +1015,21 @@ in
           name = {
             face = "mono";
             step = "large";
+            pitch = 24;
             weight = 500;
             colour = "text";
           };
           figure = {
             face = "mono";
             step = "large";
+            pitch = 24;
             features = [ "tnum" ];
             colour = "text";
           };
           words = {
             face = "serif";
             step = "large";
+            pitch = 24;
             axes = cfg.font.serif.axes // cfg.font.serif.upright.large;
             strong = 600;
             colour = "muted";
@@ -937,6 +1037,7 @@ in
           voice = {
             face = "serif";
             step = "large";
+            pitch = 24;
             italic = cfg.font.serif.italic;
             axes = cfg.font.serif.axes // {
               wght = cfg.font.serif.weight;
@@ -946,11 +1047,13 @@ in
           note = {
             face = "mono";
             step = "body";
+            pitch = 20;
             colour = "muted";
           };
           label = {
             face = "mono";
             step = "body";
+            pitch = 20;
             weight = 500;
             case = "capitals";
             tracking = cfg.type.eyebrow.tracking;
@@ -1336,6 +1439,19 @@ in
   );
 
   config.assertions = [
+    {
+      assertion = widening == [ ];
+      message = ''
+        The theme's space ladder has to widen outward, each rung wider than the
+        one inside it (docs/design.md, Space):
+        ${lib.concatMapStringsSep "\n" (
+          pair:
+          "  ${pair.inner} ${toString cfg.space.rung.${pair.inner}} is not under ${pair.outer} ${
+              toString cfg.space.rung.${pair.outer}
+            }"
+        ) widening}
+      '';
+    }
     {
       assertion = lib.length cfg.shades == 8;
       message = "The theme's shades have to be eight colours, from the background to the brightest text.";

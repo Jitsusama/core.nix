@@ -207,6 +207,18 @@ constrain".
   screen and not turned down stays, unless he gave the reason to change it.
 - **Cluttered notices.** "i'm also seeing some whitespace issues with the
   notifications, feeling quite cluttered" (2026-11-02).
+- **Space that ranks nothing.** "we have alignment and whitespace issues for
+  padding and margins that really don't look great ... you are not
+  considering enough design elements when changing things. do more research
+  on design, particularly around not just how typography but white space
+  gives topology and hierarchy awareness" (2026-11-05). Space is how the
+  eye learns what belongs together before colour or a box tells it, so
+  every gap is its level's rung on docs/design.md's ladder, each wider than
+  the one inside it: a chord's keys closer than a key to its word, a hint to
+  a hint closer than the hints to the facts, nothing inside a frame wider
+  than the frame's own room. Two levels sharing one space, or a thing roomier
+  inside than round it, reads as clutter however tidy the numbers. A change
+  is judged on type, space, alignment and colour together, never one alone.
 - **Too much roundness.** "you also have issues with consistency in
   padding and margin, and have often too much roundness" (2026-11-02). A
   corner is softened by the theme's radius, one unit, and parts are
@@ -270,8 +282,9 @@ and answer these for it:
   the ErgoDox, and found by typing what it does?
 - Is there warmth at its threshold, and none in the way of the work?
 - Is it smooth: no jump, no jerk, no wait it could avoid?
-- Is every gap a named step, a line pitch or what a row leaves round its
-  text, measured to the ink, and every edge on a named column?
+- Is every gap its level's rung, a line pitch, a number of beats or what a
+  row leaves round its text, measured to the ink, each rung wider than the
+  one inside it, and every edge on a named column?
 - Does each choice say where it came from, his words, his configuration or
   his keyboards, and is a choice of the designer's own marked as one?
 - Would he feel the change at a glance, beside what it replaces?

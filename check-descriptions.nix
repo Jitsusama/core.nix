@@ -1323,6 +1323,11 @@
     the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
     display, and never listens to a headset's microphone while it plays music
   '';
+  space-is-set-by-rung = ''
+    no QML file of the shell's names a space by its step on the size scale, rather than by the
+    rung of the space ladder it sits between, the beat or a level's pitch, but those listed as
+    not yet moved, and none is listed that no longer needs to be
+  '';
   speaker-amps-have-every-dai-named = ''
     the XPS 14's SoundWire machine driver names only DAIs its amplifiers register
   '';

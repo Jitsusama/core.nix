@@ -400,6 +400,9 @@ The words core.nix is built from. Never a launcher place.
 | sans face | the theme's sans-serif, only for other people's programs that draw their own interface | proportional face | `jitsusama.theme.font.sans` |
 | step | one size on the theme's type scale, by its power of the ratio, such as large | | `jitsusama.theme.type` |
 | level | one rank of text on the desktop: its face, step, weight, case and colour together, such as Name or Note | style, text style | `jitsusama.theme.type.levels`, `Theme.level` |
+| pitch | how far apart two lines of one thing at a level sit, baseline to baseline | | `jitsusama.theme.type.levels.<level>.pitch`, `Theme.level.<level>.pitch` |
+| rung | the space one level of structure sits apart by, wider than the rung inside it, such as items or frames | | `jitsusama.theme.space.rung`, `Theme.space.rung` |
+| beat | half the large pitch, which every space between blocks down a surface is a whole number of | | `jitsusama.theme.space.beat`, `Theme.space.beat` |
 | script face | Noto, script by script, for the letters the other faces lack, with a cut a script beside the serif and mono faces | | `jitsusama.theme.font.script` |
 | account | the account on a machine that home-manager configures | | `home-manager.users.<account>` |
 

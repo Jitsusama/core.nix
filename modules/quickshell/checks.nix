@@ -533,6 +533,55 @@ onLinux {
       touch $out
     '';
 
+  # Every space the shell sets names the rung of the ladder it sits between,
+  # the beat or a level's pitch, never a step of the size scale, but in the
+  # files not-yet-by-rung.txt lists, and a file listed there that no longer
+  # needs to be fails, so the list only shrinks (space-is-set-by-rung.py).
+  # So it can't pass by seeing nothing, a step, a step summed with a rung,
+  # and a listed file that's moved or gone are each shown to fail first,
+  # while a rung, the beat, a pitch and a comment naming a step pass.
+  space-is-set-by-rung =
+    let
+      check = "${lib.getExe pkgs.python3} ${./space-is-set-by-rung.py}";
+      shells = lib.fileset.toSource {
+        root = ../.;
+        fileset = lib.fileset.fileFilter (file: file.hasExt "qml") ../.;
+      };
+    in
+    pkgs.runCommandLocal "space-is-set-by-rung" { } ''
+      # A file that sets its space as given, what the check must say of it,
+      # and the files listed as not yet moved.
+      strays() {
+        rm -rf modules
+        mkdir -p modules/shell
+        printf '%s\n' "$1" > modules/shell/Surface.qml
+        printf '%s\n' "''${@:3}" > unmoved.txt
+        if ${check} modules unmoved.txt > said; then
+          echo "The space check passed on: $1"
+          exit 1
+        fi
+        if ! grep -qF -- "$2" said; then
+          echo "Of $1 the space check didn't say: $2"
+          cat said
+          exit 1
+        fi
+      }
+      strays 'leftPadding: Theme.space.l' 'Surface.qml:1: leftPadding: Theme.space.l'
+      strays 'spacing: Theme.space.rung.items + Theme.space.xs' 'Theme.space.xs'
+      strays 'spacing: Theme.space.rung.items' 'take it off' shell/Surface.qml
+      strays 'spacing: Theme.space.rung.items' "isn't there" shell/Gone.qml
+      # A rung, the beat and a pitch pass, as a comment naming a step does.
+      rm -rf modules
+      mkdir -p modules/shell
+      printf '%s\n' 'spacing: Theme.space.rung.items' 'height: Theme.space.beat * 2' \
+        'lineHeight: Theme.level.note.pitch' '// once Theme.space.l, now a rung' \
+        > modules/shell/Surface.qml
+      : > unmoved.txt
+      ${check} modules unmoved.txt
+      ${check} ${shells} ${./not-yet-by-rung.txt}
+      touch $out
+    '';
+
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place

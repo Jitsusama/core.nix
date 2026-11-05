@@ -91,6 +91,9 @@ let
       capitalization = if level.case == "capitals" then 1 else 0;
       features = lib.genAttrs level.features (_: 1);
       colour = colours.${level.colour};
+      # How far apart two lines of one thing at the level sit, baseline to
+      # baseline (docs/design.md, Space).
+      inherit (level) pitch;
     }
     // lib.optionalAttrs (level.wallpaper != null) { wallpaper = sized level.wallpaper; }
     # A line holding strong spans: its axes but the weight, which the face
