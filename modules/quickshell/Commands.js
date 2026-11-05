@@ -7,11 +7,29 @@
 // then the surface's commands, then what every surface has.
 .pragma library
 
-// A line's command as the menu writes it: its notation, then the argument
-// that tells an act apart from another of its name, as :new . from :new.
+// A line's command as the menu writes it: its notation, its own bang, then
+// the argument that tells an act apart from another of its name, as :new .
+// from :new and :skip! from :skip.
 function called(entry) {
-    const name = notation(entry.command, entry.short);
+    const name = `${notation(entry.command, entry.short)}${entry.banged ? "!" : ""}`;
     return (entry.argument ?? "") === "" ? name : `${name} ${entry.argument}`;
+}
+
+// An act's words with what's in braces filled, as {name} in :set wifi={name}:
+// from the act's own fill first, then the row it's on, a space escaped as
+// Vim writes one in an argument. Words it can't fill aren't the act's, so
+// it's named by its verb instead.
+const braces = /\{(\w+)\}/g;
+const aSpace = / /g;
+
+function filled(words, act, thing) {
+    let missing = false;
+    const argument = String(words.argument ?? "").replace(braces, (whole, field) => {
+        const value = act.fill?.[field] ?? thing?.[field];
+        missing = missing || value === undefined || value === null;
+        return missing ? whole : String(value).replace(aSpace, "\\ ");
+    });
+    return missing ? {} : Object.assign({}, words, { argument });
 }
 
 // Vim's help notation: the shortest form a command takes outside the
@@ -52,10 +70,12 @@ function keyOf(act, first) {
 // The menu: the cursor row's or the selection's acts, Return's first, the
 // surface's commands, then what every surface has, :q, :help and :{n}, each
 // line { command, short, title, key, kind } with the act or the surface's
-// command it runs. `from` gives them: { acts, surface, table, said, row },
-// `said` the words for the line's own commands, by command, and `row` the
-// cursor row's number, counted from 1, which :{n}'s line writes. A name
-// listed twice is listed once, the first kept, so a name runs one thing.
+// command it runs. `from` gives them: { acts, surface, table, said, row,
+// called, thing }, `said` the words for the line's own commands, by
+// command, `row` the cursor row's number, counted from 1, which :{n}'s line
+// writes, `called` an act's words (words.json's command, argument, bang and
+// range) and `thing` the row the acts are on. A name listed twice is listed
+// once, the first kept, so a name runs one thing.
 function listed(from) {
     const table = from.table ?? {};
     const said = from.said ?? {};
@@ -72,7 +92,7 @@ function listed(from) {
     // A name and its argument are listed once.
     const add = entry => {
         entry.argument = entry.argument ?? "";
-        const naming = `${entry.command} ${entry.argument}`;
+        const naming = `${entry.command}${entry.banged ? "!" : ""} ${entry.argument}`;
         if (entry.command === "" || seen.has(naming)) {
             return;
         }
@@ -83,14 +103,21 @@ function listed(from) {
     // An act is named by the command its words give it, with the argument
     // telling it from another of that name, or else by its verb; it takes
     // a ! only where it would ask first, its ! saying don't. A guarded one
-    // asks nothing on one thing, only once on more, so takes ! too.
+    // asks nothing on one thing, only once on more, so takes ! too. One its
+    // words give a bang of its own is banged: the bang is its line's, as
+    // :skip! goes back. One on every row, as :%forg, waits for ranges.
     (from.acts ?? []).forEach((act, at) => {
-        const words = from.called ? from.called(act) : {};
+        const words = filled(from.called ? from.called(act) : {}, act, from.thing);
+        if (words.range !== undefined) {
+            return;
+        }
         const command = words.command ?? commandOf(act);
         const undoable = !asks(command);
+        const banged = words.bang === true;
         add({ command, argument: String(words.argument ?? ""), short: short(command),
             title: String(act.name ?? ""), key: keyOf(act, at === 0), kind: "act", act,
-            bang: !undoable, takes: false, undoable, guarded: table[command]?.guarded === true });
+            bang: banged || !undoable, banged, takes: false, undoable,
+            guarded: table[command]?.guarded === true });
     });
     for (const own of from.surface ?? []) {
         add({ command: own.command, short: own.short ?? short(own.command),
@@ -205,7 +232,7 @@ function written(entry, typed) {
         return entry.line;
     }
     const read = parts(typed);
-    const bang = read.bang && entry.bang ? "!" : "";
+    const bang = entry.banged || (read.bang && entry.bang) ? "!" : "";
     const arg = entry.argument === "" ? read.arg : entry.argument;
     return `${entry.command}${bang}${arg === "" ? "" : ` ${arg}`}`;
 }
@@ -280,8 +307,24 @@ function ran(typed, menu) {
     if (matching.length === 0) {
         return { error: `E492: Not an editor command: ${read.line.trim()}` };
     }
-    const holding = matching.find(one => one.argument !== "" && one.argument === read.arg);
-    return holding ? ranHolding(holding, read) : ranBare(matching, read);
+    return ranNamed(matching, read);
+}
+
+// Of the lines a name names, one whose bang is its own runs only where a
+// bang is typed, as :skip! goes back; then the act holding the argument
+// typed; then the one holding none.
+function ranNamed(matching, read) {
+    const banged = read.bang
+        ? matching.find(one => one.banged && one.argument === read.arg) : undefined;
+    if (banged) {
+        return { entry: banged, bang: true, arg: "" };
+    }
+    const plain = matching.filter(one => !one.banged);
+    if (plain.length === 0) {
+        return { error: `E492: Not an editor command: ${read.line.trim()}` };
+    }
+    const holding = plain.find(one => one.argument !== "" && one.argument === read.arg);
+    return holding ? ranHolding(holding, read) : ranBare(plain, read);
 }
 
 // The act holding the argument typed, which runs ahead of the rest of its
