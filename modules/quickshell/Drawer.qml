@@ -558,6 +558,19 @@ Floating {
             : Theme.level.figure.pointSize
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
     }
+    // A value in Latin letters on a script's plate (`latin: true`), as a
+    // count or a day is, at Figure in the theme's own face, since the
+    // script's cut draws Latin in another's.
+    FontMetrics {
+        id: latinFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.features: Theme.level.figure.features
+    }
+    // The face a fact's value is measured and drawn in.
+    function faceOf(fact) {
+        return drawer.script !== "" && fact?.latin === true ? latinFace : valueFace;
+    }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
     // A binding doesn't see what a call reads, so it reads both faces, to be
@@ -616,7 +629,7 @@ Floating {
     // report when asked.
     function valuesWhole() {
         return drawnRows().every(row => !row.known || unbroken(row.modelData.value).split(" ")
-            .every(word => valueFace.advanceWidth(word) <= row.valueWide));
+            .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide));
     }
     // Whether every value beside its name takes one line there, so the
     // facts are each beside or under and never a mix, for the launcher
@@ -899,6 +912,9 @@ Floating {
                         // mid-word, where it's as wide as the Title allows.
                         plain: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
                         leading: drawer.titleLeading
+                        // A right-to-left title starts under its eyebrow
+                        // too, rather than at the plate's far edge.
+                        horizontalAlignment: Text.AlignLeft
                         color: Theme.level.title.colour
                         font.family: drawer.script === "" ? Theme.level.title.family
                             : Theme.script.serif[drawer.script]
@@ -1140,7 +1156,11 @@ Floating {
                                 plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 leading: drawer.pitch
                                 color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
-                                font: valueFace.font
+                                font: drawer.faceOf(fact.modelData).font
+                                // A right-to-left script's words start at the
+                                // column too, as every other value's do,
+                                // rather than at the plate's far edge.
+                                horizontalAlignment: Text.AlignLeft
                             }
                         }
                     }

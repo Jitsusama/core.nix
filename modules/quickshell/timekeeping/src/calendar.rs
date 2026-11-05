@@ -409,15 +409,19 @@ fn islamic(iso: Date<Iso>) -> Option<Calendar> {
     let day = iso.to_calendar(Hijri::new_umm_al_qura());
     let arabic = "ar-SA-u-ca-islamic-umalqura";
     let english = "en-GB-u-ca-islamic-umalqura";
+    // The era's letter, for the Hijra, is kept beside its year by a space
+    // that doesn't break, so a date that wraps never leaves it alone on a
+    // line.
+    let kept = |written: String| written.replace(" \u{647}\u{640}", "\u{a0}\u{647}\u{640}");
     Some(Calendar {
         reckoning: Reckoning::Islamic,
         latin: written!(english, YMD::long(), iso)?,
-        native: written!(arabic, YMD::long(), iso)?,
+        native: kept(written!(arabic, YMD::long(), iso)?),
         figures: vec![
             figure(
                 "year",
                 written!(english, Y::long(), iso)?,
-                written!(arabic, Y::long(), iso)?,
+                kept(written!(arabic, Y::long(), iso)?),
             ),
             figure(
                 "month",
@@ -538,12 +542,19 @@ mod tests {
     fn ramadan_by_umm_al_qura() {
         let day = calendar("2023-04-10", Reckoning::Islamic);
         assert_eq!(day.latin, "19 Ramadan 1444 AH");
-        assert_eq!(day.native, "١٩ رمضان ١٤٤٤ هـ");
+        assert_eq!(
+            day.native,
+            "\u{661}\u{669} \u{631}\u{645}\u{636}\u{627}\u{646} \u{661}\u{664}\u{664}\u{664}\u{a0}\u{647}\u{640}"
+        );
         assert_eq!(said(&day, "month"), ("Ramadan".into(), "رمضان".into()));
         assert_eq!(said(&day, "day").1, "١٩");
         // The era's letter is kept beside its year, so a wrapped date never
         // leaves it alone on a line.
         assert!(day.native.ends_with("١٤٤٤\u{a0}هـ"), "{}", day.native);
-        assert!(said(&day, "year").1.contains('\u{a0}'), "{:?}", said(&day, "year"));
+        assert!(
+            said(&day, "year").1.contains('\u{a0}'),
+            "{:?}",
+            said(&day, "year")
+        );
     }
 }

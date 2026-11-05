@@ -41,9 +41,9 @@
     {
       "reckoning": "islamic",
       "latin": "25 Jumada I 1448 AH",
-      "native": "٢٥ جمادى الأولى ١٤٤٨ هـ",
+      "native": "٢٥ جمادى الأولى ١٤٤٨ هـ",
       "figures": [
-        { "id": "year", "latin": "1448 AH", "native": "١٤٤٨ هـ", "day": null },
+        { "id": "year", "latin": "1448 AH", "native": "١٤٤٨ هـ", "day": null },
         { "id": "month", "latin": "Jumada I", "native": "جمادى الأولى", "day": null },
         { "id": "day", "latin": "25", "native": "٢٥", "day": null },
         { "id": "monthDays", "latin": "30", "native": "30", "day": null },

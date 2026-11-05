@@ -170,12 +170,16 @@ Provider {
             glyph: Theme.glyph.date,
             thing: true,
             drawer: () => ({
+                eyebrow: Words.name(id),
                 title: calendar.native,
                 script: scripts[calendar.reckoning],
-                facts: calendar.figures.map(figure => ({
-                    label: Words.name(`today:calendars:${figure.id}`),
-                    value: nativeOf(figure, now)
-                }))
+                // A figure its script has no word for, a count or a day,
+                // is said in Latin letters and set in the theme's face.
+                facts: calendar.figures.map(figure => {
+                    const value = nativeOf(figure, now);
+                    return { label: Words.name(`today:calendars:${figure.id}`), value: value,
+                        latin: value === latinOf(figure, now) };
+                })
             })
         }, () => calendar.figures.map(figure => {
             const side = latinOf(figure, now);
