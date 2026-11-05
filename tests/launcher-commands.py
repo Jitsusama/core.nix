@@ -130,6 +130,14 @@ REFUSED: list[tuple[str, list[Entry]]] = [
         [{"id": "verb:bad", "in": "x", "act": "do", "command": "forget"}],
     ),
     (
+        "a row that's an act naming a command no act has",
+        [{"id": "session:bad", "command": "frob"}],
+    ),
+    (
+        "a row's :set setting nothing",
+        [{"id": "session:bad", "command": "set"}],
+    ),
+    (
         "two verbs alike on a row",
         [
             {"id": "verb:one", "in": "x", "command": "forget"},
@@ -161,6 +169,7 @@ ALLOWED: list[Entry] = [
     {"id": "verb:on:waiting:go", "in": ON, "command": "forget"},
     {"id": "verb:on:playing:go", "in": ON, "command": "forget"},
     {"id": "thing:not-a-verb", "in": "x"},
+    {"id": "session:good", "command": "set", "argument": "wifi!"},
 ]
 
 
