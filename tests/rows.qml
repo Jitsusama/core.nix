@@ -345,6 +345,11 @@ ShellRoot {
             JSON.stringify(said));
         expect("three digits fit its room", gutter.widest("999") <= said[0].ends,
             `${gutter.widest("999")} past ${said[0].ends}`);
+        // The numbers stand a mark from the text they number, as a key
+        // does from its word (docs/design.md, The Ladder).
+        expect("the numbers end a mark before the rows",
+            Math.abs(gutter.width - said[0].ends - Theme.space.rung.mark) <= 0.5,
+            `${gutter.width - said[0].ends} before the rows`);
         expect("it makes a number a slot, not a row", gutter.made === gutter.slots,
             `${gutter.made} for ${gutter.slots} slots`);
         gutter.relative = false;
