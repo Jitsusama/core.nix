@@ -684,6 +684,88 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
 
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
+def commands_a_network(desktop: Desktop) -> None:
+    """Press every key the command line takes on Lantern's row, then disconnect it by :disc.
+
+    : in normal opens it with Lantern's acts, Return's first; typing narrows it; Tab, Shift+Tab,
+    the arrows, Ctrl+N and Ctrl+P choose a line and write it in, round to what was typed, the
+    drawer saying what it acts on; Ctrl+E puts the menu away and what was typed back, Ctrl+Y
+    takes what's chosen; Ctrl+U, Ctrl+W and Ctrl+H delete; a word that's no command says E492
+    and does nothing; Escape, Ctrl+C and Backspace on an empty line let it go.
+    """
+    machine = desktop.machine
+
+    def line(shown: Json) -> Json:
+        return shown["command"] or {}
+
+    def holds(typed: str, chosen: int = -1, menu: list[str] | None = None) -> None:
+        desktop.launcher_until(
+            lambda shown: (
+                line(shown).get("line") == typed
+                and line(shown).get("chosen") == chosen
+                and (menu is None or line(shown).get("menu") == menu)
+            )
+        )
+
+    disconnect = "disconnect Disconnect It"
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.normal()
+    machine.send_chars(":")
+    desktop.launcher_until(lambda shown: disconnect in line(shown).get("menu", []))
+    machine.send_chars("disc")
+    holds("disc", menu=[disconnect])
+    machine.send_key("tab")
+    holds("disconnect", 0)
+    desktop.launcher_until(lambda shown: shown["drawer"]["body"] == "on Lantern")
+    for key, typed, chosen in [
+        ("tab", "disc", -1),
+        ("down", "disconnect", 0),
+        ("up", "disc", -1),
+        ("ctrl-n", "disconnect", 0),
+        ("ctrl-p", "disc", -1),
+        ("shift-tab", "disconnect", 0),
+        ("ctrl-e", "disc", -1),
+    ]:
+        machine.send_key(key)
+        holds(typed, chosen)
+    desktop.launcher_until(lambda shown: line(shown)["menu"] == [])
+    machine.send_chars("o")
+    holds("disco", menu=[disconnect])
+    machine.send_key("ctrl-n")
+    machine.send_key("ctrl-y")
+    holds("disconnect", menu=[])
+    machine.send_key("ctrl-u")
+    machine.send_chars("wifi on")
+    machine.send_key("ctrl-w")
+    machine.send_key("ctrl-h")
+    holds("wifi", menu=[])
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["command"] is None
+            and shown["commandSaid"] == "E492: Not an editor command: wifi"
+            and shown["mode"] == "normal"
+        )
+    )
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    for key in ["esc", "ctrl-c", "backspace"]:
+        machine.send_chars(":")
+        desktop.launcher_until(lambda shown: line(shown).get("line") == "")
+        machine.send_key(key)
+        desktop.launcher_until(
+            lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
+        )
+    machine.send_chars(":disc\n")
+    machine.wait_until_succeeds(
+        "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
+    )
+    desktop.launcher_until(lambda shown: shown["command"] is None)
+    if desktop.showing()["open"]:
+        desktop.close_launcher()
+
+
 def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password(  # noqa: PLR0915
     desktop: Desktop,
 ) -> None:
@@ -818,6 +900,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         machine.send_key("esc")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     desktop.close_launcher()
+    commands_a_network(desktop)
     # The Office asks for an account: met for the first time, it asks
     # the account's name, its server's domain and its password in
     # turn, and joins.

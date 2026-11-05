@@ -54,7 +54,7 @@ const table = [
     { act: "out", mode: "normal", keys: ["Left", "h", "-", "Backspace"] },
     // q closes, as his Neovim closes help and its plugin windows, ZZ as it
     // closes a buffer and Space w as his leader closes a split; :q is the
-    // ex line's (exRead, below).
+    // command line's (CommandLine.qml), which : opens (read, below).
     { act: "close", mode: "normal", keys: ["q", ["Z", "Z"], ["Space", "w"]] },
     // Tab goes back to the place used last, and again to the one before
     // that, as his Space Tab goes back to the file used last (docs/
@@ -116,10 +116,10 @@ function rest() {
     return { count: "", typed: [] };
 }
 
-// Whether anything's begun: a count, a sequence's first keys, an
-// operator or an ex line.
+// Whether anything's begun: a count, a sequence's first keys or an
+// operator.
 function pending(standing) {
-    return standing.count !== "" || standing.typed.length > 0 || standing.ex !== undefined
+    return standing.count !== "" || standing.typed.length > 0
         || standing.operator !== undefined;
 }
 
@@ -168,44 +168,10 @@ function operated(standing, key) {
     return { act: "", count: 0, standing: rest(), ours: true };
 }
 
-// The ex line, Vim's command line after a colon, which waits for its
-// Return as long as it takes: what's typed after the colon, held in how
-// the keys stand as `ex` while it's open. A line of digits goes to that
-// row, as :12 goes to line 12; Vim's ways of quitting close, since the
-// launcher writes nothing, so :wq and :x close as :q does; anything else
-// does nothing, as an ex line the launcher doesn't know.
-const quits = ["q", "quit", "q!", "quit!", "qa", "qall", "qa!", "wq", "x", "xit"];
-const printable = /^[!-~]$/;
-const digits = /^[0-9]+$/;
-
-function exRan(line) {
-    const said = line.trim();
-    if (digits.test(said)) {
-        return { act: "first", count: Math.max(1, Number(said)) };
-    }
-    return { act: quits.includes(said) ? "close" : "", count: 0 };
-}
-
-// A key typed on the ex line: Return runs it, Escape lets it go, as
-// Backspace does on an empty line, and anything printable is typed, as a
-// space is.
-function exRead(standing, key) {
-    const line = standing.ex;
-    const open = ex => ({ act: "", count: 0, standing: { count: "", typed: [], ex },
-        ours: true });
-    if (key === "Return" || key === "Enter") {
-        return Object.assign(exRan(line), { standing: rest(), ours: true });
-    }
-    if (key === "Escape" || (key === "Backspace" && line === "")) {
-        return { act: "", count: 0, standing: rest(), ours: true };
-    }
-    if (key === "Backspace") {
-        return open(line.slice(0, -1));
-    }
-    if (key === "Space") {
-        return open(`${line} `);
-    }
-    return open(printable.test(key) ? line + key : line);
+// The range a count before a colon gives the command line, as Vim's 3:
+// gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
+function counted(count) {
+    return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
 }
 
 const digit = /^[0-9]$/;
@@ -239,16 +205,12 @@ function matching(typed, mode) {
 }
 
 // What normal reads before its table, or null for a key it doesn't. A
-// colon at rest opens the ex line, a count before it let go, since the
-// rows take no ranges. A count is typed where nothing types: 0 alone is
-// Vim's first column, which rows haven't, so it counts only after another
-// digit, and one after an operator is its motion's. An operator's key at
-// rest begins it, with the count before it.
+// count is typed where nothing types: 0 alone is Vim's first column,
+// which rows haven't, so it counts only after another digit, and one after
+// an operator is its motion's. An operator's key at rest begins it, with
+// the count before it.
 function beforeTable(standing, key) {
     const atRest = standing.typed.length === 0;
-    if (key === ":" && atRest && standing.operator === undefined) {
-        return { act: "", count: 0, standing: { count: "", typed: [], ex: "" }, ours: true };
-    }
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,
             { count: standing.count + key, typed: [] }), ours: true };
@@ -274,8 +236,13 @@ function read(standing, key, mode) {
     if (key === "") {
         return { act: "", count: 0, standing, ours: false };
     }
-    if (standing.ex !== undefined) {
-        return exRead(standing, key);
+    // A colon at rest in normal opens the command line, which takes the
+    // keys from here (CommandLine.qml), with a count typed before it; one
+    // while an operator waits lets the operator go, as no motion.
+    if (mode === "normal" && key === ":" && standing.typed.length === 0
+        && standing.operator === undefined) {
+        return { act: "command", count: standing.count === "" ? 0 : Number(standing.count),
+            standing: rest(), ours: true };
     }
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };

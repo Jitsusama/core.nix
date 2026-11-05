@@ -7,7 +7,7 @@
 // what it does, named in words.json by its `name`, and the acts whose keys
 // it shows in its mode, the first alone where `firsts` says, since
 // Return's with Shift and Ctrl are told apart where they're done. A line's
-// `also` are keys no act's row holds, as a count and the ex line's. Escape
+// `also` are keys no act's row holds, as a count and the : line's. Escape
 // isn't listed, since it always steps back.
 const normal = [
     { name: "rows", acts: ["next", "previous"] },
