@@ -729,6 +729,7 @@ Scope {
                         - Theme.border
                     width: stack.width - 2 * x
                     height: front ? implicitHeight : root.peek + Theme.border
+                    flatTop: !front
                     urgent: modelData.urgency === NotificationUrgency.Critical
 
                     onFrontChanged: if (front) root.frontHeight = implicitHeight
