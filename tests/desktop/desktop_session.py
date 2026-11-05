@@ -566,9 +566,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         :q brings them back to the rows first, a line typed that no wait can come apart.
         """
 
+        # A pending operator counts, since the first Escape cancels it and
+        # changes nothing else, as Vim's does.
         def where(shown: Json) -> tuple[object, ...]:
             return (
                 shown["open"],
+                shown["operator"],
                 shown["mode"],
                 len(shown["held"]),
                 shown.get("listing"),
