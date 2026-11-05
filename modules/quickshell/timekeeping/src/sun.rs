@@ -83,14 +83,16 @@ impl Sun {
         let mean_longitude =
             (280.466_46 + centuries * (36_000.769_83 + centuries * 0.000_303_2)).rem_euclid(360.0);
         let anomaly = 357.529_11 + centuries * (35_999.050_29 - 0.000_153_7 * centuries);
-        let eccentricity = 0.016_708_634 - centuries * (0.000_042_037 + 0.000_000_126_7 * centuries);
+        let eccentricity =
+            0.016_708_634 - centuries * (0.000_042_037 + 0.000_000_126_7 * centuries);
         let centre = radians(anomaly).sin()
             * (1.914_602 - centuries * (0.004_817 + 0.000_014 * centuries))
             + radians(2.0 * anomaly).sin() * (0.019_993 - 0.000_101 * centuries)
             + radians(3.0 * anomaly).sin() * 0.000_289;
         let node = 125.04 - 1934.136 * centuries;
         let apparent = mean_longitude + centre - 0.005_69 - 0.004_78 * radians(node).sin();
-        let seconds = 21.448 - centuries * (46.815 + centuries * (0.000_59 - centuries * 0.001_813));
+        let seconds =
+            21.448 - centuries * (46.815 + centuries * (0.000_59 - centuries * 0.001_813));
         let obliquity = 23.0 + (26.0 + seconds / 60.0) / 60.0 + 0.002_56 * radians(node).cos();
         let declination = degrees((radians(obliquity).sin() * radians(apparent).sin()).asin());
         let tilt = radians(obliquity / 2.0).tan().powi(2);
