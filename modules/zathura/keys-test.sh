@@ -2,7 +2,8 @@
 # Presses every key zathura lists in a compositor of its own and checks
 # where each lands: a key that turns the page by the page zathura says it
 # is on over its D-Bus service, and one that scrolls by what the screen
-# shows, each beside the arrow it twins. Run inside cage with a session
+# shows, each arrow beside its letter, and the keys that close it beside q,
+# which doesn't. Run inside cage with a session
 # bus, as `keys-test.sh <document of six empty pages, with "find" on the
 # fourth and the sixth, named b.pdf in a folder beside a.pdf and c.pdf>`,
 # and a stand-in launcher-say on the path that writes what it was asked to
@@ -89,10 +90,7 @@ held i 5
 press Tab 0
 press Tab 5
 
-# Left turns back a page and Right on again, as K and J do, and Page Up and
-# Page Down.
-press Left 4
-press Right 5
+# K turns back a page and J on again, as Page Up and Page Down do.
 typed K 4
 typed J 5
 press Page_Up 4
@@ -188,8 +186,14 @@ for _ in $(seq 20); do wtype h; done
 still left
 wtype l
 shows "l to scroll right" moved left
+still right
 wtype h
 shows "h back to the left" alike left
+# Right and Left scroll as l and h do, and turn no page.
+wtype -k Right
+shows "Right to scroll as far as l" alike right
+wtype -k Left
+shows "Left back to the left, as h" alike left
 wtype d
 wtype a
 
@@ -233,10 +237,28 @@ opened '[b' b.pdf
 opened '2]b' a.pdf
 opened '2[b' b.pdf
 
-# q closes it.
+# q closes nothing: a second on, zathura is still there. ZZ closes it.
 wtype q
+sleep 1
+kill -0 "$zathura" 2>/dev/null || never "q to leave it open"
+wtype ZZ
 gone() { ! kill -0 "$zathura" 2>/dev/null; }
-until_true "q to close" gone
+until_true "ZZ to close" gone
+if grep -E '^(warning|error):' said; then exit 1; fi
+
+# Space w closes one opened afresh, once Home and End landing show it has
+# the keyboard: it opens where the last one left the document, so either
+# alone might land where it already was.
+zathura "$1" > said 2>&1 &
+zathura=$!
+until_true "zathura on the bus again" named
+ends=0
+until wtype -k Home && waits 300 on 0 && wtype -k End && waits 300 on 5; do
+  ends=$((ends + 1))
+  if [ "$ends" -ge 6 ]; then never "End to the last page, opened again"; fi
+done
+wtype -k space w
+until_true "Space w to close" gone
 
 if grep -E '^(warning|error):' said; then exit 1; fi
 touch passed

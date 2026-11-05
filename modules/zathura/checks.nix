@@ -116,7 +116,7 @@ onLinux {
   # zathura says the document it has open, read over its bus by the command
   # its Recent in the launcher is led by, as its process and the whole
   # path of a document given by name in the folder it was started in, and
-  # nothing once q closes it (../../tests/says-what-it-has-open.sh), in a
+  # nothing once ZZ closes it (../../tests/says-what-it-has-open.sh), in a
   # compositor of its own.
   zathura-says-the-document-it-has-open =
     let
@@ -148,7 +148,7 @@ onLinux {
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
         cp ${pages} document.pdf
         dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
-          cage -- $BASH ${../../tests/says-what-it-has-open.sh} document.pdf \
+          cage -- $BASH ${../../tests/says-what-it-has-open.sh} --closed-by ZZ document.pdf \
           zathura -- ${lib.escapeShellArgs source.opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
         touch $out
