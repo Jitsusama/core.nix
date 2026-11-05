@@ -111,7 +111,15 @@ Provider {
     readonly property bool shown: launcher !== null && launcher.open
         && (launcher.answer?.live === provider
             || (launcher.held ?? []).some(step => step.row?.live === provider))
+    // Asked once the change has been told, never inside it: asking again
+    // after a refusal clears it at once, which answers the date again,
+    // which changes the launcher's answer `shown` reads, so asked here it
+    // would loop back into `shown` while it's still being set.
     onShownChanged: {
+        if (shown)
+            Qt.callLater(provider.askCalendars);
+    }
+    function askCalendars() {
         if (shown)
             Calendars.ask(Moment.iso(new Date()), Location.here);
     }

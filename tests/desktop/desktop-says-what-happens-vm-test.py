@@ -138,7 +138,7 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc right", "spc left", "spc ?", "Z Z", "g g", "g v"})
+WAITING = frozenset({"spc ?", "Z Z", "g g", "g v", "ctrl-w l", "ctrl-w h", "ctrl-w w"})
 TRIES = 3
 TRIED = timedelta(seconds=10)
 
@@ -248,10 +248,10 @@ class InTheDrawer:
         )
         return self.drawer()
 
-    def into(self) -> Json:
-        """Go into the drawer with Space and the right arrow, and give its cursor.
+    def into(self, keys: str = "ctrl-w l") -> Json:
+        """Go into the drawer with the keys, Vim's Ctrl+W l unless named, and give its cursor.
 
-        The arrow alone steps into the notice's row, so the launcher opens on it again before
+        The l alone steps into the notice's row, so the launcher opens on it again before
         another try.
         """
 
@@ -260,7 +260,7 @@ class InTheDrawer:
             self.open()
 
         self.pressed_until(
-            "spc right",
+            keys,
             lambda shown: shown["mode"] == "page" and shown["drawer"]["cursor"] is not None,
             again,
         )
@@ -290,9 +290,9 @@ def held(drawer: Json) -> bool:
 def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Desktop) -> None:
     """A notice's drawer says who sent it and when, and gone into, its keys scroll it.
 
-    The foot names no Shift with the arrows, which scroll nothing now: Space and the right arrow
-    go in, three Ctrl+E scroll it three of its lines, each whole, and Space and the left arrow
-    come back, the selection where it was.
+    The foot names no Shift with the arrows, which scroll nothing now: Ctrl+W l goes in, three
+    Ctrl+E scroll it three of its lines, each whole, and Ctrl+W h comes back, the selection
+    where it was.
     """
     page = InTheDrawer(desktop)
     drawer = page.drawer()
@@ -307,7 +307,7 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     two = int(page.until("ctrl-e", lambda drawer: a_line_on(drawer, one))["scrolled"])
     scrolled = page.until("ctrl-e", lambda drawer: a_line_on(drawer, two))
     assert round(title - scrolled["lines"]["title"]) == scrolled["scrolled"], scrolled
-    page.back("spc left")
+    page.back("ctrl-w h")
     desktop.close_launcher()
 
 
@@ -341,11 +341,13 @@ def into_in_sight(desktop: Desktop, page: InTheDrawer, scale: str) -> Json:
 def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_back(
     desktop: Desktop,
 ) -> None:
-    """Space and the right arrow take the keys into the drawer, and four keys give them back.
+    """Ctrl+W l takes the keys into the drawer, and Ctrl+W h gives them back, as in Vim.
+
+    Ctrl+W w goes either way, ZZ and :q come back too, and Space and the arrows do nothing.
 
     Its frame takes the accent the card's gives up, and the cursor stands on the title's first
     letter with nothing scrolled, its line marked by a rule in the margin left of the letters.
-    Escape only lets a count go, and q does nothing; ZZ, :q and Space with the left arrow each
+    Escape only lets a count go, and q does nothing; ZZ, :q and Ctrl+W h each
     give the keys back to the rows, the selection where it was. Its pictures at 1 and both of
     Joel's scales, on the title and down in the words, are for a person to judge the rule and
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
@@ -361,7 +363,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     # The foot names the way back and the drawer's keys, not the row's Return, which does
     # nothing in the drawer.
     told = desktop.showing()["selected"]["told"]
-    assert told == ["Space \u2190 back", "Space ? keys"], f"in the drawer the foot says {told}"
+    assert told == ["Ctrl+W h back", "Space ? keys"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
     assert rule["top"] == came["top"], came
@@ -388,7 +390,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         # The title scrolled away whole, and the foot names no Return, which does nothing here.
         assert held(down), f"at {scale} five down cuts a line: {down}"
         told = desktop.showing()["selected"]["told"]
-        assert told == ["Space \u2190 back", "Space ? keys"], f"at {scale} the foot says {told}"
+        assert told == ["Ctrl+W h back", "Space ? keys"], f"at {scale} the foot says {told}"
         # Four along, or the line's last letter where a narrow drawer wraps it shorter.
         page.until(
             "l l l l",
@@ -401,13 +403,19 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "" and shown["mode"] == "page")
-    # Escape at rest and q alone leave the keys where they are: j still moves the cursor.
-    line = page.drawer()["cursor"]["line"]
-    page.until("esc q j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    # Escape at rest and q alone leave the keys where they are, and so do Space with an arrow
+    # and the arrows, which do nothing in the drawer (Joel, 2026-11-05: "remove them and rely
+    # only on vi right feeling things"): j still moves the cursor, one line.
+    line, letter = page.drawer()["cursor"]["line"], page.drawer()["cursor"]["letter"]
+    came = page.until(
+        "esc q spc left down left j", lambda drawer: drawer["cursor"]["line"] == line + 1
+    )
+    assert came["cursor"]["letter"] == min(letter, len(came["cursor"]["says"]) - 1), came
     page.back("Z Z")
-    for keys in (": q ret", "spc left"):
-        page.into()
-        page.back(keys)
+    # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way.
+    for into, back in (("ctrl-w l", ": q ret"), ("ctrl-w l", "ctrl-w h"), ("ctrl-w w", "ctrl-w w")):
+        page.into(into)
+        page.back(back)
     desktop.close_launcher()
     listed_in_the_drawer(desktop)
 
@@ -416,7 +424,7 @@ def listed_in_the_drawer(desktop: Desktop) -> None:
     """In the drawer, Space ? lists the drawer's own keys in it, the keys staying there.
 
     The cursor stands on the list's title, and j moves down it. Space ? again gives the row's
-    drawer back, and Space with the left arrow, bringing the keys back to the rows, puts the
+    drawer back, and Ctrl+W h, bringing the keys back to the rows, puts the
     list away with them.
     """
     page = InTheDrawer(desktop)
@@ -444,7 +452,7 @@ def listed_in_the_drawer(desktop: Desktop) -> None:
         unsought,
     )
     page.pressed_until("spc ?", listed, unsought)
-    page.back("spc left")
+    page.back("ctrl-w h")
     assert not desktop.showing()["listing"], desktop.showing()
     desktop.close_launcher()
 
@@ -497,7 +505,7 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
             drawer["cursor"]["line"] == lines[-1] - 1 and drawer["scrolled"] == half["scrolled"]
         ),
     )
-    page.back("spc left")
+    page.back("ctrl-w h")
     desktop.close_launcher()
     searched_as_vim_does(desktop)
     chosen_and_copied_as_vim_does(desktop)
@@ -587,7 +595,7 @@ def searched_as_vim_does(desktop: Desktop) -> None:
         at = int(page.into()["line"])
         page.until("/ d e p l o y ret", functools.partial(first, at))
         desktop.photograph(f"launcher-drawer-search-at-{scale.replace('.', '-')}")
-    page.back("spc left")
+    page.back("ctrl-w h")
     desktop.close_launcher()
 
 
@@ -661,7 +669,7 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
         page.until("v l l l l l j", chose("letters", 2))
         desktop.photograph(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
     page.pressed_until("esc", lambda shown: shown["mode"] == "page")
-    page.back("spc left")
+    page.back("ctrl-w h")
     desktop.close_launcher()
 
 
@@ -691,10 +699,10 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # keys, the cursor on the card in front, the older; the newer is line
     # 1. Tab is no key of normal's, and says so, and Backspace is h, out
     # of nothing. :forg lets the older go unread, the cursor going on to
-    # the newer, and the right arrow, as l, steps into its acts,
+    # the newer, and l steps into its acts,
     # forgetting it first, since it opens nothing, then
-    # what it offers, as a launcher row's are (launcher/Notice.js); Down
-    # chooses the next and Left steps back, and Return does the one
+    # what it offers, as a launcher row's are (launcher/Notice.js); j
+    # chooses the next and h steps back, and Return does the one
     # chosen, with a token to come forward, and gives the keys back.
     desktop.listen()
     with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
@@ -706,16 +714,16 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     with desktop.told("notice forgets 1"), desktop.told("notice cursor Recording saved"):
         machine.send_chars(":forg\n", delay=KEY_PACE)
     with desktop.told("notice verb Forget It"):
-        machine.send_key("right")
+        machine.send_key("l")
     with desktop.told("notice verb Play it"):
-        machine.send_key("down")
+        machine.send_key("j")
     desktop.photograph("notices-held-verbs")
     with desktop.told("notice back"):
-        machine.send_key("left")
+        machine.send_key("h")
     with desktop.told("notice verb Forget It"):
-        machine.send_key("right")
+        machine.send_key("l")
     with desktop.told("notice verb Play it"):
-        machine.send_key("down")
+        machine.send_key("j")
     with desktop.told("lets notices go"):
         machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
@@ -972,10 +980,10 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
-def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_launcher(
+def test_a_notices_l_holds_what_return_does_on_its_card_and_in_the_launcher(
     desktop: Desktop,
 ) -> None:
-    """A notice's right arrow holds what Return does first, on its card and in the launcher."""
+    """A notice's l holds what Return does first, on its card and in the launcher."""
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.listen()
@@ -987,14 +995,14 @@ def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_lau
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     with desktop.told("notice verb Open"):
-        machine.send_key("right")
+        machine.send_key("l")
     with desktop.told("notice verb Play it"):
-        machine.send_key("down")
+        machine.send_key("j")
     with desktop.told("notice back"):
-        machine.send_key("left")
+        machine.send_key("h")
     # :e Notices hands on to the history, which opens on its first row,
-    # the newest notice, as every place opens on its first; the right arrow
-    # steps into its acts from normal mode, and they hold the same.
+    # the newest notice, as every place opens on its first; l steps into
+    # its acts from normal mode, and they hold the same.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
@@ -1226,6 +1234,9 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     ("q", "notice says q does nothing \u00b7 :q closes"),
     ("n", "notice says not here"),
     ("c", "notice says not here"),
+    # No arrow does anything in normal (Joel, 2026-11-05: "rely only on vi right feeling
+    # things"), so one says so as any key with no meaning does.
+    (("down",), "notice says not here"),
     (" ul", "notice numbers absolute"),
     (" ul", "notice numbers relative"),
     # Visual: o goes to its other end, Escape ends it, gv brings it back, x is done with it.

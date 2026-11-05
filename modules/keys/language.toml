@@ -59,16 +59,11 @@ player = "something that plays, as a video"
 prompt = "a line of words written to be handed over: a reply, a new name, a save name"
 secret = "a one-line password field, always in insert and never leaving it"
 
-# In normal and visual mode an arrow is its letter and nothing else, so no
-# act takes an arrow there, with Shift or without: an act with the letter
-# takes the arrow too, wherever the language is read. On a line, the find,
-# the command line or a prompt, the arrows are acts of their own below,
-# moving the caret and choosing in the menu.
-[arrows]
-"<Down>" = "j"
-"<Up>" = "k"
-"<Left>" = "h"
-"<Right>" = "l"
+# In normal and visual mode no arrow does anything, with Shift or without,
+# alone or in a chord: Vim's letters move (Joel, 2026-11-05: "remove them
+# and rely only on vi right feeling things"). On a line, the find, the
+# command line or a prompt, the arrows are acts of their own below, moving
+# the caret and choosing in the menu, as Vim's insert keeps them.
 
 # Moving, on whatever there's more of than fits.
 

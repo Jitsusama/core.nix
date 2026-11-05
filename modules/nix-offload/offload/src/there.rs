@@ -97,6 +97,21 @@ pub struct Asked {
     pub alone: Alone,
     /// Whether the attributes are derivations' paths, with no flake.
     derivations: bool,
+    /// The commit a git tree's flake was at when this was asked, which is
+    /// what's built, however long it waits for a builder.
+    pinned: Option<Pinned>,
+}
+
+/// A git tree's flake as it stood when a run began: the commit it's built
+/// at, made of its changes when it had some, the tree of files that
+/// commit holds, and where its pass is kept, when a commit already named
+/// it. Read again once a builder stands, a branch moved on meanwhile was
+/// built instead, on 5 November, and kept as passed where it began.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Pinned {
+    commit: String,
+    tree: String,
+    at: Option<passed::At>,
 }
 
 /// What a build sent far does once its caller is gone.
@@ -166,6 +181,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             here,
             alone,
             derivations: true,
+            pinned: None,
         });
     }
     let (flake, attributes) = words.split_first()?;
@@ -181,6 +197,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         here,
         alone,
         derivations: false,
+        pinned: None,
     })
 }
 
@@ -234,6 +251,7 @@ impl Asked {
     fn at(&self) -> Option<passed::At> {
         match folder_of(&self.flake) {
             Some(_) if self.flake.starts_with("path:") => None,
+            Some(_) if self.pinned.is_some() => self.pinned.as_ref()?.at.clone(),
             Some(folder) => clean_at(&folder),
             None => passed::At::of_github(&self.flake),
         }
@@ -273,7 +291,21 @@ impl Asked {
             here: self.here,
             alone: self.alone,
             derivations: self.derivations,
+            pinned: self.pinned.clone().filter(|_| flake == self.flake),
         }
+    }
+
+    /// The same, its git tree's flake pinned at the commit it's at now,
+    /// which is then all that's built of it and all its pass is kept at.
+    /// A flake that isn't a git tree here, or that git can't commit, stays
+    /// as it was.
+    #[must_use]
+    pub fn pinned(mut self, scratch: &Path) -> Self {
+        let folder = folder_of(&self.flake).filter(|_| !self.flake.starts_with("path:"));
+        if let Some(folder) = folder.filter(|_| !self.derivations) {
+            self.pinned = pinned_at(&folder, scratch);
+        }
+        self
     }
 
     /// `nix build`'s arguments for this, wherever it runs.
@@ -455,12 +487,16 @@ pub fn run(
         }),
         // A `path:` flake is read as its folder holds it, git or not.
         Some(folder) if asked.flake.starts_with("path:") => packed(&folder, asked, scratch, true),
-        Some(folder) => source(&folder, scratch)
-            .map(|source| source.sending(asked))
-            .or_else(|why| {
-                eprintln!("nix-offload: {why}, so it goes as a tarball");
-                packed(&folder, asked, scratch, false)
-            }),
+        Some(folder) => source(
+            &folder,
+            scratch,
+            asked.pinned.as_ref().map(|it| &*it.commit),
+        )
+        .map(|source| source.sending(asked))
+        .or_else(|why| {
+            eprintln!("nix-offload: {why}, so it goes as a tarball");
+            packed(&folder, asked, scratch, false)
+        }),
     };
     let reached = reached.and_then(|sending| {
         let ran = loop {
@@ -1114,14 +1150,12 @@ fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-/// How the flake in `folder` reaches the builder. Its commit is the
-/// tree's HEAD, or, with changes to the files its index holds, staged
-/// new ones included, a commit of them made without touching the branch
-/// or the index, as `nix build` of the tree here would read them. The
-/// newest commit GitHub has is where it meets its upstream branch, else
-/// origin's main. A tree that isn't git, or
-/// whose origin isn't on GitHub, can't reach it.
-pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
+/// How the flake in `folder` reaches the builder, at the commit it was
+/// `pinned` at, else at the one [`committed`] makes of it now. The newest
+/// commit GitHub has is where it meets its upstream branch, else origin's
+/// main. A tree that isn't git, or whose origin isn't on GitHub, can't
+/// reach it.
+pub fn source(folder: &Path, scratch: &Path, pinned: Option<&str>) -> Result<Source, String> {
     let folder =
         fs::canonicalize(folder).map_err(|error| format!("{}: {error}", folder.display()))?;
     let not = |what: &str| format!("{} {what}", folder.display());
@@ -1137,23 +1171,57 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
         .ok()
         .map(|dir| dir.to_string_lossy().into_owned())
         .filter(|dir| !dir.is_empty());
-    let head = git(&top, &["rev-parse", "HEAD"], None).ok_or_else(|| not("has no commit"))?;
-    let commit = if git(&top, &["diff", "--quiet", "HEAD"], None).is_some() {
-        head.clone()
+    let commit = match pinned {
+        Some(commit) => commit.to_owned(),
+        None => committed(&top, scratch).map_err(&not)?,
+    };
+    let base = ["@{upstream}", "origin/main"]
+        .iter()
+        .find_map(|theirs| git(&top, &["merge-base", &commit, theirs], None))
+        .ok_or_else(|| not("shares no commit with origin"))?;
+    sourced(&top, github, commit, dir, base, scratch).map_err(not)
+}
+
+/// Where the flake in `folder` is pinned now: its commit, as [`source`]
+/// makes one, and where its pass is kept when it had no changes.
+fn pinned_at(folder: &Path, scratch: &Path) -> Option<Pinned> {
+    let folder = fs::canonicalize(folder).ok()?;
+    let top = PathBuf::from(git(&folder, &["rev-parse", "--show-toplevel"], None)?);
+    let commit = committed(&top, scratch).ok()?;
+    let tree = git(&top, &["rev-parse", &format!("{commit}^{{tree}}")], None)?;
+    let at = clean_at(&folder).filter(|at| at.commit == commit);
+    Some(Pinned { commit, tree, at })
+}
+
+/// The tree of files the flake in `folder` would be committed as now.
+fn tree_now(folder: &Path, scratch: &Path) -> Option<String> {
+    let top = PathBuf::from(git(folder, &["rev-parse", "--show-toplevel"], None)?);
+    let commit = committed(&top, scratch).ok()?;
+    git(&top, &["rev-parse", &format!("{commit}^{{tree}}")], None)
+}
+
+/// The commit the git tree `top` is built at: its HEAD, or, with changes to
+/// the files its index holds, staged new ones included, a commit of them
+/// made without touching the branch or the index, as `nix build` of the
+/// tree here would read them.
+fn committed(top: &Path, scratch: &Path) -> Result<String, &'static str> {
+    let head = git(top, &["rev-parse", "HEAD"], None).ok_or("has no commit")?;
+    if git(top, &["diff", "--quiet", "HEAD"], None).is_some() {
+        Ok(head)
     } else {
-        fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+        fs::create_dir_all(scratch).map_err(|_| "has no scratch to commit its changes in")?;
         let index = mine(scratch, "index");
         // Seeded from the tree's own index, as Nix reads a tree, so a file
         // staged, or added with -N, goes too; `add -u` then takes every
         // tracked file as it stands, and anything untracked stays here.
-        let made = git(&top, &["rev-parse", "--git-path", "index"], None)
+        let made = git(top, &["rev-parse", "--git-path", "index"], None)
             .map(|own| top.join(own))
             .filter(|own| fs::copy(own, &index).is_ok())
-            .and_then(|_| git(&top, &["add", "-u"], Some(&index)))
-            .and_then(|_| git(&top, &["write-tree"], Some(&index)))
+            .and_then(|_| git(top, &["add", "-u"], Some(&index)))
+            .and_then(|_| git(top, &["write-tree"], Some(&index)))
             .and_then(|tree| {
                 git(
-                    &top,
+                    top,
                     &[
                         "commit-tree",
                         &tree,
@@ -1166,12 +1234,20 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
                 )
             });
         let _ = fs::remove_file(&index);
-        made.ok_or_else(|| not("has changes git couldn't commit"))?
-    };
-    let base = ["@{upstream}", "origin/main"]
-        .iter()
-        .find_map(|theirs| git(&top, &["merge-base", &commit, theirs], None))
-        .ok_or_else(|| not("shares no commit with origin"))?;
+        made.ok_or("has changes git couldn't commit")
+    }
+}
+
+/// How `commit` of the git tree `top` reaches the builder: by its commit
+/// once GitHub has it, as `base` is, else as a bundle over `base`.
+fn sourced(
+    top: &Path,
+    github: String,
+    commit: String,
+    dir: Option<String>,
+    base: String,
+    scratch: &Path,
+) -> Result<Source, &'static str> {
     if base == commit {
         return Ok(Source::Pushed {
             github,
@@ -1180,11 +1256,11 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
         });
     }
     let bundle = mine(scratch, "bundle");
-    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
-    let referenced = git(&top, &["update-ref", BUNDLED, &commit], None).is_some();
+    fs::create_dir_all(scratch).map_err(|_| "has no scratch to bundle it in")?;
+    let referenced = git(top, &["update-ref", BUNDLED, &commit], None).is_some();
     let bundled = referenced
         && git(
-            &top,
+            top,
             &[
                 "bundle",
                 "create",
@@ -1196,9 +1272,9 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
             None,
         )
         .is_some();
-    let _ = git(&top, &["update-ref", "-d", BUNDLED], None);
+    let _ = git(top, &["update-ref", "-d", BUNDLED], None);
     if !bundled {
-        return Err(not("couldn't be bundled"));
+        return Err("couldn't be bundled");
     }
     Ok(Source::Bundled {
         github,
@@ -2440,6 +2516,26 @@ fn sent_nearby(
     let mut sent: Option<u64> = None;
     let command = match folder_of(&asked.flake) {
         None => asked.command(),
+        // A nearby machine is sent the tree's files as they stand, so once
+        // they've moved from the commit this run is pinned at, it fails
+        // rather than build, and be kept as passed at, what wasn't asked.
+        Some(folder)
+            if asked.pinned.as_ref().is_some_and(|pinned| {
+                tree_now(&folder, scratch).as_ref() != Some(&pinned.tree)
+            }) =>
+        {
+            eprintln!(
+                "nix-offload: {} moved on from the commit this run began at, so {} builds \
+                 nothing of it; run it again to build it as it is",
+                folder.display(),
+                machine.host
+            );
+            return Ok(Ran {
+                on: Some(machine.host.clone()),
+                status: 1,
+                sent,
+            });
+        }
         Some(folder) => {
             let into = unpacked();
             let listed = mine(scratch, "files");
@@ -2902,6 +2998,7 @@ mod tests {
                 here: false,
                 alone: Alone::Ends,
                 derivations: false,
+                pinned: None,
             })
         );
         let outliving = super::asked(&words("--outlive github:o/r/abc checks.x.a"));

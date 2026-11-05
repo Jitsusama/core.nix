@@ -606,9 +606,10 @@
     key the language gives to another act and no act by a key not its own, in each mode its acts
     are pressed in, and Neovim's keys, its command line's among them, agree with the language;
     that the language gives no key or command name to two acts, names no command Neovim names
-    otherwise, gives no arrow a meaning of its own, lets the find line reach no change and guards
-    no act that would never ask; each way of straying shown to fail first, the reader leaving out
-    a key it takes only while selecting among them
+    otherwise, gives no surface's act an arrow in normal or visual mode, lets the find line reach
+    no change and guards no act that would never ask; that no modal layer of ours binds an arrow
+    in normal but those still keeping theirs, a list that may only shrink; each way of straying
+    shown to fail first, the reader leaving out a key it takes only while selecting among them
   '';
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
