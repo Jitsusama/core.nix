@@ -52,7 +52,7 @@
 
   # without-syncfs's tests run as it builds: the kernel answers a program it
   # runs ENOSYS for syncfs and runs its fsync, under one more seccomp filter
-  # than without it, since a build here is refused syncfs by the daemon too.
+  # than without it, since the daemon answers a build's syncfs as done too.
   without-syncfs-refuses-only-syncfs = pkgs.callPackage ./without-syncfs/package.nix { };
 
   # clippy finds nothing in without-syncfs, its tests included.
