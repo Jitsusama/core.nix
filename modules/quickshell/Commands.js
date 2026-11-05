@@ -357,6 +357,11 @@ function ranRanged(matching, read) {
     return running.error === undefined ? Object.assign(running, { range: read.range }) : running;
 }
 
+// The earlier lines with one more remembered.
+function remembered(earlier, _line) {
+    return earlier;
+}
+
 // The rows a line Return read names (ran), as indexes from 0, given where
 // things stood as : was pressed, `at` = { names, cursor, marks }: the
 // cursor row with no range, a range's rows (Ex.resolve), and of those,

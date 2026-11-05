@@ -33,6 +33,7 @@ QtObject {
         quit: "Close the Launcher",
         help: "List the Keys",
         set: "Set an Option",
+        history: "List Earlier Lines",
         row: "Go to a Row"
     })
 
@@ -43,6 +44,7 @@ QtObject {
         quit: { act: "close", short: "q" },
         help: { act: "help", short: "h" },
         set: { act: "set", short: "se", changes: true, undoable: true },
+        history: { act: "history", short: "his" },
         sort: { act: "sort", short: "sor", changes: true, undoable: true, range: true },
         open: { act: "open-it", short: "ope" },
         disconnect: { act: "disconnect", short: "disc", changes: true, undoable: true,
@@ -555,5 +557,35 @@ QtObject {
                 Commands.actFor(Commands.ran("disc", menu).entry,
                     [{ name: "See It", verb: "see" }], () => ({}))],
             ["Leave", "Disconnect It", undefined]);
+        holdEarlier();
+    }
+
+    // Earlier lines, as Vim's :his lists them: each line Return ran
+    // remembered once, the newest last, and listed newest first above the
+    // rest once :his opens them, each written in by choosing it and run as
+    // typed; none is ever named as a command.
+    function holdEarlier() {
+        let earlier = [];
+        for (const line of ["disc", "set nowifi", "disc", "12"])
+            earlier = Commands.remembered(earlier, line);
+        holds("each line is remembered once, the newest last", earlier,
+            ["set nowifi", "disc", "12"]);
+        const many = Array.from({ length: 60 }, (_, at) => `${at}`)
+            .reduce((kept, line) => Commands.remembered(kept, line), []);
+        holds("fifty are kept, as Vim's history keeps", [many.length, many[0]], [50, "10"]);
+        const menu = Commands.listed({ acts: network(), table: commands, said, row: 1, earlier });
+        holds(":his lists them newest first, before the rest",
+            lines(menu).slice(0, 4).map(line => line[0]), ["12", "disc", "set nowifi", "see"]);
+        holds("and lists itself with what every surface has",
+            lines(Commands.listed({ acts: [], table: commands, said })).map(line => line[0]),
+            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
+        holds("typing narrows them by their start",
+            Commands.narrowed(menu, "se").map(line => Commands.called(line)),
+            ["set nowifi", "se[t]"]);
+        holds("choosing one writes it in, and Return runs it as typed",
+            [Commands.chosen(Commands.typing("se"), 1, Commands.narrowed(menu, "se")).line,
+                Commands.ran("set nowifi", menu).entry?.kind,
+                Commands.ran("his", menu).entry?.kind],
+            ["set nowifi", "set", "history"]);
     }
 }
