@@ -422,7 +422,16 @@ Scope {
         }
         const at = current;
         const scroll = list.contentY;
-        compose(false);
+        // Said again in place, as a refresh is: composed afresh, the rows
+        // took their ranked order and a row d had just closed went, since
+        // the waits answer each time the machine's queue moves (the moves-
+        // windows walk, 2026-11-05).
+        steadying = true;
+        try {
+            compose(false);
+        } finally {
+            steadying = false;
+        }
         if (list.contentY !== scroll)
             list.contentY = scroll;
         root.showMoved(at);
