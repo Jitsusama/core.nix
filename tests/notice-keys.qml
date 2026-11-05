@@ -224,6 +224,15 @@ QtObject {
             .map(one => one.heading), ["Normal: moving and acting", "The find: the / line",
             "Commands: the : line", "Visual: choosing several", "Insert: writing words"]);
         holds("an act is listed once a mode", listed.filter(one => one.act === "done").length, 2);
+
+        // The mode, named at the foot's start in three capitals (Joel,
+        // 2026-11-05: "the mode should be 3 letters, in caps, and in a place
+        // where they are more obvious"), as the key language's five; a
+        // reply's normal and the key list are normal, and pending is too,
+        // as Vim's status line names it.
+        holds("each mode's mark", ["normal", "find", "command", "insert", "visual", "prompt",
+            "listing", "pending"].map(mode => Keys.mark(mode)),
+            ["NOR", "FND", "CMD", "INS", "VIS", "NOR", "NOR", "NOR"]);
         holds("every line fits at 2", listed.filter(one => one.does.length > 18
             || one.keys.length > 14).map(one => one.does), []);
         holds(":help dd opens at d", listed[Keys.helpAt(listed, "done")].act, "done");

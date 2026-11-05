@@ -1240,9 +1240,11 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     (" ul", "notice numbers absolute"),
     (" ul", "notice numbers relative"),
     # Visual: o goes to its other end, Escape ends it, gv brings it back, x is done with it.
-    ("Vj", "notice selects 2"),
+    # The foot's start names each mode in three capitals, NOR again once it ends.
+    ("V", "notice shows VIS"),
+    ("j", "notice selects 2"),
     ("o", "notice cursor Bravo two"),
-    (("esc",), "notice mode normal"),
+    (("esc",), "notice shows NOR"),
     ("gv", "notice mode visual"),
     ("x", "notice done 2"),
     ("u", "notice brought back 2"),
@@ -1257,11 +1259,12 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     (":set rnu?\n", "notice says   relativenumber"),
     # The find: i opens it, it narrows as it's typed, Down chooses, and Backspace past its
     # start leaves it.
-    ("iAlpha", "notice finds Alpha in 2"),
+    ("i", "notice shows FND"),
+    ("Alpha", "notice finds Alpha in 2"),
     (("down",), "notice cursor Alpha one"),
     (("backspace",) * 6, "notice mode normal"),
     # The menu: Tab chooses its lines, Ctrl+E puts it away, Escape drops the line.
-    (":", "notice mode command"),
+    (":", "notice shows CMD"),
     (("tab",), "notice menu chose delete"),
     (("ctrl-e", "esc"), "notice mode normal"),
     # F1 lists the keys, j scrolls them, and Escape puts them away.
@@ -1301,14 +1304,14 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
         )
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    with desktop.told("notice mode insert"):
+    with desktop.told("notice mode insert"), desktop.told("notice shows INS"):
         machine.send_chars(":reply\n", delay=KEY_PACE)
     machine.send_chars("on my way", delay=KEY_PACE)
     for scale in JOELS_SCALES:
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.photograph(f"notice-reply-at-{scale.replace('.', '-')}")
     desktop.as_account("niri msg output winit scale 1")
-    with desktop.told("notice mode prompt"):
+    with desktop.told("notice mode prompt"), desktop.told("notice shows NOR"):
         machine.send_key("esc")
     with desktop.told("notice mode insert"):
         machine.send_chars("bcw", delay=KEY_PACE)
