@@ -4259,9 +4259,8 @@ Scope {
     // A quarter down; over a viewer low, its foot a twelfth of the screen
     // up, as the lock screen sits, so the picture or the video its line
     // acts on stays in view above it, as Vim's command line sits at the
-    // bottom.
-    // Else a quarter down, or as far as keeps a screen margin below it on
-    // a screen too short for that.
+    // bottom. Never so low it leaves no screen margin below it, on a
+    // screen too short for a quarter down.
     readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
         ? screenHere.height * 11 / 12 - card.height
         : Math.max(Theme.space.xl, Math.min(screenHere.height / 4,
@@ -4311,7 +4310,11 @@ Scope {
             card: {
                 top: root.cardTop,
                 foot: root.cardTop + card.height,
-                screen: root.screenHere ? root.screenHere.height : 0
+                screen: root.screenHere ? root.screenHere.height : 0,
+                // And its sides, on a screen this wide.
+                left: root.cardLeft,
+                right: root.cardLeft + root.width,
+                across: root.screenHere ? root.screenHere.width : 0
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether

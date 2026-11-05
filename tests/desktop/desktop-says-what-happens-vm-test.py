@@ -332,6 +332,8 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         card = desktop.showing()["card"]
         assert card["top"] > 0, f"at {scale} it's off the top: {card}"
         assert card["foot"] < card["screen"], f"at {scale} it's off the bottom: {card}"
+        assert card["left"] > 0, f"at {scale} it's off the left: {card}"
+        assert card["right"] < card["across"], f"at {scale} it's off the right: {card}"
         rows = page.drawer()
         assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
         assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
