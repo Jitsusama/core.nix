@@ -65,7 +65,7 @@
 //! commit (`passed.rs`), and a check kept is journalled `already`, built
 //! nowhere.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -723,7 +723,22 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     if sending.is_empty() {
         return;
     }
-    let size = sending.iter().filter_map(|path| holds.get(path)).sum();
+    // `nix copy` sends what they reference too, wherever no cache gives
+    // it the builder, so a download is fetched first at its source.
+    let closure = held::described(&json_of(
+        Command::new(nix)
+            .args(["path-info", "--recursive", "--json"])
+            .args(&sending),
+    ));
+    let fetched = fetched_first(
+        &held::fetched(&planned, &closure),
+        &closure,
+        lent,
+        scratch,
+        ssh,
+    );
+    let own: u64 = sending.iter().filter_map(|path| holds.get(path)).sum();
+    let size = held::sent_up(&planned, &closure, &fetched).max(own);
     let (outputs, them) = match sending.len() {
         1 => ("1 output".to_owned(), "it"),
         count => (format!("{count} outputs"), "them"),
@@ -748,6 +763,50 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     if !sent.is_ok_and(|sent| sent.success()) {
         eprintln!("nix-offload: they couldn't be sent, so the builder builds {them}");
     }
+}
+
+/// What the builder is asked, with fixed derivations on its standard
+/// input: to fetch their outputs from their own sources.
+const FETCHES: &str = "xargs -r nix-store --realise > /dev/null";
+
+/// Has the builder fetch `fetching` for itself, saying so, and answers
+/// them once it has, or none when it couldn't, so they go up from here
+/// as before.
+fn fetched_first(
+    fetching: &[String],
+    closure: &BTreeMap<String, held::Stored>,
+    lent: &Builder,
+    scratch: &Path,
+    ssh: &str,
+) -> Vec<String> {
+    if fetching.is_empty() {
+        return Vec::new();
+    }
+    let size = closure
+        .values()
+        .filter(|stored| {
+            stored.fixed
+                && stored
+                    .deriver
+                    .as_ref()
+                    .is_some_and(|deriver| fetching.contains(deriver))
+        })
+        .map(|stored| stored.size)
+        .sum();
+    let downloads = match fetching.len() {
+        1 => "1 download".to_owned(),
+        count => format!("{count} downloads"),
+    };
+    eprintln!(
+        "nix-offload: the builder fetches {downloads} of {} from their source itself, rather \
+         than have this machine send them",
+        sized(size)
+    );
+    if answered(lent, FETCHES, fetching, scratch, ssh).is_some() {
+        return fetching.to_vec();
+    }
+    eprintln!("nix-offload: the builder couldn't fetch them, so they go up from here");
+    Vec::new()
 }
 
 /// What `command` printed as JSON, or null when it printed none.

@@ -27,6 +27,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "Reading.js" as Reading
+import "Editing.js" as Editing
 import "QueryKeys.js" as QueryKeys
 import "Typing.js" as Typing
 
@@ -83,6 +84,17 @@ Item {
     // Whether the line has vi's modes, as the launcher's does; the lock's
     // and a password's prompts are only typed in.
     property bool modal: false
+    // Whether the line holds a prompt's words, as a save's name, rather
+    // than a find: normal edits them as Vim edits a line (QueryKeys.js, the
+    // words' rows), and u takes back each change, the newest first, kept in
+    // `changes` as the words and the caret before it.
+    property bool words: false
+    // Whether normal edits those words now: only while the cursor row is
+    // the one they name, so on any other row h and l step out and in as
+    // everywhere else.
+    property bool editsWords: words
+    property var changes: []
+    onWordsChanged: changes = []
     // The mode it's in: "insert", "normal", or "visual" while visual line
     // chooses rows. It opens in insert (take()).
     property string mode: "insert"
@@ -183,7 +195,8 @@ Item {
     // changes what the aside says anyway, so it moves over then, once.
     // A modal line says no key for putting back what was cleared, since
     // normal's u is vi's own way back.
-    readonly property bool keysHeld: keyed && (typed
+    // A question asked once takes no key of the field's, so none is said.
+    readonly property bool keysHeld: keyed && asking === "" && (typed
         || (!modal && input.text === "" && cleared !== ""))
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
@@ -293,6 +306,13 @@ Item {
     // is, and resume() gives it the keys back.
     signal commanded(string range)
 
+    // A question asked once, said in the field's place, "Replace notes.md?
+    // (y/n)", or "" while none is; the launcher's ask (Launcher.qml's
+    // askOnce) answers it, by the keys `confirming` hands over.
+    property string asking: ""
+    property double askedAt: 0
+    onAskingChanged: askedAt = Date.now()
+
     function clear() {
         cleared = "";
         input.text = "";
@@ -303,6 +323,7 @@ Item {
     // opens in insert, so typing finds at once.
     function take() {
         cleared = "";
+        changes = [];
         standing = QueryKeys.rest();
         mode = "insert";
         input.forceActiveFocus();
@@ -329,6 +350,13 @@ Item {
 
     // Where the caret is, between letters in insert or on one in normal.
     readonly property int caret: input.cursorPosition
+
+    // Puts the caret at a place in what's typed, as a save's name puts it
+    // before the extension.
+    function caretTo(at: int) {
+        input.cursorPosition = Math.max(0, Math.min(at, input.text.length));
+        rest();
+    }
 
     // A key as the table names it (QueryKeys.js): a modifier, then the
     // letter it typed, or else its name, with Shift unnamed beside a letter
@@ -420,7 +448,7 @@ Item {
                 prompt.answered(key);
             return;
         }
-        const read = QueryKeys.read(standing, key, mode);
+        const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held in normal repeats only a move, as Vim's motions do:
         // any other act, and a count or a sequence begun, is a press's
         // once, so a key let go late by a busy shell, which repeats as if
@@ -445,8 +473,22 @@ Item {
             if (mode === "visual" && QueryKeys.takesSelection(read.act))
                 prompt.operated(read.act, 0, { act: "visual", count: 0 });
             input.deselect();
+            // Going into insert on a prompt's words is a change u takes
+            // back whole, as Vim's is, unless nothing's typed before it ends.
+            if (words && next === "insert")
+                changed(text, at);
+            if (words && next === "normal" && changes.length > 0
+                && changes[changes.length - 1].text === text)
+                changes = changes.slice(0, -1);
             if (read.act === "change")
                 input.text = "";
+            if (read.act === "changeWord") {
+                const made = Editing.edited(read.act, text, at, read.count);
+                input.text = made.text;
+                mode = next;
+                input.cursorPosition = made.at;
+                return;
+            }
             mode = next;
             input.cursorPosition = Typing.caretAfter(read.act, input.text, at);
             return;
@@ -486,7 +528,9 @@ Item {
             prompt.forward();
             break;
         case "out":
-            if (leftClears && text !== "") {
+            // A prompt's words aren't a find to take away: - steps out
+            // with them, as oil's - does with a buffer's name kept.
+            if (leftClears && text !== "" && !words) {
                 input.text = "";
                 cleared = text;
             } else {
@@ -510,11 +554,47 @@ Item {
         case "command":
             prompt.commanded(QueryKeys.rangeFor(read.count, mode));
             break;
+        case "letterBack":
+        case "letterNext":
+        case "wordNext":
+        case "wordBack":
+        case "wordEnd":
+        case "lineStart":
+        case "lineEnd":
+        case "deleteLetter":
+        case "deleteWordOn": {
+            const made = Editing.edited(read.act, text, at, read.count);
+            if (made.text !== text) {
+                changed(text, at);
+                input.text = made.text;
+            }
+            input.cursorPosition = made.at;
+            break;
+        }
+        case "undo":
+            undo();
+            break;
         case "":
             break;
         default:
             prompt.stepped(read.act, read.count);
         }
+    }
+
+    // A change to a prompt's words, kept so u can take it back.
+    function changed(text: string, at: int) {
+        changes = changes.concat([{ text, at }]);
+    }
+
+    // Takes back the newest change to a prompt's words, the caret going
+    // where it was before it, as Vim's u does; with none, nothing.
+    function undo() {
+        if (changes.length === 0)
+            return;
+        const last = changes[changes.length - 1];
+        changes = changes.slice(0, -1);
+        input.text = last.text;
+        input.cursorPosition = Typing.resting(last.text, last.at);
     }
 
     // Normal's block rests on a letter, never past the last.
@@ -695,9 +775,11 @@ Item {
     }
 
     // The room kept for typing: the hint's, or a dozen characters.
+    // A question asked once is read whole, so the path gives way to it.
     readonly property real typingRoom: Math.max(
         voiceFace.advanceWidth(hint),
-        12 * figureFace.averageCharacterWidth)
+        12 * figureFace.averageCharacterWidth,
+        asking === "" ? 0 : Math.ceil(figureFace.advanceWidth(asking)) + 1)
 
     // How wide the path wants to be, whole, with the gap after it.
     readonly property real pathWanted: chips.length === 0 ? 0
@@ -795,6 +877,24 @@ Item {
         }
     }
 
+    // Whether the question asked is drawn whole, for the launcher's report.
+    readonly property bool askedWhole: askedText.implicitWidth <= askedText.width + 0.5
+
+    // A question asked once, where the field's words were, in the field's
+    // face and ink.
+    Text {
+        id: askedText
+        x: input.x
+        width: input.width
+        anchors.verticalCenter: parent.verticalCenter
+        visible: prompt.asking !== ""
+        text: prompt.asking
+        textFormat: Text.PlainText
+        elide: Text.ElideLeft
+        color: Theme.strong
+        font: input.font
+    }
+
     TextInput {
         id: input
         x: Theme.space.l + prompt.glyphWidth
@@ -803,6 +903,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true
+        // A question asked draws in its place, and the field keeps the
+        // keys, so it's hidden by its light alone: one not visible would
+        // let its focus go.
+        opacity: prompt.asking === "" ? 1 : 0
         echoMode: prompt.secret ? TextInput.Password : TextInput.Normal
         passwordCharacter: "\u25cf"
         passwordMaskDelay: 0

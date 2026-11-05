@@ -2,8 +2,8 @@
 //! selection on the page's words, moved as Neovim moves one, and what it
 //! copies, which is the file's own markdown for what it covers.
 //!
-//! The page has no cursor of its own, so a selection's starts on the first
-//! word in view. It moves over the page's lines (text.rs), each character
+//! A selection's cursor starts on the first word of the page's cursor's
+//! line, or the first after it. It moves over the page's lines (text.rs), each character
 //! a place. The walk marks each piece of the file that V takes whole, a
 //! paragraph, a heading, a list's item, a table's row or a line of code,
 //! with the lines it was written on (walk.rs), and those marks, read off
@@ -436,8 +436,9 @@ impl Layout {
     }
 
     /// The first word wholly in a view from `top_pt` to `foot_pt`, where v
-    /// starts: the first letter or digit of the first line wholly in it
-    /// that has one, so never a list's bullet.
+    /// starts, given the cursor's line's top for `top_pt`: the first letter
+    /// or digit of the first line wholly in it that has one, so never a
+    /// list's bullet.
     pub fn first_in_view(&self, top_pt: f64, foot_pt: f64) -> Option<Pos> {
         // The file's own words first: the eyebrow over a title, an alert's
         // kind and a caption are the page's, not the file's, so a copy from
@@ -518,13 +519,20 @@ impl Layout {
         }
     }
 
-    /// The first piece whose first line shows whole in a view, where y y
-    /// and y i p copy from.
-    pub fn first_piece_in_view(&self, top_pt: f64, foot_pt: f64) -> Option<usize> {
-        (0..self.units.len()).find(|&unit| {
-            self.unit_lines[unit].is_some_and(|(first, _)| {
-                let (top, foot) = self.line_extent(first);
-                top >= top_pt && foot <= foot_pt
+    /// The piece the cursor's line, whose top is at `top_pt`, is in, where
+    /// y y, y i p, y a p and y } copy from; on a line no piece holds, an
+    /// eyebrow or a caption, the first piece below it that shows whole
+    /// above `foot_pt`.
+    pub fn piece_at(&self, top_pt: f64, foot_pt: f64) -> Option<usize> {
+        let here = (0..self.lines.len())
+            .find(|&line| (self.line_extent(line).0 - top_pt).abs() < NEAR_PT)
+            .and_then(|line| self.of_line[line]);
+        here.or_else(|| {
+            (0..self.units.len()).find(|&unit| {
+                self.unit_lines[unit].is_some_and(|(first, _)| {
+                    let (top, foot) = self.line_extent(first);
+                    top >= top_pt - NEAR_PT && foot <= foot_pt
+                })
             })
         })
     }
@@ -542,11 +550,27 @@ impl Layout {
         Some(selection)
     }
 
-    /// The paragraph a piece is in, taken whole, as y i p takes it.
-    pub fn paragraph_of(&self, unit: usize) -> Option<Selection> {
+    /// The paragraph a piece is in, taken whole, as y i p takes it, or with
+    /// the blank line after it, as y a p does.
+    pub fn paragraph_of(&self, unit: usize, object: Object) -> Option<Selection> {
         let line = self.unit_lines[unit]?.0;
         let mut selection = Selection::new(Kind::Pieces, Pos { line, ch: 0 });
-        self.object(&mut selection, Object::InParagraph);
+        self.object(&mut selection, object);
+        Some(selection)
+    }
+
+    /// From a piece to its paragraph's end, and `count` less one paragraphs
+    /// on, taken whole, as y } takes the lines up to the blank one.
+    pub fn to_paragraph_end(&self, unit: usize, count: usize) -> Option<Selection> {
+        let first = self.unit_lines[unit]?.0;
+        let last_paragraph = self.paragraph[unit] + count.max(1) - 1;
+        let last = (unit..self.units.len())
+            .filter(|&u| self.paragraph[u] <= last_paragraph)
+            .filter_map(|u| self.unit_lines[u])
+            .map(|(_, last)| last)
+            .max()?;
+        let mut selection = Selection::new(Kind::Pieces, Pos { line: first, ch: 0 });
+        selection.cursor = Pos { line: last, ch: 0 };
         Some(selection)
     }
 
@@ -1632,26 +1656,61 @@ mod tests {
         assert_eq!(page.pieces(&s).len(), 4, "both items, bullets and all");
         page.object(&mut s, Object::AParagraph);
         assert_eq!(page.copied(&s), "- first item\n- second `code` item\n\n");
-        let code = page.paragraph_of(4).expect("the code's paragraph");
+        let code = page
+            .paragraph_of(4, Object::InParagraph)
+            .expect("the code's paragraph");
         assert_eq!(
             page.copied(&code),
             "```\nlet x = 1;\n```\n",
             "its fences with it"
         );
+        let list = page
+            .paragraph_of(3, Object::AParagraph)
+            .expect("the list's paragraph");
+        assert_eq!(
+            page.copied(&list),
+            "- first item\n- second `code` item\n\n",
+            "y a p takes the blank line after it"
+        );
     }
 
     #[test]
-    fn y_y_takes_the_first_piece_whose_first_line_shows_whole() {
+    fn y_y_takes_the_piece_the_cursors_line_is_in() {
         let page = page();
-        assert_eq!(page.first_piece_in_view(0.0, 400.0), Some(0));
-        assert_eq!(page.first_piece_in_view(40.0, 400.0), Some(1));
+        assert_eq!(page.piece_at(7.0, 400.0), Some(0), "the title's line");
         assert_eq!(
-            page.first_piece_in_view(70.0, 400.0),
-            Some(2),
-            "the paragraph's first line is cut"
+            page.piece_at(68.0, 400.0),
+            Some(1),
+            "the paragraph's second line is the paragraph's"
+        );
+        assert_eq!(page.piece_at(128.0, 400.0), Some(3), "the second item");
+        assert_eq!(
+            page.piece_at(0.0, 400.0),
+            Some(0),
+            "over the first piece, as an eyebrow is, the first below"
         );
         let two = page.pieces_from(2, 2).expect("two items");
         assert_eq!(page.copied(&two), "- first item\n- second `code` item\n");
+    }
+
+    #[test]
+    fn y_brace_takes_the_pieces_to_the_paragraphs_end() {
+        let page = page();
+        let rest = page.to_paragraph_end(2, 1).expect("the list");
+        assert_eq!(page.copied(&rest), "- first item\n- second `code` item\n");
+        let from_second = page.to_paragraph_end(3, 1).expect("its second item");
+        assert_eq!(page.copied(&from_second), "- second `code` item\n");
+        let two = page.to_paragraph_end(1, 2).expect("two paragraphs");
+        assert_eq!(
+            page.copied(&two),
+            "Some **bold words** and a\n[link](https://example.com) here. Then more.\n\n- first item\n- second `code` item\n"
+        );
+        let past = page.to_paragraph_end(4, 9).expect("the last paragraph");
+        assert_eq!(
+            page.copied(&past),
+            "let x = 1;\n",
+            "a count past the end stops there"
+        );
     }
 
     #[test]
@@ -1736,7 +1795,9 @@ mod tests {
         assert_eq!(page.copied(&s), "Noted **words** here.");
         // The code's paragraph is its fences and lines.
         let code = page.of_line[holding(&page, "echo two")].expect("a piece");
-        let whole = page.paragraph_of(code).expect("its paragraph");
+        let whole = page
+            .paragraph_of(code, Object::InParagraph)
+            .expect("its paragraph");
         assert_eq!(page.copied(&whole), "```sh\necho one\necho two\n```\n");
         assert_eq!(page.pieces(&whole).len(), 2, "both lines of code show it");
     }

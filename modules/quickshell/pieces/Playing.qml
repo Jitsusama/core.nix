@@ -54,6 +54,9 @@ Piece {
     }] : [], Music.others.map(other => ({
         glyph: Words.glyph("verb:on:playing:pauseOther"),
         name: Words.name("verb:on:playing:pauseOther", "", { player: Music.name(other) }),
+        // The player isn't the row's, so the : line fills its :pause {player}
+        // from here, as the name is.
+        fill: { player: Music.name(other) },
         verb: Words.verb("verb:on:playing:pauseOther"),
         stays: true,
         run: () => other.pause()

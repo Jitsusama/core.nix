@@ -340,30 +340,24 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         assert shown["tinted"] == [shown["current"]], shown
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} d cut {shown}"
         desktop.photograph(f"launcher-pending-at-{named}")
-        with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+        with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
             machine.send_chars("j")
-        # The ask stands alone in the keys' place, ending where Return
-        # ends, wider than Return's word, so it reaches into the room the
-        # other keys left, and how things stand gives way around it as
-        # the foot's facts give way to any keys: a fact's figure before
-        # its glyph, the last first, never a word cut, and all of them
-        # whole once the ask goes.
+        # The ask stands on the line, in the find's place, as every ask
+        # does, said whole, and tints the rows it covers as visual does.
+        # The foot keeps how things stand, whole (a minute turning keeps
+        # its length), and its keys stay put.
         shown = desktop.showing()
-        facts = before["glance"].split("  ")
-        kept = shown["glance"].split("  ")
-        assert len(kept) <= len(facts), f"at {scale} the ask added a fact: {kept} of {facts}"
-        for said, fact in zip(kept, facts, strict=False):
-            assert said == fact or fact.startswith(f"{said} "), (
-                f"at {scale} the ask cut a fact: {kept} of {facts}"
-            )
-        assert shown["operated"] == "dj Close these 2? (y/n)", shown
+        assert shown["question"] == "Close 2 windows? (y/n)", shown
+        assert shown["questionWhole"], f"at {scale} the ask was cut: {shown}"
+        assert shown["tinted"] == [0, 1], shown
+        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
             machine.send_key("esc")
-        desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
+        desktop.launcher_until(lambda shown: shown["open"] and shown["question"] == "")
         after_ask = desktop.showing()
         assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
-        assert len(after_ask["glance"].split("  ")) == len(facts), f"at {scale} {after_ask}"
+        assert after_ask["tinted"] == [], f"at {scale} {after_ask}"
         desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
 
@@ -693,6 +687,52 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
             # Escape leaves insert, then refuses the ask from the folder it opened in.
+            desktop.close_launcher()
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")
+
+
+def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A save's name is the line's words, in insert and in normal, and a name taken asks once."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/saving"
+    chose = "/run/user/1000/portal-chose"
+    desktop.as_account(f"mkdir -p {folder}/drafts && printf 'one\\n' > {folder}/a.md")
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            shot = scale.replace(".", "-")
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-to-save"
+                f" {desktop.values['choose_a_file']} save {folder} a.md"
+            )
+            asked_in(desktop, "~/saving", {"a.md", "drafts"})
+            # The caret before the extension, so typing renames it.
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["typed"] == "a.md" and shown["caret"] == 1 and shown["mode"] == "insert"
+                )
+            )
+            desktop.photograph(f"file-picker-save-name-at-{shot}")
+            desktop.normal()
+            desktop.photograph(f"file-picker-save-name-normal-at-{shot}")
+            machine.send_key("ret")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["question"] == "Replace a.md? (y/n)"
+                    and shown["takesAnswer"]
+                    # Read whole, the path giving way, never cut.
+                    and shown["questionWhole"]
+                )
+            )
+            desktop.photograph(f"file-picker-save-replace-at-{shot}")
+            machine.send_chars("n")
+            desktop.launcher_until(lambda shown: shown["question"] == "" and shown["open"])
+            # Escape, from normal on the name, refuses the ask from the folder it opened in.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:

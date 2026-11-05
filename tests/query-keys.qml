@@ -1,10 +1,11 @@
 // The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
-// check copies modules/quickshell/QueryKeys.js, Typing.js, ListedKeys.js,
-// Operators.js and Confirm.js beside this file and runs
+// check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
+// ListedKeys.js, Operators.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
+import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
 import "QueryKeys.js" as Keys
 import "Typing.js" as Typing
@@ -123,14 +124,6 @@ QtObject {
             holds(`${act} is once a press, so a held d never makes dd`, Keys.repeats(act), false);
         holds("the field says dd for ending", Keys.keyOf("ending", "normal"), "dd");
         holds("and yy for copying", Keys.keyOf("copy", "normal"), "yy");
-        // d's ask says the keys that answer it, as d2j, so a motion is
-        // said by Vim's letters rather than its first key, an arrow.
-        holds("a motion is said by its letters",
-            ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"]
-                .map(act => Keys.lettersOf(act, "normal")),
-            ["j", "k", "gg", "G", "H", "M", "L"]);
-        holds("and an act with no letters by its first key",
-            Keys.lettersOf("halfDown", "normal"), "Ctrl+d");
 
         // Twenty rows, the 5th to the 12th in view, the 7th selected, as
         // the moves' cases have them: [what, the count, the motion, the
@@ -247,16 +240,28 @@ QtObject {
             Operators.asks([Object.assign({ undo: run }, close)], commands), false);
         // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
-        const asking = { ask: "{ends} {name}? (y/n)", asks: "{ends} these {count}? (y/n)",
-            ends: "end" };
+        // It names the one row it ends, and more by their count and kind,
+        // each verb with its own, so Joel needn't look to see what they are
+        // (VKCF3Z, 2026-11-05).
+        const asking = { ask: "{ends} {name}? (y/n)", asks: "{what}? (y/n)",
+            part: "{ends} {count} {kind}", ends: "end", thing: "thing", and: "and",
+            many: { copy: "copies" } };
+        const closing = name => ({ ends: "close", name, kind: "window" });
+        const copied = { ends: "forget", name: "84", kind: "copy" };
         holds("the ask names the one row it ends",
-            Confirm.question([{ ends: "close", name: "Notes" }], asking), "Close Notes? (y/n)");
-        holds("and counts more, by the verb they share", Confirm.question([
-            { ends: "close", name: "Notes" }, { ends: "close", name: "Mail" }], asking),
-            "Close these 2? (y/n)");
-        holds("or by the word for any where they differ", Confirm.question([
-            { ends: "close", name: "Notes" }, { ends: "quit", name: "Firefox" }], asking),
-            "End these 2? (y/n)");
+            Confirm.question([closing("Notes")], asking), "Close Notes? (y/n)");
+        holds("and counts more by their kind", Confirm.question([closing("Notes"),
+            closing("Mail")], asking), "Close 2 windows? (y/n)");
+        holds("and each verb with its own, the first first", Confirm.question([closing("Notes"),
+            copied, closing("Mail")], asking), "Close 2 windows and forget 1 copy? (y/n)");
+        holds("three by commas, the last by and", Confirm.question([closing("Notes"), copied,
+            { ends: "quit", name: "Firefox", kind: "program" }, copied], asking),
+        "Close 1 window, forget 2 copies and quit 1 program? (y/n)");
+        holds("a row with no kind is a thing", Confirm.question([{ ends: "close", name: "a" },
+            { ends: "close", name: "b" }], asking), "Close 2 things? (y/n)");
+        holds("and one with no verb takes the word for ending", Confirm.question([
+            { name: "a", kind: "window" }, closing("b")], asking),
+        "End 1 window and close 1 window? (y/n)");
         // Only y answers yes, and only after the ask has stood 300 ms, so
         // a key typed on from what asked can't answer it; any other no.
         const ask = Confirm.asked("Close Notes? (y/n)", run, run, 1000);
@@ -272,15 +277,6 @@ QtObject {
             ["nothing", "nothing", "nothing", "nothing"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
-        // The ask's mark says the keys that asked it, as they were typed.
-        holds("the ask says the keys that asked it", [
-            Operators.typedAs("ending", 0, null),
-            Operators.typedAs("ending", 3, null),
-            Operators.typedAs("ending", 0, { act: "next", count: 0 }),
-            Operators.typedAs("ending", 0, { act: "next", count: 6 }),
-            Operators.typedAs("ending", 0, { act: "last", count: 0 }),
-            Operators.typedAs("copy", 0, { act: "first", count: 0 })
-        ], ["dd", "3dd", "dj", "d6j", "dG", "ygg"]);
         pending(holds);
         visual(holds);
 
@@ -420,6 +416,91 @@ QtObject {
         holds("and nothing where it opened every one", Operators.openedSaid(3, 3, words), "");
     }
 
+    // The keys typed from a line's opening in insert, on a prompt's words.
+    function wordsTyped(keys) {
+        let standing = Keys.rest();
+        let mode = "insert";
+        const acts = [];
+        for (const key of keys) {
+            const read = Keys.read(standing, key, mode, true);
+            standing = read.standing;
+            mode = Keys.modeAfter(read.act, mode);
+            if (read.act !== "")
+                acts.push(read.count > 0 ? `${read.count} ${read.act}` : read.act);
+        }
+        return { acts, mode };
+    }
+
+    // A prompt's words edited in normal, as Vim edits a line, and Ctrl+H in
+    // insert, on every line.
+    function editing(holds) {
+        // [what, the keys typed from the opening, the acts done]
+        const doing = [
+            ["w b e move by words", ["Escape", "w", "b", "e"],
+                ["normal", "wordNext", "wordBack", "wordEnd"]],
+            ["h l and the arrows move by letters", ["Escape", "h", "l", "Left", "Right"],
+                ["normal", "letterBack", "letterNext", "letterBack", "letterNext"]],
+            ["- and Backspace still step out", ["Escape", "-", "Backspace"],
+                ["normal", "out", "out"]],
+            ["0 and $ go to the line's ends", ["Escape", "$", "0"],
+                ["normal", "lineEnd", "lineStart"]],
+            ["x, dw and cw change the words, cw into insert", ["Escape", "x", "d", "w", "c", "w"],
+                ["normal", "deleteLetter", "deleteWordOn", "changeWord"]],
+            ["cc still clears the line", ["Escape", "c", "c"], ["normal", "change"]],
+            ["u undoes", ["Escape", "u"], ["normal", "undo"]],
+            ["a count goes before a word's move", ["Escape", "2", "w"], ["normal", "2 wordNext"]],
+            ["j still goes down to the rows", ["Escape", "j"], ["normal", "next"]]
+        ];
+        for (const [what, keys, want] of doing)
+            holds(`on a prompt's words, ${what}`, wordsTyped(keys).acts, want);
+        holds("cw leaves the line in insert", wordsTyped(["Escape", "c", "w"]).mode, "insert");
+        holds("on a find, u brings back what was cleared", typed(["Escape", "u"]).acts,
+            ["normal", "restore"]);
+        holds("and w and x do nothing", typed(["Escape", "w", "x"]).acts, ["normal"]);
+        holds("Ctrl+H deletes back in insert", typed(["Ctrl+h"]).acts, ["deleteBack"]);
+        for (const act of ["wordNext", "wordBack", "wordEnd"])
+            holds(`${act} repeats while held`, Keys.repeats(act), true);
+        holds("x is once a press", Keys.repeats("deleteLetter"), false);
+
+        // [what, act, words, caret, count, { text, at } after]
+        const edits = [
+            ["h goes a letter back", "letterBack", "notes.md", 5, 0, 4],
+            ["h at the start stays", "letterBack", "notes.md", 0, 0, 0],
+            ["l goes a letter on", "letterNext", "notes.md", 4, 0, 5],
+            ["l on the last letter stays", "letterNext", "notes.md", 7, 0, 7],
+            ["3l goes three on", "letterNext", "notes.md", 0, 3, 3],
+            ["w goes past a word to the next run", "wordNext", "notes.md", 0, 0, 5],
+            ["w goes past the dot to the extension", "wordNext", "notes.md", 5, 0, 6],
+            ["w goes past spaces", "wordNext", "my notes", 0, 0, 3],
+            ["w on the last word rests on the last letter", "wordNext", "notes", 1, 0, 4],
+            ["2w goes two words on", "wordNext", "my big notes", 0, 2, 7],
+            ["b goes to the word's start", "wordBack", "notes.md", 3, 0, 0],
+            ["b at a word's start goes to the one before", "wordBack", "notes.md", 6, 0, 5],
+            ["e goes to the word's end", "wordEnd", "notes.md", 0, 0, 4],
+            ["e at a word's end goes to the next one's", "wordEnd", "my notes", 1, 0, 7],
+            ["0 goes to the start", "lineStart", "notes.md", 5, 0, 0],
+            ["$ goes to the last letter", "lineEnd", "notes.md", 0, 0, 7]
+        ];
+        for (const [what, act, text, at, count, want] of edits)
+            holds(what, Editing.edited(act, text, at, count), { text, at: want });
+        // [what, act, words, caret, count, words after, caret after]
+        const changes = [
+            ["x takes the letter under the caret", "deleteLetter", "notes.md", 5, 0, "notesmd", 5],
+            ["3x takes three", "deleteLetter", "notes.md", 0, 3, "es.md", 0],
+            ["x on the last letter rests on the one before", "deleteLetter", "ab", 1, 0, "a", 0],
+            ["dw takes the word and the space after it", "deleteWordOn", "my notes", 0, 0, "notes",
+                0],
+            ["dw on the last word takes it to the end", "deleteWordOn", "my notes", 3, 0, "my ", 2],
+            ["cw takes the word but not the space after it", "changeWord", "my notes", 0, 0,
+                " notes", 0],
+            ["cw takes the name before the extension", "changeWord", "notes.md", 0, 0, ".md", 0],
+            ["c2w takes two words and the space between", "changeWord", "my big notes", 0, 2,
+                " notes", 0]
+        ];
+        for (const [what, act, text, at, count, after, caret] of changes)
+            holds(what, Editing.edited(act, text, at, count), { text: after, at: caret });
+    }
+
     function run() {
         function holds(what, got, want) {
             if (JSON.stringify(got) !== JSON.stringify(want))
@@ -483,6 +564,8 @@ QtObject {
                 ["normal", "change", "normal", "change"]],
             ["]b and [b go to the place beside, the next and the one before",
                 ["Escape", "]", "b", "[", "b"], ["normal", "nextFile", "previousFile"]],
+            ["gx opens the row's file in its own program", ["Escape", "g", "x"],
+                ["normal", "openOwn"]],
             ["Escape cancels a c waiting for its second", ["Escape", "c", "Escape", "c"],
                 ["normal"]],
             ["a key that ends nothing lets c go", ["Escape", "c", "x", "c"], ["normal"]],
@@ -590,9 +673,11 @@ QtObject {
         holds("every line the list gives has its keys",
             facts.filter(line => line.label === "").length, 0);
         // Joel presses the arrows, so every act one does in a mode lists it
-        // in that mode's section.
+        // in that mode's section. A prompt's words keep their own keys,
+        // which the launcher's list doesn't name.
         const arrows = ["Up", "Down", "Left", "Right"];
         holds("every act an arrow does lists its arrow", Keys.table
+            .filter(one => one.mode !== "words")
             .map(one => ({ in: one.mode === "both" ? ["Normal", "Insert"] : [modes[one.mode]],
                 arrows: one.keys.filter(key => arrows.includes(key)) }))
             .filter(one => one.arrows.some(key => one.in.some(mode =>
@@ -694,6 +779,8 @@ QtObject {
         holds("and on an empty line at its start", Typing.resting("", 0), 0);
 
         operating(holds);
+
+        editing(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

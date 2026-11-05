@@ -124,18 +124,6 @@ function asks(actions, commands) {
     });
 }
 
-// The keys an operator was typed by, as the ask's mark says them: its count
-// before it doubled, as 3dd, or its motion's after it, as d6j, where 2d3j
-// is said as Vim counts it.
-function typedAs(act, count, motion) {
-    const key = Keys.keyOf(act, "normal");
-    if (motion === null) {
-        return (count > 0 ? String(count) : "") + key;
-    }
-    const times = motion.count > 0 ? String(motion.count) : "";
-    return key.slice(0, 1) + times + Keys.lettersOf(motion.act, "normal");
-}
-
 // An operator waiting for what it acts on, from how the keys stand: the
 // keys typed since its count, as 3d or d2 or dg, and the count its rows
 // would be as the two multiply, 0 where none was typed. Null with none

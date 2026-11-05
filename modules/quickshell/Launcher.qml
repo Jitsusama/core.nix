@@ -2555,8 +2555,10 @@ Scope {
         // What was typed found the row, so it goes: inside, everything the row
         // holds shows, and the left arrow puts it back on the way out. Stepped
         // into from a collection's match, the match stays selected among all
-        // it holds (Joel, 2026-10-26: stepping in keeps the match).
-        restart("");
+        // it holds (Joel, 2026-10-26: stepping in keeps the match). A step
+        // whose line holds its words, as a save's name, puts them back.
+        restart(row.words?.() ?? "");
+        placeCaret(row);
         if (row.from) {
             const matched = matches.findIndex(one => steadyId(one) === steadyId(row));
             if (matched >= 0) {
@@ -2868,9 +2870,25 @@ Scope {
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
         const left = held[held.length - steps];
         held = held.slice(0, -steps);
-        restart(left.typed);
+        // A step back onto one whose line holds its words puts them back.
+        const onto = held.length > 0 ? held[held.length - 1].row : null;
+        restart(onto?.words?.() ?? left.typed);
+        placeCaret(onto);
         reselect(left);
     }
+
+    // A step whose line holds its words, as a save's name, says where the
+    // caret starts in them: before a name's extension, so typing renames
+    // it (VKCF3Z's vi-paradigm spec, The File Picker).
+    function placeCaret(row) {
+        if (typeof row?.words === "function")
+            prompt.caretTo(row.caretIn?.(prompt.text) ?? prompt.text.length);
+    }
+
+    // Whether the step held holds its words in the line rather than a
+    // find: then normal edits them, and its rows aren't narrowed by them.
+    readonly property bool holdsWords: held.length > 0
+        && typeof held[held.length - 1].row.words === "function"
 
     // Searches afresh for what the field is set to, since what was found
     // before belongs to another step.
@@ -2964,6 +2982,9 @@ Scope {
         if (acted && (letters !== acted.typed || held.length !== acted.depth))
             acted = null;
         words = Fuzzy.words(letters);
+        // A step whose line holds its words is told each change to them.
+        if (holdsWords)
+            held[held.length - 1].row.worded?.(letters);
         if (asking) {
             matches = [];
             answer = null;
@@ -3023,7 +3044,7 @@ Scope {
             // Meeting makes a time, lists them first. One that finds what's
             // typed past the rows it shows (`finds`), as Capture's Recent
             // finds among everything taken, lists what it finds instead.
-            else if (words.length === 0)
+            else if (words.length === 0 && !holdsWords)
                 found = offered.slice();
             else if (held[held.length - 1].row.finds)
                 found = held[held.length - 1].row.finds(letters);
@@ -3243,20 +3264,22 @@ Scope {
     // says what each does to a row): d does each row's ending action, as
     // dd deletes a line, and y copies each, as yy yanks one. What d does
     // that can't be put back it asks about once, as Vim's ask_yesno asks
-    // (Confirm.js): the launcher's one ask, said in Return's place in the
-    // foot as a search's "not found" is, the keys that asked it its mark.
-    // While it stands every key is its answer (Prompt.qml's confirming):
-    // after its first 300 ms, y does it, n, Escape or Ctrl+C lets it go,
-    // and any other key does nothing.
+    // (Confirm.js): the launcher's one ask, said whole on the line in the
+    // find's place (Prompt.qml's asking), as the file picker's "Replace
+    // notes.md? (y/n)" is, one place on every surface (VKCF3Z,
+    // 2026-11-05). While it stands every key is its answer (Prompt.qml's
+    // confirming): after its first 300 ms, y does it, n, Escape or Ctrl+C
+    // lets it go, and any other key does nothing.
     property var asked: null
-    property string askedBy: ""
+    // The rows it covers, by their places, which wear visual's tint while
+    // it stands, so every one it would end shows as included.
+    property var askedOver: []
 
-    // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, `mark` the
-    // keys that asked it, as "dd". The command line will draw it in place
-    // of the foot, through the same call.
-    function askOnce(question, yes, no, mark) {
+    // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, or as the
+    // launcher closes, `over` the places of the rows it covers, or none.
+    function askOnce(question, yes, no, over) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
-        askedBy = mark ?? "";
+        askedOver = over ?? [];
         askReady.restart();
         Report.say(`asked ${question}`);
     }
@@ -3361,6 +3384,9 @@ Scope {
     // Whether a row wears the selection's ground: visual's, or what a
     // pending operator will take.
     function tints(at) {
+        if (asked !== null) {
+            return askedOver.includes(at);
+        }
         return visualFrom >= 0 ? at >= visualTop && at <= visualBottom
             : at === current && pendingSaid !== "";
     }
@@ -3392,7 +3418,7 @@ Scope {
             if (act === "copy")
                 yanked(taken);
             else if (act === "ending")
-                ended(taken, QueryKeys.keyOf("ending", "visual"), false);
+                ended(taken, false);
             else
                 ranOver(taken);
             return;
@@ -3410,14 +3436,14 @@ Scope {
         if (act === "copy")
             yanked(taken);
         else
-            ended(taken, Operators.typedAs(act, count, motion), false);
+            ended(taken, false);
     }
 
     // d and y over rows named rather than spanned, as the command line's
     // :d and :y with a range: d asks first unless `sure`, as :d! wouldn't,
     // and says "done", "asked" or "nothing".
     function endRows(rows, sure) {
-        return ended(takenOf(rows), "", sure);
+        return ended(takenOf(rows), sure);
     }
 
     function copyRows(rows) {
@@ -3455,7 +3481,7 @@ Scope {
 
     // d: every ending action over the rows, asked about once where any
     // can't be put back, the rows with none passed over.
-    function ended(taken, typed, sure) {
+    function ended(taken, sure) {
         const words = Words.field.operators ?? {};
         const endings = Operators.endings(taken, actionsOf);
         if (endings.length === 0) {
@@ -3472,9 +3498,10 @@ Scope {
             doing();
             return "done";
         }
+        const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
-            name: (ending.at === -1 ? headline : matches[ending.at])?.name ?? "" }));
-        askOnce(Confirm.question(named, words), doing, null, typed);
+            name: rowAt(ending.at)?.name ?? "", kind: kindOf(rowAt(ending.at)) }));
+        askOnce(Confirm.question(named, words), doing, null, endings.map(ending => ending.at));
         return "asked";
     }
 
@@ -4109,6 +4136,11 @@ Scope {
             // is, between letters in insert and on one in normal.
             mode: prompt.mode,
             caret: prompt.caret,
+            // A question asked once in the line's place, or "", and
+            // whether it takes keys yet: those in its first moment don't.
+            question: prompt.asking,
+            takesAnswer: prompt.asking !== "" && Date.now() - prompt.askedAt >= prompt.wait,
+            questionWhole: prompt.askedWhole,
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -4139,13 +4171,12 @@ Scope {
             operated: foot.operatorWord === null ? ""
                 : `${foot.operatorWord[0]} ${foot.operatorWord[1]}`,
             flashing: Object.keys(root.flashing).map(Number),
-            // The mode word's room as it reads, and the rows tinted for
-            // what a pending operator will take, by their place.
+            // The mode word's room as it reads, and the rows that wear
+            // visual's tint, by their place: visual's, what a pending
+            // operator will take, and what an ask covers.
             modeWord: modeWord.visible ? modeWord.said : "",
-            tinted: root.visualFrom >= 0
-                ? Array.from({ length: root.visualBottom - root.visualTop + 1 },
-                    (_, at) => root.visualTop + at)
-                : root.pendingSaid !== "" ? [root.current] : [],
+            tinted: Array.from({ length: root.matches.length }, (_, at) => at)
+                .filter(at => root.tints(at)),
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4412,8 +4443,12 @@ Scope {
             prompt.take();
             Report.say(`stands ${standing.said}`);
         } else {
-            // An ask closing with it says no, as Escape would.
+            // An ask closing with it says no, as Escape would, and is
+            // never asked again.
+            const closing = asked;
             asked = null;
+            if (closing !== null)
+                closing.no();
             screenHere = focusedScreen;
             trials.closed();
             spotsLater.restart();
@@ -4721,6 +4756,8 @@ Scope {
                         // inputsecret() has none (VKCF3Z's vi-paradigm
                         // spec, Insert).
                         modal: !prompt.secret
+                        words: root.holdsWords
+                        editsWords: root.holdsWords && root.selected?.names === true
                         awake: root.open
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
@@ -4825,8 +4862,10 @@ Scope {
                             root.back();
                         }
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
-                        // The ask, while it stands, takes every key.
+                        // The ask, while it stands, takes every key, and one
+                        // no keys asked is said in the line's place.
                         confirming: root.asked !== null
+                        asking: root.asked?.question ?? ""
                         onAnswered: key => root.answerAsk(key)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
@@ -4866,6 +4905,9 @@ Scope {
                                 return;
                             case "previousFile":
                                 root.beside(-1);
+                                return;
+                            case "openOwn":
+                                root.matches[root.current]?.openOwn?.();
                                 return;
                             }
                             const view = list.inView();
@@ -5400,17 +5442,19 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
-                        // An operator's word, or d's ask while it stands.
+                        // An operator's word, for the key that did it; an
+                        // ask is the line's to say.
                         readonly property var operatorWord: root.operatorSaid !== null
                             && root.operatorSaidFor === prompt.keysTaken ? root.operatorSaid
-                            : root.asked !== null
-                                ? [root.askedBy, root.asked.question, Theme.warning] : null
+                            : null
                         // A parting word stands where Return was, its
                         // mark in the success colour.
+                        // A question asked once takes no key of the row's,
+                        // its own (y/n) saying how it's answered.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : root.keysFor(choice)
+                            : prompt.asking !== "" ? [] : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []

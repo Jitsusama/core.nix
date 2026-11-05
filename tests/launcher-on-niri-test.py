@@ -488,56 +488,56 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> No
     assert named(row["words"])["x"] == start, row
 
 
-def test_the_held_notices_take_vis_keys(shell: Shell) -> None:
-    """The held notices take vi's keys, as design.md's Vi's Keys sets them out.
+def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
+    """The held notices are Vim's quickfix list, as the vi-paradigm spec's Notices sets out.
 
-    j and k turn the cards, gg and G turn to the newest and the oldest, a count goes before a
-    motion, dd forgets the front one, l and h step into its acts and out, where gg and G
-    choose the first and last, q gives the keys back, Escape cancels a count, and dG forgets
-    them all. Each key's act is told by what the stack says it did.
+    The cursor starts on the card in front, the oldest, and the newest is line 1: k and j
+    move, G and gg go to the ends, a count goes before a motion. V and k choose three, d is
+    done with them and a second d is taken with it, u brings them back, q says it does
+    nothing, Escape cancels a count, and :q lets them go. Each key's act is told by what the
+    list says it did.
     """
     # They stay a minute, so they're all still there when the keys come, the oldest in front.
     for summary in ["Alpha", "Bravo", "Charlie"]:
         with shell.told(f"shows card {summary}"):
             shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
-    with shell.told("keys notices"):
+    with shell.told("keys notices"), shell.told("notice cursor Alpha"):
         shell.take_notices()
-    turns = [
-        (["j"], "Bravo"),
-        (["k"], "Alpha"),
-        (["g", "g"], "Charlie"),
+    moves = [
+        (["k"], "Bravo"),
+        (["k"], "Charlie"),
         (["shift-g"], "Alpha"),
-        (["2", "j"], "Charlie"),
-        # Forgetting the front one brings the next one round.
-        (["d", "d"], "Alpha"),
+        (["g", "g"], "Charlie"),
+        (["2", "j"], "Alpha"),
     ]
-    for keys, front in turns:
-        with shell.told(f"notice front {front}"):
+    for keys, cursor in moves:
+        with shell.told(f"notice cursor {cursor}"):
             for key in keys:
                 shell.send_key(key)
-    # It offers nothing, so forgetting it leads its acts and copying it ends them.
-    steps = [
-        ("l", "notice verb Forget It"),
-        ("shift-g", "notice verb Copy What It Said"),
-        ("g g", "notice verb Forget It"),
-        ("j", "notice verb Read"),
-        ("h", "notice back"),
-        ("q", "lets notices go"),
-    ]
-    for typed, said in steps:
-        with shell.told(said):
-            for key in typed.split():
-                shell.send_key(key)
-    with shell.told("keys notices"):
-        shell.take_notices()
-    # Four turns of two cards would leave Alpha in front, so Bravo coming shows the count
-    # went with Escape.
-    with shell.told("notice front Bravo"):
-        for key in ["4", "esc", "j"]:
-            shell.send_key(key)
-    with shell.told("lets notices go"):
-        shell.send_key("d")
+    with shell.told("notice selects 1"):
+        shell.send_chars("V")
+    with shell.told("notice selects 3"):
+        shell.send_chars("kk")
+    # The second d, within the wait, joins visual's first rather than waiting on its own.
+    with shell.told("notice done 3"):
+        shell.send_chars("dd")
+    with shell.told("notice brought back 3"):
+        shell.send_key("u")
+    with shell.told("notice says q does nothing \u00b7 :q closes"):
+        shell.send_key("q")
+    # Back, the cursor is on the first of them, Charlie. Two moves up from Alpha would reach
+    # Charlie again, so Bravo shows the count went with Escape.
+    with shell.told("notice cursor Alpha"):
         shell.send_key("shift-g")
+    with shell.told("notice cursor Bravo"):
+        for key in ["2", "esc", "k"]:
+            shell.send_key(key)
+    with shell.told("notice mode command"):
+        shell.send_chars(":")
+    with shell.told("lets notices go"):
+        shell.send_chars("q")
+        shell.send_key("ret")
+    shell.as_account("qs ipc call notices putAway")
     shell.notices_gone()
 
 

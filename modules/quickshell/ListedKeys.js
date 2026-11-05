@@ -21,6 +21,7 @@ const normal = [
     { name: "run", acts: ["run"], firsts: true },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
+    { name: "own", acts: ["openOwn"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.

@@ -451,18 +451,23 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
     retry(lambda _: len(left()) == len(endings) - 1, timeout=dt.timedelta(seconds=10))
     # Its row stays in its place, gone, until a key changes what's found,
     # and d never counts it. So d2j from it takes the other two and asks
-    # once, in Return's place, as Vim's ask_yesno does, answered once it's
-    # stood 300 ms; Escape says no, and the launcher stays.
+    # once, on the line, as Vim's ask_yesno does, by their count and kind,
+    # the two rows it covers tinted, answered once it's stood 300 ms;
+    # Escape says no, and the launcher stays.
     desktop.launcher_until(lambda shown: shown["things"][0]["gone"])
-    with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
         machine.send_chars("d2j")
-    assert desktop.showing()["operated"] == "d2j Close these 2? (y/n)", desktop.showing()
+    asking = desktop.showing()
+    assert asking["question"] == "Close 2 windows? (y/n)", asking
+    assert asking["tinted"] == [1, 2], asking
     with desktop.told("answered no"):
         machine.send_key("esc")
-    desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["question"] == "" and shown["tinted"] == []
+    )
     assert len(left()) == len(endings) - 1, desktop.windows()
     # d2j again, and y closes both.
-    with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
         machine.send_chars("d2j")
     with desktop.told("ended 2"):
         machine.send_chars("y")

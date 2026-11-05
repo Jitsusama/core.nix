@@ -28,14 +28,52 @@ function answer(ask, key, now, guard) {
     return NO.includes(key) ? "no" : "nothing";
 }
 
-// What d asks over the rows it would end, each { ends, name }: the one
-// row by its name, more by their count, the verb the one they share or
-// the words' own where they differ, as "Close Notes? (y/n)".
+// What d asks over the rows it would end, each { ends, name, kind }: the
+// one row by its name, as "Close Notes? (y/n)", and more by their count
+// and kind, each verb with its own in the order they come, as "Close 2
+// windows and forget 1 copy? (y/n)", so Joel needn't look to see what
+// they are (VKCF3Z, 2026-11-05).
 function question(rows, words) {
-    const shared = rows.every(row => row.ends === rows[0].ends) && (rows[0].ends ?? "") !== "";
-    const said = (rows.length === 1 ? words.ask ?? "" : words.asks ?? "")
-        .replace("{ends}", shared ? rows[0].ends : words.ends ?? "")
-        .replace("{name}", rows[0].name ?? "")
-        .replace("{count}", String(rows.length));
+    const said = rows.length === 1
+        ? (words.ask ?? "").replace("{ends}", verbOf(rows[0], words))
+            .replace("{name}", rows[0].name ?? "")
+        : (words.asks ?? "").replace("{what}", listed(parts(rows, words), words));
     return said.charAt(0).toUpperCase() + said.slice(1);
+}
+
+// What a row's ending does, or the words' own where it says none.
+function verbOf(row, words) {
+    return (row.ends ?? "") !== "" ? row.ends : words.ends ?? "";
+}
+
+// The rows by what's done to them and their kind, each as "close 2
+// windows", in the order each first comes; a row of no kind is a thing.
+function parts(rows, words) {
+    const groups = [];
+    for (const row of rows) {
+        const ends = verbOf(row, words);
+        const kind = (row.kind ?? "") !== "" ? row.kind : words.thing ?? "";
+        const group = groups.find(one => one.ends === ends && one.kind === kind);
+        if (group) {
+            group.count += 1;
+        } else {
+            groups.push({ ends, kind, count: 1 });
+        }
+    }
+    return groups.map(group => (words.part ?? "").replace("{ends}", group.ends)
+        .replace("{count}", String(group.count))
+        .replace("{kind}", group.count === 1 ? group.kind : plural(group.kind, words)));
+}
+
+// A kind's word for more than one, as the words have it, or with an s.
+function plural(kind, words) {
+    return words.many?.[kind] ?? `${kind}s`;
+}
+
+// Parts said as a list: commas between, and before the last.
+function listed(said, words) {
+    if (said.length < 2) {
+        return said.join("");
+    }
+    return `${said.slice(0, -1).join(", ")} ${words.and ?? ""} ${said[said.length - 1]}`;
 }
