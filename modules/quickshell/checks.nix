@@ -452,7 +452,10 @@ onLinux {
   # list only shrinks (type-is-set-by-level.py). So the check can't pass by
   # seeing nothing, each way of straying is shown to fail first: a step, a
   # level mixed with a step, a line carried on, a script's assignment, and a
-  # listed file that's moved or gone.
+  # listed file that's moved or gone. The reader's page and its foot, Typst
+  # held in Rust, name a level too, and a size, a weight, a tracking, a
+  # strong's delta or an axis said by number fails, as a size named with one
+  # does, while a comment saying one doesn't.
   type-is-set-by-level =
     let
       check = "${lib.getExe pkgs.python3} ${./type-is-set-by-level.py}";
@@ -460,6 +463,10 @@ onLinux {
         root = ../.;
         fileset = lib.fileset.fileFilter (file: file.hasExt "qml") ../.;
       };
+      pages = [
+        ../reader/src/page.rs
+        ../reader/src/prompt.rs
+      ];
     in
     pkgs.runCommandLocal "type-is-set-by-level" { } ''
       # A file that sets its type as given, what the check must say of it,
@@ -479,6 +486,22 @@ onLinux {
           exit 1
         fi
       }
+      # A page's template as given, and what the check must say of it.
+      sets() {
+        rm -rf modules
+        mkdir -p modules
+        : > unmoved.txt
+        printf '%s\n' "$1" > page.rs
+        if ${check} modules unmoved.txt page.rs > said; then
+          echo "The type check passed on the page: $1"
+          exit 1
+        fi
+        if ! grep -qF -- "$2" said; then
+          echo "Of the page $1 the type check didn't say: $2"
+          cat said
+          exit 1
+        fi
+      }
       strays 'font.pointSize: Theme.mono.large' 'Surface.qml:1: font.pointSize'
       strays 'font.pointSize: row.big ? Theme.level.title.pointSize : Theme.mono.large' \
         'font.pointSize is row.big'
@@ -487,12 +510,23 @@ onLinux {
       strays 'label.font.letterSpacing = 2' 'font.letterSpacing is 2'
       strays 'font.pointSize: Theme.level.note.pointSize' 'take it off' shell/Surface.qml
       strays 'font.pointSize: Theme.level.note.pointSize' "isn't there" shell/Gone.qml
-      # A level, read from the theme or a property holding one, passes.
+      sets '#set text(..level.words.text, size: 0.93 * body-size)' 'page.rs:1: size is 0.93'
+      sets '#show heading: set text(weight: 540, tracking: -0.02em)' 'weight is 540'
+      sets '#show heading: set text(weight: 540, tracking: -0.02em)' 'tracking is -0.02em'
+      sets '#set strong(delta: 100)' 'delta is 100'
+      sets '#let display-axes = (opsz: 144, SOFT: 100, WONK: 1)' 'opsz is 144'
+      sets '#let code-size = 10.5pt' 'code-size is 10.5pt'
+      # A level, read from the theme or a property holding one, passes, as
+      # a comment saying a size and a test after the page's own lines do.
+      mkdir -p modules/shell
       printf '%s\n' 'font.pointSize: Theme.level.note.pointSize * set.scale' \
         'font.weight: chord.level.weight' 'font: other.font' > modules/shell/Surface.qml
+      printf '%s\n' '#set text(..level.note.text, fill: ink.on_accent)' \
+        '/// The words at 13.69 pt, weight: 380.' '// size: 12pt, as a note says' \
+        '#[cfg(test)]' 'size: 11.5pt' > page.rs
       : > unmoved.txt
-      ${check} modules unmoved.txt
-      ${check} ${shells} ${./not-yet-by-level.txt}
+      ${check} modules unmoved.txt page.rs
+      ${check} ${shells} ${./not-yet-by-level.txt} ${lib.concatStringsSep " " pages}
       touch $out
     '';
 

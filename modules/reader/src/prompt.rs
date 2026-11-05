@@ -1,7 +1,8 @@
 //! What the reader sets apart from the page: the search prompt and the
 //! command line at the window's foot, as Neovim's command line, gO's
 //! outline above it, as his location list, Space ?'s key list, as his
-//! which-key, and g x's labels over links, as his flash. Each is set by Typst in the page's code face on a thread of
+//! which-key, and g x's labels over links, as his flash. Each is set by Typst at the theme's
+//! levels, what's typed at Figure and the rest at Note, on a thread of
 //! their own, whose world is made once, so a key never waits on fonts or
 //! setting.
 use std::sync::mpsc;
@@ -226,16 +227,17 @@ fn source(ask: &Ask) -> String {
         ""
     };
     let width = ask.width_pt.max(290.0 + 72.0);
-    // What's typed is raw, which Typst sets a fifth smaller, so it's set
-    // back to the size the count, the outline and the key list are in, as
-    // his command line is in his lists' size.
+    // What's typed is his letters, at Figure, and raw, which Typst sets a
+    // fifth smaller, so it's set back to its level's size; the count is a
+    // note.
     format!(
         r#"{ink}#set page(width: {width}pt, height: {row}pt, margin: (x: {side}pt, y: 0pt), fill: ink.sunken)
-#set text(font: face.code, size: 11.5pt, fill: ink.text, features: ("calt",))
-#show raw: set text(size: 11.5pt)
+#let typing = (..level.figure.text, features: level.figure.text.features + ("calt",))
+#set text(..typing)
+#show raw: set text(..typing)
 #align(horizon, grid(columns: (1fr, auto),
   [#raw({typed}){cursor}],
-  text(fill: ink.muted, {count})))
+  at(level.note, {count})))
 "#,
         ink = crate::theme::get().typst(),
         // Its words start where the page's measure does, as the window
@@ -251,7 +253,7 @@ fn source(ask: &Ask) -> String {
 /// the sunken ground the prompt's row is on, the full width of the window,
 /// each heading's words where the page's measure starts, set in from it by
 /// two characters for each level below the outline's highest, as Neovim's
-/// gO sets them in; the row chosen on the selection's ground in the strong
+/// gO sets them in, each a note in the text; the row chosen on the selection's ground in the strong
 /// text, as the launcher's chosen row and his `CursorLine` in a list. Its rows stand on the key list's
 /// 18.75 pt, the page's 25 px rhythm, with Space's l above and below.
 fn outline(ask: &Ask) -> String {
@@ -280,7 +282,7 @@ fn outline(ask: &Ask) -> String {
     let width = ask.width_pt.max(290.0 + 72.0);
     format!(
         r#"{ink}#set page(width: {width}pt, height: auto, margin: (x: {side}pt, y: 12pt), fill: ink.sunken)
-#set text(font: face.code, size: 11.5pt, fill: ink.text, features: ("calt",))
+#set text(..level.note.text, features: level.note.text.features + ("calt",))
 #stack({rows})
 "#,
         ink = crate::theme::get().typst(),
@@ -297,8 +299,8 @@ fn outline(ask: &Ask) -> String {
 const SPREAD_PT: f64 = 6.0;
 
 /// The key list's Typst, as his which-key draws it: on the sunken ground,
-/// keys in the accent and what they do in the text, each group under its
-/// name in strong, in two columns. Its gaps are Space's steps in points:
+/// as notes, the keys in the text and what they do muted, each group
+/// under its name as a label, in two columns. Its gaps are Space's steps in points:
 /// xl round it, xxl between a key and its words and between the columns,
 /// l between groups and s under a group's name; its rows stand on the
 /// page's 25 px rhythm. The groups in a column share one edge for their
@@ -323,7 +325,7 @@ fn key_list(width_pt: f64) -> String {
             widest[column].push(quoted(&ways.join(" \u{b7} ")));
             let keys: Vec<String> = ways
                 .iter()
-                .map(|way| format!("text(fill: ink.accent, {})", quoted(way)))
+                .map(|way| format!("text(fill: ink.text, {})", quoted(way)))
                 .collect();
             cells.push(format!(
                 "[#({})]",
@@ -332,15 +334,15 @@ fn key_list(width_pt: f64) -> String {
             cells.push(format!("[#{}]", quoted(does)));
         }
         groups[column].push(format!(
-            "stack(spacing: 6pt, text(fill: ink.strong, weight: 700, {}), grid(columns: (keys.at({column}), auto), rows: 18.75pt, align: horizon, column-gutter: 24pt, {}))",
+            "stack(spacing: 6pt, at(level.label, {}), grid(columns: (keys.at({column}), auto), rows: 18.75pt, align: horizon, column-gutter: 24pt, {}))",
             quoted(group),
             cells.join(", ")
         ));
         // Alone in a column that may be narrower than its words, a row
         // grows for words that wrap, each line the rhythm's 18.75 pt with
-        // its letters where a fixed row centres them.
+        // its capitals where a fixed row centres them.
         alone.push(format!(
-            "stack(spacing: 6pt, text(fill: ink.strong, weight: 700, {}), {{ set text(top-edge: 13.4pt, bottom-edge: -5.35pt); set par(leading: 0pt); grid(columns: (calc.max(..keys), auto), column-gutter: 24pt, {}) }})",
+            "stack(spacing: 6pt, at(level.label, {}), {{ set text(top-edge: (18.75pt + cap) / 2, bottom-edge: -(18.75pt - cap) / 2); set par(leading: 0pt); grid(columns: (calc.max(..keys), auto), column-gutter: 24pt, {}) }})",
             quoted(group),
             cells.join(", ")
         ));
@@ -351,10 +353,11 @@ fn key_list(width_pt: f64) -> String {
         .collect();
     format!(
         r#"{}#set page(width: auto, height: auto, margin: {SIDE_PT}pt, fill: ink.sunken)
-#set text(font: face.code, size: 11.5pt, fill: ink.text)
+#set text(..level.note.text)
 #context {{
+  let cap = measure([H]).height
   let keys = (({}), ({})).map(column => calc.max(0pt, ..column.map(it => measure(text(it)).width)))
-  let note = text(fill: ink.muted, "A number first does it that many times: 5j goes five lines down.")
+  let note = [A number first does it that many times: 5j goes five lines down.]
   let two = stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, {}), note)
   let one = stack(spacing: 12pt, {}, note)
   let room = {room}pt
@@ -401,8 +404,8 @@ fn columns_of(rows: &[usize]) -> Vec<usize> {
         .collect()
 }
 
-/// The labels' Typst, as his flash draws a label: the letters in strong
-/// weight in the colour on the accent, on the accent, each on a page of its
+/// The labels' Typst, as his flash draws a label: the letters, chords to
+/// type, as notes in the colour on the accent, on the accent, each on a page of its
 /// own just round its letters, with Space's xs at its sides.
 fn labels(each: &[String]) -> String {
     let pages: Vec<String> = each
@@ -411,7 +414,7 @@ fn labels(each: &[String]) -> String {
         .collect();
     format!(
         r#"{}#set page(width: auto, height: auto, margin: (x: 3pt, y: 0pt), fill: ink.accent)
-#set text(font: face.code, size: 11.5pt, weight: 700, fill: ink.on_accent, top-edge: "ascender", bottom-edge: "descender")
+#set text(..level.note.text, fill: ink.on_accent, top-edge: "ascender", bottom-edge: "descender")
 {}
 "#,
         crate::theme::get().typst(),

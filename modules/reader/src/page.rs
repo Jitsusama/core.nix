@@ -100,34 +100,31 @@ pub const PITCH_PT: f64 = 21.0;
 
 /// The page's look, after its measure, margins, size and line (template).
 ///
-/// The words are the theme's serif, a variable face, at the axes it was
-/// drawn for at a reading size: optical size 14, half soft and without its
-/// wonky forms, at 380 (`text-axes`). Headings and ornaments take its
-/// poster's cut, optical size 144, fully soft and wonky (`display-axes`).
-/// Typst sets a face's optical size to the text's by itself, and every
-/// other axis from `variations`, the later winning, so these name all
-/// three. A line is a capital's height and the leading below it, so the
+/// Every run of text is set at one of the theme's type levels, as the page
+/// sets it (`level`, from the theme's file, and home.nix for which level
+/// each is): the words at Words, a section at Title, the page's title at
+/// Display's step in the serif, code at Figure, eyebrows at Label, the
+/// quieter words at Note. None says a size or a weight of its own
+/// (type-is-set-by-level). Typst sets a face's optical size to the text's
+/// by itself, and every other axis from `variations`, the later winning,
+/// so a level names its optical size too. A line is a capital's height and the leading below it, so the
 /// leading is the pitch less the capitals, and a gap between paragraphs is
 /// said as baseline to baseline (`gap`).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
-#let text-axes = (opsz: 14, SOFT: 50, WONK: 0)
-#let display-axes = (opsz: 144, SOFT: 100, WONK: 1)
 #let half = pitch / 2
 #let gap(n) = n * pitch - cap
-#set text(font: face.text, size: body-size, weight: 380, variations: text-axes, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: hyphen-cost, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
+#set text(..level.words.text, lang: "en", hyphenate: true, costs: (hyphenation: hyphen-cost, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
 #set par(justify: false, linebreaks: "optimized", leading: pitch - cap, spacing: gap(1.5))
 // A word that holds a hyphen of its own breaks only there, as a typesetter
 // would, never at one Typst adds, which would read as a third word.
 #show regex("[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)+"): set text(hyphenate: false)
-// Strong is the words a step heavier, at 480, in the strong text: Typst's
-// own adds 300, which draws this face black.
-#set strong(delta: 100)
+// Strong is the words at their strong span's weight, in the strong text:
+// Typst's own adds 300, which draws this face black.
+#set strong(delta: level.words.strong - level.words.text.weight)
 #show strong: set text(fill: ink.strong)
-// Code in his mono at 0.93 of the words, as the spec has it: its x-height
-// (1035 of 2000) stands a little over theirs (938 at optical size 14), in
-// the text's colour and with no box. Typst's
-// raw takes 0.8 em of its own, so the size is said whole.
-#show raw: set text(font: face.code, size: 0.93 * body-size)
+// Code at its level, in the colour of what's around it and with no box.
+// Typst's raw takes 0.8 em of its own, so the size is said whole.
+#show raw: it => context text(..level.code.text, fill: text.fill, it)
 // Headings, set by lines: more room above a heading than below it, so it
 // belongs to what follows. A gap is baseline to baseline, rounded to the
 // half line so every baseline stays on the grid. A block's top edge is its
@@ -138,31 +135,31 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // their top edge as the regular's capitals, keeping every baseline where
 // the gaps put it.
 #let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
-#let title-size = 42pt
-#let section-size = 17.1pt
-// An eyebrow: the mono's capitals, small, tracked as every eyebrow on the
-// desktop is.
-#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: eyebrow-tracking, fill: ink.muted, upper(body))
-#show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
+#let title-size = level.title.text.size
+#let section-size = level.section.text.size
+#let label-size = level.label.text.size
+// An eyebrow: a label, as every eyebrow on the desktop is.
+#let eyebrow(body) = at(level.label, body)
+#show heading: set text(hyphenate: false)
 // A title's lines two and a half lines apart, a section's one.
-#show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em, top-edge: caps * title-size)
+#show heading.where(level: 1): set text(..level.title.text, top-edge: caps * title-size)
 #show heading.where(level: 1): set par(leading: 2.5 * pitch - caps * title-size)
 #show heading.where(level: 1): set block(above: lines(3, caps * title-size), below: 1.5 * pitch - cap)
-#show heading.where(level: 2): set text(size: section-size, weight: 520, top-edge: caps * section-size)
+#show heading.where(level: 2): set text(..level.section.text, top-edge: caps * section-size)
 #show heading.where(level: 2): set par(leading: pitch - caps * section-size)
 #show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: 1.5 * pitch - cap)
-#show heading.where(level: 3): set text(variations: text-axes, style: "italic", size: body-size, weight: 460, top-edge: cap)
+#show heading.where(level: 3): set text(..level.part.text, top-edge: cap)
 #show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
-#show heading.where(level: 4): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
-#show heading.where(level: 5): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
-#show heading.where(level: 6): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 4): it => block(above: lines(2, code-caps * label-size), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 5): it => block(above: lines(2, code-caps * label-size), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 6): it => block(above: lines(2, code-caps * label-size), below: pitch - cap, eyebrow(it.body))
 // A title of more than one line has its lines balanced: set at the
 // narrowest width that keeps the lines it needs at the full measure, found
 // in a few halvings, so no word is left alone on its last line.
 #show heading.where(level: 1): it => layout(size => {
   let tall(width) = measure(block(width: width, {
     set par(leading: 2.5 * pitch - caps * title-size)
-    text(font: face.text, variations: display-axes, size: title-size, weight: 540, tracking: -0.02em, hyphenate: false, top-edge: caps * title-size, it.body)
+    text(..level.title.text, hyphenate: false, top-edge: caps * title-size, it.body)
   })).height
   let full = tall(size.width)
   if full < 2.5 * pitch { return it }
@@ -178,8 +175,8 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // it, or over the words when there's no title.
 #show <title>: set block(above: 0pt)
 #let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
-// The paragraph after the title, in the text face's italic.
-#let lede(body) = par(text(style: "italic", weight: 360, top-edge: cap, body))
+// The paragraph after the title, in the voice.
+#let lede(body) = par(text(..level.voice.text, top-edge: cap, body))
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
@@ -193,10 +190,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let glow = color.mix((ink.background, 82%), (ink.raised, 18%), space: rgb)
 #let glow-half = color.mix((glow, 35%), (ink.background, 65%), space: rgb)
 #set page(background: place(top + center, rect(width: 100%, height: 720pt, fill: gradient.radial((glow, 0%), (glow-half, 50%), (ink.background, 100%), center: (50%, 0%), radius: 50%, relative: "self"))))
-// A thematic break is a fleuron: an asterism of Fraunces Display's
+// A thematic break is a fleuron: an asterism of the title's cut's
 // asterisks in the accent, centred, standing as a line two lines from the
 // words either side.
-#let star = text(font: face.text, variations: display-axes, weight: 500, size: 1.3 * body-size, fill: ink.accent, top-edge: "bounds", bottom-edge: "bounds", "*")
+#let star = text(..level.ornament.text, top-edge: "bounds", bottom-edge: "bounds", "*")
 #let fleuron = context {
   let s = measure(star)
   // Its ink stands evenly between the words either side: from the
@@ -210,10 +207,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let rule() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, fleuron))
 // The page ends with a small accent lozenge after its last word.
 #let the-end = box(polygon(fill: ink.accent, (0pt, 0.21em), (0.15em, 0pt), (0.3em, 0.21em), (0.15em, 0.42em)))
-// A key, in the mono, framed: the frame stands outside the line's room,
+// A key, as code is set, framed: the frame stands outside the line's room,
 // over the capitals and under the descenders, so a line with one still
 // steps one line.
-#let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt), outset: (top: 2pt, bottom: 0.3em), radius: 2pt, text(font: face.code, size: 0.93 * body-size, body))
+#let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt), outset: (top: 2pt, bottom: 0.3em), radius: 2pt, text(..level.code.text, body))
 // Lists hang their marks in the margin, so the words keep the measure's
 // edge: an accent bullet, a muted number, a task's box. An item steps one
 // line and a list stands one and a half from what's around it. A list in a
@@ -241,14 +238,14 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   box(width: hang, mark)
   if done { text(fill: ink.muted, body) } else { body }
 }
-// A quote in the text face's italic, its words at the measure's edge and an
+// A quote in the voice, its words at the measure's edge and an
 // accent rule hung 12 pt left of them, two lines from what's around it.
 #let hung-rule(colour, first: cap, body) = block(above: lines(2, first), below: 2 * pitch - cap, stroke: (left: 1.5pt + colour), outset: (left: 12pt + 0.75pt), body)
-#show quote.where(block: true): it => hung-rule(ink.accent, text(style: "italic", weight: 360, it.body))
+#show quote.where(block: true): it => hung-rule(ink.accent, text(..level.voice.text, it.body))
 // An alert is a quote's shape with its rule in its kind's hue and the kind
 // as an eyebrow, one line over its words.
 #let alert-hues = (note: ink.voice, tip: ink.accent, important: ink.program, warning: ink.action, caution: ink.machine)
-#let alert(kind, body) = hung-rule(alert-hues.at(kind, default: ink.accent), first: code-caps * 8.4pt, {
+#let alert(kind, body) = hung-rule(alert-hues.at(kind, default: ink.accent), first: code-caps * label-size, {
   block(below: pitch - cap, eyebrow(kind))
   body
 })
@@ -312,7 +309,8 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       align: (x, y) => if numeric.at(x, default: false) { right } else { left },
       ..all.enumerate().map(((k, row)) => range(n).map(i => {
         let it = cell(row, i)
-        let it = if numeric.at(i, default: false) { text(number-width: "tabular", it) } else { it }
+        // Figures are the mono's, as everywhere.
+        let it = if numeric.at(i, default: false) { text(..level.figure.text, it) } else { it }
         // A table's heads are eyebrows, on the body's baseline.
         if head != none and k == 0 { eyebrow(it) } else { it }
       })).flatten()
@@ -320,8 +318,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   }
   let records = {
     let names = if head == none { () } else { head }
-    // One edge for every record's values, past the widest header.
-    let label = calc.max(0pt, ..names.map(name => measure(eyebrow(name)).width))
+    // One edge for every record's values, past the widest field's name,
+    // each a note beside its value.
+    let field(name) = at(level.note, name)
+    let label = calc.max(0pt, ..names.map(name => measure(field(name)).width))
     let lead = pitch - cap
     set text(hyphenate: false, top-edge: cap, bottom-edge: "baseline")
     stack(..rows.enumerate().map(((k, row)) => block(
@@ -329,9 +329,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       inset: (y: half),
       stroke: if k > 0 { (top: 0.75pt + rule-ink) } else { none },
       stack(spacing: lead,
-        text(fill: ink.strong, weight: 500, cell(row, 0)),
+        strong(cell(row, 0)),
         grid(columns: (label, 1fr), column-gutter: 12pt, row-gutter: lead,
-          ..range(1, n).filter(i => cell(row, i) != []).map(i => (eyebrow(cell(names, i)), cell(row, i))).flatten()))
+          ..range(1, n).filter(i => cell(row, i) != []).map(i => (field(cell(names, i)), cell(row, i))).flatten()))
     )))
   }
   let inside = fit(size.width)
@@ -340,7 +340,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
 }))
-// A code block: the mono at 10.5 pt on a 15 pt line, on the sunken ground
+// A code block: the listing's mono on a 15 pt line, on the sunken ground
 // inset m by l. Its height rounds up to the half line, shared above and
 // below its lines, so the words after it stay on the page's grid. Its top
 // stands one and a half lines under the baseline before it, and the next
@@ -348,13 +348,13 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // widens the block evenly, as far as a table may spread. The language is
 // an eyebrow at the top right, on the first line's baseline, or on a line
 // of its own when the first line would reach it.
-#let code-size = 10.5pt
+#let code-size = level.listing.text.size
 #let code-line = 15pt
 #let code-inset = (x: 12pt, y: 9pt)
 // The mono's set rules sit outside `layout`, since `measure` in its
 // closure takes the styles `layout` was called with.
 #let codeblock(lang: "", first: 0, longest: 0, body) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, {
- set text(font: face.code, size: code-size, top-edge: "cap-height", bottom-edge: "baseline", hyphenate: false)
+ set text(..level.listing.text, top-edge: "cap-height", bottom-edge: "baseline", hyphenate: false)
  set par(leading: code-line - code-caps * code-size, justify: false, spacing: code-line - code-caps * code-size)
  layout(size => {
   let advance = measure([0]).width
@@ -369,20 +369,20 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   let h = measure(block(width: inner, lines)).height
   let tall = calc.ceil((h + 2 * code-inset.y) / half) * half
   let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset.x, y: (tall - h) / 2), {
-    if label != none and not alone { place(top + right, dy: code-caps * (code-size - 8.4pt), label) }
+    if label != none and not alone { place(top + right, dy: code-caps * (code-size - label-size), label) }
     lines
   })
   let out = (width - size.width) / 2
   if out > 0pt { pad(left: -out, right: -out, shown) } else { shown }
  })
 })
-// A picture that can't be shown says what it shows, in the italic, muted
-// and never broken, as a caption would.
-#let picture(alt) = text(style: "italic", fill: ink.muted, hyphenate: false, alt)
+// A picture that can't be shown says what it shows, as a note never
+// broken, as a caption would.
+#let picture(alt) = text(..level.note.text, hyphenate: false, alt)
 // A picture standing alone is centred, as wide as it is up to the measure
 // and past it as far as a table spreads. Its height rounds up to the half
 // line so the words after it stay on the grid, and its alt text is its
-// caption, in the italic, muted and centred, a line under it. It sits at
+// caption, a note centred a line under it. It sits at
 // the foot of its rounded height, so a line of words in its place, as a
 // picture that can't be shown is, stands on a line too.
 #let alone(body, caption) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, pad(left: -spread, right: -spread, layout(size => {
@@ -390,7 +390,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   let h = measure(block(width: size.width, shown)).height
   block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, align(bottom, shown))
   if caption != [] {
-    block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(style: "italic", fill: ink.muted, hyphenate: false, caption))))
+    block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(..level.note.text, hyphenate: false, caption))))
   }
 })))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
@@ -410,16 +410,17 @@ pub fn template(world: &PageWorld, width: Width) -> String {
     static LOOK: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
     let (ink, look) = LOOK.get_or_init(|| {
         let theme = crate::theme::get();
-        let size = theme.sizes.text;
-        let cap = world.capitals_pt(&theme.faces.text, size);
+        let words = &theme.levels.words;
+        let size = words.size;
+        let cap = world.capitals_pt(&words.family, size);
         // Each face's capitals in ems, for the gaps over a heading and an
         // eyebrow, so the page holds its line in whatever faces it finds.
         let caps = cap / size;
-        let code_caps = world.capitals_pt(&theme.faces.code, 1.0);
+        let code_caps = world.capitals_pt(&theme.levels.code.family, 1.0);
         (
             theme.typst(),
             format!(
-                "#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
+                "#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
             ),
         )
     });

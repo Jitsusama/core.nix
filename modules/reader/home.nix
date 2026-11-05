@@ -31,9 +31,9 @@
 # (reader-says-the-keys-it-takes).
 #
 # Every colour and face is the theme's, written here as reader/theme.json
-# in the configuration home, which the reader reads as it starts: its
-# words and headings in the serif face, the words at its large step, and
-# code in the mono; the page on the background, headings in the strong text, code on the sunken
+# in the configuration home, which the reader reads as it starts: every
+# run of text at one of the theme's type levels, the page's words and
+# headings in the serif and code in the mono; the page on the background, headings in the strong text, code on the sunken
 # ground in the colours bat wears (../theme/tmtheme.nix), and search's marks
 # as Neovim's.
 #
@@ -81,15 +81,7 @@ let
       ;
     # Visual mode's cursor is the terminal's, as kitty and Neovim draw it.
     inherit (terminal) cursor cursor_text;
-    faces = {
-      text = font.serif.family;
-      code = font.mono.family;
-    };
-    # The serif's large step, which sets its capitals level with the
-    # mono's at that step.
-    sizes.text = builtins.fromJSON type.serif.large;
-    # One tracking for every eyebrow, the launcher's plate's and the page's.
-    eyebrow.tracking = type.eyebrow.tracking;
+    inherit levels;
     code = "${
       import ../theme/tmtheme.nix {
         inherit
@@ -100,6 +92,119 @@ let
           ;
       } colours.sunken
     }/Jitsusama.tmTheme";
+  };
+
+  # A level of the theme's type as the page sets it, each value worked out:
+  # its face's family, its step's size in points, its weight (the serif's
+  # from its axis) and its other axes, and whether it's in capitals.
+  set = level: {
+    family = font.${level.face}.family;
+    size = builtins.fromJSON type.${level.face}.${level.step};
+    weight = level.axes.wght or level.weight;
+    axes = removeAttrs level.axes [ "wght" ];
+    capitals = level.case == "capitals";
+    inherit (level)
+      italic
+      tracking
+      features
+      colour
+      strong
+      ;
+  };
+  inherit (type.levels)
+    title
+    words
+    voice
+    figure
+    label
+    note
+    ;
+  # The words' size, which code and the fleuron are set to a share of.
+  wordsSize = (set words).size;
+  # The page is a document, so it has tiers of its own, each one of the
+  # theme's levels and, where the page bends it, the bend said beside it
+  # (docs/design.md, Type). Every run of text the page and its foot set
+  # names one, never a size or a weight (type-is-set-by-level).
+  levels = {
+    # The page's title, its threshold and the one place the serif is set at
+    # Display's step: drawn for a poster's size, softened and wonky, at
+    # 540, and drawn 0.02 em closer, as a title this large holds together.
+    title = set (
+      title
+      // {
+        step = "display";
+        axes = {
+          wght = 540;
+          opsz = 144;
+          SOFT = 100;
+          WONK = 1;
+        };
+        tracking = -2.0e-2;
+      }
+    );
+    # A section (##) at Title, a clear step above the words.
+    section = set title;
+    # ### at the words' size, in the italic and a touch heavier, in strong:
+    # it heads, so the voice's rule bends here, and only here.
+    part = set (
+      words
+      // {
+        italic = true;
+        axes = words.axes // {
+          wght = 460;
+        };
+        strong = null;
+        colour = "strong";
+      }
+    );
+    # The words in the text, as a page's are rather than beside a name. A
+    # strong span is 100 heavier than the line, since the theme's 600 draws
+    # this face black at a reading size.
+    words = set (
+      words
+      // {
+        strong = 480;
+        colour = "text";
+      }
+    );
+    # The lede and a quote: the voice, a touch lighter, in the text.
+    voice = set (
+      voice
+      // {
+        axes = voice.axes // {
+          wght = 360;
+        };
+        colour = "text";
+      }
+    );
+    # Code in a line: the figures' mono at 0.93 of the words, so its
+    # x-height meets theirs (1035 and 964 of 2000).
+    code = set figure // {
+      size = 0.93 * wordsSize;
+    };
+    # A table's figures, in the mono, as everywhere.
+    inherit (lib.mapAttrs (_: set) { inherit figure label note; }) figure label note;
+    # A code block: the figures' mono at the note's size, on its own line.
+    listing = set (figure // { inherit (note) step; });
+    # The fleuron's asterisks: the title's cut, lighter, at 1.3 of the
+    # words, in the accent.
+    ornament =
+      set (
+        title
+        // {
+          axes = {
+            wght = 500;
+            opsz = 144;
+            SOFT = 100;
+            WONK = 1;
+          };
+          tracking = 0;
+          colour = "accent";
+        }
+      )
+      // {
+        size = 1.3 * wordsSize;
+      };
   };
 
   # Every key, as the reader's own list gives it (reader --keys), in the
