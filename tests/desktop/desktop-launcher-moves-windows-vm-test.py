@@ -246,13 +246,13 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
-    desktop.step_in("right")
+    desktop.step_in()
     desktop.type_in("scratch 08", selecting="Scratch 08")
-    # In normal, where the arrows step; insert's move the caret, so it names none.
+    # In normal, where l steps in; on the find letters type, so it names none.
     desktop.normal()
     told = (desktop.showing()["selected"] or {}).get("told", [])
     assert "\u2192" in told, told
-    desktop.step_in("right")
+    desktop.step_in()
     desktop.launcher_until(lambda shown: {"Size", "Float"} <= set(shown["rows"]))
     desktop.close_launcher()
     for title in scratch:
@@ -265,7 +265,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
 
 
-# The right arrow steps into what can be done to a window, and a verb
+# l steps into what can be done to a window, and a verb
 # that needs a target asks for it in the same field.
 
 
@@ -849,7 +849,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     assert desktop.showing()["path"] == ["Shortcuts", "Desktop", "Workspaces"]
     # Back out: to the desktop with "work" typed, cleared, then the top.
     for _step in range(3):
-        machine.send_key("left")
+        machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"] and shown["rows"] == layers)
     # At the top, what's typed finds a chord in any layer, flat.
     desktop.type_in("paste")
@@ -915,14 +915,14 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     assert desktop.showing()["path"] == ["Shortcuts", "Terminal"]
     assert desktop.showing()["rows"][:2] == ["Tabs", "Tab Numbers"]
     desktop.photograph("launcher-shortcuts-over-kitty")
-    # The right arrow steps into a group, and the left back out to the
+    # l steps into a group, and h back out to the
     # layers, the terminal's first and selected, saying it's the window's,
     # and the desktop's next.
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal", "tabs"])
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
     assert desktop.showing()["rows"][:2] == ["Terminal", "Desktop"]
     assert (desktop.showing()["selected"] or {}).get("name") == "Terminal"

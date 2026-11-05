@@ -661,14 +661,14 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     assert parts[:2] == ["Open", "In Use \u00b7 chrome"], parts
     assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[2]), parts
     desktop.photograph("launcher-camera")
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In Use")
     desktop.step_in()
     # Copying what it says comes last, since nothing inside does anything.
     assert desktop.showing()["rows"] == ["chrome", "Copy"]
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == [])
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     machine.send_key("ret")

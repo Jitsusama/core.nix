@@ -156,7 +156,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert re.search("^-?\\d+ \\u00b0C at the ", desktop.as_account("wl-paste --no-newline"))
     # Each part reads name first, a step in; Return opens one, its
-    # history first, and so does the right arrow, once back out.
+    # history first, and so does l, once back out.
     desktop.answer("heat")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.step_in()
@@ -173,11 +173,11 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     desktop.step_in()
     desktop.launcher_until(in_battery)
     desktop.photograph("launcher-heat-part")
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
     )
-    # A figure holding more steps in on Return, as the right arrow does,
+    # A figure holding more steps in on Return, as l does,
     # and copies what it shows from the Copy listed last inside (Joel,
     # 2026-10-28: "hitting enter on the battery closes the window when
     # right opens it").
@@ -231,7 +231,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.launcher_ready()
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Focus", "Brightness", "Room Light"])
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Brightness")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Brightness to 40%" in shown["rows"])
@@ -262,7 +262,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:4] == [*KBD_LEVELS, "Copy"])
     for _ in range(KBD_LEVELS.index("Light to 2 of 2")):
-        machine.send_key("down")
+        desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {KBD_LIGHT}", timeout=dt.timedelta(seconds=10))
@@ -278,7 +278,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
         desktop.as_account("wl-paste --no-newline"),
     )
     # The keyboards are a step into the answer, and each holds its parts,
-    # named first, a step further by Return as by the right arrow. QEMU's
+    # named first, a step further by Return as by l. QEMU's
     # own is the laptop's kind, with all three lock lights and a PS/2 port.
     # desk-facts doesn't run here, so what it would say of it is written
     # for it, and reads as a part.
@@ -337,7 +337,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.down_to(board)
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Repeat" in shown["rows"])
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,
     )
@@ -628,7 +628,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
         ]
     ):
         if index > 0:
-            machine.send_key("down")
+            desktop.next_row()
         # The wait ends before the loop moves on, so it reads this pass's row.
         desktop.launcher_until(
             lambda shown: (
@@ -1351,7 +1351,7 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.launcher_until(lambda shown: shown["footer"] == "installing")
         machine.send_key("ret")
         # Once in, Install waits for the restart, dimmed in place.
-        machine.send_key("left")
+        machine.send_key("h")
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:1] == ["Install 1.13.0"]

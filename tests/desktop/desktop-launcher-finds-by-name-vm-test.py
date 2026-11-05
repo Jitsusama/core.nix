@@ -228,7 +228,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     for query in picked_in_a_week + surveyed + audited:
-        # Each query is typed on the find, and the left arrow clears it in normal.
+        # Each query is typed on the find, and h clears it in normal.
         desktop.on_find()
         machine.send_chars(query)
         shown = settled_on(query)
@@ -247,7 +247,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
             desktop.launcher_ready()
         else:
             desktop.normal()
-            machine.send_key("left")
+            machine.send_key("h")
     desktop.close_launcher()
     assert listed_twice == [], "a thing was listed twice"
     # Most of those find something, so the rows were looked at.
@@ -429,9 +429,9 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.photograph("launcher-category")
     desktop.type_in("add", selecting="Address")
-    # In normal, the left arrow, as h, steps out at once, the word put back.
+    # In normal, h steps out at once, the word put back.
     desktop.normal()
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "network")
     desktop.close_launcher()
     # A question that starts with a category's word is still a question.
@@ -513,6 +513,25 @@ def waits_then_lets_go(desktop: Desktop, key: str, typed: str | None = None) -> 
     desktop.reported("showing ", let_go, before)
 
 
+def arrows_move_nothing(desktop: Desktop) -> None:
+    """Press each arrow in normal on the first row: none moves it, and each says so.
+
+    Only j and k move (Joel, 2026-11-05: "rely only on vi right feeling things"), and an arrow
+    says "not here", as every key with no meaning does, until the next key.
+    """
+    for arrow in ("down", "up", "right", "left"):
+        desktop.machine.send_key(arrow)
+        desktop.launcher_until(
+            lambda shown: (
+                shown["current"] == 0
+                and shown["saying"][-1:] != []
+                and shown["saying"][-1].endswith("not here")
+            )
+        )
+        desktop.machine.send_chars("k")
+        desktop.launcher_until(lambda shown: shown["saying"] == [])
+
+
 def walk_the_rows_moves(desktop: Desktop) -> None:
     """Press every move normal takes through a search's rows, as Joel would through niri.
 
@@ -540,9 +559,10 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
             else:
                 machine.send_key(key)
 
-    for keys, row in [("j", 1), ("down", 2), ("k", 1), ("up", 0), ("G", last), ("g g", 0)]:
+    for keys, row in [("j", 1), ("j", 2), ("k", 1), ("k", 0), ("G", last), ("g g", 0)]:
         press(keys)
         at(row)
+    arrows_move_nothing(desktop)
     # A count stands in the mode word's place in the foot until its move, which goes that
     # many, and before G names the row.
     machine.send_chars("3")
@@ -914,11 +934,11 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(lambda shown: "VPN" in shown["rows"])
     desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
-    # In normal the right arrow, as l, steps into it.
+    # In normal l steps into it.
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
-    # Stepping back out, by the left arrow as h, lands on the row it came from, with its find.
-    machine.send_key("left")
+    # Stepping back out, by h, lands on the row it came from, with its find.
+    machine.send_key("h")
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) == 1
@@ -949,7 +969,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     assert "Machine" not in rows, rows
     processors = [thing["is"] for thing in desktop.showing()["things"]].index("answer:machine:cpu")
     for _ in range(processors):
-        machine.send_key("down")
+        desktop.next_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "answer:machine:cpu"
     )
@@ -962,7 +982,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(lambda shown: shown["path"] == ["Machine", "Processor", "Cores"])
     cores = desktop.showing()["rows"]
     if len(cores) > 1:
-        machine.send_key("down")
+        desktop.next_row()
     chosen = cores[min(1, len(cores) - 1)]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
     busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
@@ -987,7 +1007,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     )
     machine.succeed("systemctl stop busy-cores")
     # Back out, it's on the row it came from.
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     desktop.close_launcher()
 

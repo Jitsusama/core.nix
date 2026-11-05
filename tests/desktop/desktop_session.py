@@ -622,13 +622,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_ready()
         self.type_in(typed)
 
-    def step_in(self, key: str = "right") -> None:
+    def step_in(self, key: str = "l") -> None:
         """Press a key that steps into the selected row, and wait until the launcher holds it.
 
-        That's the right arrow into a thing's verbs, from normal mode, which it goes into
-        first, or Return into what a verb asks, from either.
+        That's l into a thing's verbs, from normal mode, which it goes into first, or Return
+        into what a verb asks, from either.
         """
-        if key == "right":
+        if key == "l":
             self.normal()
         before = len(self.showing()["held"])
         self.machine.send_key(key)
@@ -647,8 +647,30 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         above = -1 if shown["current"] == -1 else 0
         steps = rows.index(name) - (rows.index(selected) if selected in rows else above)
         for _ in range(abs(steps)):
-            self.machine.send_key("down" if steps > 0 else "up")
+            if steps > 0:
+                self.next_row()
+            else:
+                self.previous_row()
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+
+    def row_keys(self) -> tuple[str, str]:
+        """Give the keys to the next row and the one before, as the launcher's mode takes them.
+
+        Where nothing types, in normal, visual and the drawer, they're j and k, and the arrows
+        do nothing (Joel, 2026-11-05: "rely only on vi right feeling things"); on a line being
+        typed, the arrows, as Vim's insert and its completion menu take them.
+        """
+        mode = self.showing()["mode"]
+        still = mode in {"normal", "visual"} or mode.startswith("page")
+        return ("j", "k") if still else ("down", "up")
+
+    def next_row(self) -> None:
+        """Move the launcher's cursor to the next row, by the key its mode takes."""
+        self.machine.send_key(self.row_keys()[0])
+
+    def previous_row(self) -> None:
+        """Move the launcher's cursor to the row before, by the key its mode takes."""
+        self.machine.send_key(self.row_keys()[1])
 
     def whats_on(self, selected: str) -> None:
         """Wait until the launcher holds Now and the keys, with this thing's row selected."""

@@ -1285,7 +1285,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
-            machine.send_key("left")
+            machine.send_key("h")
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")

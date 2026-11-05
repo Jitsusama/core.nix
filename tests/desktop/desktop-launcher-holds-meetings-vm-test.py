@@ -142,7 +142,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.down_to("Design Review")
     rows = cast("list[str]", desktop.showing()["rows"])
     for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
-        machine.send_key("up")
+        desktop.previous_row()
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
         )
@@ -222,7 +222,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     # Back out, its acts lead with seeing it, Return's own, and then
     # joining, which goes into its call.
     desktop.normal()
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
     )
@@ -701,7 +701,7 @@ def transcripts_listed(desktop: Desktop) -> None:
     desktop.step_in()
     acts = ["Open the Transcript", "Open Its Folder", "Copy the Path"]
     desktop.launcher_until(lambda shown: shown["rows"] == acts)
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.down_to("Call With Ada Lovelace")
     drawer = desktop.showing()["selected"]["drawer"]
     assert drawer["body"].startswith("<b>Joel</b>, 0:00: Shall we ship it?"), drawer

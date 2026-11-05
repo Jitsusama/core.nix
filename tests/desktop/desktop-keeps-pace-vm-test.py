@@ -298,13 +298,15 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
         rows = desktop.showing()["count"]
         assert rows > 1, f"Programs lists {rows} rows, too few to move through"
         timing.begin()
-        # Up and down its whole length, turning at each end, where a key
-        # would move nothing and so draw nothing.
+        # Up and down its whole length, by the keys its mode moves by (j
+        # and k in normal), turning at each end, where a key would move
+        # nothing and so draw nothing.
         at, step = 0, 1
+        down, up = desktop.row_keys()
         for _ in range(ARROWS):
             if not 0 <= at + step < rows:
                 step = -step
-            timing.press("down" if step > 0 else "up")
+            timing.press(down if step > 0 else up)
             at += step
         timing.keep()
         desktop.close_launcher()
