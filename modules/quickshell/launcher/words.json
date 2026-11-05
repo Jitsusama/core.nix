@@ -3497,6 +3497,11 @@
       "name": "The Page"
     },
     {
+      "id": "shortcuts:reader:commands",
+      "in": "shortcuts",
+      "name": "Command Line"
+    },
+    {
       "id": "shortcuts:zathura:turning",
       "in": "shortcuts",
       "name": "Turning Pages"

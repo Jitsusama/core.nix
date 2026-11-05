@@ -108,7 +108,8 @@ onLinux {
   # zz and zb place it, 50% goes half way and % from a code block's { to
   # its }, * and # search for the word here, :noh, :5, E492 and E481 on
   # the command line, :%y copies the file and says its lines, :'<,'>y the
-  # lines V j took, a range past the end is E16, Escape at rest leaves the search's marks, every change
+  # lines V j took, a range past the end is E16, Ctrl+W, Ctrl+U and Ctrl+H
+  # edit the line and Ctrl+C drops it, Escape at rest leaves the search's marks, every change
   # (d d, c c, S, x, p, d and c with a motion, :d, d on a selection) says
   # E21, Return a line, gO lists the headings and Return in it goes
   # to one, a mark is kept with its file between openings, gf and Ctrl+]

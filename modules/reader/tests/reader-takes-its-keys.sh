@@ -546,6 +546,22 @@ press ':%q'
 press -k Return
 logged '^said: E481: No range allowed' 1
 
+# The line's keys are the key language's: Ctrl+W takes the last word,
+# Ctrl+U the rest and Ctrl+H a letter, and Ctrl+C drops the line, so the
+# :5 after it is a line of its own.
+press ':abc def'
+press -M ctrl w -m ctrl
+press -M ctrl u -m ctrl
+press nohx
+press -M ctrl h -m ctrl
+press -k Return
+logged '^command: "noh" is NoHighlight' 2
+press ':q'
+press -M ctrl c -m ctrl
+press ':5'
+press -k Return
+logged '^command: "5" is Go\(Lines\(5, 5\)\)' 2
+
 # :%y copies the file as it's written and says how many lines, as Vim
 # does; :'<,'>y the lines the last selection took, once it has ended;
 # and a range past the file's end is E16.

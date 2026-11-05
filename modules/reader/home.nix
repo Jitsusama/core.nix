@@ -40,7 +40,11 @@
 # link to another markdown file sets it in the same window, as Neovim's
 # gf, keeping the place on the first, and Ctrl+O and Ctrl+I go back and
 # forth across files. Escape only cancels: at rest it does nothing, as
-# Vim's does, and :noh puts the search's marks away. The same table, as
+# Vim's does, and :noh puts the search's marks away. The find line and
+# the command line take the key language's keys, as Vim's command line:
+# Escape or Ctrl+C drops one, Backspace or Ctrl+H takes a letter and
+# leaves an empty line, Ctrl+W a word, Ctrl+U the rest, and Return makes
+# it; held, a key never leaves the line. The same table, as
 # the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
@@ -262,6 +266,7 @@ let
   objects = key "objects";
   copying = key "copying";
   page = key "page";
+  commands = key "commands";
   keys = [
     (moving "down" "Down" "Down a line")
     (moving "down" "j" "Down a line")
@@ -349,6 +354,14 @@ let
     (page "show-keys" "F1" "Show every key here")
     (page "close" "Z Z" "Close the page")
     (page "close" "Space w" "Close the page")
+    (commands "back" "Escape" "Cancel the line, a selection or a count")
+    (commands "leave" "Ctrl+C" "Cancel the line")
+    (commands "delete-letter" "Backspace" "Delete a letter, or leave an empty line")
+    (commands "delete-letter" "Ctrl+H" "Delete a letter, or leave an empty line")
+    (commands "delete-word" "Ctrl+W" "Delete the word before")
+    (commands "delete-to-start" "Ctrl+U" "Delete everything typed")
+    (commands "run" "Return" "Run the command typed")
+    (commands "open" "Return" "Search for what's typed")
   ];
 in
 {

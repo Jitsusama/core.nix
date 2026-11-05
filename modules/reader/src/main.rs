@@ -1262,9 +1262,9 @@ impl App {
     /// screen's keys through its rows, / and ? then n and N through its
     /// words, Return to the heading chosen, and Escape or ZZ away: q does
     /// nothing, as in his Neovim, since nothing records.
-    fn outline_key(&mut self, key: keys::Key) {
+    fn outline_key(&mut self, key: keys::Key, held: bool) {
         if let Some(typing) = self.outline_typing.as_mut() {
-            let said = typing.key(key);
+            let said = typing.key(key, held);
             match said {
                 search::Typed::Changed => self.ask_prompt(),
                 search::Typed::Done => {
@@ -1295,7 +1295,10 @@ impl App {
             // waiting for its second, as any key vi doesn't know does.
             let pressed = self.keys.press(key, false);
             if key == keys::Key::Return {
-                self.outline_go();
+                // Only a fresh press goes, as a held key never leaves.
+                if !held {
+                    self.outline_go();
+                }
             } else if let Some((act, count)) = pressed {
                 self.outline_act(act, count);
             }
@@ -2258,8 +2261,7 @@ impl App {
                 }
             }
             Act::Command => {
-                self.commanding =
-                    Some(search::Typing::new(true, self.heading() / self.px_per_pt()));
+                self.commanding = Some(search::Typing::command(self.heading() / self.px_per_pt()));
                 self.ask_prompt();
             }
             _ => {}
@@ -3614,16 +3616,16 @@ impl App {
                 }
             }
             if let Some(typing) = self.commanding.as_mut() {
-                let said = typing.key(key);
+                let said = typing.key(key, held);
                 self.commanded(said);
                 return;
             }
             if self.outline.is_some() {
-                self.outline_key(key);
+                self.outline_key(key, held);
                 return;
             }
             if let Some(typing) = self.typing.as_mut() {
-                let said = typing.key(key);
+                let said = typing.key(key, held);
                 self.typed(said);
                 return;
             }
