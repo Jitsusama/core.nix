@@ -323,14 +323,17 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
             desktop.type_in(part.lower(), selecting=part)
             desktop.step_in()
 
-    def press(name: str, then: str = "", becomes: str = "") -> None:
+    def press(name: str, then: str = "", becomes: str = "", *, lands: bool = True) -> None:
         """Press Return on a row by its name: it stays, saying so or becoming its opposite.
 
         Each changes how the program plays, so the launcher stays. One that says where it is
         now has what was typed cleared for the next; one that becomes its opposite is closed.
+        Each but a skip is landed on first; a skip is pressed again and again, and the key
+        language says it changes nothing, so one Return from the find does it.
         """
         desktop.type_in(name.lower(), selecting=name)
-        desktop.land()
+        if lands:
+            desktop.land()
         machine.send_key("ret")
         if then:
             desktop.launcher_until(lambda shown: shown["footer"] == then)
@@ -356,10 +359,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("First tone", "Test tones"))
     # Next and Previous keep the launcher, saying what's on now, and what's
     # playing follows.
-    press("Next", then="Second tone, Test tones")
+    press("Next", then="Second tone, Test tones", lands=False)
     playing("Playing", "Second tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "Second tone")
-    press("Previous", then="First tone, Test tones")
+    press("Previous", then="First tone, Test tones", lands=False)
     playing("Playing", "First tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "First tone")
     # Paused from elsewhere, as a media key does, Pause says Play.

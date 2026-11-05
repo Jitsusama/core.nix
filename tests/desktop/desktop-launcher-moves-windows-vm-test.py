@@ -291,6 +291,9 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
     into_notes("move")
     desktop.step_in("ret")
     desktop.photograph("launcher-target")
+    # Moving it changes how things stand, so Return from the find lands on
+    # the workspace, and a second moves it there.
+    desktop.land()
     machine.send_key("ret")
 
     def moved(_: bool) -> bool:
@@ -314,8 +317,8 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     selected = desktop.showing()["selected"]
     assert selected["side"] == "Notes for Tuesday", selected
     # Return steps in, to what can be done to it, all but going to it,
-    # since it's the one he's in. Typed, in insert, the foot says Return
-    # alone, since insert's arrows move the caret.
+    # since it's the one he's in. Typed, on the find, the foot says Return
+    # alone, since the find's arrows move the caret.
     assert selected["told"] == ["\u21b5"], selected
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
@@ -325,6 +328,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     # Full width makes its column the screen's width, as niri says.
     before = desktop.window_titled("Notes for Tuesday")
     desktop.type_in("full", selecting="Full Width")
+    desktop.land()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
 
@@ -346,6 +350,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     assert "\u21b5" in told, told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
+    desktop.land()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
 
