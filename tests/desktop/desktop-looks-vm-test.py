@@ -341,6 +341,15 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         assert shown["question"] == "Close 2 windows? (y/n)", shown
         assert shown["questionWhole"], f"at {scale} the ask was cut: {shown}"
         assert shown["tinted"] == [0, 1], shown
+        # The rows it covers wear the tint alone, the find's wash giving
+        # way on each, and the line leads with no glyph, since it isn't a
+        # find while it asks.
+        laid = desktop_session.laid_out(desktop)
+        covered = [row for row in laid["rows"] if row["at"] in shown["tinted"]]
+        assert covered, f"at {scale} no covered row was drawn: {laid['rows']}"
+        assert not any(row["washed"] for row in covered), f"at {scale} washed {covered}"
+        leading = min(laid["field"], key=lambda word: word["x"])
+        assert leading["text"].startswith("Close"), f"at {scale} the line leads {leading}"
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
