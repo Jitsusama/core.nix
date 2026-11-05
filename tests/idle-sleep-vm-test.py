@@ -43,6 +43,8 @@ HELD = "systemd-inhibit --list --no-legend --no-pager | grep -q Working"
 FALLING_ASLEEP = dt.timedelta(minutes=1)
 # How long logind is given to sleep when it mustn't: its five seconds three times over.
 LOOKING = dt.timedelta(seconds=15)
+# The unit udev restarts on every power supply event, which reads the charger.
+FOLLOWER = "idle-sleep-follows-the-charger.service"
 # How long the charger coming or going may take to reach logind's settings.
 FOLLOWING = dt.timedelta(seconds=30)
 
@@ -121,6 +123,19 @@ def test_unplugging_the_charger_from_an_idle_machine_sleeps_it(laptop: Laptop) -
     laptop.idle(idle=True)
     laptop.charger(plugged=False)
     laptop.machine.wait_until_succeeds(ASLEEP, timeout=FALLING_ASLEEP)
+    laptop.settle()
+
+
+def test_a_burst_of_power_events_leaves_it_following_the_charger(laptop: Laptop) -> None:
+    """An unplug ending a burst of power supply events, as a supply settling sends, still counts."""
+    laptop.machine.succeed(
+        "for _ in $(seq 20); do"
+        " udevadm trigger --action=change --subsystem-match=power_supply; done"
+    )
+    laptop.charger(plugged=False)
+    laptop.machine.wait_until_succeeds(
+        f"systemctl show -P ActiveState {FOLLOWER} | grep -qx inactive", timeout=FOLLOWING
+    )
     laptop.settle()
 
 
