@@ -5,6 +5,11 @@
 //!
 //! A request is padded to its reply's length, as chronyd requires of
 //! version 6, so an answer is never larger than what asked for it.
+//!
+//! It's written here rather than taken from aws's chrony-candm crate,
+//! which knows only the older reply to ntpdata (16) and not the one chrony
+//! 4.9 gives (26, `RPY_NTP_DATA2`), so it couldn't read any server's last
+//! exchange.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
