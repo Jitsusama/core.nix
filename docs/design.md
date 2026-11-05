@@ -1852,7 +1852,9 @@ characters. o goes to the other end, gv brings the last back, and : gives
 :'<,'>. The same operator pressed again within 300 ms of a visual
 operator is taken with it, so V j j d d acts on three. While a surface is
 in visual, operator-pending or on the command line, its rows hold still,
-and what arrives waits behind a "2 new" line.
+and what arrives waits until the mode ends. The foot counts it as "2 new",
+its last status fact before the mode word, which never gives way, so it
+shows on a full list too; then the rows come in at the end.
 
 **Operator-pending** follows d, y or c: a motion, a count, a text object
 or the operator again. On a list a paragraph is a run of rows that ends at
