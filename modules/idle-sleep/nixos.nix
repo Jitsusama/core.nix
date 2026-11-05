@@ -65,6 +65,12 @@ in
     # It reloads logind, which has to be running to hear it.
     after = [ "systemd-logind.service" ];
     wantedBy = [ "multi-user.target" ];
+    # A charger plugged in or out, or a USB-C supply settling, sends a burst
+    # of power_supply events, each a restart, past systemd's five starts in
+    # ten seconds. The unit was then refused, and the burst's last reading,
+    # the one that counts, never acted on. Each run is a reading and at most
+    # one reload, so it takes every one.
+    startLimitIntervalSec = 0;
     path = [ config.systemd.package ];
     serviceConfig = {
       Type = "oneshot";
