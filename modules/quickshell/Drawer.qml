@@ -669,15 +669,16 @@ Floating {
         return drawnRows().every(row => row.oneLineBeside);
     }
     // Whether every value in its script's own digits has them stand as
-    // tall as the figures' do, to a twentieth, so one column reads at one
-    // size, for the launcher to report when asked.
+    // tall as the figures' do, to a twentieth or the pixel a face's bounds
+    // are rounded to, so one column reads at one size, for the launcher to
+    // report when asked.
     function digitsStandAsFigures() {
         const digits = scriptDigits[script] ?? "";
         const figures = latinFace.tightBoundingRect("0123456789").height;
         const own = value => digits.split("").some(digit => String(value).includes(digit));
         return drawnRows().every(row => !row.known || !own(row.modelData.value)
             || Math.abs(faceOf(row.modelData).tightBoundingRect(digits).height - figures)
-                <= figures / 20);
+                <= Math.max(1, figures / 20));
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
