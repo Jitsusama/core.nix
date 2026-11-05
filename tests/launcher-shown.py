@@ -42,7 +42,6 @@ OTHER_SENSE = {
     "heat:display-engine": "the processor's part that drives the screens, as Intel names it",
     "machine:cpu:kept-by-display-engine": "Heat's Display Engine, as Intel names it",
     "power:limit": "a battery's charge limit, not an allowance",
-    "shortcuts:neovim:editor:commands": "Neovim's command line, not a connection",
 }
 
 # Things waiting on a rename, each with the quest that owns it.

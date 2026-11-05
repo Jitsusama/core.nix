@@ -63,6 +63,7 @@ onLinux {
   # many, dd and Delete move a picture to the trash and u brings it back,
   # yy copies it, through wl-copy, stood in here, and ? and Space ? ask the
   # launcher for the keys, stood in too, on a picture and in the gallery.
+  # q and Escape close nothing, and ZZ and Space w close it.
   # The picture it opened with, and only that one, is said to the desktop's
   # list of files opened lately, through recent-files, stood in as well.
   swayimg-moves-by-its-keys =
@@ -114,7 +115,7 @@ onLinux {
 
   # swayimg keeps the picture it shows, read by the command its Recent in
   # the launcher is led by as its process and the whole path of a picture
-  # given by name in the folder it was started in, and nothing once q
+  # given by name in the folder it was started in, and nothing once ZZ
   # closes it (../../tests/says-what-it-has-open.sh). What a killed swayimg
   # left is cleared as it starts.
   swayimg-says-the-picture-it-shows =
@@ -154,8 +155,8 @@ onLinux {
         printf 'P3\n1 1\n255\n0 0 0\n' > picture.ppm
         printf '999999\t/gone.ppm\n' > state/swayimg/viewing/999999
         : > state/swayimg/viewing/.999999
-        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} picture.ppm \
-          swayimg -- ${opened} > ran 2>&1 || true
+        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} \
+          --closed-by '-M shift zz -m shift' picture.ppm swayimg -- ${opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
         if [ -n "$(ls -A state/swayimg/viewing)" ]; then
           echo "swayimg left this: $(ls -A state/swayimg/viewing)"

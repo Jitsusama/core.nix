@@ -16,13 +16,14 @@
 # move longer than a screen joins, g x to follow a link by its label and
 # Ctrl+] the one here, gf for the file a line names, ]b and [b to the
 # folder's next markdown file, gO for the headings as a list, :{n}, :q and
-# :noh, q, ZZ or Space w to close, and Space ? or F1 for every key. v and
+# :noh, ZZ, Space w or :q to close, and Space ? or F1 for every key. v and
 # V select, from the first word in view, with the terminal's cursor, moved
 # by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap
 # and i` for text objects and o for the other end; y or Ctrl+C copies the
 # selection as the file's markdown through wl-copy, and at rest y y and
 # y i p copy the first block in view, or its paragraph, each flashing what
-# it took for 200 ms, as his Neovim's yank does. A link to another markdown
+# it took for 200 ms, as his Neovim's yank does. q does nothing, since
+# nothing records. A link to another markdown
 # file sets it in the same window, as Neovim's gf, keeping the place on the
 # first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only
 # cancels. The same table, as the launcher lists it over
@@ -201,7 +202,6 @@ let
     (page "" "Ctrl+0" "Back to its own size")
     (page "show-keys" "Space ?" "Show every key here")
     (page "show-keys" "F1" "Show every key here")
-    (page "close" "q" "Close the page")
     (page "close" "Z Z" "Close the page")
     (page "close" "Space w" "Close the page")
   ];

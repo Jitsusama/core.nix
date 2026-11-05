@@ -759,7 +759,9 @@ def test_the_transcripts_list_each_call_written_down_and_return_opens_it_in_the_
         window = json.loads(desktop.as_account("niri msg --json focused-window"))
         ran = machine.succeed(f"tr '\\0' ' ' < /proc/{window['pid']}/cmdline")
         assert "/Calls/ada/transcript.md" in ran, ran
-        machine.send_key("q")
+        # ZZ closes the reader, as it closes Neovim; q does nothing there.
+        machine.send_key("shift-z")
+        machine.send_key("shift-z")
         machine.wait_until_fails(reading, timeout=dt.timedelta(seconds=10))
         found_with_ada_and_in_standup(desktop, ada)
     finally:

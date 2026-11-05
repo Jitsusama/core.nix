@@ -143,8 +143,9 @@ new name, is a finding for its owner, and nothing is reverted or held. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
-A run the net stops, past two hours or silent for thirty minutes, is a
-stall, not a failure: one stalling twice at a commit is a finding, and no
+A run the net stops, past two hours on a builder or silent there for
+thirty minutes, is a stall, not a failure (the wait for a builder counts
+for neither): one stalling twice at a commit is a finding, and no
 merge is blamed for it.
 The net starts nothing while a hold on the whole machine stands, or while
 `~/.local/state/net/pause` is there, and `merge-net status` says where it

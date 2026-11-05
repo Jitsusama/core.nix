@@ -1,19 +1,27 @@
 """Hold the key map to the key language (keys-speak-the-language).
 
-Reads the language (language.toml) and the key map every layer writes
-(keys.json), and fails, naming each, on:
+Reads the language (language.toml), the key map every layer writes
+(keys.json) and every name Neovim takes for a command of its own
+(neovim-commands.lua's table), and fails, naming each, on:
 
 - a chord a layer binds that the language gives to another act;
 - an act a surface's kinds hold that the surface leaves out;
-- a chord bound to an act that isn't one of the act's keys.
+- a chord bound to an act that isn't one of the act's keys;
+- two acts given one key in one mode, or one name on the command line;
+- a command, or a name between its short form and its whole one, that
+  Neovim takes for another, or one of Neovim's own shortened otherwise;
+- an act that changes something with a key the find line reaches;
+- an act taking an arrow in normal or visual mode, where it's its letter;
+- a mode, kind or field the language doesn't name, a command with no short
+  form or one that doesn't begin it, and an undoing of nothing.
 
-Every surface, a layer that names its kinds, is held to all three. The
-source, Neovim, is held to the first and last for each key it binds
-everywhere in normal mode, so a change to keys.nix fails until the language
-agrees. A layer that names no kinds yet speaks the language only where a
-chord names an act.
+Every surface, a layer that names its kinds, is held to the first three.
+The source, Neovim, is held to the first and third for each key it binds
+everywhere in normal mode and each it binds on the command line, so a
+change to keys.nix fails until the language agrees. A layer that names no
+kinds yet speaks the language only where a chord names an act.
 
-Usage: speaks-the-language.py LANGUAGE KEYS SOURCE
+Usage: speaks-the-language.py LANGUAGE KEYS SOURCE NEOVIM_COMMANDS
 """
 
 import json
@@ -52,6 +60,15 @@ NAMED = {
 }
 HELD = {"d": "super", "c": "ctrl", "a": "alt", "m": "alt", "s": "shift"}
 ORDER = ["super", "ctrl", "alt", "shift"]
+
+# What an act may say of itself.
+FIELDS = {"keys", "modes", "kinds", "takes", "command", "short", "changes", "undoable", "range"}
+# The modes an arrow is its letter in.
+LETTERED = {"normal", "visual"}
+ARROWS = {"up", "down", "left", "right"}
+# Where Neovim's keys on the command line are bound, in the key map's words
+# (modules/neovim/home.nix, scopes).
+COMMAND_LINE = "on the command line"
 
 
 class UnknownKeyError(ValueError):
@@ -107,19 +124,25 @@ def spelled(notation: str) -> str:
     return " ".join(keys)
 
 
+def modes_of(act: dict[str, Any]) -> set[str]:
+    """Read the modes an act is pressed in: normal, unless it says."""
+    return set(act.get("modes", ["normal"]))
+
+
 def acts_of(language: dict[str, Any]) -> Acts:
     """Read each act's keys, spelled as the key map's, its modes and kinds.
 
-    An act is pressed in normal mode unless its modes say otherwise.
+    An act with a letter an arrow is, in normal or visual mode, takes the
+    arrow too, as the language's arrows say.
     """
-    return {
-        name: {
-            "keys": {spelled(key) for key in act["keys"]},
-            "modes": set(act.get("modes", ["normal"])),
-            "kinds": set(act["kinds"]),
-        }
-        for name, act in language["acts"].items()
-    }
+    arrows = {spelled(letter): spelled(arrow) for arrow, letter in language["arrows"].items()}
+    acts = {}
+    for name, act in language["acts"].items():
+        keys = {spelled(key) for key in act.get("keys", [])}
+        if modes_of(act) & LETTERED:
+            keys |= {arrows[key] for key in keys if key in arrows}
+        acts[name] = {"keys": keys, "modes": modes_of(act), "kinds": set(act["kinds"])}
+    return acts
 
 
 def owner(acts: Acts, keys: str, modes: set[str]) -> str | None:
@@ -130,7 +153,7 @@ def owner(acts: Acts, keys: str, modes: set[str]) -> str | None:
     return None
 
 
-def language_faults(acts: Acts) -> list[str]:
+def key_faults(acts: Acts) -> list[str]:
     """Find two acts the language gives one key in one mode."""
     faults = []
     seen: dict[tuple[str, str], str] = {}
@@ -142,6 +165,96 @@ def language_faults(acts: Acts) -> list[str]:
                     faults.append(
                         f"the language gives {keys} to both {other} and {name} in {mode} mode"
                     )
+    return faults
+
+
+def shape_faults(language: dict[str, Any]) -> list[str]:
+    """Find a field, mode or kind the language doesn't name, or a flag amiss."""
+    faults = []
+    for name, act in language["acts"].items():
+        faults += [
+            f"{name} has {field}, which the language doesn't know"
+            for field in sorted(set(act) - FIELDS)
+        ]
+        faults += [
+            f"{name} is pressed in {mode} mode, which the language doesn't name"
+            for mode in sorted(modes_of(act) - set(language["modes"]))
+        ]
+        faults += [
+            f"{name} belongs to a {kind}, which the language doesn't name"
+            for kind in sorted(set(act["kinds"]) - set(language["kinds"]))
+        ]
+        if act.get("undoable") and not act.get("changes"):
+            faults.append(f"{name} can be undone, but changes nothing")
+    return faults
+
+
+def arrow_faults(language: dict[str, Any]) -> list[str]:
+    """Find an act taking an arrow, with Shift or without, where it's a letter."""
+    faults = []
+    for name, act in language["acts"].items():
+        for mode in sorted(modes_of(act) & LETTERED):
+            faults += [
+                f"{name} takes {keys} in {mode} mode, where an arrow is its letter"
+                for keys in sorted(spelled(key) for key in act.get("keys", []))
+                if keys.removeprefix("shift+") in ARROWS
+            ]
+    return faults
+
+
+def find_faults(language: dict[str, Any]) -> list[str]:
+    """Find an act that changes something with a key the find line reaches."""
+    return [
+        f"{name} changes things, but the find line reaches it by {keys}"
+        for name, act in language["acts"].items()
+        if act.get("changes") and "find" in modes_of(act)
+        for keys in sorted(spelled(key) for key in act.get("keys", []))
+    ]
+
+
+def vim_short(neovim: dict[str, str], command: str) -> str:
+    """Find the fewest letters Neovim takes for one of its commands."""
+    short = command
+    while len(short) > 1 and neovim.get(short[:-1]) == command:
+        short = short[:-1]
+    return short
+
+
+def command_faults(language: dict[str, Any], neovim: dict[str, str]) -> list[str]:
+    """Find a command shortened amiss, named twice, or named as Neovim's.
+
+    Every name from an act's short form to its whole command is the act's,
+    so no two acts may share one. A command Neovim has keeps Neovim's short
+    form; any other may be none of the names Neovim takes.
+    """
+    faults = []
+    names: dict[str, str] = {}
+    for name, act in language["acts"].items():
+        command = act.get("command")
+        if command is None:
+            continue
+        short = act.get("short")
+        if short is None:
+            faults.append(f"{name}'s command, {command}, has no short form")
+            continue
+        if not command.startswith(short):
+            faults.append(f"{name}'s short form {short} doesn't begin its command, {command}")
+            continue
+        spoken = [command[:length] for length in range(len(short), len(command) + 1)]
+        for word in spoken:
+            other = names.setdefault(word, name)
+            if other != name:
+                faults.append(f"the language gives :{word} to both {other} and {name}")
+        if neovim.get(command) == command:
+            own = vim_short(neovim, command)
+            if own != short:
+                faults.append(
+                    f"{name}'s :{command} is Neovim's, whose short form is {own}, not {short}"
+                )
+            continue
+        faults += [
+            f"{name}'s :{word} is Neovim's :{neovim[word]}" for word in spoken if word in neovim
+        ]
     return faults
 
 
@@ -165,46 +278,57 @@ def bind_faults(layer: str, binds: list[Bind], acts: Acts, modes: set[str]) -> l
 
 
 def missing_faults(layer: str, kinds: list[str], binds: list[Bind], acts: Acts) -> list[str]:
-    """Find an act the surface's kinds hold that it leaves out."""
+    """Find an act with keys the surface's kinds hold that it leaves out."""
     bound = {bind["act"] for bind in binds}
     return [
         f"{layer}: a {', '.join(sorted(act['kinds'] & set(kinds)))} has {name}, which it leaves out"
         for name, act in acts.items()
-        if act["kinds"] & set(kinds) and name not in bound
+        if act["keys"] and act["kinds"] & set(kinds) and name not in bound
     ]
 
 
-def faults(language: dict[str, Any], layers: list[Layer], source: str) -> list[str]:
-    """Find every way the key map strays from the language."""
+def layer_faults(layer: Layer, acts: Acts, source: str) -> list[str]:
+    """Find every way one layer of the key map strays from the language."""
+    name, kinds, binds = layer["name"], layer.get("kinds", []), layer["binds"]
+    if name == source:
+        # What Neovim binds everywhere in normal mode, and on the command
+        # line; a plugin's window and the other modes are its own.
+        return bind_faults(
+            name, [b for b in binds if b["when"] == ""], acts, {"normal"}
+        ) + bind_faults(name, [b for b in binds if b["when"] == COMMAND_LINE], acts, {"command"})
+    if kinds:
+        # A surface is in every mode an act its kinds hold is pressed in,
+        # so a page selects in visual mode and a list finds in find mode.
+        modes = {"normal"}.union(
+            *(act["modes"] for act in acts.values() if act["kinds"] & set(kinds))
+        )
+        return bind_faults(name, binds, acts, modes) + missing_faults(name, kinds, binds, acts)
+    return bind_faults(name, [b for b in binds if b["act"]], acts, {"normal"})
+
+
+def faults(
+    language: dict[str, Any], layers: list[Layer], source: str, neovim: dict[str, str]
+) -> list[str]:
+    """Find every way the language or the key map strays."""
+    found = shape_faults(language) + arrow_faults(language) + find_faults(language)
+    found += command_faults(language, neovim)
     acts = acts_of(language)
-    found = language_faults(acts)
+    found += key_faults(acts)
     for layer in layers:
-        name, kinds, binds = layer["name"], layer.get("kinds", []), layer["binds"]
-        if name == source:
-            # Only what Neovim binds everywhere in normal mode; a plugin's
-            # window and the other modes are its own.
-            found += bind_faults(name, [b for b in binds if b["when"] == ""], acts, {"normal"})
-        elif kinds:
-            # A surface is in every mode an act its kinds hold is pressed in,
-            # so a page selects in visual mode and a field types in insert.
-            modes = {"normal"}.union(
-                *(act["modes"] for act in acts.values() if act["kinds"] & set(kinds))
-            )
-            found += bind_faults(name, binds, acts, modes)
-            found += missing_faults(name, kinds, binds, acts)
-        else:
-            found += bind_faults(name, [b for b in binds if b["act"]], acts, {"normal"})
+        found += layer_faults(layer, acts, source)
     return found
 
 
 def main() -> None:
-    """Read the language and the key map, and say every fault."""
-    language_path, keys_path, source = sys.argv[1:]
+    """Read the language, the key map and Neovim's commands, and say every fault."""
+    language_path, keys_path, source, neovim_path = sys.argv[1:]
     with Path(language_path).open("rb") as file:
         language = tomllib.load(file)
     with Path(keys_path).open(encoding="utf-8") as file:
         layers = json.load(file)
-    found = faults(language, layers, source)
+    with Path(neovim_path).open(encoding="utf-8") as file:
+        neovim = json.load(file)
+    found = faults(language, layers, source, neovim)
     for fault in found:
         print(fault)
     if found:

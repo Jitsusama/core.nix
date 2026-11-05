@@ -14,22 +14,23 @@
 # little so it's found on a busy picture.
 #
 # It opens floating in the middle of the screen, a look rather than a place
-# to work, and Escape or q puts it away. Its keys follow the keyboard's one
-# language: the arrows go that way, to the previous and next picture, or
-# around the gallery; Home and End to the first and last; Enter goes
-# between the picture and the gallery of its folder; e edits in GIMP, or
-# Inkscape for a drawing, and closes the viewer; Delete moves the picture
-# to the trash rather than deleting it, and u brings it back; q closes it,
-# as in mpv. Vim's keys twin them, as Joel's Vim has them: h j k l the
-# arrows, gg and G the first and last, a number before G that picture and
-# before a move that many, dd the trash, yy copies the picture as shown,
-# and ? and Space ? open the launcher's Shortcuts at its keys. A number or
-# a key waiting for its second waits 300 ms at most, his Neovim's
-# timeoutlen, and shows nothing, as his Neovim has showcmd off; [ and ]
-# start ]b and [b, the next and previous picture, as Vim's go between
-# buffers, and turn the picture when no b follows. As a picture opens, a
-# quiet line under it names the keys that move on, for as long as its name
-# shows.
+# to work, and ZZ or Space w puts it away, as they close everything of
+# Joel's; q and Escape close nothing. Its keys are Vim's, as Joel's Vim has
+# them, each with one meaning, and each arrow does what its letter does:
+# h and l go to the previous and next picture, j and k move one larger
+# than the window, and in the gallery h j k l choose that way; gg and G,
+# and Home and End, go to the first and last, a number before G to that
+# picture and before a move that many; Enter goes between the picture and
+# the gallery of its folder; e edits in GIMP, or Inkscape for a drawing,
+# and closes the viewer; dd and Delete move the picture to the trash
+# rather than deleting it, and u brings it back; yy copies the picture as
+# shown; and ? and Space ? open the launcher's Shortcuts at its keys. A
+# number or a key waiting for its second waits 300 ms at most, his
+# Neovim's timeoutlen, and shows nothing, as his Neovim has showcmd off;
+# [ and ] start ]b and [b, the next and previous picture, as Vim's go
+# between buffers, and turn the picture when no b follows. As a picture
+# opens, a quiet line under it names the letters that move on, for as long
+# as its name shows.
 #
 # The keys are the picture viewer's layer of jitsusama.keys, so the
 # launcher lists them over its window, and init.lua binds them from the
@@ -257,15 +258,20 @@ let
         act = "restore";
       }
       # Escape stops a number or a key waiting for its second, and leaves
-      # full screen, before it closes.
+      # full screen, and closes nothing; q closes nothing either, and says
+      # what does (init.lua), as in every program of Joel's.
       {
         chord = "Escape";
-        does = "Close";
+        does = "The picture out of full screen";
         act = "escape";
       }
-      # As in mpv.
       {
-        chord = "q";
+        chord = "Shift+z Shift+z";
+        does = "Close";
+        act = "close";
+      }
+      {
+        chord = "space w";
         does = "Close";
         act = "close";
       }

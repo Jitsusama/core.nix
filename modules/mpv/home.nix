@@ -22,20 +22,21 @@
 # font's axes), the controller's bar in the deepest colour with the
 # text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
-# mpv's own: Space pauses, the arrows seek, f fills the screen and q quits,
-# but ? opens the launcher's Shortcuts at the player's keys. Vim's keys are
-# there too, as Joel's Vim has them (vi-keys.lua): h and l seek as Left
-# and Right do, j on a minute as Up does and k back as Down, as j goes on
-# through a file, 0 to the start and $ to the end, where the last frame
-# stays, gg and G play the first and the last in the list, ]b and [b the
-# next and the one before, a number before a key does it that many times
-# and before G plays that one, yy copies the frame as a picture
-# (copy-frame.lua), and Space ? opens Shortcuts too, as in his Neovim, so
-# Space pauses a moment after it's pressed, once no ? follows. j and l
-# were mpv's subtitles and A-B loop, which go to J, where mpv cycles
-# subtitles already, and L; the digits no longer change the picture's
-# contrast, brightness, gamma and saturation, nor the loudness, as mpv
-# has them. The launcher lists the
+# Vim's, as Joel's Vim has them (vi-keys.lua), each with one meaning, and
+# mpv's own where Vim has nothing: Space pauses at once, f fills the screen
+# and Escape leaves it, and ? and F1 open the launcher's Shortcuts at the
+# player's keys. h and l seek back and on 5 seconds, j on a minute and k
+# back, as j goes on through a file, and each arrow does what its letter
+# does; 0 goes to the start and $ to the end, where the last frame stays,
+# gg and G play the first and the last in the list, ]b and [b the next and
+# the one before, a number before a key does it that many times and before
+# G plays that one, and yy copies the frame as a picture (copy-frame.lua).
+# q closes nothing, as in all his programs, and says what does: ZZ. Space
+# leads nothing here, so there's no Space w, as there is elsewhere. j and l were
+# mpv's subtitles and A-B loop, which go to J, where mpv cycles subtitles
+# already, and L; the digits no longer change the picture's contrast,
+# brightness, gamma and saturation, nor the loudness, as mpv has them.
+# The launcher lists the
 # ones worth knowing over its window, in their own words. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it,
 # and says each file it plays to the desktop's list of files opened lately
@@ -98,19 +99,19 @@ let
       }
       {
         chord = "Down";
-        does = "Back a minute";
-      }
-      {
-        chord = "k";
-        does = "Back a minute";
-      }
-      {
-        chord = "Up";
         does = "On a minute";
       }
       {
         chord = "j";
         does = "On a minute";
+      }
+      {
+        chord = "Up";
+        does = "Back a minute";
+      }
+      {
+        chord = "k";
+        does = "Back a minute";
       }
       {
         chord = "Home";
@@ -174,7 +175,7 @@ let
       }
       {
         chord = "Escape";
-        does = "Full screen, and out of it";
+        does = "The video out of full screen";
       }
       # Where j and l were.
       {
@@ -237,13 +238,16 @@ let
         chord = "Shift+slash";
         does = "The player's keys";
       }
-      # As in Joel's Neovim, which shows them everywhere.
+      # As in Joel's Neovim, where Space ? does it too; here Space leads
+      # nothing.
       {
-        chord = "space Shift+slash";
+        chord = "F1";
         does = "The player's keys";
       }
+      # As everywhere, q closes nothing; Space leads nothing here, so ZZ
+      # alone closes.
       {
-        chord = "q";
+        chord = "Z Z";
         does = "Close the player";
       }
     ];
