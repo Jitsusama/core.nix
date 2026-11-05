@@ -721,7 +721,6 @@ def walk_the_rows_washed(desktop: Desktop) -> None:
 HINT_PRESSES = {
     "\u21b5": (["ret"], ""),
     "Space ?": ([], " ?"),
-    "\u21e7\u2191\u2193": (["shift-down"], ""),
 }
 
 

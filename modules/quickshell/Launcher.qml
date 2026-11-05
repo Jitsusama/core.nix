@@ -1989,8 +1989,6 @@ Scope {
             keys.push([hintKey("into"), hints.in ?? ""]);
         if (held.length > 0)
             keys.push([hintKey("out"), hints.out ?? ""]);
-        if (choice === selected && drawerOut && drawerCard.more)
-            keys.push(["\u21e7\u2191\u2193", "scroll"]);
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
         keys.push([hintKey("keys"), hints.keys ?? ""]);
