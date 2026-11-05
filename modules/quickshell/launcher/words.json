@@ -2624,8 +2624,6 @@
     },
     {
       "id": "sound:mute",
-      "command": "set",
-      "argument": "mute!",
       "in": "sound",
       "name": "Muted",
       "verb": "mute",
@@ -4776,7 +4774,6 @@
     },
     {
       "id": "session:recording",
-      "command": "halt",
       "name": "Stop Recording",
       "verb": "stop",
       "glyph": "recording"
@@ -4860,7 +4857,7 @@
     {
       "id": "wifi:radio",
       "command": "set",
-      "argument": "wifi!",
+      "argument": "nowifi",
       "in": "wifi",
       "name": "Wi-Fi Off",
       "verb": "off",
@@ -4869,7 +4866,8 @@
         "off": {
           "name": "Wi-Fi On",
           "verb": "on",
-          "glyph": "wireless"
+          "glyph": "wireless",
+          "argument": "wifi"
         }
       }
     },
@@ -5107,7 +5105,7 @@
     {
       "id": "bluetooth:radio",
       "command": "set",
-      "argument": "bluetooth!",
+      "argument": "nobluetooth",
       "in": "bluetooth",
       "name": "Bluetooth Off",
       "verb": "off",
@@ -5116,7 +5114,8 @@
         "off": {
           "name": "Bluetooth On",
           "verb": "on",
-          "glyph": "bluetooth"
+          "glyph": "bluetooth",
+          "argument": "bluetooth"
         }
       }
     },

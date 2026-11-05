@@ -2545,7 +2545,7 @@ Scope {
                 ?? held[held.length - 1]?.row.commands?.() ?? [],
                 table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
-                called: act => commandWords(act.key ?? ""), thing: one,
+                called: commandWords, thing: one,
                 earlier: opening?.earlier ? commandEarlier : [] }),
             options: standingOptions()
         };
@@ -2686,9 +2686,11 @@ Scope {
             now: () => Theme.appearance }
     }, ...sources.map(source => source.setOptions ?? {}))
 
-    // An act's words for the line, by its key (Commands.wordsFor).
-    function commandWords(key) {
-        return Commands.wordsFor(key, id => Words.of(id));
+    // An act's words for the line, by its key and the state its words are
+    // in, a row's wordState (Commands.wordsFor).
+    function commandWords(act) {
+        return Commands.wordsFor(act.key ?? "", (id, state) => Words.of(id, state),
+            act.wordState ?? "");
     }
 
     // The options as they stand as : is pressed, each read once, so the menu
@@ -2893,7 +2895,7 @@ Scope {
     // thing's own act (CommandBinding.actFor), asked first where it asks.
     function commandAcross(entry, read, things) {
         const found = things.map(thing => ({ act: CommandBinding.actFor(entry, actsOf(thing),
-            act => commandWords(act.key ?? "")), thing }))
+            commandWords), thing }))
             .filter(one => one.act !== undefined);
         commandAsked(entry, found, things.length, read.bang);
     }

@@ -57,16 +57,19 @@ function commandOf(act) {
 }
 
 // An act's words for the line (words.json's command, argument, bang and
-// range), by its key, `of` reading words.json's entry for an id: a verb's
+// range), by its key and the state its words are in, `of` reading
+// words.json's entry for an id in a state, as Words.of does: a verb's
 // id, or one made from it for each of several, as verb:sound-port-2 or
 // verb:on:waiting:go:<id>, which reads the verb's own; or a row that's an
 // act itself, as session:Lock names :lockscreen, the step it asks first,
-// as session:Power Off:sure, reading its row's. Where no words name one,
-// the act is named by its verb (commandOf).
-function wordsFor(key, of) {
+// as session:Power Off:sure, reading its row's. A state's words name the
+// command for that state, as Wi-Fi On's :set wifi, since the line says
+// what runs, never a toggle. Where no words name one, the act is named by
+// its verb (commandOf).
+function wordsFor(key, of, state) {
     let id = String(key ?? "");
     while (id !== "") {
-        const words = of(id);
+        const words = of(id, state ?? "");
         if (words.command !== undefined) {
             return words;
         }
