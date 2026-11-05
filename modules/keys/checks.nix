@@ -77,6 +77,15 @@ let
       says = "neovim: q isn't one of close's keys";
     }
     {
+      layers = keyMap "neovim-takes-a-command-line-key" [
+        {
+          name = "neovim";
+          binds = [ (bind "Ctrl+Y" "ctrl+y" "" // { when = "on the command line"; }) ];
+        }
+      ];
+      says = "neovim: Ctrl+Y is its own (Something), but the language gives it to take-name";
+    }
+    {
       layers = keyMap "neovim-gives-a-key-away" [
         {
           name = "neovim";
