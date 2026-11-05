@@ -434,20 +434,21 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
     desktop.reported("yanked 1", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline") == top
     desktop.launcher_until(lambda shown: shown["open"] and shown["flashing"] == [])
-    # dd asks, in Return's place, and closes nothing yet.
-    with desktop.told("asked again closes it"):
+    # dd asks, in Return's place, as Vim's confirm() does, and closes
+    # nothing yet; it can be answered once it's stood 300 ms.
+    with desktop.told("ask ready"), desktop.told(f"asked Close {top}? (y/n)"):
         machine.send_chars("dd")
-    assert desktop.showing()["operated"] == "dd again closes it", desktop.showing()
-    # Escape lets the ask go, as its own rung, and the launcher stays.
-    machine.send_key("esc")
+    assert desktop.showing()["operated"] == f"dd Close {top}? (y/n)", desktop.showing()
+    # Escape, as any key but y, says no, and the launcher stays.
+    with desktop.told("answered no"):
+        machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
     assert {first["id"], second["id"]} <= {window["id"] for window in desktop.windows()}
-    # dj asks for both, and dj again closes both.
-    with desktop.told("asked again closes 2"):
+    # dj asks for both, and y closes both.
+    with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
         machine.send_chars("dj")
-    assert desktop.showing()["operated"] == "dj again closes 2", desktop.showing()
     with desktop.told("ended 2"):
-        machine.send_chars("dj")
+        machine.send_chars("y")
 
     def closed(_: bool) -> bool:
         """Say whether both windows have gone."""
