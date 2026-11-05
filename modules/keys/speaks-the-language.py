@@ -11,10 +11,13 @@ Reads the language (language.toml), the key map every layer writes
 - a command, or a name between its short form and its whole one, that
   Neovim takes for another, or one of Neovim's own shortened otherwise;
 - an act that changes something with a key the find line reaches;
-- an arrow in normal or visual mode, where none does anything: an act a
-  surface's kinds hold taking one anywhere in its keys, or a modal layer
-  of ours binding one, but for the layers that still keep theirs, a list
-  that may only shrink;
+- an arrow the leader doesn't begin, alone, held or in a sequence, in
+  normal or visual mode, where none does anything: an act a surface's
+  kinds hold taking one, or a modal layer of ours binding one, but for
+  his Neovim, kept as it is, and the layers that still keep theirs, a
+  list that may only shrink. An arrow
+  after the leader, as Space and the right arrow, overlays Vim's own keys
+  and is allowed;
 - a mode, kind or field the language doesn't name, a command with no short
   form or one that doesn't begin it, an undoing of nothing, and a guard on
   an act that would never ask.
@@ -82,13 +85,18 @@ FIELDS = {
 # rely only on vi right feeling things"), and the arrows.
 LETTERED = {"normal", "visual"}
 ARROWS = {"up", "down", "left", "right"}
+# The leader, after which an arrow overlays Vim's own keys (Joel,
+# 2026-11-05: "leader stuff can overlay default stuff").
+LEADER = "space"
 # The layers of ours with a normal mode, held to that.
 MODAL = {"inlyne", "mpv", "neovim", "reader", "swayimg", "zathura"}
-# Those still binding an arrow in normal, each to come off as it drops them:
-# the reader's and the viewers', and his Neovim's own splits and moves until
-# Joel says whether it keeps them. It may only shrink, since one binding no
-# arrow is refused. There an arrow still stands for its letter.
-STILL_ARROWED = {"mpv", "neovim", "reader", "zathura"}
+# His Neovim, kept as it is, bare arrows and all (Joel, 2026-11-05:
+# "neovim is a gold standard in general"). There an arrow is its letter.
+KEEPS_ITS_ARROWS = {"neovim"}
+# Those still binding a bare arrow in normal, each to come off as it drops
+# them: the reader's and the viewers'. It may only shrink, since one binding
+# no arrow is refused. There an arrow still stands for its letter.
+STILL_ARROWED = {"mpv", "reader", "zathura"}
 LETTERS = {"down": "j", "up": "k", "left": "h", "right": "l"}
 # Where Neovim's keys on the command line are bound, in the key map's words
 # (modules/neovim/home.nix, scopes).
@@ -154,8 +162,14 @@ def modes_of(act: dict[str, Any]) -> set[str]:
 
 
 def arrowed(keys: str) -> bool:
-    """Say whether keys, spelled as the key map's, press an arrow anywhere."""
-    return any(key.split("+")[-1] in ARROWS for key in keys.split(" "))
+    """Say whether keys, spelled as the key map's, press an arrow the leader doesn't begin.
+
+    One is held to it alone, held with a modifier or in another sequence,
+    as g and the left arrow; the launcher's own table is held the same way
+    (tests/query-keys.qml).
+    """
+    pressed = keys.split(" ")
+    return pressed[0] != LEADER and any(key.split("+")[-1] in ARROWS for key in pressed)
 
 
 def acts_of(language: dict[str, Any], *, kept: bool = False) -> Acts:
@@ -223,7 +237,7 @@ def shape_faults(language: dict[str, Any]) -> list[str]:
 
 
 def arrow_faults(language: dict[str, Any]) -> list[str]:
-    """Find an act of a surface's taking an arrow anywhere, where none does anything.
+    """Find an act of a surface's taking a bare arrow, where none does anything.
 
     An act no kind holds is only a layer's, as his Neovim's splits are, and
     is held where the layer binds it.
@@ -244,7 +258,7 @@ def arrow_faults(language: dict[str, Any]) -> list[str]:
 def arrow_bind_faults(layer: Layer) -> list[str]:
     """Find an arrow a modal layer of ours binds in normal, or one kept that it doesn't."""
     name = layer["name"]
-    if name not in MODAL:
+    if name not in MODAL or name in KEEPS_ITS_ARROWS:
         return []
     arrows = [b["chord"] for b in layer["binds"] if b.get("when", "") == "" and arrowed(b["keys"])]
     if name in STILL_ARROWED:
@@ -368,7 +382,8 @@ def faults(
     kept = acts_of(language, kept=True)
     found += key_faults(acts)
     for layer in layers:
-        found += layer_faults(layer, kept if layer["name"] in STILL_ARROWED else acts, source)
+        arrowed_still = layer["name"] in STILL_ARROWED | KEEPS_ITS_ARROWS
+        found += layer_faults(layer, kept if arrowed_still else acts, source)
         found += arrow_bind_faults(layer)
     return found
 

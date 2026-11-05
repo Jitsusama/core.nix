@@ -634,9 +634,12 @@ QtObject {
         const doing = [
             ["Ctrl+W l goes into the drawer, as Vim goes to the window right", into,
                 ["normal", "drawer"]],
-            ["Space and the arrows go nowhere, in or out",
-                ["Escape", "Space", "Right", "Ctrl+w", "l", "Space", "Left", "j"],
-                ["normal", "drawer", "next"]],
+            // His Neovim's Space and an arrow overlay them, as a leader's
+            // chord may (Joel, 2026-11-05: "leader stuff can overlay
+            // default stuff").
+            ["Space and the right arrow go in, and Space and the left come back",
+                ["Escape", "Space", "Right", "Space", "Left", "j"],
+                ["normal", "drawer", "rows", "next"]],
             ["and Ctrl+W h comes back to the rows", into.concat(["Ctrl+w", "h"]),
                 ["normal", "drawer", "rows"]],
             ["Ctrl+W w goes to the other either way",
@@ -676,8 +679,8 @@ QtObject {
             ["the rows' keys that aren't a page's do nothing in it",
                 into.concat(["Tab", "-", "Backspace", "i", "a", "u", "c", "c", "]", "b"]),
                 ["normal", "drawer"]],
-            ["Ctrl+W l does nothing more in it",
-                into.concat(["Ctrl+w", "l"]), ["normal", "drawer"]],
+            ["Ctrl+W l does nothing more in it, nor Space and the right arrow",
+                into.concat(["Ctrl+w", "l", "Space", "Right"]), ["normal", "drawer"]],
             // Space ? is his leader's list of keys everywhere (VKCF3Z), so
             // in the drawer it lists the drawer's, and F1 with it.
             ["Space ? and F1 list its keys", into.concat(["Space", "?", "F1"]),
