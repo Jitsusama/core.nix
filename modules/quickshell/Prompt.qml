@@ -270,6 +270,11 @@ Item {
     // the count typed before it, 0 for none: the moves QueryKeys.moved
     // takes, and drawerUp and drawerDown.
     signal stepped(string act, int count)
+    // : in normal, which opens the command line in the line's place
+    // (CommandLine.qml), with the range a count before it gives, as 3:
+    // gives ".,.+2", or "" for none. The line holds what's typed as it
+    // is, and resume() gives it the keys back.
+    signal commanded(string range)
 
     function clear() {
         cleared = "";
@@ -283,6 +288,15 @@ Item {
         cleared = "";
         standing = QueryKeys.rest();
         mode = "insert";
+        input.forceActiveFocus();
+        woken();
+    }
+
+    // The keys back from the command line, in the mode it was opened from,
+    // or in normal, what's typed as it was left.
+    function resume(to: string) {
+        standing = QueryKeys.rest();
+        mode = to;
         input.forceActiveFocus();
         woken();
     }
@@ -374,8 +388,13 @@ Item {
         event.accepted = true;
     }
 
+    // How many keys the line has taken, so what a key said, as the command
+    // line's E492, stands until the next one.
+    property int keysTaken: 0
+
     function modalKey(event: KeyEvent) {
         const key = named(event);
+        keysTaken += 1;
         woken();
         const read = QueryKeys.read(standing, key, mode);
         // A key held in normal repeats only a move, as Vim's motions do:
@@ -454,6 +473,9 @@ Item {
             break;
         case "back":
             prompt.cancelled();
+            break;
+        case "command":
+            prompt.commanded(QueryKeys.counted(read.count));
             break;
         case "":
             break;

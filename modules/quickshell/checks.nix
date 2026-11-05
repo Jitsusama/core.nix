@@ -2951,6 +2951,24 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's command line lists every command it can take, the cursor
+  # row's acts first, narrows as it's typed, chooses as his cmp does and
+  # runs exactly what's typed, as tests/command-line.qml holds
+  # Commands.js to.
+  the-command-line-lists-every-command =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-command-line-lists-every-command" { } ''
+      cp ${../../tests/command-line.qml} command-line.qml
+      cp ${./Commands.js} Commands.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml command-line.qml
+      touch $out
+    '';
+
   # The launcher's query line takes vi's two modes from one table, as
   # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
   # ways back into insert, its moves through the rows with counts and

@@ -75,18 +75,7 @@ QtObject {
             ["q and ZZ close", ["Escape", "q", "Z", "Z"], ["normal", "close", "close"]],
             ["a Z with anything but Z after it lets go", ["Escape", "Z", "j", "Z", "Z"],
                 ["normal", "close"]],
-            [":q and its Return close", ["Escape", ":", "q", "Return"], ["normal", "close"]],
-            ["and so do Vim's other ways of quitting",
-                ["Escape", ":", "q", "a", "!", "Return", ":", "w", "q", "Return", ":", "x",
-                    "Return"], ["normal", "close", "close", "close"]],
-            ["an ex line it doesn't know does nothing", ["Escape", ":", "w", "Return", "j"],
-                ["normal", "next"]],
-            ["the ex line's letters are its own, not normal's", ["Escape", ":", "j", "q", "G"],
-                ["normal"]],
-            ["Escape lets the ex line go, then steps back", ["Escape", ":", "q", "Escape", "Escape"],
-                ["normal", "back"]],
-            ["Backspace takes its letters, then lets it go",
-                ["Escape", ":", "q", "Backspace", "Backspace", "j"], ["normal", "next"]],
+            [": in normal opens the command line", ["Escape", ":"], ["normal", "command"]],
             ["a colon in insert is the field's to type", [":", "q", "Return"], ["run"]],
             ["normal's rows keep the arrows", ["Escape", "Down", "Up"],
                 ["normal", "next", "previous"]],
@@ -157,10 +146,8 @@ QtObject {
                 ["normal", "back"]],
             ["a key that ends nothing lets the count go", ["Escape", "3", "x", "j"],
                 ["normal", "next"]],
-            [":12 goes to the 12th row, as :12 goes to its line",
-                ["Escape", ":", "1", "2", "Return"], ["normal", "12 first"]],
-            ["a count before a colon is let go", ["Escape", "3", ":", "q", "Return", "j"],
-                ["normal", "close", "next"]]
+            ["a count before a colon goes with it", ["Escape", "3", ":"],
+                ["normal", "3 command"]]
         ];
         for (const [what, keys, want] of counting)
             holds(what, typed(keys).counted, want);
@@ -169,14 +156,10 @@ QtObject {
         holds("a count typed is the line's", typed(["Escape", "4"]).ours, true);
         holds("and stands until its move", typed(["Escape", "4", "2"]).standing,
             { count: "42", typed: [] });
-        holds("an ex line stands as it's typed, waiting for its Return",
-            typed(["Escape", ":", "q"]).standing, { count: "", typed: [], ex: "q" });
-        holds("and is let go with Escape", typed(["Escape", ":", "q", "Escape"]).standing,
-            { count: "", typed: [] });
-        holds("a space on the ex line is typed", typed(["Escape", ":", "q", "Space"]).standing,
-            { count: "", typed: [], ex: "q " });
-        holds("and Return reads past it",
-            typed(["Escape", ":", "q", "Space", "Return"]).acts, ["normal", "close"]);
+        holds("a count before a colon is the range Vim's 3: gives",
+            [Keys.counted(0), Keys.counted(1), Keys.counted(3)], ["", ".", ".,.+2"]);
+        holds("and the keys stand at rest once it opens",
+            typed(["Escape", "3", ":"]).standing, { count: "", typed: [] });
         holds("insert's Space is the field's to type", typed(["Space"]).ours, false);
         // The rows have no search of their own: the find line is the list's
         // one way to find (VKCF3Z's vi-paradigm spec, The Find Line).

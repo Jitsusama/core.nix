@@ -6138,6 +6138,12 @@
       "ends": "ends",
       "nothing": "nothing to end",
       "noCopy": "nothing to copy"
+    },
+    "command": {
+      "quit": "Close the Launcher",
+      "help": "List the Keys",
+      "row": "Go to a Row",
+      "on": "on {things}"
     }
   },
   "meant": [

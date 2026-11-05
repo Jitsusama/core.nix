@@ -185,10 +185,9 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
-        # A count typed stands where insert's word was until its move, as showcmd shows it,
-        # and an ex line until its Return, as Neovim's command line does.
+        # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
-        stands_in_the_mode_words_room(desktop, ":q", f"launcher-ex-at-{scale}")
+        shows_the_command_line(desktop, scale)
         lists_every_key(desktop, scale)
         desktop.close_launcher()
 
@@ -220,6 +219,36 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
 
 
+def shows_the_command_line(desktop: Desktop, scale: str) -> None:
+    """Open the command line on kitty's row, photograph it and its menu, and let it go.
+
+    The menu lists kitty's acts, Return's first, before :q, :help and :{n}; a line chosen
+    says in the drawer what it acts on, and Escape puts the find line back in normal.
+    """
+    machine = desktop.machine
+    everywhere = ["quit Close the Launcher", "help List the Keys", "{n} Go to a Row"]
+    machine.send_chars(":")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("line") == ""
+            and shown["command"]["menu"][-len(everywhere) :] == everywhere
+            and len(shown["command"]["menu"]) > len(everywhere)
+        )
+    )
+    desktop.photograph(f"launcher-command-at-{scale.replace('.', '-')}")
+    machine.send_key("tab")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("chosen") == 0 and shown["drawer"]["body"] == "on kitty"
+        )
+    )
+    desktop.photograph(f"launcher-command-chosen-at-{scale.replace('.', '-')}")
+    machine.send_key("esc")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
+    )
+
+
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:
     """Type keys normal holds in the mode word's room, photograph them there, and let them go.
 
@@ -227,15 +256,13 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
     """
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
     desktop.machine.send_chars(typed)
-    desktop.launcher_until(lambda shown: shown["counted"] == typed or f":{shown['ex']}" == typed)
+    desktop.launcher_until(lambda shown: shown["counted"] == typed)
     held = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
     rest = sorted(word["x"] for word in held if word["text"] != typed)
     assert rest == sorted(word["x"] for word in laid), (laid, held)
     desktop.photograph(shot.replace(".", "-"))
     desktop.machine.send_key("esc")
-    desktop.launcher_until(
-        lambda shown: shown["open"] and shown["counted"] == "" and shown["ex"] is None
-    )
+    desktop.launcher_until(lambda shown: shown["open"] and shown["counted"] == "")
 
 
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
