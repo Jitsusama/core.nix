@@ -78,6 +78,7 @@ QtObject {
         // The menu: the row's acts, Return's first, then the surface's, then
         // what every surface has.
         const sort = { command: "sort", short: "sor", title: "Sort the Rows", key: "",
+            args: [{ value: "name", note: "A to Z" }, { value: "changed", note: "Newest First" }],
             run: () => {} };
         const menu = menuOf(network(), [sort]);
         holds("the menu lists the row's acts, the surface's, then every surface's", lines(menu), [
@@ -305,6 +306,50 @@ QtObject {
             Commands.toward(first("background=light"), "dark",
                 { kind: "choice", values: ["light", "dark"], fixed: true }),
             { error: "E519: Option not supported: background=light" });
+
+        // A space after a name lists its arguments, each replacing the word
+        // being typed: :set's options with where each stands, the values
+        // after one's =, and a surface command's own.
+        const standing = Object.assign({}, options, {
+            wifi: Object.assign({}, options.wifi, { now: () => "Home-5G",
+                choices: () => ["Home-5G", "Cafe Wifi"] }),
+            volume: Object.assign({}, options.volume, { now: () => 40 }),
+            mute: Object.assign({}, options.mute, { now: () => false }),
+            quiet: Object.assign({}, options.quiet, { now: () => true }),
+            bluetooth: Object.assign({}, options.bluetooth, { now: () => true }),
+            brightness: Object.assign({}, options.brightness, { now: () => 60 }),
+            background: Object.assign({}, options.background, { now: () => "dark" })
+        });
+        const argued = (entry, arg) => entry.kind === "set"
+            ? Commands.setArguments(arg, standing) : Commands.ownArguments(entry, arg);
+        const listedAs = typed => Commands.narrowed(menu, typed, argued)
+            .map(line => [line.command, line.title]);
+        holds(":set and a space lists every option and where it stands", listedAs("set "), [
+            ["background", "background=dark"], ["bluetooth", "bluetooth"],
+            ["brightness", "brightness=60"], ["mute", "nomute"], ["quiet", "quiet"],
+            ["volume", "volume=40"], ["wifi", "wifi=Home-5G"]
+        ]);
+        holds("typing narrows them", listedAs("set b").map(line => line[0]),
+            ["background", "bluetooth", "brightness"]);
+        holds("a word typed after another narrows on its own",
+            listedAs("set nomute v").map(line => line[0]), ["volume"]);
+        holds("an = lists the values it takes", listedAs("set background="),
+            [["background=light", ""], ["background=dark", ""]]);
+        holds("and a network's, escaped", listedAs("se wifi=").map(line => line[0]),
+            ["wifi=Home-5G", "wifi=Cafe\\ Wifi"]);
+        holds("narrowed by what's typed after it", listedAs("set wifi=c").map(line => line[0]),
+            ["wifi=Cafe\\ Wifi"]);
+        holds("a number lists nothing to choose", listedAs("set volume="), []);
+        holds("a surface command lists its own", listedAs("sort "),
+            [["name", "A to Z"], ["changed", "Newest First"]]);
+        holds("choosing one writes it in place of the word",
+            Commands.chosen(Commands.typing("set wifi=c"), 1,
+                Commands.narrowed(menu, "set wifi=c", argued)).line, "set wifi=Cafe\\ Wifi");
+        holds("and keeps what came before it",
+            Commands.chosen(Commands.typing("set nomute v"), 1,
+                Commands.narrowed(menu, "set nomute v", argued)).line, "set nomute volume");
+        holds("a command that takes none shows its own line alone",
+            listedAs("disc ").map(line => line[0]), ["disconnect"]);
 
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",

@@ -424,6 +424,18 @@ function toward(change, now, option) {
     }
 }
 
+// :set's arguments, as a space after it lists them: the options, with
+// where each stands, or after one's = the values it takes.
+function setArguments(arg, options) {
+    return [];
+}
+
+// A surface command's own arguments, a list or what it gives for what's
+// typed after it.
+function ownArguments(entry, arg) {
+    return [];
+}
+
 // One option as Vim's :set volume? says it: a switch its name or its no,
 // or its value where it holds one, as the network it's joined.
 function shown(name, now, option) {
