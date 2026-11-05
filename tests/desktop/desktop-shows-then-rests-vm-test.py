@@ -91,13 +91,14 @@ def test_memory_probe(desktop: Desktop) -> None:
     machine.succeed("sleep 30")
     print(machine.succeed("ls -la /run/user/1000/faults.data /tmp/perf-*.map || true"))
     machine.succeed(
-        "cd /tmp && perf script -i /run/user/1000/faults.data"
+        "cd /tmp && perf script -f -i /run/user/1000/faults.data"
         " -F comm,pid,tid,ip,sym --no-inline > /tmp/faults.txt 2> /tmp/faults.err;"
         " tail -3 /tmp/faults.err; wc -l /tmp/faults.txt",
         timeout=1800,
     )
     machine.copy_from_vm("/tmp/faults.txt", "faults")
     machine.copy_from_vm("/tmp/jit.map", "faults")
+    machine.copy_from_vm("/tmp/faults.err", "faults")
 
 
 def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_things_stand(
