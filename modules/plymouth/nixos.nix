@@ -112,23 +112,27 @@ let
     '';
   # How far Prompt.qml's glyph leads what's typed, as Qt measures it, in
   # the desktop's pixels, put in for the script with the pictures' measures.
-  lead = ''
-    lead=$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 FONTCONFIG_FILE=${qtFonts} \
-      QML_IMPORT_PATH=${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtQmlPrefix} \
-      QT_PLUGIN_PATH=${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.qtPluginPrefix} \
-      ${lib.getExe' pkgs.qt6.qtdeclarative "qml"} ${./glyph-width.qml} -- ${
-        lib.escapeShellArgs [
-          lockGlyph
-          mono
-          (toString (points "mono" "large"))
-          space.m
-        ]
-      } 2>&1 | sed -n 's/^qml: \([0-9]*\)$/\1/p')
-    [ -n "$lead" ] || { echo "Qt said nothing of how far the glyph leads"; exit 1; }
-    for scale in 1 2; do
-      echo 'measured["lead-'$scale'"] = '$((lead * scale))';' >> measured
-    done
-  '';
+  lead =
+    let
+      figure = theme.type.levels.figure;
+    in
+    ''
+      lead=$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 FONTCONFIG_FILE=${qtFonts} \
+        QML_IMPORT_PATH=${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtQmlPrefix} \
+        QT_PLUGIN_PATH=${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.qtPluginPrefix} \
+        ${lib.getExe' pkgs.qt6.qtdeclarative "qml"} ${./glyph-width.qml} -- ${
+          lib.escapeShellArgs [
+            lockGlyph
+            theme.font.${figure.face}.family
+            (toString (points figure.face figure.step))
+            space.m
+          ]
+        } 2>&1 | sed -n 's/^qml: \([0-9]*\)$/\1/p')
+      [ -n "$lead" ] || { echo "Qt said nothing of how far the glyph leads"; exit 1; }
+      for scale in 1 2; do
+        echo 'measured["lead-'$scale'"] = '$((lead * scale))';' >> measured
+      done
+    '';
 
   # The words under the name, keyed by the picture that says them.
   under = {
