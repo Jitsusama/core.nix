@@ -16,29 +16,29 @@
 // program gave, a prompt's words, its caret before the extension, kept
 // from folder to folder; each folder leads with it, unnarrowed, and a
 // name already there asks once, "Replace a.md? (y/n)", no saving nothing;
-// a name typed is saved in the folder it's typed in, asking nothing. Its
-// Order, last, steps into Name, Changed and Size, the one in use first,
-// and Return on Size lists the folder largest first, made afresh, an
-// order the chooser made again after a restart keeps. Asked
+// a name typed is saved by :w in the folder it's typed in, asking nothing,
+// and :w with a name already there asks once. Its commands are :sort,
+// name, changed or size, :sort! turning it round, the folder made afresh,
+// an order the chooser made again after a restart keeps; :set hidden and
+// nohidden; :cd and :e, their paths completed from folders read, going
+// to a folder as if the ask opened there; and a save's :w and :x. Asked
 // for a folder, it lists no files and each folder leads with Open This
 // Folder. In every folder, the field asks for one file, several, a folder
 // or where to save, in the program's word. Closing the launcher answers nothing, a request that isn't JSON
 // is refused at once, and a withdrawn one closes the launcher. Where several
-// may be opened, Open the Marked leads from the start, saying none and
-// nothing more, with no Return; Return marks a file, the launcher staying,
-// and its row wears the mark in an act's hue, says what Return does now
-// and holds Marked, yes; Return again unmarks it; Open the Marked counts
-// them, names them in the order marked and lists them on its plate; inside
-// it are the files, each with its folder, then Unmark All and Copy the
-// Paths, one unmarked there staying until it's left; and Open the Marked
-// answers every one marked, in the order they were, wherever each was. A
+// may be opened, :arga gathers the cursor row's file or a range's, each
+// once, a folder passed over; a file gathered wears the mark in an act's
+// hue, and Return says how many it opens; :args steps into Gathered, the
+// files each with its folder, then Forget Them and Copy the Paths, its
+// plate counting them; and Return answers every one gathered, in the order
+// they were, wherever each was. A
 // folder holds its Copy the Path and filters only once it's read. A place kept elsewhere, given by a
 // stand-in for Google's Drive, is listed after home's files, apart, and
 // found by typing from another folder, never for a local folder alone;
 // held, it says
 // its folder's name; a file there is drawn as a file, or as the row it is
 // everywhere, and picked once fetched, the launcher staying and saying so
-// until then; marked with others, it's answered in the order marked, and
+// until then; gathered with others, it's answered in the order gathered, and
 // one that can't be fetched keeps the launcher, saying why, until Return
 // again fetches it. Saving there, it holds only the folders a file can
 // be saved in, each leading with the name the line holds, a name already
@@ -84,6 +84,7 @@ ShellRoot {
 
         property bool open: false
         property var held: []
+        property var selected: null
         property string into_: ""
         property int homeDepth: 0
         readonly property var sources: [chooser, drive]
@@ -350,10 +351,10 @@ ShellRoot {
                 ask(7, { mode: "open", title: "Open Several", multiple: true, folder: notes });
             } else if (stage === 11 && chooser.asking?.reply.endsWith("/7.sock") && ready([notes])) {
                 stage = 12;
-                marking();
+                gathering();
             } else if (stage === 12 && answers.length === 6) {
                 stage = 13;
-                expect("Open the Marked answers every one marked, in the order they were",
+                expect("Return answers every one gathered, in the order they were",
                     answers[5] === JSON.stringify({ paths: [`${notes}/a.md`, `${home}/elsewhere/old.md`],
                         filter: null, choices: {} }), answers[5]);
                 chooser.chooseToSave({ name: "copy.pdf", folder: notes, title: "Save a Copy", local: true },
@@ -403,18 +404,18 @@ ShellRoot {
                 stage = 22;
                 drive.fetches[1].done(`${runtime}/picked/plan.docx`);
                 drive.fetches[2].failed("Google Drive couldn't be reached.");
-                const lead = rowsIn(home)[0];
                 expect("one that can't be fetched keeps the launcher, saying why",
-                    launcher.open && answers.length === 7 && lead.note === "Google Drive couldn't be reached.",
-                    `${launcher.open}, ${answers.length} answers, ${lead.note}`);
-                lead.run();
+                    launcher.open && answers.length === 7
+                        && severalRow.note === "Google Drive couldn't be reached.",
+                    `${launcher.open}, ${answers.length} answers, ${severalRow.note}`);
+                severalRow.run();
             } else if (stage === 22 && drive.fetches.length === 5) {
                 stage = 23;
                 drive.fetches[3].done(`${runtime}/picked/plan.docx`);
                 drive.fetches[4].done(`${runtime}/picked/report.pdf`);
             } else if (stage === 23 && answers.length === 8) {
                 stage = 24;
-                expect("marked with others, each is answered once fetched, in the order marked",
+                expect("gathered with others, each is answered once fetched, in the order gathered",
                     answers[7] === JSON.stringify({ paths: [`${runtime}/picked/plan.docx`,
                         `${runtime}/picked/report.pdf`], filter: null, choices: {} }) && !launcher.open,
                     `${answers[7]}, ${launcher.open}`);
@@ -429,10 +430,10 @@ ShellRoot {
                         choices: {} }) && !launcher.open, `${answers[8]}, ${launcher.open}`);
                 expect("a save staged for a place kept elsewhere never moves where a save here went",
                     chooser.savedLastIn() === notes, chooser.savedLastIn());
-                chooser.orderBy("changed");
+                chooser.orderBy("changed", true);
                 restarted = restarting.createObject(root);
             } else if (stage === 26 && restarted?.savedLastIn() === notes
-                && restarted.order === "changed") {
+                && restarted.order === "changed" && restarted.reversed) {
                 stage = 27;
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
@@ -454,12 +455,12 @@ ShellRoot {
             titles.every(title => title === "~/notes"), titles.join(" "));
         let rows = rowsIn(notes);
         expect("lately elsewhere, then folders, then files the filter passes, then the filters",
-            names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files, Order",
+            names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files",
             names(rows));
         const unread = names(chooser.folderRow(`${home}/unread`).verbs());
         const read = names(chooser.folderRow(notes).verbs());
         expect("a folder holds its Copy the Path and filters only once it's read, so they come last",
-            unread === "" && read.endsWith("All Files, Order, Copy the Path"), `${unread}; ${read}`);
+            unread === "" && read.endsWith("All Files, Copy the Path"), `${unread}; ${read}`);
         expect("a file opened lately elsewhere says where", rows[0].side === "~/elsewhere"
             && rows[0].key === `file:${home}/elsewhere/old.md`, `${rows[0].side} ${rows[0].key}`);
         const own = named(rows, "a.md");
@@ -482,7 +483,7 @@ ShellRoot {
         rows = rowsIn(notes);
         expect("another filter picked shows what it passes",
             names(rows)
-                === "old.md, | sub, a.md, b.png, notes.txt, | Markdown, All Files (chosen), Order",
+                === "old.md, | sub, a.md, b.png, notes.txt, | Markdown, All Files (chosen)",
             names(rows));
         const a = named(rows, "a.md");
         expect("Return on a file opens it by the program's word", a.verb === "upload"
@@ -532,7 +533,7 @@ ShellRoot {
             fieldAsks());
         const rows = rowsIn(notes);
         expect("saving leads with the name given, then the folders lately, then the rest",
-            names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding, Order", names(rows));
+            names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding", names(rows));
         const there = rows[0];
         there.run();
         const asked = launcher.asked[0];
@@ -544,7 +545,8 @@ ShellRoot {
         expect("and no saves nothing", answers.length === 1 && chooser.asking !== null,
             `${answers.length} answers`);
         named(rows, "Encoding").verbs()[1].run();
-        ordering();
+        sorting();
+        writing();
         naming(launcher.held[launcher.held.length - 1].row);
         const sub = named(rows, "sub");
         launcher.enter(sub);
@@ -553,11 +555,83 @@ ShellRoot {
         const typed = rowsIn(`${notes}/sub`)[0];
         expect("the name typed saves in the folder it's typed in", typed.verb === "save"
             && typed.side === "~/notes/sub", `${typed.verb} ${typed.side}`);
-        launcher.back();
         launcher.open = false;
-        typed.run();
-        expect("a name not there saves at once, asking nothing", launcher.asked.length === 1,
+        command(`${notes}/sub`, "write").run({ name: "write", bang: false, arg: "", things: [],
+            count: 0 });
+        expect(":w on a name not there saves at once, asking nothing", launcher.asked.length === 1,
             JSON.stringify(launcher.asked));
+    }
+
+    // The picker's command named, in the folder given.
+    function command(path, name) {
+        return chooser.commandsIn(path).find(row => row.command === name);
+    }
+
+    // What a command is run with, as V3's line calls it.
+    function called(arg, bang) {
+        return { name: "", bang: bang === true, arg: arg, things: [], count: 0 };
+    }
+
+    // A save's :w with a name already there asks once, as :w says E13.
+    function writing() {
+        const listed = chooser.commandsIn(notes).map(row => row.command).join(" ");
+        expect("saving, the folder's commands are sort, set, mkdir, edit, cd, quit, write and xit",
+            listed === "sort set mkdir edit cd quit write xit", listed);
+        command(notes, "write").run(called("b.png"));
+        const asked = launcher.asked[launcher.asked.length - 1];
+        expect(":w with a name already there asks once, naming it", launcher.asked.length === 2
+            && asked.question === "Replace b.png? (y/n)" && answers.length === 1,
+            `${JSON.stringify(launcher.asked)} ${answers.length} answers`);
+        asked.no();
+        launcher.asked = launcher.asked.slice(0, 1);
+        expect("and :w's name is the line's", chooser.saveName === "b.png", chooser.saveName);
+        chooser.saveName = "a.md";
+    }
+
+    // :sort lists every folder in an order, :sort! turned round, made
+    // afresh where it's shown; :set hidden lists the hidden files, and
+    // :set nohidden leaves them out; :cd and :e go to a folder, its path
+    // completed from the folders already read.
+    function sorting() {
+        const sort = command(notes, "sort");
+        expect(":sort takes name, changed and size, each saying how", JSON.stringify(sort.args)
+            === JSON.stringify([{ value: "name", note: "alphabetical" },
+                { value: "changed", note: "newest first" }, { value: "size", note: "largest first" }])
+            && sort.short === "sor" && sort.bang === true, JSON.stringify(sort));
+        const depth = launcher.held.length;
+        sort.run(called("size"));
+        const step = () => launcher.held[launcher.held.length - 1];
+        expect(":sort size lists the folder largest first, made afresh",
+            chooser.order === "size" && !chooser.reversed && launcher.held.length === depth
+                && step().row.key === `folder:${notes}`
+                && names(step().rows).includes("| sub, notes.txt, b.png, | Encoding"),
+            `${chooser.order} ${launcher.held.length}/${depth} ${names(step().rows)}`);
+        sort.run(called("", true));
+        expect(":sort! turns the order in use round, folders still first",
+            chooser.order === "size" && chooser.reversed
+                && names(step().rows).includes("| sub, b.png, notes.txt, | Encoding"),
+            `${chooser.order} ${chooser.reversed} ${names(step().rows)}`);
+        chooser.orderBy("name", false);
+        command(notes, "set").run(called("hidden"));
+        expect(":set hidden lists the hidden files", chooser.showsHidden
+            && names(step().rows).includes(".hidden.txt"), names(step().rows));
+        command(notes, "set").run(called("nohidden"));
+        expect(":set nohidden leaves them out", !chooser.showsHidden
+            && !names(step().rows).includes(".hidden.txt"), names(step().rows));
+        const cd = command(notes, "cd");
+        expect(":cd completes folders alone, from the folders read",
+            JSON.stringify(cd.args("")) === JSON.stringify([{ value: "sub/", note: "folder" }])
+                && JSON.stringify(cd.args("~/no")) === JSON.stringify([{ value: "~/notes/",
+                    note: "folder" }]), `${JSON.stringify(cd.args(""))} ${JSON.stringify(cd.args("~/no"))}`);
+        const edit = command(notes, "edit");
+        expect(":e completes files too", edit.args("n").map(each => each.value).join(" ")
+            === "notes.txt", JSON.stringify(edit.args("n")));
+        cd.run(called("sub"));
+        expect(":cd goes to the folder, held as if the ask opened there",
+            step().row.key === `folder:${notes}/sub` && launcher.homeDepth === launcher.held.length,
+            heldPaths());
+        edit.run(called("~/notes/"));
+        expect(":e on a folder goes there", step().row.key === `folder:${notes}`, heldPaths());
     }
 
     // The folder a save is asked in gives the line the name it saves as,
@@ -571,44 +645,20 @@ ShellRoot {
         folder.worded("new.md");
         const rows = folder.finds("new.md");
         expect("a name typed leads, saved by Return, and narrows nothing",
-            names(rows) === "new.md, elsewhere, | sub, a.md, b.png, notes.txt, | Encoding, Order"
+            names(rows) === "new.md, elsewhere, | sub, a.md, b.png, notes.txt, | Encoding"
                 && rows[0].verb === "save" && rows[0].side === "~/notes", names(rows));
         expect("only the name's row says it names the line's words, so h and l step on the rest",
             rows[0].names === true && rows.slice(1).every(row => row.names !== true),
             rows.map(row => `${row.name}:${row.names}`).join(" "));
         folder.worded("sub");
         expect("a folder's name gives nothing to save over", names(folder.finds("sub"))
-            === "elsewhere, | sub, a.md, b.png, notes.txt, | Encoding, Order", names(folder.finds("sub")));
+            === "elsewhere, | sub, a.md, b.png, notes.txt, | Encoding", names(folder.finds("sub")));
         folder.worded("new.md");
-    }
-
-    // Order comes last, saying the order in use, and steps into the three,
-    // that one first; Return on one lists the folder so, back in it, made
-    // afresh, as every folder after.
-    function ordering() {
-        const rows = rowsIn(notes);
-        const order = rows[rows.length - 1];
-        expect("Order comes last, saying the order in use, stepping in", order.name === "Order"
-            && order.side === "name" && order.verb === "more", `${order.name} ${order.side}`);
-        const depth = launcher.held.length;
-        launcher.enter(order);
-        const inside = launcher.held[depth].rows;
-        expect("inside, the order in use first, then the others",
-            names(inside) === "Name (chosen), Changed, Size", names(inside));
-        inside[2].run();
-        const step = launcher.held[launcher.held.length - 1];
-        expect("Return on Size goes back to the folder, made afresh, its files largest first",
-            chooser.order === "size" && launcher.held.length === depth
-                && step.row.key === `folder:${notes}`
-                && names(step.rows).includes("| sub, notes.txt, b.png, | Encoding, Order")
-                && rowsIn(notes)[rowsIn(notes).length - 1].side === "size, largest first",
-            `${chooser.order} ${launcher.held.length}/${depth} ${step.row.key} ${names(step.rows)}`);
-        chooser.orderBy("name");
     }
 
     function folder() {
         const rows = rowsIn(notes);
-        expect("asked for a folder, it lists no files", names(rows) === "elsewhere, | sub, | Order",
+        expect("asked for a folder, it lists no files", names(rows) === "elsewhere, | sub",
             names(rows));
         expect("asked for a folder, the field asks for one", fieldAsks() === "open which folder?",
             fieldAsks());
@@ -619,99 +669,62 @@ ShellRoot {
         inside[0].run();
     }
 
-    function marking() {
+    // Where several may be opened, :arga gathers the cursor row's file or
+    // those a range bound, each once, a folder passed over; a file gathered
+    // wears the mark, and Return says and answers how many are; :args steps
+    // into Gathered, its plate counting them, and Forget Them lets them go.
+    // It leaves a.md and old.md gathered, in that order, for Return to
+    // answer.
+    function gathering() {
         expect("taking several files, the field asks for files", fieldAsks() === "open which files?",
             fieldAsks());
-        let rows = rowsIn(notes);
-        expect("Open the Marked leads from the start, then lately, folders and files",
-            names(rows) === "Open the Marked, | old.md, | sub, a.md, b.png, notes.txt, | Order",
-            names(rows));
-        const lead = rows[0];
-        expect("with none marked, it says none and nothing more, Return saying nothing",
-            lead.side === "none" && lead.note === "" && lead.still === true && lead.stays === true
-                && !lead.verbs && !lead.drawer && !lead.plated,
-            `${lead.side} ${lead.note} ${lead.still} ${lead.stays} ${typeof lead.verbs}`);
-        lead.run();
-        expect("with none marked, Open the Marked opens nothing", answers.length === 5
-            && chooser.asking?.reply.endsWith("/7.sock"), `${answers.length} answers`);
+        const rows = rowsIn(notes);
+        expect("no lead: lately, then folders and files",
+            names(rows) === "old.md, | sub, a.md, b.png, notes.txt", names(rows));
+        const listed = chooser.commandsIn(notes).map(row => row.command).join(" ");
+        expect("its commands gather and list what's gathered",
+            listed === "sort set mkdir edit cd quit argadd args", listed);
         const a = named(rows, "a.md");
-        const unmarked = a.glyph;
-        expect("Return marks a file, the launcher staying", a.verb === "mark" && a.stays === true
-            && a.hue === "program", `${a.verb} ${a.stays} ${a.hue}`);
-        a.run();
-        expect("a file marked wears the mark in an act's hue and says Return unmarks it",
-            a.glyph !== unmarked && a.hue === "action" && a.verb === "unmark",
+        const plain = a.glyph;
+        expect("with none gathered, Return opens the file", a.verb === "open" && a.hue === "program",
+            `${a.verb} ${a.hue}`);
+        const arga = command(notes, "argadd");
+        expect(":arga takes a range", arga.ranged === true && arga.short === "arga",
+            JSON.stringify(arga));
+        arga.run(Object.assign(called(""), { things: [a, named(rows, "sub"), named(rows, "old.md")] }));
+        expect(":arga gathers the files a range bound, in order, a folder passed over",
+            JSON.stringify(chooser.marked) === JSON.stringify([`${notes}/a.md`,
+                `${home}/elsewhere/old.md`]), JSON.stringify(chooser.marked));
+        launcher.selected = a;
+        arga.run(called(""));
+        expect("with no range, the cursor row's, each once", chooser.marked.length === 2,
+            JSON.stringify(chooser.marked));
+        expect("a file gathered wears the mark in an act's hue, and Return says how many it opens",
+            a.glyph !== plain && a.hue === "action" && a.verb === "open 2"
+                && named(rows, "b.png").verb === "open 2" && named(rows, "b.png").hue === "program",
             `${a.glyph} ${a.hue} ${a.verb}`);
-        expect("inside, Marked says yes, then Open for it alone, then Copy the Path",
-            names(a.verbs()) === "Marked, Open, Copy the Path" && a.verbs()[0].side === "yes",
-            `${names(a.verbs())} ${a.verbs()[0].side}`);
-        named(rows, "old.md").run();
-        const b = named(rows, "b.png");
-        b.run();
-        b.run();
-        expect("Return again unmarks it", b.verb === "mark" && b.glyph === unmarked
-            && b.verbs()[0].side === "no", `${b.verb} ${b.verbs()[0].side}`);
-        rows = rowsIn(notes);
-        expect("Open the Marked says how many are and names them in the order marked",
-            rows[0].name === "Open the Marked" && rows[0].side === "2"
-                && rows[0].note === "a.md \u00b7 old.md" && rows[0].still === false,
-            `${rows[0].name} ${rows[0].side} ${rows[0].note} ${rows[0].still}`);
-        // The launcher draws a plate only for a thing or a row that says
-        // it's plated, and the lead is neither by its kind.
-        expect("Open the Marked says it's plated, so the launcher draws its plate",
-            rows[0].plated === true, `${rows[0].plated}`);
-        expect("stepped into, its crumb is the place, Marked", rows[0].title === "Marked",
-            rows[0].title);
-        const plate = rows[0].drawer();
+        command(notes, "args").run(called(""));
+        const place = launcher.held[launcher.held.length - 1];
+        expect(":args steps into Gathered: the files, each with its folder, then Forget and Copy",
+            place.row.title === "Gathered"
+                && names(place.rows) === "a.md, old.md, Forget Them, Copy the Paths"
+                && place.rows[0].note === "~/notes" && place.rows[1].note === "~/elsewhere"
+                && place.rows[3].copy === `${notes}/a.md\n${home}/elsewhere/old.md`,
+            `${place.row.title}: ${names(place.rows)}`);
+        const plate = place.row.drawer();
         expect("its plate counts them and lists each with its folder, their size waiting on old.md's",
-            plate.eyebrow === "2\u00a0marked" && plate.title === "Open the Marked"
+            plate.eyebrow === "2\u00a0gathered" && plate.title === "Gathered"
                 && JSON.stringify(plate.preview) === JSON.stringify({
                     lines: ["a.md \u00b7 ~/notes", "old.md \u00b7 ~/elsewhere"], quiet: true })
                 && plate.facts.length === 1 && plate.facts[0].value === null,
             JSON.stringify(plate));
-        insideMarked(rows[0]);
+        named(place.rows, "Forget Them").run();
+        expect("Forget Them lets them go", chooser.marked.length === 0 && a.verb === "open",
+            JSON.stringify(chooser.marked));
+        launcher.back();
+        arga.run(Object.assign(called(""), { things: [a, named(rows, "old.md")] }));
         launcher.open = false;
-        rowsIn(notes)[0].run();
-    }
-
-    // The right arrow on Open the Marked steps into Marked: the files in
-    // the order marked, each with its folder, then Unmark All, then Copy
-    // the Paths; one unmarked there stays, unmarked, until it's left, and
-    // so do all of them once Unmark All has been. It leaves a.md and old.md
-    // marked again, in that order, for Open the Marked to answer.
-    function insideMarked(lead) {
-        launcher.enter(lead);
-        const shown = () => rowsIn(notes)[0].verbs();
-        let inside = shown();
-        expect("inside Marked: the files marked, each with its folder, then Unmark All and Copy",
-            names(inside) === "a.md, old.md, Unmark All, Copy the Paths"
-                && inside[0].note === "~/notes" && inside[1].note === "~/elsewhere"
-                && inside[3].copy === `${notes}/a.md\n${home}/elsewhere/old.md`,
-            `${names(inside)} ${inside[0].note} ${inside[1].note} ${inside[3].copy}`);
-        inside[0].run();
-        inside = shown();
-        expect("one unmarked there stays, unmarked", names(inside)
-            === "a.md, old.md, Unmark All, Copy the Paths" && inside[0].verb === "mark"
-            && rowsIn(notes)[0].side === "1", `${names(inside)} ${inside[0].verb}`);
-        named(inside, "Unmark All").run();
-        inside = shown();
-        expect("with all unmarked, Marked still holds them while it's shown, with nothing to do",
-            names(inside) === "a.md, old.md, Unmark All, Copy the Paths"
-                && inside[2].still === true && inside[3].still === true
-                && rowsIn(notes)[0].still === true, `${names(inside)} ${inside[2].still}`);
-        inside[0].run();
-        inside[1].run();
-        launcher.held = launcher.held.slice(0, -1);
-        expect("left, Marked is stepped into afresh, holding only what's marked",
-            names(rowsIn(notes)[0].verbs()) === "a.md, old.md, Unmark All, Copy the Paths",
-            names(rowsIn(notes)[0].verbs()));
-        launcher.enter(rowsIn(notes)[0]);
-        named(launcher.held[launcher.held.length - 1].rows, "old.md").run();
-        launcher.held = launcher.held.slice(0, -1);
-        expect("and one unmarked there is gone from it once it's left",
-            names(rowsIn(notes)[0].verbs()) === "a.md, Unmark All, Copy the Paths",
-            names(rowsIn(notes)[0].verbs()));
-        named(rowsIn(notes), "old.md").run();
+        named(rows, "b.png").run();
     }
 
     // The file kept elsewhere, as the case picking it last drew it.
@@ -728,8 +741,8 @@ ShellRoot {
 
     function elsewhere() {
         const rows = rowsIn(home);
-        expect("a place kept elsewhere is listed after home's files, apart, then Order",
-            names(rows).endsWith(", | Google Drive, | Order"), names(rows));
+        expect("a place kept elsewhere is listed after home's files, apart",
+            names(rows).endsWith(", | Google Drive"), names(rows));
         const away = chooser.folderRow(notes).typed("drive");
         expect("typed in another folder, it's found", names(away) === "Google Drive", names(away));
         const there = chooser.folderRow(home).typed("drive");
@@ -761,13 +774,16 @@ ShellRoot {
 
     function severalElsewhere() {
         const files = driveFiles();
-        named(files, "Plan").run();
-        named(files, "report.pdf").run();
-        const lead = rowsIn(home)[0];
-        expect("files kept elsewhere are marked as any is", lead.side === "2" && lead.stays === true,
-            `${lead.side} ${lead.stays}`);
-        lead.run();
+        chooser.gather([named(files, "Plan"), named(files, "report.pdf")]);
+        severalRow = named(files, "report.pdf");
+        expect("files kept elsewhere are gathered as any is", chooser.marked.length === 2
+            && severalRow.verb === "open 2" && severalRow.stays === true,
+            `${JSON.stringify(chooser.marked)} ${severalRow.verb} ${severalRow.stays}`);
+        severalRow.run();
     }
+
+    // A file kept elsewhere, gathered with another, as the case before drew it.
+    property var severalRow: null
 
     // What the shell's own ask was answered with, none until it is.
     property var shellPicked: null
