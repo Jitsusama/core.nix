@@ -212,6 +212,28 @@ fn marker(text: &str) -> bool {
     !text.is_empty() && (text.chars().all(|c| MARKS.contains(c)) || numbered)
 }
 
+/// Takes a list's marker and the blank after it off the front of a line
+/// of words, so the line starts where its words do.
+fn unmark(line: &mut Line, chars: &mut Vec<char>, is_mark: impl Fn(&str) -> bool) -> bool {
+    let Some(blank) = chars.iter().position(|c| c.is_whitespace()) else {
+        return false;
+    };
+    let words = chars[blank..]
+        .iter()
+        .position(|c| !c.is_whitespace())
+        .map_or(chars.len(), |at| blank + at);
+    let mark: String = chars[..blank].iter().collect();
+    if blank == 0 || words == chars.len() || !is_mark(&mark) || line.spans.len() != chars.len() {
+        return false;
+    }
+    chars.drain(..words);
+    line.spans.drain(..words);
+    line.text = chars.iter().collect();
+    line.x_pt = line.spans[0].0;
+    line.tail_x_pt = line.tail_x_pt.max(line.x_pt);
+    true
+}
+
 /// Whether a line of the file starts a list's item: a mark or a number,
 /// then a blank.
 fn listed(line: &str) -> bool {
@@ -368,10 +390,34 @@ impl Layout {
         // between a piece's lines would part the piece. A list's marker,
         // beside its item's first line, goes too: it's the margin's, as
         // Vim's number column is, so nothing stands on it or grounds it.
+        // A marker set close enough to its words is read as their line's
+        // start rather than a line of its own, so it comes off the front
+        // of the item's first line instead, unless it stood apart.
+        let mut seen = vec![false; units.len()];
         for &line in labels.iter().rev() {
+            if let Some(unit) = of_line[line].filter(|_| marker(&lines[line].text)) {
+                seen[unit] = true;
+            }
             lines.remove(line);
             chars.remove(line);
             of_line.remove(line);
+        }
+        for line in 0..lines.len() {
+            let Some(unit) = of_line[line] else {
+                continue;
+            };
+            if std::mem::replace(&mut seen[unit], true) {
+                continue;
+            }
+            let first = source_lines
+                .get(units[unit].first.saturating_sub(1))
+                .map(|range| &source[range.clone()]);
+            // A task's box comes after its bullet, where both are drawn.
+            if first.is_some_and(listed) && unmark(&mut lines[line], &mut chars[line], marker) {
+                unmark(&mut lines[line], &mut chars[line], |mark| {
+                    mark.chars().all(|c| MARKS.contains(c))
+                });
+            }
         }
         let mut unit_lines: Vec<Option<(usize, usize)>> = vec![None; units.len()];
         for (line, unit) in of_line.iter().enumerate() {
@@ -1827,11 +1873,21 @@ mod tests {
             !page.lines.iter().any(|line| marker(&line.text)),
             "a list's bullets are the margin's, no line to select"
         );
-        let numbered = set("numbers", "1. One\n2. Two\n\n- [ ] A task\n");
+        let starts =
+            |page: &Layout, words: &str| page.lines[holding(page, words)].text.starts_with(words);
+        assert!(starts(&page, "One item"), "nor the start of one");
+        let numbered = set("numbers", "1. One\n2. Two\n10. Ten\n\n- [ ] A task\n");
         assert!(
             !numbered.lines.iter().any(|line| marker(&line.text)),
             "nor are its numbers or a task's box"
         );
+        for words in ["One", "Two", "Ten", "A task"] {
+            assert!(
+                starts(&numbered, words),
+                "{words}'s line is {:?}, not its words alone",
+                numbered.lines[holding(&numbered, words)].text
+            );
+        }
         assert_eq!(piece("echo one"), Some(12));
         assert!(
             !page.lines.iter().any(|line| line.text.contains("SH")),
