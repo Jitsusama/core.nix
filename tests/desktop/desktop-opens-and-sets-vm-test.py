@@ -116,7 +116,7 @@ def sound_selected(name: str) -> Callable[[Json], bool]:
 
 
 def sound_device(desktop: Desktop, typed: str, named: str) -> None:
-    """Open the launcher's Sound, and step into a device's parts by l."""
+    """Open the launcher's Sound, and step into a device's parts by Return."""
     desktop.as_account("qs ipc call launcher collection sound")
     desktop.launcher_ready()
     desktop.type_in(typed, selecting=named)
@@ -359,7 +359,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("mpv", selecting="mpv Media Player")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: {"Media", "Sound"} <= set(shown["rows"]))
         if part:
             desktop.type_in(part.lower(), selecting=part)
@@ -536,8 +536,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     machine = desktop.machine
     # By its name, power saver last, where what follows starts from. Setting
     # it changes something, so Return keeps the launcher, the row saying
-    # it's chosen, and l then Return sets it and closes, with
-    # no chord with Ctrl said anywhere.
+    # it's chosen, and Ctrl+] then Return sets it and closes, with
+    # no other chord with Ctrl said anywhere.
     for typed, profile, name, stepping in [
         ("balanced power", "balanced", "Balanced Power", False),
         ("power saver", "power-saver", "Power Saver", True),
@@ -545,14 +545,16 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
-        # In normal, where l steps in; on the find letters type, so it names none.
+        # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
         desktop.normal()
-        desktop.launcher_until(lambda shown: "l in" in (shown["selected"] or {}).get("told", []))
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("told", [])[-1:] == ["Ctrl+] in"]
+        )
         told = desktop.showing()["selected"]["told"]
-        assert not any(key.startswith("Ctrl") for key in told), told
+        assert not any(key.startswith("Ctrl") for key in told[:-1]), told
         if stepping:
             # Its own act leads the step, selected.
-            desktop.step_in()
+            desktop.follow()
             desktop.launcher_until(
                 lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][0]
             )
@@ -704,7 +706,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         else:
             desktop.as_account("qs ipc call launcher collection displays")
         desktop.launcher_ready()
-        desktop.step_in()
+        desktop.follow()
         # Its settings lead, each saying how it's set, their choices a step
         # in, there by Return on the setting, or found from here by what's
         # typed. The backlight lights the one screen there is, so its
@@ -1172,9 +1174,9 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
     desktop.close_launcher()
-    # Found from the root, l goes straight inside the Office,
-    # the networks' crumb above it saying where it lives, and the left
-    # arrow comes back to the search with what was typed (VKCF3Z,
+    # Found from the root, Return goes straight inside the Office,
+    # the networks' crumb above it saying where it lives, and -
+    # comes back to the search with what was typed (VKCF3Z,
     # 2026-10-29: "\u2190 is where you came from; the crumbs are where it
     # lives").
     desktop.as_account("qs ipc call launcher toggle")
@@ -1191,7 +1193,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
             len(shown["held"]) > 1 and shown["path"][-1:] == ["Office"] and shown["typed"] == ""
         )
     )
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "office")
     desktop.close_launcher()
     # Stepped into, a network says after what can be done to it what's
@@ -1211,20 +1213,20 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
-    # h steps out with the word put back, and cc takes the word, onto the
+    # - steps out with the word put back, and cc takes the word, onto the
     # find.
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == office and shown["typed"] == "signal"
     )
     machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     desktop.photograph("launcher-wifi-detail")
-    # The Speed holds each way and the retries, l into it.
+    # The Speed holds each way and the retries, Return into it.
     desktop.type_in("speed", selecting="Speed")
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
     machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
@@ -1312,8 +1314,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     side = desktop.showing()["selected"]["side"]
     assert re.fullmatch(r"[\d,]+ bytes", side), side
     desktop.photograph("launcher-addresses-wifi")
-    desktop.normal()
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi"
     )

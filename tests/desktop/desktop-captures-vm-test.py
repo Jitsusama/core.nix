@@ -652,7 +652,7 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.answer("built-in camera")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     assert desktop.showing()["selected"]["side"] == "in use by chrome"
-    desktop.step_in()
+    desktop.follow()
     # Return's own Open first, then who has it, then what it gives, from
     # the loopback's own file in sysfs. The rate is the loopback's own,
     # whatever the stand-in's writer asks.
@@ -666,9 +666,9 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.step_in()
     # Copying what it says comes last, since nothing inside does anything.
     assert desktop.showing()["rows"] == ["chrome", "Copy"]
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [])
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     machine.send_key("ret")

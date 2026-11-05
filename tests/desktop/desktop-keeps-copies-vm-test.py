@@ -88,8 +88,9 @@ def test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not(desktop
     machine.send_key("meta_l-v")
     desktop.launcher_ready()
     desktop.type_in("tues", selecting="Notes for Tuesday")
-    # Paste first, and Copy beside it for only copying.
-    desktop.step_in()
+    # Paste first, and Copy beside it for only copying, inside by Ctrl+],
+    # since Return pastes.
+    desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Paste")
     with desktop.told("pastes into kitty"):
         machine.send_key("ret")

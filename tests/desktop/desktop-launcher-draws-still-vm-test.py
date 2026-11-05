@@ -389,14 +389,14 @@ def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
             desktop.down_to("Firmware")
             desktop.step_in()
             first_rows(top)
-            machine.send_key("h")
-            machine.send_key("h")
+            desktop.step_out()
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
             # And from home's last place straight into it.
             desktop.down_to("Keyboard")
             desktop.step_in()
             first_rows(top)
-            machine.send_key("h")
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
             desktop.previous_row()
         assert not unlike, f"the first row stood below the top ({top}): {unlike}"
@@ -428,20 +428,20 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     fewest = 4
     desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
     home = marks_in(desktop.showing()["glance"])
-    # A step's row with the most keys: Return, l and the
-    # left, and no chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
+    # A step's row with the most keys: Return, - and Ctrl+] in, and
+    # no other chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
     # "i want icons to be able to be there as much as possible").
     machine.send_chars("desktop ")
     desktop.launcher_until(
         lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
     )
     desktop.down_to("Do Not Disturb")
-    # In normal, where l steps in; on the find letters type, so it names none.
+    # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert "l in" in told, shown["selected"]
-    assert not any(key.startswith("Ctrl") for key in told), shown["selected"]
+    assert told[-1:] == ["Ctrl+] in"], shown["selected"]
+    assert not any(key.startswith("Ctrl") for key in told[:-1]), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()
     # A switch restarts the shell: the first foot it draws has every mark,

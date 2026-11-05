@@ -1333,7 +1333,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
-            machine.send_key("h")
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
@@ -1559,7 +1559,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("testqa", selecting="A quest of its own & whole")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
         for name, side in [
             ("Spent Today", "$14.20 in all"),

@@ -119,8 +119,8 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     # looked at is held among its members, where the member at work shows below the way to
     # the fleet's session, whose row isn't cut.
     reads_on_beside(desktop, "paint-crew", "fleet \u00b7")
-    # Stepped into, its members after the way to its session.
-    desktop.step_in()
+    # Gone into by Ctrl+], as Return goes to its session, its members after the way there.
+    desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     # What a fleet says changes as its files do, not every frame.
     draws_nothing_held_still(desktop, "a fleet", "its member at work")
@@ -636,7 +636,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     waiting_opened(desktop)
     desktop.step_in()
     picked(desktop, "Restart Once")
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Not Now")
     machine.send_key("ret")
     desktop.close_launcher()

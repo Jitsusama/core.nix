@@ -1057,13 +1057,13 @@ def test_a_notices_commands_are_what_its_launcher_row_holds(
     with desktop.told("notice mode normal"):
         machine.send_key("esc")
     # :e Notices hands on to the history, which opens on its first row,
-    # the newest notice, as every place opens on its first; its acts there
-    # hold the same.
+    # the newest notice, as every place opens on its first; Ctrl+] goes
+    # into its acts from normal mode, and they hold the same.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
@@ -1135,7 +1135,7 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     )
     # With nothing to open or go to, what it offers leads; copying what it
     # said is last.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["Play it"] and shown["rows"][-1:] == ["Copy What It Said"]

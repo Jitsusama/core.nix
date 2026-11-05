@@ -118,8 +118,9 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         )
     )
     desktop.photograph("launcher-agents")
-    # Stepped into, what's known of it, each a row of its own.
-    desktop.step_in()
+    # Gone into by Ctrl+], as Return goes to it, what's known of it, each
+    # a row of its own.
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Go To" and shown["selected"]["verb"] == "go"
@@ -152,7 +153,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     selection = laid_out(desktop)["selection"]
     assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"
@@ -294,7 +295,7 @@ def into_lighthouse(desktop: Desktop) -> None:
     desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lighthouse")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
 
 
@@ -316,23 +317,22 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         )
     )
     desktop.close_launcher()
-    # Found from the root by its name, l in normal mode goes
+    # Found from the root by its name, Ctrl+] in normal goes
     # straight inside it, though its Return goes to its window, the crumbs
-    # saying where it lives; h comes back to the search,
+    # saying where it lives; - comes back to the search,
     # Lighthouse selected (VKCF3Z, 2026-10-29: "\u2190 is where you came
     # from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.normal()
-    machine.send_key("l")
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
             and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
         )
     )
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == []
@@ -345,8 +345,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.normal()
-    machine.send_key("l")
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
@@ -401,8 +400,9 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
             and "Watching" in shown["drawer"]["body"]
         )
     )
-    # Read, it says his words and how it went, each a part to copy.
-    desktop.step_in()
+    # Read, it says his words and how it went, each a part to copy, gone
+    # into by Ctrl+].
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["You Said", "How It Went"])
     desktop.close_launcher()
 
@@ -416,7 +416,7 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
     # A step in leads with talking it over with Lighthouse, before asking
     # in a session of its own, and the copy comes after them.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["rows"][:3] == ["Talk to Lighthouse", "Ask in a Session", "Copy"]
     )
