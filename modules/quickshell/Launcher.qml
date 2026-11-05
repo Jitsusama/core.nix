@@ -2314,7 +2314,8 @@ Scope {
     // visual with its selection: { range, things, surface, go }, things
     // the rows the acts act on, the cursor row where none are given;
     // surface a surface's own commands (Commands.listed), as a viewer's
-    // :rotate; and go what :{n} and :$ do, where it isn't the rows'.
+    // :rotate; go what :{n} and :$ do, where it isn't the rows'; and goes
+    // what its line says that is, as "That picture, by its number".
     function commandLine(opening) {
         const row = selected;
         const things = opening?.things ?? (row ? [row] : []);
@@ -2330,7 +2331,8 @@ Scope {
             things: on,
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
-                table: Commands.standIn, said: words, row: current + 1 })
+                table: Commands.standIn, row: current + 1,
+                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words })
         };
     }
 
@@ -2370,6 +2372,7 @@ Scope {
         commandLine({
             things: [],
             surface,
+            goes: line.goes ?? "",
             go: to => {
                 open = false;
                 carry("goto", String(to));

@@ -590,8 +590,8 @@ def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desk
     desktop.launcher_until(
         lambda shown: (
             shown["keys"]
-            and "rotate Turn it, by 90, 180 or 270 degrees"
-            in (shown["command"] or {}).get("menu", [])
+            and {"rotate Turn it, by 90, 180 or 270 degrees", "{n} That picture, by its number"}
+            <= set((shown["command"] or {}).get("menu", []))
         )
     )
     desktop.photograph("swayimg-command-line")

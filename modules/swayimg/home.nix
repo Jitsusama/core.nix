@@ -401,6 +401,7 @@ in
         key = "ZZ";
       }
     ];
+    goes = "That picture, by its number";
     run = [ (lib.getExe (pkgs.callPackage ./command.nix { })) ];
   };
 

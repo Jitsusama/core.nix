@@ -317,6 +317,7 @@ in
         key = "ZZ";
       }
     ];
+    goes = "To that time, as 12:30, or that many seconds in";
     run = [ (lib.getExe (pkgs.callPackage ./command.nix { })) ];
   };
 
