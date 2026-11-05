@@ -1179,7 +1179,8 @@ works the same way everywhere.
   does that step into shit?"). h, l and Backspace step nowhere: on a row
   they mean nothing, and the foot says so with Vim's way, "l not here · ↵
   open". On the find line the arrows move the caret, as in Vim. Escape
-  cancels, then closes the launcher (Vi's Keys), and only in the launcher: the window behind never hears it. The foot names
+  cancels, then closes the launcher (Vi's Keys), and only in the launcher:
+  the window behind never hears it. The foot names
   every key that works on the selection by its letter: what Return does,
   and - wherever there's somewhere to go up to. A step in lists what
   Return does first, where the row's own list left it out, so going in
@@ -1193,7 +1194,8 @@ works the same way everywhere.
   likeliest act first inside, so Return twice does it: a person, a quest,
   a device, a network, a setting, a place. A network's Return only shows
   it, since connecting to one lets go of another. Return never calls
-  someone or starts something new by itself. A meeting joins on Return only from ten minutes before it starts, and
+  someone or starts something new by itself. A meeting joins on Return
+  only from ten minutes before it starts, and
   before then goes in, Join first, so Joel is never made to join early
   (2026-10-26: "they force me to join, and what if I want to cancel");
   the foot says which. A value copies on Return only where it holds
