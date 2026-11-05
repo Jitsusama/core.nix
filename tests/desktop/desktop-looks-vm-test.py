@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -198,6 +199,53 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["counted"] == "" and shown["ex"] is None
     )
+
+
+# y flashes the rows it copies for a moment (his Neovim's on_yank), and
+# d's ask stands in Return's place, one line, moving nothing (Y2YBTS,
+# 2026-11-04). The flash is gone in a fifth of a second, too soon to wait
+# for the screen to hold still, so the screen is taken as fast as QEMU
+# gives it, and the picture kept is the one furthest from the screen once
+# the flash has gone. Whether y flashed is held by what the launcher says;
+# the picture is for a person.
+FLASH_FRAMES = 8
+
+
+def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Y flashes the row it copies, and d's ask takes Return's place and moves nothing."""
+    machine = desktop.machine
+    desktop.notes_window()
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        named = scale.replace(".", "-")
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("tuesday", selecting="Notes for Tuesday")
+        desktop.normal()
+        machine.send_chars("yy")
+        frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
+        desktop.launcher_until(lambda shown: shown["flashing"] == [])
+        after = desktop.settled_screen(f"launcher-yanked-at-{named}")
+        flashed = max(frames, key=partial(changed_from, after))
+        if desktop.values["photographs"]:
+            flashed.save(machine.out_dir / f"launcher-yank-flash-at-{named}.png")
+        before = desktop.showing()["keysAt"]
+        with desktop.told("asked again closes it"):
+            machine.send_chars("dd")
+        shown = desktop.showing()
+        assert shown["keysAt"] == before, f"at {scale} the ask moved Return's place: {shown}"
+        assert shown["operated"] == "dd again closes it", shown
+        desktop.photograph(f"launcher-asks-at-{named}")
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
+        desktop.close_launcher()
+
+
+def changed_from(after: Image.Image, frame: Image.Image) -> float:
+    """Say how far a picture is from another, as the mean of its differences' light."""
+    return float(ImageStat.Stat(ImageChops.difference(frame, after).convert("L")).mean[0])
 
 
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
