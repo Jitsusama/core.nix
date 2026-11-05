@@ -532,9 +532,15 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     retry(closed, timeout=dt.timedelta(seconds=10))
     # Return over the selection opens what it holds: the third window,
     # going to it as its own Return does, which lets the launcher go. The
-    # closed rows stay in their place until a key, which gg is.
-    machine.send_chars("gg")
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Chosen third"])
+    # closed rows stay in their place, gone, so it's gone to by its number.
+    shown = desktop.showing()
+    at = next(
+        at
+        for at, thing in enumerate(shown["things"])
+        if not thing["gone"] and thing["reads"].startswith("Chosen third ")
+    )
+    machine.send_chars(f"{at + 1}G")
+    desktop.launcher_until(lambda shown: shown["current"] == at)
     machine.send_chars("V")
     desktop.launcher_until(lambda shown: shown["mode"] == "visual")
     machine.send_key("ret")
