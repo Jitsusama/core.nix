@@ -6661,6 +6661,8 @@
         "lines": "Down and up a line",
         "along": "Along the line",
         "scroll": "Scroll a line",
+        "seek": "Search it",
+        "seekOn": "The next match, and the one before",
         "back": "Back to the rows",
         "keys": "These keys",
         "close": "Close"

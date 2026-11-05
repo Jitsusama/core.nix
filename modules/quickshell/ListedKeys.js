@@ -57,6 +57,10 @@ const page = [
     { name: "half", acts: ["halfDown", "halfUp"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "count", acts: [], also: ["3j", "12G"] },
+    // / and ? open its search as : opens the command line, so no row holds
+    // them.
+    { name: "seek", acts: [], also: ["/", "?"] },
+    { name: "seekOn", acts: ["seekNext", "seekPrevious"] },
     { name: "back", acts: ["rows"], firsts: true, also: [":q"] }
 ];
 

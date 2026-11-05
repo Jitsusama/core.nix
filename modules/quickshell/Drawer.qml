@@ -66,6 +66,11 @@ Floating {
         // markup, as a StyledText reads it.
         property string plain
         property bool styled: false
+        // What the drawer's search seeks, each place it's found in plain
+        // words washed as his Neovim's Search draws a match, set by each
+        // use, since an inline component can't see the drawer; a styled
+        // text keeps its own markup.
+        property string sought
         // How tall each of its lines is, the plate's pitch or a step of it,
         // or 0 for the face's own, as a line set alone by its baseline is.
         required property real leading
@@ -81,6 +86,11 @@ Floating {
         // moved through, twice a Text's time to make one.
         property bool reading: false
         readonly property TextEdit reader: readerLoader.item
+
+        // Search's wash, strong ink on raised, as the held notices wash what
+        // they find (Notifications.qml), drawn by the reader on the Text's
+        // letters, which a search, only ever run in the drawer, has.
+        readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
 
         text: plain
         textFormat: styled ? Text.StyledText : Text.PlainText
@@ -105,7 +115,8 @@ Floating {
                     ? cut.elidedText(words.plain, Qt.ElideRight, words.width) : words.plain
 
                 // Its letters on the Text's, the row's markup keeping its
-                // words and losing its colours, which the Text draws.
+                // words and losing its colours, which the Text draws: only
+                // what a search washes, on its own ground, is drawn here.
                 y: words.baselineOffset - drop - baselineOffset
                 width: words.width
                 readOnly: true
@@ -119,7 +130,8 @@ Floating {
                     + (words.leading > 0
                         ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
                     + `">${words.styled ? said.replace(/ color="[^"]*"/g, "")
-                        : Search.escaped(said)}</div>`
+                        : words.sought !== "" ? Search.washed(said, words.sought, words.wash)
+                            : Search.escaped(said)}</div>`
 
                 FontMetrics {
                     id: cut
@@ -299,12 +311,27 @@ Floating {
     // line it wants to be, which j and k go back to.
     property var laid: []
     property var cursor: ({ line: 0, letter: 0, want: 0 })
+    // The search being typed in it, as the launcher's line holds it, and
+    // the last one run, { pattern, forward }, which n and N go on with, as
+    // Vim keeps its last search; and whether the last run went round an
+    // end or found nothing, for the launcher to report. What's washed is
+    // what's being typed, as his incsearch shows it, else the last search
+    // while the keys are in it, as his hlsearch keeps it.
+    property string seeking: ""
+    property var lastSought: null
+    property string landing: ""
+    readonly property string washing: seeking !== "" ? seeking
+        : keys && lastSought ? lastSought.pattern : ""
     onKeysChanged: {
         if (keys) {
             enter();
         } else {
             for (const text of texts())
                 text.reading = false;
+            // What the last search found goes with it, so a drawer gone
+            // back into never says it went round before anything's sought.
+            lastSought = null;
+            landing = "";
         }
     }
     onShownChanged: relay()
@@ -458,6 +485,47 @@ Floating {
         });
         cursor = { line: moved.line, letter: moved.letter, want: moved.want };
         view.contentY = moved.top;
+    }
+    // A search run in it, from the cursor, the way it goes and a count on,
+    // nothing sought seeking the last again, as Vim's / Return does; and n
+    // and N going on with the last, its way and the other. The cursor goes
+    // to the match's first letter and the view follows it; `landing` says
+    // "wrapped" where it went round an end, as Vim says it hit the bottom,
+    // and "missing" where it's found nowhere, the cursor staying.
+    function seek(pattern, forward, count) {
+        const sought = pattern !== "" ? { pattern, forward }
+            : lastSought ? { pattern: lastSought.pattern, forward } : null;
+        if (!sought)
+            return;
+        lastSought = sought;
+        land(sought.pattern, forward, count);
+    }
+    function seekOn(act, count) {
+        if (lastSought)
+            land(lastSought.pattern, act === "seekNext" ? lastSought.forward
+                : !lastSought.forward, count);
+    }
+    function land(pattern, forward, count) {
+        const page = laid.map(line => Object.assign({}, line, { text: line.parts.map(part =>
+            part.words.getText(part.from, part.from + part.length)).join("") }));
+        const landed = Page.sought({
+            lines: page,
+            line: cursor.line,
+            letter: cursor.letter,
+            want: cursor.want,
+            top: view.contentY,
+            height: view.height,
+            end: Math.max(0, view.contentHeight - view.height),
+            pitch: drawer.pitch,
+            off: drawer.scrolloff,
+            xOf: (line, letter) => xOf(page[line], letter),
+            letterAt: (line, x) => letterAt(page[line], x)
+        }, pattern, forward, count);
+        landing = landed === null ? "missing" : landed.wrapped ? "wrapped" : "";
+        if (landed === null)
+            return;
+        cursor = { line: landed.line, letter: landed.letter, want: landed.want };
+        view.contentY = landed.top;
     }
 
     // Where the cursor stands, in the content's terms: the letter as Qt
@@ -773,6 +841,7 @@ Floating {
             // size alone, so it reads as one before the name.
             PageText {
                 id: eyebrowText
+                sought: drawer.washing
                 width: parent.width
                 y: drawer.fieldLine - Theme.border + drawer.eyebrowDropped - baselineOffset
                 visible: drawer.eyebrow !== ""
@@ -804,6 +873,7 @@ Floating {
                 // row, the first.
                 PageText {
                     id: timeText
+                    sought: drawer.washing
                     readonly property real base: (drawer.lineOf(0) ?? drawer.rowLine)
                         + timeFace.tightBoundingRect("H").height / 2
                     y: base - Theme.border - baselineOffset
@@ -822,6 +892,7 @@ Floating {
                 // time's baseline: upright, since italic is only the voice.
                 PageText {
                     id: secondsText
+                    sought: drawer.washing
                     x: timeText.x + timeText.contentWidth + Theme.space.s
                     width: parent.width - x
                     y: timeText.base - Theme.border - baselineOffset
@@ -839,6 +910,7 @@ Floating {
                 // its row's baseline.
                 PageText {
                     id: sayText
+                    sought: drawer.washing
                     readonly property real base: drawer.rowBase(drawer.momentLines.say ?? -1,
                         timeText.base)
                     width: parent.width
@@ -917,6 +989,7 @@ Floating {
 
                                 PageText {
                                     id: factName
+                                    sought: drawer.washing
                                     width: drawer.labelsWide
                                     y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                                     plain: momentFact.modelData.label ?? ""
@@ -970,6 +1043,7 @@ Floating {
 
                     PageText {
                         id: titleText
+                        sought: drawer.washing
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         // A name with no space, as a server's or a path,
@@ -1092,6 +1166,7 @@ Floating {
                                 y: index * drawer.pitch + drawer.pitch / 2 + drawer.dropped
                                     - baselineOffset
                                 plain: modelData
+                                sought: drawer.washing
                                 leading: 0
                                 elides: true
                                 color: drawer.preview?.quiet === true ? Theme.muted : Theme.text
@@ -1169,6 +1244,7 @@ Floating {
 
                             PageText {
                                 id: headingText
+                                sought: drawer.washing
                                 width: parent.width
                                 y: fact.base - baselineOffset
                                 visible: fact.heading
@@ -1198,6 +1274,7 @@ Floating {
 
                             PageText {
                                 id: label
+                                sought: drawer.washing
                                 visible: !fact.heading
                                 width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
@@ -1213,6 +1290,7 @@ Floating {
                             // at, a long one breaking onto the pitch.
                             PageText {
                                 id: value
+                                sought: drawer.washing
                                 visible: !fact.heading
                                 x: fact.valueFrom
                                 width: parent.width - x
@@ -1242,6 +1320,7 @@ Floating {
 
                     PageText {
                         id: bodyText
+                        sought: drawer.washing
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         plain: drawer.body

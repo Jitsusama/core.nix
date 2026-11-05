@@ -3083,6 +3083,7 @@ onLinux {
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./DrawerPage.js} DrawerPage.js
+      cp ${./Search.js} Search.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

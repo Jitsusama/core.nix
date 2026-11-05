@@ -150,7 +150,12 @@ const table = [
     { act: "viewTop", mode: "page", keys: ["H"] },
     { act: "viewMiddle", mode: "page", keys: ["M"] },
     { act: "viewBottom", mode: "page", keys: ["L"] },
-    { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] }
+    { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] },
+    // n and N go on to the search's next match, the way it went and the
+    // other, each a move, so a held n repeats as j does; / and ? open the
+    // search itself (seekRead).
+    { act: "seekNext", mode: "page", keys: ["n"] },
+    { act: "seekPrevious", mode: "page", keys: ["N"] }
 ];
 
 // The acts that move through the rows, which repeat while their key is
@@ -158,7 +163,7 @@ const table = [
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
     "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
-    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext"];
+    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "seekNext", "seekPrevious"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -170,15 +175,45 @@ function rest() {
     return { count: "", typed: [] };
 }
 
-// Whether anything's begun: a count or a sequence's first keys.
+// Whether anything's begun: a count, a sequence's first keys, or a
+// search being typed.
 function pending(standing) {
-    return standing.count !== "" || standing.typed.length > 0;
+    return standing.count !== "" || standing.typed.length > 0 || standing.seek !== undefined;
 }
 
 // The range a count before a colon gives the command line, as Vim's 3:
 // gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
 function counted(count) {
     return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
+}
+
+const printable = /^[!-~]$/;
+
+// A key typed in the drawer's search, held in how the keys stand as
+// `seek`, { pattern, forward }, while it's open, as Vim types / and ? on
+// its command line: Return runs it, with the count typed before the /,
+// and says what it sought, an empty pattern seeking the last again as
+// Vim's does; Escape lets it go, as Backspace does with nothing left; and
+// anything printable is typed, a page's keys among them, as a space is.
+function seekRead(standing, key) {
+    const seek = standing.seek;
+    const open = pattern => ({ act: "", count: 0,
+        standing: { count: standing.count, typed: [], seek: { pattern, forward: seek.forward } },
+        ours: true });
+    if (key === "Return" || key === "Enter") {
+        return { act: "seek", count: standing.count === "" ? 0 : Number(standing.count),
+            sought: seek, standing: rest(), ours: true };
+    }
+    if (key === "Escape" || (key === "Backspace" && seek.pattern === "")) {
+        return { act: "", count: 0, standing: rest(), ours: true };
+    }
+    if (key === "Backspace") {
+        return open(seek.pattern.slice(0, -1));
+    }
+    if (key === "Space") {
+        return open(`${seek.pattern} `);
+    }
+    return open(printable.test(key) ? seek.pattern + key : seek.pattern);
 }
 
 const digit = /^[0-9]$/;
@@ -238,6 +273,15 @@ function read(standing, key, mode, words = false) {
     // changes nothing, so a sequence or a count begun carries on past it.
     if (key === "") {
         return { act: "", count: 0, standing, ours: false };
+    }
+    if (standing.seek !== undefined) {
+        return seekRead(standing, key);
+    }
+    // In the drawer, / and ? at rest open its search, the way it goes,
+    // keeping a count typed before them for the match it lands on.
+    if (mode === "page" && (key === "/" || key === "?") && standing.typed.length === 0) {
+        return { act: "", count: 0, standing: { count: standing.count, typed: [],
+            seek: { pattern: "", forward: key === "/" } }, ours: true };
     }
     // A colon at rest where nothing types opens the command line, which
     // takes the keys from here (CommandLine.qml): in normal with a count

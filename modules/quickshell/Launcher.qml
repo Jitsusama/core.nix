@@ -4478,6 +4478,14 @@ Scope {
                     height: Math.round(drawerCard.block.height),
                     rule: drawerCard.rule()
                 },
+                // Its search: what's being typed, the last run, what's
+                // washed, and "wrapped" or "missing" for where it landed.
+                search: {
+                    typing: drawerCard.seeking,
+                    last: drawerCard.lastSought ? drawerCard.lastSought.pattern : "",
+                    washing: drawerCard.washing,
+                    landing: drawerCard.landing
+                },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
                 cardWidth: Math.round(card.width),
                 at: Math.round(drawerCard.mapToGlobal(0, 0).x),
@@ -5060,6 +5068,10 @@ Scope {
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
+                        // A search run in the drawer puts its cursor on
+                        // the match.
+                        onSought: (pattern, forward, count) =>
+                            drawerCard.seek(pattern, forward, count)
                         // The highest the selection goes: an answer's headline,
                         // or the row a step's line holds, sits above the rows,
                         // at -1.
@@ -5072,11 +5084,15 @@ Scope {
                         // as far as they move the selection, so it keeps
                         // its place in view, as Vim's do.
                         // In the drawer, every one is the drawer's: where
-                        // its cursor goes and its view with it.
+                        // its cursor goes and its view with it, n and N
+                        // going on with its search.
                         onStepped: (act, count) => {
                             root.searchNow();
                             if (mode === "page") {
-                                drawerCard.go(act, count);
+                                if (act === "seekNext" || act === "seekPrevious")
+                                    drawerCard.seekOn(act, count);
+                                else
+                                    drawerCard.go(act, count);
                                 return;
                             }
                             switch (act) {
@@ -5765,13 +5781,18 @@ Scope {
                         // moving anything else.
                         // In normal, a count typed before a move stands in
                         // its place until the move, as Neovim's showcmd
-                        // shows it, in the strong ink of what's typed, its
-                        // last figures where it's longer than the room. The
-                        // command line says its own, in the line's place.
+                        // shows it, and a drawer's search after its / or ?
+                        // until its Return, as Neovim's command line shows
+                        // one, each in the strong ink of what's typed, their
+                        // last letters where they're longer than the room.
+                        // The command line says its own, in the line's place.
                         Text {
                             id: modeWord
 
-                            readonly property string counted: prompt.standing.count
+                            readonly property string counted: prompt.standing.seek
+                                ? `${prompt.standing.seek.forward ? "/" : "?"}`
+                                    + prompt.standing.seek.pattern
+                                : prompt.standing.count
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
@@ -5971,6 +5992,8 @@ Scope {
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.
             keys: prompt.mode === "page"
+            // The search being typed on the line, washed as it's typed.
+            seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
         }
     }
 }

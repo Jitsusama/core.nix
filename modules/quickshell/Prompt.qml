@@ -299,6 +299,9 @@ Item {
     // gives ".,.+2", or "" for none. The line holds what's typed as it
     // is, and resume() gives it the keys back.
     signal commanded(string range)
+    // The drawer's search run, by Return on / or ?: what it seeks, empty
+    // for the last again, the way it goes, and the count typed before it.
+    signal sought(string pattern, bool forward, int count)
 
     // A question asked once in the field's place, "Replace notes.md?
     // (y/n)", or "" while none is: y answers it, n, Escape or Ctrl+C let
@@ -568,6 +571,9 @@ Item {
         }
         case "undo":
             undo();
+            break;
+        case "seek":
+            prompt.sought(read.sought.pattern, read.sought.forward, read.count);
             break;
         case "":
             break;
