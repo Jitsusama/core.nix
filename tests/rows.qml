@@ -76,6 +76,15 @@ ShellRoot {
                 side: "pick Aubergine, then Custom theme, Import"
                 glyph: "$"
             }
+            // A whole side in a row as wide, whose right edge a cut one
+            // ends at too, its ellipsis there (VKCF3Z, 2026-11-05).
+            Choice {
+                id: sideWhole
+                width: 480
+                name: "Slack"
+                side: "program"
+                glyph: "$"
+            }
             // A noun: its kind at the right edge, and what else it says after
             // its name, in its own words.
             Choice {
@@ -323,6 +332,12 @@ ShellRoot {
                     && whole.some(cut => Math.abs(sideFace.advanceWidth(cut) - drawnWide) < 1),
                 `${drawnWide} wide, whole cuts ${JSON.stringify(whole.map(cut =>
                     [cut, Math.round(sideFace.advanceWidth(cut))]))}: ${said(texts)}`);
+            const wholeSide = apart(sideWhole, sideWhole.width)
+                .find(t => t.text === sideWhole.side);
+            expect("and it ends at the right edge every side ends at",
+                sideCut !== undefined && wholeSide !== undefined
+                    && Math.abs(sideCut.to - wholeSide.to) < 1,
+                `cut ends at ${sideCut?.to}, a whole side at ${wholeSide?.to}`);
             texts = apart(fits, fits.width);
             expect("words that fit left whole", cut(texts).length === 0, said(texts));
             texts = apart(noun, noun.width);
