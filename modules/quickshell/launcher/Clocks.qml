@@ -378,7 +378,12 @@ Provider {
         const said = clockSaid;
         if (!kept) {
             const waiting = Timekeeping.watching > 0 && !Timekeeping.refused;
-            return [figure("time:clock", waiting ? "\u2026" : said.nothing)];
+            return [copyRow({
+                name: Words.name("time:clock"),
+                side: waiting ? "\u2026" : said.nothing,
+                copiesNothing: true,
+                glyph: ""
+            })];
         }
         const now = Date.now();
         const parts = clockParts(now);

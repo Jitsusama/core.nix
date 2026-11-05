@@ -1,0 +1,55 @@
+{
+  "day": "2026-11-05",
+  "calendars": [
+    {
+      "reckoning": "chinese",
+      "latin": "27 Ninth Month",
+      "native": "丙午年九月廿七日",
+      "figures": [
+        { "id": "year", "latin": "Bǐngwǔ", "native": "丙午", "day": null },
+        { "id": "animal", "latin": "Horse", "native": "马", "day": null },
+        { "id": "month", "latin": "Ninth Month", "native": "九月", "day": null },
+        { "id": "day", "latin": "27", "native": "廿七日", "day": null },
+        { "id": "monthDays", "latin": "30", "native": "大月", "day": null },
+        { "id": "term", "latin": "Shuāngjiàng", "native": "霜降", "day": null },
+        { "id": "termBegan", "latin": "2026-10-23", "native": "2026-10-23", "day": "2026-10-23" }
+      ]
+    },
+    {
+      "reckoning": "japanese",
+      "latin": "Reiwa 8",
+      "native": "令和8年11月5日",
+      "figures": [
+        { "id": "era", "latin": "Reiwa", "native": "令和", "day": null },
+        { "id": "eraYear", "latin": "8", "native": "8年", "day": null },
+        { "id": "eraBegan", "latin": "2019-05-01", "native": "2019-05-01", "day": "2019-05-01" },
+        { "id": "rokuyo", "latin": "Taian", "native": "大安", "day": null }
+      ]
+    },
+    {
+      "reckoning": "hebrew",
+      "latin": "25 Heshvan 5787",
+      "native": "כ״ה בחשוון ה׳תשפ״ז",
+      "figures": [
+        { "id": "year", "latin": "5787", "native": "ה׳תשפ״ז", "day": null },
+        { "id": "month", "latin": "Heshvan", "native": "חשוון", "day": null },
+        { "id": "day", "latin": "25", "native": "כ״ה", "day": null },
+        { "id": "yearDays", "latin": "385", "native": "385", "day": null },
+        { "id": "months", "latin": "13", "native": "13", "day": null }
+      ]
+    },
+    {
+      "reckoning": "islamic",
+      "latin": "25 Jumada I 1448 AH",
+      "native": "٢٥ جمادى الأولى ١٤٤٨ هـ",
+      "figures": [
+        { "id": "year", "latin": "1448 AH", "native": "١٤٤٨ هـ", "day": null },
+        { "id": "month", "latin": "Jumada I", "native": "جمادى الأولى", "day": null },
+        { "id": "day", "latin": "25", "native": "٢٥", "day": null },
+        { "id": "monthDays", "latin": "30", "native": "30", "day": null },
+        { "id": "yearDays", "latin": "355", "native": "355", "day": null },
+        { "id": "reckoning", "latin": "Umm al-Qura", "native": "Umm al-Qura", "day": null }
+      ]
+    }
+  ]
+}

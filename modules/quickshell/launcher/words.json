@@ -1503,6 +1503,106 @@
       "name": "Next New Moon"
     },
     {
+      "id": "today:calendars",
+      "in": "today",
+      "name": "Calendars",
+      "said": {
+        "days": "{value} days",
+        "months": "{value} months",
+        "silent": "not answering"
+      }
+    },
+    {
+      "id": "today:calendars:chinese",
+      "in": "today:calendars",
+      "name": "Chinese"
+    },
+    {
+      "id": "today:calendars:japanese",
+      "in": "today:calendars",
+      "name": "Japanese"
+    },
+    {
+      "id": "today:calendars:hebrew",
+      "in": "today:calendars",
+      "name": "Hebrew"
+    },
+    {
+      "id": "today:calendars:islamic",
+      "in": "today:calendars",
+      "name": "Islamic"
+    },
+    {
+      "id": "today:calendars:year",
+      "in": "today:calendars",
+      "name": "Year"
+    },
+    {
+      "id": "today:calendars:animal",
+      "in": "today:calendars",
+      "name": "Animal"
+    },
+    {
+      "id": "today:calendars:month",
+      "in": "today:calendars",
+      "name": "Month"
+    },
+    {
+      "id": "today:calendars:day",
+      "in": "today:calendars",
+      "name": "Day"
+    },
+    {
+      "id": "today:calendars:monthDays",
+      "in": "today:calendars",
+      "name": "Month Length"
+    },
+    {
+      "id": "today:calendars:yearDays",
+      "in": "today:calendars",
+      "name": "Year Length"
+    },
+    {
+      "id": "today:calendars:months",
+      "in": "today:calendars",
+      "name": "Months"
+    },
+    {
+      "id": "today:calendars:term",
+      "in": "today:calendars",
+      "name": "Solar Term"
+    },
+    {
+      "id": "today:calendars:termBegan",
+      "in": "today:calendars",
+      "name": "Term Began"
+    },
+    {
+      "id": "today:calendars:era",
+      "in": "today:calendars",
+      "name": "Era"
+    },
+    {
+      "id": "today:calendars:eraYear",
+      "in": "today:calendars",
+      "name": "Year of the Era"
+    },
+    {
+      "id": "today:calendars:eraBegan",
+      "in": "today:calendars",
+      "name": "Era Began"
+    },
+    {
+      "id": "today:calendars:rokuyo",
+      "in": "today:calendars",
+      "name": "Rokuy\u014d"
+    },
+    {
+      "id": "today:calendars:reckoning",
+      "in": "today:calendars",
+      "name": "Reckoning"
+    },
+    {
       "id": "keyboards",
       "name": "Keyboards",
       "term": "Keyboards/keyboard",

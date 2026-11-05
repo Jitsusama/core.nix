@@ -169,6 +169,12 @@ Floating {
     // a line fits on one. At Figure, in the mono, most wrapped (VKCF3Z,
     // 2026-11-04).
     readonly property bool listsKeys: shown ? shown.keys === true : false
+    // The script its title and values are written in (`script: "hebrew"`),
+    // as a calendar's date in its own is, set in the script face's cuts
+    // beside the serif and the mono (Theme.script), since Qt falls back by
+    // script, not language, and so draws Chinese in its own forms only where
+    // its cut is named. Its names stay in the theme's own.
+    readonly property string script: shown ? shown.script ?? "" : ""
     readonly property string picture: shown ? shown.picture ?? "" : ""
     readonly property var preview: shown ? shown.preview ?? null : null
     // Whether it's the moment's plate, home's Now's.
@@ -542,11 +548,67 @@ Floating {
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
     }
+    // A value's face, measured and drawn: a key list's at Note, a script's
+    // in its cut beside the mono, and the rest at Figure.
     FontMetrics {
         id: valueFace
-        font.family: drawer.listsKeys ? Theme.level.note.family : Theme.level.figure.family
+        font.family: drawer.listsKeys ? Theme.level.note.family
+            : drawer.script !== "" ? Theme.script.mono[drawer.script] : Theme.level.figure.family
         font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
-            : Theme.level.figure.pointSize
+            : Theme.level.figure.pointSize * drawer.scriptGrown
+        font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
+    }
+    // The digits of a script that has its own, which a value may be
+    // written in beside the figures' (VKCF3Z, 2026-11-05).
+    readonly property var scriptDigits: ({
+        arabic: "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+    })
+    // A script with digits of its own, set at a point size, can stand
+    // smaller than the figures beside it: Naskh's stand 0.596 of its em and
+    // the mono's 0.742, so a Hijri year read smaller than "30 days" in one
+    // column. Such a script's values and title are grown until its digits
+    // stand as tall as the figures' do, measured from the faces themselves
+    // so it holds whichever the theme names, and never past half again, so
+    // a face that measures wrongly can't swamp a plate. Hebrew's letters
+    // are drawn to stand with Latin as the mono's do, and CJK's fill their
+    // em, so they keep their size. Both are measured at ten times Figure's
+    // size, since a face's bounds come in whole pixels, and at Figure's a
+    // pixel's rounding put the ratio at 1.17 rather than 1.25.
+    FontMetrics {
+        id: scriptDigitFace
+        font.family: drawer.script !== "" ? Theme.script.mono[drawer.script]
+            : Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize * 10
+    }
+    FontMetrics {
+        id: figureDigitFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize * 10
+        font.features: Theme.level.figure.features
+    }
+    // A binding doesn't see what a call reads, so it reads both faces.
+    readonly property real scriptGrown: {
+        void scriptDigitFace.font;
+        void figureDigitFace.font;
+        const digits = scriptDigits[script] ?? "";
+        if (digits === "")
+            return 1;
+        const stands = scriptDigitFace.tightBoundingRect(digits).height;
+        const figures = figureDigitFace.tightBoundingRect("0123456789").height;
+        return stands > 0 ? Math.min(Math.max(figures / stands, 1), 1.5) : 1;
+    }
+    // A value in Latin letters on a script's plate (`latin: true`), as a
+    // count or a day is, at Figure in the theme's own face, since the
+    // script's cut draws Latin in another's.
+    FontMetrics {
+        id: latinFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.features: Theme.level.figure.features
+    }
+    // The face a fact's value is measured and drawn in.
+    function faceOf(fact) {
+        return drawer.script !== "" && fact?.latin === true ? latinFace : valueFace;
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
@@ -606,13 +668,25 @@ Floating {
     // report when asked.
     function valuesWhole() {
         return drawnRows().every(row => !row.known || unbroken(row.modelData.value).split(" ")
-            .every(word => valueFace.advanceWidth(word) <= row.valueWide));
+            .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide));
     }
     // Whether every value beside its name takes one line there, so the
     // facts are each beside or under and never a mix, for the launcher
     // to report when asked.
     function besideOnOneLine() {
         return drawnRows().every(row => row.oneLineBeside);
+    }
+    // Whether every value in its script's own digits has them stand as
+    // tall as the figures' do, to a twentieth or the pixel a face's bounds
+    // are rounded to, so one column reads at one size, for the launcher to
+    // report when asked.
+    function digitsStandAsFigures() {
+        const digits = scriptDigits[script] ?? "";
+        const figures = latinFace.tightBoundingRect("0123456789").height;
+        const own = value => digits.split("").some(digit => String(value).includes(digit));
+        return drawnRows().every(row => !row.known || !own(row.modelData.value)
+            || Math.abs(faceOf(row.modelData).tightBoundingRect(digits).height - figures)
+                <= Math.max(1, figures / 20));
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
@@ -889,11 +963,18 @@ Floating {
                         // mid-word, where it's as wide as the Title allows.
                         plain: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
                         leading: drawer.titleLeading
+                        // A right-to-left title starts under its eyebrow
+                        // too, rather than at the plate's far edge.
+                        horizontalAlignment: Text.AlignLeft
                         color: Theme.level.title.colour
-                        font.family: Theme.level.title.family
-                        font.pointSize: Theme.level.title.pointSize
+                        font.family: drawer.script === "" ? Theme.level.title.family
+                            : Theme.script.serif[drawer.script]
+                        font.pointSize: Theme.level.title.pointSize * drawer.scriptGrown
                         font.letterSpacing: Theme.level.title.letterSpacing
-                        font.variableAxes: Theme.level.title.variableAxes
+                        // The serif's axes are its own, so a script's cut
+                        // takes its own weight instead.
+                        font.variableAxes: drawer.script === "" ? Theme.level.title.variableAxes
+                            : ({})
                     }
                 }
 
@@ -1126,12 +1207,11 @@ Floating {
                                 plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 leading: drawer.pitch
                                 color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
-                                font.family: drawer.listsKeys ? Theme.level.note.family
-                                    : Theme.level.figure.family
-                                font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
-                                    : Theme.level.figure.pointSize
-                                font.features: drawer.listsKeys ? ({})
-                                    : Theme.level.figure.features
+                                font: drawer.faceOf(fact.modelData).font
+                                // A right-to-left script's words start at the
+                                // column too, as every other value's do,
+                                // rather than at the plate's far edge.
+                                horizontalAlignment: Text.AlignLeft
                             }
                         }
                     }
