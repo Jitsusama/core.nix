@@ -296,6 +296,7 @@ fi
 
 # Space w closes one opened afresh, once it has the keyboard, which l
 # moving it on shows.
+: > shown
 swayimg --execute="$watched" pictures/a.ppm pictures/b.ppm > said 2>&1 &
 viewer=$!
 until_shown a.ppm "opening again" 60
@@ -311,7 +312,9 @@ wtype -k space w
 closes "Space w"
 
 # A command swayimg doesn't have, and :open with a program that isn't here,
-# leave it open, and :q closes it.
+# leave it open, and :q closes it. What the last one showed is cleared, so
+# the wait is for this one's first frame, after which it hears USR1.
+: > shown
 swayimg --execute="$watched" pictures/a.ppm > said 2>&1 &
 viewer=$!
 until_shown a.ppm "opening a third time" 60
@@ -324,6 +327,7 @@ closes ":q"
 
 # :open and a program opens the picture in it, through niri, stood in, and
 # closes swayimg, as e does.
+: > shown
 swayimg --execute="$watched" pictures/a.ppm > said 2>&1 &
 viewer=$!
 until_shown a.ppm "opening a fourth time" 60
