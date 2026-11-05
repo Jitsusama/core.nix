@@ -1815,12 +1815,16 @@ in
               // and the launcher's wash what they find with it. On the
               // selection, which lies a shade past raised, its ground is the
               // shade past the selection, rule's, so a selected row's find
-              // still shows, and never in the accent.
+              // still shows. The find the selection landed on takes the
+              // accent, as his Neovim's CurSearch draws the match under
+              // the cursor, and no other find does.
               readonly property var wash: ${
                 object {
                   ink = colours.strong;
                   ground = colours.raised;
                   selected = colours.rule;
+                  current = colours.accent;
+                  onCurrent = colours.on_accent;
                 }
               }
               readonly property var motion: ${

@@ -33,8 +33,10 @@ Item {
     property string plain: text
     // Whether the words lie on the selection, whose wash is a shade past it.
     property bool washedSelected: false
+    // Whether their first find is the one the selection landed on.
+    property bool washedLanded: false
     // Where it's washed in the words, each place's start and width.
-    readonly property var washed: wash.laid
+    readonly property var washed: wash.item ? (wash.item as Wash).laid : []
     // Said each time the words are back at their start, so a row with two
     // cut can hand the turn to the other.
     signal through
@@ -76,15 +78,20 @@ Item {
         font.weight: room.voiced ? Font.Normal : room.weight
         font.variableAxes: room.voiced ? Theme.serif.axes : ({})
 
-        Wash {
+        // Made only while a search washes, beneath the letters.
+        Loader {
             id: wash
             anchors.fill: parent
-            visible: room.washing !== ""
-            text: room.plain
-            pattern: room.washing
-            font: words.font
-            cut: words.truncated
-            selected: room.washedSelected
+            z: -1
+            active: room.washing !== ""
+            sourceComponent: Wash {
+                text: room.plain
+                pattern: room.washing
+                font: words.font
+                cut: words.truncated
+                selected: room.washedSelected
+                landed: room.washedLanded
+            }
         }
     }
 

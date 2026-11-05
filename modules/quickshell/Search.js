@@ -59,13 +59,17 @@ function washed(text, pattern, wash) {
 // A line as styled text, each place the pattern's found in the wash's
 // ink, its ground left to be drawn behind it (Wash.qml): Qt elides styled
 // text, as a row cut to its room needs, but not rich text, and only rich
-// text draws a ground.
-function inked(text, pattern, ink) {
+// text draws a ground. The first place takes the ink first is given, when
+// it's the find the selection landed on (Theme.wash.onCurrent).
+function inked(text, pattern, ink, first) {
     let at = 0;
     let styled = "";
+    let firstFind = true;
     for (const [start, end] of found(pattern, text)) {
+        const its = firstFind && first !== undefined ? first : ink;
+        firstFind = false;
         styled += escaped(text.slice(at, start))
-            + `<font color="${ink}">${escaped(text.slice(start, end))}</font>`;
+            + `<font color="${its}">${escaped(text.slice(start, end))}</font>`;
         at = end;
     }
     return styled + escaped(text.slice(at));

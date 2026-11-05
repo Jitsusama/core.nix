@@ -155,6 +155,9 @@ QtObject {
             '<font color="#fff">Fire</font> &amp; <font color="#fff">fire</font>');
         holds("a capital inks only itself", Search.inked("fire Fire", "Fire", "#fff"),
             'fire <font color="#fff">Fire</font>');
+        holds("the first find takes its own ink, where the selection landed",
+            Search.inked("fire fire", "fire", "#fff", "#000"),
+            '<font color="#000">fire</font> <font color="#fff">fire</font>');
         holds("what isn't found is only escaped", Search.inked("a<b", "z", "#fff"), "a&lt;b");
         holds("nothing sought inks nothing", Search.inked("a<b", "", "#fff"), "a&lt;b");
 

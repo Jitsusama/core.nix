@@ -19,7 +19,8 @@
 // the last letter, and a modal caret fades and then, with no key, holds
 // steady. A search of the rows washes the letters it finds in a row's
 // name, its words after it and at its right, and in a cut name only those
-// before its ellipsis. It exits 0 once every case holds,
+// before its ellipsis, and only the selected row's first find takes the
+// accent. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -87,9 +88,18 @@ ShellRoot {
             }
             // Rows a search of the launcher's washes: where it finds in
             // the name and what it is, in the words after a noun's name,
-            // in a name cut to its room, and nowhere.
+            // in a name cut to its room, and nowhere; and the same as the
+            // row the selection landed on.
             Choice {
                 id: washedBoth
+                name: "Firefox, firewall"
+                side: "fires weekly"
+                glyph: "$"
+                washing: "fire"
+            }
+            Choice {
+                id: washedLanded
+                selected: true
                 name: "Firefox, firewall"
                 side: "fires weekly"
                 glyph: "$"
@@ -314,6 +324,17 @@ ShellRoot {
                 && near(washed.side[0][0], 0) && near(washed.side[0][1], 4 * em),
                 root.places(washed));
             apart(washedBoth, washedBoth.width);
+            const grounds = washed => ["name", "detail", "side"]
+                .map(part => washed[part].map(place => place[2]));
+            const wash = Theme.wash;
+            expect("a row not landed on washes every find in the search's ground",
+                grounds(washedBoth.washed).every(part => part.every(ground => ground === wash.ground)),
+                root.places(washedBoth.washed));
+            const landed = grounds(washedLanded.washed);
+            expect("only the landed row's first find takes the accent, its others the "
+                + "selection's wash", landed[0].length === 2 && landed[0][0] === wash.current
+                && landed[0][1] === wash.selected && landed[2].length === 1
+                && landed[2][0] === wash.selected, root.places(washedLanded.washed));
             expect("a search washes the words after a noun's name, not its name",
                 washedAfter.washed.name.length === 0 && washedAfter.washed.detail.length === 1
                     && washedAfter.washed.detail[0][0] > 0 && washedAfter.washed.detail[0][1] > 0,

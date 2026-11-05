@@ -49,9 +49,18 @@ Rectangle {
     // none. The name's ink is the launcher's to give (Launcher.marked);
     // its words after it and at its right take the wash's here.
     property string washing: ""
-    // Where it's washed, each place's start and width in the name, its
-    // words after it and at its right.
-    readonly property var washed: ({ name: nameBox.washed, detail: detailWash.laid,
+    // Which of the row's words hold the find the selection landed on,
+    // the first a search finds in it, in the order it searches them: the
+    // name, the words after it, then its right. A step clears the wash,
+    // so while washing the selected row is the one landed on; "" on any
+    // other row. That find takes the accent, as his Neovim's CurSearch.
+    readonly property string landedIn: !selected || washing === "" ? ""
+        : Search.found(washing, plainName).length > 0 ? "name"
+        : detail !== "" && Search.found(washing, detail).length > 0 ? "detail"
+        : right.sided && Search.found(washing, right.said).length > 0 ? "side" : ""
+    // Where it's washed, each place's start, width and ground in the name,
+    // its words after it and at its right.
+    readonly property var washed: ({ name: nameBox.washed, detail: detailWash.item ? (detailWash.item as Wash).laid : [],
         side: right.sided ? sideText.washed : [] })
     property var chord: []
     property string side
@@ -156,11 +165,17 @@ Rectangle {
         // would, the faces' line boxes differing.
         anchors.baseline: monoLine.baseline
         voiced: row.voiced
-        text: row.name
+        // The landed find's ink is the row's own to give, since the
+        // launcher gives a selected row's name plain.
+        text: row.landedIn === "name"
+            ? Search.inked(row.plainName, row.washing, Theme.wash.ink, Theme.wash.onCurrent)
+            : row.name
         plain: row.plainName
         washing: row.washing
         washedSelected: row.selected
-        format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
+        washedLanded: row.landedIn === "name"
+        format: row.landedIn === "name" ? Text.StyledText
+            : row.selected || row.quiet ? Text.PlainText : Text.StyledText
         color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
         weight: row.selected ? Font.Medium : Font.Normal
         figure: figureFace.advanceWidth
@@ -197,23 +212,28 @@ Rectangle {
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
         visible: row.detail !== ""
-        text: row.washing !== "" ? Search.inked(row.detail, row.washing, Theme.wash.ink)
-            : row.detail
+        text: row.washing !== "" ? Search.inked(row.detail, row.washing, Theme.wash.ink,
+            row.landedIn === "detail" ? Theme.wash.onCurrent : undefined) : row.detail
         textFormat: row.washing !== "" ? Text.StyledText : Text.AutoText
         color: row.selected ? Theme.text : Theme.muted
         font.family: Theme.serif.family
         font.pointSize: Theme.serif.large
         font.variableAxes: Theme.serif.upright.large
 
-        Wash {
+        // Made only while a search washes, beneath the letters.
+        Loader {
             id: detailWash
             anchors.fill: parent
-            visible: row.washing !== ""
-            text: row.detail
-            pattern: row.washing
-            font: countText.font
-            cut: countText.truncated
-            selected: row.selected
+            z: -1
+            active: row.washing !== ""
+            sourceComponent: Wash {
+                text: row.detail
+                pattern: row.washing
+                font: countText.font
+                cut: countText.truncated
+                selected: row.selected
+                landed: row.landedIn === "detail"
+            }
         }
     }
 
@@ -300,12 +320,13 @@ Rectangle {
             anchors.right: parent.right
             visible: right.sided
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
-            text: row.washing !== "" ? Search.inked(right.said, row.washing, Theme.wash.ink)
-                : right.said
+            text: row.washing !== "" ? Search.inked(right.said, row.washing, Theme.wash.ink,
+                row.landedIn === "side" ? Theme.wash.onCurrent : undefined) : right.said
             format: row.washing !== "" ? Text.StyledText : Text.PlainText
             plain: right.said
             washing: row.washing
             washedSelected: row.selected
+            washedLanded: row.landedIn === "side"
             color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
             figure: figureFace.advanceWidth
             reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)
