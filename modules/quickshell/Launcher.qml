@@ -2078,11 +2078,16 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Return, then what normal says beside it at home: in, the commands
-    // and the keys. Out is said only once a step is held, whose rows grow
-    // the room as any row does; kept from the start, it cut the battery's
-    // charge from the glance at home, which never gives way.
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["l", "in"],
+    // Return, then the widest key a row adds beside it on the find, where
+    // the launcher opens: as wide as Shift+Return's "below" beside a mark.
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
+        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
+    // What normal says beside Return at home: in, the commands and the
+    // keys, kept once normal is taken rather than from the opening. Kept
+    // from the start, it cut the battery's charge from the glance on the
+    // find, which never gives way; out is said only once a step is held,
+    // whose rows grow the room as any row does.
+    readonly property var footNormalRoom: [["\u21b5", footVerbRoom], ["l", "in"],
         [":", "commands"], ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
@@ -2117,6 +2122,8 @@ Scope {
         // the rows' foot never gives up room to keys they don't show.
         if (QueryKeys.paged(prompt.mode))
             said.push(drawerKeys(prompt.mode));
+        if (prompt.mode === "normal")
+            said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
             ...said.map(told => keys.advance(told[0][0], told[0][1])));
         if (place > footReturnWidest)
