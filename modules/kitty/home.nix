@@ -32,8 +32,9 @@ let
   # to its cells, and a cell is taller and wider than its letters: the mono
   # face's ascent stands 0.265 of its em above its capitals and its descent
   # 0.25 below the baseline, and an H's ink is 0.033 in from either side of
-  # its cell (MonaspiceXe's own metrics, so another face is a pixel or two
-  # off). The padding is the inset less those, top, right, bottom and left.
+  # its cell. Those are MonaspiceXe's own, measured on it: another face
+  # needs measuring again. The padding is the inset less them, top, right,
+  # bottom and left.
   em = builtins.fromJSON font.mono.size * 4 / 3;
   padding = lib.concatMapStringsSep " " (ink: points (space.rung.inset - ink * em)) [
     0.265
@@ -193,6 +194,9 @@ in
   config.xdg.configFile."kitty/theme.conf".text = ''
     font_family family="${font.mono.family}" features="-calt"
     font_size ${font.mono.size}
+    # The inset less the cell's room beyond its letters, by MonaspiceXe's
+    # metrics (0.265, 0.25 and 0.033 of an em): another face needs them
+    # measured again.
     window_padding_width ${padding}
     # The part of a cell a window's size leaves over goes at the bottom and
     # the right, so the text starts on one column, the inset in, whatever
