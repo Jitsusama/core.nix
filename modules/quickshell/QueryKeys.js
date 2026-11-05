@@ -42,8 +42,8 @@ const table = [
     // to the last; H M L to the top, middle and bottom row in view; Ctrl+D
     // and Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page
     // Up, a screen (moved, below).
-    { act: "next", mode: "normal", keys: ["Down", "j"] },
-    { act: "previous", mode: "normal", keys: ["Up", "k"] },
+    { act: "next", mode: "normal", keys: ["j"] },
+    { act: "previous", mode: "normal", keys: ["k"] },
     { act: "first", mode: "normal", keys: [["g", "g"]] },
     { act: "last", mode: "normal", keys: ["G"] },
     { act: "viewTop", mode: "normal", keys: ["H"] },
@@ -54,9 +54,11 @@ const table = [
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
     // l steps into the row, h out onto the row stepped in from, with its
-    // find, - and Backspace as his oil's do, the arrows as their letters.
-    { act: "into", mode: "normal", keys: ["l", "Right"] },
-    { act: "out", mode: "normal", keys: ["h", "-", "Backspace", "Left"] },
+    // find, - and Backspace as his oil's do. No arrow does either, nor
+    // moves the rows: Joel keeps to Vim's keys where nothing types ("rely
+    // only on vi right feeling things", 2026-11-05).
+    { act: "into", mode: "normal", keys: ["l"] },
+    { act: "out", mode: "normal", keys: ["h", "-", "Backspace"] },
     // ZZ closes, as his Neovim closes a buffer, Space w as his leader closes a
     // split, and :q (CommandLine.qml); q closes nothing, there being no
     // macros, and says so until the next key (the vi-paradigm spec, Normal).
@@ -132,8 +134,8 @@ const table = [
     // h and l move the caret a letter, as Vim's do, rather than stepping
     // out of the place and into the row, and so do \u2190 and \u2192, each its
     // letter in normal; - and Backspace still step out.
-    { act: "letterBack", mode: "words", keys: ["h", "Left"] },
-    { act: "letterNext", mode: "words", keys: ["l", "Right"] },
+    { act: "letterBack", mode: "words", keys: ["h"] },
+    { act: "letterNext", mode: "words", keys: ["l"] },
     { act: "wordNext", mode: "words", keys: ["w"] },
     { act: "wordBack", mode: "words", keys: ["b"] },
     { act: "wordEnd", mode: "words", keys: ["e"] },
@@ -317,6 +319,10 @@ function inMode(row, mode) {
     }
     if (mode === "visual" && row.mode === "object") {
         return true;
+    }
+    // An operator's text objects are theirs alone, never the find's keys.
+    if (mode === "object") {
+        return row.mode === "object";
     }
     return row.mode === mode || (row.mode === "line" && !still(mode)) || row.mode === "both";
 }

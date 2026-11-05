@@ -126,18 +126,16 @@ function rank(keys) {
     return sequence[0].startsWith("Ctrl+") ? 1 : 2;
 }
 
-// The arrows, which Joel presses rather than hjkl ("support hjkl even
-// though i only use arrows"), so the list never hides them.
-const arrows = ["Up", "Down", "Left", "Right"];
-
 // An act's keys as the list names them: those of its first rank, as the
-// notices' list names each act's first key, and its arrow beside them.
+// notices' list names each act's first key, so an arrow is named only
+// where an act has nothing better, as the find's caret, Joel keeping to
+// Vim's keys ("rely only on vi right feeling things", 2026-11-05).
 // The drawer's names stay short enough to sit whole beside what they do
 // in the narrowest plate, so PgDn, Backspace and Space w, which do what a
 // listed key does, are left out.
 function firstRank(keys) {
     const best = Math.min(...keys.map(rank));
-    return keys.filter(key => rank(key) === best || arrows.includes(key));
+    return keys.filter(key => rank(key) === best);
 }
 
 // A line of a mode's section: its acts' keys in that mode alone, so no
