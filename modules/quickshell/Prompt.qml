@@ -1208,7 +1208,11 @@ Item {
             id: hintText
             readonly property bool voiced: input.text === "" && prompt.cleared === ""
             readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
-            x: input.text === "" ? 0 : input.contentWidth
+            // With nothing typed, past the caret where one is drawn, an s
+            // after it, so the caret never covers the hint's first letter
+            // (VKCF3Z's space audit of the picker, fault 11).
+            x: input.text !== "" ? input.contentWidth
+                : prompt.caretShown ? prompt.caretWidth + Theme.space.s : 0
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
