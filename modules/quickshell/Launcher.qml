@@ -72,9 +72,11 @@ Scope {
     property bool open: false
 
     // Wide enough for a long action and its chord at the large size, or
-    // as wide as a narrow screen gives, a screen margin either side.
+    // as wide as a narrow screen gives, the margin the card keeps from the
+    // screen's edge (drawerMargin) either side, so a narrow screen never
+    // puts its right edge past the screen's.
     readonly property int width: !screenHere ? 680
-        : Math.min(680, Math.floor(screenHere.width - 2 * Theme.space.xl))
+        : Math.min(680, Math.floor(screenHere.width - 2 * drawerMargin))
     // How many results show at once; the rest are a scroll away. Eight,
     // or as many as keep the card inside a small screen, a screen margin
     // above and below it, three at least (VKCF3Z, 2026-11-05: panels
