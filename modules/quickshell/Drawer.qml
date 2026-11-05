@@ -283,8 +283,12 @@ Floating {
         + (titleText.lineCount - 1) * titleLeading
     readonly property real bodyBase: onBeat(titleLastBase + 2 * Theme.level.title.pitch)
     // The first of the card's beats at or below a line, down from the top.
+    // A line already on a beat, to within the sums' rounding, keeps it
+    // rather than going a beat on: the rounding is a share of a beat, not
+    // a space.
+    readonly property real rounding: 0.001
     function onBeat(line) {
-        return rowBaseline + Math.ceil((line - rowBaseline) / Theme.space.beat - 0.001)
+        return rowBaseline + Math.ceil((line - rowBaseline) / Theme.space.beat - rounding)
             * Theme.space.beat;
     }
 
