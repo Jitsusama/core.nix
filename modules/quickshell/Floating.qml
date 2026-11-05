@@ -17,6 +17,11 @@ Item {
     property bool keys: false
     // Whether it needs Joel: a failed password, a critical notice.
     property bool urgent: false
+    // Whether its foot is square, as where it stands on another surface
+    // along a line: the launcher's drawer over its card on a narrow screen,
+    // its sides on the card's and its foot across the card's rows, where a
+    // rounded corner would leave a notch the card shows through.
+    property bool squareFoot: false
     default property alias content: body.data
 
     // How far its shadows reach beyond it, which its window leaves room for.

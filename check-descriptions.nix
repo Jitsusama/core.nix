@@ -1461,6 +1461,10 @@
   the-disk-piece-reads-the-guards = ''
     the disk piece says the worst disk as the guards wrote it, and a guard gone quiet
   '';
+  the-drawer-over-the-card-meets-it-square = ''
+    a floating surface over another, as the launcher's drawer over its card on a narrow screen,
+    meets it with a square foot and region, its top and the card's foot staying round
+  '';
   the-ergodox-command-reaches-the-board = ''
     `ergodox` writes each command whole to the board's channel alone
   '';
