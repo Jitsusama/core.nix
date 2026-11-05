@@ -14,6 +14,7 @@ it as it found it.
 from __future__ import annotations
 
 import json
+import tarfile
 from datetime import timedelta
 from functools import partial
 from itertools import pairwise
@@ -316,15 +317,13 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 # for the screen to hold still, so the screen is taken as fast as QEMU
 # gives it, and the picture kept is the one furthest from the screen once
 # the flash has gone. Whether y flashed is held by what the launcher says;
-# the picture is for a person, so where no frame caught it, as an answer's
-# ghost was missed at both scales on 2026-11-05, y copies again, up to
-# three times. A frame that missed it differs from the screen after by a
-# mean light under 0.005, and a row's flash caught by 1.1 (2026-11-05); a
-# ghost's covers a few letters, a tenth of a row, so a twentieth of a step
-# tells them apart.
-FLASH_FRAMES = 8
-FLASH_TRIES = 3
-FLASH_SEEN = 0.05
+# the picture is for a person. QEMU's screendumps, each a whole screen at
+# 2, came too slowly to land inside the fifth of a second: on 2026-11-05
+# none of four caught it in three tries each. So the screen is recorded
+# through niri, as Joel's recorder does, which keeps every frame niri
+# draws, and the frame kept is the one furthest from the last.
+RECORDING = "/run/user/1000/flash.mkv"
+FRAMES = "/run/user/1000/flash"
 
 
 def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
@@ -400,19 +399,44 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     """Copy what's selected with yy, see `rows` flash, and keep the frame furthest from after."""
     machine = desktop.machine
     desktop.normal()
-    for _ in range(FLASH_TRIES):
-        since = desktop.mark()
-        machine.send_chars("yy")
-        frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
-        desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
-        desktop.launcher_until(lambda shown: shown["flashing"] == [])
-        after = desktop.settled_screen(settled)
-        flashed = max(frames, key=partial(changed_from, after))
-        if changed_from(after, flashed) > FLASH_SEEN:
-            break
-    if desktop.values["photographs"]:
-        flashed.save(machine.out_dir / f"{flash}.png")
+    photographs = desktop.values["photographs"]
+    if photographs:
+        desktop.as_account(
+            f"rm -f {RECORDING}; setsid -f wf-recorder -y --file {RECORDING} >/dev/null 2>&1"
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session(f"test -s {RECORDING}"), timeout=timedelta(seconds=10)
+        )
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
+    desktop.launcher_until(lambda shown: shown["flashing"] == [])
+    desktop.settled_screen(settled)
+    if photographs:
+        machine.succeed("pkill -INT -x wf-recorder")
+        machine.wait_until_fails("pgrep -x wf-recorder", timeout=timedelta(seconds=10))
+        flashed_frame(desktop).save(machine.out_dir / f"{flash}.png")
     desktop.close_launcher()
+
+
+def flashed_frame(desktop: Desktop) -> Image.Image:
+    """Give the recording's frame furthest from its last, the flash at its height."""
+    machine = desktop.machine
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    machine.succeed(
+        f"rm -rf {FRAMES} && mkdir -p {FRAMES}"
+        f" && {ffmpeg} -i {RECORDING} -fps_mode passthrough {FRAMES}/%03d.png"
+        f" && tar -C {FRAMES} -cf {FRAMES}.tar ."
+    )
+    machine.copy_from_machine(f"{FRAMES}.tar")
+    frames = []
+    with tarfile.open(machine.out_dir / "flash.tar") as kept:
+        for member in sorted(kept.getmembers(), key=lambda member: member.name):
+            read = kept.extractfile(member)
+            if read is not None:
+                frames.append(Image.open(read).convert("RGB"))
+    (machine.out_dir / "flash.tar").unlink()
+    return max(frames, key=partial(changed_from, frames[-1]))
 
 
 def changed_from(after: Image.Image, frame: Image.Image) -> float:
