@@ -1835,11 +1835,14 @@ Scope {
     // Whether Return steps into a thing whose own act changes something, as
     // a network or a device is, from the find and from normal alike, where
     // its act is only done from inside it (the vi-paradigm spec's Return):
-    // a name typed and Return never joins, disconnects or forgets.
+    // a name typed and Return never joins, disconnects or forgets. Only the
+    // thing's own row, found from the top or in its collection: a part
+    // inside one, as an output's Muted, is a switch that Return switches.
     function stepsThing(choice) {
         const kind = kindOf(choice);
         return !!choice && prompt.modal && changesState(choice)
-            && (kind === "network" || kind === "device") && holdsMore(choice) && !stepsIn(choice);
+            && (kind === "network" || kind === "device") && (held.length === 0 || collecting)
+            && holdsMore(choice) && !stepsIn(choice);
     }
 
     // Whether Return from the find lands on a row rather than doing it: one

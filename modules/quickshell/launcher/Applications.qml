@@ -1005,12 +1005,14 @@ Provider {
         row.weight = provider.weight / 2;
         // One that asks, as Join by Code does, goes to its ask inside the
         // program on Return and the right arrow alike, since what it asks
-        // for is typed there.
+        // for is typed there. Going there changes nothing yet, so Return
+        // from the find goes at once rather than landing.
         if (act.given)
             return Object.assign(row, {
                 trail: trail.concat([act.key]),
                 spot: "",
                 stays: true,
+                changes: false,
                 run: () => provider.launcher?.goTo(row)
             });
         return Object.assign(row, { inside: { trail: trail, spot: act.key }, run: act.run });
