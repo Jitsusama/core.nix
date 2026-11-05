@@ -23,8 +23,9 @@
 // Return goes into a place or a thing with acts, and opens a program, a
 // window or a file; a row's other acts are its verbs as commands, on the
 // : line. What's held shows as chips in the field; - goes up, onto the
-// row come from, with its find. Each Escape takes one step back, and at
-// the level the launcher opened on closes it.
+// row come from, with its find. Escape leaves a line or cancels what's
+// begun, as Vim's does, and at rest does nothing; :q, ZZ or Space w close
+// it.
 //
 // What everything is called is the vocabulary's (Words.qml): its names,
 // the words that find it, its parts, and the categories it's in. A
