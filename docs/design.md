@@ -1786,7 +1786,8 @@ one table, `QueryKeys.js`.
 - **Where the keys go shows twice.** The caret is a bar a quarter of the
   mono's letter wide in insert, as his Neovim's guicursor draws it
   (`init.lua`), and the field draws none in normal, where the keys are on
-  the rows and the selection is where they go. It fades out and back in over 0.8 s each way after a key, and holds
+  the rows and the selection is where they go. It fades out and back in
+  over 0.8 s each way after a key, and holds
   steady 15 s after the last, as his kitty blinks a cursor, so a launcher
   left still draws nothing more (`jitsusama.quickshell.caret`). The foot
   names the mode in the accent, lowercase, only while it isn't normal
