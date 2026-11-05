@@ -49,9 +49,12 @@ Item {
 
     implicitHeight: Theme.space.xxxl
 
-    // Takes the keys, as : opens it.
-    function take() {
+    // Takes the keys, as : opens it, with the range it opens on written in,
+    // as a count's .,.+2 or visual's '<,'>.
+    function take(range) {
         input.forceActiveFocus();
+        if (range !== "")
+            write(Commands.typing(range));
     }
 
     function write(choosing) {

@@ -6518,6 +6518,9 @@
       "set": "Set an Option",
       "row": "Go to a Row",
       "on": "on {things}",
+      "onSome": "on {some} of {all}",
+      "some": "{some} of {all} can {command}",
+      "unasked": "add ! to {command} all {count}",
       "asksPassword": "{network} asks its password: find it to join",
       "run": "run",
       "choose": "choose"

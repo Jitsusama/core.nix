@@ -2324,7 +2324,8 @@ Scope {
         const row = selected;
         const things = opening?.things ?? (row ? [row] : []);
         const one = things.length === 1 ? things[0] : null;
-        const acts = one ? actsOf(one) : [];
+        // A selection's acts are each of its things', listed once.
+        const acts = one ? actsOf(one) : things.flatMap(thing => actsOf(thing));
         // An act on the cursor row acts on the thing it's inside.
         const on = one && acts.length === 1 && acts[0] === one && held.length > 0
             ? [held[held.length - 1].row] : things;
@@ -2333,6 +2334,11 @@ Scope {
             from: prompt.mode,
             range: opening?.range ?? "",
             things: on,
+            // The rows as they stood, which a range binds to things.
+            rows: matches.slice(),
+            cursor: current,
+            marks: things.length > 1 ? { "<": matches.indexOf(things[0]),
+                ">": matches.indexOf(things[things.length - 1]) } : {},
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
                 table: Options.commands, row: current + 1,
@@ -2435,21 +2441,30 @@ Scope {
     }
 
     // What the drawer says while a line of the menu is chosen: what it
-    // acts on, "on Home-5G".
+    // acts on, "on Home-5G", or for the several a range or :g binds as
+    // typed, how many of the rows, "on 3 of 12".
     function commandPlate(line) {
         if (!commanding)
             return null;
-        const names = commanding.things.map(thing => thing.name ?? "").filter(name => name);
+        const aimed = commanding.things.map(thing => thing.name ?? "").filter(name => name);
         // Over a viewer, with nothing chosen, it names what it's aimed at.
-        if (!line && over !== null && names.length > 0)
-            return { title: names.join(", "), body: "" };
+        if (!line && over !== null && aimed.length > 0)
+            return { title: aimed.join(", "), body: "" };
         if (!line || (line.kind !== "act" && line.kind !== "surface"))
             return null;
+        const words = Words.field.command ?? {};
+        const read = Commands.ran(commandLoader.item?.text ?? "", commanding.menu);
+        const bound = read.error === undefined && read.go === undefined
+            ? commandBound(read, commanding) : { things: commanding.things };
+        const things = bound.things ?? commanding.things;
+        if (things.length > 1) {
+            return { title: line.title, body: String(words.onSome ?? "")
+                .replace("{some}", things.length).replace("{all}", commanding.rows.length) };
+        }
+        const names = things.map(thing => thing.name ?? "").filter(name => name);
         if (names.length === 0)
             return null;
-        const on = ((Words.field.command ?? {}).on ?? "on {things}")
-            .replace("{things}", names.join(", "));
-        return { title: line.title, body: on };
+        return { title: line.title, body: String(words.on ?? "").replace("{things}", names[0]) };
     }
 
     function commandSay(words, failed) {
@@ -2572,9 +2587,19 @@ Scope {
         case "set":
             commandSet(read.arg);
             return;
-        case "surface":
+        }
+        const bound = commandBound(read, opened);
+        if (bound.error !== undefined) {
+            commandSay(bound.error, true);
+            return;
+        }
+        if (entry.kind === "surface") {
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
-                things: opened.things, count: opened.things.length });
+                things: bound.things, count: bound.things.length });
+            return;
+        }
+        if (bound.things.length !== 1 || bound.things[0] !== opened.things[0]) {
+            commandAcross(entry, read, bound.things);
             return;
         }
         // An act that asks for a target or for words is stepped into, as
@@ -2587,6 +2612,42 @@ Scope {
             return;
         }
         run(act, false);
+    }
+
+    // The things a line acts on: those bound as : was pressed, or where a
+    // range or :g is typed, the rows it names as they stood then
+    // (Commands.bound), so a row arriving after can't shift them.
+    function commandBound(read, opened) {
+        if ((read.range ?? null) === null && !read.global)
+            return { things: opened.things };
+        const bound = Commands.bound(read, { names: opened.rows.map(row => String(row.name ?? "")),
+            cursor: opened.cursor, marks: opened.marks });
+        return bound.error !== undefined ? bound
+            : { things: bound.rows.map(at => opened.rows[at]) };
+    }
+
+    // A line run on several things, or on one a range or :g found: each
+    // thing's own act (Commands.actFor). Where only some have it, it says so
+    // and runs none; one that would ask, over more than one, runs only with
+    // its !, until the ask lands on the line (MVL7F9's askOnce).
+    function commandAcross(entry, read, things) {
+        const words = Words.field.command ?? {};
+        const acts = things.map(thing => Commands.actFor(entry, actsOf(thing),
+            act => commandWords(act.key ?? "")))
+            .filter(act => act !== undefined);
+        if (acts.length < things.length || acts.length === 0) {
+            commandSay(String(words.some ?? "").replace("{some}", acts.length)
+                .replace("{all}", things.length).replace("{command}", entry.command), true);
+            return;
+        }
+        const asks = !entry.undoable && (!entry.guarded || acts.length > 1);
+        if (asks && acts.length > 1 && !read.bang) {
+            commandSay(String(words.unasked ?? "").replace("{command}", entry.command)
+                .replace("{count}", acts.length), true);
+            return;
+        }
+        for (const act of acts)
+            run(act, false);
     }
 
     // Where the launcher is now, for a step into something to keep.
@@ -4893,7 +4954,7 @@ Scope {
                         width: parent.width - 2 * Theme.inset
                         height: prompt.height
                         active: root.commanding !== null
-                        onLoaded: item.take()
+                        onLoaded: item.take(root.commanding?.range ?? "")
 
                         sourceComponent: CommandLine {
                             menu: root.commanding?.menu ?? []
