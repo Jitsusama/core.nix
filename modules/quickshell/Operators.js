@@ -70,10 +70,11 @@ function operated(standing, key, matching, rested) {
 
 const digit = /^[0-9]$/;
 
-// The operators a page has only to refuse, since it can't be changed: d
-// and c, as the drawer's (modules/keys/language.toml, delete-motion and
-// change-motion).
-const refusals = ["d", "c"];
+// The keys that wait before a page refuses them, since it can't be
+// changed: d and c for their motion, as the drawer's operators
+// (modules/keys/language.toml, delete-motion and change-motion), and r
+// for the letter it would put, as Vim's reads one first.
+const refusals = ["d", "c", "r"];
 
 // What the drawer's page reads before its own keys, or null for a key it
 // doesn't: d or c at rest waits for its motion, as Vim's do on a buffer
@@ -93,6 +94,10 @@ function refused(standing, key, table) {
     }
     if (key === "Ctrl+c") {
         return { act: "", count: 0, standing: table.rested, ours: true };
+    }
+    // r's letter is any key at all, a digit among them.
+    if (operator.key === "r") {
+        return { act: "cannotChange", count: 0, standing: table.rested, ours: true };
     }
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,

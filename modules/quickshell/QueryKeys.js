@@ -196,11 +196,14 @@ const table = [
     // search itself (seekRead).
     { act: "seekNext", mode: "page", keys: ["n"] },
     { act: "seekPrevious", mode: "page", keys: ["N"] },
-    // A page can't be changed, so x, p and S say Vim's E21 at once, d and c
-    // once their motion comes (Operators.refused), and visual's d x c p
-    // over what's chosen; q says how to close, as on the rows.
-    { act: "cannotChange", mode: "page", keys: ["x", "p", "S"] },
-    { act: "cannotChange", mode: "pageVisual", keys: ["d", "x", "c", "p"] },
+    // A page can't be changed, so each key Vim's nv_edit refuses says E21
+    // at once, i a o entering no insert, d c and r once their motion or
+    // letter comes (Operators.refused), and visual's over what's chosen;
+    // q says how to close, as on the rows.
+    { act: "cannotChange", mode: "page", keys: ["x", "p", "S", "D", "C", "X", "P", "s", "J",
+        "~", "i", "a", "I", "A", "o", "O"] },
+    { act: "cannotChange", mode: "pageVisual", keys: ["d", "x", "c", "p", "D", "C", "X",
+        "P", "s", "S", "J", "~"] },
     { act: "quitSaid", mode: "page", keys: ["q"] },
     { act: "quitSaid", mode: "pageVisual", keys: ["q"] },
     // Visual on the page, the language's select and select-lines: v from
