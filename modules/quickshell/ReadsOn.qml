@@ -73,12 +73,15 @@ Item {
     // long for the room has nowhere else to give way, so it's cut through.
     // Qt elides what doesn't fit with a pixel to spare, so it's given one,
     // far less than the space or mark after the word.
-    readonly property real restWidth: {
+    readonly property real restWidth: Math.min(width, restInk + (restInk < width ? 1 : 0))
+    // How wide the words' ink is at rest, cut at a whole word: as wide as
+    // their room where they're whole or cut through.
+    readonly property real restInk: {
         if (!wholeWords || format !== Text.PlainText || over <= 0)
             return width;
         void face.font;
         const cut = Reading.wholeWords(text, width, said => face.advanceWidth(said));
-        return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)) + 1);
+        return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)));
     }
 
     // Whether the words end at the room's right edge, as what a row says at
@@ -86,7 +89,9 @@ Item {
     // the left, so their ellipsis falls at the edge every side ends at
     // (VKCF3Z, 2026-11-05), and they slide out and back from there.
     property bool endsRight: false
-    readonly property real restAt: endsRight ? Math.max(0, width - restWidth) : 0
+    // Rested on the ink, not the spare pixel, so the ellipsis ends at the
+    // edge.
+    readonly property real restAt: endsRight ? Math.max(0, width - restInk) : 0
     onRestAtChanged: if (!room.moving && !slideOut.running && !slideBack.running)
         words.x = room.restAt
 
