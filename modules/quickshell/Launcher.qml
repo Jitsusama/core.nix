@@ -50,6 +50,7 @@ import KeyTimes
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
+import "ListedKeys.js" as ListedKeys
 import "QueryKeys.js" as QueryKeys
 import "Search.js" as Search
 import "launcher/Catalogue.js" as Catalogue
@@ -2259,7 +2260,7 @@ Scope {
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
         return { eyebrow: words.eyebrow ?? "", title: words.title ?? "",
-            facts: QueryKeys.keyList(words.lines ?? {}) };
+            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}) };
     }
     onListingChanged: drawerSettled()
 

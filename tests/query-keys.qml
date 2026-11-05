@@ -1,9 +1,10 @@
 // The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-query-field-takes-vi-modes` check copies
-// modules/quickshell/QueryKeys.js beside this file and runs
-// `qml -platform offscreen query-keys.qml`.
+// modules/quickshell/QueryKeys.js, ListedKeys.js and Search.js beside this
+// file and runs `qml -platform offscreen query-keys.qml`.
 import QtQuick
+import "ListedKeys.js" as Listed
 import "QueryKeys.js" as Keys
 import "Search.js" as Search
 
@@ -351,8 +352,9 @@ QtObject {
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's letters first.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
-            lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends" };
-        const list = Keys.keyList(lines);
+            lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends",
+            search: "search", found: "found" };
+        const list = Listed.keyList(Keys.table, lines);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
         holds("the list's rows", keyed("rows"), "j  k  \u2193  \u2191");
         holds("the list's ends, a sequence as Vim writes it", keyed("ends"), "gg  G");
@@ -363,10 +365,12 @@ QtObject {
         holds("the list's Return, once", keyed("run"), "\u21b5");
         holds("the list's place used last", keyed("last"), "Tab  Space Tab");
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
+        holds("the list's searches, ? among them alone", keyed("search"), "/  ?");
+        holds("the list's n and N", keyed("found"), "n  N");
         holds("the list's closing, :q among them", keyed("close"), "q  ZZ  Space w  :q");
         holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
         holds("every line the list gives has its keys",
-            Keys.keyList({}).filter(line => line.label === "").length, 0);
+            Listed.keyList(Keys.table, {}).filter(line => line.label === "").length, 0);
         holds("a g waiting its timeoutlen lets go, keeping the count",
             Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
