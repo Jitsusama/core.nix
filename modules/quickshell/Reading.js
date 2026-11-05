@@ -68,13 +68,17 @@ const FOLDED = "\u2026";
 
 // The ways a folder's path reads, longest first, each shorter than the
 // one before and each of whole folder names: whole, its middle folders
-// as one mark, all but its last folder as one, and the mark alone.
-function pathWays(path, width) {
+// as one mark, all but its last folder as one, and the mark alone, but
+// for the place Joel is in, which keeps its last folder's name.
+function pathWays(path, width, here) {
     const parts = path.split("/").filter((part, at) => part !== "" || at === 0);
     const last = parts[parts.length - 1];
     const ways = [path];
     const candidates = parts.length > 2 ? [`${parts[0]}/${FOLDED}/${last}`] : [];
-    candidates.push(`${FOLDED}/${last}`, FOLDED);
+    candidates.push(`${FOLDED}/${last}`);
+    if (!here) {
+        candidates.push(FOLDED);
+    }
     for (const way of candidates) {
         if (width(way) < width(ways[ways.length - 1])) {
             ways.push(way);
@@ -89,7 +93,8 @@ function pathWays(path, width) {
 // `yields`, gives way first, a folder at a time; then the steps between
 // the first and the last fold into one mark, those nearest the first
 // going first; then the first says fewer words, or joins the mark. The
-// last, where Joel is, is always said whole. Gives what each drawn step
+// last, where Joel is, is said whole, or a folder's path there down to
+// its last folder. Gives what each drawn step
 // `said`, and whether each step is said `whole`.
 function crumbs(steps, room, width, between) {
     if (steps.length === 0) {
@@ -97,7 +102,8 @@ function crumbs(steps, room, width, between) {
     }
     const wide = said => said.reduce((sum, text) => sum + width(text), 0)
         + Math.max(0, said.length - 1) * between;
-    const ways = steps.map(step => (step.yields ? pathWays(step.text, width) : [step.text]));
+    const ways = steps.map((step, at) => (step.yields
+        ? pathWays(step.text, width, at === steps.length - 1) : [step.text]));
     const deepest = Math.max(...ways.map(way => way.length));
     // Each step as it reads at `depth`, then with `folded` steps after the
     // first folded into one mark, merged with a mark beside it.

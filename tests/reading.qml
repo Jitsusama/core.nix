@@ -109,6 +109,16 @@ QtObject {
             { text: "~/gathering", yields: true }, { text: "Gathered", yields: false }];
         expect("a short path whole or not at all", same(said(home, 300),
             ["Open the Notes", "\u2026", "Gathered"]), said(home, 300));
+        // A folder's path where he is keeps its last folder's name, the
+        // ask giving way before it does.
+        const there = [{ text: "Open the Notes", yields: false },
+            { text: "~/src/marking", yields: true }];
+        expect("where he is keeps its folder", same(said(there, 260),
+            ["Open the Notes", "\u2026/marking"]), said(there, 260));
+        expect("the ask gives way before it", same(said(there, 210),
+            ["Open the\u2026", "\u2026/marking"]), said(there, 210));
+        expect("and joins the mark, the folder kept", same(said(there, 20),
+            ["\u2026", "\u2026/marking"]), said(there, 20));
         // Steps between the first and the last fold into one mark, those
         // nearest the first going first.
         const deep = ["Files", "Documents", "Taxes 2025", "Receipts"]

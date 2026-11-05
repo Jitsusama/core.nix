@@ -492,6 +492,9 @@ def asked_in(desktop: Desktop, place: str, rows: set[str]) -> None:
         ),
         timeout=timedelta(seconds=60),
     )
+    # The folder he's in is always named, however little room the crumbs have.
+    drawn = desktop.showing()["pathDrawn"]
+    assert drawn[-1]["said"].endswith(place.rsplit("/", 1)[-1]), f"{place} isn't named: {drawn}"
 
 
 PICKED = {
