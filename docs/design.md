@@ -513,16 +513,22 @@ Title 32; Display 56.
   frame, since a rule that meets it cuts the card into boxes. A
   plate's head is a region of its own: its eyebrow a Title pitch above the
   title, the body two below it, back on the beat.
-- **A frame's bottom is set**, never what whole lines happen to leave.
+- **A frame's bottom is set**, never what whole lines happen to leave: where
+  a status line closes it, the bottom falls where that band's text centres.
 
 The rest follows from the ladder:
 
-- **The frame's edges keep the inset; its bands meet as rows do.** The inset
-  is measured from the frame's inside edge, its border left out, to the ink:
-  the first cap's top, the side's first and last ink, and the last baseline
-  above the bottom edge. Inside, a band meets the next across a hairline with
-  what a row leaves round its centred capitals, so a foot comes out a little
-  taller than a row, and the room round the whole frame stays equal.
+- **The frame's edges keep the inset; text in a band centres in it.** The
+  inset is measured from the frame's inside edge, its border left out, to the
+  ink: the side's first and last ink always, and the first cap's top and the
+  last baseline where no band edge is drawn. A band, the room between two
+  edges (the frame and a hairline, or two hairlines), sets its text optically
+  centred between them: its baseline at the band's middle plus a quarter of
+  its capitals and x-height together (Joel, 2026-11-05: "the launcher find
+  box text is not vertically aligned within its box, it is more heavily top
+  aligned"). A band's height comes from the rows' rhythm, the head's
+  baseline a row above the first row's, so the head, a field and the status
+  line read alike.
 - **A glyph's column is its cell and a mark.** A mark sits in a square cell
   one line pitch wide, its text the mark rung after it, so a list's names
   start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
@@ -535,9 +541,10 @@ The rest follows from the ladder:
   centring its largest level's capitals in the line; a smaller level takes that
   baseline, never the centre of its own capitals. A note beside a head sits on
   the head's baseline (Joel, 2026-11-05: "which? &etc. need to be baselined
-  with the text to their left"). A line that only sometimes holds its largest
-  level keeps that level's baseline when it doesn't, so nothing on it moves
-  as a place opens.
+  with the text to their left"). In a band, a line centres the largest level
+  it holds now, so the head's line settles a few pixels as a place's Title
+  arrives with the rest of the change, and every state stays centred; the
+  band and the rows never move.
 - **Held room at the far end.** A place that keeps the widest room it's needed
   keeps it after its cluster's last item, never between items, so every gap is
   its rung: Return holds no room before it.
@@ -1971,6 +1978,13 @@ notices it takes the acts' place, and in the reader the bottom line.
 - **Options are :set**, as Vim's are: :set wifi, :set nowifi, :set wifi!,
   :set wifi=Home-5G, :set volume=40, :set volume+=5, :set brightness=60,
   :set background=light; :set volume? shows one and :set all lists them.
+- **:setl[ocal] sets the thing's own,** as Vim's sets the buffer's: the
+  thing under the cursor, or the nearest that holds an act's row (Muted
+  inside a program sets the program's): :setl mute, :setl volume+=5, :setl
+  port=Speakers, :setl trust. Choosing a default stays global, :set
+  output=Speakers. A thing without the option says "E518: Unknown option:
+  port" and never falls back to the machine's, since muting all sound when
+  one program was meant is the worse mistake.
 - **!** is "don't ask" or "the other way": :forget!, :sort!, :w!, :q!.
 
 **Insert** is only in a prompt: a reply, a new name (cc), the file picker's
@@ -2181,7 +2195,8 @@ changes only through his config (Joel, 2026-11-05).
 **The Departures.** Each key here that doesn't do what Vim's does, and why:
 
 1. A list's / and ? narrow the rows as they're typed, where Vim's only
-   move to a match; n and N then step through what's left.
+   move to a match; n and N then step through what's left and wrap, as
+   Vim's do, never searching afresh.
 2. f and F go by a row's first letter on a list, a row being one line;
    on a page they go by a letter in the line, as Vim's.
 3. % means the rows listed, fewer than all while a find narrows them.
@@ -2208,6 +2223,9 @@ changes only through his config (Joel, 2026-11-05).
 15. The picker's sort is kept across asks, a folder's order being a
     preference.
 16. mpv's Space pauses at once and leads nothing, as a player's does.
+17. :setl takes a range, :%setl mute setting each thing's own, where Vim's
+    :setlocal takes none, since a list holds many things where a window
+    shows one buffer.
 
 **Where Vim's keys live.** Each act is named once in
 `modules/keys/language.toml`, with its keys in Neovim's notation, the
