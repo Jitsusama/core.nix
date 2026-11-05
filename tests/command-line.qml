@@ -773,6 +773,16 @@ QtObject {
         holds("though where only some have it, it asks once all the same",
             CommandBinding.asking(warmth[0], acts(1), { all: 2, bang: false }, commands),
             { ask: "some" });
+        // :setl never asks either, as Vim's :setlocal doesn't: a program's
+        // Muted, by :setl mute.
+        const hushing = Commands.listed({ acts: [{ key: "verb:program:mute", name: "Muted" }],
+            table: commands, said, called: () => ({ command: "setlocal", argument: "mute" }),
+            row: 1 });
+        holds("a row's :setl asks nothing, on one or many, and its line isn't banged",
+            [CommandBinding.asking(hushing[0], acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(hushing[0], acts(2), { all: 2, bang: false }, commands),
+                hushing[0].bang],
+            [{ ask: "" }, { ask: "" }, false]);
     }
 
     // Earlier lines, as Vim's :his lists them: each line Return ran
