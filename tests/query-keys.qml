@@ -470,6 +470,12 @@ QtObject {
                 ["normal", "drawer"]],
             ["Space then the right arrow does nothing more in it",
                 into.concat(["Space", "Right"]), ["normal", "drawer"]],
+            // Space ? is his leader's list of keys everywhere (VKCF3Z), so
+            // in the drawer it lists the drawer's, and F1 with it.
+            ["Space ? and F1 list its keys", into.concat(["Space", "?", "F1"]),
+                ["normal", "drawer", "keys", "keys"]],
+            ["but not while choosing, where ? searches back",
+                into.concat(["v", "Space", "?"]), ["normal", "drawer", "select"]],
             ["Space then the left arrow does nothing on the rows",
                 ["Escape", "Space", "Left", "j"], ["normal", "next"]],
             ["Space then anything else lets Space go", ["Escape", "Space", "j", "j"],
@@ -483,6 +489,8 @@ QtObject {
             { count: "", typed: ["Space"] });
         holds("the drawer: Space in insert is the field's to type", typed(["Space"]).ours, false);
         holds("the drawer: its keys are the page's", typed(into).mode, "page");
+        holds("the drawer: and they stay the page's as its keys are listed",
+            typed(into.concat(["Space", "?"])).mode, "page");
         holds("the drawer: and the rows' again once back",
             typed(into.concat(["Space", "Left"])).mode, "normal");
         holds("the drawer: a letter in it is its own, typing nothing",
@@ -958,6 +966,17 @@ QtObject {
         holds("and copying it", keyed("copy"), "y  Y");
         holds("choosing has a section of its own",
             list.some(line => line.heading === "Choosing"), true);
+        // Listed from the drawer, only the drawer's keys: its page's and
+        // choosing's, its own Space ? among them.
+        const drawn = Listed.keyList(Keys.table, lines, modes, ["page", "pageVisual"]);
+        holds("the drawer's list, its sections alone",
+            drawn.filter(line => line.heading !== undefined).map(line => line.heading),
+            ["Drawer", "Choosing"]);
+        holds("and its own list of keys among them",
+            drawn.filter(line => line.value === "keys").map(line => line.label),
+            ["Space ?  F1"]);
+        holds("and the rows' not", drawn.some(line => line.value === "into the drawer"),
+            false);
         // Each mode's section, by its heading: the keys each line names, as
         // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
         const sections = {};

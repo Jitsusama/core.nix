@@ -131,7 +131,7 @@ PITCH = 24
 SCROLLED = 3 * PITCH
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc right", "spc left", "Z Z", "g g", "g v"})
+WAITING = frozenset({"spc right", "spc left", "spc ?", "Z Z", "g g", "g v"})
 TRIES = 3
 TRIED = timedelta(seconds=10)
 
@@ -338,14 +338,17 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
     There it waits until the keys go in and then takes the card's place, its title on one line,
     rather than squeezed beside it until a word breaks (VKCF3Z, 2026-11-05: "Depl/oy/log").
+    Then Space ? lists the drawer's own keys (listed_in_the_drawer), kept in this subtest so
+    the file holds to the pyramid's twenty (docs/testing.md).
     """
     page = InTheDrawer(desktop)
     came = page.into()
     assert came["says"] == page.TITLE, came
     assert came["letter"] == 0, came
-    # The foot names the way back, not the row's Return, which does nothing in the drawer.
+    # The foot names the way back and the drawer's keys, not the row's Return, which does
+    # nothing in the drawer.
     told = desktop.showing()["selected"]["told"]
-    assert told == ["Space \u2190 back"], f"in the drawer the foot says {told}"
+    assert told == ["Space \u2190 back", "Space ? keys"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
     assert rule["top"] == came["top"], came
@@ -388,6 +391,44 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     for keys in (": q ret", "spc left"):
         page.into()
         page.back(keys)
+    desktop.close_launcher()
+    listed_in_the_drawer(desktop)
+
+
+def listed_in_the_drawer(desktop: Desktop) -> None:
+    """In the drawer, Space ? lists the drawer's own keys in it, the keys staying there.
+
+    The cursor stands on the list's title, and j moves down it. Space ? again gives the row's
+    drawer back, and Space with the left arrow, bringing the keys back to the rows, puts the
+    list away with them.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+
+    def listed(shown: Json) -> bool:
+        cursor = shown["drawer"]["cursor"]
+        return bool(
+            shown["listing"]
+            and shown["mode"] == "page"
+            and cursor is not None
+            and cursor["says"] == "The Drawer's Keys"
+        )
+
+    # The pair come apart leaves ? alone, which begins a search back, so Escape lets it go.
+    def unsought() -> None:
+        page.press("esc")
+
+    page.pressed_until("spc ?", listed, unsought)
+    line = page.drawer()["cursor"]["line"]
+    page.until("j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    page.pressed_until(
+        "spc ?",
+        lambda shown: not shown["listing"] and shown["drawer"]["title"] == page.TITLE,
+        unsought,
+    )
+    page.pressed_until("spc ?", listed, unsought)
+    page.back("spc left")
+    assert not desktop.showing()["listing"], desktop.showing()
     desktop.close_launcher()
 
 
