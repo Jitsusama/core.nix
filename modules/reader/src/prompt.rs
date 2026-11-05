@@ -318,28 +318,29 @@ fn source(ask: &Ask) -> String {
 }
 
 /// The command line's menu's Typst, as his completion menu rises over his
-/// command line and the launcher's over its rows: a hairline in the rule
-/// splitting it from the page, then each line on the page's rhythm, all
+/// command line and the launcher's over its rows: in a list's frame, all
 /// at Note in muted. Its commands stand under what's typed after the :,
 /// so a command chosen reads straight down from the line; its titles on a
-/// column Space's xl past the widest command it could hold; its keys
+/// column the groups rung past the widest command it could hold; its keys
 /// flush with the end of the page's measure, where the prompt's count
-/// ends. The chosen line takes the selection's ground over the measure,
-/// as gO's chosen row does, its words in the text, since muted isn't
-/// drawn there.
+/// ends. The chosen line's ground hugs its ink from its command to its
+/// key, as gO's chosen row's does, its words in the text, since muted
+/// isn't drawn there.
 fn menu_source(ask: &Ask, menu: &Menu) -> String {
     let rows: Vec<String> = menu
         .lines
         .iter()
         .map(|(command, title, key, chosen)| {
-            let (fill, ink) = if *chosen {
-                ("ink.selection", "ink.text")
+            let (ground, ink) = if *chosen {
+                (
+                    "ground(commands, 100% - commands); ",
+                    "ink.text",
+                )
             } else {
-                ("none", "ink.muted")
+                ("", "ink.muted")
             };
             format!(
-                "block(width: 100%, height: {row}pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), {{ set text(fill: {ink}); place(left + horizon, dx: commands, {command}); place(left + horizon, dx: titles, {title}); place(right + horizon, {key}) }})",
-                row = KEY_ROW_PT,
+                "block(width: 100%, height: row, {{ set text(fill: {ink}); {ground}place(left + horizon, dx: commands, {command}); place(left + horizon, dx: titles, {title}); place(right + horizon, {key}) }})",
                 command = quoted(command),
                 title = quoted(title),
                 key = quoted(key),
@@ -356,88 +357,135 @@ fn menu_source(ask: &Ask, menu: &Menu) -> String {
     format!(
         r#"{ink}#set page(width: {width}pt, height: auto, margin: 0pt, fill: ink.sunken)
 #set text(..level.note.text, features: level.note.text.features + ("calt",))
-#context {{
+{frame}#context {{
   let commands = measure(text(..level.figure.text, ":")).width
   let widest = calc.max(0pt, ..({all}).map(it => measure(text(it)).width))
-  let titles = commands + widest + {xl}pt
-  block(width: 100%, stroke: (top: 0.75pt + ink.rule), inset: (x: {side}pt, y: {xs}pt), stack({rows}))
+  let titles = commands + widest + rung.groups
+  framed({side}pt, stack({rows}))
 }}
 "#,
         ink = crate::theme::get().typst(),
-        // The hairline runs the window across, and the rows the measure,
-        // the chosen one's ground reaching Space's s past it on either
-        // side, as gO's chosen row and a selection on the page do.
-        side = (((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt - SPREAD_PT)
-            .max(0.0),
-        xl = SIDE_PT,
-        xs = SPREAD_PT / 2.0,
+        frame = list_frame(ask.px_per_pt),
+        side = measure_left_pt(ask),
         rows = rows.join(", "),
     )
 }
 
-/// gO's outline's Typst, as his location list stands below a window: on
-/// the sunken ground the prompt's row is on, the full width of the window,
-/// each heading's words where the page's measure starts, set in from it by
-/// two characters for each level below the outline's highest, as Neovim's
-/// gO sets them in, each a note in the text; the row chosen on the selection's ground in the strong
-/// text, as the launcher's chosen row and his `CursorLine` in a list. Its rows stand on the key list's
-/// 18.75 pt, the page's 25 px rhythm, with Space's l above and below.
+/// Where the page's measure starts across a window, in points, as the
+/// window centres the page: where the prompt's words and every list's
+/// start.
+fn measure_left_pt(ask: &Ask) -> f64 {
+    let width = ask.width_pt.max(290.0 + 72.0);
+    ((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt
+}
+
+/// The Typst every list over the page is framed by, the menu and gO's
+/// outline alike, as the launcher's menu is (`CommandMenu.qml`): a
+/// hairline in the rule the window across, a logical pixel snapped to the
+/// device's, then a beat of the page's room above the first row and below
+/// the last, and rows two beats apart, so every line of a list lands on
+/// a line of the page it covers. `framed(side, body)` sets a list's rows
+/// in it from `side` across, and `ground(from, wide)` lays the chosen
+/// row's ground behind words `wide` across from `from`: a mark round
+/// them, above their capitals and below their baseline, as the launcher's
+/// chosen row is.
+fn list_frame(px_per_pt: f64) -> String {
+    format!(
+        r"#let row = 2 * beat
+#let framed(side, body) = stack(
+  rect(width: 100%, height: {hair}pt, fill: ink.rule, stroke: none),
+  block(width: 100%, inset: (x: side, y: beat), body))
+#let ground(from, wide) = context place(left + horizon, dx: from - rung.mark,
+  rect(width: wide + 2 * rung.mark, height: measure([H]).height + 2 * rung.mark,
+    fill: ink.selection, stroke: none))
+",
+        hair = hair_pt(px_per_pt),
+    )
+}
+
+/// A list's hairline, in points: a logical pixel, snapped to whole device
+/// pixels so it's drawn whole at every scale.
+fn hair_pt(px_per_pt: f64) -> f64 {
+    (crate::theme::PT_A_PX * px_per_pt).round().max(1.0) / px_per_pt
+}
+
+/// The page's beat, in points: what a list's room and rows count in.
+fn beat_pt() -> f64 {
+    crate::theme::get().space.beat * crate::theme::PT_A_PX
+}
+
+/// A list's row, in points: two of the page's beats, its line.
+fn row_pt() -> f64 {
+    2.0 * beat_pt()
+}
+
+/// gO's outline's Typst, as his location list stands below a window: in
+/// a list's frame, the full width of the window, each heading's words
+/// where the page's measure starts, set in from it by two characters for
+/// each level below the outline's highest, as Neovim's gO sets them in,
+/// each a note in the text; the row chosen on the selection's ground in
+/// the strong text, close round its words, as the launcher's chosen row
+/// and his `CursorLine` in a list.
 fn outline(ask: &Ask) -> String {
     let (width, side, highest) = outline_measure(ask);
     let rows: Vec<String> = ask
         .outline
         .iter()
         .map(|(level, words, chosen)| {
-            let (fill, ink) = if *chosen {
-                ("ink.selection", "ink.strong")
+            let (ground, ink) = if *chosen {
+                ("ground(0pt, measure(shown).width); ", "ink.strong")
             } else {
-                ("none", "ink.text")
+                ("", "ink.text")
             };
+            // What `layout` sets shrinks to what it holds, and placed words
+            // hold no room, so they're set in a block the row's whole size,
+            // to be centred in it.
             format!(
-                "block(width: 100%, height: {KEY_ROW_PT}pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), align(horizon, pad(left: {indent}pt, text(fill: {ink}, fit({words})))))",
+                "block(width: 100%, height: row, inset: (left: {indent}pt), layout(size => block(width: size.width, height: size.height, {{ let shown = fit({words}, size.width); {ground}place(left + horizon, text(fill: {ink}, shown)) }})))",
                 indent = indent_pt(*level, highest),
                 words = quoted(words),
             )
         })
         .collect();
     // Past the list, the chosen row's words whole on a page as wide as
-    // they run, and a figure, whose width sets the pace they read on at.
+    // they run, a row tall, on the chosen ground as it stands round them,
+    // and a figure, whose width sets the pace they read on at.
     let whole = ask
         .outline
         .iter()
         .find(|(_, _, chosen)| *chosen)
         .map(|(_, words, _)| {
             format!(
-                "#page(width: auto, height: {KEY_ROW_PT}pt, margin: 0pt, fill: ink.selection, align(horizon, text(fill: ink.strong, {words})))\n#page(width: auto, height: auto, margin: 0pt, fill: none, [0])",
+                "#page(width: auto, height: row, margin: 0pt, fill: ink.sunken, align(horizon, box(fill: ink.selection, outset: (y: rung.mark), text(fill: ink.strong, {words}))))\n#page(width: auto, height: auto, margin: 0pt, fill: none, [0])",
                 words = quoted(words),
             )
         })
         .unwrap_or_default();
     format!(
-        r#"{ink}#set page(width: {width}pt, height: auto, margin: (x: {side}pt, y: {OUTLINE_MARGIN_PT}pt), fill: ink.sunken)
+        r#"{ink}#set page(width: {width}pt, height: auto, margin: 0pt, fill: ink.sunken)
 #set text(..level.note.text, features: level.note.text.features + ("calt",))
-// A row is one line: words too long for it end in an ellipsis, at the
-// last word that fits, as a long name does on the launcher's rows.
-#let fit(words) = layout(size => {{
-  if measure(words).width <= size.width {{ return words }}
+{frame}// A row is one line: words too long for its room end in an ellipsis, at
+// the last word that fits, as a long name does on the launcher's rows.
+#let fit(words, room) = {{
+  if measure(words).width <= room {{ return words }}
   let kept = words.split(" ")
-  while kept.len() > 1 and measure(kept.join(" ") + "\u{{2026}}").width > size.width {{
+  while kept.len() > 1 and measure(kept.join(" ") + "\u{{2026}}").width > room {{
     kept = kept.slice(0, -1)
   }}
   kept.join(" ") + "\u{{2026}}"
-}})
-#stack({rows})
+}}
+#framed({side}pt, stack({rows}))
 {whole}
 "#,
         ink = crate::theme::get().typst(),
+        frame = list_frame(ask.px_per_pt),
         rows = rows.join(", "),
     )
 }
 
-/// gO's outline's measure, in points: its set's width, its side margin,
-/// where the words start where the page's measure does with the chosen
-/// row's ground reaching past them on either side, and the highest level
-/// among its rows.
+/// gO's outline's measure, in points: its set's width, where its words
+/// start, where the page's measure does, and the highest level among its
+/// rows.
 fn outline_measure(ask: &Ask) -> (f64, f64, u8) {
     let highest = ask
         .outline
@@ -445,10 +493,11 @@ fn outline_measure(ask: &Ask) -> (f64, f64, u8) {
         .map(|(level, _, _)| *level)
         .min()
         .unwrap_or(1);
-    let width = ask.width_pt.max(290.0 + 72.0);
-    let side =
-        (((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt - SPREAD_PT).max(0.0);
-    (width, side, highest)
+    (
+        ask.width_pt.max(290.0 + 72.0),
+        measure_left_pt(ask),
+        highest,
+    )
 }
 
 /// How far a row is set in: two characters, as 1.2 of the note's ems, for
@@ -458,8 +507,9 @@ fn indent_pt(level: u8, highest: u8) -> f64 {
 }
 
 /// The room the chosen row's words stand in, when an outline is asked for
-/// and a row of it is chosen: past the margin, the ground's spread and the
-/// row's indent, and down the list's top margin and the rows above it.
+/// and a row of it is chosen: past the measure's start and the row's
+/// indent to the measure's end, and down the list's hairline, its room and
+/// the rows above it.
 fn outline_room(ask: &Ask) -> Option<Room> {
     let at = ask.outline.iter().position(|(_, _, chosen)| *chosen)?;
     let (width, side, highest) = outline_measure(ask);
@@ -471,9 +521,9 @@ fn outline_room(ask: &Ask) -> Option<Room> {
     let above = at as f64;
     Some(Room {
         said: ask.outline[at].1.clone(),
-        left_pt: side + SPREAD_PT + indent,
-        top_pt: OUTLINE_MARGIN_PT + above * KEY_ROW_PT,
-        width_pt: width - 2.0 * (side + SPREAD_PT) - indent,
+        left_pt: side + indent,
+        top_pt: hair_pt(ask.px_per_pt) + beat_pt() + above * row_pt(),
+        width_pt: width - 2.0 * side - indent,
     })
 }
 
@@ -492,13 +542,6 @@ fn strip(room: Room, pages: &mut impl Iterator<Item = Label>, px_per_pt: f64) ->
         figure_px: f64::from(figure.width),
     })
 }
-
-/// The outline's margin above and below its rows: Space's l.
-const OUTLINE_MARGIN_PT: f64 = 12.0;
-
-/// How far a chosen row's ground reaches past its words on either side:
-/// Space's s, so its fill sits close round its ink.
-const SPREAD_PT: f64 = 6.0;
 
 /// The key list's Typst, as his which-key draws it: on the sunken ground,
 /// as notes, the keys in the text and what they do muted, each group
@@ -935,6 +978,183 @@ mod tests {
         }
     }
 
+    /// What a set page draws, in points from its top left: each run of
+    /// text as its left, baseline, advance and capitals' height, and each
+    /// rectangle as its left, top, width and height.
+    fn drawn(
+        frame: &typst::layout::Frame,
+        (dx, dy): (f64, f64),
+        texts: &mut Vec<[f64; 4]>,
+        rects: &mut Vec<[f64; 4]>,
+    ) {
+        for (place, item) in frame.items() {
+            let (x, y) = (dx + place.x.to_pt(), dy + place.y.to_pt());
+            match item {
+                typst::layout::FrameItem::Text(text) => texts.push([
+                    x,
+                    y,
+                    text.width().to_pt(),
+                    text.font.metrics().cap_height.at(text.size).to_pt(),
+                ]),
+                typst::layout::FrameItem::Shape(shape, _) => {
+                    if let typst::visualize::Geometry::Rect(size) = shape.geometry {
+                        rects.push([x, y, size.x.to_pt(), size.y.to_pt()]);
+                    }
+                }
+                typst::layout::FrameItem::Group(group) => drawn(
+                    &group.frame,
+                    (
+                        x + group.transform.tx.to_pt(),
+                        y + group.transform.ty.to_pt(),
+                    ),
+                    texts,
+                    rects,
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    /// A list over the page, set at each of Joel's scales, against the
+    /// ladder: a hairline of whole device pixels the window across at its
+    /// top, a beat of room inside it and at its foot, its rows two beats
+    /// apart with their capitals centred, and the chosen row's ground a mark
+    /// round its first and last ink, above its capitals and below its
+    /// baseline.
+    fn keeps_the_ladder(what: &str, ask: &dyn Fn(f64) -> String, rows: usize, chosen: usize) {
+        let space = crate::theme::get().space;
+        let beat = space.beat * crate::theme::PT_A_PX;
+        let row = 2.0 * beat;
+        let mark = space.rung.mark * crate::theme::PT_A_PX;
+        for scale in [2.0_f64, 1.5] {
+            let px = scale / crate::theme::PT_A_PX;
+            let mut world = page::new_world();
+            world.set_main(&ask(px));
+            let document = typst::compile::<PagedDocument>(&world)
+                .output
+                .unwrap_or_else(|errors| {
+                    panic!(
+                        "{:?}",
+                        errors
+                            .iter()
+                            .map(|e| e.message.to_string())
+                            .collect::<Vec<_>>()
+                    )
+                });
+            let frame = &document.pages()[0].frame;
+            let (mut texts, mut rects) = (Vec::new(), Vec::new());
+            drawn(frame, (0.0, 0.0), &mut texts, &mut rects);
+            let near = |a: f64, b: f64| (a - b).abs() < 0.05;
+            let at = format!("{what} at {scale}");
+            let hair = rects
+                .iter()
+                .find(|[_, top, ..]| near(*top, 0.0))
+                .unwrap_or_else(|| panic!("{at}: no hairline at its top in {rects:?}"));
+            assert!(
+                near(hair[2], frame.size().x.to_pt()),
+                "{at}: its hairline is {} pt of {}",
+                hair[2],
+                frame.size().x.to_pt()
+            );
+            assert!(
+                near(hair[3] * px, scale.round()),
+                "{at}: its hairline is {} device pixels, not a logical pixel snapped",
+                hair[3] * px
+            );
+            let mut baselines: Vec<f64> = texts.iter().map(|[_, y, ..]| *y).collect();
+            baselines.sort_by(f64::total_cmp);
+            baselines.dedup_by(|a, b| near(*a, *b));
+            assert_eq!(baselines.len(), rows, "{at}: {baselines:?}");
+            for pair in baselines.windows(2) {
+                assert!(
+                    near(pair[1] - pair[0], row),
+                    "{at}: rows {} pt apart, not two beats ({row} pt)",
+                    pair[1] - pair[0]
+                );
+            }
+            let cap = texts[0][3];
+            assert!(
+                near(baselines[0], hair[3] + beat + row / 2.0 + cap / 2.0),
+                "{at}: its first baseline is {} pt down, under {} of hairline and a beat of {beat}",
+                baselines[0],
+                hair[3]
+            );
+            #[expect(clippy::cast_precision_loss, reason = "a few rows")]
+            let tall = hair[3] + 2.0 * beat + rows as f64 * row;
+            assert!(
+                near(frame.size().y.to_pt(), tall),
+                "{at}: it stands {} pt, not {tall}",
+                frame.size().y.to_pt()
+            );
+            let line: Vec<&[f64; 4]> = texts
+                .iter()
+                .filter(|[_, y, ..]| near(*y, baselines[chosen]))
+                .collect();
+            let first = line.iter().map(|t| t[0]).fold(f64::INFINITY, f64::min);
+            let last = line
+                .iter()
+                .map(|t| t[0] + t[2])
+                .fold(f64::NEG_INFINITY, f64::max);
+            let ground = rects
+                .iter()
+                .find(|[_, top, ..]| !near(*top, 0.0))
+                .unwrap_or_else(|| panic!("{at}: no ground for the chosen row in {rects:?}"));
+            let round = [
+                first - ground[0],
+                ground[0] + ground[2] - last,
+                baselines[chosen] - cap - ground[1],
+                ground[1] + ground[3] - baselines[chosen],
+            ];
+            assert!(
+                round.iter().all(|gap| (gap - mark).abs() < 0.5),
+                "{at}: the chosen ground stands {round:?} pt round its ink (left, right, over the capitals, under the baseline), not a mark ({mark} pt)"
+            );
+        }
+    }
+
+    #[test]
+    fn the_menu_and_the_lists_keep_the_ladder() {
+        let ask = |px_per_pt: f64, outline: Vec<(u8, String, bool)>| Ask {
+            serial: 1,
+            keys: false,
+            labels: Vec::new(),
+            outline,
+            menu: None,
+            note: String::new(),
+            mark: "",
+            typed: String::new(),
+            cursor: false,
+            count: None,
+            width_pt: 1080.0,
+            px_per_pt,
+            page: crate::page::Width::WHOLE,
+        };
+        let menu = Menu {
+            lines: vec![
+                ("bn[ext]".into(), "Next File".into(), "]b".into(), false),
+                (
+                    "bp[revious]".into(),
+                    "Previous File".into(),
+                    "[b".into(),
+                    true,
+                ),
+            ],
+            all: vec!["bn[ext]".into(), "bp[revious]".into()],
+        };
+        keeps_the_ladder(
+            "the menu",
+            &|px| menu_source(&ask(px, Vec::new()), &menu),
+            2,
+            1,
+        );
+        let rows = vec![
+            (1, "The Reader's Cursor".into(), false),
+            (2, "What Moves It".into(), true),
+            (2, "What Acts There".into(), false),
+        ];
+        keeps_the_ladder("gO's outline", &|px| outline(&ask(px, rows.clone())), 3, 1);
+    }
+
     #[test]
     fn a_chosen_row_too_long_for_the_outline_sets_its_words_whole_where_its_room_is() {
         let long = "A heading far too long for the outline's row, which goes on and on \
@@ -979,14 +1199,14 @@ mod tests {
             pages[1].frame.size().x.to_pt() > room.width_pt,
             "its words run past it"
         );
-        assert!((pages[1].frame.size().y.to_pt() - KEY_ROW_PT).abs() < 0.01);
+        assert!((pages[1].frame.size().y.to_pt() - row_pt()).abs() < 0.01);
         let figure = pages[2].frame.size().x.to_pt();
         assert!(figure > 2.0 && figure < 12.0, "a figure is {figure} pt");
         let mut texts = Vec::new();
         texts_at(&pages[0].frame, 0.0, 0.0, &mut texts);
         let chosen = texts
             .iter()
-            .filter(|(_, y)| *y > room.top_pt && *y < room.top_pt + KEY_ROW_PT)
+            .filter(|(_, y)| *y > room.top_pt && *y < room.top_pt + row_pt())
             .map(|(x, _)| *x)
             .fold(f64::INFINITY, f64::min);
         assert!(
