@@ -205,6 +205,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         shows_the_command_line(desktop, scale)
+        lands_on_a_setting(desktop, scale)
         lists_every_key(desktop, scale)
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
@@ -303,6 +304,24 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
     )
+
+
+def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
+    """Find Keep Awake and Return, which lands on it in normal, and photograph it there.
+
+    Its side and the foot say what a second Return does, in the accent, and nothing is done.
+    """
+    machine = desktop.machine
+    desktop.on_find()
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    desktop.type_in("keep awake", selecting="Keep Awake")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+    shown = desktop.showing()
+    told = shown["selected"]["told"]
+    assert told[:1] == [f"\u21b5 {shown['landed']}"], f"at {scale} the landed foot says {told}"
+    desktop.photograph(f"launcher-landed-at-{scale.replace('.', '-')}")
 
 
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:
