@@ -1489,8 +1489,9 @@ impl App {
     /// A key while gO's outline shows, as Neovim's location list takes
     /// them in normal mode: j and k, gg and G, Ctrl+D and Ctrl+U and the
     /// screen's keys through its rows, / and ? then n and N through its
-    /// words, Return to the heading chosen, and Escape or ZZ away: q does
-    /// nothing, as in his Neovim, since nothing records.
+    /// words, Return to the heading chosen, and ZZ or Space w away: Escape
+    /// closes nothing, as Joel asked, and q does nothing, since nothing
+    /// records.
     fn outline_key(&mut self, key: keys::Key, held: bool) {
         if let Some(typing) = self.outline_typing.as_mut() {
             let said = typing.key(key, held);
@@ -1594,10 +1595,12 @@ impl App {
                     outline.find(&query, forward == (act == Act::Next), n);
                 }
             }
-            Act::Close | Act::Rest => {
+            Act::Close => {
                 self.close_outline();
                 return;
             }
+            // Escape has already dropped a count or a key waiting.
+            Act::Rest => return,
             _ => return,
         }
         self.ask_outline();
@@ -1849,6 +1852,9 @@ impl App {
     fn show_keys(&mut self, shown: bool) {
         if shown && !self.keys_shown {
             self.keys_scroll = 0.0;
+        }
+        if shown != self.keys_shown && keys_logged() {
+            eprintln!("keys: {}", if shown { "shown" } else { "away" });
         }
         self.keys_shown = shown;
         let px_per_pt = self.prompt_px_per_pt();
@@ -2193,10 +2199,18 @@ impl App {
         ) {
             self.prompt_shown = false;
         }
-        // Any key closes the key list, as which-key's, and does what it does;
-        // Escape only closes it, and Space ? again too. While it's taller
-        // than the window, the keys that move the view scroll it instead.
+        // Any key closes the key list, as which-key's, and does what it does,
+        // and Space ? again too; ZZ and Space w close only the list, and
+        // Escape closes nothing, as Joel asked. While it's taller than the
+        // window, the keys that move the view scroll it instead.
         let listed = self.keys_shown;
+        if listed && matches!(act, Act::Rest | Act::Close) {
+            if act == Act::Close {
+                self.show_keys(false);
+            }
+            self.acted(act, count, from, screen_pt);
+            return;
+        }
         if listed && self.scroll_keys(act, count) {
             if !self.frame_pending {
                 self.draw();
