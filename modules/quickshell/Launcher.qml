@@ -2078,9 +2078,11 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Return, then the most normal says beside it: in, out, the commands
-    // and the keys.
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["l", "in"], ["h", "out"],
+    // Return, then what normal says beside it at home: in, the commands
+    // and the keys. Out is said only once a step is held, whose rows grow
+    // the room as any row does; kept from the start, it cut the battery's
+    // charge from the glance at home, which never gives way.
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["l", "in"],
         [":", "commands"], ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
@@ -2192,6 +2194,7 @@ Scope {
     Connections {
         target: prompt
         function onModeChanged() {
+            root.readSelectedActions();
             root.noteKeys();
         }
     }
@@ -4032,9 +4035,17 @@ Scope {
     // The selected row's actions, read as it's selected rather than in the
     // foot's binding: a row's verbs() may ask its source, as Time's watch
     // chrony, and a binding that read them would loop on what they set.
+    // Only in normal and visual, where the foot names d and y, and never a row whose
+    // verbs are the things inside it (nested), since reading those asks
+    // for them: Search Slack's asked Slack with each letter typed, which
+    // Slack allows only a few times a minute.
     property var selectedActions: ({ row: null, actions: [] })
-    onSelectedChanged: selectedActions = { row: selected,
-        actions: selected ? actionsOf(selected) : [] }
+    onSelectedChanged: readSelectedActions()
+    function readSelectedActions() {
+        const reads = selected && prompt.modal && ["normal", "visual"].includes(prompt.mode)
+            && !selected.nested;
+        selectedActions = { row: selected, actions: reads ? actionsOf(selected) : [] };
+    }
 
     function actionsOf(row) {
         if (typeof row.operands === "function")
