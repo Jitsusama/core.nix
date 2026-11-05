@@ -94,7 +94,8 @@ let
       ];
       says = "neovim: Space ? is its own (Something), but the language gives it to show-keys";
     }
-    # No arrow does anything in a modal layer's normal mode.
+    # In a modal layer's normal mode an arrow is only its letter's motion,
+    # alone: Down is j's act and nothing else's.
     {
       layers = keyMap "a-modal-layer-binds-an-arrow" [
         {
@@ -102,7 +103,25 @@ let
           binds = [ (bind "Down" "down" "") ];
         }
       ];
-      says = "swayimg: Down is an arrow in normal mode, where none does anything";
+      says = "swayimg: Down gives an arrow its own act, where an arrow is only its letter's motion";
+    }
+    {
+      layers = keyMap "an-arrow-for-another-letter" [
+        {
+          name = "mpv";
+          binds = [ (bind "Down" "down" "up") ];
+        }
+      ];
+      says = "mpv: Down gives an arrow to up, where an arrow is only its letter's motion";
+    }
+    {
+      layers = keyMap "an-arrow-held" [
+        {
+          name = "zathura";
+          binds = [ (bind "Shift+Down" "shift+down" "") ];
+        }
+      ];
+      says = "zathura: Shift+Down gives an arrow its own act, where an arrow is only its letter's motion";
     }
   ];
 
@@ -192,7 +211,7 @@ let
         modes = ["visual"]
         kinds = ["page"]
       '';
-      says = "stray takes left in visual mode, where no arrow does anything";
+      says = "stray takes left in visual mode, where an arrow is only its letter's motion";
     }
     {
       name = "an-arrow-in-a-sequence";
@@ -201,7 +220,7 @@ let
         keys = ["g<Right>"]
         kinds = ["list"]
       '';
-      says = "stray takes g right in normal mode, where no arrow does anything";
+      says = "stray takes g right in normal mode, where an arrow is only its letter's motion";
     }
     {
       name = "an-arrow-held";
@@ -210,7 +229,7 @@ let
         keys = ["<C-Down>"]
         kinds = ["list"]
       '';
-      says = "stray takes ctrl+down in normal mode, where no arrow does anything";
+      says = "stray takes ctrl+down in normal mode, where an arrow is only its letter's motion";
     }
     {
       name = "a-mode-unnamed";
@@ -283,11 +302,10 @@ in
   # leaves out, or a chord bound to an act that isn't one of the act's keys
   # fails (speaks-the-language.py), as does a language whose commands
   # Neovim names otherwise, by what the machine's Neovim resolves each
-  # name to, read once as a file of its own. No arrow does anything in a
-  # surface's normal or visual mode, nor in a modal layer's normal but for
-  # his Neovim, kept as it is, and those still keeping theirs, a list that
-  # may only shrink; an arrow after the leader overlays Vim's keys (Joel,
-  # 2026-11-05). So the check can't pass by
+  # name to, read once as a file of its own. In normal and visual mode an
+  # arrow is its letter's motion and nothing else, alone, on every layer of
+  # ours, his Neovim's too; an arrow after the leader overlays Vim's keys
+  # (Joel, 2026-11-05). So the check can't pass by
   # seeing nothing, each way of straying is shown to fail first, as is a
   # language that gives one key to two acts and the reader leaving out a
   # key it takes only while selecting.
@@ -345,11 +363,30 @@ in
       printf '\n[acts.over]\nkeys = ["<Space><Right>"]\nmodes = ["visual"]\nkinds = ["list"]\n' \
         >> leader.toml
       ${check} leader.toml ${keys} neovim ${neovimCommands}
-      # His Neovim is kept as it is, bare arrows and all.
+      # His Neovim's arrows move as its letters do.
       ${lib.getExe pkgs.jq} \
         'map(if .name == "neovim" then .binds += [{chord: "Down", keys: "down", does: "Down",
           when: "", run: [], act: "down"}] else . end)' ${keys} > neovim.json
       ${check} ${./language.toml} neovim.json neovim ${neovimCommands}
+      # An arrow moving as its letter does, as Joel has it (2026-11-05: "In
+      # normal mode, in a buffer, arrows move the cursor"), on any layer:
+      # as the language's motion, or as the layer's own letter, as mpv's
+      # seeking.
+      ${check} ${./language.toml} ${
+        keyMap "an-arrow-as-its-letter" [
+          {
+            name = "swayimg";
+            binds = [ (bind "Down" "down" "down") ];
+          }
+          {
+            name = "mpv";
+            binds = [
+              (bind "j" "j" "")
+              (bind "Down" "down" "")
+            ];
+          }
+        ]
+      } neovim ${neovimCommands}
       ${check} ${./language.toml} ${keys} neovim ${neovimCommands}
       touch $out
     '';
