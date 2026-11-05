@@ -70,6 +70,16 @@ const table = [
     // rows name only the doubled keys, for saying them.
     { act: "ending", mode: "normal", keys: [["d", "d"]] },
     { act: "copy", mode: "normal", keys: [["y", "y"]] },
+    // Visual line, Vim's V, the language's select-lines: the rows from
+    // where it began to the cursor, which normal's moves extend (inMode,
+    // below), and which d, y and Return take at once, as Vim's visual
+    // operators wait for no motion. V again ends it, and Escape, after a
+    // count begun; a colon hands the command line the selection.
+    { act: "selectLines", mode: "normal", keys: ["V"] },
+    { act: "selectLines", mode: "visual", keys: ["V"] },
+    { act: "ending", mode: "visual", keys: ["d"] },
+    { act: "copy", mode: "visual", keys: ["y"] },
+    { act: "normal", mode: "visual", keys: ["Escape"] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
     { act: "insert", mode: "normal", keys: ["i"] },
@@ -174,6 +184,12 @@ function counted(count) {
     return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
 }
 
+// The range a colon gives the command line in a mode: visual's selection,
+// as Vim's '<,'>, whatever was counted, or the count's in normal.
+function rangeFor(count, mode) {
+    return mode === "visual" ? "'<,'>" : counted(count);
+}
+
 const digit = /^[0-9]$/;
 
 function same(a, b) {
@@ -184,7 +200,12 @@ function begins(sequence, typed) {
     return typed.length < sequence.length && typed.every((key, at) => key === sequence[at]);
 }
 
+// Whether a row's keys are a mode's: "both" is insert's and normal's, and
+// visual has normal's moves besides its own, since every move extends it.
 function inMode(row, mode) {
+    if (mode === "visual" && row.mode === "normal") {
+        return moves.includes(row.act);
+    }
     return row.mode === mode || row.mode === "both";
 }
 
@@ -204,12 +225,12 @@ function matching(typed, mode) {
     return { act: "", begun };
 }
 
-// What normal reads before its table, or null for a key it doesn't. A
-// count is typed where nothing types: 0 alone is Vim's first column,
-// which rows haven't, so it counts only after another digit, and one after
-// an operator is its motion's. An operator's key at rest begins it, with
-// the count before it.
-function beforeTable(standing, key) {
+// What normal and visual read before their table, or null for a key they
+// don't. A count is typed where nothing types: 0 alone is Vim's first
+// column, which rows haven't, so it counts only after another digit, and
+// one after an operator is its motion's. An operator's key at rest in
+// normal begins it, with the count before it; visual's take no motion.
+function beforeTable(standing, key, mode) {
     const atRest = standing.typed.length === 0;
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,
@@ -218,7 +239,7 @@ function beforeTable(standing, key) {
     if (standing.operator !== undefined) {
         return operated(standing, key);
     }
-    if (atRest && key in operators) {
+    if (mode === "normal" && atRest && key in operators) {
         const operator = { key, count: standing.count };
         return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
     }
@@ -239,7 +260,7 @@ function read(standing, key, mode) {
     // A colon at rest in normal opens the command line, which takes the
     // keys from here (CommandLine.qml), with a count typed before it; one
     // while an operator waits lets the operator go, as no motion.
-    if (mode === "normal" && key === ":" && standing.typed.length === 0
+    if ((mode === "normal" || mode === "visual") && key === ":" && standing.typed.length === 0
         && standing.operator === undefined) {
         return { act: "command", count: standing.count === "" ? 0 : Number(standing.count),
             standing: rest(), ours: true };
@@ -247,7 +268,8 @@ function read(standing, key, mode) {
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
-    const before = mode === "normal" ? beforeTable(standing, key) : null;
+    const before = mode === "normal" || mode === "visual" ? beforeTable(standing, key, mode)
+        : null;
     if (before !== null) {
         return before;
     }
@@ -260,9 +282,9 @@ function read(standing, key, mode) {
     if (begun) {
         return { act: "", count: 0, standing: { count: standing.count, typed }, ours: true };
     }
-    // In normal nothing types, so a key that ends nothing is the line's
-    // and does nothing, letting what was begun go, as vi does.
-    return { act: "", count: 0, standing: rest(), ours: mode === "normal" };
+    // In normal and visual nothing types, so a key that ends nothing is
+    // the line's and does nothing, letting what was begun go, as vi does.
+    return { act: "", count: 0, standing: rest(), ours: mode === "normal" || mode === "visual" };
 }
 
 // How the keys stand once a sequence begun has waited its timeoutlen for
@@ -337,9 +359,22 @@ function binds(act, key, mode) {
     return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
 }
 
+// Whether an act in visual takes its selection: d, y and Return.
+function takesSelection(act) {
+    return act === "ending" || act === "copy" || act === "run";
+}
+
 // The mode an act leaves the line in.
 function modeAfter(act, mode) {
     if (act === "normal") {
+        return "normal";
+    }
+    if (act === "selectLines") {
+        return mode === "visual" ? "normal" : "visual";
+    }
+    // Visual's d, y and Return take the selection and end it, as Vim's
+    // visual operators do; its colon keeps it behind the command line.
+    if (mode === "visual" && takesSelection(act)) {
         return "normal";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change"].includes(act)) {

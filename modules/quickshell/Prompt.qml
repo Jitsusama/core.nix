@@ -83,8 +83,11 @@ Item {
     // Whether the line has vi's modes, as the launcher's does; the lock's
     // and a password's prompts are only typed in.
     property bool modal: false
-    // The mode it's in: "insert" or "normal". It opens in insert (take()).
+    // The mode it's in: "insert", "normal", or "visual" while visual line
+    // chooses rows. It opens in insert (take()).
     property string mode: "insert"
+    // Whether nothing types, in normal and visual alike.
+    readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
@@ -280,7 +283,9 @@ Item {
     signal stepped(string act, int count)
     // An operator done: "ending" for d and "copy" for y, with the count
     // typed before it, 0 for none, and the motion it took, { act, count },
-    // or null for dd and yy (QueryKeys.spanned takes them).
+    // or null for dd and yy (QueryKeys.spanned takes them); in visual, d, y
+    // or "run" for Return, with the motion { act: "visual" }, over the
+    // selection.
     signal operated(string act, int count, var motion)
     // : in normal, which opens the command line in the line's place
     // (CommandLine.qml), with the range a count before it gives, as 3:
@@ -420,7 +425,7 @@ Item {
         // any other act, and a count or a sequence begun, is a press's
         // once, so a key let go late by a busy shell, which repeats as if
         // held (modules/keyboard/repeat.nix), never does it twice.
-        if (event.isAutoRepeat && mode === "normal" && !QueryKeys.repeats(read.act)) {
+        if (event.isAutoRepeat && overRows && !QueryKeys.repeats(read.act)) {
             event.accepted = true;
             return;
         }
@@ -434,6 +439,11 @@ Item {
         const at = input.cursorPosition;
         const next = QueryKeys.modeAfter(read.act, mode);
         if (next !== mode) {
+            // Visual's d, y and Return take the selection before it ends,
+            // as Vim's visual operators do (Launcher.qml's operated, which
+            // the file picker's takes(rows) hooks for Return).
+            if (mode === "visual" && QueryKeys.takesSelection(read.act))
+                prompt.operated(read.act, 0, { act: "visual", count: 0 });
             input.deselect();
             if (read.act === "change")
                 input.text = "";
@@ -498,7 +508,7 @@ Item {
             prompt.operated(read.act, read.count, read.motion);
             break;
         case "command":
-            prompt.commanded(QueryKeys.counted(read.count));
+            prompt.commanded(QueryKeys.rangeFor(read.count, mode));
             break;
         case "":
             break;
@@ -580,7 +590,7 @@ Item {
     // Whether the field draws its caret: not in normal, where the keys are
     // on the rows. A block there sat on the hint's first letter, in the
     // hint's face, before anything was typed (Joel, 2026-11-04).
-    readonly property bool caretShown: !(modal && mode === "normal")
+    readonly property bool caretShown: !overRows
 
     FontMetrics {
         id: typedFace
@@ -830,7 +840,7 @@ Item {
             // says which keys repeat: the moves (modalKey).
             if (event.isAutoRepeat && event.text !== "" && event.text >= " "
                 && event.text !== "\u007f" && (event.modifiers & Qt.ControlModifier) === 0
-                && !(prompt.modal && prompt.mode === "normal")) {
+                && !prompt.overRows) {
                 event.accepted = true;
                 return;
             }

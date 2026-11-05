@@ -154,6 +154,31 @@ function pendingSays(hit, words) {
     return words.pending.replace("{typed}", hit.typed).replace("{what}", what ?? "");
 }
 
+// The rows visual line takes, from where it began to the cursor, either
+// way; none before it begins, its start being -1.
+function selection(from, at) {
+    if (from < 0) {
+        return { from: 0, to: -1 };
+    }
+    return { from: Math.min(from, at), to: Math.max(from, at) };
+}
+
+// What the foot says Return does over a selection: open its rows, by
+// their count, as "open 3".
+function opensSaid(count, words) {
+    return (words.opens ?? "").replace("{count}", String(count));
+}
+
+// What's said once Return has opened a selection's rows where it couldn't
+// open them all, "2 of 3 open", and nothing where it opened every one.
+function openedSaid(open, count, words) {
+    if (open === count) {
+        return "";
+    }
+    return (words.opened ?? "").replace("{open}", String(open))
+        .replace("{count}", String(count));
+}
+
 // A word that's only a mark, as the dot between the keys and the verb.
 const LONE_MARK = /^[\u00b7\u2022:,.-]*$/;
 

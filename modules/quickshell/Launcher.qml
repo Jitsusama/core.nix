@@ -1788,6 +1788,10 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
+        // In visual, Return opens the selection's rows it can, by count.
+        if (visual)
+            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row))
+                .length, Words.field.visual ?? {})]];
         // One Return typed in insert leaves be says Return only where it
         // steps in, and no arrow, since insert's arrows move the caret.
         if (guarded(choice))
@@ -3338,8 +3342,61 @@ Scope {
 
     // d or y (Prompt.qml's operated), over the rows from the selection to
     // where the motion goes, or as many as the count says.
+    // Visual line's selection: the row it began on, -1 outside it, and the
+    // first and last rows it takes, as places in the rows. It begins on the
+    // cursor row as V is pressed, and outlives the command line its colon
+    // opens, which gives it back on Escape.
+    property int visualFrom: -1
+    readonly property bool visual: prompt.mode === "visual"
+    readonly property var visualSpan: Operators.selection(visualFrom, current)
+    readonly property int visualTop: visualSpan.from
+    readonly property int visualBottom: visualSpan.to
+    onVisualChanged: visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current
+
+    // The rows the selection takes.
+    function visualRows() {
+        return matches.slice(Math.max(0, visualTop), visualBottom + 1);
+    }
+
+    // Whether a row wears the selection's ground: visual's, or what a
+    // pending operator will take.
+    function tints(at) {
+        return visualFrom >= 0 ? at >= visualTop && at <= visualBottom
+            : at === current && pendingSaid !== "";
+    }
+
+    // Return over the selection: the place stepped into takes the rows
+    // itself where it says so (takes(rows) true, as the file picker's
+    // marks them); else every row Return takes somewhere is opened, never
+    // one that changes something, and what couldn't be is said once
+    // ("2 of 3 open"), the cursor left on the first row taken.
+    function ranOver(taken) {
+        const rows = taken.map(one => one.row);
+        const place = held.length > 0 ? held[held.length - 1].row : null;
+        if (place && typeof place.takes === "function" && place.takes(rows) === true)
+            return;
+        const opening = rows.filter(row => Catalogue.opens(row));
+        const said = Operators.openedSaid(opening.length, rows.length,
+            Words.field.visual ?? {});
+        if (said !== "")
+            operatorSays(said);
+        Report.say(`opened ${opening.length} of ${rows.length}`);
+        for (const row of opening)
+            run(row, false);
+    }
+
     function operated(act, count, motion) {
         searchNow();
+        if (motion?.act === "visual") {
+            const taken = Operators.taken(matches, visualSpan, headline);
+            if (act === "copy")
+                yanked(taken);
+            else if (act === "ending")
+                ended(taken, QueryKeys.keyOf("ending", "visual"), false);
+            else
+                ranOver(taken);
+            return;
+        }
         const view = list.inView();
         const span = Operators.spanned(count, motion, {
             at: current,
@@ -4060,7 +4117,10 @@ Scope {
             // The mode word's room as it reads, and the rows tinted for
             // what a pending operator will take, by their place.
             modeWord: modeWord.visible ? modeWord.said : "",
-            tinted: root.pendingSaid !== "" ? [root.current] : [],
+            tinted: root.visualFrom >= 0
+                ? Array.from({ length: root.visualBottom - root.visualTop + 1 },
+                    (_, at) => root.visualTop + at)
+                : root.pendingSaid !== "" ? [root.current] : [],
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4624,7 +4684,8 @@ Scope {
                         // open, and what it said went wrong for a key
                         // after; hidden by its light, so its focus stays.
                         opacity: root.commanding === null && !root.commandSays ? 1 : 0
-                        onCommanded: range => root.commandLine({ range })
+                        onCommanded: range => root.commandLine(root.visual
+                            ? { range, things: root.visualRows() } : { range })
                         steady: true
                         // Neovim's command line, opening in insert, but for
                         // a secret, which has no modes, as Vim's
@@ -5220,8 +5281,7 @@ Scope {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
                                     flashed: root.flashing[entry.index] === true
-                                    tinted: entry.index === root.current
-                                        && root.pendingSaid !== ""
+                                    tinted: root.tints(entry.index)
                                     // Seen until the closing card has faded.
                                     shown: card.opacity > 0
                                     fills: false

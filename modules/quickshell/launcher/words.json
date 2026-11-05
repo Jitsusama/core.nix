@@ -6146,6 +6146,10 @@
       "hits": "{verb} {count}",
       "copies": "copy"
     },
+    "visual": {
+      "opens": "open {count}",
+      "opened": "{open} of {count} open"
+    },
     "command": {
       "quit": "Close the Launcher",
       "help": "List the Keys",
