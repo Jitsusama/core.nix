@@ -62,10 +62,34 @@ Item {
     // on, they end in an ellipsis as they do unselected, rather than cut
     // through a letter at their room's edge (VKCF3Z, 2026-11-03).
     property bool moving: false
+    // Whether, cut at rest, the words give way at a whole word, as what a
+    // row says at its right does, rather than through one (VKCF3Z,
+    // 2026-11-05: "pick Aubergine, then Custom the\u2026"). A name keeps as
+    // many of its letters as fit instead.
+    property bool wholeWords: false
+    // How wide the words are laid at rest: their room, or where they give
+    // way at a word, only as far as their last whole word and its
+    // ellipsis, so the ellipsis Qt draws falls there. A single word too
+    // long for the room has nowhere else to give way, so it's cut through.
+    // Qt elides what doesn't fit with a pixel to spare, so it's given one,
+    // far less than the space or mark after the word.
+    readonly property real restWidth: {
+        if (!wholeWords || format !== Text.PlainText || over <= 0)
+            return width;
+        void face.font;
+        const cut = Reading.wholeWords(text, width, said => face.advanceWidth(said));
+        return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)) + 1);
+    }
+
+    // The words' face, to find where they give way.
+    FontMetrics {
+        id: face
+        font: words.font
+    }
 
     Text {
         id: words
-        width: room.moving ? implicitWidth : room.width
+        width: room.moving ? implicitWidth : room.restWidth
         text: room.text
         textFormat: room.format
         elide: room.moving ? Text.ElideNone : Text.ElideRight
