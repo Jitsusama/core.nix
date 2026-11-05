@@ -105,7 +105,8 @@ Item {
             break;
         case "Return":
             if (!held)
-                line.ran(Commands.ran(input.text, line.menu));
+                line.ran(Object.assign(Commands.ran(input.text, line.menu),
+                    { typed: input.text }));
             break;
         case "Tab":
         case "Down":

@@ -2290,6 +2290,9 @@ Scope {
     // they stood (standingOptions). Null while it's shut, so nothing of it
     // is made until : is typed.
     property var commanding: null
+    // The lines Return ran, as Vim's history keeps them for :his and @:,
+    // the newest last (Commands.remembered).
+    property var commandEarlier: []
     // What Return on the line said, standing in the line's place for the
     // key that ran it alone: what went wrong, as Vim's command line says
     // E492, or what it asked, as :set volume? says volume=40.
@@ -2325,7 +2328,7 @@ Scope {
         const things = opening?.things ?? (row ? [row] : []);
         const one = things.length === 1 ? things[0] : null;
         // A selection's acts are each of its things', listed once.
-        const acts = one ? actsOf(one) : things.flatMap(thing => actsOf(thing));
+        const acts = one ? actsOf(one) : [].concat(...things.map(thing => actsOf(thing)));
         // An act on the cursor row acts on the thing it's inside.
         const on = one && acts.length === 1 && acts[0] === one && held.length > 0
             ? [held[held.length - 1].row] : things;
@@ -2343,7 +2346,8 @@ Scope {
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
                 table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
-                called: act => commandWords(act.key ?? ""), thing: one }),
+                called: act => commandWords(act.key ?? ""), thing: one,
+                earlier: opening?.earlier ? commandEarlier : [] }),
             options: standingOptions()
         };
     }
@@ -2555,6 +2559,7 @@ Scope {
     // Return on the line: exactly what's typed, as Commands.ran read it.
     function commandRan(read) {
         const opened = commanding;
+        commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too.
         commandLeft(read.error ? "said" : "normal");
         if (read.error !== undefined) {
@@ -2587,6 +2592,9 @@ Scope {
         case "set":
             commandSet(read.arg);
             return;
+        case "history":
+            commandLine({ earlier: true });
+            return;
         }
         const bound = commandBound(read, opened);
         if (bound.error !== undefined) {
@@ -2612,6 +2620,18 @@ Scope {
             return;
         }
         run(act, false);
+    }
+
+    // @:, the last line Return ran run again on the cursor row as it is
+    // now, or Vim's E30 where none has.
+    function commandAgain() {
+        const last = commandEarlier[commandEarlier.length - 1];
+        if (last === undefined) {
+            commandSay("E30: No previous command line", true);
+            return;
+        }
+        commandLine(null);
+        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }));
     }
 
     // The things a line acts on: those bound as : was pressed, or where a

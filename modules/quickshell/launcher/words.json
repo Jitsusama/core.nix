@@ -6516,6 +6516,7 @@
       "quit": "Close the Launcher",
       "help": "List the Keys",
       "set": "Set an Option",
+      "history": "List Earlier Lines",
       "row": "Go to a Row",
       "on": "on {things}",
       "onSome": "on {some} of {all}",

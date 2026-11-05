@@ -102,6 +102,12 @@ function listed(from) {
         entry.lowered = ` ${entry.title.toLowerCase()}`;
         menu.push(entry);
     };
+    // Earlier lines first, newest first, where :his opens them; each runs
+    // as typed, never named.
+    for (const line of [...(from.earlier ?? [])].reverse()) {
+        add({ command: line, short: line, title: "", key: "", kind: "earlier", line,
+            bang: false, takes: false, undoable: true });
+    }
     // An act is named by the command its words give it, with the argument
     // telling it from another of that name, or else by its verb; it takes
     // a ! only where it would ask first, its ! saying don't. A guarded one
@@ -133,6 +139,8 @@ function listed(from) {
         kind: "help", bang: true, takes: true, undoable: true });
     add({ command: "set", short: short("set"), title: said.set ?? "", key: "",
         kind: "set", bang: false, takes: true, undoable: true });
+    add({ command: "history", short: short("history"), title: said.history ?? "", key: "",
+        kind: "history", bang: false, takes: false, undoable: true });
     add({ command: "{n}", short: "{n}", title: said.row ?? "", key: "", kind: "row",
         bang: false, takes: false, undoable: true, row: from.row ?? 1 });
     return menu;
@@ -178,7 +186,7 @@ function rangedFor(entry, range) {
 // Whether a word names a command, as Vim's do: its full name, or its short
 // form or any longer start of its name. Case is the command's own.
 function names(word, entry) {
-    if (entry.kind === "row") {
+    if (entry.kind === "row" || entry.kind === "earlier") {
         return false;
     }
     const short = entry.short ?? entry.command;
@@ -248,7 +256,7 @@ function written(entry, typed) {
     if (entry.kind === "row") {
         return String(entry.row);
     }
-    if (entry.kind === "argument") {
+    if (entry.kind === "argument" || entry.kind === "earlier") {
         return entry.line;
     }
     const read = parts(typed);
@@ -357,9 +365,16 @@ function ranRanged(matching, read) {
     return running.error === undefined ? Object.assign(running, { range: read.range }) : running;
 }
 
-// The earlier lines with one more remembered.
-function remembered(earlier, _line) {
-    return earlier;
+// The earlier lines with one more remembered, as Vim's history keeps them
+// for :his: once each, the newest last, fifty at most.
+const kept = 50;
+
+function remembered(earlier, line) {
+    const said = line.trim();
+    if (said === "") {
+        return earlier;
+    }
+    return earlier.filter(one => one !== said).concat([said]).slice(-kept);
 }
 
 // The rows a line Return read names (ran), as indexes from 0, given where

@@ -109,6 +109,7 @@ QtObject {
             ["q[uit]", "Close the Launcher", "ZZ"],
             ["h[elp]", "List the Keys", "F1"],
             ["se[t]", "Set an Option", ""],
+            ["his[tory]", "List Earlier Lines", ""],
             ["{n}", "Go to a Row", ""]
         ]);
         holds("each act's line holds the act it runs", menu[1]?.act?.verb, "disconnect");
@@ -120,7 +121,8 @@ QtObject {
         holds("an act whose verb is more words is named by its first",
             menuOf([{ name: "Sign In", verb: "sign in" }])[0].command, "sign");
         holds("a row with no acts lists only what every surface has",
-            lines(menuOf([])).map(line => line[0]), ["q[uit]", "h[elp]", "se[t]", "{n}"]);
+            lines(menuOf([])).map(line => line[0]),
+            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
 
         // Typing narrows it: by the command's start, then by the act's words.
         const shown = typed => Commands.narrowed(menu, typed).map(entry => entry.command);
@@ -581,7 +583,7 @@ QtObject {
             ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
         holds("typing narrows them by their start",
             Commands.narrowed(menu, "se").map(line => Commands.called(line)),
-            ["set nowifi", "se[t]"]);
+            ["set nowifi", "see", "se[t]"]);
         holds("choosing one writes it in, and Return runs it as typed",
             [Commands.chosen(Commands.typing("se"), 1, Commands.narrowed(menu, "se")).line,
                 Commands.ran("set nowifi", menu).entry?.kind,
