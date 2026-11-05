@@ -54,6 +54,7 @@ import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "QueryKeys.js" as QueryKeys
 import "SetWords.js" as SetWords
+import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -2290,6 +2291,9 @@ Scope {
     // they stood (standingOptions). Null while it's shut, so nothing of it
     // is made until : is typed.
     property var commanding: null
+    // The lines Return ran, as Vim's history keeps them for :his and @:,
+    // the newest last (Commands.remembered).
+    property var commandEarlier: []
     // What Return on the line said, standing in the line's place for the
     // key that ran it alone: what went wrong, as Vim's command line says
     // E492, or what it asked, as :set volume? says volume=40.
@@ -2324,7 +2328,8 @@ Scope {
         const row = selected;
         const things = opening?.things ?? (row ? [row] : []);
         const one = things.length === 1 ? things[0] : null;
-        const acts = one ? actsOf(one) : [];
+        // A selection's acts are each of its things', listed once.
+        const acts = one ? actsOf(one) : [].concat(...things.map(thing => actsOf(thing)));
         // An act on the cursor row acts on the thing it's inside.
         const on = one && acts.length === 1 && acts[0] === one && held.length > 0
             ? [held[held.length - 1].row] : things;
@@ -2333,11 +2338,17 @@ Scope {
             from: prompt.mode,
             range: opening?.range ?? "",
             things: on,
+            // The rows as they stood, which a range binds to things.
+            rows: matches.slice(),
+            cursor: current,
+            marks: things.length > 1 ? { "<": matches.indexOf(things[0]),
+                ">": matches.indexOf(things[things.length - 1]) } : {},
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
                 table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
-                called: act => commandWords(act.key ?? ""), thing: one }),
+                called: act => commandWords(act.key ?? ""), thing: one,
+                earlier: opening?.earlier ? commandEarlier : [] }),
             options: standingOptions()
         };
     }
@@ -2435,21 +2446,30 @@ Scope {
     }
 
     // What the drawer says while a line of the menu is chosen: what it
-    // acts on, "on Home-5G".
+    // acts on, "on Home-5G", or for the several a range or :g binds as
+    // typed, how many of the rows, "on 3 of 12".
     function commandPlate(line) {
         if (!commanding)
             return null;
-        const names = commanding.things.map(thing => thing.name ?? "").filter(name => name);
+        const aimed = commanding.things.map(thing => thing.name ?? "").filter(name => name);
         // Over a viewer, with nothing chosen, it names what it's aimed at.
-        if (!line && over !== null && names.length > 0)
-            return { title: names.join(", "), body: "" };
+        if (!line && over !== null && aimed.length > 0)
+            return { title: aimed.join(", "), body: "" };
         if (!line || (line.kind !== "act" && line.kind !== "surface"))
             return null;
+        const words = Words.field.command ?? {};
+        const read = Commands.ran(commandLoader.item?.text ?? "", commanding.menu);
+        const bound = read.error === undefined && read.go === undefined
+            ? commandBound(read, commanding) : { things: commanding.things };
+        const things = bound.things ?? commanding.things;
+        if (things.length > 1) {
+            return { title: line.title, body: String(words.onSome ?? "")
+                .replace("{some}", things.length).replace("{all}", commanding.rows.length) };
+        }
+        const names = things.map(thing => thing.name ?? "").filter(name => name);
         if (names.length === 0)
             return null;
-        const on = ((Words.field.command ?? {}).on ?? "on {things}")
-            .replace("{things}", names.join(", "));
-        return { title: line.title, body: on };
+        return { title: line.title, body: String(words.on ?? "").replace("{things}", names[0]) };
     }
 
     function commandSay(words, failed) {
@@ -2540,6 +2560,7 @@ Scope {
     // Return on the line: exactly what's typed, as Commands.ran read it.
     function commandRan(read) {
         const opened = commanding;
+        commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too.
         commandLeft(read.error ? "said" : "normal");
         if (read.error !== undefined) {
@@ -2572,9 +2593,22 @@ Scope {
         case "set":
             commandSet(read.arg);
             return;
-        case "surface":
+        case "history":
+            commandLine({ earlier: true });
+            return;
+        }
+        const bound = commandBound(read, opened);
+        if (bound.error !== undefined) {
+            commandSay(bound.error, true);
+            return;
+        }
+        if (entry.kind === "surface") {
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
-                things: opened.things, count: opened.things.length });
+                things: bound.things, count: bound.things.length });
+            return;
+        }
+        if (bound.things.length !== 1 || bound.things[0] !== opened.things[0]) {
+            commandAcross(entry, read, bound.things);
             return;
         }
         // An act that asks for a target or for words is stepped into, as
@@ -2586,7 +2620,73 @@ Scope {
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;
         }
-        run(act, false);
+        commandAsked(entry, [act], 1, read.bang, thing.name ?? "");
+    }
+
+    // Runs a line's acts on what it's bound to, asking once first where
+    // CommandBinding.asking says, through the one ask (askOnce), as the
+    // spec's Operators have it: y runs them past their own confirm, as a !
+    // does; n, Escape and Ctrl+C leave them be.
+    function commandAsked(entry, acts, all, bang, name) {
+        const words = Words.field.command ?? {};
+        const asked = CommandBinding.asking(entry, acts.length, all, bang);
+        const fill = template => {
+            const said = String(template ?? "").replace(/\{command\}/g, entry.command)
+                .replace("{some}", acts.length).replace("{all}", all)
+                .replace("{count}", acts.length).replace("{name}", name);
+            return said.charAt(0).toUpperCase() + said.slice(1);
+        };
+        if (asked.none) {
+            commandSay(fill(words.none), true);
+            return;
+        }
+        const sure = () => {
+            for (const act of acts)
+                run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
+        };
+        if (asked.ask !== "") {
+            askOnce(fill(words[asked.ask]), sure, () => {});
+            return;
+        }
+        if (bang) {
+            sure();
+            return;
+        }
+        for (const act of acts)
+            run(act, false);
+    }
+
+    // @:, the last line Return ran run again on the cursor row as it is
+    // now, or Vim's E30 where none has.
+    function commandAgain() {
+        const last = commandEarlier[commandEarlier.length - 1];
+        if (last === undefined) {
+            commandSay("E30: No previous command line", true);
+            return;
+        }
+        commandLine(null);
+        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }));
+    }
+
+    // The things a line acts on: those bound as : was pressed, or where a
+    // range or :g is typed, the rows it names as they stood then
+    // (CommandBinding.bound), so a row arriving after can't shift them.
+    function commandBound(read, opened) {
+        if ((read.range ?? null) === null && !read.global)
+            return { things: opened.things };
+        const bound = CommandBinding.bound(read, { names: opened.rows.map(row => String(row.name ?? "")),
+            cursor: opened.cursor, marks: opened.marks });
+        return bound.error !== undefined ? bound
+            : { things: bound.rows.map(at => opened.rows[at]) };
+    }
+
+    // A line run on several things, or on one a range or :g found: each
+    // thing's own act (CommandBinding.actFor), asked first where it asks.
+    function commandAcross(entry, read, things) {
+        const acts = things.map(thing => CommandBinding.actFor(entry, actsOf(thing),
+            act => commandWords(act.key ?? "")))
+            .filter(act => act !== undefined);
+        commandAsked(entry, acts, things.length, read.bang, things[0]?.name ?? "");
     }
 
     // Where the launcher is now, for a step into something to keep.
@@ -4842,6 +4942,9 @@ Scope {
                             case "close":
                                 root.open = false;
                                 return;
+                            case "commandAgain":
+                                root.commandAgain();
+                                return;
                             case "keys":
                                 root.listing = !root.listing;
                                 return;
@@ -4893,7 +4996,7 @@ Scope {
                         width: parent.width - 2 * Theme.inset
                         height: prompt.height
                         active: root.commanding !== null
-                        onLoaded: item.take()
+                        onLoaded: item.take(root.commanding?.range ?? "")
 
                         sourceComponent: CommandLine {
                             menu: root.commanding?.menu ?? []
@@ -5517,9 +5620,12 @@ Scope {
                             id: modeWord
 
                             readonly property string counted: prompt.standing.count
-                            // A line with no modes, as a secret's, names none.
+                            // A line with no modes, as a secret's, names none,
+                            // and nor does the command line, as his status line
+                            // shows none for it, whatever mode : came from (a
+                            // viewer's : opens it from insert; VKCF3Z).
                             readonly property string said: counted !== "" ? counted
-                                : !prompt.modal ? ""
+                                : !prompt.modal || root.commanding !== null ? ""
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see

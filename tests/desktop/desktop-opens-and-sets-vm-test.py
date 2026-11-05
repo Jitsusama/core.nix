@@ -685,7 +685,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
 def commands_a_network(desktop: Desktop) -> None:
-    """Press every key the command line takes on Lantern's row, then disconnect it by :disc.
+    """Press every key the command line takes on Lantern's row, then bind a range.
 
     : in normal opens it with Lantern's acts, Return's first; typing narrows it; Tab, Shift+Tab,
     the arrows, Ctrl+N and Ctrl+P choose a line and write it in, round to what was typed, the
@@ -757,11 +757,67 @@ def commands_a_network(desktop: Desktop) -> None:
         desktop.launcher_until(
             lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
         )
-    machine.send_chars(":disc\n")
+    binds_a_range(desktop)
+
+
+def binds_a_range(desktop: Desktop) -> None:
+    """Over every network, say E481 for :%q, ask how many can for :%disc, then :g/Lant/disc.
+
+    Lantern alone can disconnect, so :%disc asks once, naming how many can, and n leaves every
+    network as it was; :g finds Lantern by name and disconnects it by its own act, unasked, as
+    it can be undone.
+    """
+    machine = desktop.machine
+
+    def says(typed: str, said: str) -> None:
+        machine.send_chars(typed)
+        desktop.launcher_until(
+            lambda shown: shown["command"] is None and said in (shown["commandSaid"] or "")
+        )
+
+    # Every network listed, not Lantern alone as "lant" found it, so % is them all.
+    if desktop.showing()["open"]:
+        desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: len(shown["rows"]) > 1 and "Lantern" in shown["rows"])
+    desktop.normal()
+    says(":%q\n", "E481: No range allowed")
+    machine.send_chars(":%disc\n")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["question"].endswith("can disconnect; disconnect them? (y/n)")
+            and shown["takesAnswer"]
+        )
+    )
+    machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["question"] == "")
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    machine.send_chars(":g/Lant/disc\n")
     machine.wait_until_succeeds(
         "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
     )
     desktop.launcher_until(lambda shown: shown["command"] is None)
+    lists_earlier_lines(desktop)
+
+
+def lists_earlier_lines(desktop: Desktop) -> None:
+    """List the lines the command line ran by :his, newest first, and again by @:."""
+    machine = desktop.machine
+    if not desktop.showing()["open"]:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.normal()
+    for typed in [":his\n", "@:"]:
+        machine.send_chars(typed)
+        desktop.launcher_until(
+            lambda shown: (
+                [one.strip() for one in (shown["command"] or {}).get("menu", [])[:2]]
+                == ["his", "g/Lant/disc"]
+            )
+        )
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["command"] is None)
     if desktop.showing()["open"]:
         desktop.close_launcher()
 

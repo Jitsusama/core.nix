@@ -9,6 +9,7 @@
 import QtQuick
 import "Commands.js" as Commands
 import "SetWords.js" as SetWords
+import "CommandBinding.js" as CommandBinding
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -33,6 +34,7 @@ QtObject {
         quit: "Close the Launcher",
         help: "List the Keys",
         set: "Set an Option",
+        history: "List Earlier Lines",
         row: "Go to a Row"
     })
 
@@ -43,6 +45,7 @@ QtObject {
         quit: { act: "close", short: "q" },
         help: { act: "help", short: "h" },
         set: { act: "set", short: "se", changes: true, undoable: true },
+        history: { act: "history", short: "his" },
         sort: { act: "sort", short: "sor", changes: true, undoable: true, range: true },
         open: { act: "open-it", short: "ope" },
         disconnect: { act: "disconnect", short: "disc", changes: true, undoable: true,
@@ -75,16 +78,16 @@ QtObject {
         });
     }
 
+    function holds(what, got, want) {
+        if (JSON.stringify(got) !== JSON.stringify(want))
+            failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
+    }
+
     function lines(entries) {
         return entries.map(entry => [Commands.called(entry), entry.title, entry.key]);
     }
 
     function run() {
-        function holds(what, got, want) {
-            if (JSON.stringify(got) !== JSON.stringify(want))
-                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
-        }
-
         // Vim's help notation: the shortest form outside the brackets.
         holds("a short form leads its name", Commands.notation("disconnect", "disc"),
             "disc[onnect]");
@@ -107,6 +110,7 @@ QtObject {
             ["q[uit]", "Close the Launcher", "ZZ"],
             ["h[elp]", "List the Keys", "F1"],
             ["se[t]", "Set an Option", ""],
+            ["his[tory]", "List Earlier Lines", ""],
             ["{n}", "Go to a Row", ""]
         ]);
         holds("each act's line holds the act it runs", menu[1]?.act?.verb, "disconnect");
@@ -118,7 +122,8 @@ QtObject {
         holds("an act whose verb is more words is named by its first",
             menuOf([{ name: "Sign In", verb: "sign in" }])[0].command, "sign");
         holds("a row with no acts lists only what every surface has",
-            lines(menuOf([])).map(line => line[0]), ["q[uit]", "h[elp]", "se[t]", "{n}"]);
+            lines(menuOf([])).map(line => line[0]),
+            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
 
         // Typing narrows it: by the command's start, then by the act's words.
         const shown = typed => Commands.narrowed(menu, typed).map(entry => entry.command);
@@ -443,10 +448,14 @@ QtObject {
         holds("choosing writes its bang in",
             Commands.chosen(Commands.typing("ski"), 2, Commands.narrowed(tracks, "ski")).line,
             "skip!");
-        holds("an act on every row waits for ranges",
-            lines(filledMenu([{ key: "notice:forget", name: "Forget It" },
-                { key: "notices:forget", name: "Forget Them All" }])).map(line => line[1])
-                .filter(title => title.startsWith("Forget")), ["Forget It"]);
+        const forgetting = filledMenu([{ key: "notice:forget", name: "Forget It" },
+            { key: "notices:forget", name: "Forget Them All" }]);
+        holds("an act on every row is written with its range",
+            lines(forgetting).slice(0, 2).map(line => line[0]), ["forg[et]", "%forg[et]"]);
+        holds("and runs only with every row typed",
+            [titled("forg", forgetting), titled("%forg", forgetting),
+                titled("%forget", forgetting)], ["Forget It", "Forget Them All",
+                "Forget Them All"]);
         const joining = filledMenu([{ key: "wifi:join", name: "Connect" }],
             { name: "Home 5G" });
         holds("what's in braces is filled from the row, a space escaped as Vim's",
@@ -470,8 +479,149 @@ QtObject {
                 SetWords.shown("background", "dark", options.background)],
             ["volume=40", "background=dark"]);
 
+        holdRanges();
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // A range before a command, read as Vim's (Ex.js): Return says what it
+    // names for the launcher to bind to things, narrowing and choosing keep
+    // it, and a command that takes no rows says E481; :g and :v name a
+    // pattern and the command run on each row it finds, or doesn't.
+    function holdRanges() {
+        const menu = menuOf();
+        const ran = typed => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? [read.entry.command, JSON.stringify(read.range ?? null)];
+        };
+        const from = (one, two) => JSON.stringify({ from: one, to: two ?? one });
+        holds("a range is read off before the command",
+            [ran("3,5disc"), ran("%forg"), ran("'<,'>disc"), ran(".,+2 disc")],
+            [["disconnect", from({ at: 3, offset: 0 }, { at: 5, offset: 0 })],
+                ["forget", JSON.stringify("%")],
+                ["disconnect", from({ at: "'<", offset: 0 }, { at: "'>", offset: 0 })],
+                ["disconnect", from({ at: ".", offset: 0 }, { at: ".", offset: 2 })]]);
+        holds("no range is none, :{n} still goes to its row",
+            [ran("disc"), Commands.ran("12", menu).go], [["disconnect", "null"], 12]);
+        holds("a command that takes no rows says so given a range",
+            [ran("3,5see"), ran("%q"), ran("%set nowifi")],
+            ["E481: No range allowed", "E481: No range allowed", "E481: No range allowed"]);
+        holds("narrowing reads past the range",
+            Commands.narrowed(menu, "3,5dis").map(entry => entry.command), ["disconnect"]);
+        holds("choosing keeps it",
+            Commands.chosen(Commands.typing("3,5dis"), 1, Commands.narrowed(menu, "3,5dis"))
+                .line, "3,5disconnect");
+
+        const global = typed => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? [read.global.pattern, read.global.invert, read.entry.command,
+                JSON.stringify(read.range)];
+        };
+        holds(":g runs a command on each row it finds, every row with no range",
+            [global("g/Slack/disc"), global("3,5g/Slack/disc")],
+            [["Slack", false, "disconnect", JSON.stringify("%")],
+                ["Slack", false, "disconnect", from({ at: 3, offset: 0 }, { at: 5, offset: 0 })]]);
+        holds(":v and :g! run it on each it doesn't",
+            [global("v/Slack/forg")[1], global("g!/Slack/forg")[1]], [true, true]);
+        holds("and say Vim's errors for what they can't take",
+            [global("g/Slack/wat"), global("g/a/g/b/disc"), global("g")],
+            ["E492: Not an editor command: wat", "E147: Cannot do :global recursive",
+                "E35: No previous regular expression"]);
+
+        // The rows a line names, as the launcher binds them to things as :
+        // is pressed: the cursor row, a range's, or those :g finds by name,
+        // ignoring case where the pattern has no capital, as smartcase does.
+        const at = { names: ["Slack", "kitty", "Slack Huddle", "Files", "slack notes"],
+            cursor: 1, marks: { "<": 2, ">": 3 } };
+        const bound = typed => {
+            const read = CommandBinding.bound(Commands.ran(typed, menu), at);
+            return read.error ?? read.rows;
+        };
+        holds("no range binds the cursor row, a range the rows it names",
+            [bound("disc"), bound("3,5disc"), bound("%forg"), bound("'<,'>disc"),
+                bound(".,+2disc")], [[1], [2, 3, 4], [0, 1, 2, 3, 4], [2, 3], [1, 2, 3]]);
+        holds(":g binds those it finds, :v those it doesn't, within its range",
+            [bound("g/Slack/disc"), bound("g/slack/disc"), bound("v/slack/disc"),
+                bound("2,3g/Slack/disc")], [[0, 2], [0, 2, 4], [1, 3], [2]]);
+        holds("a range it can't bind says Vim's error",
+            [bound("'a,'bdisc"), bound("7,9disc")], ["E20: Mark not set", "E16: Invalid range"]);
+
+        // The act a line names on each thing it's bound to: by its words'
+        // id where it has words, else by its command and title.
+        const wordsOf = { "wifi:leave": { id: "verb:wifi-leave", command: "disconnect" } };
+        const worded = Commands.listed({ acts: [{ key: "wifi:leave", name: "Leave It" }],
+            table: commands, said, called: act => wordsOf[act.key] ?? {} });
+        holds("each thing's own act is found by the line's words, else command and title",
+            [CommandBinding.actFor(worded[0],
+                [{ key: "x" }, { key: "wifi:leave", name: "Leave" }],
+                act => wordsOf[act.key] ?? {})?.name,
+                CommandBinding.actFor(Commands.ran("disc", menu).entry, network(),
+                    () => ({}))?.name,
+                CommandBinding.actFor(Commands.ran("disc", menu).entry,
+                    [{ name: "See It", verb: "see" }], () => ({}))],
+            ["Leave", "Disconnect It", undefined]);
+        holdEarlier();
+        holdAsking();
+    }
+
+    // What a line asks before it runs, once, as the spec's Operators have it:
+    // nothing where its act can be undone; where it can't, once, on one
+    // thing or many, unless a ! says don't; a guarded one only over more
+    // than one; and where only some of what it's bound to have the act,
+    // once, naming how many can, ! or not. None that can says so.
+    function holdAsking() {
+        const menu = menuOf(network());
+        const entry = typed => Commands.ran(typed, menu).entry;
+        const guarded = { command: "close", undoable: false, guarded: true };
+        holds("an act that can be undone asks nothing, on one or many",
+            [CommandBinding.asking(entry("disc"), 1, 1, false),
+                CommandBinding.asking(entry("disc"), 3, 3, false)],
+            [{ ask: "" }, { ask: "" }]);
+        holds("one that can't asks once, on one or many, unless its ! says don't",
+            [CommandBinding.asking(entry("forg"), 1, 1, false),
+                CommandBinding.asking(entry("forg"), 3, 3, false),
+                CommandBinding.asking(entry("forg"), 3, 3, true)],
+            [{ ask: "one" }, { ask: "many" }, { ask: "" }]);
+        holds("a guarded one asks only over more than one",
+            [CommandBinding.asking(guarded, 1, 1, false),
+                CommandBinding.asking(guarded, 2, 2, false)],
+            [{ ask: "" }, { ask: "many" }]);
+        holds("where only some have it, it asks once, naming how many, ! or not",
+            [CommandBinding.asking(entry("disc"), 2, 3, false),
+                CommandBinding.asking(entry("forg"), 2, 3, true)],
+            [{ ask: "some" }, { ask: "some" }]);
+        holds("where none has it, it says so and asks nothing",
+            CommandBinding.asking(entry("disc"), 0, 3, false), { ask: "", none: true });
+    }
+
+    // Earlier lines, as Vim's :his lists them: each line Return ran
+    // remembered once, the newest last, and listed newest first above the
+    // rest once :his opens them, each written in by choosing it and run as
+    // typed; none is ever named as a command.
+    function holdEarlier() {
+        let earlier = [];
+        for (const line of ["disc", "set nowifi", "disc", "12"])
+            earlier = Commands.remembered(earlier, line);
+        holds("each line is remembered once, the newest last", earlier,
+            ["set nowifi", "disc", "12"]);
+        const many = Array.from({ length: 60 }, (_, at) => `${at}`)
+            .reduce((kept, line) => Commands.remembered(kept, line), []);
+        holds("fifty are kept, as Vim's history keeps", [many.length, many[0]], [50, "10"]);
+        const menu = Commands.listed({ acts: network(), table: commands, said, row: 1, earlier });
+        holds(":his lists them newest first, before the rest",
+            lines(menu).slice(0, 4).map(line => line[0]), ["12", "disc", "set nowifi", "see"]);
+        holds("and lists itself with what every surface has",
+            lines(Commands.listed({ acts: [], table: commands, said })).map(line => line[0]),
+            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
+        holds("typing narrows them by their start",
+            Commands.narrowed(menu, "se").map(line => Commands.called(line)),
+            ["set nowifi", "see", "se[t]"]);
+        holds("choosing one writes it in, and Return runs it as typed",
+            [Commands.chosen(Commands.typing("se"), 1, Commands.narrowed(menu, "se")).line,
+                Commands.ran("set nowifi", menu).entry?.kind,
+                Commands.ran("his", menu).entry?.kind],
+            ["set nowifi", "set", "history"]);
     }
 }
