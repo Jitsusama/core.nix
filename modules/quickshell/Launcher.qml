@@ -3689,22 +3689,7 @@ Scope {
         if (act === "copy")
             yanked(taken);
         else
-            ended(taken, false);
-    }
-
-    // d and y over rows named rather than spanned, as the command line's
-    // :d and :y with a range: d asks first unless `sure`, as :d! wouldn't,
-    // and says "done", "asked" or "nothing".
-    function endRows(rows, sure) {
-        return ended(takenOf(rows), sure);
-    }
-
-    function copyRows(rows) {
-        yanked(takenOf(rows));
-    }
-
-    function takenOf(rows) {
-        return rows.map(row => ({ row, at: row === headline ? -1 : matches.indexOf(row) }));
+            ended(taken);
     }
 
     // y: every copy over the rows joined a line each and put on the
@@ -3734,12 +3719,12 @@ Scope {
 
     // d: every ending action over the rows, asked about once where any
     // can't be put back, the rows with none passed over.
-    function ended(taken, sure) {
+    function ended(taken) {
         const words = Words.field.operators ?? {};
         const endings = Operators.endings(taken, actionsOf);
         if (endings.length === 0) {
             operatorSays(words.nothing);
-            return "nothing";
+            return;
         }
         const actions = endings.map(ending => ending.action);
         const doing = () => {
@@ -3747,15 +3732,14 @@ Scope {
                 Operators.doing(action)();
             Report.say(`ended ${actions.length}`);
         };
-        if (sure || !Operators.asks(actions, Options.commands ?? {})) {
+        if (!Operators.asks(actions, Options.commands ?? {})) {
             doing();
-            return "done";
+            return;
         }
         const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
             name: rowAt(ending.at)?.name ?? "", kind: kindOf(rowAt(ending.at)) }));
         askOnce(Confirm.question(named, words), doing, null, endings.map(ending => ending.at));
-        return "asked";
     }
 
     // Text typed faster than it's searched, as a program types it, reaches
