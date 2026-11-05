@@ -152,6 +152,14 @@ ShellRoot {
                 hint: "what to do?"
                 aside: root.sentence
             }
+            // A name typed beside a place, as the file picker's save name
+            // beside where it saves.
+            Prompt {
+                id: named
+                width: root.panel
+                chips: [{ text: "Save the Notes" }, { text: "~/saving" }]
+                text: "a.md"
+            }
             // Three steps in with a long hint, which leaves a note no room:
             // the note gives way rather than lying over the hint.
             Prompt {
@@ -291,6 +299,15 @@ ShellRoot {
         font.pointSize: Theme.level.name.pointSize
     }
 
+    // A head's face, the Title, whose capitals set the field's line.
+    FontMetrics {
+        id: titleFace
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing
+    }
+
     // What a row says at its right, in the face it's drawn in.
     FontMetrics {
         id: sideFace
@@ -395,6 +412,36 @@ ShellRoot {
             expect("a field's path keeps its steps whole beside a long note",
                 ["Machine", "Processor", "Cores"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
+            // A note beside a head sits on the head's baseline, as his line
+            // reads (Joel, 2026-11-05: "which? &etc. need to be baselined
+            // with the text to their left"): the hint beside the place's
+            // name, and what's typed in its place, within a device pixel at a
+            // scale of 2.
+            const onTheHead = (field, head, words) => {
+                const placed = root.setting(field, head);
+                const beside = words.map(said => root.setting(field, said));
+                expect(`a note beside the head ${head} sits on its baseline`, placed !== null
+                    && beside.every(one => one !== null && Math.abs(one.base - placed.base) <= 0.5),
+                    `${head} ${JSON.stringify(placed)} against ${JSON.stringify(beside)}`);
+            };
+            onTheHead(opened, "Now", ["which?"]);
+            onTheHead(pathed, "Cores", ["what to do?"]);
+            onTheHead(named, "~/saving", ["a.md"]);
+            // The line keeps that baseline out of a place, where no head shows,
+            // so nothing on it moves as one opens.
+            const home = root.setting(typedField, root.voice);
+            const placed = root.setting(opened, "Now");
+            expect("the field's line keeps one baseline in a place and out of it",
+                home !== null && placed !== null && Math.abs(home.base - placed.base) <= 0.5,
+                `${JSON.stringify(home)} against ${JSON.stringify(placed)}`);
+            // The baseline is the largest level's, the head's, set by
+            // centring its capitals on the field (docs/design.md, One
+            // Baseline a Line), since a big name off centre shows more than
+            // small letters under it.
+            const capitals = titleFace.tightBoundingRect("H").height;
+            expect("the head's capitals are centred on the field", placed !== null
+                && Math.abs(placed.base - capitals / 2 - opened.height / 2) <= 0.5,
+                `${JSON.stringify(placed)}, capitals ${capitals}, field ${opened.height}`);
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
