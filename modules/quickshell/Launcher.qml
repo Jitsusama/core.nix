@@ -52,6 +52,8 @@ import qs.launcher
 import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
+import "Operators.js" as Operators
+import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
 import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
@@ -390,6 +392,7 @@ Scope {
             stays: said.stays ?? false,
             reads: said.reads ?? "",
             note: said.note ?? "",
+            copies: said.run ? "" : said.copy ?? said.headline,
             run: said.run ?? (() => {
                 const copy = said.copy ?? said.headline;
                 if (copy !== "")
@@ -419,7 +422,16 @@ Scope {
         }
         const at = current;
         const scroll = list.contentY;
-        compose(false);
+        // Said again in place, as a refresh is: composed afresh, the rows
+        // took their ranked order and a row d had just closed went, since
+        // the waits answer each time the machine's queue moves (the moves-
+        // windows walk, 2026-11-05).
+        steadying = true;
+        try {
+            compose(false);
+        } finally {
+            steadying = false;
+        }
         if (list.contentY !== scroll)
             list.contentY = scroll;
         root.showMoved(at);
@@ -532,6 +544,7 @@ Scope {
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
         once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
+        copies: answer.run ? "" : answer.copy ?? answer.headline,
         run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
@@ -3653,6 +3666,167 @@ Scope {
         keyTimed(arrow, began, heard, pressed);
     }
 
+    // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
+    // says what each does to a row): d does each row's ending action, as
+    // dd deletes a line, and y copies each, as yy yanks one. What d does
+    // that can't be put back it asks about once, as Vim's ask_yesno asks
+    // (Confirm.js): the launcher's one ask, said whole on the line in the
+    // find's place (Prompt.qml's asking), as the file picker's "Replace
+    // notes.md? (y/n)" is, one place on every surface (VKCF3Z,
+    // 2026-11-05). While it stands every key is its answer (Prompt.qml's
+    // confirming): after its first 300 ms, y does it, n, Escape or Ctrl+C
+    // lets it go, and any other key does nothing.
+    property var asked: null
+    // The rows it covers, by their places, which wear visual's tint while
+    // it stands, so every one it would end shows as included.
+    property var askedOver: []
+
+    // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, or as the
+    // launcher closes, `covering` the places of the rows it covers, or none.
+    function askOnce(question, yes, no, covering) {
+        asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
+        askedOver = covering ?? [];
+        askTaking = false;
+        askReady.restart();
+        Report.say(`asked ${question}`);
+    }
+
+    // A key while the ask stands, as Prompt.qml hands it over.
+    function answerAsk(key) {
+        const ask = asked;
+        if (ask === null)
+            return;
+        const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
+        if (said === "early" || said === "nothing")
+            return;
+        asked = null;
+        Report.say(`answered ${said}`);
+        if (said === "yes")
+            ask.yes();
+        else
+            ask.no();
+    }
+
+    // When the ask can be answered, the same 300 ms as the key language's
+    // wait for a second key, said for the tests, which wait on it.
+    Timer {
+        id: askReady
+        interval: Options.keyTiming.wait
+        onTriggered: {
+            root.askTaking = root.asked !== null;
+            if (root.asked !== null)
+                Report.say("ask ready");
+        }
+    }
+    // Whether the ask standing takes an answer yet, once askReady has run:
+    // state rather than a binding on the clock, which no binding sees
+    // pass, so what the tests are shown turns as the ask does.
+    property bool askTaking: false
+    onAskedChanged: {
+        if (asked === null)
+            askTaking = false;
+    }
+    // An operator's word for the key it was said for, as a search's is:
+    // [mark, word, colour], for d over nothing to end or y over nothing to
+    // copy.
+    property var operatorSaid: null
+    property int operatorSaidFor: -1
+    // The rows y just copied, by their place, flashed for the key timing's
+    // yank-flash as his Neovim's on_yank flashes a yank.
+    property var flashing: ({})
+
+    Timer {
+        id: flash
+        interval: Options.keyTiming["yank-flash"]
+        onTriggered: root.flashing = {}
+    }
+
+    function operatorSays(word) {
+        operatorSaid = [Theme.glyph.nothingFound, word ?? "", Theme.warning];
+        operatorSaidFor = prompt.keysTaken;
+    }
+
+    // A row's actions that d and y may take: its operands, where it says
+    // them, plain fields a place of hundreds makes in well under the 4 ms
+    // a key has; else its actions as the right arrow lists them, each a
+    // row made searchable: nine such rows a row, as a window has, took
+    // 18 ms over 400 rows when timed alone (2026-11-05).
+    function actionsOf(row) {
+        if (typeof row.operands === "function")
+            return row.operands();
+        return typeof row.verbs === "function" ? row.verbs() ?? [] : [];
+    }
+
+    // d or y (Prompt.qml's operated), over the rows from the selection to
+    // where the motion goes, or as many as the count says.
+    function operated(act, count, motion) {
+        searchNow();
+        const view = list.inView();
+        const span = Operators.spanned(count, motion, {
+            at: current,
+            highest: prompt.highest,
+            last: matches.length - 1,
+            top: view.top,
+            bottom: view.bottom,
+            screen: rows
+        });
+        const taken = Operators.taken(matches, span, headline);
+        if (act === "copy")
+            yanked(taken);
+        else
+            ended(taken);
+    }
+
+    // y: every copy over the rows joined a line each and put on the
+    // clipboard at once, which takes text while the launcher holds the
+    // keys, so the launcher stays as Vim's buffer does. A single copy that
+    // says no text, as a picture, is done by its own act.
+    function yanked(taken) {
+        const words = Words.field.operators ?? {};
+        const copies = Operators.copiesIn(taken, actionsOf,
+            row => verbOf(row) === "copy" && !!row.run);
+        const text = Operators.copied(copies.map(copy => copy.action));
+        if (text !== "")
+            Quickshell.clipboardText = text;
+        else if (copies.length === 1)
+            copies[0].action.run();
+        else {
+            operatorSays(words.noCopy);
+            return;
+        }
+        const flashed = {};
+        for (const copy of copies)
+            flashed[copy.at] = true;
+        flashing = flashed;
+        flash.restart();
+        Report.say(`yanked ${copies.length}`);
+    }
+
+    // d: every ending action over the rows, asked about once where any
+    // can't be put back, the rows with none passed over.
+    function ended(taken) {
+        const words = Words.field.operators ?? {};
+        const endings = Operators.endings(taken, actionsOf);
+        if (endings.length === 0) {
+            operatorSays(words.nothing);
+            return;
+        }
+        const actions = endings.map(ending => ending.action);
+        const doing = () => {
+            for (const action of actions)
+                Operators.doing(action)();
+            Report.say(`ended ${actions.length}`);
+        };
+        if (!Operators.asks(actions, Options.commands ?? {})) {
+            doing();
+            return;
+        }
+        const rowAt = at => at === -1 ? headline : matches[at];
+        const named = endings.map(ending => ({ ends: ending.action.ends,
+            name: rowAt(ending.at)?.name ?? "", kind: kindOf(rowAt(ending.at)) }));
+        askOnce(Confirm.question(named, words), doing, null, endings.map(ending => ending.at));
+    }
+
     // Text typed faster than it's searched, as a program types it, reaches
     // the field in one turn of the event loop: wtype's eight letters came in
     // one (2026-11-02). Searched once a letter, a burst's last letter waited
@@ -4315,7 +4489,7 @@ Scope {
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
             question: prompt.asking,
-            takesAnswer: prompt.asking !== "" && Date.now() - prompt.askedAt >= prompt.wait,
+            takesAnswer: prompt.asking !== "" && root.askTaking,
             questionWhole: prompt.askedWhole,
             placeSays: root.placeSays,
             // A count typed in normal, waiting for its move, and the keys
@@ -4351,6 +4525,15 @@ Scope {
             // there's a place used last for Tab to go back to.
             listing: root.listing,
             lastPlace: root.lastPlace !== null,
+            // An operator waiting for its motion, as d's first d, and the
+            // foot's word for one done, as d's ask, its mark and its word;
+            // and the rows y flashes, by their place.
+            operator: prompt.standing.operator?.key ?? "",
+            operated: foot.operatorWord === null ? ""
+                : `${foot.operatorWord[0]} ${foot.operatorWord[1]}`,
+            flashing: Object.keys(root.flashing).map(Number),
+            // The rows that wear visual's tint: those an ask covers.
+            tinted: root.asked !== null ? root.askedOver.slice() : [],
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4620,34 +4803,11 @@ Scope {
     // home, rather than stepping out to a home it never showed.
     property int homeDepth: 0
 
-    // Asks a question once in the line's place, "Replace notes.md? (y/n)",
-    // as Vim's :w asks over E13: y calls yes, and n, Escape or Ctrl+C call
-    // no (VKCF3Z's vi-paradigm spec, The File Picker). A stand-in, with the
-    // signature V4's own will have, until that lands. The question is said
-    // whole, as the vocabulary has it.
-    function askOnce(question: string, yes: var, no: var) {
-        onceAsked = { yes: yes, no: no };
-        prompt.asking = question;
-    }
-
-    property var onceAsked: null
-
-    function answerOnce(yes: bool) {
-        const asked = onceAsked;
-        onceAsked = null;
-        prompt.asking = "";
-        if (asked)
-            (yes ? asked.yes : asked.no)();
-    }
-
     onOpenChanged: {
         // A viewer's line is over once the launcher closes (viewerCommandLine).
         if (!open)
             over = null;
         madeSince(open ? "opening" : "closing");
-        // A question asked as it closed is let go, never asked again.
-        if (!open && onceAsked)
-            answerOnce(false);
         if (open)
             traces.opened({});
         else
@@ -4689,6 +4849,12 @@ Scope {
             prompt.take();
             Report.say(`stands ${standing.said}`);
         } else {
+            // An ask closing with it says no, as Escape would, and is
+            // never asked again.
+            const closing = asked;
+            asked = null;
+            if (closing !== null)
+                closing.no();
             screenHere = focusedScreen;
             trials.closed();
             spotsLater.restart();
@@ -5016,7 +5182,9 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        glyph: secret ? Theme.glyph.secret
+                        // An ask leads with nothing, since the line isn't a
+                        // find while it stands, its words where the find's are.
+                        glyph: root.asked !== null ? "" : secret ? Theme.glyph.secret
                             : thing ? thing.lead ?? thing.glyph : Theme.glyph.launcher
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
@@ -5026,6 +5194,9 @@ Scope {
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
+                        // An answer's headline, which y copies, is said in
+                        // its ghost, so that flashes in its row's place.
+                        ghostFlashed: root.flashing[-1] === true
                         // What the selection has to say, since the foot
                         // always says how things stand; else where the
                         // selection is, once there's more than fits. The
@@ -5103,7 +5274,12 @@ Scope {
                             trials.pressed("backs");
                             root.back();
                         }
-                        onAnsweredOnce: yes => root.answerOnce(yes)
+                        onOperated: (act, count, motion) => root.operated(act, count, motion)
+                        // The ask, while it stands, takes every key, and one
+                        // no keys asked is said in the line's place.
+                        confirming: root.asked !== null
+                        asking: root.asked?.question ?? ""
+                        onAnswered: key => root.answerAsk(key)
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
@@ -5117,7 +5293,7 @@ Scope {
                         readonly property int highest: (root.answer && !root.parted(root.answer))
                             || root.lineHeads ? -1 : 0
                         // The rows' keys, in either mode (QueryKeys.js).
-                        // Every one is a move, which QueryKeys.moved
+                        // Every one is a move, which Operators.moved
                         // says the end of from the rows in view, as the
                         // list has them. Ctrl+D and Ctrl+U scroll the rows
                         // as far as they move the selection, so it keeps
@@ -5168,7 +5344,7 @@ Scope {
                                 return;
                             }
                             const view = list.inView();
-                            const to = QueryKeys.moved(act, count, {
+                            const to = Operators.moved(act, count, {
                                 at: root.current,
                                 highest,
                                 last: root.matches.length - 1,
@@ -5629,6 +5805,8 @@ Scope {
                                     id: choice
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
+                                    flashed: root.flashing[entry.index] === true
+                                    tinted: covered
                                     // Seen until the closing card has faded, and
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
@@ -5656,10 +5834,18 @@ Scope {
                                     // letters take no wash.
                                     readonly property var matched: quiet ? []
                                         : root.matchedIn(entry.modelData)
-                                    name: selected || quiet ? entry.modelData.name
+                                    // A row the ask covers wears the tint
+                                    // alone, the find's wash giving way, as
+                                    // it gives way to the flash (VKCF3Z).
+                                    readonly property bool covered: root.asked !== null
+                                        && root.askedOver.includes(entry.index)
+                                    // A flashed row's name is plain in the
+                                    // flash's ink, as a selected one is.
+                                    name: selected || quiet || flashed || covered
+                                        ? entry.modelData.name
                                         : root.marked(entry.modelData, matched)
                                     plainName: entry.modelData.name
-                                    finds: Fuzzy.runs(matched)
+                                    finds: covered ? [] : Fuzzy.runs(matched)
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []
@@ -5719,12 +5905,18 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
+                        // An operator's word, for the key that did it; an
+                        // ask is the line's to say.
+                        readonly property var operatorWord: root.operatorSaid !== null
+                            && root.operatorSaidFor === prompt.keysTaken ? root.operatorSaid
+                            : null
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,
                         // its own (y/n) saying how it's answered.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
+                            : operatorWord !== null ? [operatorWord]
                             : prompt.asking !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
                             : root.keysFor(choice)

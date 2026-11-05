@@ -183,6 +183,10 @@ Provider {
             later: true,
             run: () => Sessions.goTo(session),
             verbs: () => provider.verbs(session, quest, spent, family),
+            // What y takes: the first of its facts, as its verbs list them.
+            operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
+                : copyOperand("fact:agent:address",
+                    (session.presence?.addresses ?? [session.address]).join(", "))],
             drawer: () => provider.drawerOf(session, quest, spent, family)
         });
         // Itself as it reads ranked flat: at no depth, whom it's under

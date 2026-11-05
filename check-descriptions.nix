@@ -1800,7 +1800,9 @@
     the rows as Vim's, with counts: j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and
     Space w closing, its : opening the command line with the range a count before it gives, Tab
     to the place used last, and Space ? and F1 listing every key, while / ? n N search nothing on
-    the rows
+    the rows; and Vim's d and y over the rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending
+    action and copy, the (y/n) ask once before what can't be put back, and yG or dG over 400 rows
+    within half a key's 4 ms
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's

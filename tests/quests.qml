@@ -6,7 +6,8 @@
 // too, after the open ones that match as well, and by its id; Return opens
 // pi on a quest in the folder the harness would pick, autoloaded, unless a
 // session has it loaded, when it goes to that session's window; the right
-// arrow steps into its facts, its parent's title among them; Start a
+// arrow steps into its facts, its parent's title among them, and y takes
+// its id without making them; Start a
 // Session there steps into the machines the realm's node places on, where
 // it has more than this one, each that can't take a session dimmed with
 // why, and Wherever It Fits last; and a quest made while the launcher was
@@ -130,6 +131,12 @@ ShellRoot {
             const folder = facts[facts.length - 1];
             expect("its folder copied whole", folder.copy === `${root.here}/session`, folder.copy);
             expect("a fact copies itself", facts[1].verb === "copy", facts[1].verb);
+            // What y takes is what its first fact copies, made without its
+            // facts, since y over hundreds asks every row.
+            const taken = typeof prompt.operands === "function" ? prompt.operands() : [];
+            expect("y takes its id, as its first fact copies it", taken.length === 1
+                && taken[0].verb === "copy" && taken[0].copies === facts[1].copies(),
+                JSON.stringify(taken.map(one => one.copies)));
             expect("with this machine alone, Start a Session holds no step",
                 facts[0].verbs === null && facts[0].note === "", facts[0].note);
             expect("the node asked where sessions may go", Sessions.lookedAround > 0,

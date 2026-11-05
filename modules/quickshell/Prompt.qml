@@ -29,6 +29,7 @@ import QtQuick
 import "Reading.js" as Reading
 import "Editing.js" as Editing
 import "QueryKeys.js" as QueryKeys
+import "Typing.js" as Typing
 
 Item {
     id: prompt
@@ -41,6 +42,9 @@ Item {
     property bool secret: false
     // How what's typed could end, drawn after it in muted type.
     property string ghost
+    // Just copied by y, as an answer's ghost is, for the key timing's
+    // yank-flash.
+    property bool ghostFlashed: false
     // Said in the voice while nothing's typed, as the desktop speaking:
     // the launcher's question, or the lock's "try again".
     property string hint
@@ -109,6 +113,10 @@ Item {
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
+    // Whether an ask stands (Launcher.qml's askOnce), which takes every
+    // key as its answer, as Vim's ask_yesno does, until one answers it.
+    property bool confirming: false
+    signal answered(string key)
     // How long a sequence begun waits for its next key before it's let go,
     // as his Neovim's timeoutlen (modules/keys/language.toml).
     property int wait: 300
@@ -294,10 +302,14 @@ Item {
     signal forward
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
-    // the count typed before it, 0 for none: the moves QueryKeys.moved
+    // the count typed before it, 0 for none: the moves Operators.moved
     // takes; or, in the page mode, the drawer's, which DrawerPage.moved
     // takes.
     signal stepped(string act, int count)
+    // An operator done: "ending" for d and "copy" for y, with the count
+    // typed before it, 0 for none, and the motion it took, { act, count },
+    // or null for dd and yy (QueryKeys.spanned takes them).
+    signal operated(string act, int count, var motion)
     // : in normal, which opens the command line in the line's place
     // (CommandLine.qml), with the range a count before it gives, as 3:
     // gives ".,.+2", or "" for none. The line holds what's typed as it
@@ -307,13 +319,12 @@ Item {
     // for the last again, the way it goes, and the count typed before it.
     signal sought(string pattern, bool forward, int count)
 
-    // A question asked once in the field's place, "Replace notes.md?
-    // (y/n)", or "" while none is: y answers it, n, Escape or Ctrl+C let
-    // it go, and any other key does nothing, as Vim's own (y/n) does.
+    // A question asked once, said in the field's place, "Replace notes.md?
+    // (y/n)", or "" while none is; the launcher's ask (Launcher.qml's
+    // askOnce) answers it, by the keys `confirming` hands over.
     property string asking: ""
     property double askedAt: 0
     onAskingChanged: askedAt = Date.now()
-    signal answeredOnce(bool yes)
 
     function clear() {
         cleared = "";
@@ -409,7 +420,7 @@ Item {
         const at = input.cursorPosition;
         const key = named(event);
         const from = key === "Ctrl+u" ? 0
-            : key === "Ctrl+w" ? QueryKeys.wordStart(input.text, at)
+            : key === "Ctrl+w" ? Typing.wordStart(input.text, at)
             : key === "Ctrl+h" ? Math.max(0, at - 1) : -1;
         if (key === "Ctrl+c") {
             prompt.cancelled();
@@ -443,12 +454,11 @@ Item {
         const key = named(event);
         keysTaken += 1;
         woken();
-        if (asking !== "") {
+        // A held key's repeats never answer it.
+        if (confirming) {
             event.accepted = true;
-            const said = Editing.onceAnswered(key, Date.now() - askedAt, wait,
-                event.isAutoRepeat);
-            if (said !== "")
-                prompt.answeredOnce(said === "yes");
+            if (!event.isAutoRepeat)
+                prompt.answered(key);
             return;
         }
         const read = QueryKeys.read(standing, key, mode, editsWords);
@@ -501,7 +511,7 @@ Item {
                 return;
             }
             mode = next;
-            input.cursorPosition = QueryKeys.caretAfter(read.act, input.text, at);
+            input.cursorPosition = Typing.caretAfter(read.act, input.text, at);
             return;
         }
         switch (read.act) {
@@ -524,7 +534,7 @@ Item {
                 input.remove(at - 1, at);
             break;
         case "deleteWord":
-            input.remove(QueryKeys.wordStart(text, at), at);
+            input.remove(Typing.wordStart(text, at), at);
             break;
         case "deleteToStart":
             input.remove(0, at);
@@ -557,6 +567,10 @@ Item {
             break;
         case "back":
             prompt.cancelled();
+            break;
+        case "ending":
+        case "copy":
+            prompt.operated(read.act, read.count, read.motion);
             break;
         case "command":
             prompt.commanded(QueryKeys.counted(read.count));
@@ -606,13 +620,13 @@ Item {
         const last = changes[changes.length - 1];
         changes = changes.slice(0, -1);
         input.text = last.text;
-        input.cursorPosition = QueryKeys.resting(last.text, last.at);
+        input.cursorPosition = Typing.resting(last.text, last.at);
     }
 
     // Normal's block rests on a letter, never past the last.
     function rest() {
         if (modal && mode === "normal") {
-            const at = QueryKeys.resting(input.text, input.cursorPosition);
+            const at = Typing.resting(input.text, input.cursorPosition);
             if (at !== input.cursorPosition)
                 input.cursorPosition = at;
         }
@@ -1062,6 +1076,36 @@ Item {
         // and sat on the typed letters' baseline, since the two faces' line
         // boxes differ; the cleared words and the ghost are letters typed,
         // in the field's own face (look 3's piece 1).
+        // y over an answer copies what the ghost says, so the ghost flashes
+        // as a row y copies does (Choice.qml's flashed): the accent's ground
+        // under its own ink, fill and colour only. Like a find's wash
+        // (Wash.qml) it lies under the letters alone, from the first to the
+        // last, so the space that sets "= 84" off what's typed stays bare.
+        // The letters are measured as a Text set exactly as the ghost's is,
+        // its axes too, which a FontMetrics given the ghost's font left out,
+        // measuring them narrow; the ghost ends in its letters, so the
+        // ground ends where it does.
+        Rectangle {
+            readonly property real before: Math.max(0, hintText.implicitWidth - inked.implicitWidth)
+            visible: prompt.ghostFlashed && hintText.visible && inked.text !== ""
+            x: hintText.x + before
+            y: hintText.y
+            width: Math.max(0, Math.min(hintText.width, hintText.implicitWidth) - before)
+            height: hintText.height
+            color: Theme.accent
+
+            Text {
+                id: inked
+                visible: false
+                textFormat: Text.PlainText
+                text: hintText.text.trim()
+                font.family: hintText.level.family
+                font.italic: hintText.level.italic
+                font.pointSize: hintText.level.pointSize
+                font.variableAxes: hintText.level.variableAxes
+            }
+        }
+
         Text {
             id: hintText
             readonly property bool voiced: input.text === "" && prompt.cleared === ""
@@ -1074,7 +1118,7 @@ Item {
             text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
                 : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
-            color: Theme.muted
+            color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted
             font.family: hintText.level.family
             font.italic: hintText.level.italic
             font.pointSize: hintText.level.pointSize

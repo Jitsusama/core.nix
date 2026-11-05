@@ -14,6 +14,7 @@ it as it found it.
 from __future__ import annotations
 
 import json
+import tarfile
 import time
 from datetime import timedelta
 from functools import partial
@@ -23,7 +24,7 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN
-from PIL import ImageChops
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -319,6 +320,152 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
     desktop.photograph(shot.replace(".", "-"))
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and shown["counted"] == "")
+
+
+# y flashes the rows it copies for a moment (his Neovim's on_yank), and
+# d's ask stands on the line in the find's place, tinting the rows it
+# covers (VKCF3Z, 2026-11-05). The flash is gone in a fifth of a second, too soon to wait
+# for the screen to hold still, so the screen is taken as fast as QEMU
+# gives it, and the picture kept is the one furthest from the screen once
+# the flash has gone. Whether y flashed is held by what the launcher says;
+# the picture is for a person. QEMU's screendumps, each a whole screen at
+# 2, came too slowly to land inside the fifth of a second: on 2026-11-05
+# none of four caught it in three tries each. So the screen is recorded
+# through niri, as Joel's recorder does, which keeps every frame niri
+# draws, and the frame kept is the one furthest from the last.
+RECORDING = "/run/user/1000/flash.mkv"
+RECORDED = "/run/user/1000/flash.log"
+FRAMES = "/run/user/1000/flash"
+
+
+def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Y flashes the row it copies, and d's ask stands on the line, tinting what it covers."""
+    machine = desktop.machine
+    # A second window, so dj has two to close and asks once for both,
+    # where one closes at once.
+    wednesday = desktop.opened("Notes for Wednesday")
+    desktop.notes_window()
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        named = scale.replace(".", "-")
+        # A row flashes as it's copied, and an answer with no rows, a
+        # sum, flashes its ghost in the field.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("tuesday", selecting="Notes for Tuesday")
+        flashes_as_yy_copies(
+            desktop, [0], f"launcher-yank-flash-at-{named}", f"launcher-yanked-at-{named}"
+        )
+        desktop.answer("12*7")
+        flashes_as_yy_copies(
+            desktop,
+            [-1],
+            f"launcher-yank-ghost-flash-at-{named}",
+            f"launcher-yanked-ghost-at-{named}",
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("notes for")
+        # The windows lead, the title yy just copied below them.
+        desktop.launcher_until(
+            lambda shown: sorted(shown["rows"][:2]) == ["Notes for Tuesday", "Notes for Wednesday"]
+        )
+        desktop.normal()
+        machine.send_chars("gg")
+        desktop.launcher_until(lambda shown: shown["current"] == 0)
+        before = desktop.showing()
+        with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
+            machine.send_chars("dj")
+        # The ask stands on the line, in the find's place, as every ask
+        # does, said whole, and tints the rows it covers as visual does.
+        # The foot keeps how things stand, whole (a minute turning keeps
+        # its length), and its keys stay put.
+        shown = desktop.showing()
+        assert shown["question"] == "Close 2 windows? (y/n)", shown
+        assert shown["questionWhole"], f"at {scale} the ask was cut: {shown}"
+        assert shown["tinted"] == [0, 1], shown
+        # The rows it covers wear the tint alone, the find's wash giving
+        # way on each, and the line leads with no glyph, since it isn't a
+        # find while it asks.
+        laid = desktop_session.laid_out(desktop)
+        covered = [row for row in laid["rows"] if row["at"] in shown["tinted"]]
+        assert covered, f"at {scale} no covered row was drawn: {laid['rows']}"
+        assert not any(row["washed"] for row in covered), f"at {scale} washed {covered}"
+        leading = min(laid["field"], key=lambda word: word["x"])
+        assert leading["text"].startswith("Close"), f"at {scale} the line leads {leading}"
+        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
+        desktop.photograph(f"launcher-asks-at-{named}")
+        with desktop.told("answered no"):
+            machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["open"] and shown["question"] == "")
+        after_ask = desktop.showing()
+        assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
+        assert after_ask["tinted"] == [], f"at {scale} {after_ask}"
+        desktop.close_launcher()
+    desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
+
+
+def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled: str) -> None:
+    """Copy what's selected with yy, see `rows` flash, and keep the frame furthest from after."""
+    machine = desktop.machine
+    desktop.normal()
+    photographs = desktop.values["photographs"]
+    if photographs:
+        # The output named, as Joel's recorder names it (Recorder.qml), since
+        # with more than one wf-recorder asks which; and every frame taken,
+        # damaged or not (-D), since on a still screen it waited for a frame
+        # to end on once told to stop, and never ended.
+        output = (
+            "niri msg --json focused-output"
+            ' | grep -o \'"name":"[^"]*"\' | head -1 | cut -d\'"\' -f4'
+        )
+        desktop.as_account(
+            f'rm -f {RECORDING}; setsid -f wf-recorder -y -D --output "$({output})"'
+            f" --file {RECORDING} </dev/null >{RECORDED} 2>&1"
+        )
+        # It says the region it records once it has begun; the file stays
+        # empty a while, the encoder holding frames back on a still screen.
+        began, _ = machine.execute(
+            f"timeout 10 sh -c 'until grep -q \"selected region\" {RECORDED}; do sleep 0.1; done'"
+        )
+        assert began == 0, f"wf-recorder never began: {machine.execute(f'cat {RECORDED}')[1]}"
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
+    desktop.launcher_until(lambda shown: shown["flashing"] == [])
+    desktop.settled_screen(settled)
+    if photographs:
+        machine.succeed("pkill -INT -x wf-recorder")
+        machine.wait_until_fails("pgrep -x wf-recorder", timeout=timedelta(seconds=10))
+        flashed_frame(desktop).save(machine.out_dir / f"{flash}.png")
+    desktop.close_launcher()
+
+
+def flashed_frame(desktop: Desktop) -> Image.Image:
+    """Give the recording's frame furthest from its last, the flash at its height."""
+    machine = desktop.machine
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    machine.succeed(
+        f"rm -rf {FRAMES} && mkdir -p {FRAMES}"
+        f" && {ffmpeg} -i {RECORDING} -fps_mode passthrough {FRAMES}/%03d.png"
+        f" && tar -C {FRAMES} -cf {FRAMES}.tar ."
+    )
+    machine.copy_from_machine(f"{FRAMES}.tar")
+    frames = []
+    with tarfile.open(machine.out_dir / "flash.tar") as kept:
+        for member in sorted(kept.getmembers(), key=lambda member: member.name):
+            read = kept.extractfile(member)
+            if read is not None:
+                frames.append(Image.open(read).convert("RGB"))
+    (machine.out_dir / "flash.tar").unlink()
+    return max(frames, key=partial(changed_from, frames[-1]))
+
+
+def changed_from(after: Image.Image, frame: Image.Image) -> float:
+    """Say how far a picture is from another, as the mean of its differences' light."""
+    return float(ImageStat.Stat(ImageChops.difference(frame, after).convert("L")).mean[0])
 
 
 def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(

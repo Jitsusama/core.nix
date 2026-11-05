@@ -219,11 +219,10 @@ Floating {
             `${stack.said(one)}\n${Notices.sender(one.appName).name}`).length > 0;
     }
 
-    // The sender's own Read, where it offers one, which done sends at once.
-    readonly property var readAct: /^(mark[-_ ]?(as[-_ ]?)?)?read$/i
+    // The sender's own Read, where it offers one, which done sends at once,
+    // as the launcher's d does (Notice.js).
     function readOffer(one) {
-        return one.actions.find(act => readAct.test(act.identifier) || readAct.test(act.text))
-            ?? null;
+        return Notice.readOffer(one.actions);
     }
 
     // The sender's own Reply, where it offers one rather than a reply typed

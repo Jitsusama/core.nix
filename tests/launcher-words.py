@@ -1,12 +1,16 @@
 """Check the launcher's vocabulary says each word of one thing only.
 
-    launcher-words WORDS GLYPHS
+    launcher-words WORDS GLYPHS SOURCE
 
-WORDS is the vocabulary (modules/quickshell/launcher/words.json), GLYPHS a
-JSON list of the theme's glyph names. A shown name, another word or an
-answer's question that finds two different things at the same strength, in
-the same place, fails, unless the vocabulary lists it as meant to, and each
-clash is printed; an answer is asked from anywhere, so its questions clash
+WORDS is the vocabulary as the account writes it, GLYPHS a JSON list of the
+theme's glyph names, and SOURCE the vocabulary's own file
+(modules/quickshell/launcher/words.json), read for a key given twice in one
+entry, which the account's copy has already dropped all but the last of.
+
+A key given twice fails. So does a shown name, another word or an answer's
+question that finds two different things at the same strength, in the same
+place, unless the vocabulary lists it as meant to, and each clash is
+printed; an answer is asked from anywhere, so its questions clash
 wherever the thing is. So does a word listed as meant that finds only one, a
 word listed as asked by its start that doesn't ask it whole, a category's
 word that names a thing it doesn't hold, a name for something the
@@ -375,6 +379,29 @@ ALLOWED: Entry = {
 }
 
 
+# An entry naming its command twice, as a merge can leave one, which twice
+# finds once, and finds nothing in once it's written whole again.
+TWICE = '{"things": [{"id": "a", "command": "close", "command": "close"}]}'
+
+
+def twice(text: str) -> list[str]:
+    """Say each key given twice in one object, as JSON takes the last and hides the first."""
+    found: list[str] = []
+
+    def kept(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _ in pairs]
+        found.extend(
+            f"{key!r} is given twice in {dict(pairs).get('id', 'one entry')}: "
+            + ", ".join(repr(value) for named, value in pairs if named == key)
+            for key in dict.fromkeys(keys)
+            if keys.count(key) > 1
+        )
+        return dict(pairs)
+
+    json.loads(text, object_pairs_hook=kept)
+    return found
+
+
 def refuses() -> list[str]:
     """Say each of unsaid's rules that lets through what it's there to refuse."""
     out = [
@@ -382,6 +409,8 @@ def refuses() -> list[str]:
         for why, entry in REFUSED
         if len(unsaid({"things": [entry], "commands": []})) != 1
     ]
+    if len(twice(TWICE)) != 1 or twice(json.dumps(json.loads(TWICE))):
+        out.append(f"The check doesn't find the one key given twice in {TWICE}.")
     if len(unsaid({"things": [], "commands": [REFUSED_COMMAND]})) != 1:
         out.append(f"The check lets a command's program through: {REFUSED_COMMAND}.")
     out.extend(f"The check refuses what it shouldn't: {said}" for said in unsaid(ALLOWED))
@@ -414,6 +443,7 @@ def main(argv: list[str]) -> None:
     glyphs = set(json.loads(Path(argv[1]).read_text()))
     found = (
         refuses()
+        + twice(Path(argv[2]).read_text())
         + clashes(vocabulary)
         + misplaced(vocabulary, glyphs)
         + miscased(vocabulary)

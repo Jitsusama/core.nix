@@ -339,6 +339,22 @@ Scope {
         return row;
     }
 
+    // What y takes from a row that copies `text`, as copyRow would: plain
+    // fields rather than a row made searchable, since y over hundreds asks
+    // every row (Launcher.qml's actionsOf), and each of a row's verbs made
+    // searchable costs about 5 microseconds.
+    function copyOperand(key, text) {
+        return {
+            key: key,
+            verb: "copy",
+            copies: text,
+            run: () => {
+                if (text !== "")
+                    Quickshell.clipboardText = text;
+            }
+        };
+    }
+
     // A figure holding more, as a CPU's Cores or the weather's Rain: it says
     // a value, wears its glyph dimmed (Choice.qml's "more"), and Return
     // and the right arrow both step into what `inside` gives, made then,

@@ -1,0 +1,166 @@
+// What the launcher's operators do to its rows, as Vim's d and y do to a
+// buffer's lines (QueryKeys.js reads their keys): which of a row's actions
+// d does and which y does, what a copy copies, and when d asks before it
+// does what can't be put back. Read apart from the launcher so
+// tests/query-keys.qml can hold it in Qt's own engine.
+.pragma library
+
+// Where a move takes the selection, from where the rows stand: the row
+// selected, the highest it may go (-1 where an answer's headline sits
+// above the rows) and the last, the first and last rows wholly in view,
+// and how many rows a screen holds. A count moves that many times, or,
+// with gg and G, goes to that row, counted from 1, as a line's number is.
+// H and L count from the view's top and bottom. Ctrl+D and Ctrl+U move
+// half the rows in view, or a count's rows, as Vim's 'scroll' takes it.
+// Every move stops at the first and last rows, never going round. The
+// moves' keys are QueryKeys.js's; it's here beside the operators that
+// take a move as their motion, QueryKeys.js having outgrown its room.
+function moved(act, count, place) {
+    const times = Math.max(1, count);
+    const within = at => Math.max(place.highest, Math.min(at, place.last));
+    const half = count > 0 ? count : Math.max(1, Math.floor((place.bottom - place.top + 1) / 2));
+    switch (act) {
+    case "next":
+        return within(place.at + times);
+    case "previous":
+        return within(place.at - times);
+    case "first":
+        return count > 0 ? within(count - 1) : place.highest;
+    case "last":
+        return count > 0 ? within(count - 1) : within(place.last);
+    case "viewTop":
+        return within(Math.min(place.top + times - 1, place.bottom));
+    case "viewMiddle":
+        return within(place.top + Math.floor((place.bottom - place.top) / 2));
+    case "viewBottom":
+        return within(Math.max(place.bottom - times + 1, place.top));
+    case "halfDown":
+        return within(place.at + half);
+    case "halfUp":
+        return within(place.at - half);
+    case "pageDown":
+        return within(place.at + times * place.screen);
+    case "pageUp":
+        return within(place.at - times * place.screen);
+    default:
+        return place.at;
+    }
+}
+
+// The rows an operator takes, from where the rows stand (as moved takes
+// them): over the row and count - 1 below it with no motion, as dd
+// and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
+// row to wherever the motion goes, whichever way, every row between
+// included, as a linewise motion takes lines. No rows span nothing.
+function spanned(count, motion, place) {
+    if (place.last < place.highest) {
+        return { from: 0, to: -1 };
+    }
+    if (motion === null) {
+        return { from: place.at, to: Math.min(place.last, place.at + Math.max(1, count) - 1) };
+    }
+    const to = moved(motion.act, motion.count, place);
+    return { from: Math.min(place.at, to), to: Math.max(place.at, to) };
+}
+
+// A row's ending action, the one that ends what it is, as a window's Close
+// or a notice's Forget It: the key language's act ending (modules/keys/
+// language.toml), which words.json names on each such action as "act".
+// The row itself, where it's one, as an action listed in a step into a
+// window is; else the first of its actions that is; else none. A verb of
+// close alone isn't one, since an answer's Return that only closes the
+// launcher says close too.
+function endingOf(row, actions) {
+    const ends = one => one.act === "ending" && doing(one) !== null;
+    if (ends(row)) {
+        return row;
+    }
+    return actions.find(ends) ?? null;
+}
+
+// What d runs for an ending action: its own run, or, for one that runs
+// nothing itself and steps in to the row that does, as a program's Quit
+// asks once that way, that row's, since d's own ask stands for it. Null
+// for one with nothing to run.
+function doing(action) {
+    if (typeof action.run === "function") {
+        return action.run;
+    }
+    const inside = typeof action.targets === "function" ? action.targets() : [];
+    return inside.find(one => typeof one.run === "function")?.run ?? null;
+}
+
+// A row's copy: the row itself, where Return copies it, as an answer's
+// rows and a figure do; else the first of its actions that copies, as a
+// file's Copy the Path or a window's Copy Title; else none. `copies` says
+// whether a row copies, as the launcher reads its verb.
+function copyOf(row, actions, copies) {
+    if (copies(row)) {
+        return row;
+    }
+    return actions.find(copies) ?? null;
+}
+
+// What a copy copies, which its row says as `copies`, a text or a function
+// giving one as it's asked, so a live figure copies what it shows: "" for
+// one that says nothing.
+function textOf(action) {
+    const copies = action.copies;
+    const text = typeof copies === "function" ? copies() : copies;
+    return typeof text === "string" ? text : "";
+}
+
+// What several copies put on the clipboard: each a line, in the rows'
+// order, as a linewise yank holds lines, those copying nothing left out.
+function copied(actions) {
+    return actions.map(textOf).filter(text => text !== "").join("\n");
+}
+
+// The rows a span takes, each with its place, the row at -1 being an
+// answer's headline above them, where there's one. A row whose thing has
+// gone, which stays in its place until a key, is left out, since there's
+// nothing there to end or copy.
+function taken(rows, span, headline) {
+    const these = [];
+    for (let at = span.from; at <= span.to; at++) {
+        const row = at === -1 ? headline : rows[at];
+        if (row && !row.gone) {
+            these.push({ at, row });
+        }
+    }
+    return these;
+}
+
+// Each row's ending action over the rows taken, with its place, rows with
+// none left out: what d does there.
+function endings(rows, actionsOf) {
+    return rows
+        .map(({ at, row }) => ({ at, action: endingOf(row, actionsOf(row)) }))
+        .filter(ending => ending.action !== null);
+}
+
+// Each row's copy over the rows taken, with its place, rows with none
+// left out: what y does there.
+function copiesIn(rows, actionsOf, copies) {
+    return rows
+        .map(({ at, row }) => ({ at, action: copyOf(row, actionsOf(row), copies) }))
+        .filter(copy => copy.action !== null);
+}
+
+// Whether d asks once before it does these, as the key language says by
+// each action's command (`commands`, Options.commands): where any can't be
+// undone, unless it's guarded, as a window's Close is, whose program keeps
+// its own work, and it's the only one; never for an action that says how
+// it's put back (`undo`), for u to take back. What the language calls
+// undoable asks too until its row says how, since nothing could bring it
+// back; one the language doesn't name asks, as nothing says it can be.
+function asks(actions, commands) {
+    const alone = actions.length === 1;
+    return actions.some(action => {
+        if (typeof action.undo === "function") {
+            return false;
+        }
+        const flags = commands[action.command ?? ""] ?? {};
+        return !(flags.guarded === true && alone);
+    });
+}

@@ -31,6 +31,19 @@ Rectangle {
     id: row
 
     property bool selected: false
+    // Just copied by y, for the key timing's yank-flash: his Neovim's
+    // on_yank draws a yank in IncSearch, linked to CurSearch, the accent's
+    // ground under its own ink (modules/neovim/colors/jitsusama.lua), so
+    // the row does too, over the selection, which it would vanish into.
+    // Only fill and colour change, never weight.
+    property bool flashed: false
+    // The ink on the flash's ground, for every word and glyph the row says.
+    readonly property color flashInk: Theme.on_accent
+    // Taken by visual, or what a pending operator will take: it wears the
+    // selection's ground of its own, as his Neovim's Visual does, so the
+    // cursor row, the list's glide under it too, stands deeper than the
+    // rest. Only the fill changes, never weight.
+    property bool tinted: false
     // How many steps in it sits under the row it belongs to, as a session
     // under the one orchestrating it: 0, 1 or 2 (docs/design.md keeps no
     // layer deeper). Each step is the glyph's column, so a row's glyph
@@ -114,7 +127,8 @@ Rectangle {
     // Selected, it's filled, unless the list draws the selection itself so
     // it can glide from row to row (Launcher.qml's list).
     property bool fills: true
-    color: selected && fills ? Qt.alpha(Theme.selection, Theme.floating.selection)
+    color: flashed ? Theme.accent
+        : selected && fills || tinted ? Qt.alpha(Theme.selection, Theme.floating.selection)
         : "transparent"
 
     Text {
@@ -123,7 +137,8 @@ Rectangle {
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph
-        color: row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
+        color: row.flashed && !row.swatch ? row.flashInk
+            : row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
         font.family: Theme.level.figure.family
         font.pointSize: Theme.level.figure.pointSize
     }
@@ -160,10 +175,13 @@ Rectangle {
         level: row.voiced ? Theme.level.voice : Theme.level.name
         text: row.name
         plain: row.plainName
-        finds: row.finds
+        // The flash takes the row's ground, so a find's wash, which would
+        // lie on it in the selection's colour and vanish, gives way.
+        finds: row.flashed ? [] : row.finds
         washedSelected: row.selected
-        format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
-        color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
+        format: row.selected || row.quiet || row.flashed ? Text.PlainText : Text.StyledText
+        color: row.flashed ? row.flashInk : row.quiet ? Theme.muted
+            : row.selected ? Theme.strong : Theme.text
         figure: figureFace.advanceWidth
         reading: row.reads && !(row.sideCut && row.sidesTurn)
         onThrough: {
@@ -199,7 +217,7 @@ Rectangle {
         anchors.baseline: monoLine.baseline
         visible: row.detail !== ""
         text: row.detail
-        color: row.selected ? Theme.text : Theme.muted
+        color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         font.family: Theme.level.words.family
         font.pointSize: Theme.level.words.pointSize
         font.variableAxes: Theme.level.words.variableAxes
@@ -292,7 +310,7 @@ Rectangle {
             anchors.right: parent.right
             visible: right.chorded
             keys: row.chord
-            colour: row.selected ? Theme.text : Theme.muted
+            colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         }
 
         // What the row is, cut to its share, reads on as the name does,
@@ -305,7 +323,8 @@ Rectangle {
             text: right.said
             level: Theme.level.note
             // Muted reads under the Lc 60 any text needs on the selection.
-            color: row.warns && row.kind === "" ? Theme.warning
+            color: row.flashed ? row.flashInk
+                : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth
             reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)

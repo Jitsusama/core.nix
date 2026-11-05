@@ -94,6 +94,7 @@ Provider {
             later: !opened && !nowhere,
             stays: nowhere,
             verbs: verbs,
+            operands: () => provider.operands(notice, said),
             targets: nowhere ? verbs : null,
             run: () => {
                 if (nowhere) {
@@ -210,25 +211,64 @@ Provider {
                 run: () => Notices.mark(notice.id, !notice.read)
             }));
         case "forget":
-            return thing(Object.assign(named("verb:notice:forget"), {
-                stays: true,
-                run: () => {
-                    const still = Notices.live[notice.id] ?? null;
-                    if (still)
-                        still.dismiss();
-                }
-            }));
+            return thing(Object.assign(named("verb:notice:forget"), { stays: true },
+                forgetting(notice)));
         default:
             // Copying what it said, always last.
-            return thing(Object.assign(named("verb:notice:copy"), {
-                now: true,
-                copies: said,
-                run: () => {
-                    Notices.mark(notice.id, true);
-                    Quickshell.clipboardText = said;
-                }
-            }));
+            return thing(Object.assign(named("verb:notice:copy"), { now: true },
+                copying(notice, said)));
         }
+    }
+
+    // What d and y take of a notice: done with it while it's live, and
+    // copying what it said, as plain fields rather than rows made
+    // searchable, since d or y over a history of hundreds asks every row
+    // (Launcher.qml's actionsOf).
+    function operands(notice, said) {
+        const copy = Object.assign({ key: "verb:notice:copy",
+            verb: Words.verb("verb:notice:copy") }, copying(notice, said));
+        if (!Notices.live[notice.id])
+            return [copy];
+        return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
+            done(notice)), copy];
+    }
+
+    // d's done, as the held notices' is (HeldNotices.qml's finish): read,
+    // at its sender too where it offers Read, then taken away.
+    function done(notice) {
+        return {
+            run: () => {
+                const still = Notices.live[notice.id] ?? null;
+                if (!still)
+                    return;
+                Notices.mark(notice.id, true);
+                Notice.readOffer(still.actions)?.invoke();
+                // A sender's action closes a notice it doesn't keep, so
+                // only one still open is taken away.
+                if (Notices.live[notice.id])
+                    still.dismiss();
+            }
+        };
+    }
+
+    function forgetting(notice) {
+        return {
+            run: () => {
+                const still = Notices.live[notice.id] ?? null;
+                if (still)
+                    still.dismiss();
+            }
+        };
+    }
+
+    function copying(notice, said) {
+        return {
+            copies: said,
+            run: () => {
+                Notices.mark(notice.id, true);
+                Quickshell.clipboardText = said;
+            }
+        };
     }
 
     // Made again only when the history changes, each with its age as of

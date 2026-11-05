@@ -536,7 +536,8 @@ onLinux {
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place
-  # (tests/launcher-words.py), printing each word to settle.
+  # (tests/launcher-words.py), printing each word to settle; and its own
+  # file gives no key twice in one entry, which the account's copy hides.
   the-launcher-means-one-thing-a-word =
     let
       home = account graphical;
@@ -544,7 +545,8 @@ onLinux {
       words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
-      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${marks}
+      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${marks} \
+        ${./launcher/words.json}
       touch $out
     '';
 
@@ -2641,6 +2643,7 @@ onLinux {
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./Typing.js} Typing.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
@@ -3068,12 +3071,14 @@ onLinux {
     '';
 
   # The launcher's query line takes vi's two modes from one table, as
-  # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's keys, normal's
-  # ways back into insert, its moves through the rows with counts and
+  # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's
+  # keys, normal's ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
-  # sequences, and where the caret goes; ListedKeys.js to the keys Space ?
-  # lists; and the drawer as a window, Space and the arrows into it and
-  # back, with DrawerPage.js to where its keys take its cursor and view.
+  # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
+  # to the keys Space ? lists; the drawer as a window, Space and the arrows
+  # into it and back, with DrawerPage.js to where its keys take its cursor
+  # and view; Operators.js to what d and y do to the rows they take; and
+  # Confirm.js to how the launcher asks once, as Vim's ask_yesno does.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3083,6 +3088,9 @@ onLinux {
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
+      cp ${./Typing.js} Typing.js
+      cp ${./Operators.js} Operators.js
+      cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
       cp ${./Search.js} Search.js
       cp ${./LineEditing.js} LineEditing.js

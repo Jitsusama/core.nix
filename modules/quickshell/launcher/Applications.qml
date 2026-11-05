@@ -278,12 +278,28 @@ Provider {
                 name: `${Words.of(key).sure}, Closing ${closing}`,
                 glyph: Words.glyph(key),
                 hue: "alert",
-                run: () => {
-                    for (const window of provider.running[entry.id] ?? [])
-                        Niri.act({ CloseWindow: { id: window.id } });
-                }
+                run: quitting(entry)
             })]
         });
+    }
+
+    // What d takes of a program: its Quit while it runs, done at once, as
+    // d's own ask stands for Quit's step in to be sure; as plain fields
+    // rather than its every act made a row, since d over a place of
+    // hundreds asks every row (Launcher.qml's actionsOf).
+    function operands(entry) {
+        const key = "verb:program:quit";
+        if ((provider.running[entry.id] ?? []).length === 0)
+            return [];
+        return [Object.assign({ key: key, verb: Words.verb(key) }, Words.ending(key),
+            { run: quitting(entry) })];
+    }
+
+    function quitting(entry) {
+        return () => {
+            for (const window of provider.running[entry.id] ?? [])
+                Niri.act({ CloseWindow: { id: window.id } });
+        };
     }
 
     // Its player that matters: the one playing, or else the first.
@@ -1028,7 +1044,8 @@ Provider {
                 // its name, as a collection's do (Launcher.qml).
                 named: binds.length > 0,
                 below: below,
-                verbs: () => provider.controls(entry, start, below)
+                verbs: () => provider.controls(entry, start, below),
+                operands: () => provider.operands(entry)
             });
             // What another provider says of it, read as the row is, so it's
             // never kept past being true.
