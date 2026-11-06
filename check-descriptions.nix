@@ -542,7 +542,8 @@
     wakeup, or nothing said), and rescues it: said with the lid open, each notice word for word in
     plain text, slept through with it shut when memory or swap ran short, otherwise tried once more
     with it shut, then powered off; sets the top level's hard memory floors aside and keeps them,
-    and puts each back as it was; and says whether an image fits by the kernel's sums (half of
+    and puts each back as it was; switches zswap off for the image and on again after, only when
+    it was on; and says whether an image fits by the kernel's sums (half of
     memory less what it keeps back and twice the reserve, against what's in use less cache,
     slabs, the free pages waiting on each processor's list and the anonymous memory swap has room
     for)
@@ -2432,8 +2433,8 @@
     at its prompt open the disk, lets the lock go for that one prompt, and boots anew after; with
     more held under a slice's hard memory floor than the image may hold, it still comes back, the
     floor as it was; with more random bytes than the image may hold, it still comes back, what
-    was swapped out for it on the disk; and asked first, says a quiet machine's image fits, and
-    with no room exits 1 saying not, plainly
+    was swapped out for it on the disk and none in zswap's pool, zswap on again; and asked first,
+    says a quiet machine's image fits, and with no room exits 1 saying not, plainly
   '';
   vm-idle-sleep-comes-only-on-battery = ''
     a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even

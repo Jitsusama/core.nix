@@ -46,12 +46,14 @@
 //!
 //! Before an image is made it sets the hard memory floors aside, and puts
 //! them back after, or the kernel can't take back what they guard to make
-//! room (floors.rs). `fits` says whether the image would fit, by the
-//! kernel's sums, before anything is asked to hibernate (fits.rs), and
-//! exits 1 when it wouldn't.
+//! room (floors.rs). It switches zswap off too, and on again after, or
+//! what's swapped out for the image can stay in memory (zswap.rs). `fits`
+//! says whether the image would fit, by the kernel's sums, before anything
+//! is asked to hibernate (fits.rs), and exits 1 when it wouldn't.
 
 mod fits;
 mod floors;
+mod zswap;
 
 use serde_json::Value;
 use std::env;
@@ -74,6 +76,9 @@ const FLOORS: &str = "/run/hibernate-unlock-floors";
 
 /// Where the cgroups are, the floors in them.
 const CGROUPS: &str = "/sys/fs/cgroup";
+
+/// Kept while zswap is switched off for an image.
+const ZSWAP_OFF: &str = "/run/hibernate-unlock-zswap";
 
 /// Kept while a rolled-back hibernation is tried again, so a second
 /// rollback powers off rather than trying forever.
@@ -504,6 +509,11 @@ fn before(action: &str) {
         Ok(lifted) => eprintln!("hibernate-unlock: set {lifted} memory floors aside for the image"),
         Err(error) => eprintln!("hibernate-unlock: couldn't set the memory floors aside: {error}"),
     }
+    match zswap::set_aside(Path::new(zswap::ENABLED), Path::new(ZSWAP_OFF)) {
+        Ok(false) => {}
+        Ok(true) => eprintln!("hibernate-unlock: switched zswap off for the image"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't switch zswap off: {error}"),
+    }
     // What the graphics drivers hold as the image is sized: they copy it
     // out as they stop, and the reserve has to leave room for that.
     for card in graphics_memory() {
@@ -549,6 +559,11 @@ fn after(action: &str, disks: &[String]) {
         Ok(0) => {}
         Ok(restored) => eprintln!("hibernate-unlock: put {restored} memory floors back"),
         Err(error) => eprintln!("hibernate-unlock: couldn't put the memory floors back: {error}"),
+    }
+    match zswap::put_back(Path::new(zswap::ENABLED), Path::new(ZSWAP_OFF)) {
+        Ok(false) => {}
+        Ok(true) => eprintln!("hibernate-unlock: switched zswap on again"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't switch zswap on again: {error}"),
     }
     let logged = logged_since_before();
     let _ = fs::remove_file(LOGGED);
