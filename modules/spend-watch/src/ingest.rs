@@ -81,12 +81,19 @@ pub fn agents_directories(config: &Config) -> Vec<PathBuf> {
 /// The files a pattern names, a `*` in a part standing for any run of
 /// characters within one name, sorted as `logs` sorts. Only the
 /// directories the pattern passes through are read, so a large tree beside
-/// them costs nothing.
+/// them costs nothing, and a link is followed only where it stays within
+/// the pattern's root, the folder its parts name before the first `*`.
 pub fn matching(pattern: &str) -> Vec<PathBuf> {
     let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
+    let fixed: PathBuf = std::iter::once("/")
+        .chain(parts.iter().copied().take_while(|part| !part.contains('*')))
+        .collect();
+    let Ok(root) = fixed.canonicalize() else {
+        return Vec::new();
+    };
     let mut at = vec![PathBuf::from("/")];
     for (index, part) in parts.iter().enumerate() {
-        at = step(&at, part, index + 1 == parts.len());
+        at = step(&at, part, index + 1 == parts.len(), &root);
     }
     let mut found: Vec<PathBuf> = at.into_iter().filter(|path| path.is_file()).collect();
     oldest_first(&mut found);
@@ -94,19 +101,26 @@ pub fn matching(pattern: &str) -> Vec<PathBuf> {
 }
 
 /// What one part of a pattern reaches from each of `at`. Before the last
-/// part only a folder can lead on, or a link that may be one, so nothing
-/// else is kept: the entry's own type says which without a look at the
-/// file, and scratch folders beside the logs hold millions of files.
-fn step(at: &[PathBuf], part: &str, last: bool) -> Vec<PathBuf> {
+/// part only a folder can lead on, or a link to one within `root`, so
+/// nothing else is kept: the entry's own type says which without a look at
+/// the file, and scratch folders beside the logs hold millions of files.
+/// A link leading out is left, since quests' scratch folders link to
+/// shared caches and the Nix store, which hold no agent's log.
+fn step(at: &[PathBuf], part: &str, last: bool, root: &Path) -> Vec<PathBuf> {
     if !part.contains('*') {
         return at.iter().map(|dir| dir.join(part)).collect();
     }
     at.iter()
         .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().flatten())
         .filter(|entry| {
-            last || entry
-                .file_type()
-                .is_ok_and(|kind| kind.is_dir() || kind.is_symlink())
+            last || entry.file_type().is_ok_and(|kind| {
+                kind.is_dir()
+                    || (kind.is_symlink()
+                        && entry
+                            .path()
+                            .canonicalize()
+                            .is_ok_and(|to| to.is_dir() && to.starts_with(root)))
+            })
         })
         .filter(|entry| fits(part, &entry.file_name().to_string_lossy()))
         .map(|entry| entry.path())
@@ -478,7 +492,8 @@ mod tests {
         std::fs::write(root.join("file"), "").unwrap();
         std::os::unix::fs::symlink(root.join("folder"), root.join("link")).unwrap();
         let names = |last| {
-            let mut names: Vec<String> = step(&[root.to_path_buf()], "*", last)
+            let within = root.canonicalize().unwrap();
+            let mut names: Vec<String> = step(&[root.to_path_buf()], "*", last, &within)
                 .iter()
                 .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
                 .collect();
@@ -487,6 +502,39 @@ mod tests {
         };
         assert_eq!(names(false), ["folder", "link"]);
         assert_eq!(names(true), ["file", "folder", "link"]);
+    }
+
+    // On 6 November 96 quests' scratch folders each linked to one shared
+    // cache of 265,040 files, so one walk of the agents' patterns read
+    // 26.7 million entries, about 20 s of a core, and the daemon ran one
+    // every 30 s. A link out of the pattern's root is never followed.
+    #[test]
+    fn a_link_out_of_the_pattern_s_root_is_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, outside) = (dir.path().join("root"), dir.path().join("cache"));
+        for agent in ["q1/tmp/run/agents/a1", "q2/tmp/run/agents/b1"] {
+            std::fs::create_dir_all(root.join(agent).join("session")).unwrap();
+            std::fs::write(root.join(agent).join("session/2026_x.jsonl"), "").unwrap();
+        }
+        std::fs::create_dir_all(outside.join("run/agents/c1/session")).unwrap();
+        std::fs::write(outside.join("run/agents/c1/session/2026_y.jsonl"), "").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("q1/tmp/cache")).unwrap();
+        std::os::unix::fs::symlink(root.join("q2/tmp/run"), root.join("q1/tmp/near")).unwrap();
+        let pattern = format!("{}/*/tmp/*/*/agents/*/session/*.jsonl", root.display());
+        assert_eq!(matching(&pattern), Vec::<PathBuf>::new());
+        let pattern = format!("{}/*/tmp/*/agents/*/session/*.jsonl", root.display());
+        let found: Vec<String> = matching(&pattern)
+            .iter()
+            .map(|path| path.strip_prefix(&root).unwrap().display().to_string())
+            .collect();
+        assert_eq!(
+            found,
+            [
+                "q1/tmp/near/agents/b1/session/2026_x.jsonl",
+                "q1/tmp/run/agents/a1/session/2026_x.jsonl",
+                "q2/tmp/run/agents/b1/session/2026_x.jsonl",
+            ]
+        );
     }
 
     // An agent's log is read as its kind, in its workspace's quest.
