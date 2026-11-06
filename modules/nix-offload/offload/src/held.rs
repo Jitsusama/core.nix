@@ -158,8 +158,9 @@ pub fn described(info: &Value) -> BTreeMap<String, Stored> {
 /// The fixed outputs of the derivations `nix derivation show` printed, by
 /// their paths, each with the derivation that gives it. Now one shows no
 /// path among its outputs, so it's read from the derivation's
-/// environment, where its builder is told it; before, it had one beside
-/// its hash.
+/// environment, where its builder is told it, or for one with structured
+/// attributes under `outputs` in the JSON its environment carries; before,
+/// it had one beside its hash.
 ///
 /// A fixed output is matched to what the builder plans by this path, not
 /// by the deriver this store recorded for it: one path is given by every
@@ -181,13 +182,27 @@ pub fn fixed(shown: &Value) -> BTreeMap<String, String> {
             let path = output
                 .get("path")
                 .or_else(|| shown.pointer(&format!("/env/{name}")))
-                .and_then(Value::as_str);
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| structured_output(shown, name));
             if let Some(path) = path {
-                fixed.insert(stored(path), stored(derivation));
+                fixed.insert(stored(&path), stored(derivation));
             }
         }
     }
     fixed
+}
+
+/// The path of output `name` of a derivation with structured attributes,
+/// whose environment carries them as JSON in `__json` rather than a
+/// variable for each output.
+fn structured_output(shown: &Value, name: &str) -> Option<String> {
+    let carried = shown.pointer("/env/__json").and_then(Value::as_str)?;
+    let attributes: Value = serde_json::from_str(carried).ok()?;
+    attributes
+        .pointer(&format!("/outputs/{name}"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 /// Of what sending would take up with it, `closure`, the fixed derivations
@@ -425,20 +440,25 @@ mod tests {
 
     #[test]
     fn a_fixed_output_is_known_by_its_path_in_either_format() {
-        // Now one shows its path only in its environment; before, it had
-        // one beside its hash. One that isn't fixed isn't among them.
+        // Now one shows its path only in its environment, or with
+        // structured attributes in the JSON its environment carries;
+        // before, it had one beside its hash. One that isn't fixed isn't
+        // among them.
         let now = json!({"version": 4, "derivations": {
             "a.drv": {"outputs": {"out": {"hash": "sha256-AAAA", "method": "flat"}},
                       "env": {"out": "/nix/store/a"}, "inputs": {"drvs": {}}},
+            "c.drv": {"outputs": {"out": {"hash": "sha256-CCCC", "method": "flat"}},
+                      "env": {"__json": "{\"outputs\":{\"out\":\"/nix/store/c\"}}"},
+                      "inputs": {"drvs": {}}},
             "b.drv": {"outputs": {"out": {"path": "b"}}, "env": {"out": "/nix/store/b"},
                       "inputs": {"drvs": {}}}}});
         let before = json!({"/nix/store/a.drv": {
             "outputs": {"out": {"path": "/nix/store/a", "hashAlgo": "sha256", "hash": "00"}},
             "inputDrvs": {}}});
-        let wanted = BTreeMap::from([("/nix/store/a".to_owned(), "/nix/store/a.drv".to_owned())]);
-        for shown in [now, before] {
-            assert_eq!(fixed(&shown), wanted, "{shown}");
-        }
+        let a = ("/nix/store/a".to_owned(), "/nix/store/a.drv".to_owned());
+        let c = ("/nix/store/c".to_owned(), "/nix/store/c.drv".to_owned());
+        assert_eq!(fixed(&now), BTreeMap::from([a.clone(), c]));
+        assert_eq!(fixed(&before), BTreeMap::from([a]));
     }
 
     #[test]

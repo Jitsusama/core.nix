@@ -18,8 +18,8 @@ use std::process::{Command, Output};
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
 /// beside it, when there is one, and nothing else, and a dry run of a
 /// build prints the `plans` file, when there is one, and nothing else.
-/// What it's asked to fetch goes in the `fetched` file, and once a test
-/// writes `refuses-fetch`, the fetch fails.
+/// What it's asked to fetch goes in the `fetched` file, and it says it
+/// fetched each but those the `refuses-fetch` file names, a line each.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -35,7 +35,10 @@ case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
   *--dry-run*) cat "$here/plans" 2>/dev/null; exit 0 ;;
-  *"--realise >"*) cat > "$here/fetched"; [ -f "$here/refuses-fetch" ] && exit 1 ;;
+  *"&& echo"*) cat > "$here/fetched"
+    grep -vxF -f "$here/refuses-fetch" "$here/fetched" 2>/dev/null \
+      || { [ -f "$here/refuses-fetch" ] || cat "$here/fetched"; }
+    exit 0 ;;
 esac
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
@@ -98,6 +101,11 @@ const NO_SECOND: &str = "/nonexistent/nix-offload-more";
 /// And a second VM lender's, as /run/nix-offload-vm-more is this
 /// machine's own.
 const NO_SECOND_VM: &str = "/nonexistent/nix-offload-vm-more";
+
+/// And the VM lenders' past the second, as /run/nix-offload-vm-3 to -8
+/// are this machine's own: left to them, a run here split its VM tests
+/// between the real ones from 6 November.
+const NO_MORE_VMS: &str = "/nonexistent/nix-offload-vm-3";
 
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
                      base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n";
@@ -410,6 +418,7 @@ fn there_beside(folder: &Path, offload: &Path, vm: &Path, arguments: &[&str]) ->
         .arg("there")
         .env("NIX_OFFLOAD_VM_DIR", vm)
         .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
         .args(arguments)
         .env(
             "PATH",
@@ -593,7 +602,7 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
     let commands = fs::read_to_string(folder.path().join("ssh-commands")).unwrap();
     let fetch = commands
         .lines()
-        .position(|command| command.contains("--realise >"));
+        .position(|command| command.contains("&& echo"));
     assert_eq!(
         fetch,
         Some(2),
@@ -601,12 +610,16 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
     );
 
     // A builder that can't fetch them is sent them, and says how much.
-    fs::write(folder.path().join("refuses-fetch"), "").unwrap();
+    fs::write(
+        folder.path().join("refuses-fetch"),
+        "/nix/store/cccc-weights.drv\n",
+    )
+    .unwrap();
     let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
-        said.contains("the builder couldn't fetch them all, so what it lacks goes up from here")
+        said.contains("the builder fetched 0 of 1, so what it lacks goes up from here")
             && said.contains("sending 1 output of 14.0 GB"),
         "{said}"
     );
@@ -2129,6 +2142,7 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
         .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
         .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -2247,6 +2261,7 @@ fn a_vm_test_waits_for_its_own_builder_and_never_goes_the_lent_way() {
         .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
         .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -2364,6 +2379,7 @@ fn changed_checks_send_their_vm_tests_apart_while_the_vm_lender_restarts() {
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
@@ -2670,6 +2686,7 @@ fn a_vm_test_sent_apart_that_passed_at_a_commit_isnt_built_again() {
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
@@ -2848,6 +2865,7 @@ fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
