@@ -1156,6 +1156,21 @@ Floating {
         return note.advanceWidth(text);
     }
 
+    FontMetrics {
+        id: wordsFace
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.weight: Theme.level.words.weight
+        font.variableAxes: Theme.level.words.variableAxes
+    }
+
+    // How wide a run of a card's words is, the same way; asked, not set
+    // on a TextMetrics, whose width the asking binding would then hang on.
+    function wordsWide(text: string): real {
+        void wordsFace.font;
+        return wordsFace.advanceWidth(text);
+    }
+
     // How wide a key list's chords are drawn: each key of a chord a tie
     // from the next, each chord apart from the next.
     function chordsWide(chords): real {
@@ -1554,15 +1569,8 @@ Floating {
                     readonly property string plainWords: line.one && line.atCursor
                         ? held.stack.plain(line.one.body) : ""
                     readonly property var shortened: plainWords === "" ? null
-                        : NoticeList.wholeWords(plainWords, wordsFit, width, run => {
-                            wordsRun.text = run;
-                            return wordsRun.advanceWidth;
-                        })
-
-                    TextMetrics {
-                        id: wordsRun
-                        font: body.font
-                    }
+                        : NoticeList.wholeWords(plainWords, wordsFit, width,
+                            run => held.wordsWide(run))
 
                     // Folded while the command line's menu is up, which
                     // takes its room.
