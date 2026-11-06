@@ -18,6 +18,7 @@ import desktop_session
 import pytest
 from desktop_session import (
     FROM_THE_EDGE,
+    KEY_PACE,
     MARGIN,
     NEARLY_ALL,
     NOTICES,
@@ -119,17 +120,19 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.photograph("notice-alone")
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
     # stream says the call's over. :e Notices opens the history on its
-    # first row, the newest notice, and the right arrow steps into its
-    # offers from normal mode, Return's own Open first.
+    # first row, the newest notice, whose offers are commands from normal
+    # mode, as its card's are. Leaving can't be put back, so the line asks
+    # first, and y says yes.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Someone left the call")
     )
-    desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the Call"])
-    machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the Call")
-    machine.send_key("ret")
+    desktop.normal()
+    machine.send_chars(":leave\n", delay=KEY_PACE)
+    desktop.launcher_until(
+        lambda shown: shown["question"].startswith("Leave ") and shown["takesAnswer"]
+    )
+    machine.send_chars("y")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))
     machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))
     desktop.as_account(f"grep -qx 'call leave' {TUPLE_ASKED}")

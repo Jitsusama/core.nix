@@ -16,7 +16,7 @@
 # Its keys are the keyboard language's, and only these: ← and → back and
 # forward through the pages followed, ↑ and ↓ a few lines, Page Up and Page
 # Down a screen, Home and End the top and the bottom, + and - larger and
-# smaller, 0 as it was, Ctrl+C copies what's selected, Escape or q closes,
+# smaller, 0 as it was, Ctrl+C copies what's selected, q closes,
 # and ? opens a page saying all of them, which ← leaves. Six patches give
 # it what it lacked: a colour for headings, that page, opening without
 # asking the desktop for a theme when its settings name one, keeping the
@@ -150,11 +150,8 @@ let
         action = "Keys";
         does = "The reader's keys";
       }
-      {
-        chord = [ "Escape" ];
-        action = "Quit";
-        does = "Close the reader";
-      }
+      # Escape closes nothing of ours (Joel, 2026-11-05: "fuck escape
+      # quitting"), so it isn't bound.
       {
         chord = [ "q" ];
         action = "Quit";

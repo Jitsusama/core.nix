@@ -1,11 +1,11 @@
 // The command line, the : line, as Vim's command line after a colon
-// (VKCF3Z's spec, The Command Line): it takes the find line's place while
-// it's open, the accent's : leading it in the glyph's column and what's
+// (VKCF3Z's spec, The Command Line): it stands at the card's bottom while
+// it's open, its menu rising from it, as Vim's does, the accent's : leading it in the glyph's column and what's
 // typed in the mono at Figure on the names' column, with the mono's bar
 // caret in the accent, as insert's is (docs/design.md, Vi's Keys). What its
 // menu lists, how typing narrows it and what Return runs are Commands.js's;
-// this holds how the keys stand, and CommandMenu.qml draws the menu over the
-// rows. The launcher makes it only while : is open (a Loader), so a launcher
+// this holds how the keys stand, and CommandMenu.qml draws the menu above
+// it, over the rows. The launcher makes it only while : is open (a Loader), so a launcher
 // that never sees : makes nothing.
 //
 // Its keys are Vim's command line's and his cmp's (modules/neovim/keys.nix):
@@ -47,7 +47,14 @@ Item {
     // covered, or "normal" by Backspace on an empty line.
     signal letGo(string how)
 
-    implicitHeight: Theme.space.xxxl
+    implicitHeight: 4 * Theme.space.beat
+    // On what's typed's baseline, so a surface can set the line on its own.
+    baselineOffset: input.y + input.baselineOffset
+    // Its : on the rows' glyph column, an inset in, and what's typed a
+    // glyph's column on, on their names' (Choice.qml): a mark's square
+    // cell, a line pitch wide, and the mark rung before its text.
+    readonly property real typedAt: Theme.space.rung.inset + Theme.level.name.pitch
+        + Theme.space.rung.mark
 
     // Takes the keys, as : opens it, with the range it opens on written in,
     // as a count's .,.+2 or visual's '<,'>.
@@ -162,9 +169,18 @@ Item {
         font: input.font
     }
 
+    // How tall its capitals stand, which it centres in its height, as a
+    // row centres its own: TextMetrics, which measures once the face has
+    // loaded, as a FontMetrics' call in a binding doesn't.
+    TextMetrics {
+        id: caps
+        text: "H"
+        font: input.font
+    }
+
     Text {
         id: sigil
-        x: Theme.space.l
+        x: Theme.space.rung.inset
         anchors.baseline: input.baseline
         text: ":"
         color: Theme.accent
@@ -173,9 +189,9 @@ Item {
 
     TextInput {
         id: input
-        x: Theme.space.l + Theme.space.xxl
-        width: parent.width - x - Theme.space.l
-        anchors.verticalCenter: parent.verticalCenter
+        x: line.typedAt
+        width: parent.width - x - Theme.space.rung.inset
+        y: (line.height + caps.tightBoundingRect.height) / 2 - baselineOffset
         focus: true
         clip: true
         color: Theme.strong

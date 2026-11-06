@@ -369,6 +369,89 @@ fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result
     })
 }
 
+/// Tell the owner that `test` fails at `commit`, the merge a bisect found,
+/// which `before` says didn't break it, and revert and hold nothing.
+fn blames_none(
+    world: &dyn World,
+    state: &State,
+    test: &str,
+    commit: &str,
+    log: &str,
+    not_broken_here: Before,
+) -> Result<(), String> {
+    let (kind, why) = match not_broken_here {
+        Before::Absent => (
+            "failed-at-birth",
+            "the first merge to have it, so it may only have moved a case already failing, \
+             as a split does",
+        ),
+        Before::Unchanged => (
+            "failed-unchanged",
+            "a merge that didn't change it, so something outside the code broke it, such as \
+             the date or the builders",
+        ),
+        _ => (
+            "failed-before",
+            "and before it too, so no merge since broke it",
+        ),
+    };
+    // No merge is to blame for a test failing unchanged, so its finding
+    // names no owner.
+    let owner = (not_broken_here != Before::Unchanged)
+        .then(|| pr_of(&world.subject(commit)))
+        .flatten();
+    state.find(&json!({
+        "kind": kind, "test": test, "commit": commit,
+        "owner_pr": owner, "log": log, "at": now(),
+    }))?;
+    state.say(&format!(
+        "{test} fails at {}, {why}: nothing is reverted or held",
+        short(commit)
+    ));
+    Ok(())
+}
+
+/// Whether `test`, failing at `head`, passes at main's newest head, so a
+/// fix forward has landed since; if so its owner is told. `commit` is the
+/// merge a search found broke it, none before the search. A round and its
+/// search take hours while merges keep landing: on 5 November both tests
+/// the round at b74ab91b searched for were fixed forward, and the search
+/// held the net nine hours behind main. So it is asked before a search,
+/// which it then skips, and again before a revert, which would only undo
+/// the merge a fix sits on.
+fn fixed_forward(
+    world: &dyn World,
+    state: &State,
+    head: &str,
+    test: &str,
+    commit: Option<&str>,
+) -> Result<bool, String> {
+    let newest = world.head()?;
+    if newest == head
+        || !matches!(
+            attempt(world, state, &newest, test),
+            Outcome::Passed | Outcome::Flaky
+        )
+    {
+        return Ok(false);
+    }
+    // Before a search no merge is known, so the finding names the head it
+    // failed at and no owner.
+    state.find(&json!({
+        "kind": "fixed-forward", "test": test, "commit": commit.unwrap_or(head),
+        "owner_pr": commit.and_then(|commit| pr_of(&world.subject(commit))),
+        "fixed_at": newest, "at": now(),
+    }))?;
+    let what = if commit.is_some() { "broke" } else { "fails" };
+    state.say(&format!(
+        "{test} {what} at {}, but passes at main's newest head {}, so it was fixed forward: \
+         nothing is searched for, reverted or held",
+        short(commit.unwrap_or(head)),
+        short(&newest)
+    ));
+    Ok(true)
+}
+
 /// The PR a merge commit's subject names, as GitHub writes it.
 pub fn pr_of(subject: &str) -> Option<u64> {
     let rest = subject.strip_prefix("Merge pull request #")?;
@@ -421,14 +504,23 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         state.say(&format!("held, starting nothing: {why}"));
         return Ok(Round::Idle);
     }
-    let head = world.head()?;
+    let (passed, seen) = state.heads();
+    // A round cut short, as every switch that changes the net cuts one,
+    // takes up the head it began on, whose runs are recorded. At main's
+    // newest head each test would run again, for hours, and on 5 November
+    // three switches in a row cut the round before its search for a bad
+    // merge began.
+    let head = match state.under_way() {
+        Some(began) if passed.as_deref() != Some(began.as_str()) => began,
+        _ => world.head()?,
+    };
     clear_if_reverted(world, state)?;
     let hold = state.hold();
-    let (passed, seen) = state.heads();
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
         return Ok(Round::Idle);
     }
+    state.begin(&head)?;
     state.say(&format!("comparing {} with {}", short(&base), short(&head)));
     let changed = world.changed(&base, &head)?;
     find_broken(world, state, &changed, &base, &head)?;
@@ -547,6 +639,9 @@ fn broke(
     head: &str,
     test: &str,
 ) -> Result<(), String> {
+    if fixed_forward(world, state, head, test, None)? {
+        return Ok(());
+    }
     let merges = world.merges(base, head)?;
     let bad = if merges.len() == 1 {
         merges.first().cloned()
@@ -564,40 +659,16 @@ fn broke(
             Before::Passed => Some(commit),
             Before::Unsent => None,
             not_broken_here => {
-                let (kind, why) = match not_broken_here {
-                    Before::Absent => (
-                        "failed-at-birth",
-                        "the first merge to have it, so it may only have moved a case already \
-                         failing, as a split does",
-                    ),
-                    Before::Unchanged => (
-                        "failed-unchanged",
-                        "a merge that didn't change it, so something outside the code broke \
-                         it, such as the date or the builders",
-                    ),
-                    _ => (
-                        "failed-before",
-                        "and before it too, so no merge since broke it",
-                    ),
-                };
-                // No merge is to blame for a test failing unchanged, so
-                // its finding names no owner.
-                let owner = (not_broken_here != Before::Unchanged)
-                    .then(|| pr_of(&world.subject(&commit)))
-                    .flatten();
-                state.find(&json!({
-                    "kind": kind, "test": test, "commit": commit,
-                    "owner_pr": owner, "log": log, "at": now(),
-                }))?;
-                state.say(&format!(
-                    "{test} fails at {}, {why}: nothing is reverted or held",
-                    short(&commit)
-                ));
-                return Ok(());
+                return blames_none(world, state, test, &commit, &log, not_broken_here);
             }
         },
         None => None,
     };
+    if let Some(commit) = &bad
+        && fixed_forward(world, state, head, test, Some(commit))?
+    {
+        return Ok(());
+    }
     let Some(commit) = bad else {
         state.set_hold(&json!({
             "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
@@ -844,6 +915,50 @@ mod tests {
     }
 
     #[test]
+    fn a_round_cut_short_takes_up_the_head_it_began_on() {
+        let state = state("taken-up");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h1").unwrap();
+        let world = Stand {
+            head: "h2".into(),
+            merges: names("h1"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        };
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h1".into())
+        );
+        assert_eq!(world.built(), vec![("h1".into(), "vm-a".into())]);
+        assert_eq!(
+            state.under_way(),
+            None,
+            "a finished round is under way no longer"
+        );
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h2".into())
+        );
+    }
+
+    #[test]
+    fn a_round_begun_is_written_down_until_it_ends() {
+        let state = state("begun");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[UNSENT; SENDS as usize]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Unfinished("h".into())
+        );
+        assert_eq!(state.under_way(), Some("h".into()));
+    }
+
+    #[test]
     fn a_test_that_passed_at_a_commit_never_runs_there_again() {
         let state = state("never-again");
         let world = Stand {
@@ -920,6 +1035,76 @@ mod tests {
             Round::Idle,
             "a head is failed once"
         );
+    }
+
+    #[test]
+    fn a_test_fixed_forward_since_its_round_began_reverts_nothing() {
+        let state = state("fixed-forward");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "fixed-forward");
+        assert_eq!(found[0]["fixed_at"], "n");
+
+        let state = super::tests::state("fixed-before-the-search");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            world.built(),
+            [("h", "vm-a"), ("h", "vm-a"), ("n", "vm-a")]
+                .map(|(commit, check)| (commit.to_owned(), check.to_owned())),
+            "no merge is searched for once main's head passes"
+        );
+        assert_eq!(
+            state.heads(),
+            (Some("h".into()), Some("h".into())),
+            "the next round starts from the head and runs to main's newest"
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        let found = findings(&state);
+        assert_eq!(
+            (&found[0]["kind"], &found[0]["commit"]),
+            (&json!("fixed-forward"), &json!("h"))
+        );
+
+        let state = super::tests::state("still-broken");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("n", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
     }
 
     #[test]

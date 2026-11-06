@@ -39,6 +39,88 @@ Provider {
     questions: Words.started("keyboards").concat(lightsAsked)
     readonly property var lightsAsked: Words.started("keyboards:lights")
 
+    // The keyboards' options, as VKCF3Z named them (2026-11-05), each form
+    // acting on every keyboard that can do it: :set kbdlight lights them
+    // all, the laptop's at its most, and nokbdlight puts them out;
+    // kbdlevel+=1 and -=1 step them all, and kbdlevel=2 sets each that
+    // takes a level, today the laptop's alone. Asked, they read the
+    // laptop's, the one that can be; where only a board has lights, its
+    // light reads as last set, lit until then, as the board starts, and
+    // its level can't be read. :set lock=Symbols locks the board on a
+    // layer its layout names and lock= lets it go.
+    setOptions: Object.assign(!lit ? {} : {
+        kbdlight: {
+            kind: "switch",
+            now: () => {
+                const laptop = provider.laptopLevel();
+                return laptop === null ? KeyboardLayout.lit : laptop.now > 0;
+            },
+            set: to => provider.lightAll(to)
+        },
+        kbdlevel: Object.assign({
+            kind: "number",
+            least: 0,
+            now: () => provider.laptopLevel()?.now ?? null,
+            set: (to, change) => provider.stepAll(to, change)
+        }, laptopMost > 0 ? { most: laptopMost } : { stepsOnly: true })
+    }, !layered ? {} : {
+        lock: {
+            kind: "choice",
+            values: [""].concat(KeyboardLayout.layers.slice(1).map(layer => layer.name)),
+            now: () => KeyboardLayer.locked ? KeyboardLayer.name : "",
+            set: to => {
+                KeyboardLayout.lock(Math.max(0,
+                    KeyboardLayout.layers.findIndex(layer => layer.name === to)));
+                return "";
+            }
+        }
+    })
+
+    // A ZSA board that's plugged in and can be told things: its layout is
+    // known and its watcher says its layer.
+    readonly property bool boarded: KeyboardLayout.present && KeyboardLayer.present
+    readonly property bool layered: boarded && KeyboardLayout.layers.length > 1
+    // How lit the laptop keyboard's lights can be, or 0 without them, read
+    // by a reader of its own, so a binding never moves the one parts share.
+    readonly property int laptopMost: Lights.backlight === "" || !mostLit.loaded ? 0
+        : Number(mostLit.text().trim()) || 0
+    readonly property bool lit: laptopMost > 0 || boarded
+    // How far QMK's matrix steps from dark to full (RGB_MATRIX_VAL_STEP's
+    // 16 of 255), so kbdlevel+=99 steps it no further than that.
+    readonly property int boardSteps: 16
+
+    // The laptop keyboard's lights as they stand, or null without them.
+    function laptopLevel() {
+        if (laptopMost === 0)
+            return null;
+        return { now: Number(said(`${Lights.backlight}/brightness`)), most: laptopMost };
+    }
+
+    function setLaptop(level) {
+        Niri.spawn(["brightnessctl", `--device=${Lights.backlight.split("/").pop()}`, "set",
+            String(level)]);
+    }
+
+    function lightAll(on) {
+        if (laptopMost > 0)
+            setLaptop(on ? laptopMost : 0);
+        if (boarded)
+            KeyboardLayout.lights(on);
+        return "";
+    }
+
+    // A level set or stepped: the laptop's to where it goes, and the
+    // board's a step at a time, since it takes no level.
+    function stepAll(to, change) {
+        if (to !== null && laptopMost > 0)
+            setLaptop(to);
+        if (!boarded || change.how === "set")
+            return "";
+        for (let step = 0; step < Math.min(change.value, boardSteps); step++)
+            KeyboardLayout.brighter(change.how === "add");
+        return "";
+    }
+
     function answer(typed) {
         const question = asks(typed);
         if (question === "")
@@ -192,6 +274,8 @@ Provider {
                 key: choice.key,
                 verb: Words.verb(choice.id),
                 name: Words.name(choice.id, "", { layer: choice.layer }),
+                // Its layer, so the : line fills :set lock={layer}.
+                fill: { layer: choice.layer },
                 glyph: Theme.glyph.layer,
                 hue: "action",
                 stays: true,
@@ -229,6 +313,11 @@ Provider {
             const set = level;
             levels.push(thing({
                 key: `verb:keyboards-lights-${level}`,
+                // Its words, which its key never walks back to, and its
+                // level, so the : line says :set kbdlevel=2.
+                wordsId: "keyboards:lights:to",
+                wordState: state,
+                fill: { n: level },
                 verb: Words.verb("keyboards:lights:to", state),
                 name: part("lights:to", state, { n: level, most: most }),
                 glyph: Theme.glyph.brightness,
@@ -368,6 +457,13 @@ Provider {
 
     FileView {
         id: probe
+        blockLoading: true
+        printErrors: false
+    }
+
+    FileView {
+        id: mostLit
+        path: Lights.backlight === "" ? "" : `${Lights.backlight}/max_brightness`
         blockLoading: true
         printErrors: false
     }

@@ -82,10 +82,11 @@ onLinux {
         touch $out
       '';
 
-  # Escape backs out of btop a step at a time: alone it ends btop, and with
-  # a process chosen by Down, one leaves btop running and a second ends it,
-  # where btop's own Escape opens its menu and never ends it. The keys go
-  # through tmux, as a terminal sends them.
+  # Escape backs out of btop a step at a time and never ends it (Joel,
+  # 2026-11-05: "fuck escape quitting"): alone it does nothing, and with a
+  # process chosen by Down one lets it go, a second doing nothing, where
+  # btop's own Escape opens its menu; q ends it. The keys go through tmux,
+  # as a terminal sends them.
   btop-backs-out-on-escape =
     let
       home = account workstation;
@@ -123,9 +124,10 @@ onLinux {
             exit 1
           fi
         }
-        after ended Escape
+        after running Escape
         after running Down Escape
-        after ended Down Escape Escape
+        after running Down Escape Escape
+        after ended q
         touch $out
       '';
 }

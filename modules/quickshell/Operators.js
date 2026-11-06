@@ -68,6 +68,75 @@ function operated(standing, key, matching, rested) {
     return { act: "", count: 0, standing: rested, ours: true };
 }
 
+const digit = /^[0-9]$/;
+
+// The keys that wait before a page refuses them, since it can't be
+// changed: d and c for their motion, as the drawer's operators
+// (modules/keys/language.toml, delete-motion and change-motion), and r
+// for the letter it would put, as Vim's reads one first.
+const refusals = ["d", "c", "r"];
+
+// What the drawer's page reads before its own keys, or null for a key it
+// doesn't: d or c at rest waits for its motion, as Vim's do on a buffer
+// that can't be modified, and says E21 once one comes (`cannotChange`):
+// its own key again, as dd, a count going before it, a sequence's first
+// key (gg's g) or a text object's (ip's i) waiting for the rest, and any
+// other key refused too, there being nothing it could change. Ctrl+C
+// lets it go unsaid, as Escape does (QueryKeys.js). The table is as
+// beforeTable takes it.
+function refused(standing, key, table) {
+    const { operator } = standing;
+    const atRest = standing.typed.length === 0;
+    if (operator === undefined) {
+        return atRest && refusals.includes(key) ? { act: "", count: 0,
+            standing: { count: "", typed: [], operator: { key, count: standing.count } },
+            ours: true } : null;
+    }
+    if (key === "Ctrl+c") {
+        return { act: "", count: 0, standing: table.rested, ours: true };
+    }
+    // r's letter is any key at all, a digit among them.
+    if (operator.key === "r") {
+        return { act: "cannotChange", count: 0, standing: table.rested, ours: true };
+    }
+    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
+        return { act: "", count: 0, standing: Object.assign({}, standing,
+            { count: standing.count + key }), ours: true };
+    }
+    const typed = standing.typed.concat([key]);
+    const object = table.matching(typed, "object");
+    const matched = object.act !== "" || object.begun ? object : table.matching(typed, "page");
+    if (key !== operator.key && matched.act === "" && matched.begun) {
+        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
+            ours: true };
+    }
+    return { act: "cannotChange", count: 0, standing: table.rested, ours: true };
+}
+
+// What normal and visual read before their table, or null for a key they
+// don't. A count is typed where nothing types: 0 alone is Vim's first
+// column, which rows haven't, so it counts only after another digit, and
+// one after an operator is its motion's. An operator's key at rest in
+// normal begins it, with the count before it, but on a prompt's words
+// (`words`), where d and c are the words' own, as dw and cw; visual's
+// take no motion. The line is its mode and whether it holds words, and
+// the table QueryKeys' `matching` and `rested`, as operated takes them.
+function beforeTable(standing, key, line, table) {
+    const atRest = standing.typed.length === 0;
+    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
+        return { act: "", count: 0, standing: Object.assign({}, standing,
+            { count: standing.count + key, typed: [] }), ours: true };
+    }
+    if (standing.operator !== undefined) {
+        return operated(standing, key, table.matching, table.rested);
+    }
+    if (line.mode === "normal" && atRest && !line.words && key in operators) {
+        const operator = { key, count: standing.count };
+        return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
+    }
+    return null;
+}
+
 // The rows an operator takes, from where the rows stand (as moved takes
 // them): over the row and count - 1 below it with no motion, as dd
 // and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
@@ -356,6 +425,18 @@ function pendingSays(hit, words) {
     return words.pending.replace("{typed}", hit.typed).replace("{what}", what ?? "");
 }
 
+// The range a count before a colon gives the command line, as Vim's 3:
+// gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
+function counted(count) {
+    return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
+}
+
+// The range a colon gives the command line in a mode: visual's selection,
+// as Vim's '<,'>, whatever was counted, or the count's in normal.
+function rangeFor(count, mode) {
+    return mode === "visual" ? "'<,'>" : counted(count);
+}
+
 // The rows visual line takes, from where it began to the cursor, either
 // way; none before it begins, its start being -1.
 function selection(from, at) {
@@ -394,11 +475,10 @@ function reselected(rows, last, identity) {
 
 // What the foot says Return does over a selection: open its rows, by
 // their count, as "open 3".
-// Visual's mode word, counting the rows chosen (`span`, as selection gives
-// it), as the spec's "visual line · 3".
-function visualSaid(mode, span, words) {
-    return (words.counted ?? "{mode}").replace("{mode}", mode)
-        .replace("{count}", String(span.to - span.from + 1));
+// What visual's mode word says, now the mark names the mode: how many are
+// chosen, "3 chosen".
+function chosenSaid(count, words) {
+    return (words.counted ?? "").replace("{count}", String(count));
 }
 
 function opensSaid(count, words) {

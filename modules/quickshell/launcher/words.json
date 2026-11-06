@@ -1331,7 +1331,7 @@
     {
       "id": "verb:warmer",
       "command": "set",
-      "argument": "deskwarmth+=500",
+      "argument": "deskwarmth-=500",
       "in": "light:desk:warmth",
       "name": "Warmer",
       "verb": "warmer"
@@ -1339,7 +1339,7 @@
     {
       "id": "verb:cooler",
       "command": "set",
-      "argument": "deskwarmth-=500",
+      "argument": "deskwarmth+=500",
       "in": "light:desk:warmth",
       "name": "Cooler",
       "verb": "cooler"
@@ -1347,14 +1347,15 @@
     {
       "id": "verb:turn",
       "command": "set",
-      "argument": "desklight!",
+      "argument": "nodesklight",
       "in": "light",
       "name": "Turn It Off",
       "verb": "off",
       "states": {
         "off": {
           "name": "Turn It On",
-          "verb": "on"
+          "verb": "on",
+          "argument": "desklight"
         }
       }
     },
@@ -1665,6 +1666,8 @@
     },
     {
       "id": "keyboards:lights:to",
+      "command": "set",
+      "argument": "kbdlevel={n}",
       "in": "keyboards:lights",
       "name": "Light to {n} of {most}",
       "verb": "set",
@@ -2785,7 +2788,7 @@
     },
     {
       "id": "verb:sound-louder",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume+=5",
       "in": "sound",
       "name": "Louder",
@@ -2793,7 +2796,7 @@
     },
     {
       "id": "verb:sound-quieter",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume-=5",
       "in": "sound",
       "name": "Quieter",
@@ -2801,7 +2804,7 @@
     },
     {
       "id": "verb:sound-to",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume=",
       "in": "sound",
       "name": "Volume to {level}",
@@ -2821,13 +2824,14 @@
       "verb": "use",
       "states": {
         "input": {
-          "name": "Listen Through It"
+          "name": "Listen Through It",
+          "argument": "input={name}"
         }
       }
     },
     {
       "id": "verb:sound-port",
-      "command": "set",
+      "command": "setlocal",
       "argument": "port={port}",
       "in": "sound",
       "name": "Use {port}",
@@ -2854,18 +2858,23 @@
     },
     {
       "id": "keyboard:flash",
+      "command": "flash",
       "in": "keyboard",
       "name": "Flash the Keyboard",
       "verb": "flash"
     },
     {
       "id": "keyboard:release",
+      "command": "set",
+      "argument": "lock=",
       "in": "keyboard",
       "name": "Let {layer} Go",
       "verb": "release"
     },
     {
       "id": "keyboard:lock",
+      "command": "set",
+      "argument": "lock={layer}",
       "in": "keyboard",
       "name": "Lock {layer} On",
       "verb": "lock"
@@ -2882,24 +2891,32 @@
     },
     {
       "id": "keyboard:lights-off",
+      "command": "set",
+      "argument": "nokbdlight",
       "in": "keyboard:lights",
       "name": "Turn Off the Keyboard's Light",
       "verb": "turn off"
     },
     {
       "id": "keyboard:lights-on",
+      "command": "set",
+      "argument": "kbdlight",
       "in": "keyboard:lights",
       "name": "Turn on the Keyboard's Light",
       "verb": "turn on"
     },
     {
       "id": "keyboard:brighter",
+      "command": "set",
+      "argument": "kbdlevel+=1",
       "in": "keyboard:lights",
       "name": "Brighten the Keyboard's Light",
       "verb": "brighten"
     },
     {
       "id": "keyboard:dimmer",
+      "command": "set",
+      "argument": "kbdlevel-=1",
       "in": "keyboard:lights",
       "name": "Dim the Keyboard's Light",
       "verb": "dim"
@@ -3893,7 +3910,7 @@
     {
       "id": "verb:on:quiet:more",
       "command": "set",
-      "argument": "quiet",
+      "argument": "dnd+=60",
       "in": "on",
       "name": "An Hour More",
       "verb": "extend",
@@ -4147,6 +4164,8 @@
     },
     {
       "id": "displays:warmth",
+      "command": "set",
+      "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
       "verb": "turn off",
@@ -4155,7 +4174,8 @@
       ],
       "states": {
         "off": {
-          "verb": "turn on"
+          "verb": "turn on",
+          "argument": "warmth"
         }
       }
     },
@@ -4734,6 +4754,8 @@
     },
     {
       "id": "session:awake",
+      "command": "set",
+      "argument": "keepawake",
       "once": ["Caffeinate"],
       "name": "Keep Awake",
       "term": "Machine/Keep awake",
@@ -4742,12 +4764,15 @@
       "states": {
         "on": {
           "name": "Let It Sleep",
-          "verb": "stop"
+          "verb": "stop",
+          "argument": "nokeepawake"
         }
       }
     },
     {
       "id": "session:quiet",
+      "command": "set",
+      "argument": "dnd=60",
       "once": ["DND", "Quiet"],
       "name": "Do Not Disturb",
       "term": "Desktop/Do not disturb",
@@ -4756,24 +4781,31 @@
       "states": {
         "on": {
           "name": "Let Notices Show",
-          "verb": "stop"
+          "verb": "stop",
+          "argument": "nodnd"
         }
       }
     },
     {
       "id": "session:quiet:60",
+      "command": "set",
+      "argument": "dnd=60",
       "in": "session:quiet",
       "name": "For an Hour",
       "glyph": "quiet"
     },
     {
       "id": "session:quiet:0",
+      "command": "set",
+      "argument": "dnd",
       "in": "session:quiet",
       "name": "Until It's Ended",
       "glyph": "quiet"
     },
     {
       "id": "session:recording",
+      "command": "set",
+      "argument": "norecording",
       "name": "Stop Recording",
       "verb": "stop",
       "glyph": "recording"
@@ -4786,6 +4818,8 @@
     },
     {
       "id": "session:power:Power Saver",
+      "command": "set",
+      "argument": "power=saver",
       "of": "session:profile",
       "name": "Power Saver",
       "part": "Power Saver",
@@ -4794,6 +4828,8 @@
     },
     {
       "id": "session:power:Balanced Power",
+      "command": "set",
+      "argument": "power=balanced",
       "of": "session:profile",
       "name": "Balanced Power",
       "part": "Balanced",
@@ -4802,6 +4838,8 @@
     },
     {
       "id": "session:power:Performance",
+      "command": "set",
+      "argument": "power=performance",
       "of": "session:profile",
       "name": "Full Performance",
       "part": "Full Performance",
@@ -4810,12 +4848,14 @@
     },
     {
       "id": "session:Lock",
+      "command": "lockscreen",
       "name": "Lock",
       "verb": "lock",
       "glyph": "locked"
     },
     {
       "id": "session:Suspend",
+      "command": "suspend",
       "once": ["Suspend"],
       "name": "Sleep",
       "term": "Machine/sleep",
@@ -4824,6 +4864,7 @@
     },
     {
       "id": "session:Log Out",
+      "command": "logout",
       "once": ["Sign out"],
       "name": "Log Out",
       "term": "Machine/log out",
@@ -4833,6 +4874,7 @@
     },
     {
       "id": "session:Reboot",
+      "command": "reboot",
       "once": ["Restart"],
       "name": "Reboot",
       "term": "Machine/reboot",
@@ -4842,6 +4884,7 @@
     },
     {
       "id": "session:Power Off",
+      "command": "poweroff",
       "once": ["Shut down"],
       "name": "Power Off",
       "term": "Machine/power off",
@@ -4851,6 +4894,8 @@
     },
     {
       "id": "wifi:radio",
+      "command": "set",
+      "argument": "nowifi",
       "in": "wifi",
       "name": "Wi-Fi Off",
       "verb": "off",
@@ -4859,7 +4904,8 @@
         "off": {
           "name": "Wi-Fi On",
           "verb": "on",
-          "glyph": "wireless"
+          "glyph": "wireless",
+          "argument": "wifi"
         }
       }
     },
@@ -4899,13 +4945,14 @@
     },
     {
       "id": "verb:wifi-trust",
-      "command": "set",
-      "argument": "trust!",
+      "command": "setlocal",
+      "argument": "trust",
       "in": "wifi",
       "name": "Trust It",
       "states": {
         "trusted": {
-          "name": "Stop Trusting It"
+          "name": "Stop Trusting It",
+          "argument": "notrust"
         }
       }
     },
@@ -5096,6 +5143,8 @@
     },
     {
       "id": "bluetooth:radio",
+      "command": "set",
+      "argument": "nobluetooth",
       "in": "bluetooth",
       "name": "Bluetooth Off",
       "verb": "off",
@@ -5104,7 +5153,8 @@
         "off": {
           "name": "Bluetooth On",
           "verb": "on",
-          "glyph": "bluetooth"
+          "glyph": "bluetooth",
+          "argument": "bluetooth"
         }
       }
     },
@@ -5381,6 +5431,7 @@
     },
     {
       "id": "calendar:meeting",
+      "command": "meet",
       "of": "program:google-calendar",
       "name": "Meeting",
       "glyph": "meeting",
@@ -5867,8 +5918,8 @@
     },
     {
       "id": "verb:program:mute",
-      "command": "set",
-      "argument": "mute!",
+      "command": "setlocal",
+      "argument": "mute",
       "in": "program:sound",
       "name": "Muted",
       "verb": "mute",
@@ -5876,13 +5927,14 @@
       "states": {
         "muted": {
           "verb": "unmute",
-          "glyph": "silent"
+          "glyph": "silent",
+          "argument": "nomute"
         }
       }
     },
     {
       "id": "verb:program:louder",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume+=5",
       "in": "program:sound",
       "name": "Louder",
@@ -5890,7 +5942,7 @@
     },
     {
       "id": "verb:program:quieter",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume-=5",
       "in": "program:sound",
       "name": "Quieter",
@@ -6471,23 +6523,28 @@
     },
     {
       "id": "tuple:mute",
+      "command": "set",
+      "argument": "nomic",
       "name": "Muted",
       "verb": "mute",
       "states": {
         "muted": {
-          "verb": "unmute"
+          "verb": "unmute",
+          "argument": "mic"
         }
       },
       "by": "tuple"
     },
     {
       "id": "tuple:share",
+      "command": "share",
       "name": "Share the Screen in the Call",
       "verb": "share",
       "by": "tuple"
     },
     {
       "id": "tuple:leave",
+      "command": "leave",
       "name": "Leave the Call",
       "verb": "leave",
       "by": "tuple"
@@ -6500,6 +6557,7 @@
     },
     {
       "id": "tuple:join",
+      "command": "meet",
       "name": "Join the Call in the Clipboard",
       "verb": "join",
       "by": "tuple"
@@ -6630,21 +6688,25 @@
   ],
   "field": {
     "found": "{at} of {all}",
-    "modes": {
-      "insert": "insert",
-      "visual": "visual line",
-      "pageVisual": "visual",
-      "pageVisualLine": "visual line"
-    },
     "waiting": "{count} new",
-    "keys": {
-      "complete": "complete",
-      "clear": "clear",
-      "restore": "restore"
-    },
     "drawer": {
       "back": "back",
       "keys": "keys"
+    },
+    "hints": {
+      "up": "up",
+      "open": "open",
+      "in": "in",
+      "commands": "commands",
+      "copy": "copy",
+      "keys": "keys",
+      "notHere": "not here",
+      "quit": "does nothing",
+      "quits": "closes",
+      "complete": "complete",
+      "nextTime": "next time",
+      "enough": "is enough",
+      "E21": "E21: Cannot make changes"
     },
     "listed": {
       "eyebrow": "Keys",
@@ -6652,7 +6714,7 @@
       "drawerTitle": "The Drawer's Keys",
       "modes": {
         "normal": "Normal",
-        "insert": "Insert",
+        "find": "Find",
         "page": "Drawer",
         "pageVisual": "Choosing"
       },
@@ -6672,16 +6734,21 @@
         "screen": "A screen",
         "count": "So many times",
         "row": "To that row",
-        "inOut": "Into it and out",
+        "option": "Set an option",
+        "optionHere": "Set its own option",
+        "openIn": "Open, or go in",
+        "up": "Up a level",
+        "follow": "Into its parts",
         "run": "Do it",
+        "jumps": "Back and forward",
         "lastPlace": "The place used last",
         "beside": "The place beside",
         "own": "Open in its program",
+        "find": "A fresh find",
         "insert": "Type",
         "change": "Clear it and type",
         "ending": "Close or forget it",
         "copyRow": "Copy it",
-        "restore": "Bring it back",
         "intoDrawer": "Into the drawer",
         "lines": "Down and up a line",
         "along": "Along the line",
@@ -6693,6 +6760,7 @@
         "otherEnd": "Its other end",
         "copy": "Copy as markdown",
         "back": "Back to the rows",
+        "numbers": "Relative or absolute numbers",
         "keys": "These keys",
         "close": "Close"
       }
@@ -6724,7 +6792,7 @@
       "read": "read"
     },
     "visual": {
-      "counted": "{mode} \u00b7 {count}",
+      "counted": "{count} chosen",
       "opens": "open {count}",
       "opened": "{open} of {count} open"
     },
@@ -6732,15 +6800,15 @@
       "quit": "Close the Launcher",
       "help": "List the Keys",
       "set": "Set an Option",
+      "setlocal": "Set an Option of This",
       "history": "List Earlier Lines",
       "row": "Go to a Row",
       "on": "on {things}",
       "onSome": "on {some} of {all}",
       "none": "none of {all} can {command}",
       "some": "{some} of {all} can {command}; {command} them? (y/n)",
-      "many": "{command} all {count}? (y/n)",
-      "one": "{command} {name}? (y/n)",
       "asksPassword": "{network} asks its password: find it to join",
+      "unread": "{option} can't be read here",
       "run": "run",
       "choose": "choose"
     },

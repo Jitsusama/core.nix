@@ -23,7 +23,7 @@
 # Return goes to.
 #
 # Its keys are Vim's, which are zathura's own, as his Vim has them, each
-# with one meaning, and each arrow does what its letter does: j and k
+# with one meaning, and each arrow does what its letter does, unlisted: j and k
 # scroll down and up, h and l sideways, J and K turn the pages as Page Down
 # and Page Up do, gg and G go to the first and the last as Home and End do,
 # a count before G to that page, Ctrl+D and Ctrl+U half a screen, Ctrl+F
@@ -57,6 +57,11 @@ let
     space
     ;
   rgba = import ../theme/rgba.nix { inherit lib; };
+
+  # The bar's one line of the monospaced face, as GTK draws it: its ascent
+  # and descent, 1.245 of its em (MonaspiceXe's own; another face needs
+  # measuring again), to the next whole pixel.
+  line = builtins.ceil (builtins.fromJSON type.mono.body * 4 / 3 * 1.245);
   says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
   open-now = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
   plugins = pkgs.zathuraPkgs;
@@ -82,8 +87,8 @@ let
   # or to the document beside as Turning pages, those that move within a
   # page as Scrolling, those that size the page as Fitting the page, those that go back to a place as Places, the searches as Finding
   # words, and the rest loose. Keys that do one thing say it in the same
-  # words, the arrow first, so the launcher draws them as one row, the
-  # letter beside the arrow it twins. keys-test.sh presses each.
+  # words, so the launcher draws them as one row. An arrow does what its
+  # letter does but is never listed. keys-test.sh presses each.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "turning" [
@@ -141,32 +146,16 @@ let
     ]
     ++ grouped "scrolling" [
       {
-        chord = "Up";
-        does = "Up a little";
-      }
-      {
         chord = "k";
         does = "Up a little";
-      }
-      {
-        chord = "Down";
-        does = "Down a little";
       }
       {
         chord = "j";
         does = "Down a little";
       }
       {
-        chord = "Left";
-        does = "Left a little";
-      }
-      {
         chord = "h";
         does = "Left a little";
-      }
-      {
-        chord = "Right";
-        does = "Right a little";
       }
       {
         chord = "l";
@@ -327,8 +316,10 @@ in
 
       default-bg = colours.deepest;
       default-fg = colours.text;
-      page-v-padding = space.s;
-      page-h-padding = space.s;
+      # Each page is bounded by its own ground, as a tile is, so pages sit
+      # as niri's tiles do (docs/design.md, The Ladder).
+      page-v-padding = space.beat;
+      page-h-padding = space.rung.apart;
       render-loading-bg = colours.background;
       render-loading-fg = colours.muted;
 
@@ -340,8 +331,12 @@ in
 
       statusbar-bg = colours.sunken;
       statusbar-fg = colours.text;
-      statusbar-h-padding = space.m;
-      statusbar-v-padding = space.s;
+      # The : line, its notices and the status bar are one launcher row
+      # tall, four beats, their text centred and its ends the inset in, on
+      # kitty's text column. girara halves each of these between the two
+      # ends, so each is both ends' room together: 48 is 24 an end.
+      statusbar-h-padding = 2 * space.rung.inset;
+      statusbar-v-padding = 4 * space.beat - line;
       statusbar-home-tilde = true;
       inputbar-bg = colours.sunken;
       inputbar-fg = colours.strong;
@@ -388,12 +383,17 @@ in
       unmap [fullscreen] q
       unmap [presentation] q
       unmap [index] q
+      unmap [index] <Esc>
+      unmap [index] <C-[>
+      unmap [index] <C-c>
     '';
-    # The contents close on the key that opened them, as on Escape.
+    # The contents close on the key that opened them, or on ZZ as a window
+    # does; Escape closes nothing, as Joel asked.
     mappings =
       lib.listToAttrs (map (key: lib.nameValuePair key.key key.run) (lib.filter (key: key ? run) keys))
       // {
         "[index] c" = "toggle_index";
+        "[index] ZZ" = "toggle_index";
         # Full screen closes as the window does.
         "[fullscreen] ZZ" = "quit";
       };

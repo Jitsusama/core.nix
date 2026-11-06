@@ -142,7 +142,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.down_to("Design Review")
     rows = cast("list[str]", desktop.showing()["rows"])
     for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
-        machine.send_key("up")
+        desktop.previous_row()
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
         )
@@ -219,14 +219,13 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert seen[-2] == "What we did yesterday, what we do today.", seen
     desktop.down_to("Grace Hopper")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "not going")
-    # Back out, its acts lead with seeing it, Return's own, and then
-    # joining, which goes into its call.
-    desktop.normal()
-    machine.send_key("left")
+    # Back out, its acts, by Ctrl+], lead with seeing it, Return's own,
+    # and then joining, which goes into its call.
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "See It")
     desktop.down_to("Join the Meeting")
     machine.send_key("ret")
@@ -248,7 +247,7 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     # The stand-in's Standup, answered yes, which it hears answered again.
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
-    desktop.step_in()
+    desktop.follow()
     # Its acts: seeing it, Return's own, and joining first, then the three
     # answers, each by its value, the one Joel gave noted as his.
     desktop.launcher_until(lambda shown: "Not Going" in shown["rows"])
@@ -288,7 +287,7 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     machine.succeed(f"rm -f {opened}")
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
-    desktop.step_in()
+    desktop.follow()
     # Writing to them comes straight after joining, and copying is last.
     desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
     rows = desktop.showing()["rows"]
@@ -306,7 +305,7 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     # about the meeting by its title, in Mail's window.
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Write to the Guests" in shown["rows"])
     desktop.down_to("Write to the Guests")
     machine.send_key("ret")
@@ -329,7 +328,7 @@ def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
     machine.succeed(f"rm -f {opened}")
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
-    desktop.step_in()
+    desktop.follow()
     # Attachments comes before Copy the Link, which is always last.
     desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
     rows = desktop.showing()["rows"]
@@ -521,7 +520,7 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     # The stand-in's Planning, two hours on, is Joel's own, with Grace asked.
     desktop.answer("planning")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Planning")
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Cancel the Meeting")
     # Return asks first, saying Google tells the one guest, and cancels nothing yet.
     desktop.step_in("ret")
@@ -560,7 +559,7 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     # The stand-in's Standup is Ada's, on her calendar, which Joel may change.
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Move the Meeting")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "15 Minutes Later" in shown["rows"])
@@ -599,7 +598,7 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     # Attachments, Ada first as she holds it.
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Guests" in shown["rows"])
     rows = desktop.showing()["rows"]
     assert rows.index("Guests") + 1 == rows.index("Attachments"), rows
@@ -615,7 +614,7 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     # Lunch on Friday's sender is Ada, whose row steps in to her.
     desktop.answer("lunch on friday")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lunch on Friday")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Ada Lovelace" in shown["rows"])
     desktop.down_to("Ada Lovelace")
     machine.send_key("ret")
@@ -675,14 +674,13 @@ def calls_written_down(desktop: Desktop) -> str:
 
 def transcripts_listed(desktop: Desktop) -> None:
     """See People's Transcripts list the calls, each its words, its drawer and its acts."""
-    machine = desktop.machine
     # People holds Transcripts, which lists them newest first, each
     # saying what it was and when, and how long it went on.
     desktop.answer("people")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "People")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("transcripts", selecting="Transcripts")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Call With Ada Lovelace", "Standup"])
     for name, side, length in [
         ("Call With Ada Lovelace", "call", "32 min"),
@@ -698,10 +696,10 @@ def transcripts_listed(desktop: Desktop) -> None:
     drawer = desktop.showing()["selected"]["drawer"]
     assert drawer["body"] == "\u2022 Ship it on Friday", drawer
     # Inside, what can be done with it, Copy the Path last.
-    desktop.step_in()
+    desktop.follow()
     acts = ["Open the Transcript", "Open Its Folder", "Copy the Path"]
     desktop.launcher_until(lambda shown: shown["rows"] == acts)
-    machine.send_key("left")
+    desktop.step_out()
     desktop.down_to("Call With Ada Lovelace")
     drawer = desktop.showing()["selected"]["drawer"]
     assert drawer["body"].startswith("<b>Joel</b>, 0:00: Shall we ship it?"), drawer
@@ -716,7 +714,7 @@ def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
     )
     desktop.step_in("ret")
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Call With Ada Lovelace" in shown["rows"])
     things = desktop.showing()["things"]
     assert any(thing["is"] == f"transcript:{ada}" for thing in things), things
@@ -725,7 +723,7 @@ def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "calendar:meeting:standup"
     )
-    desktop.step_in()
+    desktop.follow()
     # See It leads, as Return's own act; the transcript comes after the
     # ways to reach the meeting and before Joel's answers.
     desktop.launcher_until(
@@ -780,7 +778,7 @@ def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> Non
     machine.succeed(f"rm -f {opened}")
     desktop.answer("meet")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
-    desktop.step_in()
+    desktop.follow()
     # New Meeting, its desktop entry's, then Join by Code, Meet's own.
     desktop.launcher_until(
         lambda shown: (
@@ -810,7 +808,7 @@ def test_meet_copies_a_new_meetings_link_last_without_opening_meet(desktop: Desk
     machine.succeed(f"rm -f {opened} {asked}")
     desktop.answer("meet")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy a New Meeting's Link")
     desktop.down_to("Copy a New Meeting's Link")
     machine.send_key("ret")

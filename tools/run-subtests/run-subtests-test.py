@@ -70,14 +70,28 @@ sys.exit(int(os.environ.get("STAND_IN_STATUS", "0")))
 
 
 # A stand-in for nix-offload: it notes what it was asked, puts a picture in
-# the folder it was given, and answers as told.
+# the folder it was given unless told the run took none, and answers as told.
 NIX_OFFLOAD = """
 import json, os, sys
 with open(os.environ["STAND_IN_ASKED"], "w") as asked:
     json.dump(sys.argv[1:], asked)
 out = sys.argv[sys.argv.index("--out") + 1]
-open(os.path.join(out, "desktop.png"), "w").close()
+if not os.environ.get("STAND_IN_NO_PICTURES"):
+    open(os.path.join(out, "desktop.png"), "w").close()
 sys.exit(int(os.environ.get("STAND_IN_OFFLOAD_STATUS", "0")))
+"""
+
+
+# A stand-in for git: origin main's quarantine list is the file
+# STAND_IN_QUARANTINE names, and without one main has no list.
+GIT = """
+import os, sys
+listed = os.environ.get("STAND_IN_QUARANTINE")
+if sys.argv[3:] != ["show", "refs/remotes/origin/main:tools/merge-net/quarantine.json"]:
+    sys.exit(2)
+if not listed:
+    sys.exit(128)
+print(open(listed).read())
 """
 
 
@@ -143,6 +157,7 @@ class StandIn:
         (folder / "bin").mkdir()
         program(folder / "bin" / "nix", NIX)
         program(folder / "bin" / "nix-offload", NIX_OFFLOAD)
+        program(folder / "bin" / "git", GIT)
         program(driver / "bin" / "nixos-test-driver", DRIVER)
         self.driver = driver
         self.script = driver / "test-script"
@@ -152,6 +167,7 @@ class StandIn:
         monkeypatch.setenv("STAND_IN_RAN", str(folder / "ran.json"))
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
         monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+        monkeypatch.delenv("STAND_IN_QUARANTINE", raising=False)
 
     def ran(self) -> dict[str, object] | None:
         """Give how the driver was run, or None if it wasn't."""
@@ -294,6 +310,37 @@ def test_there_has_the_subtests_built_elsewhere_and_runs_nothing_here(
     assert stand_in.ran() is None
 
 
+@pytest.mark.usefixtures("stand_in")
+def test_a_run_that_brought_back_no_pictures_says_so_and_where_a_gallery_takes_them(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
+
+    said = capsys.readouterr().err
+    assert not any(line.startswith("pictures:") for line in said.splitlines())
+    assert "no pictures: the subtests run took none" in said
+    assert "vm-desktop-x.gallery" in said
+
+
+@pytest.mark.usefixtures("stand_in")
+def test_a_gallerys_run_with_no_pictures_names_no_other_gallery(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+
+    assert tool.main(["--there", "vm-desktop-x.gallery", "launcher"]) == 0
+
+    said = capsys.readouterr().err
+    assert "no pictures: the subtests run took none" in said
+    assert ".gallery.gallery" not in said
+
+
 def test_there_gives_the_builds_status(
     tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -301,6 +348,55 @@ def test_there_gives_the_builds_status(
 
     assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 1
     assert stand_in.ran() is None
+
+
+def test_a_check_main_quarantines_fails_saying_so_and_blocking_nothing(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(
+        json.dumps([{"test": "vm-desktop-x", "reason": "failed then passed", "owner_pr": 7}])
+    )
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
+    assert tool.main(["--there", "vm-desktop-x.gallery", "launcher"]) == 0
+    assert tool.main(["--there", "vm-desktop-y", "launcher"]) == 1
+
+    said = capsys.readouterr().err
+    assert (
+        "vm-desktop-x failed, but main quarantines it (failed then passed; #7 owns it), "
+        "so it blocks nothing"
+    ) in said
+    assert "vm-desktop-y failed" not in said
+    assert stand_in.ran() is None
+
+
+def test_without_a_list_on_main_a_failure_fails_the_run(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in.script.write_text(SCRIPT)
+    monkeypatch.setenv("STAND_IN_STATUS", "1")
+
+    assert tool.main(["vm-desktop-x", "launcher"]) == 1
+
+
+def test_inside_a_build_a_quarantined_failure_is_the_builds_own(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stand_in.script.write_text(SCRIPT)
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_STATUS", "1")
+    driven = ["--driver", str(stand_in.driver), "--out", str(tmp_path / "out")]
+
+    assert tool.main([*driven, "vm-desktop-x", "launcher"]) == 1
 
 
 def test_an_offload_that_cant_take_it_runs_it_here(

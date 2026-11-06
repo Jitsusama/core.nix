@@ -61,10 +61,13 @@ once a base is kept a comparison pays for one evaluation, the working
 tree's: 461 s on 2026-10-26, against 1,373 s and more for one that had to
 evaluate a base that had just merged. `changed-checks --keep-base`, run in a
 checkout of main as each merge lands, keeps that commit ahead of time, so a
-branch rebased onto it pays for its own tree alone. It evaluates two chunks
-of checks at once, since one kept under 2 of 16 cores busy: on 2026-10-26 a
-working tree took 324 s one chunk at a time, peaking at 5.8 GB, and one a
-few commits later took 157.5 s two at once, peaking at 10.8 GB. Each run
+branch rebased onto it pays for its own tree alone. It evaluates a chunk
+of checks for every 4 cores and 6 GiB free, from 2 to 8 at once, since one
+kept under 2 of 16 cores busy: on 2026-10-26 a working tree took 324 s one
+chunk at a time, peaking at 5.8 GB, and one a few commits later took
+157.5 s two at once, peaking at 10.8 GB. On 2026-11-05 the lent builder,
+32 cores with 125 GB nearly all free, took a median of 8 minutes a side
+two at a time, four fifths of each run. Each run
 adds a line to `~/.local/state/changed-checks/runs.jsonl` saying what each
 side's evaluation took, chunk by chunk, what it named, and what its build
 took, so these times are read from the runs rather than measured once.
@@ -125,7 +128,10 @@ A change `merge-net needs` says touches something a revert would come too
 late for runs the VM tests it names, whole, first: boot, the initrd, the
 kernel, the disk and LUKS, the TPM, secure boot, the install, the stick and
 its guide, the greeter or lock, `flake.lock` or nix-offload
-(`tools/merge-net/must-run.txt`). A machine switches only to merged main,
+(`tools/merge-net/must-run.txt`). Of those, it names only the ones whose
+derivation moved from main, since the rest would give main's result. A
+change to nix-offload, which moves none, sends one VM test's subtests
+through itself with `run-subtests --there` instead. A machine switches only to merged main,
 and a bad switch is undone by switching back to the generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which
@@ -141,10 +147,15 @@ would keep another in place. A test that failed before that merge too, or
 that didn't exist before it, as when a split moves a failing case under a
 new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
-code broke it. One that
+code broke it. So is one that passes at main's newest head, since a fix
+forward has landed: the net asks before it searches, and skips the search,
+and again before it reverts. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
+Before a merge, `changed-checks`, `run-subtests` and `merge-net needs` read
+that list from origin's main, so a branch can't quarantine its own failure:
+a quarantined test still runs, but its failure is said and blocks nothing.
 A run the net stops, past two hours on a builder or silent there for
 thirty minutes, is a stall, not a failure (the wait for a builder counts
 for neither): one stalling twice at a commit is a finding, and no

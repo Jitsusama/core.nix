@@ -12,8 +12,8 @@
 # An act's keys are pressed in normal mode unless its modes say otherwise.
 # One whose takes is "letter" takes the next letter typed as a name, as m
 # and ' take a mark's. In one mode a key belongs to one act, whatever kind
-# of surface it's pressed on, so a list's l steps into a row as a page's l
-# moves right: both are Vim's l.
+# of surface it's pressed on: Vim's l moves right on a page and means
+# nothing on a list, and steps into nothing on either.
 #
 # An act the command line can name has a command, its whole name, and a
 # short form, the fewest letters that name it. The short form is written
@@ -24,15 +24,21 @@
 # names. An act with a command and no keys is named only on the command
 # line, as most of a row's acts are.
 #
-# Four flags say what an act does to the world, each false unless set:
+# Six flags say what an act does to the world, each false unless set:
 # changes, that it changes something beyond where the eye is, as Forget It
 # does and moving doesn't; undoable, that u takes the change back while the
 # surface stays open, so it acts at once, where a change that can't be
 # undone asks once first; guarded, that such a change asks nothing on one
 # thing all the same, since it guards itself, as a program asks before it
 # loses work, or a prompt written and sent was the asking, though a range
-# of more than one still asks once, naming how many; and range, that it
-# takes rows, as :3,5d and a visual selection give them.
+# of more than one still asks once, naming how many; range, that it
+# takes rows, as :3,5d and a visual selection give them; ends, that it
+# ends or takes away, as Disconnect It, Forget It, Close It and :reboot
+# do, so Return never runs it from any mode: d or the command line carries
+# it, as Vim's changes are operators and Ex commands; and starts, that it
+# calls someone or starts something new, as :meet, :dial and :share do,
+# which Return leaves to the command line as it does an end (VKCF3Z's
+# spec, Return).
 
 # How long keys wait, in milliseconds, said once for Neovim and every surface.
 [timing]
@@ -77,21 +83,24 @@ keys = ["k"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
-# In a list these step out of a row and into it, back onto the row stepped
-# in from, and on a page they move a selection's cursor.
+# On a page these move the cursor along its line, as Vim's h and l do. On a
+# list they mean nothing, as in Vim, where h and l never step into or out
+# of anything (Joel, 2026-11-05: "where in vi does that step into shit?"):
+# Return goes in and - comes up.
 [acts.left]
 keys = ["h"]
 modes = ["normal", "visual"]
-kinds = ["list", "page"]
+kinds = ["page"]
 
 [acts.right]
 keys = ["l"]
 modes = ["normal", "visual"]
-kinds = ["list", "page"]
+kinds = ["page"]
 
-# Out a level, as his oil's - goes up to the folder holding this.
+# Out a level, as his oil's - goes up to the folder holding this, the
+# cursor on the row it came from; Backspace is h, so means nothing here.
 [acts.out]
-keys = ["-", "<BS>"]
+keys = ["-"]
 kinds = ["list"]
 
 [acts.scroll-down]
@@ -335,6 +344,7 @@ changes = true
 # The row's ending act, as a network's Disconnect It or a session's Forget
 # It. Whether it asks is the row's act's: forget asks, disconnect doesn't.
 [acts.ending]
+ends = true
 keys = ["dd"]
 command = "delete"
 short = "d"
@@ -642,11 +652,12 @@ kinds = ["list", "page"]
 # Escape takes one step back, as Vim's: from insert, visual, the find line
 # or the command line to normal, the rows left as found and the command
 # line's covering put back; in normal it cancels a count, a pending
-# operator, a waiting key, which-key or the menu. At rest it closes a popup,
-# as the launcher and held notices are, and nothing else: never a window,
-# never a step out. On a secret it cancels, or clears the line where there's
-# no cancelling, as at the lock. On a page it cancels a selection, a count
-# or a line, and at rest does nothing.
+# operator, a waiting key, which-key or the menu. At rest it does nothing,
+# as Vim's: it never closes or quits anything of ours, a popup included,
+# and never steps out (Joel, 2026-11-05: "fuck escape quitting"); :q, ZZ
+# and Space w close. On a secret it cancels, back to what asked, or clears
+# the line where there's no cancelling, as at the lock. On a page it
+# cancels a selection, a count or a line.
 [acts.back]
 keys = ["<Esc>"]
 modes = ["normal", "insert", "visual", "find", "command"]
@@ -700,6 +711,17 @@ short = "se"
 kinds = ["list"]
 changes = true
 undoable = true
+
+# An option of what it's on rather than the machine's, as Vim's :setlocal
+# sets the buffer's: :setl mute on a program mutes it alone, and a range
+# sets each thing's.
+[acts.setlocal]
+command = "setlocal"
+short = "setl"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
 
 [acts.sort]
 command = "sort"
@@ -802,6 +824,7 @@ undoable = true
 # but its program asks first where work would be lost, as :close refuses a
 # modified buffer, so one closes at once. Close It and Close.
 [acts.close-window]
+ends = true
 command = "close"
 short = "clo"
 kinds = ["list"]
@@ -810,6 +833,7 @@ guarded = true
 range = true
 
 [acts.disconnect]
+ends = true
 command = "disconnect"
 short = "disc"
 kinds = ["list"]
@@ -820,6 +844,7 @@ range = true
 # Forgotten, a network with its password or a device with its pairing, or a
 # notice taken away unread: it can't be brought back as it was.
 [acts.forget]
+ends = true
 command = "forget"
 short = "forg"
 kinds = ["list"]
@@ -865,9 +890,11 @@ range = true
 # A meeting joined, and a person called, each opening the call: :join is
 # Vim's and :call Vim's, so Join the Meeting, Join Their Call and Join by
 # Code are :meet, and Call Them :dial. Each rings or joins other people, so
-# it changes things and the find line's Return only lands on it; from
-# normal it acts at once, since it's what was asked for.
+# it starts something, and Return puts it on the command line, where a
+# second Return runs it. A meeting's own row joins on Return from ten
+# minutes before it starts all the same, which the row says, not its act.
 [acts.meet]
+starts = true
 command = "meet"
 short = "mee"
 kinds = ["list"]
@@ -875,11 +902,30 @@ changes = true
 guarded = true
 
 [acts.dial]
+starts = true
 command = "dial"
 short = "dia"
 kinds = ["list"]
 changes = true
 guarded = true
+
+# A call left, and the screen shared in it: Leave the Call, which ends the
+# call, and Share the Screen in the Call, which starts showing it to
+# everyone there, so Return runs neither. The leave-call act, since
+# [acts.leave] is Ctrl+C on a line.
+[acts.leave-call]
+ends = true
+command = "leave"
+short = "lea"
+kinds = ["list"]
+changes = true
+
+[acts.share]
+starts = true
+command = "share"
+short = "sha"
+kinds = ["list"]
+changes = true
 
 [acts.pause]
 command = "pause"
@@ -901,6 +947,7 @@ range = true
 # unless they follow the command: sent, they can't be taken back, but the
 # words written and sent were the asking. Reply, and Reply All as :reply all.
 [acts.reply]
+ends = true
 command = "reply"
 short = "rep"
 kinds = ["list"]
@@ -962,6 +1009,7 @@ range = true
 # What's running stopped, which can't be started again where it was: Stop
 # Sharing and a program's Quit, since :stop and :quit are Vim's.
 [acts.halt]
+ends = true
 command = "halt"
 short = "ha"
 kinds = ["list"]
@@ -973,6 +1021,7 @@ range = true
 # lost is the one stopped for being wrong, so it doesn't ask. An agent's
 # Stop. :intro takes int, so it's inte.
 [acts.interrupt]
+ends = true
 command = "interrupt"
 short = "inte"
 kinds = ["list"]
@@ -992,6 +1041,7 @@ range = true
 # Put off until later, as Not Now does and Keep, since :later and :keep
 # are Vim's; it comes back when it's due again.
 [acts.snooze]
+ends = true
 command = "snooze"
 short = "snoo"
 kinds = ["list"]
@@ -1034,6 +1084,7 @@ kinds = ["list"]
 
 # A mail put away from the inbox; Mail's own undo brings it back. Archive.
 [acts.archive]
+ends = true
 command = "archive"
 short = "arc"
 kinds = ["list"]
@@ -1043,6 +1094,7 @@ range = true
 
 # A meeting answered yes, maybe or no: Going, Maybe and Not Going.
 [acts.answer]
+ends = true
 command = "answer"
 short = "ans"
 kinds = ["list"]
@@ -1052,6 +1104,7 @@ range = true
 
 # A meeting called off for everyone in it. Cancel the Meeting.
 [acts.cancel]
+ends = true
 command = "cancel"
 short = "can"
 kinds = ["list"]
@@ -1069,6 +1122,7 @@ range = true
 
 # A keyboard layer held on let go of. Release It.
 [acts.release]
+ends = true
 command = "release"
 short = "rel"
 kinds = ["list"]
@@ -1077,38 +1131,54 @@ undoable = true
 
 # A firmware's new version put on the device. Install {version}.
 [acts.install]
+ends = true
 command = "install"
 short = "inst"
+kinds = ["list"]
+changes = true
+
+# A ZSA board flashed with this machine's build, which takes it out of use
+# while it's written, as an install does a device: Flash the Keyboard. An
+# act, not an option, since what it leaves behind isn't a setting.
+[acts.flash]
+ends = true
+command = "flash"
+short = "fla"
 kinds = ["list"]
 changes = true
 
 # The session's acts, each asking once: :lock is Neovim's :lockmarks, so
 # the screen's lock is :lockscreen.
 [acts.lockscreen]
+ends = true
 command = "lockscreen"
 short = "locks"
 kinds = ["list"]
 changes = true
 
 [acts.suspend]
+ends = true
 command = "suspend"
 short = "sus"
 kinds = ["list"]
 changes = true
 
 [acts.logout]
+ends = true
 command = "logout"
 short = "log"
 kinds = ["list"]
 changes = true
 
 [acts.reboot]
+ends = true
 command = "reboot"
 short = "reb"
 kinds = ["list"]
 changes = true
 
 [acts.poweroff]
+ends = true
 command = "poweroff"
 short = "pow"
 kinds = ["list"]

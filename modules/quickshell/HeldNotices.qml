@@ -10,8 +10,9 @@
 // offers Read, which is sent at once, and then forgotten), y copies what it
 // said, u brings cards back. V chooses several for d or y, / finds among
 // them, narrowing the lines as it's typed, and : is the command line, with
-// a menu of every command it takes (Ex.js reads it). Escape at rest, :q,
-// ZZ, Space w and Super+N let them go, and q says it does nothing.
+// a menu of every command it takes (Ex.js reads it). :q, ZZ, Space w and
+// Super+N let them go; Escape at rest does nothing, as Vim's, and q says
+// it does nothing.
 //
 // Each line is the sender's glyph, who or what at Name, its first words at
 // Words and when at Note, after a gutter of relative numbers, as Joel's
@@ -89,7 +90,6 @@ Floating {
         follow();
     }
     onCurrentChanged: {
-        stepped = false;
         if (stack.holding && current)
             Report.say(`notice cursor ${current.summary}`);
     }
@@ -120,11 +120,23 @@ Floating {
     // Whether the gutter counts from the cursor, as Space u l switches.
     property bool relative: true
 
-    // Stepped into the cursor card's acts, and the one chosen.
-    property bool stepped: false
-    property int chosen: 0
-    onSteppedChanged: if (!stepped && stack.holding) Report.say("notice back")
-    onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
+    // The cursor card's own acts as the commands that do them, as the card
+    // lists them under its words and : puts them first in the menu: a
+    // card's acts are commands, never a row stepped into (Joel, 2026-11-05:
+    // "where in vi does that step into shit?"). Return goes to its sender.
+    readonly property var cardCommands: {
+        const one = current;
+        if (!one)
+            return [];
+        const replies = one.hasInlineReply || replyOffer(one) ? ["reply"] : [];
+        return replies.concat(offered.map(offer => offer.command)).map(command => `:${command}`);
+    }
+    readonly property string cardSays: cardCommands.join(" \u00b7 ")
+    onCardSaysChanged: if (stack.holding)
+        sayOffers()
+    function sayOffers() {
+        Report.say(`notice offers ${cardSays === "" ? "nothing" : cardSays}`);
+    }
 
     // Space ? lists the keys in the lines' place, scrolling there.
     property bool listing: false
@@ -143,7 +155,12 @@ Floating {
     property string commandFrom: "normal"
     property int menuChosen: -1
     property bool menuAway: false
-    readonly property var menuFound: NoticeList.menu(entries, commandLine.text)
+    // While Tab chooses, the menu stays what was typed before it, as Vim's
+    // wildmenu cycles through every match of what was typed: narrowed by
+    // the line it writes, a second Tab would find only the first's choice.
+    property string menuTyped: ""
+    readonly property var menuFound: NoticeList.menu(entries,
+        menuChosen >= 0 ? menuTyped : commandLine.text)
     onMenuChosenChanged: if (menuChosen >= 0)
         Report.say(`notice menu chose ${menuFound.shown[menuChosen]?.command ?? ""}`)
 
@@ -174,9 +191,12 @@ Floating {
     // The keys taken, and the list as it was before: the cursor on the
     // card in front, which is the one Joel was looking at. Let go, the
     // cards done are let go for good.
+    // Taken on the card it was on when let go, the cursor's card changes
+    // nothing, so what it offers is said once the cursor has settled.
     function take(front) {
         reset();
         cursorId = front;
+        Qt.callLater(sayOffers);
     }
 
     function reset() {
@@ -187,7 +207,6 @@ Floating {
         findLine = NoticeKeys.line("");
         commandLine = NoticeKeys.line("");
         replyTo = null;
-        stepped = false;
         listing = false;
         lastChange = null;
         lastSelection = null;
@@ -388,91 +407,6 @@ Floating {
         Report.say(`notice replied ${one.summary}`);
     }
 
-    // What can be done with the cursor card: the same acts, in the same
-    // order, as its row among the notices in the launcher
-    // (launcher/Notice.js), each named as the vocabulary says it
-    // (launcher/words.json), with the key that does it straight away where
-    // there is one. What only changes the list keeps the keys; what takes
-    // Joel out gives them back (Joel, 2026-10-26).
-    readonly property var verbs: {
-        const one = current;
-        if (!one)
-            return [];
-        const window = Notices.senderWindow(one.appName);
-        const kept = Notices.history.find(notice => notice.id === one.id) ?? null;
-        const read = kept !== null && kept.read;
-        return Notice.acts({
-            live: true,
-            opens: Notice.opens(one.actions),
-            offers: Notice.offers(one.actions)
-        }, { window: window !== null, stack: true })
-            .map(act => held.verb(one, act, window, read));
-    }
-
-    function verb(one, act, window, read) {
-        const named = (id, state) => ({
-            glyph: Words.glyph(id, state ?? ""),
-            name: Words.name(id, state ?? ""),
-            chord: []
-        });
-        const leaves = run => () => {
-            Notices.mark(one.id, true);
-            run();
-            stack.holding = false;
-        };
-        switch (act.act) {
-        case "open":
-            return Object.assign(named("verb:notice:open"), {
-                chord: [{ text: "\u21b5" }],
-                run: () => held.open()
-            });
-        case "offer":
-            return {
-                glyph: replyAct.test(act.text) ? Theme.glyph.reply : Theme.glyph.offer,
-                name: act.text,
-                chord: [],
-                run: leaves(() => {
-                    const offer = one.actions.find(action => action.identifier === act.identifier)
-                        ?? null;
-                    if (offer)
-                        offer.invoke();
-                })
-            };
-        case "goTo": {
-            const entry = DesktopEntries.heuristicLookup(one.appName);
-            return Object.assign(named("verb:notice:goTo"), {
-                side: entry ? entry.name : one.appName,
-                run: leaves(() => Niri.act({ FocusWindow: { id: window.id } }))
-            });
-        }
-        case "read":
-            return Object.assign(named("verb:notice:read", read ? "read" : ""), {
-                side: read ? "yes" : "no",
-                run: () => Notices.mark(one.id, !read)
-            });
-        case "forget":
-            return Object.assign(named("verb:notice:forget"), {
-                chord: [{ text: ":forg" }],
-                run: () => held.finish([one.id], "forget")
-            });
-        case "forgetAll":
-            return Object.assign(named("verb:notices:forget"), {
-                chord: [{ text: ":%forg" }],
-                run: () => held.finish(held.listed.slice(), "forget")
-            });
-        case "all":
-            return Object.assign(named("verb:notices:all"), {
-                chord: [{ text: ":e Notices" }],
-                run: () => stack.history()
-            });
-        default:
-            return Object.assign(named("verb:notice:copy"), {
-                chord: [{ text: "yy" }],
-                run: () => held.copy([one.id])
-            });
-        }
-    }
-
     // The commands the : line takes here, each its full name, its fixed
     // short form (checked against Neovim's own) and whether it takes a
     // range; then what the cursor card's sender offers, each by its first
@@ -525,10 +459,10 @@ Floating {
         });
         if (one && (stack.opens(one) || Notices.senderWindow(one.appName)))
             out.push(entry("open", "ope", Words.name("verb:notice:open"), "\u21b5"));
-        for (const offer of offered)
-            out.push(entry(offer.command, offer.command, offer.text, ""));
         if (one && (one.hasInlineReply || replyOffer(one)))
             out.push(entry("reply", "rep", "Reply", ""));
+        for (const offer of offered)
+            out.push(entry(offer.command, offer.command, offer.text, ""));
         out.push(entry("delete", "d", "Done", "dd"),
             entry("forget", "forg", Words.name("verb:notice:forget"), ""),
             entry("yank", "y", Words.name("verb:notice:copy"), "yy"),
@@ -840,6 +774,8 @@ Floating {
             if (shown.length === 0)
                 break;
             const by = typed.act === "choose" ? 1 : -1;
+            if (menuChosen < 0)
+                menuTyped = commandLine.text;
             menuChosen = menuChosen < 0 ? (by > 0 ? 0 : shown.length - 1)
                 : (menuChosen + by + shown.length) % shown.length;
             const prefix = menuFound.prefix;
@@ -921,6 +857,12 @@ Floating {
     function normal(key, repeated) {
         const read = NoticeKeys.read(standing, key, mode, { repeated, now: Date.now() });
         standing = read.standing;
+        // Escape puts the key list away, as Vim's cancels which-key; at
+        // rest it does nothing, so the table reads it as nothing.
+        if (listing && key === "Escape") {
+            listing = false;
+            return;
+        }
         if (read.act === "" || read.act === "pending") {
             if (read.act === "pending")
                 Report.say(`notice pending ${standing.operator}`);
@@ -930,8 +872,6 @@ Floating {
             scrollsKeys(read);
             return;
         }
-        if (stepped && chosenVerb(read))
-            return;
         act(read);
     }
 
@@ -953,42 +893,17 @@ Floating {
             said = "not here";
     }
 
-    // Keys while stepped into the cursor card's acts: j and k choose one,
-    // gg and G the first and last, Return does it, and h or Escape steps
-    // back out. Any other key is normal's, stepping out.
-    function chosenVerb(read) {
-        const last = Math.max(verbs.length - 1, 0);
-        const by = Math.max(read.count, 1);
-        switch (read.act) {
-        case "down":
-            chosen = Math.min(chosen + by, last);
-            return true;
-        case "up":
-            chosen = Math.max(chosen - by, 0);
-            return true;
-        case "first":
-        case "last":
-            chosen = read.count > 0 ? Math.min(read.count - 1, last)
-                : read.act === "first" ? 0 : last;
-            return true;
-        case "open": {
-            const chosenAct = verbs[chosen] ?? null;
-            stepped = false;
-            if (chosenAct)
-                chosenAct.run();
-            return true;
-        }
-        case "into":
-            return true;
-        case "out":
-        case "back":
-            stepped = false;
-            return true;
-        default:
-            stepped = false;
-            return false;
-        }
+    // The view scrolled as Vim's is, the cursor kept in it (NoticeList's
+    // scrolled): Ctrl+E Ctrl+Y, zz zt zb and the wheel.
+    readonly property var scrolls: ["lineDown", "lineUp", "viewCentre", "viewAtTop",
+        "viewAtBottom"]
+    function scroll(motion, count) {
+        const to = NoticeList.scrolled(motion, cursor, count,
+            { count: listed.length, top: firstShown, shown: room });
+        firstShown = to.top;
+        cursorId = listed[to.cursor] ?? cursorId;
     }
+    onFirstShownChanged: if (stack.holding) Report.say(`notice view from ${firstShown + 1}`)
 
     function act(read) {
         const count = read.count;
@@ -998,6 +913,10 @@ Floating {
             const to = NoticeList.moved(read.act, cursor, count,
                 { count: listed.length, top: firstShown, senders: listed.map(id => senderOf(id)) });
             cursorId = listed[to] ?? cursorId;
+            return;
+        }
+        if (scrolls.includes(read.act)) {
+            scroll(read.act, count);
             return;
         }
         switch (read.act) {
@@ -1012,15 +931,6 @@ Floating {
         }
         case "open":
             open();
-            break;
-        case "into":
-            if (verbs.length > 0) {
-                chosen = 0;
-                stepped = true;
-                Report.say(`notice verb ${verbs[0].name}`);
-            }
-            break;
-        case "out":
             break;
         case "repeat":
             if (lastChange)
@@ -1088,12 +998,12 @@ Floating {
             relative = !relative;
             Report.say(`notice numbers ${relative ? "relative" : "absolute"}`);
             break;
+        // Escape ends visual, and never lets the notices go (Joel,
+        // 2026-11-05: "fuck escape quitting").
         case "back":
             if (mode === "visual") {
                 lastSelection = { anchorId, cursorId };
                 mode = "normal";
-            } else {
-                stack.holding = false;
             }
             break;
         default:
@@ -1101,14 +1011,17 @@ Floating {
         }
     }
 
-    // The foot's word for the mode, in the room kept for its widest: insert,
-    // visual with how many are chosen, a count being typed, or an operator
-    // waiting with what it will take.
+    // The mode, at the foot's start in three capitals (NoticeKeys.mark).
+    readonly property string modeMark: NoticeKeys.mark(mode)
+    onModeMarkChanged: Report.say(`notice shows ${held.modeMark}`)
+
+    // What the mode is doing, in the room kept for its widest beside the
+    // facts: how many visual has chosen, a count being typed, or an
+    // operator waiting with what it will take. The mode itself is named
+    // at the foot's start, so this never says it again.
     readonly property string modeWord: {
-        if (mode === "insert")
-            return "insert";
         if (mode === "visual")
-            return `visual line \u00b7 ${selected.length}`;
+            return `${selected.length} chosen`;
         if (pending) {
             const word = standing.operatorAct === "done" ? doneWord([listed[cursor]])
                 : "copy";
@@ -1241,6 +1154,23 @@ Floating {
         topPadding: Theme.inset
         bottomPadding: Theme.inset
 
+        // The wheel scrolls three lines a notch, as his Neovim's mousescroll
+        // does, the cursor kept in view; over the key list, the list.
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: event => {
+                const notches = Math.round(-event.angleDelta.y / 120);
+                if (notches === 0)
+                    return;
+                if (held.listing) {
+                    held.listTop = Math.max(0, Math.min(held.listTop + 3 * notches,
+                        Math.max(held.keyList.length - held.room, 0)));
+                    return;
+                }
+                held.scroll(notches > 0 ? "lineDown" : "lineUp", 3 * Math.abs(notches));
+            }
+        }
+
         // The lines in view, or Space ?'s list in their place.
         Repeater {
             model: held.listing ? [] : held.inView
@@ -1370,7 +1300,7 @@ Floating {
                 }
 
                 // The cursor card whole under its line: what it says, who
-                // sent it, its acts once stepped into, and a reply's prompt.
+                // sent it, its acts as commands, and a reply's prompt.
                 Column {
                     // Folded while the command line's menu is up, which
                     // takes its room.
@@ -1406,6 +1336,21 @@ Floating {
                         lineHeight: Theme.space.xl
                         lineHeightMode: Text.FixedHeight
                         color: Theme.level.note.colour
+                        font: note.font
+                    }
+
+                    // Its own acts as the commands that do them, ":reply" and
+                    // ":play", in the text's colour since they're typed; Return
+                    // goes to its sender, as the foot says.
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: held.cardSays
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        lineHeight: Theme.level.note.pitch
+                        lineHeightMode: Text.FixedHeight
+                        color: Theme.text
                         font: note.font
                     }
 
@@ -1451,53 +1396,6 @@ Floating {
                                 : figure.averageCharacterWidth
                             height: figure.ascent + figure.descent
                             color: held.mode === "insert" ? Theme.strong : Theme.selection
-                        }
-                    }
-
-                    // Its acts once l steps in: a launcher row's shape at
-                    // Note, the chosen one filled, with Return's mark where
-                    // its key was.
-                    Repeater {
-                        model: held.stepped && line.atCursor ? held.verbs : []
-
-                        Item {
-                            id: verb
-
-                            required property var modelData
-                            required property int index
-                            readonly property bool chosenVerb: held.chosen === index
-
-                            width: parent.width
-                            height: held.rowHeight
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: Theme.inner
-                                color: Qt.alpha(Theme.selection, Theme.floating.selection)
-                                visible: verb.chosenVerb
-                            }
-
-                            Text {
-                                x: Theme.space.m
-                                width: chord.x - x - Theme.space.l
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: verb.modelData.name
-                                    + ((verb.modelData.side ?? "") !== ""
-                                        ? `  ${verb.modelData.side}` : "")
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: verb.chosenVerb ? Theme.strong : Theme.text
-                                font: note.font
-                            }
-
-                            Chord {
-                                id: chord
-                                anchors.right: parent.right
-                                anchors.rightMargin: Theme.space.m
-                                anchors.verticalCenter: parent.verticalCenter
-                                keys: verb.chosenVerb ? [{ text: "\u21b5" }] : verb.modelData.chord
-                                level: Theme.level.note
-                            }
                         }
                     }
                 }
@@ -1652,14 +1550,39 @@ Floating {
             TextMetrics {
                 id: widestWord
                 font: note.font
-                text: "visual line \u00b7 999"
+                text: "999 chosen"
             }
+
+            // The mode in three capitals, first, where the eye starts the
+            // line, as his Neovim's status line starts with it (Joel,
+            // 2026-11-05: "in a place where they are more obvious and not
+            // lost with other things"). It's set as a label, the theme's
+            // capitals, muted in normal and in the accent in every other
+            // mode, as his status line names a mode but normal in it. Every
+            // mark is three of the mono's capitals, so one's width is all
+            // of theirs, and nothing beside it moves as the mode changes.
+            Text {
+                id: markText
+                x: held.ink
+                anchors.verticalCenter: parent.verticalCenter
+                text: held.modeMark
+                color: held.modeMark === NoticeKeys.mark("normal") ? Theme.muted : Theme.accent
+                font.family: Theme.level.label.family
+                font.pointSize: Theme.level.label.pointSize
+                font.weight: Theme.level.label.weight
+                font.capitalization: Theme.level.label.capitalization
+                font.letterSpacing: Theme.level.label.letterSpacing
+                font.features: Theme.level.label.features
+            }
+
+            // Where the facts start: past the mark and a step.
+            readonly property real factsAt: markText.x + markText.implicitWidth + Theme.space.l
 
             Text {
                 id: facts
-                x: held.ink
-                width: Math.min(implicitWidth, foot.width - 2 * held.ink - foot.wordRoom
-                    - Theme.space.l - hinted.width)
+                x: foot.factsAt
+                width: Math.min(implicitWidth, foot.width - foot.factsAt - held.ink
+                    - foot.wordRoom - Theme.space.l - hinted.width)
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.facts
                 elide: Text.ElideRight
@@ -1671,7 +1594,7 @@ Floating {
                 id: modeWord
                 x: facts.x + facts.width + (facts.width > 0 ? Theme.space.l : 0)
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - 2 * held.ink - facts.width - hinted.width - 2 * Theme.space.l))
+                    - foot.factsAt - held.ink - facts.width - hinted.width - 2 * Theme.space.l))
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.modeWord
                 elide: Text.ElideRight
@@ -1684,8 +1607,8 @@ Floating {
 
                 // The room the facts and the mode word leave as they stand,
                 // so at rest, with no mode word, the hints have it all.
-                readonly property real fits: foot.width - 2 * held.ink - factsNow.advanceWidth
-                    - Theme.space.l - (held.modeWord === "" ? 0
+                readonly property real fits: foot.width - foot.factsAt - held.ink
+                    - factsNow.advanceWidth - Theme.space.l - (held.modeWord === "" ? 0
                         : Math.max(foot.wordRoom, wordNow.advanceWidth) + Theme.space.l)
 
                 TextMetrics {

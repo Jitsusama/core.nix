@@ -36,19 +36,22 @@ if TYPE_CHECKING:
 # Joel's scales.
 JOELS_SCALES = ("1.5", "2")
 # The drawer takes what the screen leaves beside the centred card, less the gap between them
-# and the margin at the screen's edge, up to its most (Launcher.qml's drawerRoom). On the
-# laptop's 2880 that's 520 at 1.5 and 344 at 2; niri gives the VM's screen a few logical
-# pixels less, so it's worked out from the screen niri says it has.
+# and the margin at the screen's edge, up to its most (Launcher.qml's drawerRoom): the frames
+# rung and the screen rung. On the laptop's 2880 that's 520 at 1.5 and 300 at 2; niri gives
+# the VM's screen a few logical pixels less, so it's worked out from the screen niri says it
+# has.
 CARD = 680
-GAP = 12
-MARGIN = 24
+GAP = 32
+MARGIN = 48
 MOST = 520
-# The plate's pitch, half a row, and how near a line is to where it should be: a hundredth,
-# and the half a hundredth each of two lengths the launcher reports rounded may take.
+# The drawer's line pitch, Figure's, two of the card's beats, and how near a line is to where
+# it should be: a hundredth, and the half a hundredth each of two lengths the launcher reports
+# rounded may take.
 PITCH = 24
+BEAT = 12
 NEAR = 0.02
-# How far apart a Title's lines sit when its name wraps (Theme.space.xxl), tighter than two of
-# the pitch, so the name reads as one heading.
+# A Title's pitch: how far the title sits under the eyebrow, and its lines apart when its name
+# wraps, tighter than two of the plate's, so the name reads as one heading.
 TITLE_LEADING = 32
 # How far the text keeps from the plate's frame on every side, its foot included: an inset and a
 # step, 4 and 16, inside the border.
@@ -96,24 +99,51 @@ def at_scale(desktop: Desktop, scale: str) -> None:
     desktop.as_account(f"niri msg output winit scale {scale}")
 
 
-def after_the_title(line: float, lines: Json) -> bool:
-    """Say whether a line is the first of the pitch one empty line below the title's block.
+def body_line(lines: Json, card: Json) -> float | None:
+    """Say where the plate's body should start, or None where the title's lines are off.
 
-    The title's lines sit its leading apart, and its block ends on the next whole line of the
-    pitch after its last, so what follows it stays on the plate's lines.
+    The title's lines sit its leading apart, and the body starts on the first of the card's
+    beats, counted from its first row's baseline, two Title pitches or more under the title's
+    last line, so the head reads apart from what follows and the rest lies on the card's beats.
     """
     title, last = float(lines["title"]), float(lines["titleLast"])
     later = round((last - title) / TITLE_LEADING)
     if later < 0 or abs(last - title - later * TITLE_LEADING) > NEAR:
-        return False
-    block = -(-(PITCH + later * TITLE_LEADING) // PITCH) * PITCH
-    return abs(line - (title + block + PITCH)) <= NEAR
+        return None
+    first = float(card["rows"][0])
+    beats = -(-(last + 2 * TITLE_LEADING - first - NEAR) // BEAT)
+    return first + beats * BEAT
+
+
+def after_the_title(line: float, lines: Json, card: Json) -> bool:
+    """Say whether a line is the body's first, on the card's beat under the title's head."""
+    body = body_line(lines, card)
+    return body is not None and abs(line - body) <= NEAR
 
 
 def on_the_pitch(line: float, from_line: float) -> bool:
     """Say whether a line lies a whole number of the plate's lines below another."""
     steps = round((line - from_line) / PITCH)
     return steps >= 0 and abs(line - from_line - steps * PITCH) <= NEAR
+
+
+def on_the_beat(line: float, from_line: float) -> bool:
+    """Say whether a line lies a whole number of the card's beats below another."""
+    steps = round((line - from_line) / BEAT)
+    return steps >= 0 and abs(line - from_line - steps * BEAT) <= NEAR
+
+
+def things_apart(firsts: list[float], wrapped: bool) -> bool:
+    """Say whether a list's things lie apart as they should, given each one's first line.
+
+    Its lines are on the pitch, and where any thing wraps, each thing stands a beat further
+    from the one before, so a wrapped line sits nearer its own thing than the next.
+    """
+    apart = BEAT if wrapped else 0
+    return all(
+        later - earlier > apart and on_the_pitch(later - apart, earlier)
+        for earlier, later in pairwise(firsts)
+    )
 
 
 def room_beside_the_card(desktop: Desktop) -> int:
@@ -130,8 +160,13 @@ def plate_shown(desktop: Desktop, scale: str) -> Json:
     assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide, not {room}"
     assert drawer["height"] == drawer["cardHeight"], f"the plate isn't the card's height: {drawer}"
     lines, card = drawer["lines"], drawer["cardLines"]
-    assert abs(lines["title"] - card["rows"][0]) <= NEAR, (
-        f"at {scale} the title is off the first row's baseline: {drawer}"
+    # The head is one unit: the eyebrow on the field's baseline, the title a Title pitch under.
+    if lines["eyebrow"] is not None:
+        assert abs(lines["eyebrow"] - card["fieldBase"]) <= NEAR, (
+            f"at {scale} the eyebrow is off the field's baseline: {drawer}"
+        )
+    assert abs(lines["title"] - card["fieldBase"] - TITLE_LEADING) <= NEAR, (
+        f"at {scale} the title isn't a Title pitch under the eyebrow: {drawer}"
     )
     return cast("Json", drawer)
 
@@ -173,15 +208,20 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} home's rows say nothing: {card}"
         )
         desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
-        # No key is named in a mode where it does nothing: in insert the arrows move the caret,
-        # so home's first row, a place, says Return alone, and in normal its arrow as well.
+        # No key is named in a mode where it does nothing: on the find the arrows move the
+        # caret, so home's first row, a place, says Return alone, and in normal its arrow too.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
-        assert not arrowed, f"at {scale} insert's foot names an arrow: {arrowed}"
+        assert not arrowed, f"at {scale} the find's foot names an arrow: {arrowed}"
+        # Normal's foot names its keys by letter, as Vim's do, so no arrow either, and always
+        # the command line's and the key list's.
         desktop.normal()
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
-        desktop.insert()
+        arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
+        assert not arrowed, f"at {scale} normal's foot names an arrow: {arrowed}"
+        told = desktop.showing()["selected"]["told"]
+        assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
+        desktop.on_find()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
         card = desktop.showing()["drawer"]["cardLines"]
@@ -189,23 +229,34 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing: {card}"
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
-        # The mode's word is the one word saying where his keys go, so it never gives up a
-        # letter; the facts before it give way first.
+        # The find is a line, no mode of Vim's, so the foot names none; a prompt's insert,
+        # which does, is seen whole in finds-sessions' Talk.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        mode = [word for word in foot if word["text"] == "insert"]
-        assert mode, f"at {scale} the foot names no mode in insert: {foot}"
-        assert not mode[0]["cut"], f"at {scale} insert's word is cut: {mode[0]}"
+        named = [word for word in foot if word["text"] in ("insert", "find", "normal")]
+        assert not named, f"at {scale} the find's foot names a mode: {named}"
+        teaches_in_the_foot(desktop, scale)
         # In normal the field draws no caret and the foot names no mode, the
-        # row's words where insert left them.
+        # row's words where the find left them.
         desktop.normal()
         card = desktop.showing()["drawer"]["cardLines"]
         assert words_on_their_names(card, scale, serif) > 0, (
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
+        # Normal numbers the rows in its gutter, the cursor row's absolute, and says the find's
+        # count after it, whole.
+        shown = desktop.showing()
+        assert shown["gutter"]["shown"], f"at {scale} normal's gutter: {shown['gutter']}"
+        assert shown["gutter"]["cursor"] == str(shown["current"] + 1), shown["gutter"]
+        field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+        narrowing = [word for word in field if word["text"].startswith("\u00b7 ")]
+        assert narrowing, f"at {scale} the narrowed find says no count: {field}"
+        assert not narrowing[0]["cut"], f"at {scale} the narrowed count is cut: {narrowing}"
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
+        says_until_the_next_key(desktop, scale)
         # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         shows_the_command_line(desktop, scale)
+        lands_on_a_setting(desktop, scale)
         lists_every_key(desktop, scale)
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
@@ -228,6 +279,51 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
+    """See kitty's chord taught in the foot, by its keys and lowercase words, never on the line.
+
+    The find's line holds only the find and how far it narrows (VKCF3Z, 2026-11-05).
+    """
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    taught = [word["text"] for word in field if "next time" in word["text"]]
+    assert not taught, f"at {scale} the find's line teaches a chord: {taught}"
+    told = desktop.showing()["selected"]["told"]
+    assert any(text.endswith(" next time") for text in told), f"at {scale} the foot: {told}"
+
+
+def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
+    """Press a key with no meaning, l, h, then q, photographing what the foot says for each.
+
+    Each stands in the keys' place, the mark in text and its words muted, until the next key.
+    kitty opens on Return and holds its windows, so Ctrl+] goes in, furthest from Return.
+    """
+    machine = desktop.machine
+    at = scale.replace(".", "-")
+    told = desktop.showing()["selected"]["told"]
+    assert told[1:2] == ["Ctrl+] in"], f"at {scale} kitty's foot: {told}"
+    for chars, said, shot in [
+        ("z", ["z not here"], "not-here"),
+        ("l", ["l not here", "\u21b5 open"], "l-not-here"),
+        ("h", ["h not here", "- up"], "h-not-here"),
+        ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
+    ]:
+        machine.send_chars(chars)
+        desktop.launcher_until(lambda shown: shown["saying"] == said)  # noqa: B023
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        cut = [word["text"] for word in foot if word["cut"]]
+        assert not cut, f"at {scale} the foot cuts what it says: {cut}"
+        desktop.photograph(f"launcher-{shot}-at-{at}")
+    # gg stays on the first row and lets the words go.
+    machine.send_chars("gg")
+    desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
+    # Inside, the foot says - goes up, and - comes back to kitty.
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "- up" in (shown["selected"] or {}).get("told", []))
+    desktop.photograph(f"launcher-inside-at-{at}")
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
@@ -275,6 +371,7 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
         "quit Close the Launcher",
         "help List the Keys",
         "set Set an Option",
+        "setlocal Set an Option of This",
         "history List Earlier Lines",
         "{n} Go to a Row",
     ]
@@ -304,6 +401,27 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
     )
+
+
+def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
+    """Find Keep Awake and Return, which lands on it in normal, and photograph it there.
+
+    Its side and the foot say what a second Return does, in the accent, and nothing is done. A
+    landing is normal, so its foot keeps normal's command line and key list before Return, its
+    shape never changing; only the accent marks it (VKCF3Z, 2026-11-05).
+    """
+    machine = desktop.machine
+    desktop.on_find()
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    desktop.type_in("keep awake", selecting="Keep Awake")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+    shown = desktop.showing()
+    told = shown["selected"]["told"]
+    assert told[:1] == [f"\u21b5 {shown['landed']}"], f"at {scale} the landed foot says {told}"
+    assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} the landed foot: {told}"
+    desktop.photograph(f"launcher-landed-at-{scale.replace('.', '-')}")
 
 
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:
@@ -507,7 +625,7 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         )
         desktop.normal()
         machine.send_chars("ggVj")
-        desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
+        desktop.launcher_until(lambda shown: shown["modeWord"] == "2 chosen")
         arriving = desktop.opened(f"Notes for the shot at {named}")
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
@@ -530,7 +648,8 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
 
     Gone into, the drawer holds the keys: its frame takes the accent and its cursor's line the
     rule in its left margin. Five lines down and four letters along, it's photographed with the
-    foot at the laptop's size, for a person to judge, and Ctrl+W h comes back.
+    foot at the laptop's size, for a person to judge, then with x's E21 and q's words where the
+    line and the foot were, and Ctrl+W h comes back.
     """
 
     def relisted() -> None:
@@ -551,6 +670,13 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
         assert drawn["keys"], f"at {scale} the drawer doesn't hold the keys: {drawn}"
         assert drawn["cursor"]["rule"]["width"] > 0, f"at {scale} no rule: {drawn['cursor']}"
         desktop.photograph(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
+        # A page can't be changed, so x says Vim's E21 where the line was, and q how to close.
+        pressed(desktop, "x")
+        desktop.launcher_until(lambda shown: shown["commandSaid"] == "E21: Cannot make changes")
+        desktop.photograph(f"launcher-drawer-refused-at-{scale.replace('.', '-')}")
+        pressed(desktop, "q")
+        desktop.launcher_until(lambda shown: shown["saying"] == ["q does nothing", ":q closes"])
+        desktop.photograph(f"launcher-drawer-quit-at-{scale.replace('.', '-')}")
         # Space ? in it lists the drawer's own keys there; the pair come apart leaves ? alone,
         # a search back, which Escape lets go.
         pressed_until(
@@ -576,7 +702,7 @@ def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
     """Search the key list's drawer, choose in it and copy, photographing each at both scales.
 
     What's typed after / is washed as it's typed; v chooses letters and V lines, the mode word
-    counting them, "visual line \u00b7 3"; and y flashes what it took. Each is kept for a person
+    counting them, "3 chosen"; and y flashes what it took. Each is kept for a person
     to judge: the wash and the choice change fill and colour, never weight.
     """
 
@@ -755,7 +881,7 @@ def moved_to(below: int, shown: Json) -> bool:
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A notice's plate has its eyebrow on the field's centre and its words on the pitch."""
+    """A notice's plate has its eyebrow on the field's baseline and its words on the beat."""
     desktop.as_account(
         "notify-send 'Nightly build finished'"
         " 'All 412 checks passed on the laptop, in 38 minutes. The slowest was the desktop.'"
@@ -778,11 +904,9 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         )
         drawer = plate_shown(desktop, scale)
         lines, card = drawer["lines"], drawer["cardLines"]
-        assert abs(lines["eyebrowMiddle"] - card["field"]) <= NEAR, (
-            f"at {scale} the eyebrow is off the field's centre: {drawer}"
-        )
-        # One empty line below the title's block.
-        assert after_the_title(lines["words"], lines), drawer
+        assert lines["eyebrow"] is not None, f"at {scale} the notice's plate has no eyebrow"
+        # On the card's beat, two Title pitches or more under the title.
+        assert after_the_title(lines["words"], lines, card), drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
@@ -791,7 +915,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
 def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A time server's plate has its facts from one empty line below the title, on the pitch."""
+    """A time server's plate has its facts from the beat under the title, on the pitch."""
     # chrony keeps the clock by the VM's own time server (tests/desktop.nix), whose plate
     # holds every figure chronyd has of it.
     desktop.machine.wait_until_succeeds(
@@ -800,11 +924,12 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     )
     for scale in at_each_scale:
         at_scale(desktop, scale)
+        # The time copies on Return, so Ctrl+] goes into what keeps it.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
         desktop.down_to("Servers")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
         desktop.down_to("time.harbour.test")
         desktop.launcher_until(
@@ -816,12 +941,12 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         )
         drawer = plate_shown(desktop, scale)
         # The title, at Title, may take two lines of the plate's width, its leading apart;
-        # the facts start one empty line below its block, on the pitch.
+        # the facts start on the card's beat under it, on the pitch.
         facts = drawer["lines"]["facts"]
-        assert after_the_title(facts[0], drawer["lines"]), drawer
-        assert all(
-            later > earlier and on_the_pitch(later, earlier) for earlier, later in pairwise(facts)
-        ), f"at {scale} a fact is off the pitch: {drawer}"
+        assert after_the_title(facts[0], drawer["lines"], drawer["cardLines"]), drawer
+        assert things_apart(facts, drawer["factsWrapped"] > 0), (
+            f"at {scale} a fact is off the pitch: {drawer}"
+        )
         # Its name is the title, so it isn't said again under it; every other name is whole;
         # and what doesn't fit above the foot's inset waits for the drawer's keys.
         assert "Name" not in drawer["drawnFacts"], drawer
@@ -841,9 +966,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.close_launcher()
         # The zone's plate, under its eyebrow: a value that won't sit beside its name on one
         # line, as "none before 2046", takes the plate's width under it instead, so no fact
-        # stands taller than two lines and none reads a word a line.
+        # stands taller than two lines and none reads a word a line; where one takes two, each
+        # stands a beat further from the one before.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
         desktop.down_to("Zone")
         desktop.launcher_until(
@@ -856,8 +982,11 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         drawer = plate_shown(desktop, scale)
         facts = drawer["lines"]["facts"]
         assert drawer["eyebrow"] == "Time Zone", f"at {scale} the zone's plate: {drawer}"
-        assert all(later - earlier <= 2 * PITCH + NEAR for earlier, later in pairwise(facts)), (
-            f"at {scale} a value stands a word a line beside its name: {drawer}"
+        assert all(
+            later - earlier <= 2 * PITCH + BEAT + NEAR for earlier, later in pairwise(facts)
+        ), f"at {scale} a value stands a word a line beside its name: {drawer}"
+        assert things_apart(facts, drawer["factsWrapped"] > 0), (
+            f"at {scale} the zone's facts are off the pitch: {drawer}"
         )
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
@@ -911,10 +1040,11 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
                 assert abs(group[0] - card["rows"][on]) <= NEAR, (
                     f"at {scale} a group of facts is off its row's line: {drawer}"
                 )
-            assert all(
-                later > earlier and on_the_pitch(later, earlier)
-                for earlier, later in pairwise(group)
-            ), f"at {scale} a fact is off the pitch: {drawer}"
+            # A group whose facts all take a line has them on the pitch; one where any wraps
+            # has each a beat further from the one before, so either way on the card's beat.
+            assert things_apart(group, wrapped=False) or things_apart(group, wrapped=True), (
+                f"at {scale} a fact is off the pitch: {drawer}"
+            )
         desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
@@ -1009,10 +1139,18 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 drawer = plate_shown(desktop, scale)
                 assert drawer["eyebrow"] == eyebrow, f"{name}'s eyebrow: {drawer}"
                 assert drawer["drawnFacts"][1:] == ["Changed", "Where"], drawer
-                title, facts = drawer["lines"]["title"], drawer["lines"]["facts"]
+                facts = drawer["lines"]["facts"]
                 shown = drawer["lines"]["previewLines"]
-                assert all(on_the_pitch(line, title) for line in [*shown, *facts]), (
-                    f"at {scale} {name}'s plate is off the pitch: {drawer}"
+                body = body_line(drawer["lines"], drawer["cardLines"])
+                assert body is not None, f"at {scale} {name}'s title is off its leading: {drawer}"
+                assert all(on_the_pitch(line, body) for line in shown), (
+                    f"at {scale} {name}'s preview is off the pitch: {drawer}"
+                )
+                assert all(on_the_beat(line, body) for line in facts), (
+                    f"at {scale} {name}'s facts are off the beat: {drawer}"
+                )
+                assert things_apart(facts, drawer["factsWrapped"] > 0), (
+                    f"at {scale} {name}'s facts are off the pitch: {drawer}"
                 )
                 if preview is not None:
                     assert facts[0] > drawer["lines"]["preview"], f"{name}'s facts lead: {drawer}"
@@ -1122,6 +1260,7 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
                     shown["typed"] == "a.md"
                     and shown["caret"] == 1
                     and shown["mode"] == "insert"
+                    and shown["modeMark"] == "INS"
                     and shown["current"] == -1
                     and (shown["selected"] or {}).get("name") == "a.md"
                     and "a.md" not in shown["rows"]
@@ -1174,9 +1313,23 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-nothing-gathered-at-{said}")
+            # V takes rows, tinted, and the mode word and the foot say how many.
+            desktop.normal()
+            machine.send_chars("Vj")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["mode"] == "visual"
+                    and shown["modeWord"] == "2 chosen"
+                    and len(shown["tinted"]) == len(["a.md", "b.md"])
+                    and selected_is(shown, name="b.md", told="\u21b5 open 2")
+                )
+            )
+            desktop.photograph(f"file-picker-visual-at-{said}")
+            desktop.normal()
+            desktop.down_to("a.md")
             ran(desktop, "arga")
             desktop.down_to("more")
-            desktop.step_in()
+            desktop.follow()
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/gathering/more"])
             desktop.down_to("d.md")
             ran(desktop, "arga")
@@ -1193,7 +1346,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
-            machine.send_key("left")
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
@@ -1419,7 +1572,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("testqa", selecting="A quest of its own & whole")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
         for name, side in [
             ("Spent Today", "$14.20 in all"),
@@ -1447,3 +1600,77 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.close_launcher()
     finally:
         unorchestrated(desktop)
+
+
+def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Photograph dictation, a meter above it, and a meter alone at its least and most.
+
+    Both are one frame at the bottom centre, the frame's inset from the ink on every side
+    (docs/design.md, The Ladder). A meter that shows while dictation listens stands the space
+    between frames above it rather than over it, and a shorter figure keeps its room after it,
+    so the bar's gap to it never grows. Each is kept for a person to measure.
+    """
+    machine = desktop.machine
+    dictation = desktop.in_session("niri msg layers | grep -q dictation")
+    volume = desktop.in_session("niri msg layers | grep -q 'Namespace: \"volume\"'")
+    was = desktop.as_account("wpctl get-volume @DEFAULT_AUDIO_SINK@").split()[1]
+    # A change is heard only once the shell has bound the speaker, which it says.
+    desktop.reported("hears volume ", bool, "", timeout=timedelta(seconds=60))
+
+    # Where on the screen, in fractions of its height, dictation's frame and
+    # a meter above it fall at both scales, the middle half across.
+    under, over = (0.87, 0.94), (0.78, 0.84)
+
+    def band(rows: tuple[float, float]) -> bytes:
+        """Give the screen's middle half across between two fractions of its height."""
+        screen = desktop.screen_now()
+        width, height = screen.size
+        box = (width // 4, int(height * rows[0]), 3 * width // 4, int(height * rows[1]))
+        return screen.crop(box).tobytes()
+
+    def shot_once_in(name: str, rows: tuple[float, float], before: bytes) -> None:
+        """Photograph once the band shows something it didn't, or after three seconds.
+
+        While dictation listens, its clock and wave move, so the screen never holds still,
+        and a meter goes again in a second and a half; and niri can show dictation's first
+        frame a while after it's drawn. So the picture is taken once what it's of is on the
+        screen. One that never comes, as a meter hidden under dictation, is kept as it is.
+        """
+        deadline = time.monotonic() + 3
+        while band(rows) == before and time.monotonic() < deadline:
+            pass
+        if desktop.values["photographs"]:
+            machine.screenshot(name)
+
+    def metered(level: str, name: str) -> None:
+        machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
+        with desktop.told("drawn volume"):
+            desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {level}")
+        desktop.photograph(name)
+
+    try:
+        for scale in at_each_scale:
+            named = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            machine.wait_until_fails(dictation, timeout=timedelta(seconds=15))
+            since = desktop.mark()
+            before = band(under)
+            with desktop.told("drawn dictation"):
+                desktop.as_account("dictation toggle")
+            desktop.reported("says dictation listening", lambda rest: rest == "", since)
+            shot_once_in(f"dictation-listening-at-{named}", under, before)
+            machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
+            before = band(over)
+            with desktop.told("drawn volume"):
+                desktop.as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.5")
+            shot_once_in(f"meter-over-dictation-at-{named}", over, before)
+            # Stopped, the stand-in types a moment and says it heard nothing.
+            desktop.as_account("dictation toggle")
+            desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
+            machine.wait_until_fails(dictation, timeout=timedelta(seconds=10))
+            metered("0.05", f"meter-least-at-{named}")
+            metered("1", f"meter-most-at-{named}")
+    finally:
+        desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {was}")

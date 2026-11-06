@@ -98,17 +98,17 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
         ),
     )
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     taken = picture.rsplit("/", 1)[-1]
     desktop.launcher_until(lambda shown: shown["rows"][:1] == [taken])
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Edit in GIMP", "Copy the Path"])
     desktop.close_launcher()
     # GIMP holds the newest screenshot among its own acts.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -133,7 +133,7 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
 # more than one app could, and the launcher asks rather than GNOME's
 # dialog, holding the apps the portal offers. Return opens the picture
 # with the one taken, and the portal says it opened; asked again,
-# Escape until the launcher closes, the first giving normal mode, opens
+# closed by :q from normal, which Escape gives, the launcher opens
 # nothing, and the portal says it was refused; and each ask's socket
 # goes once it's answered. Each time the apps offered change
 # while it waits, as the portal says when apps are installed, so a
@@ -291,11 +291,12 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     go_beside(desktop, held)
     open_own(desktop, chose)
     commands_open(desktop, held)
-    desktop.insert()
+    desktop.on_find()
     machine.send_chars("plan")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
     machine.send_key("ret")
     answered("0", f"file://{notes}/plan.md")
+    takes_a_selection(desktop, choose, answered, notes)
 
     choose("save", "saved.md")
     name_line(desktop, held)
@@ -337,6 +338,76 @@ def saved_by_commands(
     choose("open")
     ran(desktop, "q", closes=True)
     answered("1")
+
+
+def takes_a_selection(
+    desktop: Desktop,
+    choose: Callable[..., None],
+    answered: Callable[..., None],
+    notes: str,
+) -> None:
+    """Take files by V and Return, and gather them across folders by :arga and :'<,'>arga.
+
+    Each key waits on what the launcher says after it, so one the picker didn't take fails
+    there: V's rows tinted, :arga's count in the mode word's room, and the portal's answer.
+    """
+    machine = desktop.machine
+    beside = f"{notes}-beside"
+    desktop.as_account(f"touch {beside}/far.md {beside}/near.md")
+
+    def chosen(name: str, rows: int) -> None:
+        """Wait until visual takes these many rows, the cursor on this one."""
+        desktop.launcher_until(
+            lambda shown: (
+                shown["mode"] == "visual"
+                and len(shown["tinted"]) == rows
+                and (shown["selected"] or {}).get("name") == name
+            )
+        )
+
+    # Return over a V selection answers with every file in it.
+    choose("open-several")
+    desktop.normal()
+    desktop.down_to("list.md")
+    machine.send_chars("V")
+    chosen("list.md", 1)
+    machine.send_chars("j")
+    chosen("look.png", 2)
+    machine.send_key("ret")
+    answered("0", f"file://{notes}/list.md", f"file://{notes}/look.png")
+
+    # :arga gathers the cursor row; in the folder beside, :'<,'>arga gathers
+    # a V selection, leaving visual as Vim's : does; Return then answers with
+    # all that's gathered, in order.
+    choose("open-several")
+    desktop.normal()
+    desktop.down_to("plan.md")
+    ran(desktop, "arga")
+    desktop.launcher_until(lambda shown: shown["placeSays"] == "1 gathered")
+    machine.send_chars("]b")
+    desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/chosen-notes-beside"])
+    desktop.down_to("far.md")
+    machine.send_chars("Vj")
+    taken = 2
+    chosen("near.md", taken)
+    machine.send_chars(":")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("things") == taken)
+    machine.send_chars("arga")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["placeSays"] == "3 gathered"
+            and shown["command"] is None
+            and shown["mode"] == "normal"
+        )
+    )
+    machine.send_key("ret")
+    answered(
+        "0",
+        f"file://{notes}/plan.md",
+        f"file://{beside}/far.md",
+        f"file://{beside}/near.md",
+    )
 
 
 def ran(desktop: Desktop, line: str, *, closes: bool = False) -> None:
@@ -475,8 +546,8 @@ def name_line(desktop: Desktop, held: int) -> None:
         says("kept.md", caret, "normal")
     # The name is the line's row, above the rows, never listed among them;
     # j goes down from it into the folders and k back up to it, where h and l
-    # move its caret again. In a folder, l steps in rather than moving the
-    # name's caret, the name kept on the line.
+    # move its caret again. In a folder, Return steps in, the name kept on
+    # the line.
     rows = desktop.showing()["rows"]
     assert "kept.md" not in rows, rows
     down = "j" * (rows.index("inner") + 1)
@@ -490,7 +561,7 @@ def name_line(desktop: Desktop, held: int) -> None:
     says("kept.md", 2, "normal")
     machine.send_chars(down)
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "inner")
-    machine.send_chars("l")
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) == held + 1
@@ -533,12 +604,12 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Google Drive"
         )
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: shown["rows"][:3] == ["My Drive", "Shared with Me", "Shared Drives"]
         )
         desktop.down_to("My Drive")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
         desktop.photograph("file-chooser-drive")
         desktop.down_to("menu.pdf")
@@ -859,9 +930,9 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "tide" in shown["rows"])
     desktop.photograph("launcher-kitty-recent")
     desktop.type_in("tide", selecting="tide")

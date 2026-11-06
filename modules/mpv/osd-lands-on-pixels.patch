@@ -1,0 +1,30 @@
+osd: lay the OSD out in the window's own pixels
+
+mpv's OSD sets its margins through libass's style, whose MarginL and
+MarginV are whole numbers in the track's PlayRes, and an OSD track's
+PlayResY was always 288. A margin then lands in steps of the window's
+height over 288, about 6 device pixels in a window 1747 tall, so no
+setting can put a message's ink 24 logical pixels from the window's edge
+at a scale of 2: the nearest are 23 and 26.
+
+The OSD's PlayResY is now the window's height, where that is more than
+288, so a margin or an outline lands on a whole device pixel. Nothing else
+changes: mpv scales every OSD size, its font, outline, shadow, spacing and
+margins, by PlayResY over 720, and libass draws them at the window's
+height over PlayResY, so each is drawn as large as before. Tracks that
+give their own PlayRes, as scripts' overlays and subtitles do, are
+untouched.
+
+--- a/sub/osd_libass.c
++++ b/sub/osd_libass.c
+@@ -104,7 +104,9 @@
+     if (vo_res->display_par > 0)
+         aspect = aspect / vo_res->display_par;
+ 
+-    track->PlayResY = ass->res_y ? ass->res_y : MP_ASS_FONT_PLAYRESY;
++    // In the window's pixels, so libass's whole-number margins land on one.
++    track->PlayResY = ass->res_y ? ass->res_y
++                                 : MPMAX(vo_res->h, MP_ASS_FONT_PLAYRESY);
+     track->PlayResX = ass->res_x ? ass->res_x : track->PlayResY * aspect;
+ 
+     // Force libass to clear its internal cache - it doesn't check for

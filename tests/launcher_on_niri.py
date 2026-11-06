@@ -38,6 +38,8 @@ WAITING = timedelta(seconds=30)
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
 KEY_PACE_MS = 50
+# The modes the launcher's line types in: the find, and insert while a row asks for words.
+TYPING = ("find", "insert")
 
 # QEMU's names for the keys the desktop's tests press, as wtype's arguments.
 KEYS = {
@@ -233,28 +235,39 @@ class Shell:
             self.launcher_closed()
 
     def normal(self) -> None:
-        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        """Put the launcher's line in normal mode, by Escape from the find, and wait for it."""
         if self.showing()["mode"] == "normal":
             return
         self.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal")
 
-    def insert(self) -> None:
-        """Put the launcher's query line in insert mode, by A, at the end of what's typed."""
-        if self.showing()["mode"] == "insert":
+    def on_find(self) -> None:
+        """Put the launcher's line back to typing, by A, at the end of what's typed.
+
+        It types on the find, or in insert while a row asks for words, as a password.
+        """
+        if self.showing()["mode"] in TYPING:
             return
         self.send_chars("A")
-        self.launcher_until(lambda shown: shown["mode"] == "insert")
+        self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
     def close_launcher(self) -> None:
-        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+        """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
-        From insert the first gives normal, each after it steps back out a level, and the one
-        at the level it opened on closes it.
+        Escape gives normal from the find, lets the key list go if it's shown, and cancels a
+        count or a key begun, but never closes (Joel, 2026-11-05: "fuck escape quitting"), so
+        :q does, from any depth.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
-            return (shown["open"], shown["mode"], len(shown["held"]))
+            return (
+                shown["open"],
+                shown["mode"],
+                len(shown["held"]),
+                shown.get("listing"),
+                shown.get("command") is not None,
+                shown["operator"] or shown["counted"] or shown["begun"],
+            )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
             return where(shown) != was
@@ -263,7 +276,12 @@ class Shell:
             was = where(self.showing())
             if not was[0]:
                 return
-            self.send_key("esc")
+            _, mode, _, listing, commanding, pending = was
+            if mode == "normal" and not (listing or commanding or pending):
+                self.send_chars(":q")
+                self.send_key("ret")
+            else:
+                self.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
@@ -272,9 +290,9 @@ class Shell:
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter, Return's row settled.
 
-        In normal mode it goes into insert first, at the end of what's typed.
+        In normal mode it goes back to typing first, at the end of what's typed.
         """
-        self.insert()
+        self.on_find()
         self.send_chars(text)
 
         def holds(shown: Json) -> object:
@@ -292,13 +310,11 @@ class Shell:
         self.launcher_ready()
         self.type_in(typed)
 
-    def step_in(self, key: str = "right") -> None:
+    def step_in(self, key: str = "ret") -> None:
         """Press a key that steps into the selected row, and wait until the launcher holds it.
 
-        The right arrow steps in from normal mode, which it goes into first; Return from either.
+        Return goes in, from the find or normal alike.
         """
-        if key == "right":
-            self.normal()
         before = len(self.showing()["held"])
         self.send_key(key)
         self.launcher_until(lambda shown: len(shown["held"]) > before)

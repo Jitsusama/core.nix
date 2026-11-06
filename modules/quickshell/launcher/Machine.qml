@@ -905,6 +905,8 @@ Provider {
             const amount = guard.shown(holder.clears);
             const sure = () => [thing({
                 key: `verb:disk:clear:sure:${holder.path}`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 name: (Words.of("verb:disk:clear").sure ?? "").replace("{amount}", amount)
                     .replace("{name}", name),
                 verb: Words.verb("verb:disk:clear"),

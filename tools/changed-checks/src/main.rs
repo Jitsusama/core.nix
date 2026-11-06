@@ -25,7 +25,8 @@
 //! reads, such as `flake.lock`, touches them all.
 //!
 //! The checks are evaluated a few dozen at a time, in a nix eval each, a VM
-//! test counting four, two evaluations at once (`checks.rs` says why),
+//! test counting four, two evaluations at once, or up to eight on a machine
+//! with the cores and memory for them (`checks.rs` says why),
 //! rather than all in one, which held every check at once and reached 24 GB
 //! on a machine many sessions share; each evaluation's memory goes when it
 //! ends. A commit's derivations never change, so the base's are
@@ -53,12 +54,17 @@
 //! that commit, evaluates the checks and builds them itself (`there.rs`
 //! says why).
 //!
+//! A check the net holds in quarantine on origin's main
+//! (`quarantine.rs` says what that is) is built on its own, after the
+//! rest, and its failure is said and blocks nothing.
+//!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
 //! (`runs.rs` says what it holds).
 
 mod checks;
 mod pressure;
+mod quarantine;
 mod runs;
 mod there;
 
@@ -68,7 +74,9 @@ use std::process::{Command, ExitCode};
 use std::time::Instant;
 
 use checks::Derivations;
+use quarantine::Held;
 use runs::Run;
+use there::Sent;
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -201,8 +209,9 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
     }
+    let held = quarantine::on_main(&root, ORIGIN_MAIN);
     let mut noted = Run::new(&base, &system);
-    let compared = compare(options, &flake, &base, &system, &mut noted);
+    let compared = compare(options, &flake, &base, &system, &held, &mut noted);
     let log = state().join("changed-checks/runs.jsonl");
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
@@ -317,6 +326,7 @@ fn compare(
     flake: &str,
     base: &str,
     system: &str,
+    held: &[Held],
     noted: &mut Run,
 ) -> Result<ExitCode, String> {
     let short = base.get(..12).unwrap_or(base);
@@ -375,20 +385,52 @@ fn compare(
         return Ok(ExitCode::SUCCESS);
     }
     let began = Instant::now();
+    let count = targets.len();
+    let (quarantined, blocking): (Vec<&str>, Vec<&str>) = targets
+        .into_iter()
+        .partition(|name| quarantine::find(held, name).is_some());
+    let mut built = Sent {
+        passed: true,
+        there: false,
+        bytes: None,
+    };
+    if !blocking.is_empty() {
+        built = build(flake, system, &blocking, &after)?;
+    }
+    // Each is built alone, so a failure is known for the check it was.
+    for name in quarantined {
+        let alone = build(flake, system, &[name], &after)?;
+        if !alone.passed {
+            let why = quarantine::find(held, name)
+                .map(Held::said)
+                .unwrap_or_default();
+            eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
+        }
+        built.there |= alone.there;
+        // Each build there sent its own, so the run sent them all.
+        built.bytes = match (built.bytes, alone.bytes) {
+            (Some(before), Some(now)) => Some(before + now),
+            (before, now) => before.or(now),
+        };
+    }
+    noted.built(count, began.elapsed(), built.passed);
+    if built.there {
+        noted.lent(built.bytes);
+    }
+    Ok(if built.passed {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+/// Build `targets` on the lent builder while one stands, and otherwise
+/// here, each from the derivation `after` evaluated for it.
+fn build(flake: &str, system: &str, targets: &[&str], after: &Derivations) -> Result<Sent, String> {
     if there::lent(&offload_dir()) {
         let journal = state().join("nix-offload/there.jsonl");
-        match published().and_then(|fetched| there::build(&fetched, system, &targets, &journal)) {
-            Ok(sent) => {
-                noted.built(targets.len(), began.elapsed(), sent.passed);
-                if sent.there {
-                    noted.lent(sent.bytes);
-                }
-                return Ok(if sent.passed {
-                    ExitCode::SUCCESS
-                } else {
-                    ExitCode::FAILURE
-                });
-            }
+        match published().and_then(|fetched| there::build(&fetched, system, targets, &journal)) {
+            Ok(sent) => return Ok(sent),
             Err(why) => eprintln!("changed-checks: building here, since {why}"),
         }
     }
@@ -409,11 +451,10 @@ fn compare(
         )
         .status()
         .map_err(|error| format!("running nix: {error}"))?;
-    noted.built(targets.len(), began.elapsed(), built.success());
-    Ok(if built.success() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+    Ok(Sent {
+        passed: built.success(),
+        there: false,
+        bytes: None,
     })
 }
 
@@ -517,11 +558,12 @@ fn derivations(
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
     let chunks = checks::chunks(&names);
-    // A further chunk begins only while memory isn't stalling: two at once
-    // while it was full stalled Joel's launcher on 29 October.
+    // As many go at once as the machine has room for, and a further chunk
+    // begins only while memory isn't stalling: two at once while it was
+    // full stalled Joel's launcher on 29 October.
     let evaluated = checks::each_at_once(
         &chunks,
-        checks::AT_ONCE,
+        checks::at_once_here(),
         || !pressure::memory_stalled(),
         |chunk| {
             let selecting = checks::selecting(chunk)?;

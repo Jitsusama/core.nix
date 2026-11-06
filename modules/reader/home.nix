@@ -106,7 +106,7 @@ let
       ;
     # Visual mode's cursor is the terminal's, as kitty and Neovim draw it.
     inherit (terminal) cursor cursor_text;
-    inherit levels;
+    inherit levels space;
     code = "${
       import ../theme/tmtheme.nix {
         inherit
@@ -117,6 +117,24 @@ let
           ;
       } colours.sunken
     }/Jitsusama.tmTheme";
+  };
+
+  # The page's space, in logical pixels: the theme's rungs, which the page
+  # and its overlays take across, and down the page a line and a beat of
+  # its own. The page is the one surface with a beat of its own, since it's
+  # read at length: its lines take a reader's leading, 28 against Words'
+  # pitch of 24, as a page's rhythm wants (Bringhurst), and nothing sits
+  # beside it whose lines it must meet on the theme's beat. Every space
+  # down it, its margins too, is a whole number of its beat, half a line.
+  # Its outer column, either side of the words, is the glyph column, a
+  # name's cell and a mark: a spread table or code ends on it, a list's
+  # numbers hang within it, and the cursor's rule stands an items rung
+  # past it.
+  space = rec {
+    inherit (config.jitsusama.theme.space) rung;
+    pitch = 28;
+    beat = pitch / 2;
+    outer = type.levels.name.pitch + rung.mark;
   };
 
   # A level of the theme's type as the page sets it, each value worked out:
@@ -253,8 +271,8 @@ let
   # keys sit with the jumps, since two keys make no group of their own, and
   # moving is Scrolling there, since Moving is the picture viewer's. The
   # lines in view, and the links and files, are groups of their own, so
-  # none lists more than the launcher's thirteen rows. An arrow comes before
-  # its letter. Zoom is the reader's own, as Vim has none.
+  # none lists more than the launcher's thirteen rows. An arrow moves as its
+  # letter but is never listed. Zoom is the reader's own, as Vim has none.
   key = group: act: chord: does: {
     inherit
       group
@@ -285,10 +303,8 @@ let
   onCommand = on "on the command line";
   onFind = on "on the find line";
   keys = [
-    (moving "down" "Down" "Down a line")
     (moving "down" "j" "Down a line")
     (moving "scroll-down" "Ctrl+E" "The view down a line")
-    (moving "up" "Up" "Up a line")
     (moving "up" "k" "Up a line")
     (moving "scroll-up" "Ctrl+Y" "The view up a line")
     (moving "half-down" "Ctrl+D" "Down half a screen")
@@ -332,9 +348,7 @@ let
     (searching "previous" "N" "Back to the match before")
     (selecting "select" "v" "Select from the cursor's line")
     (selecting "select-lines" "V" "Select whole paragraphs, items and lines")
-    (selecting "left" "Left" "A character left")
     (selecting "left" "h" "A character left")
-    (selecting "right" "Right" "A character right")
     (selecting "right" "l" "A character right")
     (selecting "word-on" "w" "On to the next word")
     (selecting "word-back" "b" "Back to a word's start")
@@ -379,10 +393,8 @@ let
     (onLines "delete-to-start" "Ctrl+U" "Delete everything typed")
     (onCommand "run" "Return" "Run the command typed")
     (onFind "open" "Return" "Search for what's typed")
-    (onCommand "next-row" "Down" "Choose the next command in the menu")
     (onCommand "next-row" "Tab" "Choose the next command in the menu")
     (onCommand "next-row" "Ctrl+N" "Choose the next command in the menu")
-    (onCommand "previous-row" "Up" "Choose the command before in the menu")
     (onCommand "previous-row" "Shift+Tab" "Choose the command before in the menu")
     (onCommand "previous-row" "Ctrl+P" "Choose the command before in the menu")
     (onCommand "take-name" "Ctrl+Y" "Take the command chosen")

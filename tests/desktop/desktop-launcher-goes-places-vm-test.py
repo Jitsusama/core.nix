@@ -61,10 +61,10 @@ def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: D
     assert " lock " in line, f"swayidle no longer locks when logind asks: {line}"
 
 
-def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
-    """The launcher shows the volume's chords, and Escape closes it.
+def test_the_launcher_shows_the_volumes_chords_and_q_closes_it(desktop: Desktop) -> None:
+    """The launcher shows the volume's chords, and :q closes it.
 
-    The first Escape puts the line in normal mode, and the next, at home, closes it.
+    Escape puts the line in normal mode, and :q there closes it, as Escape never does.
     """
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -103,6 +103,7 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" to 40%")
     )
+    desktop.land()
     machine.send_key("ret")
     # Exactly that, and no longer muted.
     machine.wait_until_succeeds(
@@ -119,21 +120,20 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     )
     desktop.photograph("launcher-volume-told")
     # A step in, each device's level drawn as a bar.
-    desktop.step_in()
+    desktop.follow()
     desktop.photograph("launcher-volume-parts")
     desktop.close_launcher()
 
 
 def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
     """The drawer stays in for a place, a thing with nothing more to say, and an act."""
-    machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # Home opens on Now, whose drawer is the moment's plate (look 3), and the
     # place below it has no details, so the drawer goes in there (docs/design.md,
     # the drawer: it goes by kind, not by what a row happens to hold).
     desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("moment") is not None)
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("is") != "collection:on"
@@ -151,8 +151,9 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
             and (shown.get("drawer") or {}).get("out") is False
         )
     )
-    # Its acts are not things, so stepping in to them puts it away.
-    desktop.step_in("right")
+    # Its acts are not things, so going into it by Ctrl+], as Return would
+    # open it, puts it away.
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") != "kitty"
@@ -168,7 +169,6 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
 
 def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop) -> None:
     """The launcher remembers where it was when stepping back."""
-    machine = desktop.machine
     desktop.notes_window()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -181,7 +181,7 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
     # some of (Agents, above it, is empty here).
     while True:
         before = selected()
-        machine.send_key("down")
+        desktop.next_row()
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name", "") != before  # noqa: B023
@@ -189,12 +189,12 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
         if desktop.showing()["selected"]["is"] == "collection:applications":
             break
     chosen = selected()
-    desktop.step_in()
+    desktop.follow()
     # Open programs come first, so kitty, whose notes are open, leads the
     # programs closed, however they're named.
     desktop.launcher_until(lambda shown: shown["rows"][:1] == ["kitty"])
-    machine.send_key("down")
-    machine.send_key("left")
+    desktop.next_row()
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: shown["held"] == [] and (shown["selected"] or {}).get("name") == chosen
     )
@@ -230,7 +230,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
         desktop.answer("rotation")
         desktop.launcher_until(lambda shown: spot(shown) >= 0)
         for _ in range(spot(desktop.showing())):
-            machine.send_key("down")
+            desktop.next_row()
         desktop.launcher_until(
             lambda shown: (
                 (shown["selected"] or {}).get("name") == "Rotation"
@@ -240,26 +240,29 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
 
     # A screen's rotation is a step inside the screen, inside Screens,
     # inside Desktop; from the root it's found by its name, saying so,
-    # below the focused screen's answer. The right arrow, in normal mode,
-    # goes there as Return does, the foot saying the two as one (Joel,
-    # 2026-10-26: where Return goes somewhere in the launcher, the right
-    # arrow does the same).
+    # below the focused screen's answer. In normal, l goes nowhere, as a
+    # row has no line to move along, and says Vim's way in instead, the
+    # foot naming Return and - by the keys that do them (Joel, 2026-11-05:
+    # "where in vi does that step into shit?").
     find_rotation()
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
-    assert "\u21b5 \u2192 go" in told, told
-    machine.send_key("right")
-    desktop.launcher_until(at_rotation)
-    desktop.close_launcher()
+    assert told[0] == "\u21b5 go", told
+    assert not any(said.startswith(("l ", "h ")) for said in told), told
+    machine.send_key("l")
+    desktop.launcher_until(
+        lambda shown: shown["saying"] == ["l not here", "\u21b5 open"] and shown["held"] == []
+    )
     # Return goes there: the crumbs say each step, and the spot is selected.
-    find_rotation()
     machine.send_key("ret")
     desktop.launcher_until(at_rotation)
     screen = desktop.showing()["path"][-1]
-    # The left arrow, in normal mode, goes back up, onto the screen it was
-    # inside.
+    # h goes nowhere either, saying -, which goes back up, onto the
+    # screen it was inside.
     desktop.normal()
-    machine.send_key("left")
+    machine.send_key("h")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["h not here", "- up"])
+    machine.send_key("minus")
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Desktop", "Screens"]
@@ -269,13 +272,13 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     # And on out the way it came, each step with the row it went through
     # selected, to the search it was found by (Joel, 2026-10-26: every way
     # in climbs back out the same way).
-    machine.send_key("left")
+    machine.send_key("minus")
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Desktop"] and (shown["selected"] or {}).get("name") == "Screens"
         )
     )
-    machine.send_key("left")
+    machine.send_key("minus")
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == []
@@ -299,7 +302,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     desktop.answer("health")
     desktop.launcher_until(lambda shown: health(shown) >= 0)
     for _ in range(health(desktop.showing())):
-        machine.send_key("down")
+        desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == inside)
     machine.send_key("ret")
     desktop.launcher_until(
@@ -409,9 +412,9 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.down_to("Machine")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Machine"])
-        machine.send_key("left")
+        desktop.step_out()
         desktop.launcher_until(lambda shown: shown["held"] == [])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -457,8 +460,8 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
 ) -> None:
     """A program's acts are found from the top by their own names, saying where they live.
 
-    Return does the act, as it does inside the program, and the right arrow in normal mode
-    goes into the program onto it, so the left arrow climbs back out. Typing the program's
+    Return does the act, as it does inside the program, and Ctrl+] in normal
+    goes into the program onto it, where it lives, so - climbs back out. Typing the program's
     name lists the program first, and only those acts whose own names it starts a word of.
     """
     machine = desktop.machine
@@ -473,9 +476,12 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
             and shown["selected"]["note"] == "Programs \u203a Meet"
         )
     )
-    # In normal mode the right arrow goes into Meet, onto New Meeting.
+    # Ctrl+] goes into Meet, where it lives, onto New Meeting, the foot
+    # saying so furthest from Return.
     desktop.normal()
-    machine.send_key("right")
+    told = desktop.showing()["selected"]["told"]
+    assert told[1:2] == ["Ctrl+] in"], told
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             # Programs, then Meet.
@@ -587,8 +593,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
         )
     )
     desktop.close_launcher()
-    # Found by its name from the top, it opens where it lives, and the
-    # left arrow, in normal mode, climbs out through Machine.
+    # Found by its name from the top, it opens where it lives, and -, in
+    # normal mode, climbs out through Machine.
     desktop.answer("power")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
     desktop.step_in("ret")
@@ -596,7 +602,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
         lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
     )
     desktop.normal()
-    machine.send_key("left")
+    machine.send_key("minus")
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Machine"] and (shown["selected"] or {}).get("name") == "Power"
@@ -721,6 +727,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let It Sleep")
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
     desktop.close_launcher()
@@ -802,7 +809,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     feet = {selected_is(): foot()}
     for _row in home[1:]:
         before = selected_is()
-        machine.send_key("down")
+        desktop.next_row()
         # The wait ends before the loop moves on, so it reads this pass's row.
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
@@ -856,13 +863,13 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     first = desktop.showing()["selected"]
     assert not any(key.startswith(("\u21e5", "Ctrl+Y")) for key in first["told"]), first
     machine.send_key("ctrl-y")
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Ctrl+Y moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
     # Past Programs and People.
     for _step in range(3):
-        machine.send_key("down")
+        desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
     desktop.launcher_until(
@@ -884,7 +891,7 @@ def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Deskt
     """The machine's programs are there the first time it's asked."""
     for figure in ("processor", "memory"):
         desktop.answer(figure)
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Using It" in shown["rows"])
         desktop.close_launcher()
 
@@ -953,7 +960,7 @@ def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_sa
     # What was taken is read as the launcher opens, so Recent showing the newest says it's read.
     desktop.capture()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "2026-10-29 09-00-00.png" in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     desktop.answer("wombat")

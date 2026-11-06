@@ -14,16 +14,20 @@
 // ellipsis rather than cut through a letter. What the shell says in its voice,
 // a quiet row's words and a field's hint, is drawn in the serif face
 // on the baseline the mono's would take. The launcher's modal field says
-// Ctrl+Y in insert and the left arrow in normal, its caret a bar a quarter
-// of a letter wide in insert and a block a letter wide in normal, resting on
-// the last letter, and a modal caret fades and then, with no key, holds
-// steady. The letters a find matched in a row's name are washed beneath
-// them, run by run, a selected row's on the ground a shade past the
-// selection, and a cut name's only before its ellipsis. It exits 0 once
-// every case holds,
+// no key, its hints the foot's, its caret a bar a quarter of a
+// letter wide on the find and none in normal, resting on the last letter,
+// and a modal caret fades and then, with no key, holds steady. The letters
+// a find matched in a row's name are washed beneath them, run by run, a
+// selected row's on the ground a shade past the selection, and a cut name's
+// only before its ellipsis. A list's gutter in normal numbers the rows in
+// view, relative to the cursor row's absolute one in text, or all absolute,
+// right-aligned on each row's baseline, from a handful of numbers however
+// many rows there are, and none at all off normal. It exits 0 once every
+// case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
+import "Bands.js" as Bands
 
 ShellRoot {
     id: root
@@ -36,7 +40,6 @@ ShellRoot {
         + " of $15,000, which resets on Monday at midnight"
     readonly property string asked: "Say which issue sources to read"
     readonly property string day: "Wednesday 4 November 2026"
-    readonly property var keyWords: ({ complete: "complete", clear: "clear" })
 
     FloatingWindow {
         visible: true
@@ -74,6 +77,15 @@ ShellRoot {
                 width: 480
                 name: "Slack Theme"
                 side: "pick Aubergine, then Custom theme, Import"
+                glyph: "$"
+            }
+            // A whole side in a row as wide, whose right edge a cut one
+            // ends at too, its ellipsis there (VKCF3Z, 2026-11-05).
+            Choice {
+                id: sideWhole
+                width: 480
+                name: "Slack"
+                side: "program"
                 glyph: "$"
             }
             // A noun: its kind at the right edge, and what else it says after
@@ -127,6 +139,15 @@ ShellRoot {
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
             Prompt { id: voicedField; width: root.panel; hint: root.voice }
+            // The launcher's head: its field the band from the frame to the
+            // hairline over the rows, as tall as the rows' rhythm sets it.
+            Prompt {
+                id: headed
+                width: root.panel
+                height: Bands.above(4 * Theme.space.beat, nameCaps.tightBoundingRect.height,
+                    headed.restingLift, Theme.border)
+                text: root.voice
+            }
             Prompt {
                 id: ghosted
                 width: root.panel
@@ -134,6 +155,7 @@ ShellRoot {
                 ghost: " = Today: $484 · usual, ends near $1,457 ($800 to $2,216), billed"
             }
             Prompt { id: hinted; width: root.panel; hint: root.sentence }
+            PromptFoot { id: footed; width: root.panel; leads: "Asked by sudo" }
             // Three steps in, beside a note longer than the line has room
             // for, as Machine's processors' cores say.
             Prompt {
@@ -143,6 +165,14 @@ ShellRoot {
                 chips: [{ text: "Machine" }, { text: "Processor" }, { text: "Cores" }]
                 hint: "what to do?"
                 aside: root.sentence
+            }
+            // A name typed beside a place, as the file picker's save name
+            // beside where it saves.
+            Prompt {
+                id: named
+                width: root.panel
+                chips: [{ text: "Save the Notes" }, { text: "~/saving" }]
+                text: "a.md"
             }
             // Three steps in with a long hint, which leaves a note no room:
             // the note gives way rather than lying over the hint.
@@ -170,15 +200,12 @@ ShellRoot {
                 id: opened
                 width: root.panel
                 steady: true
-                leftClears: true
                 modal: true
-                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
             }
             Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
-            // The same with letters typed, so the field says its keys.
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -188,16 +215,32 @@ ShellRoot {
                 fade: 100
                 stopsAfter: 600
             }
+            // A list's gutter beside three rows in view, the cursor on the
+            // second, as normal draws it, with a slot to spare.
+            Gutter {
+                id: gutter
+                height: 60
+                rows: [{ at: 0, base: 12 }, { at: 1, base: 30 }, { at: 2, base: 48 }]
+                slots: 4
+                current: 1
+                shown: true
+            }
+            // The launcher's field as it opens, with letters typed.
             Prompt {
                 id: typing
                 width: root.panel
                 steady: true
-                leftClears: true
                 modal: true
-                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
+            }
+            // A foot's keys: a chord of two, a key and its word, and Return
+            // in a place held wider than what it says.
+            KeyHints {
+                id: footHints
+                keys: [[":", "commands"], ["Space ?", "keys"], ["\u21b5", "open"]]
+                widths: [0, 0, 200]
             }
         }
     }
@@ -276,6 +319,52 @@ ShellRoot {
         font.pointSize: Theme.level.name.pointSize
     }
 
+    // A head's face, the Title, and what's typed, the Figure: their
+    // capitals and small letters, which centre a field's line.
+    TextMetrics {
+        id: titleCaps
+        text: "H"
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize
+        font.variableAxes: Theme.level.title.variableAxes
+    }
+    TextMetrics {
+        id: titleSmall
+        text: "x"
+        font: titleCaps.font
+    }
+    TextMetrics {
+        id: figureCaps
+        text: "H"
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.weight: Theme.level.figure.weight
+    }
+    TextMetrics {
+        id: figureSmall
+        text: "x"
+        font: figureCaps.font
+    }
+    // A row's name, whose capitals are centred in the row.
+    TextMetrics {
+        id: nameCaps
+        text: "H"
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+    }
+    TextMetrics {
+        id: noteCaps
+        text: "H"
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+        font.weight: Theme.level.note.weight
+    }
+    TextMetrics {
+        id: noteSmall
+        text: "x"
+        font: noteCaps.font
+    }
+
     // What a row says at its right, in the face it's drawn in.
     FontMetrics {
         id: sideFace
@@ -296,6 +385,42 @@ ShellRoot {
     function expect(what, holds, shown) {
         if (!holds)
             throw new Error(`${what}: ${shown}`);
+    }
+
+    // The gutter, as his Neovim's number, relativenumber and
+    // cursorlineopt=number draw it, then absolute, then hidden.
+    function gutterHolds() {
+        const texts = () => gutter.said().map(number => number.text);
+        expect("the gutter counts from the cursor row, which says its own number",
+            JSON.stringify(texts()) === JSON.stringify(["1", "2", "1"]), texts());
+        const inks = gutter.said().map(number => number.ink);
+        expect("the cursor row's number is in text and the rest muted",
+            JSON.stringify(inks) === JSON.stringify(["muted", "text", "muted"]), inks);
+        const said = gutter.said();
+        expect("each number is on its row's baseline",
+            said.every((number, at) => Math.abs(number.base - gutter.rows[at].base) <= 0.5),
+            JSON.stringify(said));
+        expect("the numbers end together, right-aligned",
+            said.every(number => Math.abs(number.ends - said[0].ends) <= 0.5),
+            JSON.stringify(said));
+        expect("three digits fit its room", gutter.widest("999") <= said[0].ends,
+            `${gutter.widest("999")} past ${said[0].ends}`);
+        // The numbers stand a mark from the text they number, as a key
+        // does from its word (docs/design.md, The Ladder).
+        expect("the numbers end a mark before the rows",
+            Math.abs(gutter.width - said[0].ends - Theme.space.rung.mark) <= 0.5,
+            `${gutter.width - said[0].ends} before the rows`);
+        expect("it makes a number a slot, not a row", gutter.made === gutter.slots,
+            `${gutter.made} for ${gutter.slots} slots`);
+        gutter.relative = false;
+        expect("absolute, each row says its own number",
+            JSON.stringify(texts()) === JSON.stringify(["1", "2", "3"]), texts());
+        const room = gutter.width;
+        gutter.shown = false;
+        expect("off normal it draws no number and makes none",
+            texts().length === 0 && gutter.made === 0, `${texts()}, ${gutter.made} made`);
+        expect("and keeps its room, so no row moves", gutter.width === room && room > 0,
+            `${gutter.width}, was ${room}`);
     }
 
     function check() {
@@ -323,6 +448,12 @@ ShellRoot {
                     && whole.some(cut => Math.abs(sideFace.advanceWidth(cut) - drawnWide) < 1),
                 `${drawnWide} wide, whole cuts ${JSON.stringify(whole.map(cut =>
                     [cut, Math.round(sideFace.advanceWidth(cut))]))}: ${said(texts)}`);
+            const wholeSide = apart(sideWhole, sideWhole.width)
+                .find(t => t.text === sideWhole.side);
+            expect("and it ends at the right edge every side ends at",
+                sideCut !== undefined && wholeSide !== undefined
+                    && Math.abs(sideCut.to - wholeSide.to) < 1,
+                `cut ends at ${sideCut?.to}, a whole side at ${wholeSide?.to}`);
             texts = apart(fits, fits.width);
             expect("words that fit left whole", cut(texts).length === 0, said(texts));
             texts = apart(noun, noun.width);
@@ -374,6 +505,54 @@ ShellRoot {
             expect("a field's path keeps its steps whole beside a long note",
                 ["Machine", "Processor", "Cores"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
+            // A note beside a head sits on the head's baseline, as his line
+            // reads (Joel, 2026-11-05: "which? &etc. need to be baselined
+            // with the text to their left"): the hint beside the place's
+            // name, and what's typed in its place, within a device pixel at a
+            // scale of 2.
+            const onTheHead = (field, head, words) => {
+                const placed = root.setting(field, head);
+                const beside = words.map(said => root.setting(field, said));
+                expect(`a note beside the head ${head} sits on its baseline`, placed !== null
+                    && beside.every(one => one !== null && Math.abs(one.base - placed.base) <= 0.5),
+                    `${head} ${JSON.stringify(placed)} against ${JSON.stringify(beside)}`);
+            };
+            onTheHead(opened, "Now", ["which?"]);
+            onTheHead(pathed, "Cores", ["what to do?"]);
+            onTheHead(named, "~/saving", ["a.md"]);
+            // Each line is centred by eye in its field, its largest level's
+            // capitals and small letters averaged on the field's middle
+            // (docs/design.md: text in a band centres in it; Joel, 2026-11-05:
+            // "the launcher find box text is not vertically aligned within its
+            // box, it is more heavily top aligned"): what's typed out of a place, and the
+            // place's name in one, each measured where it's drawn.
+            const centred = (field, words, caps, small) => {
+                const set = root.setting(field, words);
+                const middle = set === null ? NaN
+                    : set.base - (caps.tightBoundingRect.height
+                        + small.tightBoundingRect.height) / 4;
+                expect(`${words}'s line is centred by eye in its band`,
+                    Math.abs(middle - field.height / 2) <= 0.5,
+                    `ink's middle ${middle} in a band ${field.height} tall: ${JSON.stringify(set)}`);
+            };
+            centred(typedField, root.voice, figureCaps, figureSmall);
+            centred(opened, "Now", titleCaps, titleSmall);
+            centred(named, "~/saving", titleCaps, titleSmall);
+            // The launcher's head is centred so, and its baseline stands a
+            // row over the first row's, whose capitals the row centres,
+            // under the hairline (docs/design.md: a band's height comes
+            // from the rows' rhythm).
+            centred(headed, root.voice, figureCaps, figureSmall);
+            const headSet = root.setting(headed, root.voice);
+            const firstRow = headed.height + Theme.border + (4 * Theme.space.beat
+                + nameCaps.tightBoundingRect.height) / 2;
+            expect("the head's baseline stands a row over the first row's",
+                headSet !== null && Math.abs(firstRow - headSet.base - 4 * Theme.space.beat) <= 0.5,
+                `head ${JSON.stringify(headSet)}, first row ${firstRow}, band ${headed.height}`);
+            // A prompt's foot is a band, its hairline to the frame, its
+            // baseline on the rows' rhythm and its bottom where its words
+            // centre.
+            centred(footed, "Asked by sudo", noteCaps, noteSmall);
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
@@ -386,7 +565,17 @@ ShellRoot {
             const hint = root.setting(voicedField, root.voice);
             expect("the launcher's hint in the voice, on the typed words' baseline",
                 root.voicedLike(typed, hint), `${JSON.stringify(typed)} against ${JSON.stringify(hint)}`);
-            const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
+            // Where a caret is drawn, the hint starts a caret and an s past
+            // where letters would, so the caret never cuts its first letter
+            // (VKCF3Z's space audit, the picker's fault 11: "open which
+            // file?" read with its o cut).
+            const line = [...voicedField.children].find(child => child.cursorPosition !== undefined);
+            const letters = line.mapToItem(null, 0, 0).x;
+            const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
+            expect("a hint starts past the caret", hinting !== undefined
+                && hinting.from >= letters + voicedField.caretWidth + Theme.space.rung.mark - 0.5,
+                `hint at ${hinting?.from}, letters at ${letters}`);
+            const right = steadied.mapToItem(null, steadied.width - Theme.space.rung.inset, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
                 && Math.abs(note.to - right) <= 1, `${said(drawn(steadied, []))}, end ${right}`);
@@ -399,11 +588,34 @@ ShellRoot {
                 asked.text === root.asked && !asked.truncated, said(drawn(opened, [])));
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);
             const counted = texts.findIndex(t => t.text === "1 of 2");
-            expect("typed, the launcher's note stands before the field's keys",
-                counted >= 0 && counted < texts.length - 1
+            // A modal line holds only the find and how far it narrows: its
+            // hints, Ctrl+Y's completing among them, are the foot's (VKCF3Z,
+            // 2026-11-05).
+            expect("typed on the find, the launcher's note ends the field, no key after it",
+                counted >= 0 && counted === texts.length - 1
                     && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
-            expect("typed in insert, the launcher's field says Ctrl+Y completes",
-                texts.length > 0 && texts[texts.length - 1].text.includes("Ctrl+Y"), said(texts));
+            // Each gap in the keys is its rung (docs/design.md, The Ladder):
+            // a chord's keys tie, a key stands a mark from its word, a hint
+            // an item from the next, and a place held wider keeps its room
+            // after its word, never before its key, so "Space ? keys" reads
+            // as a chord and its word, and Return as one hint among them.
+            const hints = drawn(footHints, []).sort((a, b) => a.from - b.from);
+            const gap = (from, to) => {
+                const left = hints.find(t => t.text === from);
+                const right = hints.find(t => t.text === to);
+                return left && right ? right.from - left.to : NaN;
+            };
+            const rungs = [["Space", "?", Theme.space.rung.tie],
+                ["?", "keys", Theme.space.rung.mark], [":", "commands", Theme.space.rung.mark],
+                ["commands", "Space", Theme.space.rung.items],
+                ["keys", "\u21b5", Theme.space.rung.items]];
+            for (const [from, to, rung] of rungs)
+                expect(`the keys' ${from} and ${to} stand ${rung} apart`,
+                    Math.abs(gap(from, to) - rung) < 1, said(hints));
+            expect("a key and its word are measured as they're drawn",
+                Math.abs(footHints.advance("Space ?", "keys")
+                    - (hints.find(t => t.text === "keys").to
+                        - hints.find(t => t.text === "Space").from)) < 1, said(hints));
             // Insert's caret is a bar a quarter of a letter wide, as his
             // Neovim's guicursor draws it. In normal the keys are on the
             // rows, so the field draws no caret at all: a block there sat
@@ -422,9 +634,32 @@ ShellRoot {
             expect("normal's caret rests on the last letter", typing.caret === 1,
                 `at ${typing.caret} of "${typing.text}"`);
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);
-            expect("typed in normal, the launcher's field says the left arrow clears",
-                texts.length > 0 && texts[texts.length - 1].text.includes("clear"), said(texts));
-            typing.mode = "insert";
+            // Normal's h steps out rather than clearing, so the field names
+            // no key of its own there; the foot says normal's.
+            expect("typed in normal, the launcher's field names no key",
+                texts.length > 0 && !texts.some(t => t.text.includes("\u2190")
+                    || t.text.includes("Ctrl+Y")), said(texts));
+            // A find narrowing the rows says so in normal, its count at
+            // Note after what's typed, as "/ne · 3 of 12"; on the find the
+            // rows themselves narrow as it's typed, so it says nothing.
+            typing.narrowed = "3 of 12";
+            texts = drawn(typing, []).sort((a, b) => a.from - b.from);
+            // What's typed is the line's own input, so the count is held to
+            // standing past the path and its letters, well before the aside.
+            const path = texts.find(t => t.text === "Now");
+            const narrowing = texts.find(t => t.text === "\u00b7 3 of 12");
+            const aside = texts.find(t => t.text === "1 of 2");
+            expect("a narrowed find says its count after what's typed, in normal",
+                path !== undefined && narrowing !== undefined && aside !== undefined
+                    && narrowing.from >= path.to + typing.letterWidth * 2
+                    && narrowing.to < aside.from,
+                said(texts));
+            typing.mode = "find";
+            texts = drawn(typing, []);
+            expect("and nothing of it on the find",
+                !texts.some(t => t.text.includes("3 of 12")), said(texts));
+            typing.narrowed = "";
+            root.gutterHolds();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

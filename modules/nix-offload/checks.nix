@@ -23,7 +23,8 @@ onLinux {
 
   # A switch that changes a lender's unit reloads it rather than restarting
   # it, and the lender's own end once nothing uses its builder starts the
-  # new one; nix-offload-decides-when holds when that is.
+  # new one; nix-offload-decides-when holds when that is. A VM lender runs
+  # for each of vmTests.extra and no more.
   nix-offload-lenders-outlive-a-switch =
     let
       home = account (bareNixos [
@@ -33,7 +34,11 @@ onLinux {
             imports = [ self.homeModules.nix-offload ];
             jitsusama.nix-offload = {
               helper = pkgs.writeShellScript "a-helper" "";
-              vmTests.prefix = "a-vm-";
+              vmTests = {
+                prefix = "a-vm-";
+                more.prefix = "a-vm2-";
+                extra = [ { prefix = "a-vm3-"; } ];
+              };
               more.prefix = "a-more-";
             };
           };
@@ -42,6 +47,8 @@ onLinux {
       lenders = map (name: home.systemd.user.services.${name}) [
         "nix-offload"
         "nix-offload-vm"
+        "nix-offload-vm-more"
+        "nix-offload-vm-3"
         "nix-offload-more"
       ];
       reloads =
@@ -53,6 +60,7 @@ onLinux {
     in
     holds "nix-offload-lenders-outlive-a-switch" (
       "a switch restarts a lender, cutting every build its builder runs, "
-      + "or a lender that ends superseded isn't started again."
-    ) (lib.all reloads lenders);
+      + "or a lender that ends superseded isn't started again, "
+      + "or a VM lender runs past those vmTests.extra names."
+    ) (lib.all reloads lenders && !(home.systemd.user.services ? nix-offload-vm-4));
 }

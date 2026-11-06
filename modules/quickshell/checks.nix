@@ -533,6 +533,55 @@ onLinux {
       touch $out
     '';
 
+  # Every space the shell sets names the rung of the ladder it sits between,
+  # the beat or a level's pitch, never a step of the size scale, but in the
+  # files not-yet-by-rung.txt lists, and a file listed there that no longer
+  # needs to be fails, so the list only shrinks (space-is-set-by-rung.py).
+  # So it can't pass by seeing nothing, a step, a step summed with a rung,
+  # and a listed file that's moved or gone are each shown to fail first,
+  # while a rung, the beat, a pitch and a comment naming a step pass.
+  space-is-set-by-rung =
+    let
+      check = "${lib.getExe pkgs.python3} ${./space-is-set-by-rung.py}";
+      shells = lib.fileset.toSource {
+        root = ../.;
+        fileset = lib.fileset.fileFilter (file: file.hasExt "qml") ../.;
+      };
+    in
+    pkgs.runCommandLocal "space-is-set-by-rung" { } ''
+      # A file that sets its space as given, what the check must say of it,
+      # and the files listed as not yet moved.
+      strays() {
+        rm -rf modules
+        mkdir -p modules/shell
+        printf '%s\n' "$1" > modules/shell/Surface.qml
+        printf '%s\n' "''${@:3}" > unmoved.txt
+        if ${check} modules unmoved.txt > said; then
+          echo "The space check passed on: $1"
+          exit 1
+        fi
+        if ! grep -qF -- "$2" said; then
+          echo "Of $1 the space check didn't say: $2"
+          cat said
+          exit 1
+        fi
+      }
+      strays 'leftPadding: Theme.space.l' 'Surface.qml:1: leftPadding: Theme.space.l'
+      strays 'spacing: Theme.space.rung.items + Theme.space.xs' 'Theme.space.xs'
+      strays 'spacing: Theme.space.rung.items' 'take it off' shell/Surface.qml
+      strays 'spacing: Theme.space.rung.items' "isn't there" shell/Gone.qml
+      # A rung, the beat and a pitch pass, as a comment naming a step does.
+      rm -rf modules
+      mkdir -p modules/shell
+      printf '%s\n' 'spacing: Theme.space.rung.items' 'height: Theme.space.beat * 2' \
+        'lineHeight: Theme.level.note.pitch' '// once Theme.space.l, now a rung' \
+        > modules/shell/Surface.qml
+      : > unmoved.txt
+      ${check} modules unmoved.txt
+      ${check} ${shells} ${./not-yet-by-rung.txt}
+      touch $out
+    '';
+
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place
@@ -708,10 +757,29 @@ onLinux {
   the-launcher-catalogues-what-it-does =
     let
       qt = pkgs.qt6.qtdeclarative;
+      # The key language's commands by their whole names, each with whether
+      # it changes things and whether it starts something, as the shell's
+      # Options.commands holds them.
+      named =
+        lib.filterAttrs (_: about: about ? command)
+          (builtins.fromTOML (builtins.readFile ../keys/language.toml)).acts;
+      commands = pkgs.writeText "commands.json" (
+        builtins.toJSON (
+          lib.mapAttrs' (
+            _: about:
+            lib.nameValuePair about.command {
+              changes = about.changes or false;
+              starts = about.starts or false;
+            }
+          ) named
+        )
+      );
     in
     pkgs.runCommandLocal "the-launcher-catalogues-what-it-does" { } ''
       cp ${../../tests/catalogue.qml} catalogue.qml
       cp ${./launcher/Catalogue.js} Catalogue.js
+      cp ${commands} commands.json
+      export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -2619,6 +2687,24 @@ onLinux {
       touch $out
     '';
 
+  # A floating surface standing over another, as the launcher's drawer over
+  # its card on a narrow screen, meets it with a square foot, its region
+  # alike, its top and the card's foot staying round, as tests/floating.qml
+  # reads them back from what Quickshell draws.
+  the-drawer-over-the-card-meets-it-square =
+    pkgs.runCommandLocal "the-drawer-over-the-card-meets-it-square" { }
+      ''
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Floating.qml} Floating.qml
+        cp ${../../tests/floating.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        mkdir -m 700 $XDG_RUNTIME_DIR
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
@@ -2636,18 +2722,23 @@ onLinux {
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Gutter.qml} Gutter.qml
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
+      cp ${./Bands.js} Bands.js
+      cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Operators.js} Operators.js
       cp ${./Typing.js} Typing.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
+      cp ${./PromptFoot.qml} PromptFoot.qml
+      cp ${./Hairline.qml} Hairline.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -3035,7 +3126,7 @@ onLinux {
   # runs exactly what's typed, with Vim's ranges and :g, and reads :set as
   # Vim does, as tests/command-line.qml holds Commands.js and SetWords.js
   # to, with the Ex.js they read ranges by and CommandBinding.js, which
-  # binds a line to things.
+  # binds a line to things and asks by d's rule, in Operators.js.
   the-command-line-lists-every-command =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3046,6 +3137,7 @@ onLinux {
       cp ${./SetWords.js} SetWords.js
       cp ${./Ex.js} Ex.js
       cp ${./CommandBinding.js} CommandBinding.js
+      cp ${./Operators.js} Operators.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3087,7 +3179,9 @@ onLinux {
     in
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../tests/query-keys.qml} query-keys.qml
+      cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./ModeMarks.js} ModeMarks.js
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Typing.js} Typing.js
@@ -3284,7 +3378,10 @@ onLinux {
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's
-  # radius the theme derives from it, and every border is the theme's.
+  # radius the theme derives from it, or a floating surface's foot or top,
+  # which is the theme's radius or square where it meets another
+  # (Floating.qml's footRadius and topRadius), and every border is the
+  # theme's.
   quickshell-takes-its-shape-from-the-theme =
     let
       dir = ../.;
@@ -3293,6 +3390,8 @@ onLinux {
         radius = [
           "Theme.radius"
           "Theme.inner"
+          "floating.footRadius"
+          "floating.topRadius"
         ];
         width = [ "Theme.border" ];
       };

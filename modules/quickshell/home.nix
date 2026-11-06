@@ -56,6 +56,8 @@ let
       undoable = about.undoable or false;
       guarded = about.guarded or false;
       range = about.range or false;
+      ends = about.ends or false;
+      starts = about.starts or false;
     }
   ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
   # The marks the theme draws as paths, for Theme.drawn.
@@ -90,6 +92,9 @@ let
       capitalization = if level.case == "capitals" then 1 else 0;
       features = lib.genAttrs level.features (_: 1);
       colour = colours.${level.colour};
+      # How far apart two lines of one thing at the level sit, baseline to
+      # baseline (docs/design.md, Space).
+      inherit (level) pitch;
     }
     // lib.optionalAttrs (level.wallpaper != null) { wallpaper = sized level.wallpaper; }
     # A line holding strong spans: its axes but the weight, which the face
@@ -105,7 +110,9 @@ let
   qml = [
     "shell.qml"
     "Prompt.qml"
+    "KeyNames.js"
     "QueryKeys.js"
+    "ModeMarks.js"
     "CommandLine.qml"
     "CommandMenu.qml"
     "Commands.js"
@@ -115,6 +122,7 @@ let
     "CommandBinding.js"
     "ListedKeys.js"
     "Typing.js"
+    "Bands.js"
     "Search.js"
     "Operators.js"
     "Confirm.js"
@@ -123,6 +131,7 @@ let
     "DrawerPage.js"
     "Launcher.qml"
     "Choice.qml"
+    "Gutter.qml"
     "ReadsOn.qml"
     "Wash.qml"
     "Reading.js"
@@ -146,13 +155,18 @@ let
     "Music.qml"
     "Music.js"
     "Lock.qml"
+    "PictureTime.qml"
     "Polkit.qml"
     "Askpass.qml"
+    "PromptHead.qml"
+    "PromptFoot.qml"
+    "Hairline.qml"
     "Askpass.js"
     "Volume.qml"
     "Power.qml"
     "Brightness.qml"
     "Meter.qml"
+    "Meters.qml"
     "Facts.qml"
     "Wallpaper.qml"
     "Lifted.qml"
@@ -164,6 +178,7 @@ let
     "Calendars.qml"
     "SignIn.qml"
     "Floating.qml"
+    "Signature.qml"
     "Fuzzy.js"
     "Picks.qml"
     "Trials.qml"

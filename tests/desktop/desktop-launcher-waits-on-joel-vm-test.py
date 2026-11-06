@@ -119,19 +119,19 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     # looked at is held among its members, where the member at work shows below the way to
     # the fleet's session, whose row isn't cut.
     reads_on_beside(desktop, "paint-crew", "fleet \u00b7")
-    # Stepped into, its members after the way to its session.
-    desktop.step_in()
+    # Gone into by Ctrl+], as Return goes to its session, its members after the way there.
+    desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     # What a fleet says changes as its files do, not every frame.
     draws_nothing_held_still(desktop, "a fleet", "its member at work")
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "brush"
             and shown["selected"]["side"].startswith("painting the trim \u00b7 opus")
         )
     )
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "roller"
@@ -224,7 +224,7 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     tabbed()
     desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Notes for Tuesday")
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             shown["selected"]["is"] == f"window:{pi['id']}"
@@ -318,7 +318,7 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     # The window titled the new way is its session, named by its title.
     assert "Another" in desktop.showing()["rows"], desktop.showing()["rows"]
     # The second, which would go first once it wants Joel.
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][1])
     shown = desktop.showing()
     order = shown["rows"]
@@ -457,11 +457,11 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # the quickest first. Return on one goes where it's done.
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Answer the ask", "Later"])
-    machine.send_key("down")
+    desktop.next_row()
     picked(desktop, "Later")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Pick a bucket", "Try the new home"])
-    machine.send_key("down")
+    desktop.next_row()
     picked(desktop, "Try the new home")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -471,10 +471,10 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     )
     # One naming no window is done in its session's window.
     waiting_opened(desktop)
-    desktop.step_in()
-    machine.send_key("down")
+    desktop.follow()
+    desktop.next_row()
     picked(desktop, "Later")
-    desktop.step_in()
+    desktop.follow()
     picked(desktop, "Pick a bucket")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -513,7 +513,7 @@ def waiting_inside(desktop: Desktop) -> tuple[str, list[str]]:
     """Give Needs You's side and the rows inside it, as a fresh look sees them."""
     waiting_opened(desktop)
     side = cast("str", (desktop.showing()["selected"] or {}).get("side"))
-    desktop.step_in()
+    desktop.follow()
     rows = cast("list[str]", desktop.showing()["rows"])
     desktop.close_launcher()
     return side, rows
@@ -616,7 +616,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     )
     # One with nowhere to go steps in to Done and Not Now.
     waiting_opened(desktop)
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Answer the old")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Done", "Not Now"])
@@ -634,9 +634,9 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     )
     # Not Now puts one under Later.
     waiting_opened(desktop)
-    desktop.step_in()
+    desktop.follow()
     picked(desktop, "Restart Once")
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Not Now")
     machine.send_key("ret")
     desktop.close_launcher()
@@ -697,7 +697,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
             lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
             timeout=dt.timedelta(seconds=30),
         )
-        # Return on Needs You steps in, as the right arrow does in normal mode.
+        # Return on Needs You steps in, as l does in normal mode.
         waiting_opened(desktop)
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "more")
         desktop.step_in("ret")
@@ -749,20 +749,21 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         selected = desktop.showing()["selected"] or {}
         assert (selected["side"], selected["verb"]) == ("nothing now", "more"), selected
         # What's typed narrows Now to the rows it names, and clearing it, by
-        # the left arrow in normal mode, brings them all back.
+        # cc in normal mode, brings them all back.
         desktop.type_in("awake")
         desktop.launcher_until(
             lambda shown: shown["rows"][:1] == ["Keep Awake"] and not shown["nothing"]
         )
         desktop.normal()
-        machine.send_key("left")
+        machine.send_chars("cc")
         desktop.launcher_until(
             lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Needs You"]
         )
+        desktop.normal()
         # Clearing keeps the row typing chose, so the selection goes back up.
         shown = desktop.showing()
         for _ in range(shown["rows"].index(shown["selected"]["name"])):
-            machine.send_key("up")
+            desktop.previous_row()
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
         # Return steps in, as it does with things waiting, to a list saying
         # nothing does, rather than closing as if the launcher vanished.

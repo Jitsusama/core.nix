@@ -794,6 +794,10 @@ fn wall() -> f64 {
 /// journal has the rest.
 const CLEARED_SHOWN: usize = 3;
 
+/// How many of the biggest holders `status` shows in words; the JSON has
+/// the rest.
+const HOLDERS_SHOWN: usize = 3;
+
 /// How old a heartbeat may be before its guard is taken to have stopped.
 const STOPPED_AFTER: f64 = 120.0;
 
@@ -867,6 +871,19 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
             let when = span(now - cleared["at"].as_f64().unwrap_or(0.0));
             let says = cleared["says"].as_str().unwrap_or("?");
             writeln!(out, "  {when} ago: {says}").map_err(failed)?;
+        }
+        let holders: Vec<&str> = status["holders"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|holder| holder["says"].as_str())
+            .take(HOLDERS_SHOWN)
+            .collect();
+        if !holders.is_empty() {
+            writeln!(out, "  holds the most:").map_err(failed)?;
+        }
+        for says in holders {
+            writeln!(out, "    {says}").map_err(failed)?;
         }
     }
     Ok(FINE)

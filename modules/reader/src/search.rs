@@ -148,6 +148,7 @@ mod tests {
                 pieces: vec![Piece {
                     baseline_pt,
                     size_pt: 10.0,
+                    cap_pt: 7.0,
                     from_pt: 0.0,
                     to_pt: 5.0,
                 }],

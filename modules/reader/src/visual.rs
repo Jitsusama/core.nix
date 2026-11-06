@@ -18,7 +18,7 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use crate::keys::Act;
 use crate::select::{Kind, Motion, Object, Selection};
 use crate::{
-    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, moves, prompt, select,
+    App, FLASH, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, line_pt, moves, prompt, select,
     text,
 };
 
@@ -27,9 +27,13 @@ use crate::{
 const RULE_PX: f64 = 2.0;
 
 /// How far the rule's right edge stands from the words' edge, in points of
-/// the page: just past the box a numbered list hangs its numbers in, two of
-/// the text's em wide (27.4 pt at its 13.69), so a number never touches it.
-const RULE_FROM_WORDS_PT: f64 = 30.0;
+/// the page: the items rung past the page's outer column, which a list's
+/// numbers hang within and a spread table or code ends on, so nothing that
+/// hangs out of the words comes near it.
+fn rule_from_words_pt() -> f64 {
+    let space = crate::theme::get().space;
+    (space.outer + space.rung.items) * crate::theme::PT_A_PX
+}
 
 impl App {
     /// The view the cursor keeps to, its top and foot in points down the
@@ -124,9 +128,17 @@ impl App {
                         }
                     }
                     None => {
-                        self.selection = layout
-                            .first_in_view(here - 0.5, foot)
-                            .map(|at| Selection::new(kind, at));
+                        let first = layout.first_in_view(here - 0.5, foot);
+                        // On the line a search left the cursor on, v starts at
+                        // the match, as Neovim's starts at the cursor's
+                        // character, which the search put there.
+                        let matched = self
+                            .current
+                            .and_then(|i| self.found.get(i))
+                            .and_then(|found| found.pieces.first())
+                            .and_then(|piece| layout.place_of(piece.baseline_pt, piece.from_pt))
+                            .filter(|at| first.is_some_and(|first| first.line == at.line));
+                        self.selection = matched.or(first).map(|at| Selection::new(kind, at));
                     }
                 }
                 return true;
@@ -283,7 +295,7 @@ impl App {
     /// further than half a screen.
     pub(crate) fn follow_line(&mut self, top: f64, foot: f64, toward: Option<bool>) {
         let (view_top, view_foot) = self.view_pt();
-        let room = SCROLL_OFF_LINES * LINE_PT;
+        let room = SCROLL_OFF_LINES * line_pt();
         let to_pt = if toward != Some(true) && top - room < view_top {
             top - room
         } else if toward != Some(false) && foot + room > view_foot {
@@ -338,19 +350,19 @@ impl App {
         }
     }
 
-    /// The cursor's line, its top and foot in points: the selection's
-    /// cursor's while selecting, and else the page's.
+    /// The cursor's line, its cell's top and foot in points: the
+    /// selection's cursor's while selecting, and else the page's.
     pub(crate) fn cursor_line(&self) -> Option<(f64, f64)> {
         if let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref()) {
-            return Some(layout.line_extent(selection.cursor.line));
+            return layout.lines.get(selection.cursor.line).map(moves::rule_of);
         }
         let (i, lines) = self.cursor().zip(self.words.as_deref())?;
-        Some((moves::top_of(&lines[i]), moves::foot_of(&lines[i])))
+        Some(moves::rule_of(&lines[i]))
     }
 
     /// The cursor's line, marked as his `cursorlineopt=number` marks only
     /// the number: a thin rule in the accent in the page's left margin,
-    /// as tall as the line's words, clear of the marks a list hangs there.
+    /// as tall as the line's cell, clear of the marks a list hangs there.
     /// A window too narrow for that sets it half way into the room left of
     /// the words, and one with no room there draws none.
     #[expect(
@@ -371,7 +383,7 @@ impl App {
         }
         let words = f64::from(self.page_x()) + self.width.spread_pt * px;
         let width = (RULE_PX * self.scale).round().max(1.0);
-        let right = words - (RULE_FROM_WORDS_PT * px).min(words / 2.0);
+        let right = words - (rule_from_words_pt() * px).min(words / 2.0);
         if right < width {
             return;
         }
@@ -423,8 +435,10 @@ impl App {
         if let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref())
             && let Some(at) = layout.cursor(selection)
         {
-            let top = at.baseline_pt - at.size_pt * 0.92;
-            mark(cursor, (top, top + at.size_pt * 1.2, at.from_pt, at.to_pt));
+            // The block stands its line's cell, as the ground under it does,
+            // so it fills the selection's height rather than its letters'.
+            let (top, foot) = select::line_cell(at.baseline_pt, at.cap_pt, at.size_pt);
+            mark(cursor, (top, foot, at.from_pt, at.to_pt));
         }
     }
 

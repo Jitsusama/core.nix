@@ -43,6 +43,44 @@
         touch $out
       '';
 
+  # The splash's prompt is built as the lock's field (../quickshell/Lock.qml
+  # and Prompt.qml) from the theme's sizes: Prompt.qml's row, the hairline,
+  # the inset rung to the padlock's cell, and Prompt.qml's room after the
+  # glyph, the step it names until it moves to the rungs, in the lead Qt
+  # measures.
+  the-splash-prompt-is-the-locks =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      inherit (machine.config.boot.plymouth) themePackages;
+      theme = (account machine).jitsusama.theme;
+    in
+    pkgs.runCommandLocal "the-splash-prompt-is-the-locks"
+      {
+        nativeBuildInputs = [
+          pkgs.imagemagick
+          pkgs.pango.bin
+        ];
+        LC_ALL = "C.UTF-8";
+        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = machine.config.fonts.packages; };
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/the-splash-prompt-is-the-locks.sh} ${
+          lib.escapeShellArgs [
+            "${lib.head themePackages}/share/plymouth/themes/jitsusama"
+            "${theme.font.mono.family} ${toString theme.type.mono.large}"
+            theme.space.xxxl
+            theme.shape.border
+            theme.space.rung.inset
+            theme.space.m
+          ]
+        }
+        touch $out
+      '';
+
   # Plymouth lets go of the screen as greetd starts, keeping the GPU open,
   # and quits from a timer counted from greetd's start rather than with the
   # boot's other jobs. So the GPU is never left closed between the splash

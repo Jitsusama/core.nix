@@ -13,6 +13,10 @@
 //! sorter at once, so the window has its weight back before the key is
 //! drawn. A pi that writes no file, an older one or one with no terminal,
 //! keeps its window where it was.
+//!
+//! A window whose pi started within `STARTING_FOR` weighs `STARTING`
+//! instead, marked or not, so a pi Joel has just opened draws its screen
+//! ahead of the sessions already running, and then goes back.
 
 use std::collections::HashMap;
 use std::ffi::{CString, c_char, c_int, c_void};
@@ -24,10 +28,33 @@ use std::time::Duration;
 /// A window's weight while someone may be at it, systemd's own default.
 pub const AT: u64 = 100;
 
+/// A window's weight while a pi in it is starting, ten times an app's.
+/// On 5 November a pi starting in a window at 100, among 60 in the
+/// agents' slice, took 6.1 to 13.5 s to a usable screen at 54 to 65% CPU
+/// pressure, using 5.7 to 8.8 s of CPU: much of its start was spent
+/// waiting its turn, while Joel waited on it.
+pub const STARTING: u64 = 1000;
+
+/// How long a pi counts as starting: past the slowest start under load,
+/// after which its window goes back to an app's weight.
+pub const STARTING_FOR: Duration = Duration::from_secs(30);
+
 /// Whether a window whose pi run as `pis` goes low: it holds one at least,
 /// and every one is `marked`.
 pub fn low(pis: &[u32], marked: impl Fn(u32) -> bool) -> bool {
     !pis.is_empty() && pis.iter().all(|&pid| marked(pid))
+}
+
+/// The weight a window whose pi run as `pis` wants: `STARTING` while one
+/// of them is `starting`, `weight` while it goes low, and an app's else.
+pub fn wanted(pis: &[u32], starting: bool, marked: impl Fn(u32) -> bool, weight: u64) -> u64 {
+    if starting {
+        STARTING
+    } else if low(pis, marked) {
+        weight
+    } else {
+        AT
+    }
 }
 
 /// Each window's weight as last set, so only a change is asked for.
@@ -40,15 +67,14 @@ pub struct Weighing {
 
 impl Weighing {
     /// The windows whose weight should change, each with the weight to set,
-    /// from each window's unit and whether it goes low, at `weight`. One
-    /// never weighed and not going low is left at the weight it has.
-    pub fn changes(&self, windows: &[(String, bool)], weight: u64) -> Vec<(String, u64)> {
+    /// from each window's unit and the weight it wants. One never weighed
+    /// and wanting an app's is left at the weight it has.
+    pub fn changes(&self, windows: &[(String, u64)]) -> Vec<(String, u64)> {
         windows
             .iter()
-            .filter_map(|(unit, low)| {
-                let wanted = if *low { weight } else { AT };
+            .filter_map(|(unit, wanted)| {
                 let had = self.set.get(unit).copied();
-                (had.unwrap_or(AT) != wanted).then(|| (unit.clone(), wanted))
+                (had.unwrap_or(AT) != *wanted).then(|| (unit.clone(), *wanted))
             })
             .collect()
     }
@@ -183,22 +209,37 @@ mod tests {
     }
 
     #[test]
+    fn a_window_whose_pi_is_starting_weighs_more_than_an_app_marked_or_not() {
+        let marked = |pid| pid == 20;
+        assert_eq!(wanted(&[20], true, marked, 10), STARTING);
+        assert_eq!(wanted(&[42], true, marked, 10), STARTING);
+        assert_eq!(wanted(&[20], false, marked, 10), 10);
+        assert_eq!(wanted(&[42], false, marked, 10), AT);
+        const { assert!(STARTING > AT) };
+    }
+
+    #[test]
     fn only_a_change_is_asked_for_and_a_window_comes_back_up_once_unmarked() {
         let mut weighing = Weighing::default();
-        let windows = |low| vec![("kitty-1-1.scope".to_owned(), low)];
-        assert!(weighing.changes(&windows(false), 10).is_empty());
+        let windows = |wanted| vec![("kitty-1-1.scope".to_owned(), wanted)];
+        assert!(weighing.changes(&windows(AT)).is_empty());
         assert_eq!(
-            weighing.changes(&windows(true), 10),
+            weighing.changes(&windows(10)),
             [("kitty-1-1.scope".to_owned(), 10)]
         );
         weighing.weighed("kitty-1-1.scope", 10);
-        assert!(weighing.changes(&windows(true), 10).is_empty());
+        assert!(weighing.changes(&windows(10)).is_empty());
         assert_eq!(
-            weighing.changes(&windows(false), 10),
+            weighing.changes(&windows(AT)),
             [("kitty-1-1.scope".to_owned(), AT)]
         );
         weighing.keep_only(&[]);
-        assert!(weighing.changes(&windows(false), 10).is_empty());
+        assert!(weighing.changes(&windows(AT)).is_empty());
+        // A new window's pi starting is asked for at once.
+        assert_eq!(
+            weighing.changes(&windows(STARTING)),
+            [("kitty-1-1.scope".to_owned(), STARTING)]
+        );
     }
 
     #[test]

@@ -811,6 +811,15 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         after = [ "graphical-session-pre.target" ];
         serviceConfig.ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
       };
+      # The test instrumentation copies the whole journal to the serial port,
+      # whose every byte a builder's nested VM takes slowly. The shell's
+      # reports, thousands of bytes a key, held a processor in the port's
+      # interrupt for 21 s at a time on 5 November, stalling keeps-pace's VM
+      # and breaking its driver's pipe. Only warnings go there in that area;
+      # the journal keeps the rest, where the tests read it.
+      services.journald.settings.Journal.MaxLevelConsole = lib.mkIf (area == "keeps-pace") (
+        lib.mkForce "warning"
+      );
     };
 
   tests = ./desktop/desktop-${area}-vm-test.py;

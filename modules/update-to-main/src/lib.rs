@@ -15,6 +15,7 @@
 //! - `git`: root's copy of main, its history and its signature.
 //! - `hosted`: main as its host names it, for a host that signs nothing.
 //! - `follows`: the flake's inputs that follow their own signed main.
+//! - `follow`: the asker that asks whenever main moves.
 //! - `system`: building, switching, the health checks and going back.
 //! - `power`: whether the machine is on a battery too low to start.
 //! - `line`: what an asker hears.
@@ -24,6 +25,7 @@
 
 pub mod ask;
 pub mod config;
+pub mod follow;
 pub mod follows;
 pub mod git;
 pub mod hosted;

@@ -275,6 +275,127 @@ impl Levels {
     }
 }
 
+/// Points of the page a logical pixel of the window holds at zoom 1, as
+/// CSS has it: the theme says its spaces in logical pixels, and the page
+/// and its overlays are set in points.
+pub const PT_A_PX: f64 = 0.75;
+
+/// The space ladder's rungs, in logical pixels: each the space one level
+/// of structure sits apart by, wider than the one inside it
+/// (docs/design.md, The Ladder). Across the page and in its overlays, a
+/// space names one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rungs {
+    pub tie: f64,
+    pub mark: f64,
+    pub apart: f64,
+    pub items: f64,
+    pub groups: f64,
+    pub inset: f64,
+    pub frames: f64,
+    pub screen: f64,
+}
+
+impl Rungs {
+    fn each(&mut self) -> [(&'static str, &mut f64); 8] {
+        [
+            ("tie", &mut self.tie),
+            ("mark", &mut self.mark),
+            ("apart", &mut self.apart),
+            ("items", &mut self.items),
+            ("groups", &mut self.groups),
+            ("inset", &mut self.inset),
+            ("frames", &mut self.frames),
+            ("screen", &mut self.screen),
+        ]
+    }
+}
+
+/// The outer column of a page without a theme: the glyph column, a name's
+/// cell of 24 and a mark of 8, in logical pixels.
+pub const PLAIN_OUTER_PX: f64 = 32.0;
+
+/// The page's space: the theme's rungs across it, and down it its own line
+/// and beat, in logical pixels, which home.nix says and why.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Space {
+    pub rung: Rungs,
+    /// Baseline to baseline, and what j and k move by.
+    pub pitch: f64,
+    /// What every space down the page is a whole number of: half a line,
+    /// so every baseline lands on the beat.
+    pub beat: f64,
+    /// The page's outer column, either side of its words: the glyph
+    /// column, Name's pitch and a mark, which a spread table or code ends
+    /// on and a list's numbers hang within.
+    pub outer: f64,
+}
+
+impl Space {
+    /// The ladder the theme builds from its unit of 4 and the page's own
+    /// line, so a page without a theme keeps its shape.
+    fn plain() -> Self {
+        Space {
+            rung: Rungs {
+                tie: 4.0,
+                mark: 8.0,
+                apart: 12.0,
+                items: 16.0,
+                groups: 20.0,
+                inset: 24.0,
+                frames: 32.0,
+                screen: 48.0,
+            },
+            pitch: 28.0,
+            beat: 14.0,
+            outer: PLAIN_OUTER_PX,
+        }
+    }
+
+    /// Reads what the theme's file says of the space, keeping this one's
+    /// own for anything it doesn't say or says wrongly.
+    fn read(&mut self, said: &serde_json::Value) {
+        let length = |value: Option<&serde_json::Value>| {
+            value
+                .and_then(serde_json::Value::as_f64)
+                .filter(|px| px.is_finite() && *px > 0.0)
+        };
+        if let Some(rungs) = said.get("rung") {
+            for (name, slot) in self.rung.each() {
+                if let Some(px) = length(rungs.get(name)) {
+                    *slot = px;
+                }
+            }
+        }
+        for (name, slot) in [
+            ("pitch", &mut self.pitch),
+            ("beat", &mut self.beat),
+            ("outer", &mut self.outer),
+        ] {
+            if let Some(px) = length(said.get(name)) {
+                *slot = px;
+            }
+        }
+    }
+
+    /// The space as the page's Typst takes it, in points: `rung` holds
+    /// each rung, `pitch` the line and `beat` the beat.
+    fn typst(&self) -> String {
+        let mut rung = self.rung;
+        let rungs: Vec<String> = rung
+            .each()
+            .iter()
+            .map(|(name, px)| format!("{name}: {}pt", **px * PT_A_PX))
+            .collect();
+        format!(
+            "#let rung = ({})\n#let pitch = {}pt\n#let beat = {}pt\n",
+            rungs.join(", "),
+            self.pitch * PT_A_PX,
+            self.beat * PT_A_PX,
+        )
+    }
+}
+
 /// The face Typst sets in when nothing names one.
 pub const TYPSTS_OWN: &str = "libertinus serif";
 
@@ -329,6 +450,7 @@ pub struct Theme {
     pub cursor: Colour,
     pub cursor_text: Colour,
     pub levels: Levels,
+    pub space: Space,
     /// The theme as a `TextMate` theme, for code; two-face's Nord without one.
     pub code: Option<PathBuf>,
 }
@@ -357,6 +479,7 @@ impl Theme {
             cursor: grey(0),
             cursor_text: grey(255),
             levels: Levels::plain(),
+            space: Space::plain(),
             code: None,
         }
     }
@@ -400,14 +523,17 @@ impl Theme {
                 }
             }
         }
+        if let Some(space) = roles.get("space") {
+            theme.space.read(space);
+        }
         theme.code = named("code").map(PathBuf::from);
         theme
     }
 
-    /// The page's colours and levels as Typst names them, set before its
-    /// template: `paint` makes a colour of the theme's red, green and blue,
-    /// `level` holds each level, and `at` sets words at one, as
-    /// `at(level.note, [words])`.
+    /// The page's colours, levels and space as Typst names them, set before
+    /// its template: `paint` makes a colour of the theme's red, green and
+    /// blue, `level` holds each level, `at` sets words at one, as
+    /// `at(level.note, [words])`, and `rung`, `pitch` and `beat` the space.
     pub fn typst(&self) -> String {
         let roles = [
             ("background", self.background),
@@ -437,9 +563,10 @@ impl Theme {
             .map(|(name, level)| format!("{name}: {}", level.typst()))
             .collect();
         format!(
-            "#let paint = rgb\n#let ink = ({})\n#let level = ({})\n#let at(tier, body) = text(..tier.text, if tier.capitals {{ upper(body) }} else {{ body }})\n",
+            "#let paint = rgb\n#let ink = ({})\n#let level = ({})\n#let at(tier, body) = text(..tier.text, if tier.capitals {{ upper(body) }} else {{ body }})\n{}",
             named.join(", "),
             levels.join(", "),
+            self.space.typst(),
         )
     }
 }
@@ -550,6 +677,66 @@ mod tests {
             ),
             "{typst}"
         );
+    }
+
+    #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "whole numbers of pixels, read or kept unchanged"
+    )]
+    fn a_theme_gives_the_page_its_rungs_and_its_own_line_and_beat() {
+        let file = serde_json::json!({
+            "space": {
+                "rung": {"mark": 10, "inset": 30, "tie": -1, "far": 2},
+                "pitch": 32,
+                "beat": 16,
+                "outer": 40,
+            },
+        });
+        let theme = Theme::read(&file.to_string());
+        let plain = Theme::plain().space;
+        let space = theme.space;
+        assert!(
+            (space.rung.mark - 10.0).abs() < 1e-9 && (space.rung.inset - 30.0).abs() < 1e-9,
+            "{space:?}"
+        );
+        assert_eq!(space.rung.tie, plain.rung.tie, "a rung said wrongly stays");
+        assert_eq!(
+            space.rung.screen, plain.rung.screen,
+            "a rung not said stays"
+        );
+        assert!((space.pitch - 32.0).abs() < 1e-9 && (space.beat - 16.0).abs() < 1e-9);
+        assert_eq!(space.outer, 40.0, "the outer column as the theme says it");
+        let typst = theme.typst();
+        assert!(
+            typst.contains(
+                "#let rung = (tie: 3pt, mark: 7.5pt, apart: 9pt, items: 12pt, groups: 15pt, inset: 22.5pt, frames: 24pt, screen: 36pt)"
+            ),
+            "each rung in points, a logical pixel 0.75 of one: {typst}"
+        );
+        assert!(
+            typst.contains("#let pitch = 24pt\n#let beat = 12pt\n"),
+            "{typst}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::float_cmp, reason = "whole numbers of pixels, said as such")]
+    fn a_page_without_a_theme_keeps_the_ladder_and_its_line() {
+        let space = Theme::plain().space;
+        let rungs = [
+            space.rung.tie,
+            space.rung.mark,
+            space.rung.apart,
+            space.rung.items,
+            space.rung.groups,
+            space.rung.inset,
+            space.rung.frames,
+            space.rung.screen,
+        ];
+        assert_eq!(rungs, [4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 32.0, 48.0]);
+        assert_eq!((space.pitch, space.beat), (28.0, 14.0));
+        assert_eq!(space.outer, 32.0, "the glyph column, Name's 24 and a mark");
     }
 
     #[test]

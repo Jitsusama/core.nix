@@ -42,21 +42,35 @@ WORDS = ["power", "sound", "files", "night", "music", "clock", "paint", "light",
 # turns of PHASE keys in the same machine. The VM draws in software on a builder shared with
 # other checks, whose own load moved the middle key from 70 ms to 2553 ms over three runs of
 # the same launcher; it slows both turns alike, so what the machine's own load costs the
-# launcher is what's left between them. Design.md's budget is 50 ms from a key to its frame,
-# and 100 ms for all but one key in a hundred: under load a key may take twice its time with
-# the load frozen, and that budget more. The tail is the slowest key in twenty, since one in a
-# hundred is a key or two of each run, as likely the builder's as the machine's. It's read in
-# each turn and judged at the middle turn's: the VM's drawing can stop for seconds while the
-# launcher hears every key at once, then draw the keys it held in one frame (7 keys in a turn
-# with the load frozen took 1.5 to 3.8 s on 2026-11-02), and a stall of seven keys, falling in
-# either kind of turn by chance, set the tail of all 140, while it's one turn's in seven.
-# A launcher the load slows is slow in every turn under it. The laptop's own times come from
-# its load proof, which reads the same list of frames.
+# launcher is what's left between them. Design.md's budget is 50 ms from a key to its frame:
+# under load the middle key may take twice its time with the load frozen, and that budget more.
+# What's judged is read in each turn and judged at the middle turn's: the VM's drawing can stop
+# for seconds while the launcher hears every key at once, then draw the keys it held in one
+# frame (7 keys in a turn with the load frozen took 1.5 to 3.8 s on 2026-11-02), and a stall
+# falling in either kind of turn by chance is one turn's in seven. A launcher the load slows is
+# slow in every turn under it. The laptop's own times, the tail of them too, come from its load
+# proof, which reads the same list of frames.
 PHASE = 20
+# The frozen turns don't cancel the builder out at the tail: under load all four of the VM's
+# processors want to run, and the builder, which can't see the guest's weights, holds the one
+# drawing the launcher behind its own work, as it doesn't hold a processor that's idle. On 5
+# November main's launcher failed and passed at the same commit by what else the builder ran,
+# and these builders give the guest no steal time to tell it by. A desktop the load starves
+# doesn't show in the tail either: with the desktop's slices weighed 1 its slowest key in twenty
+# took 124 ms against 442 ms frozen. So beside the middle key, what the machine's own weights
+# decide is judged: how long the compositor and the shell were ready to run and waited for a
+# processor, which the guest's kernel counts in each one's cpu.pressure. Waking an idle
+# processor waits on the builder too, so they wait with the load frozen as well, 20 to 38 ms a
+# key on 5 November. Under load a key may cost them twice that, and WAITED ms more: weighed as
+# a workstation weighs them they waited 50 and 60 ms a key against 35 and 38, and weighed 1,
+# 78 against 20.
+WAITED = 10
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
 TAIL = 0.95
-TAIL_MORE = 100
+# Cage, which holds the compositor here, and the shell, by the units they run in.
+COMPOSITOR = "cage-tty1.service"
+SHELL = "quickshell.service"
 # How often a key is pressed: a steady typist's pace, slower than the frames a key mostly takes,
 # so each key mostly reaches its own. Asking the launcher after each key whether it's drawn
 # would pace them instead, and under this load each asking takes over a second.
@@ -65,6 +79,8 @@ PACE = timedelta(milliseconds=400)
 KEPT = 300
 # How long the last key may take to reach its frame before the test says it never did.
 REACHING = timedelta(seconds=30)
+# How long freezing or thawing the load may take before the test says it couldn't.
+FREEZING = timedelta(minutes=3)
 
 
 @pytest.fixture(scope="module")
@@ -150,6 +166,15 @@ class Timing:
         self.said = self.timed = self.pressing = self.presses = 0
         self.turns: list[tuple[int, bool]] = []
         self.loading = True
+        # How long, in ms, the compositor and the shell waited for a processor in each turn, and
+        # the turn being pressed with what they'd waited when it began.
+        self.waited: dict[int, float] = {}
+        self.open: tuple[int, float] | None = None
+        show = "show --property=ControlGroup --value"
+        self.groups = [
+            desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
+            desktop.as_account(f"systemctl --user {show} {SHELL}").strip(),
+        ]
 
     def begin(self) -> None:
         """Begin a run of keys, from where the keyboard's lines and the launcher's count stand."""
@@ -161,9 +186,28 @@ class Timing:
     def load(self, *, on: bool) -> None:
         """Let the machine's load run, or freeze it where it stands, which takes no time back."""
         verb = "thaw" if on else "freeze"
-        self.desktop.as_account(f"systemctl --user {verb} stress-jobs")
-        self.desktop.machine.succeed(f"systemctl {verb} stress-build")
+        # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
+        # waits for its answer by default, though the unit froze. FREEZING is longer than that.
+        wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
+        self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs")
+        self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
+
+    def waiting(self) -> float:
+        """Give how long the compositor and the shell have waited for a processor, in ms."""
+        files = " ".join(f"/sys/fs/cgroup{group}/cpu.pressure" for group in self.groups)
+        # The first line, some, counts the time at least one of a unit's tasks waited.
+        lines = self.desktop.machine.succeed(f"grep -h '^some' {files}").splitlines()
+        assert len(lines) == len(self.groups), f"cpu.pressure of {self.groups} reads {lines}"
+        return sum(int(line.rsplit("total=", 1)[1]) for line in lines) / 1000
+
+    def close_turn(self) -> None:
+        """End the turn being pressed, keeping how long it made the desktop wait."""
+        if self.open is None:
+            return
+        turn, began = self.open
+        self.open = None
+        self.waited[turn] = self.waiting() - began
 
     def press(self, key: str) -> None:
         """Press a key on the beat, however long telling the keyboard took.
@@ -171,13 +215,18 @@ class Timing:
         A beat missed, while the test did something else, starts the beat again rather than
         pressing the keys it missed at once. The load turns on or off before the first key of
         each turn, once the launcher has drawn every key before it, so no key waits behind the
-        last turn's.
+        last turn's, and the turn's wait is counted from there to its last key drawn.
         """
-        loaded = (self.presses // PHASE) % 2 == 0
-        if loaded != self.loading:
-            self.caught_up()
-            self.load(on=loaded)
-        self.turns.append((self.presses // PHASE, loaded))
+        turn = self.presses // PHASE
+        loaded = turn % 2 == 0
+        if self.open is None or self.open[0] != turn:
+            if self.open is not None:
+                self.caught_up()
+                self.close_turn()
+            if loaded != self.loading:
+                self.load(on=loaded)
+            self.open = (turn, self.waiting())
+        self.turns.append((turn, loaded))
         self.presses += 1
         self.next = max(self.next, time.monotonic())
         self.desktop.machine.succeed(f"echo {key} > {KEYBOARD}")
@@ -214,6 +263,7 @@ class Timing:
         )
         lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
         noted = self.caught_up()
+        self.close_turn()
         assert noted["clock"] == "monotonic", f"the launcher keeps time by {noted['clock']}"
         kept = len(noted["frames"])
         assert len(noted["pressed"]) == len(noted["heard"]) == kept, (
@@ -260,10 +310,20 @@ class Timing:
         def turned(turns: dict[int, list[float]]) -> list[float]:
             return [ranked(sorted(times), TAIL) for _, times in sorted(turns.items())]
 
+        def per_key(turns: dict[int, list[float]]) -> list[float]:
+            return [self.waited[turn] / len(times) for turn, times in sorted(turns.items())]
+
         middle, tail = ranked(under, 0.5), ranked(under, TAIL)
         middle_free, tail_free = ranked(free, 0.5), ranked(free, TAIL)
         tails, tails_free = turned(self.under_turns), turned(self.free_turns)
         turn_tail, turn_tail_free = ranked(sorted(tails), 0.5), ranked(sorted(tails_free), 0.5)
+        waits, waits_free = per_key(self.under_turns), per_key(self.free_turns)
+        wait, wait_free = ranked(sorted(waits), 0.5), ranked(sorted(waits_free), 0.5)
+        print(
+            f"the compositor and the shell waited for a processor, a key, in the middle turn "
+            f"{wait:.1f} ms under load against {wait_free:.1f} ms frozen; each turn's under load "
+            f"{[round(w, 1) for w in waits]} and frozen {[round(w, 1) for w in waits_free]}"
+        )
         print(
             f"{len(under)} keys under load and {len(free)} with it frozen, from the keyboard to "
             f"their frames: half within {middle:.0f} ms against {middle_free:.0f} ms, 95% "
@@ -279,9 +339,9 @@ class Timing:
             f"half the keys under load took {middle:.0f} ms to their frames, against "
             f"{middle_free:.0f} ms with the load frozen"
         )
-        assert turn_tail <= SLOWER_MOST * turn_tail_free + TAIL_MORE, (
-            f"one key in twenty of the middle turn under load took over {turn_tail:.0f} ms to "
-            f"its frame, against {turn_tail_free:.0f} ms with the load frozen"
+        assert wait <= SLOWER_MOST * wait_free + WAITED, (
+            f"under load the compositor and the shell waited {wait:.1f} ms a key for a processor "
+            f"in the middle turn, against {wait_free:.1f} ms with the load frozen"
         )
 
 
@@ -298,13 +358,15 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
         rows = desktop.showing()["count"]
         assert rows > 1, f"Programs lists {rows} rows, too few to move through"
         timing.begin()
-        # Up and down its whole length, turning at each end, where a key
-        # would move nothing and so draw nothing.
+        # Up and down its whole length, by the keys its mode moves by (j
+        # and k in normal), turning at each end, where a key would move
+        # nothing and so draw nothing.
         at, step = 0, 1
+        down, up = desktop.row_keys()
         for _ in range(ARROWS):
             if not 0 <= at + step < rows:
                 step = -step
-            timing.press("down" if step > 0 else "up")
+            timing.press(down if step > 0 else up)
             at += step
         timing.keep()
         desktop.close_launcher()

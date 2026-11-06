@@ -944,14 +944,20 @@ async fn check_network(
     let mut due = None;
     loop {
         let now = link.borrow_and_update().clone();
-        if now.routable {
-            let standing = (now.ssid.clone(), now.dns.clone(), now.portal.clone());
+        if let Some(standing) = now.standing() {
             let reached = last_standing.as_ref() != Some(&standing);
             if reached || due.is_some_and(|due| Instant::now() >= due) {
                 change(&state, |state| state.checking(now.index));
                 let (verdict, after) = checker
                     .check(&now.name, &now.dns, now.portal.as_deref(), reached)
                     .await;
+                // A card can move to another network while the check is
+                // out, and then the verdict is of the one it left: taken
+                // in, it would end a join to the new one as that one's
+                // reach. It goes unsaid, and the next turn checks afresh.
+                if link.borrow().standing().as_ref() != Some(&standing) {
+                    continue;
+                }
                 if reached || said.as_ref() != Some(&verdict) {
                     say(&now, &verdict);
                 }

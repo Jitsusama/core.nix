@@ -8,7 +8,7 @@
 // it shows in its mode, the first alone where `firsts` says, since
 // Return's with Shift and Ctrl are told apart where they're done. A line's
 // `also` are keys no act's row holds, as a count and the : line's. Escape
-// isn't listed, since it always steps back.
+// isn't listed, since it always lets go: what's begun, then the launcher.
 const normal = [
     { name: "rows", acts: ["next", "previous"] },
     { name: "ends", acts: ["first", "last"] },
@@ -17,27 +17,40 @@ const normal = [
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "count", acts: [], also: ["3j", "12G"] },
     { name: "row", acts: [], also: [":12"] },
-    { name: "inOut", acts: ["into", "out"] },
-    { name: "run", acts: ["run"], firsts: true },
+    // An option, the machine's, and that of what it's on, as Vim's
+    // :setlocal is the buffer's.
+    { name: "option", acts: [], also: [":set dnd"] },
+    { name: "optionHere", acts: [], also: [":setl mute"] },
+    // Return opens a row or goes into it and - goes up, as his oil's; h
+    // and l aren't listed, since on a row they only say so.
+    { name: "openIn", acts: ["run"], firsts: true },
+    { name: "up", acts: ["out"] },
+    // Ctrl+] into what Return opens, as a mail's sender (VKCF3Z).
+    { name: "follow", acts: ["follow"] },
+    // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.
+    { name: "jumps", acts: ["jumpBack", "jumpForward"], without: ["Tab"] },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
     { name: "own", acts: ["openOwn"] },
+    { name: "find", acts: ["freshFind"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.
     { name: "ending", acts: ["ending"], also: ["dj"] },
     { name: "copyRow", acts: ["copy"], also: ["yG"] },
-    { name: "restore", acts: ["restore"] },
     // Vim's Ctrl+W l alone, as the way back names Ctrl+W h alone, so the
     // line sits whole at Joel's scale.
     { name: "intoDrawer", acts: ["drawer"], firsts: true },
     { name: "keys", acts: ["keys"] },
-    // q isn't listed, since Joel wants it to do nothing by itself and :q
-    // to quit (2026-11-05); his respec takes its binding out.
-    { name: "close", acts: ["close"], without: ["q"], also: [":q"] }
+    { name: "numbers", acts: ["numbers"] },
+    // q isn't listed, since it does nothing by itself but say how to
+    // close (Joel, 2026-11-05).
+    { name: "close", acts: ["close"], also: [":q"] }
 ];
 
-const insert = [
+// The find's, the line the launcher opens on, whose keys a prompt's
+// insert shares.
+const find = [
     { name: "nextRow", acts: ["next"] },
     { name: "previousRow", acts: ["previous"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
@@ -79,8 +92,15 @@ const pageVisual = [
     { name: "copy", acts: ["copy", "copyLines"] }
 ];
 
-const sections = [{ mode: "normal", lines: normal }, { mode: "insert", lines: insert },
+const sections = [{ mode: "normal", lines: normal }, { mode: "find", lines: find },
     { mode: "page", lines: page }, { mode: "pageVisual", lines: pageVisual }];
+
+// Whether a table's row is pressed in a mode, as QueryKeys.inMode says:
+// "line" is the find's and insert's, "both" every mode's.
+function pressedIn(one, mode) {
+    return one.mode === mode || one.mode === "both"
+        || (one.mode === "line" && (mode === "find" || mode === "insert"));
+}
 
 // How a key is drawn, as the desktop draws one (modules/theme/keys.nix):
 // its glyph where it has one, its name where not, a letter with a
@@ -101,8 +121,16 @@ function face(key) {
 // apart, Space ?. Keys that do the same are two spaces apart, so a
 // sequence's space never reads as between two of them.
 function sequenceFace(keys) {
+    return sequenceParts(keys).join(" ");
+}
+
+// A sequence's keys as the drawer draws them, each a run of its own, the
+// tie rung apart, so Space Tab reads as one key; letters typed together,
+// as gg, stay one run, as they're typed.
+function sequenceParts(keys) {
     const sequence = Array.isArray(keys) ? keys : [keys];
-    return sequence.map(face).join(sequence.every(key => key.length === 1) ? "" : " ");
+    return sequence.every(key => key.length === 1) ? [sequence.map(face).join("")]
+        : sequence.map(face);
 }
 
 // Vim's own keys first, as his Neovim's help gives them, then those with
@@ -115,18 +143,16 @@ function rank(keys) {
     return sequence[0].startsWith("Ctrl+") ? 1 : 2;
 }
 
-// The arrows, which Joel presses rather than hjkl ("support hjkl even
-// though i only use arrows"), so the list never hides them.
-const arrows = ["Up", "Down", "Left", "Right"];
-
 // An act's keys as the list names them: those of its first rank, as the
-// notices' list names each act's first key, and its arrow beside them.
+// notices' list names each act's first key, so an arrow is named only
+// where an act has nothing better, as the find's caret, Joel keeping to
+// Vim's keys ("rely only on vi right feeling things", 2026-11-05).
 // The drawer's names stay short enough to sit whole beside what they do
 // in the narrowest plate, so PgDn, Backspace and Space w, which do what a
 // listed key does, are left out.
 function firstRank(keys) {
     const best = Math.min(...keys.map(rank));
-    return keys.filter(key => rank(key) === best || arrows.includes(key));
+    return keys.filter(key => rank(key) === best);
 }
 
 // A line of a mode's section: its acts' keys in that mode alone, so no
@@ -135,14 +161,19 @@ function keyLine(table, mode, line, words) {
     // Qt's engine has no flatMap, so each act's keys are joined by hand.
     const keys = [].concat(...line.acts.map(act => {
         const all = [].concat(...table
-            .filter(one => one.act === act && (one.mode === mode || one.mode === "both"))
+            .filter(one => one.act === act && pressedIn(one, mode))
             .map(one => one.keys));
         return line.firsts ? all.slice(0, 1) : firstRank(all);
     })).filter(key => !(line.without ?? []).includes(key));
     const ranked = keys.map((key, at) => ({ key, at, rank: rank(key) }))
         .sort((a, b) => a.rank - b.rank || a.at - b.at);
     const said = ranked.map(one => sequenceFace(one.key)).concat(line.also ?? []);
-    return { label: said.join("  "), value: words[line.name] ?? "" };
+    // Its chords each a run of their own, which the drawer sets the apart
+    // rung from each other, and each chord's keys the tie rung; the label
+    // joins them for what reads it whole.
+    const keyed = ranked.map(one => sequenceParts(one.key))
+        .concat((line.also ?? []).map(also => [also]));
+    return { label: said.join("  "), chords: said, keys: keyed, value: words[line.name] ?? "" };
 }
 
 // Every line Space ? lists, as the drawer's facts, from QueryKeys' table:

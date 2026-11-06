@@ -49,9 +49,10 @@ one is answered for it in [the surfaces table][surfaces].
 7. **Modal, as vi is, and never hidden.** Every list and text box has vi's
    modes, each with one purpose ([Vi's Keys][vi]). A mode other than normal
    always shows that it's on, and Escape always leaves it.
-8. **One gesture per meaning.** Arrows move, Return opens or confirms, l
-   steps in and h out, / finds, : names a command, and each layer has one
-   "what's here" key. Where vi has a key for it, the key is vi's.
+8. **One gesture per meaning.** j and k move, Return goes in or confirms
+   and - goes up, the only keys that step a level, Ctrl+O goes back, /
+   finds, : names a command, and each layer has one "what's here" key.
+   Where vi has a key for it, the key is vi's.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
 10. **The theme, whole.** Type, colour, glyphs, space and motion come from
@@ -67,7 +68,7 @@ A surface is done only when all of this is true, and nothing is shown to Joel
 for judging before it's been judged here first.
 
 - **Driven by keys.** Everything it does has been done with the keyboard
-  alone, from the chord that reaches it to Escape, and its check does it
+  alone, from the chord that reaches it to :q, and its check does it
   that way too.
 - **Designed first.** Its three tiers, the facts it owns, its collapse order,
   its palette entries and its keys are written in the surfaces table before
@@ -95,6 +96,17 @@ for judging before it's been judged here first.
   went, and why.
 - **Accounted for.** Every check in [Every Pixel Accounted For][pixel] has
   its answer, and the answers are shown with it.
+- **Judged whole, before it merges.** A change that moves anything on a
+  surface carries its shots at 1.5 and 2, cropped where it changed, and a
+  table of what it changed measured to the ink: each gap by its rung, each
+  edge by its column, each baseline by its pitch, each run by its level, each
+  ink by its colour role. A design review judges type, space, alignment and
+  colour together on those shots and answers within half an hour, and the
+  change merges on its pass (Joel, 2026-11-05: "you are not considering
+  enough design elements when changing things"). If no answer comes within
+  half an hour of the shots, it merges on its owner's checks and is judged
+  after, a miss fixed forward, so nothing waits on the review. A change that
+  draws nothing differently says so and needs none.
 - **Said, where it's unfinished.** Whatever hasn't met all of this is called
   unfinished when it's shown, never done.
 
@@ -186,20 +198,21 @@ of each kind of line it sets, and a row's pitch is its height.
 ### Whitespace
 
 - **Every gap has a name.** Every space between two inks, inside a frame
-  and outside it, is a step of [Space][space], a line pitch, or what a row
-  leaves above and below its text once the text is centred in it, measured
-  to the ink (a capital's top, a baseline, a mark's edge), never to a text
-  box. **Check:** the screenshot with each gap measured in device pixels and
-  named. A gap off its step by more than a device pixel, or one nobody can
-  name, is a fault.
+  and outside it, is a rung of [the ladder][space], a level's pitch, a
+  number of beats, or what a row leaves above and below its text once the
+  text is centred in it, measured to the ink (a capital's top, a baseline, a
+  mark's edge), never to a text box. **Check:** the screenshot with each gap
+  measured in device pixels and named by its rung. A gap off its rung by more
+  than a device pixel, or one nobody can name, is a fault.
 - **Equal where it says it is.** The room round a thing is the same on every
   side, measured to the ink: a frame's padding, a notice's, the margin round
   a highlight. **Check:** its four measurements, within a device pixel.
 - **Space groups.** What belongs together sits closer than anything else
-  does to it: a group's inner gap is at most the step of Space below the gap
-  round it, each gap taken as the step it's nearest. **Check:** each
-  group's two gaps. A pair closer than that is a fault, and the surface
-  reads as cluttered.
+  does to it: each gap is its level's rung, and every rung is wider than the
+  one inside it, so two levels never share a space and nothing inside a thing
+  is wider than the space round it. **Check:** each group's inner and outer
+  gaps, by rung. A pair equal or inverted is a fault, and the surface reads as
+  cluttered.
 - **Never cluttered.** A surface has only what Joel would act on or wonder
   about (2026-11-02, of the notices: "whitespace issues ... feeling quite
   cluttered"). **Check:** every element listed with what he'd do with it or
@@ -214,8 +227,12 @@ of each kind of line it sets, and a row's pitch is its height.
   letter's overshoot, a mark drawn small in its cell), the column takes the
   optical edge, and the check says so.
 - **Baselines on the pitch, marks one height.** **Check:** every baseline
-  measured against the surface's line pitch, and every mark's ink the same
-  height, centred on one line, as the skill's "Marks one height" asks.
+  measured against the surface's line pitch, and every mark's ink one optical
+  size, centred on the capitals' middle, as the skill's "Marks one height"
+  asks. One size is equal area, not equal height, since a wide mark made as
+  tall as a narrow one turns heavy: each is scaled so the square root of its
+  ink's width by height is 15, no wider than its cell and no taller than 15,
+  measured at load from the font, with no table.
 - **Shared across neighbours.** A surface beside another (the launcher and
   its drawer, a notice and the margin) lines up with it. **Check:** the
   shared edges named and measured.
@@ -234,9 +251,10 @@ of each kind of line it sets, and a row's pitch is its height.
 - **Every interaction written before it's built.** **Check:** a table of
   every state and every key in it: what it does, what the screen does in
   answer, how long it takes against [Latency Budgets][budgets], and which of
-  the theme's motions carries it. A state Escape can't leave, a key with no
-  visible answer, or an answer that waits is a fault. So is a state with no
-  way out, where Escape does nothing on purpose and q doesn't close it.
+  the theme's motions carries it. A mode Escape can't leave, a key with no
+  visible answer, or an answer that waits is a fault. So is a surface with
+  no way out, which :q, ZZ and Space w don't close, and so is one Escape
+  closes.
 - **Felt, not just correct.** **Check:** each transition timed frame by
   frame at the panel's full refresh rate, from the program's own frame
   times or a screen recording stepped through a frame at a time, with no
@@ -432,21 +450,119 @@ few values. At a display scale of 2, every edge lands on a whole device pixel.
 The unit is 4 logical pixels, and the steps sit one unit apart where a pixel
 shows and further apart as they grow:
 
-| Step | Units | Pixels | For                                                |
+| Step | Units | Pixels | Taken by                                           |
 | ---- | ----- | ------ | -------------------------------------------------- |
-| xs   | 1     | 4      | between lines that belong together, a part's inset |
-| s    | 2     | 8      | between a mark and its text                        |
-| m    | 3     | 12     | between windows, between notices, a field's glyph  |
-| l    | 4     | 16     | text inside its row, a terminal's padding          |
-| xl   | 6     | 24     | a terminal's padding at the sides, between columns |
-| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name, a footer with no row pitch |
-| xxxl | 12    | 48     | a row of the launcher or a prompt, the launcher's footer, a meter |
-| huge | 16    | 64     | an overlay's distance from the edge, as a meter's from the bottom |
+| xs   | 1     | 4      | the tie rung                                       |
+| s    | 2     | 8      | the mark rung                                      |
+| m    | 3     | 12     | the apart rung, the beat, niri's gap between tiles |
+| l    | 4     | 16     | the items rung                                     |
+| xl   | 6     | 24     | the inset rung, the large pitch                    |
+| xxl  | 8     | 32     | the frames rung                                    |
+| xxxl | 12    | 48     | the screen rung, a row of the launcher or a prompt |
+| huge | 16    | 64     | the bound past which empty room needs a reason     |
 
 Whitespace groups things before borders or boxes do. Start with too much space
 and take it away. Density follows the moment: dense and scannable where Joel is
 mid-task (a launcher, a status line, a prompt), roomier where he reads (a
 notification, a dialog, the greeter).
+
+### The Ladder
+
+A step says how big a space is; a rung says why it's there. Joel, 2026-11-05:
+"do more research on design, particularly around not just how typography but
+white space gives topology and hierarchy awareness." Space is how the eye
+learns what belongs together and what outranks what, ahead of colour or a box,
+so every gap belongs to one level of structure, and **each level's gap is wider
+than the one inside it**: inner at one level is outer at the next, from a mark
+to the screen's edge, the same on every surface (Bureau Gorbunov's inner and
+outer; NN/g on proximity). A surface names the rung, `Theme.space.rung.items`,
+never the step, and `space-is-set-by-rung` refuses a step where a rung belongs;
+the theme refuses a ladder that doesn't widen outward.
+
+| Rung | Pixels | Between |
+| ---- | ------ | ------- |
+| tie | 4 (xs) | the parts of one token: a chord's keys, "Space ?" |
+| mark | 8 (s) | a mark and its text, a key and its word, "? keys", the gutter's numbers and the text |
+| apart | 12 (m) | two runs of one thing: a name and its words, typed text and its count, a title and its hint, chord and chord |
+| items | 16 (l) | things on one line: hint and hint, fact and fact |
+| groups | 20 | groups on one line (the facts, the state, the hints), and column and column |
+| inset | 24 (xl) | a frame and its text, on every side, to the ink |
+| frames | 32 (xxl) | floating frames that belong together: the launcher and its drawer, notices in a stack |
+| screen | 48 (xxxl) | a floating frame and the screen's edge, every frame alike |
+
+Groups take 20, the one rung off the scale, since the ladder needs one between
+things on a line and a frame's own room: no gap inside a frame passes the room
+round its text. A drawn boundary outranks space, so a region may take a hairline
+rather than a wider gap, and tiled windows, each bounded by its border, keep
+niri's gap between them with their own text at the inset.
+
+Down a surface, space counts in lines, as a page's does (Bringhurst;
+Müller-Brockmann). The **beat** is 12, half the large pitch, and every space between
+blocks is a whole number of beats, so a row (48), a drawer's line (24) and
+home's group gap (12) fall on one grid and lines at two pitches side by side
+meet on it. Each level carries its **pitch**, baseline to baseline,
+`Theme.level.note.pitch`: Note and Label 20; Name, Figure, Words and Voice 24;
+Title 32; Display 56.
+
+- **Lines of one thing** sit at their level's pitch.
+- **Things of a kind** sit a row or a pitch apart, and a beat further where any
+  can take two lines, so a wrapped line is nearer its own thing than the next
+  thing is.
+- **Groups** take a beat more between groups of rows, an empty line between
+  groups of lines. A group's heading sits a pitch above its first thing, its
+  group's gap above it: a heading belongs to what follows.
+- **Regions** of a frame part at a hairline: the head over the rows and the
+  foot under them alike, the foot's baseline a row below the last row's. The
+  hairline runs inset to inset, the width of the ink, and never meets the
+  frame, since a rule that meets it cuts the card into boxes. A
+  plate's head is a region of its own: its eyebrow a Title pitch above the
+  title, the body two below it, back on the beat.
+- **A frame's bottom is set**, never what whole lines happen to leave: where
+  a status line closes it, the bottom falls where that band's text centres.
+
+The rest follows from the ladder:
+
+- **The frame's edges keep the inset; text in a band centres in it.** The
+  inset is measured from the frame's inside edge, its border left out, to the
+  ink: the side's first and last ink always, and the first cap's top and the
+  last baseline where no band edge is drawn. A band, the room between two
+  edges (the frame and a hairline, or two hairlines), sets its text optically
+  centred between them: its baseline at the band's middle plus a quarter of
+  its capitals and x-height together (Joel, 2026-11-05: "the launcher find
+  box text is not vertically aligned within its box, it is more heavily top
+  aligned"). A band's height comes from the rows' rhythm, the head's
+  baseline a row above the first row's, so the head, a field and the status
+  line read alike. A head with no rows under it, a prompt's or the picker's,
+  has no rhythm to size it, so its capitals sit the inset under the frame
+  and its hairline falls where the text centres, the same room under it.
+- **A glyph's column is its cell and a mark.** A mark sits in a square cell
+  one line pitch wide, its text the mark rung after it, so a list's names
+  start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
+  an indent is the same again, and the column follows the type.
+- **A stroke isn't a space.** A meter's bar, a wave's bars and the room in a
+  texture are counted in hairlines, `4 * Theme.border`, never named by a rung,
+  and each says in a comment that it's a stroke or a texture.
+
+- **One baseline a line.** A line's pieces share one baseline, found by
+  centring its largest level's capitals in the line; a smaller level takes that
+  baseline, never the centre of its own capitals. A note beside a head sits on
+  the head's baseline (Joel, 2026-11-05: "which? &etc. need to be baselined
+  with the text to their left"). In a band, a line centres the largest level
+  it holds now, so the head's line settles a few pixels as a place's Title
+  arrives with the rest of the change, and every state stays centred; the
+  band and the rows never move.
+- **Held room at the far end.** A place that keeps the widest room it's needed
+  keeps it after its cluster's last item, never between items, so every gap is
+  its rung: Return holds no room before it.
+- **A chosen line's ground hugs its ink**, as Joel liked (the skill's "Margin
+  round a highlight, not padding inside it"): a mark (8) round its first and
+  last ink and above its capitals and below its baseline, square, with more
+  room outside it than in, so it neither presses on the frame nor floats. One
+  shape for the rows, the command menu, the held list, the drawer's lines and
+  the reader's lists. A selection inside a line covers its characters exactly,
+  as Vim's Visual does, and so does a find's wash.
+- **One hairline**: a logical pixel snapped to the device, from the frame's
+  inside edge to its inside edge, never touched by a ground.
 
 ## Colour
 
@@ -538,7 +654,7 @@ words, so Joel never wonders what he's talking to.
 | Property                    | What it says                                                    |
 | --------------------------- | --------------------------------------------------------------- |
 | a border, `shape.border`    | this is a thing; its colour says where the keys go: the accent holds them, the edge doesn't, the alert needs Joel |
-| the radius, `shape.radius`  | a whole thing: a window, or anything floating                   |
+| the radius, `shape.radius`  | a whole thing: a window, or anything floating; square at its foot where it stands on another, as the launcher's drawer over its card |
 | a part's radius             | a part of a thing, always the radius less the border and `shape.inset`, never below square; at one unit's radius, square, since a smaller curve inside a small one wobbles |
 | square                      | not a thing at all: text, a hairline, a bar's fill              |
 | a hairline across a surface | splits what's typed from what comes back                        |
@@ -558,7 +674,7 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down; its command line over a picture or a video low, a twelfth of the screen up, so what it acts on stays in view | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
+| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | the frames rung inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 
@@ -593,7 +709,7 @@ it share a column.
 (Ctrl, Alt, Esc, Tab, Space), and a letter as itself, joined by + with the
 same room on each side, all muted, even on the selected row. A chord sits at
 the right of its row, at least `space.xxl` from the name. Nothing says what
-Escape does, since it always leaves.
+Escape does, since it only ever leaves a mode.
 
 **A row says what it is.** A thing's row (a program, a window, a pi
 session, a network, a device, a copy) says its kind at its right edge, muted:
@@ -646,22 +762,22 @@ stand in one column, clear of the widest of those, the name giving way to
 it before anything else does.
 
 **The space from text to its frame is the same on every side, and on every
-surface,** the launcher's. Each region of a floating thing (a row, a field,
-a footer, a notice's message, a drawer's facts) sits `shape.inset` inside the
-border, and its text `space.l` inside the region, so letters start the same
-distance from every frame. Nothing is nudged by a number off the scale to
-even out the ink. Large type sits in rows of `space.xxxl`, as a meter's row
-does; a line of body type is 20 pixels and of large type 24, five and six
-units. A footer takes its surface's pitch: `space.xxxl` in the launcher, whose
-field and rows are that tall, and `space.xxl` on a surface with no row pitch
-of its own, as the picker, the keyboard map and the prompts. Lines that
-belong together, as who
-asks and why, keep `space.xs` between them.
+surface:** the inset rung, measured to the ink, so letters start the same
+distance from every frame (a row, a field, a footer, a notice's message, a
+drawer's facts). Nothing is nudged by a number off the scale to even out the
+ink. Large type sits in rows of `space.xxxl`, as a meter's row does; lines of
+one thing sit at their level's pitch, Note's 20 and the large levels' 24. A
+footer is a region, a hairline over it, its baseline a row below the last
+row's in the launcher and a large pitch below the last line on a surface with
+no row pitch of its own, as the picker, the keyboard map and the prompts.
 
-**A notice sits a step inside the windows' edge,** `space.s` past their
-gap, so it never lines up with a window's border by chance and reads as its
-own thing. The margin's marks sit at the top centre instead, on the line
-the launcher is centred on.
+**A notice sits the frames rung inside the window under it,** a frame on a
+frame, so it lies on one window and never over the wallpaper or across the
+border between two columns, and never nearer the screen's edge than the
+screen rung; with no window there, or one too narrow, it sits the screen
+rung from the corner. Notices in a stack sit the frames rung apart. The
+margin's marks sit at the top centre instead, on the line the launcher is
+centred on.
 
 **The margin** is how the desktop shows what's on that Joel would otherwise
 forget, without covering a window or taking a pixel from one. It isn't a
@@ -716,8 +832,8 @@ What each is, in words, is the launcher's Now, opened by Super+O on its
 first row, Needs You, or by clicking a mark, on that mark's row: a
 row each, its glyph, its name, how it stands at the right, and what more
 there is to know in the footer, grouped by how much it asks with what
-wants Joel first. Return does its first
-action and the right arrow steps into the rest. While it's open, the mark
+wants Joel first. Return does there what it
+does on that thing's row anywhere, and Ctrl+] goes to it in its own place. While it's open, the mark
 on its screen of the row the keys are on wears the accent, as where the
 keys are always does, straight up the line the list and the marks share,
 so the eye joins the two. Nothing grows: anything past the gap would lie
@@ -1000,22 +1116,22 @@ works the same way everywhere.
   bar) come last, since they come and go. Next, Previous, Louder and Quieter keep the
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.
-  A setting is a part saying how it's set, its choices a step in, so a
-  thing's right arrow lists a few parts rather than every choice: a
+  A setting is a part saying how it's set, its choices a step in, so going
+  into a thing lists a few parts rather than every choice: a
   display's Scale "175%", Refresh, Resolution and Rotation, then what
   its EDID says (Colour depth "10 bit"). What's typed beside them finds
   their choices too, so "scale 150" is Scale to 150% without a step in.
   A part is found from the top by its name, three letters or more,
   saying where it lives (Rotation, Desktop › Screens › Built-in screen;
   Health, Machine › Power › Battery), and Return goes there, the path
-  filled, so the left arrow climbs back out. A part named as something
+  filled, so - climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
   Only what a thing reads or holds is found so, never what it does,
   except a program's own acts (Meet's New Meeting), each found by its
   name with the program's mark and its path (Programs › Meet), below the
   program itself and below anything else found as well, as a call's
-  copied link is. Return does the act, and the right arrow goes into the
-  program onto it.
+  copied link is. Return does the act, and Ctrl+] goes into the program
+  onto it.
 - **Acts in one order.** Every kind of thing lists what's inside it in
   the same order, so three anchors are all there is to learn: the top row
   does it, what ends it comes near the bottom, and Copy is last. Between
@@ -1142,69 +1258,53 @@ works the same way everywhere.
 - **Ctrl+Y only completes.** It takes the grey completion the field shows,
   as his Neovim's completion menu takes its selection, and does nothing
   while none shows; Tab moves through the rows, as that menu's does. The
-  field says so at its right edge, "Ctrl+Y complete", only then and only
-  in insert, and in normal "← clear" in the same place while something's
-  typed, rather than the foot, where its coming and
-  going with each letter moved the other keys or took room from how things
-  stand. Its place there is kept while anything is typed, though nothing
-  shows in it, so nothing in the field moves as it comes and goes with
-  each letter. With nothing typed and nothing to restore no key can show,
-  so no place is kept, and the aside ends at the field's end, where the
+  field says no keys of its own: it holds only the find and how far it
+  narrows, and its hints are the foot's, by key and lowercase word
+  (VKCF3Z, 2026-11-05). So the aside ends at the field's end, where the
   rows' sides end (Joel, 2026-11-04: "the text in being inset left from
-  the right edge of the launcher"); the first letter moves it over once,
-  as it changes what the aside says. The aside has all the room the path,
-  what's typed and the keys leave it before it gives way. Flush after the
-  completion, a bare ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
-  text feels wrong and they are not super obvious what they mean"). The
-  keys' words take a third of the field, so they're said only while the
-  path, what's typed with its completion and the aside all fit whole
-  beside them; otherwise the keys stand alone, and once a step runs out of
-  room they stay alone until it ends, rather than coming and going. What's
-  typed and its completion come before the aside, which says less as they
-  grow.
-- **Every row is a thing with verbs.** In normal mode the right arrow, or
-  l, steps into the selected row, so a few letters and Escape reach inside
-  a thing from anywhere: what can be done to it,
+  the right edge of the launcher"). Nor does an arrow clear what's typed
+  or step anywhere: the arrows move the caret, Return goes in and - goes
+  up. The aside has all the room the path and what's typed with its
+  completion leave it, and says less as they grow.
+- **Every row is a thing with verbs.** Return goes into a thing that holds
+  more, as oil's Return opens a folder, so a few letters and Return reach
+  inside a thing from anywhere: what can be done to it,
   searched the same way, each with its chord, and a verb needing a target
-  asks for it in the same field. What was typed found the row, so stepping
+  asks for it in the same field. What was typed found the row, so going
   in takes it away, and everything inside shows. Where Joel is shows as
   one path in the field, each step named as the row he picked was, joined
   by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
   the one before it (the Shortcuts category's Shortcuts) is said once, so
-  it reads as a place, not as tags side by side. In normal mode the left
-  arrow, h or Backspace takes away what's typed, whole, where the field
-  says so, "← clear" at its right edge; what it took then stands in grey,
-  and u right after puts it back, as vi's undo does. Any other key lets it
-  go. With nothing typed it steps back out, putting back what was typed
-  before with the same row selected. In insert the arrows move the caret,
-  as in Vim. Escape cancels, then closes the launcher (Vi's Keys), and only in
-  the launcher: the window behind never hears it. The foot names
-  every key that works on the selection: what Return does, Shift+Return
-  where a row opens below, and the right arrow wherever there's something
-  inside, a step in as well as at the top. The arrows are said by their
-  marks alone, → and ←, which Joel knows. Where Return steps in just as
-  the right arrow does, the two are said as one, ↵ →, so stepping in
-  reads the same wherever it's done, and no key is said twice. Where Return
-  goes somewhere else in the launcher, a spot to where it is, a command
-  into the field, one that opens a collection into it, the right arrow
-  goes there too, said with Return's word: ↵ → go. A step in lists
-  what Return does first, where the row's own list left it out, so the
-  right arrow never hides the act Return would have done (Joel,
+  it reads as a place, not as tags side by side. In normal mode - goes up
+  to what holds it, onto the row it came from with what was typed before,
+  as oil's and netrw's - do; Ctrl+O and Ctrl+I go back and forward through
+  every place been in, and Ctrl+] on a row found from elsewhere goes to it
+  in its own place, Ctrl+T coming back (Joel, 2026-11-05: "where in vi
+  does that step into shit?"). h, l and Backspace step nowhere: on a row
+  they mean nothing, and the foot says so with Vim's way, "l not here · ↵
+  open". On the find line the arrows move the caret, as in Vim. Escape
+  cancels, then closes the launcher (Vi's Keys), and only in the launcher:
+  the window behind never hears it. The foot names
+  every key that works on the selection by its letter: what Return does,
+  and - wherever there's somewhere to go up to. A step in lists what
+  Return does first, where the row's own list left it out, so going in
+  never hides the act Return would have done (Joel,
   2026-10-28: "enter is supposed to be the default action, but that means
   that action should be selectable within"). Every row has a Return act,
   the same wherever the row shows, and a check walks every row to hold
   it. A thing with one obvious act that does no harm does it: a program
-  or a window is gone to, a mail or a file opens, a network connects, a
-  closed orchestrator carries on where it left off. Anything else steps
-  in on Return, as the right arrow does, its likeliest act first inside,
-  so Return twice does it: a person, a quest, a device, a setting, a
-  place. Return never calls someone or starts something new by itself. A
-  meeting joins on Return only from ten minutes before it starts, and
-  before then steps in, Join first, so Joel is never made to join early
+  or a window is gone to, a mail or a file opens, a closed orchestrator
+  carries on where it left off. Anything else goes in on Return, its
+  likeliest act first inside, so Return twice does it: a person, a quest,
+  a device, a network, a setting, a place. A network's Return only shows
+  it, since connecting to one lets go of another. Return never calls
+  someone or starts something new by itself. A meeting joins on Return
+  only from ten minutes before it starts, and
+  before then goes in, Join first, so Joel is never made to join early
   (2026-10-26: "they force me to join, and what if I want to cancel");
   the foot says which. A value copies on Return only where it holds
   nothing more; one holding more, as the battery's answer or the
-  weather's Rain, steps in, copying it a row inside: "rain" asked alone
+  weather's Rain, goes in, copying it a row inside: "rain" asked alone
   and Rain inside the weather work the same. Copy is never the first row
   of a step, unless it's the only one, and is always the last. Return
   closes the launcher only
@@ -1213,10 +1313,19 @@ works the same way everywhere.
   volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
   Disturb, Keep Awake, the power profile, the desk light, a keyboard's
   light or layer, a program's playing) keeps it open, and its row says
-  the new state at once. The right arrow on one, in normal mode, steps
-  into its acts, led by Return's own, which there does it and closes, so
+  the new state at once. Going into one lists its acts, led by Return's
+  own, which there does it and closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
-  keys do not feel very vim to me"). A copy closes saying so: the keys go back to the
+  keys do not feel very vim to me"). **An act that ends or takes away
+  never runs on Return**, from any mode: Disconnect It, Forget It, Close
+  It, Turn Off, Stop, Done, and the session's Lock, Sleep, Log Out, Reboot
+  and Power Off. Return on its row puts its command on the command line,
+  `:disconnect`, the menu saying what it acts on, and a fresh Return there
+  runs it; the row and the foot name the key that carries it, "d
+  disconnect" where d's table gives it, else ": disconnect", as Vim's
+  changes are operators and commands, never Return. Which acts end comes
+  from the language's `ends`, never a list kept by hand. A copy closes
+  saying so: the keys go back to the
   window at once, and the card stays a moment with "copied" where
   Return's key was, its done mark in the success colour, then leaves.
 - **Answers first.** A sum is answered in grey right after what's typed,
@@ -1297,7 +1406,7 @@ works the same way everywhere.
   grey, and Ctrl+Y finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
   it, and so does the theme's nearest pigment. Return copies a sum, Ctrl+Y
-  puts it in place of the question, and Return or normal's right arrow steps into
+  puts it in place of the question, and Return goes into
   an answer with parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
   40", is an answer that does: Return sets it. The field's end says where
   an answer came from. An answer that comes to nothing says why once, as
@@ -1309,14 +1418,14 @@ works the same way everywhere.
   and the Wi-Fi networks in reach are too many to mix into the search: each
   that has a match adds one row, its best match with a count of the rest,
   so there's no haystack and no mode to enter first. Return uses that
-  match, and the right arrow goes straight inside it, the set's crumb
-  above it saying where it lives; the left arrow comes back to the
-  search, since it goes where Joel came from. The whole set is found by
+  match, and Ctrl+] goes straight inside it, the set's crumb above it
+  saying where it lives; Ctrl+O or Ctrl+T comes back to the search, since
+  it goes where Joel came from. The whole set is found by
   its own name. The row sits below the other matches. Emoji add none, since a
   name like what was typed ("turkey" for "tu") is a row to rule out; they
   are found in their own place. A collection is found whole by its name or
   what a person would call it ("audio" is Sound, "notices" the
-  Notifications), and Return steps into it; found that way, it stands alone for
+  Notifications), and Return goes into it; found that way, it stands alone for
   what it holds, so neither its members nor things that live in it, nor the
   shortcut that opens it, sit beside it. Each thing's row says what kind
   of thing it is at its right edge (Shape and Kinds).
@@ -1410,18 +1519,18 @@ works the same way everywhere.
   shows in certain places"). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
   selection rests, so holding an arrow never flickers it. It's Vim's
-  preview window, a split the keys go into: Space and the right arrow
-  take them in, where its frame takes the accent, an accent rule in its
-  left margin marks the cursor's line as the reader's does, and the
-  reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
+  preview window, a split the keys go into: Ctrl+W l takes them in, or
+  his Neovim's Space and the right arrow over it, where its frame takes
+  the accent, an accent rule in its left margin marks the cursor's line
+  as the reader's does, and the reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
   view following at his scrolloff by whole lines, its eyebrow and title
   among them, so no line is ever shown cut at its top or foot. It stops
   above the card's foot, which stays and, while the drawer has the keys,
   reads "Space ? keys · Ctrl+W h back", the way out at the right end as
-  Return is on the card. Ctrl+W h or w, :q, ZZ or Space w bring
-  them back, and Escape and q do nothing there. Shift and
-  the arrows no longer scroll it, since an arrow is its letter. Another
-  program's words are shown plain, never as markup.
+  Return is on the card. Ctrl+W h or w, Space and the left arrow, :q, ZZ
+  or Space w bring them back, and Escape and q do nothing there. Inside,
+  the arrows move as j and k do, as in any Vim buffer (Joel, 2026-11-05),
+  and Shift with an arrow scrolls nothing. Another program's words are shown plain, never as markup.
 - **A file picked shows what it is** (Joel, 2026-11-03: "i see no
   previews for files ... no clue about sizes or when last updated"). In
   the file picker, a row in the folder shown says its size in SI units,
@@ -1453,7 +1562,7 @@ works the same way everywhere.
   word where it gives one: "open which file?", "open which files?",
   "open which folder?", "attach which files?", or "save it where?".
   Taking one, Return on a file picks it and closes, as the foot says
-  ("\u21b5 open"), with no mark: opening is undone by opening another, so
+  ("↵ open"), with no mark: opening is undone by opening another, so
   nothing asks first (VKCF3Z, 2026-11-04).
 - **What's gathered is in sight** (Joel, 2026-11-03: "it is hard when
   marking files to know what to do once mmarked"). Where a program takes
@@ -1462,7 +1571,7 @@ works the same way everywhere.
   Vim's argument list does (VKCF3Z's vi-paradigm spec, The File
   Picker). A gathered row's glyph is the mark, in an act's hue, the one
   colour on its row, and Return then answers what's gathered, the foot
-  saying how many ("\u21b5 open 2"). :args steps into Gathered: the files,
+  saying how many ("↵ open 2"). :args steps into Gathered: the files,
   each with its folder, then Forget Them, then Copy the Paths, its plate
   counting them with their Size together. A folder's Copy the Path comes
   after its files and filters, held back until the folder's read so it
@@ -1502,12 +1611,13 @@ works the same way everywhere.
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open. A notice is one thing
-  on its card and among the notices, its acts the same in the same order
-  (`launcher/Notice.js`): going to what it's about, what its sender offers,
-  Read, one switch saying yes or no, Forget It, and Copy What It Said last;
-  the card adds what's done to the whole stack before the copy, and leads
-  with Forget It where its Return forgets one with nothing to open. A
+  program that sent it, its window when one is open. Among the notices its
+  row's acts are in `launcher/Notice.js`'s order: going to what it's about,
+  what its sender offers, Read, one switch saying yes or no, Forget It, and
+  Copy What It Said last. Held, a card's acts are commands, never a row
+  stepped into: the cursor card names what its sender offers under its
+  sender, ":reply \u00b7 :play", and : puts them first in the menu, after
+  Return's going to it; d, :forg and yy do the rest. A
   notice on screen waits while Joel's away, thirty seconds with nothing
   typed or moved (`notices.away`), whatever keeps the screen awake, so one
   that comes while he's gone is there when he's back, counting again in
@@ -1574,7 +1684,7 @@ comes along, and what to do.
   | W            | close the one in focus                   | the window     | the tab           | the split           |
   | Space        | find anything here                       | the launcher   | the scrollback    | anything            |
   | ?            | what's here: every key, by what it does  | every layer's  | the terminal's    | Neovim's            |
-  | Escape       | cancel, and close what floats            | everywhere     | everywhere        | everywhere          |
+  | Escape       | cancel and leave a mode, never close     | everywhere     | everywhere        | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
@@ -1647,9 +1757,10 @@ Neovim is listed.
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N takes the notices on screen as
 lines, where :e Notices gathers every notice into the launcher. Either
-way Return goes to who sent one, and l steps into its verbs: its own
-actions (Reply, Mark as read), copying what it said, and forgetting it; j
-and k choose, h steps back.
+way Return goes to who sent one, as the quickfix list's Return goes to
+where a line came from, and its verbs are commands: its own actions
+(:reply, Mark as read), copying what it said, and forgetting it, listed
+under its words by their names and first in the : menu.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through
@@ -1695,8 +1806,11 @@ behaviour of the nearest kind of Vim buffer, never half of one, and a key
 that departs from Vim is in the Departures below with its reason. No such
 call goes to Joel: it's already made. His Neovim's values are kept: a key
 that could begin a pair waits his timeoutlen, 300 ms; which-key lists what
-can follow after 200 ms; the mode is named in the accent, lowercase, only
-when it isn't normal; and what's copied flashes for 200 ms.
+can follow after 200 ms; the mode is named in the accent when it isn't
+normal; and what's copied flashes for 200 ms. Where his status line names
+it in a word, ours name it in three capitals at the foot's start (Joel,
+2026-11-05: "the mode should be 3 letters, in caps, and in a place where
+they are more obvious and not lost with other things").
 
 The surfaces move to these keys a piece at a time. Until a surface's piece
 lands, its own paragraphs above say what it does today; where they
@@ -1714,7 +1828,7 @@ disagree with this section, this section is the design.
 | the gallery, a PDF, a video | a buffer whose lines are pictures, pages and seconds |
 | a question, the lock, the greeter, a Wi-Fi password | `inputsecret()`: a secret, with no modes |
 | a reply, a new name, a save name | a prompt buffer |
-| the launcher, held notices, which-key, a menu | popups, which Vim closes on Escape |
+| the launcher, held notices, which-key, a menu | popups, closed by :q, never by Escape |
 
 The launcher is oil rather than netrw or Telescope. netrw's keys are
 one-letter shortcuts that aren't Vim's, and Telescope's pickers are right
@@ -1730,8 +1844,8 @@ separate and have separate purposes"):
 | normal | standing on a thing and acting on it | no caret; the cursor row's ground; relative numbers in the gutter |
 | the find line, `/` | typing what to find, the rows narrowing | the accent's `/` at its start; the mono's bar caret |
 | the command line, `:` | naming a command from a menu of every one | the accent's `:`; the bar caret; the menu |
-| insert | writing a prompt's words | the bar caret; "insert" |
-| visual, `v` `V` | choosing several things | the selection's ground; "visual line · 3" |
+| insert | writing a prompt's words | the bar caret; INS |
+| visual, `v` `V` | choosing several things | the selection's ground; VIS, and "3 chosen" |
 | operator-pending | an operator waiting for what it acts on | the cursor row tinted; "d · disconnect Home-5G" |
 
 This is Vim's own split: `/` and `:` aren't insert in Vim but its command
@@ -1743,30 +1857,52 @@ the cursor. A list shows relative numbers in a gutter at Note, muted, the
 cursor row's own absolute and in text, as his `number`, `relativenumber`
 and `cursorlineopt=number` draw them; Space u l switches them to absolute.
 The gutter's room is kept in every mode, three digits wide with the numbers
-right-aligned, and the field stands in from the card's edge with the rows,
-so `/` stays over the glyphs; on the find and command lines the gutter is
-empty, so nothing moves sideways as the mode changes.
+right-aligned, and on the find and command lines the gutter is empty, so
+nothing moves sideways as the mode changes. The find line, the command line
+and the head start at the card's inset, over the numbers, as Vim's / and :
+lines start at column 0 left of its number column: the gutter is the list's,
+and the lines are the card's. A picker's ask keeps its room that way.
 While a find narrows the rows, the find line keeps it after a muted `/`,
 with its count: "/slack · 3 of 12".
 
 - **Moving:** j k, gg G and {n}G, H M L, Ctrl+D Ctrl+U Ctrl+F Ctrl+B, and
   { } to the next and previous group of rows, each taking a count. Only a
   motion repeats while its key is held.
-- **In and out:** l steps into the cursor row, a place or a thing's acts;
-  h, - and Backspace step out a level, onto the row stepped in from, with
-  its find. Ctrl+O and Ctrl+I go back and forward through places.
+- **In and out, by Vim's own keys:** Return opens the cursor row, going
+  into a place or a thing as oil's Return opens a folder; - goes up to
+  what holds it, onto the row it came from, with its find; Ctrl+O and
+  Ctrl+I go back and forward through the jump list, every place reached by
+  Return, -, :e, :b, Ctrl+] or a mark; Ctrl+] on a row that lives
+  elsewhere goes to it in its own place, and Ctrl+T comes back.
+- **h and l move along a line, and nothing else.** A row has no column to
+  move along, so on a list they say "l not here · ↵ open" and "h not here
+  · - up"; Backspace is h, as Vim's is. No surface steps in or out on h, l
+  or Backspace, since only plugins bind them so (Joel, 2026-11-05: "where
+  in vi does that step into shit?").
 - **Return** opens the cursor row (Return, below).
-- **The lines:** / and ? start a fresh find on a list; i, a, I and A open
+- **The lines:** / and ? start a fresh find, going down and up; n and N
+  go to the next and previous match, wrapping as Vim's do with "search hit
+  BOTTOM, continuing at TOP"; f and F and a letter go to the next or
+  previous row starting with it, and ; and , again; i, a, I and A open
   the find line on the current find, the caret at its start, after the
   caret, at the start and at the end; : opens the command line.
 - **Operators and visual:** d y c, dd yy cc, ., u Ctrl+R, v V and gv.
 - **Marks,** where a place lasts: m and a letter sets one, ' and the letter
   goes back, and '' goes back to the last jump.
-- **Escape** cancels a count, a pending operator, a waiting key, which-key
-  or the menu. At rest it closes a popup, as Vim closes one and his Neovim
-  closes its floats: the launcher, held notices. In a window (the reader,
-  the drawer, a viewer) it does nothing at rest, and it never steps out a
-  level, which is h's.
+- **Only Return and - step a level,** on every surface (Joel, 2026-11-05:
+  "enter and - should be the only level stepping keys in anything,
+  right?"). Ctrl+O and Ctrl+I walk the jump list, which is history rather
+  than a level; Ctrl+W moves between windows; Ctrl+] and Ctrl+T follow a
+  link and come back.
+- **Escape** does what Vim's does: it cancels a count, a pending operator
+  or a waiting key, and leaves insert, visual, the find line or the command
+  line, closing which-key or the menu with them. At rest it does nothing,
+  on every surface: it never closes or quits anything of ours, the
+  launcher, notices, the drawer, the picker and the viewers included, and
+  never goes up a level (Joel, 2026-11-05: "fuck escape quitting").
+  Closing is :q, ZZ or Space w alone. Escape still leaves a secret's field
+  for its row, and takes mpv and swayimg out of full screen or a slideshow,
+  since neither closes anything.
 - **q does nothing.** There are no macros, since recording is a mode no one
   sees. The foot says "q does nothing · :q closes" until the next key, as
   every key with no meaning on a surface says "not here", never silent.
@@ -1836,6 +1972,13 @@ notices it takes the acts' place, and in the reader the bottom line.
 - **Options are :set**, as Vim's are: :set wifi, :set nowifi, :set wifi!,
   :set wifi=Home-5G, :set volume=40, :set volume+=5, :set brightness=60,
   :set background=light; :set volume? shows one and :set all lists them.
+- **:setl[ocal] sets the thing's own,** as Vim's sets the buffer's: the
+  thing under the cursor, or the nearest that holds an act's row (Muted
+  inside a program sets the program's): :setl mute, :setl volume+=5, :setl
+  port=Speakers, :setl trust. Choosing a default stays global, :set
+  output=Speakers. A thing without the option says "E518: Unknown option:
+  port" and never falls back to the machine's, since muting all sound when
+  one program was meant is the worse mistake.
 - **!** is "don't ask" or "the other way": :forget!, :sort!, :w!, :q!.
 
 **Insert** is only in a prompt: a reply, a new name (cc), the file picker's
@@ -1851,7 +1994,7 @@ greeter.
 **Visual** works wherever there are rows, cards, files, pictures or words
 (Joel, 2026-11-04: "imaging visual mode a number of notfications and then
 dd to mark them as read"). On a list a row has no letters to choose among,
-so v is V and the mode word says "visual line · 3"; on a page v takes
+so v is V, the mark says VIS and the mode word "3 chosen"; on a page v takes
 characters. o goes to the other end, gv brings the last back, and : gives
 :'<,'>. The same operator pressed again within 300 ms of a visual
 operator is taken with it, so V j j d d acts on three. While a surface is
@@ -1897,22 +2040,25 @@ it"):
 
 | The cursor row | Return |
 | --- | --- |
-| a place, or a thing with acts | steps in, onto a first row that never changes state |
+| a place, or a thing with acts, a network among them | goes in, onto a first row that never changes state |
 | a program, window, file, page, link or notice | opens it, or goes where it came from |
 | an act that changes nothing: Copy, Show, :sort, :rotate | does it |
-| an act that changes state: Turn Off Wi-Fi, Disconnect It, a call, a meeting | from the find line, lands on it in normal, its side saying "↵ turn off"; from normal, does it |
+| an act that changes state and ends nothing: Connect, Turn On, Start, Pause | from the find line, lands on it in normal, its side saying "↵ connect"; from normal, does it |
+| an act that ends or takes away: Disconnect It, Forget It, Close It, Turn Off Wi-Fi, Stop, the session's acts | never runs: Return puts its command on the command line, the menu saying what it acts on, and a fresh Return there runs it; its side says "d disconnect" or ": disconnect" |
 
 Return acts only on a fresh press, so a held Return can't run what the
 first only reached. Stepping in from the find line keeps the find line,
 empty, inside: "net", Return, "home", Return. No modified Return has an
 act; Vim's :sp opens below.
 
-**The arrows are their letters** (Joel, 2026-11-04: "i'm thinking arrow
-actions should probably go and we should use vi like interactions"). In
-normal and visual ↓ ↑ ← → are j k h l and nothing more, so they still move,
-since he presses them; on a line or in a prompt ← → move the caret and ↓ ↑
-choose. No arrow or Shift with an arrow has an act of its own. Hints name
-the letter, "l in" and "h out", and the key list shows both.
+**The arrows move, as in a Vim buffer** (Joel, 2026-11-05: "In normal
+mode, in a buffer, arrows move the cursor"). In normal and visual, Down
+and Up are j and k and Left and Right are h and l, counts and all, so on
+a list Left and Right mean what h and l do: nothing. On a line or in a
+prompt Left and Right move the caret and Down and Up choose. No arrow
+steps in, acts or makes a chord, but for the leader's Space and an arrow
+into the drawer and back, and no hint or key list names one: hints name
+the key that does it, "↵ open" and "- up".
 
 **The leader** is Space, in normal and visual, as his Neovim's
 (`keys.nix`, "What every layer shares"):
@@ -1925,6 +2071,7 @@ the letter, "l in" and "h out", and the key list shows both.
 | Space Space | a fresh find across everything |
 | Space / | the reader's and the drawer's lines and headings |
 | Space . | the launcher on its last place and find |
+| Space → ← | into the drawer and back, over Ctrl+W l and h |
 | Space Return | a terminal in this folder |
 | Space f r, Space f Space | files opened lately, and finding a file |
 | Space s h | earlier finds |
@@ -1933,18 +2080,45 @@ the letter, "l in" and "h out", and the key list shows both.
 
 His other groups have nothing to act on here, and none is faked.
 
-**The foot, the mode word and the key list.** The foot gives the status
-facts, the mode word's room, then the cursor row's keys in this mode by
-letter and lowercase verb, "d disconnect · Space ? keys · ↵ go to": Return
+**The launcher and held notices are one family** (Joel, 2026-11-05: "we
+need for notifications and the laucnher to feel more similar ... i like the
+status line in notifications better"). Each is the same card: a head, a
+hairline, the rows, a hairline, the status line.
+
+- **The head** holds the find line, `/` at the card's inset and what's
+  typed after it, with the place's glyph and Title before what's typed where
+  there is one ("Notices", "Time › Servers"). A find's count sits
+  beside it, as Vim's search count sits beside the search; the head's right
+  end is the selection's note's.
+- **The rows** are the launcher's: the gutter, the glyph, the name and its
+  words, the side at the far end, the ground hugging its ink. A held
+  notice's card opens under its line, typed as the drawer's plate is.
+- **The command line** sits at the bottom, over the status line, with its
+  menu rising from it, as Vim's does: what's typed sits beside what it
+  offers.
+- **The status line** is one component both read (StatusLine.qml), below.
+
+**The foot, the mode mark, the mode word and the key list.** The foot is
+the status line, and it starts with the mode's mark, three capitals at Label, NOR, FND, CMD, INS
+or VIS: muted in normal and in the accent otherwise, first where the eye
+starts the line, as his status line starts with its mode, and every mark
+the same width, so nothing beside it moves. Pending, a prompt's normal and
+the key list are NOR. It then gives its surface's own facts, the glance
+where the launcher has it and the position ("1 of 4") where held notices
+do, the mode word's room, then the cursor row's keys
+in this mode by letter and lowercase verb, each key in text and its word
+muted, joined by a muted dot a mark each side, "d disconnect · Space ?
+keys · ↵ go to": Return
 at the right end, as Joel chose, and Space ? just before it, so the way to
 the keys is always on screen. On the command line the foot names the
 line's own keys: "Tab choose" until a line is chosen or typed, then what
 Return runs. Its hints come from the table that handles the keys, filtered
 by mode and row, so none names a key that does nothing, and a check
 presses every hint drawn. The mode word's room is as wide as its widest
-word in its own font, set before the facts, which give way around it, so
-it's never cut (Joel, 2026-11-04: "the mode text is truncated so I only see
-...rt instead of insert"). While an operator waits no hint applies, so the
+word in its own font, set before the hints, which give way around it,
+so it's never cut (Joel, 2026-11-04: "the mode text is truncated so I
+only see ...rt instead of insert"). Room is held only for what this mode
+draws, never for keys another mode would show. While an operator waits no hint applies, so the
 mode word takes the hints' room too and names its target whole,
 "d · close Notes for Tuesday", cut only at a whole word with an ellipsis
 when even that won't hold it. A landing is normal, so its foot keeps
@@ -1959,8 +2133,9 @@ fits whole on the laptop's plate.
 **On each surface:**
 
 - **The launcher** opens on the find line, the first row chosen, so the
-  fast path is Super+Space, letters and Return, as before. Escape at rest,
-  :q, ZZ and Space w close it. Its commands are its rows' verbs, :e with
+  fast path is Super+Space, letters and Return, as before. :q, ZZ and
+  Space w close it, and Escape at rest does nothing. Its commands are its
+  rows' verbs, :e with
   places as paths (`:e Machine/Power`), :b for a window, :sp, :m to a
   workspace, :sort, :set and the session's (:lockscreen, :sus, :logout,
   :reboot,
@@ -1974,15 +2149,17 @@ fits whole on the laptop's plate.
   (A to Z), :sort changed (newest first) and :sort size (largest first),
   with :sort! the other way, are kept across asks; :e, :cd, :set hidden
   and :mkdir go with them, ]b [b to the folders beside, gx to a file's own
-  program.
+  program. :q cancels the dialog, and Escape never does.
 - **The notices,** held on Super+N, are the quickfix list: a line a card,
   the sender's glyph, who, the first words and the time, the cursor card
-  whole under its line, the newest first. / finds among them; l steps into
-  a card's acts and h out; Return goes to whoever sent it. d is done, its
+  whole under its line, the newest first. / finds among them; its acts are
+  commands, listed under its words and first in the : menu; Return goes to
+  whoever sent it. d is done, its
   read sent at once, and the foot says "d read" where the sender offers a
   read and "d forget" where it doesn't; :forg forgets a card unread, :reply
   writes one, and :g/Slack/d takes all of one sender's. `:e Notices` opens
-  their history. Escape at rest, :q, ZZ, Space w and Super+N let them go.
+  their history. :q, ZZ, Space w and Super+N let them go, and Escape at
+  rest does nothing.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
   lights only the number, and a block only in visual, which starts on the
@@ -1995,7 +2172,9 @@ fits whole on the laptop's plate.
   paragraph found. Escape at rest and q do nothing.
 - **The drawer** is the preview window: Ctrl+W l goes in and the reader's
   keys work there, and Ctrl+W h or :q comes back, Ctrl+W w either way, as
-  Vim goes between windows; no arrow does anything in normal.
+  Vim goes between windows, with his Neovim's Space and an arrow over
+  them (Joel, 2026-11-05: "leader stuff can overlay default stuff");
+  inside, the arrows move as j k h l do.
 - **The viewers** close on :q and ZZ, swayimg and zathura on Space w too
   (mpv's Space pauses at once and leads nothing), never on Escape or q, and
   their arrows are their letters, each with one meaning. swayimg's and mpv's
@@ -2003,15 +2182,17 @@ fits whole on the laptop's plate.
   (`:d`, `:y`, `:rotate`, `:{n}`, `:q`); zathura keeps its own, which is
   Vim's already.
 
-**His Neovim is held to the same bar:** q closes none of its windows, and
-Escape and :q close its floats, as ours.
+**His Neovim is held to the same bar:** q closes none of its windows, and :q
+closes its floats. Its Escape stays as he set it, since his own editor
+changes only through his config (Joel, 2026-11-05).
 
 **The Departures.** Each key here that doesn't do what Vim's does, and why:
 
-1. A list's / narrows the rows rather than moving to a match, and n N say
-   "not here": a list finds by narrowing, with one way to find.
-2. ? on a list is the same find, since a narrowing has no direction; on a
-   page it searches back, as Vim's.
+1. A list's / and ? narrow the rows as they're typed, where Vim's only
+   move to a match; n and N then step through what's left and wrap, as
+   Vim's do, never searching afresh.
+2. f and F go by a row's first letter on a list, a row being one line;
+   on a page they go by a letter in the line, as Vim's.
 3. % means the rows listed, fewer than all while a find narrows them.
 4. The launcher and the picker open on the find line, as Telescope opens on
    its prompt, which keeps the fast path.
@@ -2020,25 +2201,32 @@ Escape and :q close its floats, as ours.
 6. `:` as a find's first letter opens the command line, since a find never
    starts with one.
 7. i, a, I and A reopen the find line, since a list has no text of its own.
-8. l and h step in and out, as his oil's → and ← do.
+8. A row whose act ends something puts its command on the command line
+   rather than doing it, since a list has rows that are acts where Vim's
+   buffers have only text.
 9. v is V on a list, since a row has no letters to choose among.
 10. q records nothing: recording is a mode no one sees.
 11. The same operator pressed again just after a visual operator is taken
     with it: Joel's "visual ... then dd".
 12. A pending operator shows at once, though his showcmd is off, since an
     armed d is the riskiest state no one sees.
-13. Return from the find line on an act that changes state lands on it.
+13. Return from the find line opens what opens and goes into what holds
+    more, where Vim's lands on the match, to keep the fast path; on an act
+    that changes state it lands, as Vim's does.
 14. A key with no meaning says so in the foot, where Vim beeps.
 15. The picker's sort is kept across asks, a folder's order being a
     preference.
 16. mpv's Space pauses at once and leads nothing, as a player's does.
+17. :setl takes a range, :%setl mute setting each thing's own, where Vim's
+    :setlocal takes none, since a list holds many things where a window
+    shows one buffer.
 
 **Where Vim's keys live.** Each act is named once in
 `modules/keys/language.toml`, with its keys in Neovim's notation, the
 modes it's pressed in (normal, find, command, insert, visual), the kinds of
 surface it belongs to (field, list, page, player, prompt, secret), its
-command name and fixed short form, and whether it changes state, can be
-undone and takes a range, beside how long a waiting key waits, the
+command name and fixed short form, and whether it changes state, ends or
+takes something away, can be undone and takes a range, beside how long a waiting key waits, the
 which-key list's delay and the yank flash's, which Neovim reads from there
 too. Each surface reads its keys from it by the acts' names, names its
 kinds in `jitsusama.surfaces`, and is proved by a VM test pressing every
@@ -2047,7 +2235,9 @@ an act its kinds hold, gives a key of the language to another act or binds
 an act by a key not its own, and on a change to Neovim's keys the language
 doesn't agree with. As the language takes in the commands it fails too on a
 short form that isn't unique or a name Neovim defines otherwise, on an act
-that changes state reachable by Return from the find line, and on a hint
+that changes state reachable by Return from the find line, on one that
+ends reachable by Return at all, on h, l or Backspace going in or out, and
+on a hint
 whose key isn't in its mode's table. Until a surface
 reads from it, its keys sit in one table of key and act, never scattered
 through its code.
@@ -2238,8 +2428,8 @@ by them isn't done.
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
 | Dictation                                 | dictation, Quickshell    | monospace      | nothing | while it listens, at the bottom centre in a meter's frame: a person speaking in the voice colour, listening, a wave of what the microphone hears, and the time, counting down the last five of Whisper's thirty seconds with the glyph in the warning colour; typing, once it lasts long enough to see; then for a moment heard nothing, still writing, or, with the muted microphone, the microphone is muted | nothing | Super+D starts and stops it | nothing; it's never in the margin, and never a notice while the shell watches |
-| The launcher's foot and the margin mark   | Quickshell               | both           | the foot, when the selection says nothing: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
-| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by the right arrow | the accent frame, a command line over a list split by a hairline, a quarter down | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
+| The launcher's glance and the margin mark | Quickshell               | both           | the status line after its mark: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
+| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by Return | the accent frame, a command line over a list split by a hairline, a quarter down | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
@@ -2249,7 +2439,7 @@ by them isn't done.
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | What's on: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | What's on: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; What's on says how long and who with |
-| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's glyph while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
+| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's glyph while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and Ctrl+] going into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, then git's notation: * not staged, + staged, ? untracked, together, then ↑N ahead and ↓N behind, together, and nothing when clean and in step; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph; what gives way goes without a trace; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
@@ -2307,9 +2497,8 @@ What each studio round settled, newest first, with the reason.
   about 40 of the serif's letters on a line at that size inside its room. The
   line of offers and the held card's key hints went, as the clutter he
   named: a click does what the card is about, and the keys reach every
-  act. Held, the card shows its acts under a rule at once, so it shows the
-  right arrow leads somewhere without a hint; the right arrow then puts
-  the band on the first, Return's mark where its key was. The track
+  act. Held, the card shows its acts under a rule at once, each by its
+  command name, so it shows what : offers without a hint. The track
   playing, beside it in the same column, reads the same way.
 
 - **Actions read apart from figures, and a figure draws its range in
@@ -2407,7 +2596,9 @@ What each studio round settled, newest first, with the reason.
   in and out, and said its keys in a second footer; now the right arrow
   steps into its verbs as rows, the history's own, and the one footer
   says the keys where it said when. Since 3 November it says none: held,
-  its acts show at once, each with its key.
+  its acts show at once, each with its key. Since 5 November those keys
+  are commands, since no Vim key steps into a line (Joel: "where in vi
+  does that step into shit?").
 
 - **The splash says what it waits on** (2026-10-21, judged against the
   taste without a round). A boot or shutdown that stalled said starting or

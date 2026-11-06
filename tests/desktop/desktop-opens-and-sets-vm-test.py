@@ -49,8 +49,8 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
-        # Return steps in, as on every device, its use first, so Return
-        # twice plays sound through it.
+        # Return steps in, as on every device, its use first, and in normal,
+        # where the step ends, Return plays sound through it.
         desktop.step_in("ret")
         desktop.launcher_until(sound_selected("Play Sound Through It"))
         machine.send_key("ret")
@@ -58,6 +58,48 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
         # It changed something, so the launcher stays until it's closed.
         desktop.close_launcher()
+    sets_the_output(desktop)
+
+
+def sets_the_output(desktop: Desktop) -> None:
+    """Choose the output by :set output=, as Play Sound Through It does, and ask which it is.
+
+    After output= the line lists the outputs by name, as each row names one; :set output?
+    says the one in use, and :set input? the microphone listened through.
+    """
+    machine = desktop.machine
+
+    def menu(shown: Json) -> list[str]:
+        return [str(entry).strip() for entry in (shown["command"] or {}).get("menu", [])]
+
+    def said(shown: Json) -> str:
+        return str(shown["commandSaid"]) if shown["command"] is None else ""
+
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    for output in ["stand-in-headphones", "stand-in-speakers"]:
+        kind = output.removeprefix("stand-in-")
+
+        def listed(shown: Json, kind: str = kind) -> bool:
+            return any(kind in entry for entry in menu(shown))
+
+        def told(shown: Json, kind: str = kind) -> bool:
+            return kind in said(shown)
+
+        machine.send_chars(":set output=")
+        desktop.launcher_until(listed)
+        chosen = next(entry for entry in menu(desktop.showing()) if kind in entry)
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["command"] is None)
+        machine.send_chars(f":set {chosen}\n")
+        used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
+        machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
+        machine.send_chars(":set output?\n")
+        desktop.launcher_until(told)
+    machine.send_chars(":set input?\n")
+    desktop.launcher_until(lambda shown: said(shown) == "input=Stand-in microphone")
+    desktop.close_launcher()
 
 
 def sound_reads(name: str, said: str) -> Callable[[Json], bool]:
@@ -73,11 +115,11 @@ def sound_selected(name: str) -> Callable[[Json], bool]:
 
 
 def sound_device(desktop: Desktop, typed: str, named: str) -> None:
-    """Open the launcher's Sound, and step into a device's parts by the right arrow."""
+    """Open the launcher's Sound, and step into a device's parts by Return."""
     desktop.as_account("qs ipc call launcher collection sound")
     desktop.launcher_ready()
     desktop.type_in(typed, selecting=named)
-    desktop.step_in()
+    desktop.follow()
 
 
 def sound_nodes(desktop: Desktop) -> list[Json]:
@@ -139,9 +181,9 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.photograph("launcher-sound-output-parts")
     # Return on Volume, past Muted and the Level, steps into its choices,
     # each level saying its decibels in the footer.
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(sound_selected("Level"))
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(sound_selected("Volume"))
     desktop.launcher_until(lambda shown: shown["footer"].endswith(" dB"))
     desktop.step_in("ret")
@@ -149,6 +191,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.photograph("launcher-sound-volume")
     desktop.type_in("50", selecting="Volume to 50%")
     desktop.launcher_until(lambda shown: "-18.1 dB" in shown["footer"])
+    desktop.land()
     machine.send_key("ret")
     sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
     machine.wait_until_succeeds(desktop.in_session(sink), timeout=timedelta(seconds=10))
@@ -203,13 +246,13 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     sound_device(desktop, "microphone", "stand-in microphone")
     desktop.launcher_until(lambda shown: "Recording" in shown["rows"])
     desktop.launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
-    # The right arrow on Recording, then on the program, and Return on
+    # l on Recording, then on the program, and Return on
     # its Muted mutes what it records. Recording is counted to.
     for _down in range(desktop.showing()["rows"].index("Recording")):
-        machine.send_key("down")
+        desktop.next_row()
     desktop.launcher_until(sound_selected("Recording"))
-    desktop.step_in()
-    desktop.step_in()
+    desktop.follow()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Muted", "Louder", "Quieter"])
     desktop.photograph("launcher-sound-recording")
     desktop.launcher_until(sound_selected("Muted"))
@@ -315,37 +358,44 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("mpv", selecting="mpv Media Player")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: {"Media", "Sound"} <= set(shown["rows"]))
         if part:
             desktop.type_in(part.lower(), selecting=part)
-            desktop.step_in()
+            desktop.follow()
 
-    def press(name: str, then: str = "", becomes: str = "") -> None:
+    def press(name: str, then: str = "", becomes: str = "", *, lands: bool = True) -> None:
         """Press Return on a row by its name: it stays, saying so or becoming its opposite.
 
         Each changes how the program plays, so the launcher stays. One that says where it is
         now has what was typed cleared for the next; one that becomes its opposite is closed.
+        Each but a skip is landed on first; a skip is pressed again and again, and the key
+        language says it changes nothing, so one Return from the find does it.
         """
         desktop.type_in(name.lower(), selecting=name)
+        if lands:
+            desktop.land()
         machine.send_key("ret")
         if then:
             desktop.launcher_until(lambda shown: shown["footer"] == then)
             desktop.normal()
-            machine.send_key("left")
+            machine.send_chars("cc")
             desktop.launcher_until(lambda shown: shown["typed"] == "")
+            # cc leaves it on the find; back in normal, a changing row's
+            # Return does it rather than landing.
+            desktop.normal()
         else:
             desktop.launcher_until(lambda shown: becomes in shown["rows"])
             desktop.close_launcher()
 
-    # The right arrow on the program holds Media and Sound, each saying
+    # l on the program holds Media and Sound, each saying
     # how it stands.
     controls()
     desktop.photograph("launcher-program-parts")
     desktop.launcher_until(reads("Media", "playing"))
     desktop.launcher_until(reads("Sound", "100%"))
     desktop.type_in("media", selecting="Media")
-    desktop.step_in()
+    desktop.follow()
     desktop.photograph("launcher-program-media")
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["Pause", "Next", "Previous", "First tone"]
@@ -353,10 +403,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("First tone", "Test tones"))
     # Next and Previous keep the launcher, saying what's on now, and what's
     # playing follows.
-    press("Next", then="Second tone, Test tones")
+    press("Next", then="Second tone, Test tones", lands=False)
     playing("Playing", "Second tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "Second tone")
-    press("Previous", then="First tone, Test tones")
+    press("Previous", then="First tone, Test tones", lands=False)
     playing("Playing", "First tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "First tone")
     # Paused from elsewhere, as a media key does, Pause says Play.
@@ -390,8 +440,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("Volume", "100%"))
     # Muted is one switch keeping its name: Return mutes the stream, the
     # launcher staying, and it says yes; the program's Sound says muted.
+    # Typed on the find, Return lands on it first.
     desktop.launcher_until(reads("Muted", "no"))
     desktop.type_in("muted", selecting="Muted")
+    desktop.land()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["open"] and reads("Muted", "yes")(shown))
     desktop.close_launcher()
@@ -399,12 +451,24 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     controls()
     desktop.launcher_until(reads("Sound", "muted"))
     desktop.type_in("sound", selecting="Sound")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Muted")
     desktop.launcher_until(reads("Muted", "yes"))
     desktop.launcher_until(reads("Volume", "muted"))
     # Louder is meant to be heard, so it unmutes.
     press("Louder", then="now 100%")
+    heard("1.00")
+    # :setl sets the option of what it's in, the program's Sound, as Vim's
+    # :setlocal sets the buffer's: it mutes the stream alone, never the
+    # speakers, and says how it stands.
+    machine.send_chars(":setl mute\n")
+    heard("1.00 [MUTED]")
+    machine.fail(desktop.in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"))
+    machine.send_chars(":setl mute?\n")
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "mute"
+    )
+    machine.send_chars(":setl nomute\n")
     heard("1.00")
 
     # The volume's bar follows too, filling from the left by the volume:
@@ -425,7 +489,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         machine.send_key("pgdn")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Volume")
         for _up in range(2 if steps > 0 else 1):
-            machine.send_key("up")
+            desktop.previous_row()
         turning = "Louder" if steps > 0 else "Quieter"
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == turning)
         for step in range(1, abs(steps) + 1):
@@ -471,8 +535,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     machine = desktop.machine
     # By its name, power saver last, where what follows starts from. Setting
     # it changes something, so Return keeps the launcher, the row saying
-    # it's chosen, and the right arrow then Return sets it and closes, with
-    # no chord with Ctrl said anywhere.
+    # it's chosen, and Ctrl+] then Return sets it and closes, with
+    # no other chord with Ctrl said anywhere.
     for typed, profile, name, stepping in [
         ("balanced power", "balanced", "Balanced Power", False),
         ("power saver", "power-saver", "Power Saver", True),
@@ -480,14 +544,16 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
-        # In normal, where the arrows step; insert's move the caret, so it names none.
+        # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
         desktop.normal()
-        desktop.launcher_until(lambda shown: "\u2192" in (shown["selected"] or {}).get("told", []))
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("told", [])[1:2] == ["Ctrl+] in"]
+        )
         told = desktop.showing()["selected"]["told"]
-        assert not any(key.startswith("Ctrl") for key in told), told
+        assert not any(key.startswith("Ctrl") for key in told[2:]), told
         if stepping:
             # Its own act leads the step, selected.
-            desktop.step_in()
+            desktop.follow()
             desktop.launcher_until(
                 lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][0]
             )
@@ -515,20 +581,24 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     )
     desktop.close_launcher()
     # And as the setting it is: one part saying which is chosen, its
-    # choices a step in by Return or the right arrow, each named there as
+    # choices a step in by Return or Ctrl+], each named there as
     # the part reads it.
-    for key, profile, name, was in [
-        ("ret", "balanced", "Balanced", "Power Saver"),
-        ("right", "power-saver", "Power Saver", "Balanced"),
+    for follows, profile, name, was in [
+        (False, "balanced", "Balanced", "Power Saver"),
+        (True, "power-saver", "Power Saver", "Balanced"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("power profile", selecting="Power Profile")
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == was)  # noqa: B023
-        desktop.step_in(key)
+        if follows:
+            desktop.follow()
+        else:
+            desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
         desktop.type_in(name.split()[0][:3].lower(), selecting=name)
+        desktop.land()
         machine.send_key("ret")
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
@@ -537,7 +607,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.close_launcher()
 
 
-# The right arrow on one of a collection's members offers its own
+# Ctrl+] on one of a collection's members goes into its own
 # actions, as on anything at the top.
 
 
@@ -592,6 +662,7 @@ def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) 
     now_reads("Power Profile \u00b7 Power Saver")
     desktop.down_to("Power Profile")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "use")
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "powerprofilesctl get | grep -qx balanced", timeout=timedelta(seconds=10)
@@ -637,7 +708,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         else:
             desktop.as_account("qs ipc call launcher collection displays")
         desktop.launcher_ready()
-        desktop.step_in()
+        desktop.follow()
         # Its settings lead, each saying how it's set, their choices a step
         # in, there by Return on the setting, or found from here by what's
         # typed. The backlight lights the one screen there is, so its
@@ -659,6 +730,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             desktop.type_in(str(percent))
         else:
             desktop.type_in(f"scale {percent}")
+        desktop.land()
         machine.send_key("ret")
 
         def scaled(_: bool, wanted: float = wanted) -> bool:  # As retry calls it.
@@ -694,11 +766,11 @@ def left_lantern(desktop: Desktop) -> int:
 
 
 def disconnects_and_takes_back(desktop: Desktop) -> None:
-    """End Lantern by dd, unasked; Ctrl+R finds nothing to redo, and . nothing left to end.
+    """End Lantern by dd, unasked; u joins it again, Ctrl+R leaves it again, and u once more.
 
     dd on a network disconnects it, never forgets it, and doesn't ask, since u joins it again;
     the foot says so until the next key. Disconnected, it has no end, since d never forgets a
-    network, so . doing dd again says so. wifid joins it again for the steps after.
+    network, so . doing dd again says so. The last u leaves it joined for the steps after.
     """
     machine = desktop.machine
 
@@ -711,6 +783,9 @@ def disconnects_and_takes_back(desktop: Desktop) -> None:
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
     desktop.normal()
+    # Normal's foot names d by the row's ending verb, as docs/design.md's foot does.
+    told = desktop.showing()["selected"]["told"]
+    assert "d disconnect" in told, told
     machine.send_chars("d")
     desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
     before = left_lantern(desktop)
@@ -724,17 +799,29 @@ def disconnects_and_takes_back(desktop: Desktop) -> None:
     )
     machine.send_key("ctrl-r")
     desktop.launcher_until(lambda shown: shown["operated"].endswith("Already at newest change"))
+    desktop.launcher_until(lantern_reads("saved"))
+    joined = "networkctl status wlan1 | grep -q 10.42.0."
+    with desktop.told("undid 1"):
+        machine.send_chars("u")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("1 brought back"))
+    machine.wait_until_succeeds(joined, timeout=timedelta(seconds=60))
+    desktop.launcher_until(lantern_reads("connected"))
+    before = left_lantern(desktop)
+    with desktop.told("redid 1"):
+        machine.send_key("ctrl-r")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("1 done again"))
+    machine.wait_until_succeeds(
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+    )
     # Once the row says it's only saved, . does dd again on it, which
-    # finds nothing to end.
+    # finds nothing to end, and u then takes back the Ctrl+R.
     desktop.launcher_until(lantern_reads("saved"))
     machine.send_chars(".")
     desktop.launcher_until(lambda shown: shown["operated"].endswith("nothing to end"))
+    with desktop.told("undid 1"):
+        machine.send_chars("u")
+    machine.wait_until_succeeds(joined, timeout=timedelta(seconds=60))
     desktop.close_launcher()
-    wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
-    machine.succeed(f'{wifi}.Join \'{{"name": "Lantern"}}\'')
-    machine.wait_until_succeeds(
-        "networkctl status wlan1 | grep -q 10.42.0.", timeout=timedelta(seconds=60)
-    )
 
 
 def commands_a_network(desktop: Desktop) -> None:
@@ -803,6 +890,13 @@ def commands_a_network(desktop: Desktop) -> None:
         )
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # :setl trust trusts the network the cursor is on, as its Trust It row
+    # does, which turns on mDNS there, and notrust stops.
+    for typed, mdns in [("trust", "+mDNS"), ("notrust", "-mDNS")]:
+        machine.send_chars(f":setl {typed}\n")
+        machine.wait_until_succeeds(
+            f"resolvectl status wlan1 | grep -qF -- {mdns}", timeout=timedelta(seconds=30)
+        )
     for key in ["esc", "ctrl-c", "backspace"]:
         machine.send_chars(":")
         desktop.launcher_until(lambda shown: line(shown).get("line") == "")
@@ -817,8 +911,8 @@ def binds_a_range(desktop: Desktop) -> None:
     """Over every network, say E481 for :%q, ask how many can for :%disc, then :g/Lant/disc.
 
     Lantern alone can disconnect, so :%disc asks once, naming how many can, and n leaves every
-    network as it was; :g finds Lantern by name and disconnects it by its own act, unasked, as
-    it can be undone.
+    network as it was; :g finds Lantern by name and disconnects it at once, as d would, since u
+    joins it again, as it does here before Ctrl+R leaves it again.
     """
     machine = desktop.machine
 
@@ -851,7 +945,18 @@ def binds_a_range(desktop: Desktop) -> None:
     machine.wait_until_succeeds(
         f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
     )
-    desktop.launcher_until(lambda shown: shown["command"] is None)
+    desktop.launcher_until(lambda shown: shown["command"] is None and shown["question"] == "")
+    with desktop.told("undid 1"):
+        machine.send_chars("u")
+    machine.wait_until_succeeds(
+        "networkctl status wlan1 | grep -q 10.42.0.", timeout=timedelta(seconds=60)
+    )
+    before = left_lantern(desktop)
+    with desktop.told("redid 1"):
+        machine.send_key("ctrl-r")
+    machine.wait_until_succeeds(
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+    )
     lists_earlier_lines(desktop)
 
 
@@ -881,7 +986,8 @@ def says_how_wi_fi_is_set(desktop: Desktop) -> None:
 
     A space after :set lists every option with where it stands; typing narrows them and Tab
     writes the one chosen in; :set wifi? says the network joined, and a word no option names
-    says E518.
+    says E518. Then the session's: dnd=60 holds notices an hour and nodnd ends it, and
+    keepawake keeps the machine awake until nokeepawake lets it sleep.
     """
     machine = desktop.machine
 
@@ -915,7 +1021,31 @@ def says_how_wi_fi_is_set(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["commandSaid"] == "E518: Unknown option: wfii" and shown["open"]
     )
+    sets_the_session(desktop)
     desktop.close_launcher()
+
+
+def sets_the_session(desktop: Desktop) -> None:
+    """Hold notices an hour by :set dnd=60, end it by nodnd, and keep awake by keepawake."""
+    machine = desktop.machine
+
+    def says(typed: str, said: str) -> None:
+        machine.send_chars(typed)
+        desktop.launcher_until(
+            lambda shown: shown["command"] is None and shown["commandSaid"] == said
+        )
+
+    machine.send_chars(":set dnd=60\n")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
+    says(":set dnd?\n", "dnd=60")
+    machine.send_chars(":set nodnd\n")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
+    says(":set dnd?\n", "nodnd")
+    machine.send_chars(":set keepawake\n")
+    machine.wait_until_succeeds("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
+    says(":set keepawake?\n", "keepawake")
+    machine.send_chars(":set nokeepawake\n")
+    machine.wait_until_fails("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
 
 
 def sets_wi_fi(desktop: Desktop) -> None:
@@ -959,6 +1089,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["asking"] and shown["modal"] is False)
     foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
     assert not any(word["text"] == "insert" for word in foot), foot
+    # Its padlock leads the line, never the find's /.
+    assert desktop.showing()["sigil"] != "/", desktop.showing()
     machine.send_chars("not the pass")
     desktop.launcher_until(lambda shown: shown["caret"] == len("not the pass"))
     machine.send_key("ctrl-h")
@@ -1010,7 +1142,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to It", "Disconnect It"])
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -1041,18 +1173,44 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(window), timeout=timedelta(seconds=60))
     machine.succeed(f'{described} | grep -qF \'"reach":"online"\'')
-    # Its name typed and Return, in insert, never disconnects it: Return
-    # steps in, to what can be done to it, and it stays connected (Joel,
-    # 2026-11-04: "it is quite dangerous").
+    # Its name typed and Return, on the find, never disconnects it: Return
+    # steps in, to what can be done to it, onto a row that changes nothing,
+    # and it stays connected (Joel, 2026-11-04: "it is quite dangerous").
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
-    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    desktop.launcher_until(lambda shown: shown["mode"] == "find")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["open"] and "Disconnect It" in shown["rows"])
+    first = desktop.showing()["selected"]["name"]
+    assert first not in ("Disconnect It", "Forget It"), desktop.showing()["rows"]
+    # The network's glyph follows the find's /, leading the path.
+    assert (desktop.showing()["sigil"], desktop.showing()["lead"] != "") == ("/", True)
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Disconnect It found and Return only lands on it, in normal, its side and the foot
+    # saying what a second Return does, until the next key.
+    desktop.type_in("disc", selecting="Disconnect It")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["mode"], shown["landed"]) == ("normal", "disconnect")
+    )
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == ["\u21b5 disconnect"], told
+    desktop.photograph("launcher-landed")
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Shift, Ctrl and Alt with Return do nothing at all.
+    for chord in ("shift-ret", "ctrl-ret", "alt-ret"):
+        machine.send_key(chord)
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    shown = desktop.showing()
+    assert (shown["open"], shown["landed"]) == (True, ""), shown
+    # Let go of, it's still joined, for the command line to disconnect it; Wi-Fi Off below
+    # is landed on and done by a second Return.
     desktop.close_launcher()
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     disconnects_and_takes_back(desktop)
     commands_a_network(desktop)
     # The Office asks for an account: met for the first time, it asks
@@ -1078,26 +1236,27 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
     desktop.close_launcher()
-    # Found from the root, the right arrow goes straight inside the Office,
-    # the networks' crumb above it saying where it lives, and the left
-    # arrow comes back to the search with what was typed (VKCF3Z,
+    # Found from the root, Return goes straight inside the Office,
+    # the networks' crumb above it saying where it lives, and -
+    # comes back to the search with what was typed (VKCF3Z,
     # 2026-10-29: "\u2190 is where you came from; the crumbs are where it
     # lives").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
-    # Joined, its Return typed in insert steps in too, rather than
-    # disconnecting it, so the foot says Return alone: insert's arrows
-    # move the caret, so no arrow is named there.
+    # Joined, its Return typed on the find steps in too, rather than
+    # disconnecting it, so the foot says "\u21b5 open", as stepping in does
+    # wherever it's done; the find's arrows move the caret, so no arrow is
+    # named there.
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5"], told
-    desktop.step_in()
+    assert told[:1] == ["\u21b5 open"], told
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) > 1 and shown["path"][-1:] == ["Office"] and shown["typed"] == ""
         )
     )
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "office")
     desktop.close_launcher()
     # Stepped into, a network says after what can be done to it what's
@@ -1107,7 +1266,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
-    desktop.step_in()
+    desktop.follow()
     office = len(desktop.showing()["held"])
     # The Signal says its dBm, always read, and how far over the noise
     # below; Return opens it, where iw, read while the network shows,
@@ -1115,30 +1274,30 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("signal", selecting="Signal")
     desktop.launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
-    # The left arrow steps out with the word put back, and again takes
-    # the word.
-    machine.send_key("left")
+    # - steps out with the word put back, and cc takes the word, onto the
+    # find.
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == office and shown["typed"] == "signal"
     )
-    machine.send_key("left")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     desktop.photograph("launcher-wifi-detail")
-    # The Speed holds each way and the retries, the right arrow into it.
+    # The Speed holds each way and the retries, Return into it.
     desktop.type_in("speed", selecting="Speed")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
-    machine.send_key("left")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them; the figure's
     # own Copy last (docs/design.md, "Copy ... is always the last").
     desktop.type_in("access", selecting="Access Points")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1", "Copy"])
     desktop.photograph("launcher-wifi-points")
     desktop.step_in("ret")
@@ -1153,7 +1312,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["held"] == ["network"] and "Wi-Fi" in shown["rows"])
     assert "Wi-Fi Off" not in desktop.showing()["rows"], desktop.showing()["rows"]
     desktop.type_in("wi-fi", selecting="Wi-Fi")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             len(shown["rows"]) > 1
@@ -1163,10 +1322,19 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.close_launcher()
     says_how_wi_fi_is_set(desktop)
-    # Turning Wi-Fi off is an action like any, found by name from the top.
+    # Turning Wi-Fi off is an action like any, found by name from the top,
+    # where Return lands on it, saying a second Return turns it off, and
+    # only that second Return does. Two Returns closer together than Joel
+    # presses two, as a key bounced, are the landing's one press doubled,
+    # so they only land too.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("wifi off")
+    desktop.type_in("wifi off", selecting="Wi-Fi Off")
+    desktop.press_at_once("ret ret")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "off"))
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
+    assert desktop.showing()["returned"]["act"] == "", desktop.showing()["returned"]
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
@@ -1193,7 +1361,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
         "ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=timedelta(seconds=90)
     )
     desktop.answer("address")
-    desktop.step_in()
+    desktop.follow()
     addresses = len(desktop.showing()["held"])
     # Each is named by what it is, never by the kernel's name for it.
     desktop.launcher_until(lambda shown: {"Wi-Fi", "VPN"} <= set(shown["rows"]))
@@ -1209,23 +1377,21 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     side = desktop.showing()["selected"]["side"]
     assert re.fullmatch(r"[\d,]+ bytes", side), side
     desktop.photograph("launcher-addresses-wifi")
-    desktop.normal()
-    machine.send_key("left")
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi"
     )
-    machine.send_key("left")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
-    # The right arrow opens the VPN's, which has no hardware address, and
+    # l opens the VPN's, which has no hardware address, and
     # the old word for it finds nothing.
     desktop.type_in("tunnel")
     desktop.launcher_until(lambda shown: "VPN" not in shown["rows"])
     desktop.normal()
-    machine.send_key("left")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
     desktop.type_in("vpn", selecting="VPN")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("address", selecting="Address")
     assert desktop.showing()["selected"]["side"] == "100.100.1.2/32"
     assert "Hardware Address" not in desktop.showing()["rows"], desktop.showing()

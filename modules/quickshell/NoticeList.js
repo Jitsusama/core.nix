@@ -34,6 +34,33 @@ function viewTop(top, cursor, count, shown) {
     return Math.max(0, Math.min(first, last));
 }
 
+// The view scrolled as Vim scrolls it, and the cursor kept in it by
+// scrolloff: Ctrl+E and Ctrl+Y move the view a line, the wheel three, each
+// times the count, the cursor going only as far as it must; zz, zt and zb
+// put the cursor's line, or the counted one, in the middle, at the top or
+// at the foot. It gives the view's first line and the cursor's.
+function scrolled(motion, at, count, list) {
+    const total = list.count;
+    const lines = Math.min(list.shown ?? room, total);
+    const off = Math.min(scrolloff, Math.floor((lines - 1) / 2));
+    const lastTop = Math.max(total - lines, 0);
+    const clampTop = wanted => Math.max(0, Math.min(wanted, lastTop));
+    const by = Math.max(count, 1);
+    const line = motion.startsWith("view") && count > 0
+        ? Math.max(0, Math.min(count - 1, total - 1)) : at;
+    const tops = {
+        lineDown: (list.top ?? 0) + by,
+        lineUp: (list.top ?? 0) - by,
+        viewCentre: line - Math.floor((lines - 1) / 2),
+        viewAtTop: line - off,
+        viewAtBottom: line - lines + 1 + off
+    };
+    const top = clampTop(tops[motion] ?? list.top ?? 0);
+    const lowest = top > 0 ? top + off : 0;
+    const highest = top + lines - 1 < total - 1 ? top + lines - 1 - off : total - 1;
+    return { top, cursor: Math.max(lowest, Math.min(line, highest)) };
+}
+
 // A line's number in the gutter, as Joel's Neovim sets number and
 // relativenumber: the cursor line's own, from 1, and the rest how far from
 // it, or every line its own once relative numbers are off.

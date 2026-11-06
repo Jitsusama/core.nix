@@ -111,6 +111,8 @@ CAP_SYS_NICE = 23
 
 # The launcher's surface is always listed, so whether it's open is what it says of itself.
 LAUNCHER_OPEN = """qs ipc call launcher showing | grep -q '"open":true'"""
+# The modes the launcher's line types in: the find, and insert while a row asks for words.
+TYPING = ("find", "insert")
 # The window the launcher's window subtests find by its title.
 NOTES = "Notes for Tuesday"
 
@@ -124,7 +126,7 @@ PI_WINDOW = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
 # The margin is there only while something's on, each thing its glyph
 # alone, and what each is, in words, is the launcher's What's on: Super+O
 # or a click on a glyph opens it, Return does a thing's first action and
-# the right arrow steps into the rest.
+# Ctrl+] goes into the rest.
 MARGIN = "niri msg layers | grep -q margin"
 # The margin's cells: the theme's gap, open or shut, since nothing grows.
 CELL = 12
@@ -234,6 +236,16 @@ def changed_at_the_top(before: Image.Image, after: Image.Image) -> tuple[float, 
     assert top, "nothing changed along the top"
     xs, ys = [x for x, _ in top], [y for _, y in top]
     return (min(xs) + max(xs)) / 2 / width, (min(ys) + max(ys)) / 2 / height
+
+
+def keyed(name: str, *, down: bool) -> Json:
+    """Give QEMU's input event for a key going down or up, by its name or its number."""
+    key = (
+        {"type": "number", "data": int(name, 16)}
+        if name.startswith("0x")
+        else {"type": "qcode", "data": name}
+    )
+    return {"type": "key", "data": {"down": down, "key": key}}
 
 
 def started(machine: BaseMachine, values: Values) -> Desktop:
@@ -510,21 +522,34 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.wait_until_fails(self.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     def normal(self) -> None:
-        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        """Put the launcher's line in normal mode, by Escape from the find, and wait for it."""
         if self.showing()["mode"] == "normal":
             return
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal")
 
-    def insert(self) -> None:
-        """Put the launcher's query line in insert mode, by A from normal, and wait for it.
+    def land(self) -> None:
+        """Press Return on a row that changes how things stand, from the find, and wait.
 
-        A puts the caret at the end of what's typed, so what's typed next goes after it.
+        Return there only lands on it, in normal, the row saying what a second Return does,
+        so a test presses Return again for it to be done, once a Return no longer comes so soon
+        after the landing that the launcher takes it for the same press doubled.
         """
-        if self.showing()["mode"] == "insert":
+        self.machine.send_key("ret")
+        self.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+        fresh = "qs ipc call launcher showing | grep -qF '\"landedFresh\":false'"
+        self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
+
+    def on_find(self) -> None:
+        """Put the launcher's line back to typing, by A from normal, and wait for it.
+
+        It types on the find, or in insert while a row asks for words, as a password. A puts
+        the caret at the end of what's typed, so what's typed next goes after it.
+        """
+        if self.showing()["mode"] in TYPING:
             return
         self.machine.send_chars("A")
-        self.launcher_until(lambda shown: shown["mode"] == "insert")
+        self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
     def notices_history(self) -> None:
         """From the held notices, open every notice in the launcher, as :e Notices does."""
@@ -532,17 +557,29 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_ready()
 
     def close_launcher(self) -> None:
-        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+        """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
-        From insert the first gives normal, each after it steps back out a level, and the one
-        at the level it opened on closes it. A key sent before this that the launcher hears late
-        moves it on too, so each Escape waits only for something to change. Escape does nothing
-        in the drawer, as in any window, so with the keys there, on its page or choosing on it,
-        :q brings them back to the rows first, a line typed that no wait can come apart.
+        Escape gives normal from the find, lets the key list go if it's shown, and cancels a
+        count, a key begun or an operator, but never closes (Joel, 2026-11-05: "fuck escape
+        quitting"), so :q does, from any depth. A key sent before this that the launcher hears
+        late moves it on too, so each Escape waits only for something to change. Escape does
+        nothing in the drawer, as in any window, so with the keys there, on its page or choosing
+        on it, :q brings them back to the rows first, a line typed that no wait can come apart.
         """
 
+        # A pending count, key or operator counts, since an Escape cancels
+        # it and changes nothing else, as Vim's does.
         def where(shown: Json) -> tuple[object, ...]:
-            return (shown["open"], shown["mode"], len(shown["held"]))
+            return (
+                shown["open"],
+                shown["operator"],
+                shown["mode"],
+                len(shown["held"]),
+                shown.get("listing"),
+                shown.get("command") is not None,
+                shown["counted"],
+                shown["begun"],
+            )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
             return where(shown) != was
@@ -551,11 +588,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             was = where(self.showing())
             if not was[0]:
                 return
-            if str(was[1]).startswith("page"):
+            _, operator, mode, _, listing, commanding, counted, begun = was
+            resting = mode == "normal" and not (operator or listing or commanding)
+            if str(mode).startswith("page") or (resting and not (counted or begun)):
                 self.machine.send_chars(":q\n")
-                self.launcher_until(functools.partial(moved, was))
-                continue
-            self.machine.send_key("esc")
+            else:
+                self.machine.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
@@ -564,11 +602,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter with Return's row settled.
 
-        In normal mode it goes into insert first, at the end of what's typed. An answer still
+        In normal mode it goes back to typing first, at the end of what's typed. An answer still
         being looked up closes the launcher without copying. A row that comes from something
         found later, such as a window or a copy, can be named to wait for too.
         """
-        self.insert()
+        self.on_find()
         self.machine.send_chars(text, delay=KEY_PACE)
 
         def holds(shown: Json) -> object:
@@ -591,17 +629,42 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_ready()
         self.type_in(typed)
 
-    def step_in(self, key: str = "right") -> None:
+    def step_in(self, key: str = "ret") -> None:
         """Press a key that steps into the selected row, and wait until the launcher holds it.
 
-        That's the right arrow into a thing's verbs, from normal mode, which it goes into
-        first, or Return into what a verb asks, from either.
+        That's Return, from the find or normal alike, into a place or a thing with acts, or
+        into what a verb asks; - goes back up. A program, a window or a file opens on Return
+        instead, so its parts are reached by `follow`, and its acts by : and their commands.
+        Return from the find keeps the find, where the next Return on a row that changes
+        something only lands, so it ends in normal, as `follow` and `step_out` do. A step into
+        what asks, as a password, stays on its line, which Escape would give up.
         """
-        if key == "right":
-            self.normal()
         before = len(self.showing()["held"])
         self.machine.send_key(key)
+        self.launcher_until(lambda shown: len(shown["held"]) > before or bool(shown["asking"]))
+        if not self.showing()["asking"]:
+            self.normal()
+
+    def follow(self) -> None:
+        """Go into the selected row's parts by Ctrl+] from normal, and wait until it's there.
+
+        That's how a row whose Return opens it is gone into, as a mail's sender or a
+        program's windows, and how a found row goes to where it lives; - comes back.
+        """
+        before = len(self.showing()["held"])
+        self.normal()
+        self.machine.send_key("ctrl-bracket_right")
         self.launcher_until(lambda shown: len(shown["held"]) > before)
+
+    def step_out(self) -> None:
+        """Go up a level by - from normal, and wait until the launcher holds less.
+
+        On the find - is a letter, so normal comes first, as it does for h in Vim.
+        """
+        before = len(self.showing()["held"])
+        self.normal()
+        self.machine.send_key("minus")
+        self.launcher_until(lambda shown: len(shown["held"]) < before)
 
     def down_to(self, name: str) -> None:
         """Move the selection to the row named, and wait until it's there.
@@ -616,8 +679,30 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         above = -1 if shown["current"] == -1 else 0
         steps = rows.index(name) - (rows.index(selected) if selected in rows else above)
         for _ in range(abs(steps)):
-            self.machine.send_key("down" if steps > 0 else "up")
+            if steps > 0:
+                self.next_row()
+            else:
+                self.previous_row()
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+
+    def row_keys(self) -> tuple[str, str]:
+        """Give the keys to the next row and the one before, as the launcher's mode takes them.
+
+        Where nothing types, in normal, visual and the drawer, they're j and k, and the arrows
+        do nothing (Joel, 2026-11-05: "rely only on vi right feeling things"); on a line being
+        typed, the arrows, as Vim's insert and its completion menu take them.
+        """
+        mode = self.showing()["mode"]
+        still = mode in {"normal", "visual"} or mode.startswith("page")
+        return ("j", "k") if still else ("down", "up")
+
+    def next_row(self) -> None:
+        """Move the launcher's cursor to the next row, by the key its mode takes."""
+        self.machine.send_key(self.row_keys()[0])
+
+    def previous_row(self) -> None:
+        """Move the launcher's cursor to the row before, by the key its mode takes."""
+        self.machine.send_key(self.row_keys()[1])
 
     def whats_on(self, selected: str) -> None:
         """Wait until the launcher holds Now and the keys, with this thing's row selected."""
@@ -901,8 +986,28 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         assert card, "the shell says no card is in front"
         return (card["left"] + card["right"]) / 2, (card["top"] + card["bottom"]) / 2
 
+    def press_at_once(self, keys: str) -> None:
+        """Press each key named, a letter by its character and any other by QEMU's name.
+
+        Every key goes down and up in one batch of QEMU's input events, so the guest reads them
+        all at once, as two keys pressed closer together than a person can are. Sent one
+        sendkey at a time, a loaded builder let niri draw the first key's frame before it read
+        the second, and a waiting key's 300 ms ran out between them.
+        """
+        events: list[Json] = []
+        for key in keys.split():
+            *held, pressed = test_driver.machine.CHAR_TO_KEY.get(key, key).split("-")
+            chord = [*held, pressed]
+            events += [keyed(name, down=True) for name in chord]
+            events += [keyed(name, down=False) for name in reversed(chord)]
+        self.input_events(*events)
+
     def tablet(self, *events: Json) -> None:
-        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767.
+        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767."""
+        self.input_events(*events)
+
+    def input_events(self, *events: Json) -> None:
+        """Send QEMU these input events, a key's or the tablet's, as one batch.
 
         The driver says a command's arguments are strings, so the events go through JSON to
         reach it as they are.
@@ -917,6 +1022,14 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             {"type": "abs", "data": {"axis": "x", "value": int(x * 32767)}},
             {"type": "abs", "data": {"axis": "y", "value": int(y * 32767)}},
         )
+
+    def wheel(self, x: float, y: float, notches: int) -> None:
+        """Turn the wheel there, as a fraction of the screen, down for a positive count."""
+        self.point(x, y)
+        button = "wheel-down" if notches > 0 else "wheel-up"
+        for _ in range(abs(notches)):
+            self.tablet({"type": "btn", "data": {"down": True, "button": button}})
+            self.tablet({"type": "btn", "data": {"down": False, "button": button}})
 
     def click(self, x: float, y: float) -> None:
         """Click there, as a fraction of the screen across and down."""

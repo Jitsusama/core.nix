@@ -94,8 +94,8 @@ let
       ];
       says = "neovim: Space ? is its own (Something), but the language gives it to show-keys";
     }
-    # No arrow does anything in a modal layer's normal mode, and one kept
-    # for now comes off the list once it binds none.
+    # In a modal layer's normal mode an arrow is only its letter's motion,
+    # alone: Down is j's act and nothing else's.
     {
       layers = keyMap "a-modal-layer-binds-an-arrow" [
         {
@@ -103,16 +103,35 @@ let
           binds = [ (bind "Down" "down" "") ];
         }
       ];
-      says = "swayimg: Down is an arrow in normal mode, where none does anything";
+      says = "swayimg: Down gives an arrow its own act, where an arrow is only its letter's motion";
     }
     {
-      layers = keyMap "a-kept-layer-binds-none" [
+      layers = keyMap "an-arrow-for-another-letter" [
         {
           name = "mpv";
-          binds = [ (bind "j" "j" "") ];
+          binds = [ (bind "Down" "down" "up") ];
         }
       ];
-      says = "mpv binds no arrow now, so take it off STILL_ARROWED";
+      says = "mpv: Down gives an arrow to up, where an arrow is only its letter's motion";
+    }
+    {
+      layers = keyMap "an-arrow-held" [
+        {
+          name = "zathura";
+          binds = [ (bind "Shift+Down" "shift+down" "") ];
+        }
+      ];
+      says = "zathura: Shift+Down gives an arrow its own act, where an arrow is only its letter's motion";
+    }
+    # Escape never closes or quits anything of ours (Joel, 2026-11-05).
+    {
+      layers = keyMap "escape-closes" [
+        {
+          name = "inlyne";
+          binds = [ (bind "Escape" "escape" "" // { does = "Close the reader"; }) ];
+        }
+      ];
+      says = ''inlyne: Escape does "Close the reader", where Escape never closes or quits'';
     }
   ];
 
@@ -194,6 +213,67 @@ let
       '';
       says = "stray changes things, but the find line reaches it by ctrl+x";
     }
+    # An act that ends, takes away or reaches someone never runs on Return
+    # (VKCF3Z's spec, Return), and h, l and Backspace mean nothing on a
+    # list (Joel, 2026-11-05: "where in vi does that step into shit?").
+    {
+      name = "an-end-that-changes-nothing";
+      adds = ''
+        [acts.stray]
+        command = "strayone"
+        short = "stray"
+        kinds = []
+        ends = true
+      '';
+      says = "stray ends something, but changes nothing";
+    }
+    {
+      name = "an-end-on-return";
+      adds = ''
+        [acts.stray]
+        keys = ["<CR>"]
+        modes = ["visual"]
+        kinds = []
+        changes = true
+        ends = true
+      '';
+      says = "stray ends something, but Return reaches it by enter in visual mode";
+    }
+    # Nor does one that calls someone or starts something new, as :meet
+    # and :share do (VKCF3Z, 2026-11-05).
+    {
+      name = "a-start-that-changes-nothing";
+      adds = ''
+        [acts.stray]
+        command = "strayone"
+        short = "stray"
+        kinds = []
+        starts = true
+      '';
+      says = "stray starts something, but changes nothing";
+    }
+    {
+      name = "a-start-on-return";
+      adds = ''
+        [acts.stray]
+        keys = ["<CR>"]
+        modes = ["visual"]
+        kinds = []
+        changes = true
+        starts = true
+      '';
+      says = "stray starts something, but Return reaches it by enter in visual mode";
+    }
+    {
+      name = "a-letter-stepping-in";
+      adds = ''
+        [acts.stray]
+        keys = ["l"]
+        modes = ["visual"]
+        kinds = ["list"]
+      '';
+      says = "stray takes l on a list, where h, l and Backspace mean nothing";
+    }
     {
       name = "an-arrow-of-its-own";
       adds = ''
@@ -202,16 +282,35 @@ let
         modes = ["visual"]
         kinds = ["page"]
       '';
-      says = "stray takes left in visual mode, where no arrow does anything";
+      says = "stray takes left in visual mode, where an arrow is only its letter's motion";
     }
     {
-      name = "an-arrow-in-a-chord";
+      name = "an-arrow-in-a-sequence";
       adds = ''
         [acts.stray]
-        keys = ["<Space><Right>"]
+        keys = ["g<Right>"]
         kinds = ["list"]
       '';
-      says = "stray takes space right in normal mode, where no arrow does anything";
+      says = "stray takes g right in normal mode, where an arrow is only its letter's motion";
+    }
+    {
+      name = "an-arrow-held";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-Down>"]
+        kinds = ["list"]
+      '';
+      says = "stray takes ctrl+down in normal mode, where an arrow is only its letter's motion";
+    }
+    {
+      name = "escape-given-away";
+      adds = ''
+        [acts.stray]
+        keys = ["<Esc>"]
+        modes = ["visual"]
+        kinds = ["page"]
+      '';
+      says = "stray takes escape, where Escape only steps back, as Vim's does";
     }
     {
       name = "a-mode-unnamed";
@@ -284,10 +383,12 @@ in
   # leaves out, or a chord bound to an act that isn't one of the act's keys
   # fails (speaks-the-language.py), as does a language whose commands
   # Neovim names otherwise, by what the machine's Neovim resolves each
-  # name to, read once as a file of its own. No arrow does anything in a
-  # surface's normal or visual mode, nor in a modal layer's normal but for
-  # those still keeping theirs, a list that may only shrink (Joel,
-  # 2026-11-05). So the check can't pass by
+  # name to, read once as a file of its own. In normal and visual mode an
+  # arrow is its letter's motion and nothing else, alone, on every layer of
+  # ours, his Neovim's too; an arrow after the leader overlays Vim's keys
+  # (Joel, 2026-11-05). Escape only steps back, as Vim's, and no layer of
+  # ours closes or quits by it (Joel, 2026-11-05: "fuck escape quitting");
+  # his Neovim keeps its own. So the check can't pass by
   # seeing nothing, each way of straying is shown to fail first, as is a
   # language that gives one key to two acts and the reader leaving out a
   # key it takes only while selecting.
@@ -337,6 +438,38 @@ in
         ${keys} > unselecting.json
       strays ${./language.toml} unselecting.json \
         "reader: a page has word-on, which it leaves out"
+      # An arrow after the leader overlays Vim's own keys, as his Neovim's
+      # Space and an arrow do (Joel, 2026-11-05: "leader stuff can overlay
+      # default stuff"), so a surface's act may take one.
+      cat ${./language.toml} > leader.toml
+      # In visual, where his window-right isn't, so it gives no key twice.
+      printf '\n[acts.over]\nkeys = ["<Space><Right>"]\nmodes = ["visual"]\nkinds = ["list"]\n' \
+        >> leader.toml
+      ${check} leader.toml ${keys} neovim ${neovimCommands}
+      # His Neovim's arrows move as its letters do.
+      ${lib.getExe pkgs.jq} \
+        'map(if .name == "neovim" then .binds += [{chord: "Down", keys: "down", does: "Down",
+          when: "", run: [], act: "down"}] else . end)' ${keys} > neovim.json
+      ${check} ${./language.toml} neovim.json neovim ${neovimCommands}
+      # An arrow moving as its letter does, as Joel has it (2026-11-05: "In
+      # normal mode, in a buffer, arrows move the cursor"), on any layer:
+      # as the language's motion, or as the layer's own letter, as mpv's
+      # seeking.
+      ${check} ${./language.toml} ${
+        keyMap "an-arrow-as-its-letter" [
+          {
+            name = "swayimg";
+            binds = [ (bind "Down" "down" "down") ];
+          }
+          {
+            name = "mpv";
+            binds = [
+              (bind "j" "j" "")
+              (bind "Down" "down" "")
+            ];
+          }
+        ]
+      } neovim ${neovimCommands}
       ${check} ${./language.toml} ${keys} neovim ${neovimCommands}
       touch $out
     '';

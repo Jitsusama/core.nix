@@ -5,7 +5,10 @@
 //! each input that follows its own main, build it, switch, check the
 //! machine is whole, and go back to the system it left if anything after
 //! the switch's start fails. Busy is asked again before the switch, since a
-//! call may start while the build runs. Each step is told as it starts.
+//! call may start while the build runs. A switch that would restart a
+//! daemon the config holds, or change a path it holds such as the kernel,
+//! is refused unless an asker granted it. Each step
+//! is told as it starts.
 
 use crate::config::{Busy, Config, Kind};
 use crate::follows;
@@ -20,6 +23,11 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// How a refusal for a held daemon's restart or a held path's change
+/// begins, so an asker that follows main can tell it from being busy and
+/// stop until a person acts.
+pub const NEEDS_HOLD: &str = "switching would change";
+
 /// How long a busy command has to answer before it counts as busy.
 const BUSY_WITHIN: Duration = Duration::from_secs(30);
 
@@ -28,7 +36,27 @@ const BUSY_EVERY: Duration = Duration::from_millis(100);
 
 /// Runs one update, telling `tell` each step as it starts, and gives its
 /// ending.
+///
+/// A grant made before it starts is its own, and no grant outlives it,
+/// however it ends: one left by an ask refused as busy, or by a build that
+/// held nothing, would otherwise let a later switch restart a held daemon
+/// after the work it was held for went on.
 pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
+    let granted = take_grant(config);
+    let ending = run(config, granted, tell);
+    take_grant(config);
+    ending
+}
+
+/// Takes away the grant for held changes, saying whether there was one.
+fn take_grant(config: &Config) -> bool {
+    config
+        .holds
+        .as_ref()
+        .is_some_and(|holds| fs::remove_file(&holds.given).is_ok())
+}
+
+fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     let last = last(config);
     if let Some(why) = too_low(config).or_else(|| busy(config)) {
         return Line::Refused { commit: last, why };
@@ -36,7 +64,7 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     tell(&Line::Fetching);
     let main = Repo::main(config);
     let head = match &config.hosted {
-        Some(hosted) => hosted::head(config, hosted),
+        Some(hosted) => hosted::head(config, hosted, last.as_deref()),
         None => git::keyring(&main).and_then(|()| git::fetch(&main)),
     };
     let head = match head {
@@ -94,8 +122,22 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
         Err(failure) => return failed(last, failure),
     };
     // What was built stays in the store, so the next ask switches at once.
-    if let Some(why) = busy(config) {
+    if let Some(why) = busy(config).or_else(|| held(config, &built, granted)) {
         return Line::Refused { commit: last, why };
+    }
+    // Heads that moved without moving the system, such as a merge of
+    // another machine's files, switch nothing, and so restart nothing a
+    // switch would.
+    if system::current(config).is_some() && system::current(config) == fs::canonicalize(&built).ok()
+    {
+        if let Err(e) = remember(config, &head).and_then(|()| follows::remember(config, &followed))
+        {
+            return failed(Some(head), e);
+        }
+        return Line::Unchanged {
+            commit: head,
+            followed,
+        };
     }
 
     tell(&Line::Switching {
@@ -179,6 +221,31 @@ fn too_low(config: &Config) -> Option<String> {
         )),
         _ => None,
     }
+}
+
+/// Why switching to `built` waits for a hold, when it would restart a held
+/// daemon or change a held path and the update wasn't `granted` it.
+fn held(config: &Config, built: &std::path::Path, granted: bool) -> Option<String> {
+    let holds = config.holds.as_ref()?;
+    let current = system::current(config)?;
+    let units = holds
+        .units
+        .iter()
+        .filter(|u| system::daemon_changed(config.kind, &current, built, u));
+    let paths = holds
+        .paths
+        .iter()
+        .filter(|p| system::path_changed(&current, built, p));
+    let changes: Vec<&str> = units.chain(paths).map(String::as_str).collect();
+    if changes.is_empty() || granted {
+        return None;
+    }
+    Some(format!(
+        "{NEEDS_HOLD} {}, which waits for a hold: once the machine's work is held, make {} \
+         and ask again",
+        changes.join(", "),
+        holds.given.display()
+    ))
 }
 
 /// What the machine is busy with, when any of its busy commands says so.

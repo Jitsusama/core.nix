@@ -198,6 +198,28 @@ in
         ask is refused, and what was built stays for the next one.
       '';
     };
+    holdChanges = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "kernel" ];
+      description = ''
+        Paths in the system whose changing waits for an asker's grant, as
+        holdRestarts' daemons do, such as `kernel` on NixOS for a machine
+        whose kernel should change only with someone there.
+      '';
+    };
+    holdRestarts = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "nix-daemon.service" ];
+      description = ''
+        Daemons a switch mustn't restart until an asker grants it, having
+        held the machine's other work first: systemd units on NixOS. A
+        switch that would restart one is refused, what was built stays for
+        the next ask, and an asker grants the next switch by making
+        `/run/update-to-main-hold/given`, which that switch takes away.
+      '';
+    };
     hosted = mkOption {
       type = types.nullOr (
         types.submodule (
@@ -230,6 +252,20 @@ in
                 description = ''
                   A command, run as the account in its checkout, that prints a
                   short-lived token the host takes as a bearer.
+                '';
+              };
+              changed = mkOption {
+                type = types.nullOr (types.nonEmptyListOf types.str);
+                default = null;
+                description = ''
+                  A command, run as the account in its checkout, that prints
+                  the newest commit on main that changed the folder. When
+                  main's head isn't in the checkout but that commit is, and
+                  its folder is the one last built, the ask fetches and
+                  builds nothing. The account's word only spares a fetch:
+                  what's built is always a commit the host named. When it
+                  fails, or names a commit the checkout lacks, main is
+                  fetched as it would be without it.
                 '';
               };
               path = mkOption {
@@ -324,6 +360,10 @@ in
         message = "jitsusama.update-to-main.kept needs elsewhere, or kept pieces build here.";
       }
       {
+        assertion = cfg.holdRestarts ++ cfg.holdChanges == [ ] || cfg.system ? hold_given;
+        message = "jitsusama.update-to-main's holds are for NixOS, where an asker can grant one.";
+      }
+      {
         assertion = (cfg.builders == null && cfg.here == null) || cfg.elsewhere;
         message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
       }
@@ -374,6 +414,15 @@ in
                   below_load = cfg.here.belowLoad;
                 };
             refuse_while = cfg.refuseWhile;
+            holds =
+              if cfg.holdRestarts ++ cfg.holdChanges == [ ] then
+                null
+              else
+                {
+                  units = cfg.holdRestarts;
+                  paths = cfg.holdChanges;
+                  given = cfg.system.hold_given;
+                };
             # The running system's path, so once it has switched the newest
             # update-to-main serves.
             program = "/run/current-system/sw/bin/update-to-main";
@@ -385,7 +434,10 @@ in
             }
             // cfg.system.tools;
           }
-          // removeAttrs cfg.system [ "tools" ]
+          // removeAttrs cfg.system [
+            "tools"
+            "hold_given"
+          ]
         )
       );
     };

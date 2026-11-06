@@ -1053,6 +1053,8 @@ pub enum Source {
         /// The flake's folder in the repository, when not its top.
         dir: Option<String>,
         bundle: PathBuf,
+        /// The ref the bundle carries `commit` under, one per run.
+        tip: String,
     },
 }
 
@@ -1078,6 +1080,7 @@ impl Source {
                 commit,
                 dir,
                 bundle,
+                tip,
             } => {
                 let into = far_folder();
                 let flake = format!(
@@ -1092,7 +1095,7 @@ impl Source {
                      command -v git >/dev/null || \
                      git() {{ nix shell nixpkgs#git -c git \"$@\"; }}; \
                      git init -q; git fetch -q https://github.com/{github} {base}; \
-                     git fetch -q there.bundle {BUNDLED}:refs/heads/there; {}",
+                     git fetch -q there.bundle {tip}:refs/heads/there; {}",
                     asked.command_of(&flake)
                 );
                 Sending {
@@ -1123,8 +1126,19 @@ pub const TAKES: [&str; 10] = [
     "outlive",
 ];
 
-/// The ref a bundle carries its commit under, here only while it's made.
-pub const BUNDLED: &str = "refs/nix-offload/there";
+/// A ref for one bundle to carry its commit under, here only while it's
+/// made. Worktrees share their repository's refs, so runs from two of them
+/// sharing one name would each bundle whatever commit the other last put
+/// there, as happened on 5 November; each is named for its run instead.
+fn bundled() -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    format!(
+        "refs/nix-offload/there-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
 
 /// The GitHub repository a remote's URL names, `owner/name`.
 fn github_of(url: &str) -> Option<String> {
@@ -1257,7 +1271,8 @@ fn sourced(
     }
     let bundle = mine(scratch, "bundle");
     fs::create_dir_all(scratch).map_err(|_| "has no scratch to bundle it in")?;
-    let referenced = git(top, &["update-ref", BUNDLED, &commit], None).is_some();
+    let tip = bundled();
+    let referenced = git(top, &["update-ref", &tip, &commit], None).is_some();
     let bundled = referenced
         && git(
             top,
@@ -1267,12 +1282,12 @@ fn sourced(
                 "-q",
                 &bundle.to_string_lossy(),
                 &format!("^{base}"),
-                BUNDLED,
+                &tip,
             ],
             None,
         )
         .is_some();
-    let _ = git(top, &["update-ref", "-d", BUNDLED], None);
+    let _ = git(top, &["update-ref", "-d", &tip], None);
     if !bundled {
         return Err("couldn't be bundled");
     }
@@ -1282,6 +1297,7 @@ fn sourced(
         commit,
         dir,
         bundle,
+        tip,
     })
 }
 
@@ -2038,35 +2054,43 @@ pub fn vm_tests(
     (part(vm), part(rest))
 }
 
-/// How many of `count` VM tests go to the first of two VM builders, each
+/// How many of `count` VM tests go to each VM builder, in order, each
 /// running `builds` at once, with `busy` already sent to each by runs
-/// still going: each goes to the first while it has room, then to the
-/// second while it has, then to the less busy, the first when they're
-/// even. On 3 November a third of VM tests failed with 7 to 12 runs
-/// overlapping, those past the builder's room waiting their turn there.
-pub fn spread(count: usize, busy: [usize; 2], builds: usize) -> usize {
-    let [mut first, mut second] = busy;
-    let mut to_first = 0;
+/// still going: each goes to the first with room, and once none has, to
+/// the least busy, the earliest when they're even. On 3 November a third
+/// of VM tests failed with 7 to 12 runs overlapping, those past the
+/// builder's room waiting their turn there.
+pub fn spread(count: usize, busy: &[usize], builds: usize) -> Vec<usize> {
+    let mut busy = busy.to_vec();
+    let mut sent = vec![0; busy.len()];
     for _ in 0..count {
-        if first < builds || (second >= builds && first <= second) {
-            first += 1;
-            to_first += 1;
-        } else {
-            second += 1;
-        }
+        let roomy = busy.iter().position(|tests| *tests < builds);
+        let least = busy
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, tests)| **tests)
+            .map(|(index, _)| index);
+        let Some(to) = roomy.or(least) else {
+            break;
+        };
+        busy[to] += 1;
+        sent[to] += 1;
     }
-    to_first
+    sent
 }
 
-/// VM tests asked for, split between two VM builders as `spread` says,
-/// in the order they were asked.
-pub fn overflow(asked: &Asked, busy: [usize; 2], builds: usize) -> (Option<Asked>, Option<Asked>) {
-    let to_first = spread(asked.attributes.len(), busy, builds);
-    let (first, second) = asked.attributes.split_at(to_first);
-    let part = |attributes: &[String]| {
-        (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes.to_vec()))
-    };
-    (part(first), part(second))
+/// VM tests asked for, split between VM builders as `spread` says, in the
+/// order they were asked: a part for each, none where it's sent none.
+pub fn overflow(asked: &Asked, busy: &[usize], builds: usize) -> Vec<Option<Asked>> {
+    let mut left = asked.attributes.as_slice();
+    spread(left.len(), busy, builds)
+        .into_iter()
+        .map(|tests| {
+            let (these, rest) = left.split_at(tests);
+            left = rest;
+            (!these.is_empty()).then(|| asked.with(&asked.flake, these.to_vec()))
+        })
+        .collect()
 }
 
 /// How many attributes a part asks for.
@@ -2120,13 +2144,13 @@ pub const VM_ROOM: usize = 4;
 /// `waiting`, since one past the room goes only once nothing else is
 /// sent, and smaller runs coming after it kept finding room first.
 ///
-/// While it waits, a run goes to `other`, a second VM builder, once that
-/// one has room and nothing waits there, and says which it went to: a
-/// run's split is decided as it starts, so on 4 November ten runs waited
+/// While it waits, a run goes to the first of `others`, the other VM
+/// builders, that has room and nothing waiting, and says which it went to:
+/// a run's split is decided as it starts, so on 4 November ten runs waited
 /// 51 minutes on the first while the second sat idle.
 pub fn admitted<'a>(
     dir: &'a Path,
-    other: Option<&'a Path>,
+    others: &[&'a Path],
     count: usize,
     room: usize,
 ) -> (&'a Path, Option<Claim>) {
@@ -2157,8 +2181,9 @@ pub fn admitted<'a>(
         // Let go before the other's is taken, so two runs waiting on each
         // other's builders never hold one lock each and wait on the other.
         drop(lock);
-        if let Some(other) = other
-            && let Some(claimed) = free(other, wants, room)
+        if let Some((other, claimed)) = others
+            .iter()
+            .find_map(|other| Some((*other, free(other, wants, room)?)))
         {
             eprintln!(
                 "nix-offload: another VM builder has room now and nothing waiting, so this goes \
@@ -2671,9 +2696,11 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
 }
 
 /// Adds a line for a build to `journal`: when it ended, how long it took,
-/// what it built, where, its status and what it sent.
-pub fn note(journal: &Path, at: u64, seconds: u64, asked: &Asked, ran: &Ran) {
-    let line = serde_json::json!({
+/// what it built, where, its status and what it sent, and, where known,
+/// `waited`, the seconds of that it waited for room on its builder and for
+/// the builder to stand, so a queue shows before it's felt.
+pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &Asked, ran: &Ran) {
+    let mut line = serde_json::json!({
         "at": at,
         "seconds": seconds,
         "flake": asked.flake,
@@ -2682,6 +2709,9 @@ pub fn note(journal: &Path, at: u64, seconds: u64, asked: &Asked, ran: &Ran) {
         "status": ran.status,
         "sent": ran.sent,
     });
+    if let Some(waited) = waited {
+        line["waited"] = waited.into();
+    }
     let written = journal
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
@@ -3489,13 +3519,34 @@ mod tests {
 
     #[test]
     fn vm_tests_fill_the_first_vm_builder_then_the_second_then_the_less_busy() {
-        assert_eq!(spread(8, [0, 0], 6), 6, "the first's room, the rest on");
-        assert_eq!(spread(3, [0, 0], 6), 3, "all fit the first");
-        assert_eq!(spread(3, [5, 0], 6), 1, "another run's five there");
-        assert_eq!(spread(2, [6, 0], 6), 0, "the first full");
-        assert_eq!(spread(4, [6, 6], 6), 2, "both full, shared evenly");
-        assert_eq!(spread(3, [9, 7], 6), 1, "the less busy first");
-        assert_eq!(spread(0, [0, 0], 6), 0);
+        assert_eq!(
+            spread(8, &[0, 0], 6),
+            [6, 2],
+            "the first's room, the rest on"
+        );
+        assert_eq!(spread(3, &[0, 0], 6), [3, 0], "all fit the first");
+        assert_eq!(spread(3, &[5, 0], 6), [1, 2], "another run's five there");
+        assert_eq!(spread(2, &[6, 0], 6), [0, 2], "the first full");
+        assert_eq!(spread(4, &[6, 6], 6), [2, 2], "both full, shared evenly");
+        assert_eq!(spread(3, &[9, 7], 6), [1, 2], "the less busy first");
+        assert_eq!(spread(0, &[0, 0], 6), [0, 0]);
+        assert_eq!(spread(3, &[3], 4), [3], "one alone takes them all");
+    }
+
+    #[test]
+    fn vm_tests_past_every_vm_builders_room_go_to_the_next_then_the_least_busy() {
+        assert_eq!(spread(9, &[0, 0, 0], 4), [4, 4, 1], "each's room in turn");
+        assert_eq!(
+            spread(3, &[4, 4, 0, 0], 4),
+            [0, 0, 3, 0],
+            "the first with room"
+        );
+        assert_eq!(
+            spread(3, &[4, 2, 4], 4),
+            [1, 2, 0],
+            "the second's room, then the least busy"
+        );
+        assert_eq!(spread(4, &[5, 6, 5], 4), [2, 1, 1], "none has room");
     }
 
     #[test]
@@ -3504,16 +3555,25 @@ mod tests {
             "-L path:/z checks.x.vm-a checks.x.vm-b checks.x.vm-c",
         ))
         .unwrap();
-        let (first, second) = overflow(&asked, [4, 0], 6);
+        let parts = overflow(&asked, &[4, 0], 6);
         assert_eq!(
-            first.map(|first| first.attributes),
+            parts[0].as_ref().map(|first| first.attributes.clone()),
             Some(words("checks.x.vm-a checks.x.vm-b"))
         );
-        let second = second.unwrap();
+        let second = parts[1].as_ref().unwrap();
         assert_eq!(second.attributes, words("checks.x.vm-c"));
         assert_eq!(second.flags, words("-L"));
-        assert_eq!(overflow(&asked, [0, 0], 6).1, None, "all fit the first");
-        assert_eq!(overflow(&asked, [6, 0], 6).0, None, "none fit the first");
+        assert_eq!(overflow(&asked, &[0, 0], 6)[1], None, "all fit the first");
+        assert_eq!(overflow(&asked, &[6, 0], 6)[0], None, "none fit the first");
+        let parts = overflow(&asked, &[6, 5, 0], 6);
+        assert_eq!(
+            parts
+                .iter()
+                .map(|part| part.as_ref().map(count))
+                .collect::<Vec<_>>(),
+            [None, Some(1), Some(2)],
+            "on to a third"
+        );
     }
 
     #[test]

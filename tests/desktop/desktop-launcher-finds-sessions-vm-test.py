@@ -118,8 +118,9 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         )
     )
     desktop.photograph("launcher-agents")
-    # Stepped into, what's known of it, each a row of its own.
-    desktop.step_in()
+    # Gone into by Ctrl+], as Return goes to it, what's known of it, each
+    # a row of its own.
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Go To" and shown["selected"]["verb"] == "go"
@@ -139,7 +140,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         ("Working On", r"Tidy the tests"),
         ("Hears", r"#desk"),
     ]:
-        machine.send_key("down")
+        desktop.next_row()
         # The wait ends before the loop moves on, so it reads this pass's names.
         desktop.launcher_until(
             lambda shown: (
@@ -152,7 +153,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     selection = laid_out(desktop)["selection"]
     assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"
@@ -294,7 +295,7 @@ def into_lighthouse(desktop: Desktop) -> None:
     desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lighthouse")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
 
 
@@ -316,23 +317,22 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         )
     )
     desktop.close_launcher()
-    # Found from the root by its name, the right arrow in normal mode goes
+    # Found from the root by its name, Ctrl+] in normal goes
     # straight inside it, though its Return goes to its window, the crumbs
-    # saying where it lives; the left arrow comes back to the search,
+    # saying where it lives; - comes back to the search,
     # Lighthouse selected (VKCF3Z, 2026-10-29: "\u2190 is where you came
     # from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.normal()
-    machine.send_key("right")
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
             and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
         )
     )
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == []
@@ -345,8 +345,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.normal()
-    machine.send_key("right")
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
@@ -357,6 +356,13 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     # opening a talk its session follows.
     desktop.type_in("talk", selecting="Talk")
     desktop.step_in("ret")
+    # Its words are typed in insert, the one line the foot names a mode on,
+    # and the word is whole, since it alone says where his keys go.
+    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    mode = [word for word in foot if word["text"] == "insert"]
+    assert mode, f"the foot names no mode for Talk's words: {foot}"
+    assert not mode[0]["cut"], f"insert's word is cut: {mode[0]}"
     machine.send_chars("keep the lamp lit")
     machine.send_key("ret")
     machine.wait_until_succeeds(
@@ -394,8 +400,9 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
             and "Watching" in shown["drawer"]["body"]
         )
     )
-    # Read, it says his words and how it went, each a part to copy.
-    desktop.step_in()
+    # Read, it says his words and how it went, each a part to copy, gone
+    # into by Ctrl+].
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["You Said", "How It Went"])
     desktop.close_launcher()
 
@@ -409,13 +416,14 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
     # A step in leads with talking it over with Lighthouse, before asking
     # in a session of its own, and the copy comes after them.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["rows"][:3] == ["Talk to Lighthouse", "Ask in a Session", "Copy"]
     )
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
+    # Stepping in left the find for normal, where Return talks at once.
     machine.send_key("ret")
     # The question goes to its inbox with what was answered, and the
     # launcher lands inside Lighthouse, where its talks say how each went.
@@ -441,6 +449,8 @@ def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
     an_orchestrator(desktop)
     into_lighthouse(desktop)
     desktop.type_in("pause", selecting="Pause")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
@@ -487,7 +497,7 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
             and shown["selected"]["side"] == "driving \u00b7 TESTQA"
         )
     )
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Paint the hallway"
@@ -495,7 +505,7 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
         )
     )
     desktop.photograph("launcher-quests")
-    machine.send_key("up")
+    desktop.previous_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "A quest of its own & whole"
     )
@@ -563,6 +573,9 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.down_to("As an Orchestrator")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Lighthouse"])
+    # Resuming changes how things stand (the key language's resume), so
+    # Return from the find lands on it, saying what a second Return does.
+    desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
     desktop.photograph("launcher-agents-start-orchestrator")
     # Return reopens its last session where it ran, as the harness
@@ -581,6 +594,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
     desktop.close_launcher()
     desktop.as_account(
@@ -618,10 +632,12 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     desktop.down_to("Sessions to Reopen")
     selected = desktop.showing()["selected"]
     assert (selected["side"], selected["note"]) == ("1 session", "from the last boot"), selected
-    # Return steps in, all of them first, so Return twice reopens them.
+    # Return steps in, all of them first; reopening changes how things
+    # stand, so Return lands on it and a second reopens them.
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
     desktop.photograph("launcher-agents-last-boot")
+    desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
     machine.send_key("ret")
     machine.wait_until_succeeds(
@@ -642,6 +658,7 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
     desktop.down_to("Not Now")
+    desktop.land()
     machine.send_key("ret")
     # Nothing is left to reopen, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
@@ -686,6 +703,7 @@ def test_agents_reopens_a_session_another_machine_carried_here(desktop: Desktop)
     # Inside there's no Not Now, which puts off only the last boot's.
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Ferry"])
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session(f'grep -qx "$HOME/ferry " {opened}'),
@@ -1130,6 +1148,7 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     desktop.type_in("to reopen", selecting="Sessions to Reopen")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+    desktop.land()
     # kitty focuses a window it made with the token niri gave it, and on a
     # busy machine that can come after the next session's workspace was
     # focused, so north opens on the first. This stands in for that, every
@@ -1220,6 +1239,7 @@ def test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile(
         desktop.type_in("to reopen", selecting="Sessions to Reopen")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        desktop.land()
         desktop.as_account(f"setsid sh -c {shlex.quote(meddling)} > /dev/null 2>&1 &")
         machine.send_key("ret")
         machine.wait_until_succeeds(
@@ -1283,6 +1303,7 @@ def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
         desktop.type_in("to reopen", selecting="Sessions to Reopen")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        desktop.land()
         machine.send_key("ret")
         machine.wait_until_succeeds(
             desktop.in_session(
@@ -1484,6 +1505,7 @@ def test_agents_puts_back_the_windows_that_reopen_themselves(desktop: Desktop) -
         desktop.type_in("to reopen", selecting="Sessions to Reopen")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        desktop.land()
         machine.send_key("ret")
         opening = "niri msg --json windows | grep -o 'pi --session 01c4-' | wc -l"
         machine.wait_until_succeeds(

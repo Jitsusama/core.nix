@@ -145,7 +145,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     # Mail's own place lists the very same row.
     desktop.answer("lunch on friday")
     desktop.launcher_until(lunch_in_full)
-    desktop.step_in()
+    desktop.follow()
     # Its sender, Ada, after Read: People's row for her.
     desktop.launcher_until(
         lambda shown: (
@@ -306,7 +306,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         )
         # Its acts are the conversation's, Open in Slack first; with no link
         # to share, there's nothing to copy.
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack"])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -326,7 +326,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         slack_says(desktop, "signedOut", [])
         slack_is_not_in_now(desktop)
         slack_program_says(desktop, lambda note: note == "signed out", keep_open=True)
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["New Window", "Sign In"])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -351,7 +351,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
 def slack_program(desktop: Desktop) -> None:
     """Find Slack's program row, step into it, and wait until it holds Unread and Recent."""
     slack_program_says(desktop, lambda note: note == "", keep_open=True)
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Unread" in shown["rows"] and "Recent" in shown["rows"])
 
 
@@ -453,7 +453,7 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
         # Nothing unread, Slack's program holds no Unread.
         slack_says(desktop, "ok", [], recent=recent)
         slack_program_says(desktop, lambda note: note == "", keep_open=True)
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: "Recent" in shown["rows"] and "Unread" not in shown["rows"]
         )
@@ -472,7 +472,7 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
     machine.succeed(f"rm -f {opened}")
     desktop.answer("lunch on friday")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Reply")
     machine.send_key("ret")
     link = (
@@ -494,7 +494,7 @@ def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: 
     machine.succeed(f"rm -f {opened}")
     desktop.answer("quarterly numbers")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:numbers")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["rows"][:4] == ["Open in Mail", "Reply", "Reply All", "Archive"]
     )
@@ -526,7 +526,7 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
         """Step into Lunch on Friday's Attachments, its menu selected."""
         desktop.answer("lunch on friday")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Attachments" in shown["rows"])
         desktop.down_to("Attachments")
         machine.send_key("ret")
@@ -548,7 +548,7 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     def save_a_copy() -> None:
         """Press Save a Copy on the menu, and wait for the picker, in Downloads, naming it."""
         into_the_menu()
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
         desktop.down_to("Save a Copy")
         machine.send_key("ret")
@@ -659,7 +659,7 @@ def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
         assert len(shown["rows"]) > 1, shown["rows"]
         assert (shown["selected"] or {}).get("name") == shown["rows"][0], shown["selected"]
         desktop.down_to(further)
-        desktop.step_in()
+        desktop.follow()
         # Inside, a stand-in dimmed while it's asked, then what was found
         # once the source says so, with nothing typed again. The stand-in
         # stays dimmed where it stood until a key, as any row that leaves
@@ -808,14 +808,14 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     )
     machine.fail(f"test -s {opened}")
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     # The mail with her, its own component's row; a meeting to come isn't
     # Recent.
     desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
-    machine.send_key("up")
-    machine.send_key("up")
+    desktop.previous_row()
+    desktop.previous_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")
     machine.send_key("ret")
     writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
@@ -835,9 +835,9 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     # The stand-in's Quarterly Plan is Docs' alone; Team Budget is Sheets'.
     desktop.answer("docs")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Docs")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
     plan = desktop.showing()["selected"]
     assert plan["is"] == "gdoc:plan", plan
@@ -939,13 +939,13 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
     machine = desktop.machine
     desktop.answer(subject.lower())
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == subject)
-    desktop.step_in()
+    desktop.follow()
     # Its acts: opening it, replying, archiving it and whether it's read.
     for _ in range(4):
         if (desktop.showing()["selected"] or {}).get("name") == act:
             break
         before = (desktop.showing()["selected"] or {}).get("name")
-        machine.send_key("down")
+        desktop.next_row()
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
         )
@@ -1085,17 +1085,17 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     assert selected["side"] == "#launcher", selected
     assert selected["note"].startswith("ada \u00b7 "), selected["note"]
     assert selected["drawer"]["body"] == "The launcher is fast\nand never waits", selected
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("note", "").startswith("You \u00b7 ")
     )
-    machine.send_key("up")
+    desktop.previous_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "The launcher is fast"
     )
     # Inside, Open in Slack, whose drawer holds the messages around it once
     # asked, only Joel's named, then the link to copy last.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"] == ["Open in Slack", "Copy the Link"]
@@ -1104,8 +1104,8 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
         )
     )
     # Stepping out and in again asks Slack nothing more.
-    machine.send_key("left")
-    machine.send_key("left")
+    desktop.step_out()
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == [search])
     desktop.down_to(search)
     desktop.step_in("ret")

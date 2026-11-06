@@ -1,0 +1,8 @@
+# key-counts counts each key pressed on the ErgoDox and the laptop's
+# keyboard, and nothing of what was typed (src/main.rs says how).
+[package]
+name = "key-counts"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false

@@ -29,7 +29,9 @@ Provider {
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state),
-            glyph: Words.glyph(key, state)
+            glyph: Words.glyph(key, state),
+            // Its words' state, so the : line names the command for it.
+            wordState: state
         }, fields));
     }
 
@@ -40,21 +42,91 @@ Provider {
         run: () => Caffeinate.on ? Caffeinate.release() : Caffeinate.keep()
     })
 
-    // :set quiet holds notices until it's ended, as an option stays on
-    // until it's turned off, and :set noquiet ends it.
-    setOptions: ({
-        quiet: {
+    // The session's options, each named as VKCF3Z named it (2026-11-05).
+    // :set dnd holds notices until it's ended, as an option stays on until
+    // it's turned off, dnd=60 for an hour, dnd+=60 an hour more, and nodnd
+    // ends it. :set keepawake keeps the machine awake and nokeepawake lets
+    // it sleep; awake=open keeps it so only while the lid is open and
+    // awake=shut with the lid shut too, where a shut lid would sleep it.
+    // :set power=saver, balanced or performance chooses the power profile.
+    // :set norecording stops what records, as Stop Recording does, and
+    // recording records the whole screen, as Capture's first row does.
+    setOptions: Object.assign({
+        recording: {
             kind: "switch",
-            now: () => Quiet.on,
+            now: () => Recorder.recording,
+            set: to => {
+                if (to && !Recorder.recording)
+                    Recorder.screen();
+                else if (!to && Recorder.recording)
+                    Recorder.stop();
+                return "";
+            }
+        },
+        dnd: {
+            kind: "switch",
+            takes: "number",
+            least: 1,
+            now: () => provider.dndNow(),
+            set: to => provider.dndTo(to)
+        },
+        keepawake: {
+            kind: "switch",
+            now: () => Caffeinate.on,
             set: to => {
                 if (!to)
-                    Quiet.end();
-                else if (!Quiet.on)
-                    Quiet.keep(0);
+                    Caffeinate.release();
+                else if (!Caffeinate.on)
+                    Caffeinate.keep();
+                return "";
+            }
+        },
+        power: {
+            kind: "choice",
+            values: profileChoices.map(choice => choice.option),
+            now: () => profileChoices.find(choice => choice.profile === PowerProfiles.profile)
+                ?.option ?? "",
+            set: to => {
+                PowerProfiles.profile = profileChoices.find(choice => choice.option === to)
+                    .profile;
+                return "";
+            }
+        }
+    }, !Caffeinate.lidHolds ? {} : {
+        awake: {
+            kind: "choice",
+            values: ["open", "shut"],
+            now: () => Caffeinate.lidShutToo ? "shut" : "open",
+            set: to => {
+                if (to === "open")
+                    Caffeinate.keepOpen();
+                else
+                    Caffeinate.keep();
                 return "";
             }
         }
     })
+
+    // Where Do Not Disturb stands, as :set dnd? says it: off, held until it's
+    // ended, or the minutes left, rounded up so a hold never says 0.
+    function dndNow() {
+        if (!Quiet.on)
+            return false;
+        return Quiet.kept && Quiet.until > 0 ? Math.ceil((Quiet.until - Date.now()) / 60000)
+            : true;
+    }
+
+    function dndTo(to) {
+        if (to === false)
+            Quiet.end();
+        else if (to !== true)
+            Quiet.keep(to);
+        // dnd alone holds them until it's ended, though held for some
+        // minutes or only while the screen's shared.
+        else if (!Quiet.kept || Quiet.until > 0)
+            Quiet.keep(0);
+        return "";
+    }
 
     // Do not disturb (Quiet.qml): Return holds notices for an hour, and the
     // right arrow offers holding them until it's ended.
@@ -83,9 +155,9 @@ Provider {
     // What's learned knows each by the name it had first (was), so a
     // rename keeps it.
     readonly property var profileChoices: [
-        { profile: PowerProfile.PowerSaver, was: "Power Saver" },
-        { profile: PowerProfile.Balanced, was: "Balanced Power" },
-        { profile: PowerProfile.Performance, was: "Performance" }
+        { profile: PowerProfile.PowerSaver, was: "Power Saver", option: "saver" },
+        { profile: PowerProfile.Balanced, was: "Balanced Power", option: "balanced" },
+        { profile: PowerProfile.Performance, was: "Performance", option: "performance" }
     ].filter(choice => choice.profile !== PowerProfile.Performance
         || PowerProfiles.hasPerformanceProfile)
     readonly property var profiles: profileChoices.map(choice => {
@@ -151,6 +223,8 @@ Provider {
             confirm: sure !== "",
             verbs: sure !== "" ? () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 verb: Words.verb(key),
                 name: sure + provider.closing,
                 glyph: Words.glyph(key),

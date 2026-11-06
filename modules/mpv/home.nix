@@ -21,13 +21,16 @@
 # cut of its own, ../fonts/serif-text.nix, since mpv can't set a variable
 # font's axes), the controller's bar in the deepest colour with the
 # text's colour on it, and its console, right-click menu
-# and statistics on the deepest colour, a choice in the accent. The keys are
+# and statistics on the deepest colour, a choice in the accent. Its
+# messages are the Figure level's size at every size of window, the inset
+# from its frame, on kitty's text column (osd-by-scale.lua, and
+# osd-lands-on-pixels.patch, without which no margin lands there). The keys are
 # Vim's, as Joel's Vim has them (vi-keys.lua), each with one meaning, and
 # mpv's own where Vim has nothing: Space pauses at once, f fills the screen
 # and Escape leaves it, and ? and F1 open the launcher's Shortcuts at the
 # player's keys. h and l seek back and on 5 seconds, j on a minute and k
 # back, as j goes on through a file, and each arrow does what its letter
-# does; 0 goes to the start and $ to the end, where the last frame stays,
+# does, though no list names one; 0 goes to the start and $ to the end, where the last frame stays,
 # gg and G play the first and the last in the list, ]b and [b the next and
 # the one before, a number before a key does it that many times and before
 # G plays that one, and yy copies the frame as a picture (copy-frame.lua).
@@ -51,7 +54,27 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colours font;
+  inherit (config.jitsusama.theme)
+    colours
+    font
+    type
+    space
+    shape
+    ;
+
+  # Its messages at the Figure level, the mono's large step, in logical
+  # pixels. libass sizes a face by its line, its ascent and descent, which
+  # are 1.245 of MonaspiceXe's em; the capitals' top sits 0.265 of an em
+  # below the line's, and an H's ink 0.033 in from its origin. The margins
+  # are the inset less those, so the ink stands the inset from the frame,
+  # on kitty's text column; another face needs measuring again.
+  em = builtins.floor (builtins.fromJSON type.mono.large * 4 / 3 + 0.5);
+  message = {
+    size = em * 1.245;
+    margin_x = space.rung.inset - 3.3e-2 * em;
+    margin_y = space.rung.inset - 0.265 * em;
+    outline = 2 * shape.border;
+  };
   serifText = import ../fonts/serif-text.nix { inherit pkgs font; };
 
   # Where each mpv keeps the file it plays now (playing.lua).
@@ -82,32 +105,16 @@ let
   keys =
     grouped "seeking" [
       {
-        chord = "Left";
-        does = "Back 5 seconds";
-      }
-      {
         chord = "h";
         does = "Back 5 seconds";
-      }
-      {
-        chord = "Right";
-        does = "On 5 seconds";
       }
       {
         chord = "l";
         does = "On 5 seconds";
       }
       {
-        chord = "Down";
-        does = "On a minute";
-      }
-      {
         chord = "j";
         does = "On a minute";
-      }
-      {
-        chord = "Up";
-        does = "Back a minute";
       }
       {
         chord = "k";
@@ -287,6 +294,7 @@ in
   xdg.configFile."mpv/scripts/playing.lua".source = ./playing.lua;
   xdg.configFile."mpv/scripts/copy-frame.lua".source = ./copy-frame.lua;
   xdg.configFile."mpv/scripts/vi-keys.lua".source = ./vi-keys.lua;
+  xdg.configFile."mpv/scripts/osd-by-scale.lua".source = ./osd-by-scale.lua;
 
   # The file each mpv plays now, for its Recent in the launcher to lead
   # with, kept in a folder made at sign-in (playing.lua), each mpv's line
@@ -331,7 +339,14 @@ in
 
   programs.mpv = {
     enable = true;
-    scripts = [ pkgs.mpvScripts.mpris ];
+    # mpv lays its messages out on a 288-line grid, where no margin lands
+    # the inset; the patch's own words say how it's mended.
+    package = pkgs.mpv.override {
+      mpv-unwrapped = pkgs.mpv-unwrapped.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./osd-lands-on-pixels.patch ];
+      });
+      scripts = [ pkgs.mpvScripts.mpris ];
+    };
     # The keys whose meaning is ours rather than mpv's, from the list above;
     # / and * stay mpv's quieter and louder.
     bindings = lib.listToAttrs (
@@ -353,10 +368,11 @@ in
       title = "\${media-title}";
 
       osd-font = font.mono.family;
-      osd-font-size = 24;
+      # Its messages keep one size and room at every size of window, set
+      # from logical pixels by osd-by-scale.lua.
+      osd-scale-by-window = false;
       osd-color = colours.strong;
       osd-border-color = colours.shadow;
-      osd-border-size = 2;
       osd-back-color = colours.deepest;
       osd-selected-color = colours.on_accent;
       osd-selected-outline-color = colours.accent;
@@ -369,7 +385,11 @@ in
       screenshot-template = "%F %wH-%wM-%wS";
     };
     scriptOpts.copy-frame.wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
+    scriptOpts.osd-by-scale = message;
+    # The controller, the console, its menu and the statistics keep growing
+    # with the window, as they did before its messages stopped.
     scriptOpts.osc = {
+      vidscale = "yes";
       background_color = colours.deepest;
       timecode_color = colours.text;
       title_color = colours.strong;
@@ -385,6 +405,7 @@ in
     # the menu a right click opens: the choice in the accent, as the
     # launcher's is.
     scriptOpts.console = {
+      scale_with_window = "yes";
       monospace_font = font.mono.family;
       focused_color = colours.on_accent;
       focused_back_color = colours.accent;
@@ -392,6 +413,7 @@ in
       menu_outline_color = colours.edge;
     };
     scriptOpts.context_menu = {
+      scale_with_window = "yes";
       focused_color = colours.on_accent;
       focused_back_color = colours.accent;
       disabled_color = colours.muted;
@@ -401,6 +423,7 @@ in
     # monospaced face, since it's labels beside figures, its graphs in
     # the accent.
     scriptOpts.stats = {
+      vidscale = "yes";
       font = font.mono.family;
       font_mono = font.mono.family;
       font_color = bgr colours.text;

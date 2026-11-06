@@ -49,12 +49,19 @@ QtObject {
 
         // [what, the keys typed in normal, the acts done]
         const normal = [
-            // No arrow does anything in normal, as Joel asked (2026-11-05:
-            // "remove them and rely only on vi right feeling things").
-            ["j and k move, and the arrows say not here", ["j", "Down", "k", "Up"],
-                ["down", "notHere", "up", "notHere"]],
-            ["l steps in and h, Backspace and - out", ["l", "h", "Backspace", "-"],
-                ["into", "out", "out", "out"]],
+            // The arrows are their letters' motion and nothing else (Joel,
+            // 2026-11-05: "In normal mode, in a buffer, arrows move the
+            // cursor"), with a count as any motion.
+            ["j and k move, and Down and Up as they do", ["j", "Down", "k", "Up"],
+                ["down", "down", "up", "up"]],
+            ["a count before an arrow", ["3", "Down"], ["3down"]],
+            ["and an arrow is a motion an operator takes", ["d", "Down"],
+                ["pending:done", "done:down"]],
+            // A card's acts are commands, never a row stepped into, so h, l,
+            // Backspace and - step nowhere (Joel, 2026-11-05: "where in vi
+            // does that step into shit?"), and Left and Right are h and l.
+            ["h, l, Backspace and - mean nothing on the cards", ["l", "h", "Backspace", "-"],
+                ["notHere", "notHere", "notHere", "notHere"]],
             ["and the side arrows say not here", ["Right", "Left"], ["notHere", "notHere"]],
             ["Return opens, as Enter", ["Return", "Enter"], ["open", "open"]],
             ["gg and G go to the newest and the oldest", ["g", "g", "G"], ["first", "last"]],
@@ -64,6 +71,13 @@ QtObject {
             ["H M L, { } and the views", ["H", "M", "L", "{", "}", "Ctrl+D", "Ctrl+U",
                 "Ctrl+F", "Ctrl+B"], ["viewTop", "viewMiddle", "viewBottom", "runBack", "runOn",
                 "halfDown", "halfUp", "viewDown", "viewUp"]],
+            // Vim's scrolling, which moves the view and keeps the cursor in
+            // it (Joel, 2026-11-05: "that is very vi like").
+            ["Ctrl+E and Ctrl+Y scroll a line, with a count", ["Ctrl+E", "3", "Ctrl+Y"],
+                ["lineDown", "3lineUp"]],
+            ["zz zt zb put the cursor's line in the view", ["z", "z", "z", "t", "z", "b"],
+                ["viewCentre", "viewAtTop", "viewAtBottom"]],
+            ["and in visual too", ["V", "Ctrl+E", "z", "z"], ["select", "lineDown", "viewCentre"]],
             ["d waits for what it takes", ["d"], ["pending:done"]],
             ["dd is done with the cursor card", ["d", "d"], ["pending:done", "done:line"]],
             ["3dd, with three", ["3", "d", "d"], ["pending:done", "3done:line"]],
@@ -84,7 +98,9 @@ QtObject {
             [": is the command line", [":"], ["command"]],
             ["ZZ and Space w let go", ["Z", "Z", "Space", "w"], ["close", "close"]],
             ["q does nothing, and says so", ["q"], ["quiet"]],
-            ["Escape at rest lets go", ["Escape"], ["back"]],
+            // Escape never closes anything of ours (Joel, 2026-11-05: "fuck
+            // escape quitting"): at rest it does nothing, as Vim's.
+            ["Escape at rest does nothing", ["Escape"], []],
             ["Escape cancels a count first", ["4", "Escape", "j"], ["down"]],
             ["Escape cancels a key waiting for its second", ["g", "Escape", "g"], []],
             ["Space ? and F1 list the keys", ["Space", "?", "F1"], ["keys", "keys"]],
@@ -200,23 +216,38 @@ QtObject {
         // Normal over a reply's words moves by h and l alone, as every
         // normal does; its insert keeps the arrows for the caret.
         holds("h and l move along its words", prompt(["l", "l", "h"], "on my way", 0).caret, 1);
-        holds("and the arrows say not here", prompt(["Right", "Left"], "on my way", 4),
-            { text: "on my way", caret: 4, acts: ["notHere", "notHere"] });
+        holds("and the arrows as they do", prompt(["Right", "Right", "Left"], "on my way", 4),
+            { text: "on my way", caret: 5, acts: [] });
 
         // Space ?'s list: a heading each mode, then each act's keys.
         const listed = Keys.keyList();
         holds("it opens on normal", listed[0].heading, "Normal: moving and acting");
-        // No act outside a line takes an arrow, alone, held with another key
-        // or in a sequence: normal, visual, pending, a reply's normal and the
-        // key list move by letters (Joel, 2026-11-05), and only the find,
-        // the command line and insert keep the arrows, for the caret and
-        // choosing, as Vim's insert does.
+        // Outside a line, an arrow is only its letter's motion: alone, never
+        // held with another key or in a sequence, and on an act its letter
+        // does (Joel, 2026-11-05). The find, the command line and insert keep
+        // them for the caret and choosing, as Vim's insert does.
         const lines = ["find", "command", "insert"];
-        const arrow = key => (Array.isArray(key) ? key : String(key).split(" "))
-            .some(part => ["Up", "Down", "Left", "Right"].includes(part.split("+").pop()));
-        holds("no act outside a line takes an arrow", Keys.table
+        const letters = { Down: "j", Up: "k", Left: "h", Right: "l" };
+        const pressed = key => Array.isArray(key) ? key : String(key).split(" ");
+        const arrowed = key => pressed(key)
+            .some(part => part.split("+").pop() in letters);
+        holds("outside a line an arrow is only its letter's motion", Keys.table
             .filter(one => (one.modes ?? ["normal"]).some(mode => !lines.includes(mode)))
-            .filter(one => one.keys.some(arrow)).map(one => one.act), []);
+            .filter(one => one.keys.some(key => arrowed(key)
+                && !(key in letters && one.keys.includes(letters[key]))))
+            .map(one => one.act), []);
+        // Never named in normal's or visual's hints or lines of the key
+        // list, where the letter is.
+        let section = "";
+        const named = [];
+        for (const one of listed) {
+            section = one.heading !== "" ? one.heading : section;
+            if (/^(Normal|Visual)/.test(section) && one.keys.split(" ").some(key => key in letters))
+                named.push(one.keys);
+        }
+        holds("normal's and visual's lines of the key list name no arrow", named, []);
+        holds("nor does a hint", Keys.hints("normal", {}, {}).concat(Keys.hints("visual", {}, {}))
+            .filter(one => one.key in letters).map(one => one.key), []);
         holds("a move lists its letter alone", listed[1],
             { heading: "", keys: "j", does: "down a card", act: "down" });
         holds("a sequence is listed as typed", listed.find(one => one.act === "first").keys, "gg");
@@ -224,6 +255,15 @@ QtObject {
             .map(one => one.heading), ["Normal: moving and acting", "The find: the / line",
             "Commands: the : line", "Visual: choosing several", "Insert: writing words"]);
         holds("an act is listed once a mode", listed.filter(one => one.act === "done").length, 2);
+
+        // The mode, named at the foot's start in three capitals (Joel,
+        // 2026-11-05: "the mode should be 3 letters, in caps, and in a place
+        // where they are more obvious"), as the key language's five; a
+        // reply's normal and the key list are normal, and pending is too,
+        // as Vim's status line names it.
+        holds("each mode's mark", ["normal", "find", "command", "insert", "visual", "prompt",
+            "listing", "pending"].map(mode => Keys.mark(mode)),
+            ["NOR", "FND", "CMD", "INS", "VIS", "NOR", "NOR", "NOR"]);
         holds("every line fits at 2", listed.filter(one => one.does.length > 18
             || one.keys.length > 14).map(one => one.does), []);
         holds(":help dd opens at d", listed[Keys.helpAt(listed, "done")].act, "done");

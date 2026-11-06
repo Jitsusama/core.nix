@@ -54,11 +54,13 @@ function setRead(word, options) {
     return { prefix: whole ? "" : said, name, how, value, option };
 }
 
-// A value given an option with =, += or -=: a change, or Vim's error.
+// A value given an option with =, += or -=: a change, or Vim's error. A
+// switch whose value is a number (`takes` "number"), as dnd's minutes, reads
+// it as a number option does.
 function setValue(word, read) {
     const { name, how, value, option } = read;
     const invalid = { error: `E474: Invalid argument: ${word}` };
-    const numbered = option.kind === "number";
+    const numbered = option.kind === "number" || option.takes === "number";
     if ((how !== "=" && !numbered) || (option.kind === "switch" && !option.takes)) {
         return invalid;
     }
@@ -67,15 +69,26 @@ function setValue(word, read) {
         return choices !== null && !choices.includes(value) ? invalid
             : { option: name, how: "set", value };
     }
+    return setNumber(word, read, invalid);
+}
+
+// A number given with =, += or -=, as volume=40 or dnd+=60: a change, or
+// Vim's error where it's no number, = sets it past its ends, or it's only
+// stepped (`stepsOnly`), as a board's lights that take no level.
+function setNumber(word, read, invalid) {
+    const { name, how, value, option } = read;
     if (!number.test(value)) {
         return { error: `E521: Number required after =: ${word}` };
+    }
+    if (how === "=" && option.stepsOnly) {
+        return invalid;
     }
     const by = Number(value);
     if (how === "=" && (by < (option.least ?? 0) || by > (option.most ?? by))) {
         return invalid;
     }
-    const moved = { "=": "set", "+=": "add", "-=": "subtract" };
-    return { option: name, how: moved[how], value: by };
+    const hows = { "=": "set", "+=": "add", "-=": "subtract" };
+    return { option: name, how: hows[how], value: by };
 }
 
 // One of :set's words, against the option it names: a change, or Vim's
@@ -135,7 +148,6 @@ function toward(change, now, option) {
         const said = change.how === "set" ? `${change.option}=${change.value}` : change.option;
         return { error: `E519: Option not supported: ${said}` };
     }
-    const within = to => Math.max(option.least ?? to, Math.min(option.most ?? to, to));
     switch (change.how) {
     case "on":
         return { to: true };
@@ -144,17 +156,37 @@ function toward(change, now, option) {
     case "toggle":
         return { to: now === false };
     case "add":
-        return { to: within(Number(now) + change.value) };
     case "subtract":
-        return { to: within(Number(now) - change.value) };
+        return { to: moved(change, now, option) };
     default:
         return { to: change.value };
     }
 }
 
+// A number moved by += or -=, held within its least and most, or still
+// null where it can't be read, the option's set stepping it by the change.
+// A switch whose value is a number, on with none, as dnd held until it's
+// ended, stays so, and off, += gives it that many, as dnd+=60 holds an
+// hour.
+function moved(change, now, option) {
+    const adds = change.how === "add";
+    if (now === null) {
+        return null;
+    }
+    if (typeof now === "boolean") {
+        return adds && !now ? change.value : now;
+    }
+    const to = Number(now) + (adds ? change.value : -change.value);
+    return Math.max(option.least ?? to, Math.min(option.most ?? to, to));
+}
+
 // One option as Vim's :set volume? says it: a switch its name or its no,
-// or its value where it holds one, as the network it's joined.
+// or its value where it holds one, as the network it's joined; null for
+// one that can't be read, for the launcher to say so.
 function shown(name, now, option) {
+    if (now === null) {
+        return null;
+    }
     if (option.kind !== "switch") {
         return `${name}=${now}`;
     }
@@ -175,7 +207,10 @@ function setArguments(arg, options) {
     const equals = word.indexOf("=");
     if (equals < 0) {
         return Object.keys(options).sort().filter(each => each.startsWith(word))
-            .map(each => ({ value: each, note: shown(each, options[each].now(), options[each]) }));
+            .map(each => ({
+                value: each,
+                note: shown(each, options[each].now(), options[each]) ?? ""
+            }));
     }
     const name = word.slice(0, equals);
     const option = options[name];

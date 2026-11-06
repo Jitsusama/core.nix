@@ -383,22 +383,22 @@ def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
         top = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["firstAt"]
         for _ in range(WALKS):
             desktop.down_to("Machine")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
             # Down to its last place, below the fold, and straight into it.
             desktop.down_to("Firmware")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
-            machine.send_key("left")
-            machine.send_key("left")
+            desktop.step_out()
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
             # And from home's last place straight into it.
             desktop.down_to("Keyboard")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
-            machine.send_key("left")
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
-            machine.send_key("up")
+            desktop.previous_row()
         assert not unlike, f"the first row stood below the top ({top}): {unlike}"
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(
@@ -428,20 +428,20 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     fewest = 4
     desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
     home = marks_in(desktop.showing()["glance"])
-    # A step's row with the most keys: Return, the right arrow and the
-    # left, and no chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
+    # A step's row with the most keys: Return, - and Ctrl+] in, and
+    # no other chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
     # "i want icons to be able to be there as much as possible").
     machine.send_chars("desktop ")
     desktop.launcher_until(
         lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
     )
     desktop.down_to("Do Not Disturb")
-    # In normal, where the arrows step; insert's move the caret, so it names none.
+    # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert "\u2192" in told, shown["selected"]
-    assert not any(key.startswith("Ctrl") for key in told), shown["selected"]
+    assert told[1:2] == ["Ctrl+] in"], shown["selected"]
+    assert not any(key.startswith("Ctrl") for key in told[2:]), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()
     # A switch restarts the shell: the first foot it draws has every mark,
@@ -557,7 +557,6 @@ def moved(before: Json, after: Json) -> list[str]:
 
 def test_the_pointer_over_the_rows_never_moves_the_selection(desktop: Desktop) -> None:
     """The pointer over the rows, resting or passing, never moves the selection; the keys do."""
-    machine = desktop.machine
     # Joel's pointer rests over the left of the card as he arrows (P9R1KI,
     # 2026-10-29), and the launcher isn't pointer-navigated.
     desktop.point(0.42, 0.45)
@@ -572,9 +571,9 @@ def test_the_pointer_over_the_rows_never_moves_the_selection(desktop: Desktop) -
     assert (desktop.showing()["selected"] or {}).get("name") == first[0], desktop.showing()
     # The arrows go where they go, with the pointer resting over the rows
     # as they glide under it.
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[1])
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[2])
     desktop.held_still()
     assert (desktop.showing()["selected"] or {}).get("name") == first[2], desktop.showing()

@@ -30,15 +30,19 @@ const XL_PT: f64 = 18.0;
 /// always has a measure to set.
 const NARROWEST_PT: f64 = 72.0;
 
-/// How far a wide table may spread past the measure on each side, which
-/// the page keeps as its side margins: in a window half the laptop's panel
-/// wide (720 px, 540 pt), what's left once Space's xxl stays inside each
-/// edge, so a spread table never reaches the window's edge.
-const SPREAD_PT: f64 = 28.5;
+/// How far a wide table or code may spread past the measure on each side,
+/// which the page keeps as its side margins: its outer column, the glyph
+/// column (theme.rs's `Space`), so everything that hangs out of the words,
+/// a list's numbers among them, shares one edge.
+fn spread_pt() -> f64 {
+    crate::theme::get().space.outer * crate::theme::PT_A_PX
+}
 
 /// The narrowest window the whole page fits, its spread and xxl inside
-/// each edge: 540 pt.
-const WHOLE_FROM_PT: f64 = MEASURE_PT + 2.0 * (SPREAD_PT + XXL_PT);
+/// each edge.
+fn whole_from_pt() -> f64 {
+    MEASURE_PT + 2.0 * (spread_pt() + XXL_PT)
+}
 
 /// How wide the page is set: its measure, and the room either side of it a
 /// wide table may spread into, chosen for the window it shows in.
@@ -49,11 +53,21 @@ pub struct Width {
 }
 
 impl Width {
-    /// The whole page, as a window of 540 pt or more shows it.
+    /// The whole page at a page without a theme's outer column, for what
+    /// sets a page before the theme matters, such as the warm-up compile;
+    /// a window takes `whole`.
     pub const WHOLE: Width = Width {
         measure_pt: MEASURE_PT,
-        spread_pt: SPREAD_PT,
+        spread_pt: crate::theme::PLAIN_OUTER_PX * crate::theme::PT_A_PX,
     };
+
+    /// The whole page, as a window wide enough for it shows it.
+    pub fn whole() -> Width {
+        Width {
+            measure_pt: MEASURE_PT,
+            spread_pt: spread_pt(),
+        }
+    }
 
     /// The page for a window this many points of the page wide at zoom 1.
     /// A narrower window than the whole page's has no room to spread a
@@ -61,8 +75,8 @@ impl Width {
     /// to 45 characters; then the margins give way to xl, and only then the
     /// measure again.
     pub fn for_window(window_pt: f64) -> Width {
-        if window_pt >= WHOLE_FROM_PT {
-            return Width::WHOLE;
+        if window_pt >= whole_from_pt() {
+            return Width::whole();
         }
         let measure_pt = if window_pt >= LEAST_MEASURE_PT + 2.0 * XL_PT {
             (window_pt - 2.0 * XXL_PT).clamp(LEAST_MEASURE_PT, MEASURE_PT)
@@ -89,14 +103,19 @@ impl Width {
     }
 }
 
-/// Above the first line's capitals: Space's xxl, 24 pt. Lines start at
-/// their capitals' height (Typst's top edge), so the margin is the gap.
-pub const TOP_PT: f64 = 24.0;
+/// Above the first line's capitals: a line, as below the last baseline,
+/// so the page has the same room at both ends. Lines start at their
+/// capitals' height (Typst's top edge), so the margin is the gap.
+fn top_pt() -> f64 {
+    pitch_pt()
+}
 
-/// The page's line: 28 px, seven of Space's 4 px units, from one baseline
-/// to the next, and what j and k move by. Every baseline lands on a half
-/// of it.
-pub const PITCH_PT: f64 = 21.0;
+/// The page's line, from one baseline to the next, and what j and k move
+/// by: the theme's, as home.nix bends it for a page (theme.rs's `Space`).
+/// Every baseline lands on the page's beat, half of it.
+pub fn pitch_pt() -> f64 {
+    crate::theme::get().space.pitch * crate::theme::PT_A_PX
+}
 
 /// The page's look, after its measure, margins, size and line (template).
 ///
@@ -112,7 +131,6 @@ pub const PITCH_PT: f64 = 21.0;
 /// leading is the pitch less the capitals, and a gap between paragraphs is
 /// said as baseline to baseline (`gap`).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
-#let half = pitch / 2
 #let gap(n) = n * pitch - cap
 #set text(..level.words.text, lang: "en", hyphenate: true, costs: (hyphenation: hyphen-cost, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
 #set par(justify: false, linebreaks: "optimized", leading: pitch - cap, spacing: gap(1.5))
@@ -128,7 +146,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // Typst's raw takes 0.8 em of its own, so the size is said whole.
 #show raw: it => context text(..level.code.text, fill: text.fill, it)
 // Headings, set by lines: more room above a heading than below it, so it
-// belongs to what follows. A gap is baseline to baseline, rounded to the
+// belongs to what follows. A section sits a line over its first block, as
+// a group's heading sits a pitch above its first thing, nearer it than one
+// paragraph is to the next. A gap is baseline to baseline, rounded to the
 // half line so every baseline stays on the grid. A block's top edge is its
 // capitals (`caps` of an em in the words' face, the same at both sets of
 // axes, and `code-caps` in the mono), so a gap takes the cap height of what
@@ -136,7 +156,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // its capitals a little higher or lower, so headings and the lede say
 // their top edge as the regular's capitals, keeping every baseline where
 // the gaps put it.
-#let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
+#let lines(n, c) = calc.round((n * pitch - cap + c) / beat) * beat - c
 #let title-size = level.title.text.size
 #let section-size = level.section.text.size
 #let label-size = level.label.text.size
@@ -149,7 +169,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show heading.where(level: 1): set block(above: lines(3, caps * title-size), below: 1.5 * pitch - cap)
 #show heading.where(level: 2): set text(..level.section.text, top-edge: caps * section-size)
 #show heading.where(level: 2): set par(leading: pitch - caps * section-size)
-#show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: pitch - cap)
 #show heading.where(level: 3): set text(..level.part.text, top-edge: cap)
 #show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
 #show heading.where(level: 4): it => block(above: lines(2, code-caps * label-size), below: pitch - cap, eyebrow(it.body))
@@ -173,12 +193,16 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   set block(width: high)
   it
 })
-// What the file is and when it changed, over the title and one line above
-// it, or over the words when there's no title.
+// What the file is and when it changed, two lines over the title's
+// baseline (four of the page's beats), or over the words when there's no
+// title.
 #show <title>: set block(above: 0pt)
-#let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
-// The paragraph after the title, in the voice.
-#let lede(body) = par(text(..level.voice.text, top-edge: cap, body))
+#let about(titled: false, body) = block(above: 0pt, below: if titled { 4 * beat - caps * title-size } else { 1.5 * pitch - cap }, eyebrow(body))
+// The paragraph after the title, in the voice, two lines over the words:
+// the head widens outward, eyebrow to title, title to lede, lede to the
+// words, and the last is wider than one paragraph is from the next, so
+// the head reads as a group of its own.
+#let lede(body) = block(above: 0pt, below: 2 * pitch - cap, par(text(..level.voice.text, top-edge: cap, body)))
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
@@ -214,15 +238,49 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // steps one line.
 #let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt), outset: (top: 2pt, bottom: 0.3em), radius: 2pt, text(..level.code.text, body))
 // Lists hang their marks in the margin, so the words keep the measure's
-// edge: an accent bullet, a muted number, a task's box. An item steps one
-// line and a list stands one and a half from what's around it. A list in a
-// list starts at its item's words.
+// edge: an accent bullet, a muted number, a task's box. A list in a list
+// starts at its item's words.
+//
+// Things of a kind sit a line apart, and a beat further where any can take
+// two lines, so a wrapped line is nearer its own item than the next item
+// is, and each level stays wider than the one inside it. A list whose
+// items all fit the measure steps a line from item to item and stands one
+// and a half from the words round it. One where any item wraps sets its
+// items one and a half apart, as paragraphs are, and stands two off, so it
+// still reads as one group among them. The measure decides, so a list
+// widens as the window narrows and its items come to wrap. A list stands
+// off by the paragraphs' own rule, par spacing on a block left to it,
+// which wins over a paragraph's by being larger but gives way to a set
+// room such as a heading's, so a section sits a line over a list as over
+// a paragraph.
 #let hang = 1em
 #set list(marker: box(width: 0.6em, align(right, text(fill: ink.accent)[•])), indent: -hang, body-indent: hang - 0.6em, spacing: pitch - cap)
 #set enum(numbering: n => box(width: 1.6em, align(right, text(fill: ink.muted, number-width: "tabular")[#n.])), indent: -2 * hang, body-indent: 2 * hang - 1.6em, spacing: pitch - cap)
+#let wraps(it) = it.children.any(item => measure(item.body, width: measure-width).height > measure(item.body).height)
 #let listed(it) = {
   let inner = { set list(indent: 0pt); set enum(indent: 0pt); it }
-  if it.indent < 0pt { block(above: 1.5 * pitch - cap, below: 1.5 * pitch - cap, inner) } else { inner }
+  if it.indent >= 0pt { return inner }
+  context {
+    let wide = wraps(it)
+    let items = if wide { gap(1.5) } else { pitch - cap }
+    // The list is set again with its items' spacing, which comes back
+    // here already holding it.
+    if it.spacing != items {
+      let fields = it.fields()
+      let children = fields.remove("children")
+      fields.insert("spacing", items)
+      return it.func()(..fields, ..children)
+    }
+    // Typst ranks the room between two blocks by how weak it is before
+    // how large: a weak v first, then a block's set above or below, then
+    // auto and par spacing, the larger winning only between equals. Set
+    // above and below would beat a heading's room, so the list leaves
+    // them to the paragraphs' spacing, which a heading's set below wins
+    // over and a paragraph's gives way to by being smaller.
+    let off = if wide { gap(2) } else { gap(1.5) }
+    set par(spacing: off)
+    block(above: auto, below: auto, { set par(spacing: gap(1.5)); inner })
+  }
 }
 #show list: listed
 #show enum: listed
@@ -341,17 +399,21 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
 }))
-// A code block: the listing's mono on a 15 pt line, on the sunken ground
-// inset m by l. Its height rounds up to the half line, shared above and
-// below its lines, so the words after it stay on the page's grid. Its top
-// stands one and a half lines under the baseline before it, and the next
-// baseline two lines under its foot, so the room either side looks even. Code wider than the measure
-// widens the block evenly, as far as a table may spread. The language is
-// an eyebrow at the top right, on the first line's baseline, or on a line
-// of its own when the first line would reach it.
+// A code block: the listing's mono on a 15 pt line, its words on the
+// column the paragraphs start at, as a quote's are. Its sunken ground
+// hugs them as any chosen ground does, a mark out on every side, and
+// hangs into the margin by that mark. Its height rounds up to the half
+// line, shared above and below its lines, so the words after it stay on
+// the page's grid. Its top stands one and a half lines under the baseline
+// before it, and the next baseline two lines under its foot, so the room
+// either side looks even. Code wider than the measure widens the block
+// evenly, its ground no further out than the page's outer column. The
+// language is an eyebrow at the top right, on the first line's baseline,
+// or on a line of its own when the first line would come within the items
+// rung of it.
 #let code-size = level.listing.text.size
 #let code-line = 15pt
-#let code-inset = (x: 12pt, y: 9pt)
+#let code-inset = rung.mark
 // The mono's set rules sit outside `layout`, since `measure` in its
 // closure takes the styles `layout` was called with.
 #let codeblock(lang: "", first: 0, longest: 0, body) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, {
@@ -359,22 +421,22 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
  set par(leading: code-line - code-caps * code-size, justify: false, spacing: code-line - code-caps * code-size)
  layout(size => {
   let advance = measure([0]).width
-  let width = calc.min(calc.max(size.width, longest * advance + 2 * code-inset.x), size.width + 2 * spread)
-  let inner = width - 2 * code-inset.x
+  let inner = calc.min(calc.max(size.width, longest * advance), size.width + 2 * calc.max(0pt, spread - code-inset))
+  let width = inner + 2 * code-inset
   let label = if lang == "" { none } else { eyebrow(lang) }
-  let alone = label != none and first * advance + measure(label).width + code-inset.x > inner
+  let alone = label != none and first * advance + measure(label).width + rung.items > inner
   let lines = {
     if alone { block(width: 100%, below: code-line - code-caps * code-size, align(right, label)) }
     body
   }
   let h = measure(block(width: inner, lines)).height
-  let tall = calc.ceil((h + 2 * code-inset.y) / half) * half
-  let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset.x, y: (tall - h) / 2), {
+  let tall = calc.ceil((h + 2 * code-inset) / beat) * beat
+  let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset, y: (tall - h) / 2), {
     if label != none and not alone { place(top + right, dy: code-caps * (code-size - label-size), label) }
     lines
   })
   let out = (width - size.width) / 2
-  if out > 0pt { pad(left: -out, right: -out, shown) } else { shown }
+  pad(left: -out, right: -out, shown)
  })
 })
 // A picture that can't be shown says what it shows, as a note never
@@ -389,7 +451,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let alone(body, caption) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, pad(left: -spread, right: -spread, layout(size => {
   let shown = align(center, body)
   let h = measure(block(width: size.width, shown)).height
-  block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, align(bottom, shown))
+  block(width: 100%, height: calc.ceil(h / beat) * beat, below: 0pt, align(bottom, shown))
   if caption != [] {
     block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(..level.note.text, hyphenate: false, caption))))
   }
@@ -425,9 +487,7 @@ fn look(theme: &crate::theme::Theme, world: &PageWorld) -> (String, String) {
     let code_caps = world.capitals_pt(&theme.levels.code.family, 1.0);
     (
         theme.typst(),
-        format!(
-            "#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
-        ),
+        format!("#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"),
     )
 }
 
@@ -438,8 +498,10 @@ fn at_width(ink: &str, look: &str, width: Width) -> String {
         spread_pt,
     } = width;
     format!(
-        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let spread = {spread_pt}pt\n#let hyphen-cost = {hyphen}%\n{look}",
+        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {top}pt, bottom: {bottom}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let spread = {spread_pt}pt\n#let hyphen-cost = {hyphen}%\n{look}",
         page = width.page_pt(),
+        top = top_pt(),
+        bottom = bottom_pt(),
         hyphen = width.hyphen_cost(),
     )
 }
@@ -471,12 +533,14 @@ pub fn new_world() -> PageWorld {
 /// while the rest is set, in 50 to 170 ms.
 const FIRST_CHARS: usize = 6000;
 
-/// The bottom margin the page ends on: Space's xxl below the last line's
-/// descenders, which hang 0.245 em of the words' 13.69 pt below their
-/// baseline (a g's 490 of the serif's 2000), where Typst ends a line. A
-/// page set from the file's first blocks lays out as the whole file's does
-/// down to here.
-pub const BOTTOM_PT: f64 = 27.4;
+/// The bottom margin the page ends on: a line under the last baseline,
+/// where Typst ends a line, as above the first capitals, so the page has
+/// the same room at both ends and its descenders hang into it. A page set
+/// from the file's first blocks lays out as the whole file's does down to
+/// here.
+pub fn bottom_pt() -> f64 {
+    pitch_pt()
+}
 
 /// The eyebrow's words over the title: what the file says it is in its
 /// front matter, its kind and id, or else where it lives; and when it last
@@ -672,7 +736,7 @@ impl Setter {
             file: file.to_string(),
             world: new_world(),
             pieces: Pieces::new(),
-            width: Width::WHOLE,
+            width: Width::whole(),
         }
     }
 
@@ -826,9 +890,16 @@ mod tests {
 
     #[test]
     fn a_window_too_narrow_for_the_whole_page_gives_way_measure_then_margin() {
-        assert_eq!(width(1080.0), (435.0, 28.5), "the whole page");
-        assert_eq!(width(540.0), (435.0, 28.5), "the whole page, just");
-        assert_eq!(width(539.0), (435.0, 0.0), "no spread, the whole measure");
+        // The whole page: the measure, its outer column and xxl either side.
+        let spread = super::spread_pt();
+        let whole = 435.0 + 2.0 * (spread + 24.0);
+        assert_eq!(width(1080.0), (435.0, spread), "the whole page");
+        assert_eq!(width(whole), (435.0, spread), "the whole page, just");
+        assert_eq!(
+            width(whole - 1.0),
+            (435.0, 0.0),
+            "no spread, the whole measure"
+        );
         assert_eq!(
             width(483.0),
             (435.0, 0.0),
@@ -925,7 +996,8 @@ mod tests {
     /// Every baseline from the first run holding `from` to the last holding
     /// `to`, top to bottom, and the page's pitch from its first paragraph,
     /// which is the page's line.
-    fn baselines(name: &str, markdown: &str, from: &str, to: &str) -> (f64, Vec<f64>) {
+    /// The page a file holding `markdown` sets, as the window's is.
+    fn page_of(name: &str, markdown: &str) -> super::Page {
         let dir = std::env::temp_dir().join(format!("reader-pitch-{}-{name}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("a folder");
         let file = dir.join("page.md");
@@ -934,6 +1006,11 @@ mod tests {
             .set()
             .expect("set");
         std::fs::remove_dir_all(&dir).expect("cleaned");
+        page
+    }
+
+    fn baselines(name: &str, markdown: &str, from: &str, to: &str) -> (f64, Vec<f64>) {
+        let page = page_of(name, markdown);
         let runs = crate::text::runs(&page.frame);
         let text = |run: &crate::text::Run| run.chars.iter().map(|c| c.0).collect::<String>();
         let mut all: Vec<f64> = runs.iter().map(|run| run.baseline_pt).collect();
@@ -952,9 +1029,9 @@ mod tests {
             .expect("a second line");
         let pitch = next - opening;
         assert!(
-            (pitch - super::PITCH_PT).abs() < 0.01,
+            (pitch - super::pitch_pt()).abs() < 0.01,
             "the words step {pitch} pt, not the page's line of {} pt",
-            super::PITCH_PT
+            super::pitch_pt()
         );
         let top = runs
             .iter()
@@ -1011,6 +1088,56 @@ mod tests {
     }
 
     #[test]
+    fn a_page_ends_a_line_under_its_last_baseline() {
+        let page = page_of("foot", &format!("{OPENING}Omega.\n"));
+        let last = crate::text::runs(&page.frame)
+            .iter()
+            .map(|run| run.baseline_pt)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let foot = page.frame.height().to_pt() - last;
+        assert!(
+            (foot - super::pitch_pt()).abs() < 0.01,
+            "the page ends {foot} pt under its last baseline, not a line of {} pt",
+            super::pitch_pt()
+        );
+    }
+
+    #[test]
+    fn a_pages_first_capitals_stand_a_line_under_its_top() {
+        let program = super::at_width("", "", super::Width::whole());
+        let line = super::pitch_pt();
+        assert!(
+            program.contains(&format!("top: {line}pt, bottom: {line}pt")),
+            "the eyebrow's capitals a line under the top and the last baseline a line over \
+             the foot: {program}"
+        );
+    }
+
+    #[test]
+    fn code_sets_its_words_on_the_column_the_paragraphs_start_at() {
+        let markdown = format!("{OPENING}```\nlet code = here;\n```\n");
+        let page = page_of("code", &markdown);
+        let runs = crate::text::runs(&page.frame);
+        let start = |word: &str| {
+            runs.iter()
+                .filter(|run| {
+                    run.chars
+                        .iter()
+                        .map(|c| c.0)
+                        .collect::<String>()
+                        .contains(word)
+                })
+                .map(|run| run.x_pt)
+                .fold(f64::INFINITY, f64::min)
+        };
+        let (words, code) = (start("opening"), start("let"));
+        assert!(
+            (words - code).abs() < 0.01,
+            "code's words start at {code} pt, off the column at {words} pt"
+        );
+    }
+
+    #[test]
     fn a_line_holding_a_key_steps_one_line_as_any_other() {
         let markdown = format!(
             "{OPENING}Press <kbd>Ctrl</kbd>+<kbd>O</kbd> to go back to where you were, and <kbd>Ctrl</kbd>+<kbd>I</kbd> to come forward again, in a paragraph long enough to wrap onto a second line and a third, whichever face it's set in, before it ends at Omega.\n"
@@ -1033,7 +1160,7 @@ mod tests {
         let (ink, look) = super::look(&theme, &world);
         let program = format!(
             "{}Words with #strong[a strong span] in them.",
-            super::at_width(&ink, &look, super::Width::WHOLE)
+            super::at_width(&ink, &look, super::Width::whole())
         );
         let page = super::set_page(&mut world, &program).expect("the page sets");
         let words: String = crate::text::runs(&page.frame)
@@ -1055,10 +1182,58 @@ mod tests {
             steps.iter().all(|s| s % 50 == 0),
             "every baseline lands on the half line: {steps:?}"
         );
+        // The head widens outward: eyebrow to title, title to lede, lede
+        // to the words, each wider than the last, the lede's widest of
+        // all, past the paragraphs' one and a half.
         assert_eq!(
-            steps[..2],
-            [200, 150],
-            "the title two lines under the eyebrow, the lede one and a half under the title"
+            steps[..3],
+            [200, 150, 200],
+            "the title two lines under the eyebrow, the lede one and a half under the title, \
+             the words two under the lede: {steps:?}"
+        );
+        // A heading sits a line over its first block, nearer it than one
+        // paragraph is to the next, and further from what's before it.
+        assert_eq!(
+            steps[steps.len() - 6..],
+            [300, 100, 250, 100, 200, 100],
+            "a section three lines under the words and one over its own, a part two and a \
+             half and one, a fourth two and one: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_list_steps_its_items_a_line_apart_or_a_beat_further_where_one_wraps() {
+        let markdown = format!(
+            "{OPENING}- One\n- Two\n- Three\n\nA paragraph between.\n\n- A first item long enough that it wraps onto a second line at the measure, as a little paragraph would\n- A second\n\nOmega.\n"
+        );
+        let (pitch, lines) = baselines("lists", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        // Each level stays wider than the one inside it: a tight list's
+        // items a line apart and the list one and a half from the words
+        // round it; a wrapped list's items one and a half apart, as
+        // paragraphs are, and the list two off. The opening's own lines
+        // come first, as many as its face wraps it to.
+        assert_eq!(
+            steps[steps.len() - 8..],
+            [150, 100, 100, 150, 200, 100, 150, 200],
+            "a tight list a line a step and one and a half off, a wrapped list one and a \
+             half a step and two off: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_sections_heading_sits_a_line_over_a_list_however_its_items_wrap() {
+        let markdown = format!(
+            "{OPENING}## Tight\n\n- One\n- Two\n\n## Wrapped\n\n- A first item long enough that it wraps onto a second line at the measure, as a little paragraph would\n- Omega\n"
+        );
+        let (pitch, lines) = baselines("sectioned-lists", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        // A group's heading sits a line over its first thing, a list's
+        // first item as a paragraph, the list's own room giving way to it.
+        assert_eq!(
+            steps[steps.len() - 7..],
+            [300, 100, 100, 300, 100, 100, 150],
+            "each section a line over its list: {steps:?}"
         );
     }
 

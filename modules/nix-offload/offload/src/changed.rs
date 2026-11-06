@@ -103,7 +103,8 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
             commit,
             dir,
             bundle,
-        } => (github, base, commit, dir, Some(bundle)),
+            tip,
+        } => (github, base, commit, dir, Some((bundle, tip))),
     };
     // Kept between runs, so each fetches only what's new; a name per
     // repository, as `owner-name`.
@@ -113,15 +114,12 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
     );
     // A folder named for this run, gone when its shell ends.
     let into = format!("/tmp/nix-offload-changed-{}", std::process::id());
-    let unbundled = if bundle.is_some() {
+    let unbundled = bundle.as_ref().map_or_else(String::new, |(_, tip)| {
         format!(
             "cat > {into}/there.bundle; \
-             git -C {into}/tree fetch -q {into}/there.bundle {}:refs/heads/there; ",
-            there::BUNDLED
+             git -C {into}/tree fetch -q {into}/there.bundle {tip}:refs/heads/there; "
         )
-    } else {
-        String::new()
-    };
+    });
     let words: Vec<String> = arguments.iter().map(|word| there::quoted(word)).collect();
     let told = if passed.is_empty() {
         String::new()
@@ -148,7 +146,10 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
         dir.as_deref().unwrap_or("."),
         words.join(" ")
     );
-    Sending { command, bundle }
+    Sending {
+        command,
+        bundle: bundle.map(|(bundle, _)| bundle),
+    }
 }
 
 /// What a run there asked for, read from changed-checks' own arguments:
@@ -350,6 +351,7 @@ mod tests {
                 commit: "mine2".to_owned(),
                 dir: Some("sub".to_owned()),
                 bundle: PathBuf::from("/b"),
+                tip: "refs/nix-offload/there-7-0".to_owned(),
             },
             &words("--base 'odd ref'"),
             &[],
@@ -357,7 +359,7 @@ mod tests {
         assert_eq!(sent.bundle, Some(PathBuf::from("/b")));
         for part in [
             "+refs/heads/main:refs/heads/main base1",
-            "there.bundle refs/nix-offload/there:refs/heads/there",
+            "there.bundle refs/nix-offload/there-7-0:refs/heads/there",
             "checkout -q -B nix-offload-changed mine2",
             "/tree/sub;",
         ] {

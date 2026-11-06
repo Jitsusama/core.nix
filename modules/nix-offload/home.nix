@@ -12,11 +12,11 @@ let
   cfg = config.jitsusama.nix-offload;
   offload = pkgs.callPackage ./offload/package.nix { };
   time = lib.types.strMatching "[0-2][0-9]:[0-5][0-9]";
-  builders =
-    name: list:
-    pkgs.writeText name (lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n") list);
-  standing = builders "nix-offload-standing" cfg.standing;
-  beside = builders "nix-offload-beside" cfg.beside;
+  builders = lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n");
+  # The lender reads these again as it names its builders, so a switch
+  # that changes who they are changes no unit, and is taken up at once
+  # rather than once the lent builder goes idle.
+  listed = name: "${config.xdg.configHome}/nix-offload/${name}";
   builder = lib.types.submodule {
     options = {
       address = lib.mkOption {
@@ -78,6 +78,35 @@ let
         OFFLOAD_MAX_JOBS = toString cfg.vmTests.builds;
       }
     );
+  # How many VM lenders past the second there may be, one for each folder
+  # nixos.nix makes, /run/nix-offload-vm-3 to -8, and `there` looks in.
+  extraVmLenders = 6;
+  # The lender of the VM builder numbered `number`, from 3, while
+  # vmTests.extra has one for it.
+  extraVm =
+    number:
+    let
+      lender = lib.elemAt cfg.vmTests.extra (number - 3);
+      lends = cfg.vmTests != null && lib.length cfg.vmTests.extra > number - 3;
+    in
+    lib.mkIf (cfg.helper != null && lends) {
+      Unit = {
+        Description = "Lends another builder for VM tests while those before it are full";
+      }
+      // reloaded;
+      Service = {
+        ExecStart = lib.concatStringsSep " " (
+          serving
+          ++ [
+            "--prefix ${lender.prefix}"
+            "--dir /run/nix-offload-vm-${toString number} --only-there"
+          ]
+        );
+        Environment = vmEnvironment lender.environment;
+      }
+      // stopping;
+      Install.WantedBy = [ "default.target" ];
+    };
   sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
   # Core's own VM tests, named so by its checks, and run-subtests' build of
   # some of one's subtests, which went the lent way unnamed: up to 2505 s
@@ -218,6 +247,38 @@ in
                 the VM tests past the first's `builds`, counting those every
                 run here has sent it, so none waits its turn behind them. It's
                 given back idle once the first has room.
+              '';
+            };
+            extra = lib.mkOption {
+              type = lib.types.listOf (
+                lib.types.submodule {
+                  options = {
+                    prefix = lib.mkOption {
+                      type = lib.types.str;
+                      description = ''
+                        What every such builder's name starts with, apart from
+                        the others', none of whose prefixes it may start with.
+                      '';
+                    };
+                    environment = lib.mkOption {
+                      type = lib.types.attrsOf lib.types.str;
+                      default = { };
+                      description = ''
+                        What the helper is told for this builder, such as the
+                        port its way to it takes and the host its ssh entry
+                        names, so it holds one beside the others'.
+                      '';
+                    };
+                  };
+                }
+              );
+              default = [ ];
+              description = ''
+                VM builders past the second, at most ${toString extraVmLenders},
+                the first of them lent from /run/nix-offload-vm-3, each
+                taking what's past the room of those before it while a
+                `nix-offload there` build waits on one: on 5 November VM
+                runs waited a median of 23 to 27 minutes on two.
               '';
             };
           };
@@ -368,6 +429,10 @@ in
   config = lib.mkIf (cfg.helper != null || names || sendsElsewhere) {
     home.packages = [ offload ];
 
+    xdg.configFile."nix-offload/standing" = lib.mkIf names { text = builders cfg.standing; };
+
+    xdg.configFile."nix-offload/beside" = lib.mkIf names { text = builders cfg.beside; };
+
     xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
       text = lib.concatMapStrings (
         machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.owners}\n"
@@ -405,8 +470,7 @@ in
             else
               serving ++ [ "--prefix ${cfg.prefix}" ]
           )
-          ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
-          ++ lib.optional (cfg.beside != [ ]) "--beside ${beside}"
+          ++ lib.optional names "--standing ${listed "standing"} --beside ${listed "beside"}"
         );
         Environment = zoned;
       }
@@ -420,6 +484,17 @@ in
         message = ''
           jitsusama.nix-offload.vmTests.more takes the VM tests past the first's
           room, so vmTests.builds must say how many it runs at once.
+        '';
+      }
+      {
+        assertion =
+          cfg.vmTests == null
+          || cfg.vmTests.extra == [ ]
+          || (cfg.vmTests.more != null && lib.length cfg.vmTests.extra <= extraVmLenders);
+        message = ''
+          jitsusama.nix-offload.vmTests.extra takes what's past the second VM
+          builder, so vmTests.more must be set, and it holds at most
+          ${toString extraVmLenders}, as many folders as nixos.nix makes for them.
         '';
       }
     ];
@@ -471,6 +546,13 @@ in
           // stopping;
           Install.WantedBy = [ "default.target" ];
         };
+
+    systemd.user.services.nix-offload-vm-3 = extraVm 3;
+    systemd.user.services.nix-offload-vm-4 = extraVm 4;
+    systemd.user.services.nix-offload-vm-5 = extraVm 5;
+    systemd.user.services.nix-offload-vm-6 = extraVm 6;
+    systemd.user.services.nix-offload-vm-7 = extraVm 7;
+    systemd.user.services.nix-offload-vm-8 = extraVm 8;
 
     systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
       Unit = {

@@ -88,8 +88,9 @@ def test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not(desktop
     machine.send_key("meta_l-v")
     desktop.launcher_ready()
     desktop.type_in("tues", selecting="Notes for Tuesday")
-    # Paste first, and Copy beside it for only copying.
-    desktop.step_in()
+    # Paste first, and Copy beside it for only copying, inside by Ctrl+],
+    # since Return pastes.
+    desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Paste")
     with desktop.told("pastes into kitty"):
         machine.send_key("ret")
@@ -271,6 +272,8 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     desktop.launcher_ready()
     desktop.type_in("forget the clip", selecting="Forget the Clipboard")
     desktop.photograph("launcher-forget-copies")
+    # Return from the find lands on it, since it can't be taken back, and a second does it.
+    desktop.land()
     with desktop.told("forgot the copies"):
         machine.send_key("ret")
     assert desktop.as_account("wl-paste --no-newline 2>&1 || true") == ""

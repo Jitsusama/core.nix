@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
-from test_driver.machine import CHAR_TO_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -138,19 +137,11 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc ?", "Z Z", "g g", "g v", "ctrl-w l", "ctrl-w h", "ctrl-w w"})
+WAITING = frozenset(
+    {"spc right", "spc left", "spc ?", "Z Z", "g g", "g v", "ctrl-w l", "ctrl-w h", "ctrl-w w"}
+)
 TRIES = 3
 TRIED = timedelta(seconds=10)
-
-
-def keyed(name: str, *, down: bool) -> Json:
-    """Give QEMU's input event for a key going down or up, by its name or its number."""
-    key = (
-        {"type": "number", "data": int(name, 16)}
-        if name.startswith("0x")
-        else {"type": "qcode", "data": name}
-    )
-    return {"type": "key", "data": {"down": down, "key": key}}
 
 
 class InTheDrawer:
@@ -196,23 +187,8 @@ class InTheDrawer:
         assert self.rows["drawer"]["cursor"] is None, self.rows["drawer"]
 
     def press(self, keys: str) -> None:
-        """Press each key named, a letter by its character and any other by QEMU's name.
-
-        Every key goes down and up in one batch of QEMU's input events, so the guest reads them
-        all at once. Sent one sendkey at a time, a loaded builder let niri draw the first key's
-        frame before it read the second, and a waiting key's 300 ms ran out between them.
-        """
-        events: list[Json] = []
-        for key in keys.split():
-            *held, pressed = CHAR_TO_KEY.get(key, key).split("-")
-            chord = [*held, pressed]
-            events += [keyed(name, down=True) for name in chord]
-            events += [keyed(name, down=False) for name in reversed(chord)]
-        client = self.desktop.machine.qmp_client
-        assert client is not None
-        # The driver says a command's arguments are strings, so the events go through JSON to
-        # reach it as they are.
-        client.send("input-send-event", json.loads(json.dumps({"events": events})))
+        """Press each key named, all in one batch, as Desktop.press_at_once does."""
+        self.desktop.press_at_once(keys)
 
     def pressed_until(
         self, keys: str, test: Callable[[Json], object], again: Callable[[], None] | None = None
@@ -343,7 +319,8 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
 ) -> None:
     """Ctrl+W l takes the keys into the drawer, and Ctrl+W h gives them back, as in Vim.
 
-    Ctrl+W w goes either way, ZZ and :q come back too, and Space and the arrows do nothing.
+    Ctrl+W w goes either way, ZZ and :q come back too, and his Neovim's Space and an arrow
+    overlay them; a bare arrow inside is its letter's move (arrows_move_in_the_drawer).
 
     Its frame takes the accent the card's gives up, and the cursor stands on the title's first
     letter with nothing scrolled, its line marked by a rule in the margin left of the letters.
@@ -353,8 +330,9 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
     There it waits until the keys go in and then takes the card's place, its title on one line,
     rather than squeezed beside it until a word breaks (VKCF3Z, 2026-11-05: "Depl/oy/log").
-    Then Space ? lists the drawer's own keys (listed_in_the_drawer), kept in this subtest so
-    the file holds to the pyramid's twenty (docs/testing.md).
+    Then Space ? lists the drawer's own keys (listed_in_the_drawer), and d c p x and q say why
+    they change nothing (refused_in_the_drawer), kept in this subtest so the file holds to the
+    pyramid's twenty (docs/testing.md).
     """
     page = InTheDrawer(desktop)
     came = page.into()
@@ -403,21 +381,79 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "" and shown["mode"] == "page")
-    # Escape at rest and q alone leave the keys where they are, and so do Space with an arrow
-    # and the arrows, which do nothing in the drawer (Joel, 2026-11-05: "remove them and rely
-    # only on vi right feeling things"): j still moves the cursor, one line.
+    # Escape at rest and q alone leave the keys where they are: j still moves the cursor, one
+    # line.
     line, letter = page.drawer()["cursor"]["line"], page.drawer()["cursor"]["letter"]
-    came = page.until(
-        "esc q spc left down left j", lambda drawer: drawer["cursor"]["line"] == line + 1
-    )
+    came = page.until("esc q j", lambda drawer: drawer["cursor"]["line"] == line + 1)
     assert came["cursor"]["letter"] == min(letter, len(came["cursor"]["says"]) - 1), came
+    arrows_move_in_the_drawer(page)
     page.back("Z Z")
-    # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way.
-    for into, back in (("ctrl-w l", ": q ret"), ("ctrl-w l", "ctrl-w h"), ("ctrl-w w", "ctrl-w w")):
+    # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way, and
+    # his Neovim's Space and an arrow over them (Joel: "leader stuff can overlay default stuff").
+    for into, back in (
+        ("ctrl-w l", ": q ret"),
+        ("ctrl-w l", "ctrl-w h"),
+        ("ctrl-w w", "ctrl-w w"),
+        ("spc right", "spc left"),
+    ):
         page.into(into)
         page.back(back)
     desktop.close_launcher()
     listed_in_the_drawer(desktop)
+    refused_in_the_drawer(desktop)
+
+
+def arrows_move_in_the_drawer(page: InTheDrawer) -> None:
+    """In the drawer, each arrow is its letter's move, a count before it too, as in a buffer.
+
+    Down and Up go a line as j and k do, and Right and Left a letter as l and h (Joel,
+    2026-11-05: "In normal mode, in a buffer, arrows move the cursor").
+    """
+    line = int(page.drawer()["cursor"]["line"])
+    page.until("2 down up", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    at = page.drawer()["cursor"]
+    right = min(int(at["letter"]) + 1, len(at["says"]) - 1)
+    page.until("right", lambda drawer: drawer["cursor"]["letter"] == right)
+    page.until("left", lambda drawer: drawer["cursor"]["letter"] == max(right - 1, 0))
+
+
+E21 = "E21: Cannot make changes"
+
+
+def refused_in_the_drawer(desktop: Desktop) -> None:
+    """In the drawer, d c p x say Vim's E21 and q says how to close, the keys staying there.
+
+    A page can't be changed (VKCF3Z's spec v2, the Reader): x, p and S say it at once, and every
+    other key Vim's nv_edit refuses there, i a o and their capitals entering no insert; d and c
+    once their motion comes, r once its letter does, and visual's change keys as its choice
+    ends, each where the line was and none as "not here", the cursor unmoved. q says what it
+    says on the rows. Escape, a key that says nothing, is pressed between, so each word is seen
+    to come of its own key.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+    line = page.drawer()["cursor"]["line"]
+
+    def said(shown: Json) -> bool:
+        return bool(
+            shown["commandSaid"] == E21 and shown["mode"] == "page" and shown["saying"] == []
+        )
+
+    at_once = ("x", "p", "S", "D", "C", "X", "P", "s", "J", "~", "i", "a", "I", "A", "o", "O")
+    waiting = ("d j", "c c", "r x", "r 5")
+    chosen = tuple(f"{v} {key}" for v, key in zip("vVvVvVvVvV", "dxcpDCXPsS", strict=True))
+    for keys in (*at_once, *waiting, *chosen, "v J", "V ~"):
+        page.pressed_until(keys, said)
+        assert page.drawer()["cursor"]["line"] == line, (keys, page.drawer())
+        page.pressed_until("esc", lambda shown: shown["commandSaid"] == "")
+    page.pressed_until(
+        "q",
+        lambda shown: (
+            shown["saying"] == ["q does nothing", ":q closes"] and shown["mode"] == "page"
+        ),
+    )
+    page.back("ctrl-w h")
+    desktop.close_launcher()
 
 
 def listed_in_the_drawer(desktop: Desktop) -> None:
@@ -697,33 +733,28 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     assert "polish() loop" not in log, "a notice's layout never settles"
     # Super+N takes the stack as its lines, which wait while it holds the
     # keys, the cursor on the card in front, the older; the newer is line
-    # 1. Tab is no key of normal's, and says so, and Backspace is h, out
-    # of nothing. :forg lets the older go unread, the cursor going on to
-    # the newer, and l steps into its acts,
-    # forgetting it first, since it opens nothing, then
-    # what it offers, as a launcher row's are (launcher/Notice.js); j
-    # chooses the next and h steps back, and Return does the one
-    # chosen, with a token to come forward, and gives the keys back.
+    # 1. Tab is no key of normal's, nor Backspace, h or l, and each says so: a card's acts are
+    # commands, never a row stepped into (Joel, 2026-11-05: "where in vi does that step into
+    # shit?"). :forg lets the older go unread, the cursor going on to the newer, whose card
+    # lists what it offers as commands under its words, and : puts them first in the menu;
+    # Tab chooses it and Return does it, with a token to come forward, giving the keys back.
     desktop.listen()
     with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
-    with desktop.told("notice says not here"):
-        machine.send_key("tab")
-    machine.send_key("backspace")
-    with desktop.told("notice forgets 1"), desktop.told("notice cursor Recording saved"):
+    for key in ["tab", "backspace", "h", "l"]:
+        with desktop.told("notice says not here"):
+            machine.send_key(key)
+    with (
+        desktop.told("notice forgets 1"),
+        desktop.told("notice cursor Recording saved"),
+        desktop.told("notice offers :play"),
+    ):
         machine.send_chars(":forg\n", delay=KEY_PACE)
-    with desktop.told("notice verb Forget It"):
-        machine.send_key("l")
-    with desktop.told("notice verb Play it"):
-        machine.send_key("j")
     desktop.photograph("notices-held-verbs")
-    with desktop.told("notice back"):
-        machine.send_key("h")
-    with desktop.told("notice verb Forget It"):
-        machine.send_key("l")
-    with desktop.told("notice verb Play it"):
-        machine.send_key("j")
+    with desktop.told("notice menu chose play"):
+        machine.send_chars(":", delay=KEY_PACE)
+        machine.send_key("tab")
     with desktop.told("lets notices go"):
         machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
@@ -749,16 +780,10 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         desktop.as_account("notify-send --expire-time=60000 'Build log' 'all green'")
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    # It offers nothing and opens nothing, so forgetting it leads its
-    # acts, then whether it's read, the stack's own, and copying what it
-    # said last (launcher/Notice.js), which keeps the keys.
-    with desktop.told("notice verb Forget It"):
-        machine.send_key("l")
-    for verb in ["Read", "Forget Them All", "All the Notices", "Copy What It Said"]:
-        with desktop.told(f"notice verb {verb}"):
-            machine.send_key("j")
+    # It offers nothing, so its card lists no command, and :y copies what it said, keeping
+    # the keys.
     with desktop.told("copied card Build log"):
-        machine.send_key("ret")
+        machine.send_chars(":y\n", delay=KEY_PACE)
     assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
     # yy copies it too, as Vim yanks a line.
     desktop.as_account("wl-copy nothing")
@@ -773,7 +798,7 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         found_chosen_and_undone(desktop, scale)
     desktop.as_account("niri msg output winit scale 1")
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
@@ -892,41 +917,70 @@ def test_a_click_on_a_notice_opens_what_its_about_with_a_token_to_come_forward(
 def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desktop) -> None:
     """A notice is signed by the name Joel knows what sent it by, never its program's.
 
-    Its pictures at both of Joel's scales, alone, held and stepped into, are look 3's notice
-    (2026-11-03), for a person to measure its room by.
+    Its pictures at both of Joel's scales, alone and held with its acts listed as commands, are
+    look 3's notice (2026-11-03), for a person to measure its room by. So are three notices as
+    one stack, the front card whole and two edges beneath it, each starting on the hairline of
+    the card before it, and what's playing the frames rung above them (docs/design.md, The
+    Ladder).
     """
     machine = desktop.machine
-    for scale in JOELS_SCALES:
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-        with desktop.told("shows card Tokens Run Out in About an Hour"):
-            desktop.as_account(
-                "notify-send --app-name=tokens --expire-time=60000"
-                " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
-                " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
-                " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
-                " < /dev/null &"
-            )
-        signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
-        assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
-        # Named without the point, which the driver would take for where
-        # the name ends and its kind begins.
-        named = scale.replace(".", "-")
-        desktop.photograph(f"notice-at-{named}")
-        with desktop.told("keys notices"):
-            machine.send_key("meta_l-n")
-        desktop.photograph(f"notice-held-at-{named}")
-        with desktop.told("notice verb Open"):
-            machine.send_key("right")
-        desktop.photograph(f"notice-stepped-at-{named}")
-        with desktop.told("notice back"):
-            machine.send_key("esc")
-        with desktop.told("lets notices go"):
-            machine.send_key("esc")
+    try:
+        for scale in JOELS_SCALES:
+            signed_and_stacked_at(desktop, scale)
+    finally:
+        desktop.as_account("systemctl --user stop player || true")
         desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.as_account("qs ipc call notices seen")
     desktop.as_account("niri msg output winit scale 1")
+
+
+def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
+    """Sign one notice and photograph it, held, as a stack of three, and under what's playing."""
+    machine = desktop.machine
+    desktop.as_account(f"niri msg output winit scale {scale}")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    with desktop.told("shows card Tokens Run Out in About an Hour"):
+        desktop.as_account(
+            "notify-send --app-name=tokens --expire-time=60000"
+            " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
+            " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
+            " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
+            " < /dev/null &"
+        )
+    signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
+    assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
+    # Named without the point, which the driver would take for where the
+    # name ends and its kind begins.
+    named = scale.replace(".", "-")
+    desktop.photograph(f"notice-at-{named}")
+    with desktop.told("keys notices"), desktop.told("notice offers :pause"):
+        machine.send_key("meta_l-n")
+    desktop.photograph(f"notice-held-at-{named}")
+    with desktop.told("lets notices go"):
+        machine.send_chars(":q\n")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    for summary, body in [
+        ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
+        ("Backup Finished", ""),
+        ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used."),
+    ]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(
+                f"notify-send --expire-time=60000 {shlex.quote(summary)} {shlex.quote(body)}"
+            )
+    desktop.photograph(f"notices-stacked-at-{named}")
+    # Collected once it ends, since a stopped player exits failed and would
+    # keep the unit's name from the next scale's.
+    with desktop.told("drawn notifications"):
+        desktop.as_account(
+            "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
+            f" --loop {desktop.values['track']}"
+        )
+    desktop.photograph(f"notices-playing-at-{named}")
+    desktop.as_account("systemctl --user stop player")
+    desktop.as_account("qs ipc call notices putAway")
 
 
 def test_a_notice_from_calls_is_signed_as_a_call_and_wears_a_calls_glyph(desktop: Desktop) -> None:
@@ -980,10 +1034,10 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
-def test_a_notices_l_holds_what_return_does_on_its_card_and_in_the_launcher(
+def test_a_notices_commands_are_what_its_launcher_row_holds(
     desktop: Desktop,
 ) -> None:
-    """A notice's l holds what Return does first, on its card and in the launcher."""
+    """A notice's commands, on its card and in its menu, are what its launcher row holds."""
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.listen()
@@ -992,23 +1046,27 @@ def test_a_notices_l_holds_what_return_does_on_its_card_and_in_the_launcher(
             "notify-send --expire-time=60000 --action=default=Open --action=play='Play it'"
             " 'Thread with Ana' 'see it' > /tmp/answer 2>&1 < /dev/null &"
         )
-    with desktop.told("keys notices"):
+    # Its card lists what it offers, and : its menu with Return's Open first, then Play it.
+    with desktop.told("keys notices"), desktop.told("notice offers :play"):
         machine.send_key("meta_l-n")
-    with desktop.told("notice verb Open"):
-        machine.send_key("l")
-    with desktop.told("notice verb Play it"):
-        machine.send_key("j")
-    with desktop.told("notice back"):
-        machine.send_key("h")
+    with desktop.told("notice menu chose open"):
+        machine.send_chars(":", delay=KEY_PACE)
+        machine.send_key("tab")
+    with desktop.told("notice menu chose play"):
+        machine.send_key("tab")
+    with desktop.told("notice mode normal"):
+        machine.send_key("esc")
     # :e Notices hands on to the history, which opens on its first row,
-    # the newest notice, as every place opens on its first; l steps into
-    # its acts from normal mode, and they hold the same.
+    # the newest notice, as every place opens on its first. Its acts are
+    # commands, not parts (VKCF3Z, 2026-11-05), so the foot offers no
+    # Ctrl+] into them, and Return opens it as its card's does.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
     )
-    desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
+    desktop.normal()
+    told = desktop.showing()["selected"]["told"]
+    assert "Ctrl+] in" not in told, f"a notice offers Ctrl+] into its acts: {told}"
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
 
@@ -1077,9 +1135,9 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
             and (shown["drawer"]["title"], shown["drawer"]["body"]) == ("Quarry take", "z.mp4")
         )
     )
-    # With nothing to open or go to, what it offers leads; copying what it
-    # said is last.
-    desktop.step_in()
+    # With nothing to open or go to, Return steps in, and what it offers
+    # leads; copying what it said is last.
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["Play it"] and shown["rows"][-1:] == ["Copy What It Said"]
@@ -1091,8 +1149,8 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.tokened()
 
 
-def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -> None:
-    """The notices sit a step inside the window under them."""
+def test_the_notices_sit_the_frames_rung_inside_the_window_under_them(desktop: Desktop) -> None:
+    """The notices sit the frames rung inside the window under them, the screen rung at least."""
     machine = desktop.machine
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
@@ -1135,7 +1193,7 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     retry(settled, timeout=timedelta(seconds=15))
     with desktop.told("shows card Inside the window"):
         desktop.as_account(
-            "notify-send --expire-time=60000 'Inside the window' 'a step from its edges'"
+            "notify-send --expire-time=60000 'Inside the window' 'a frame on a frame'"
         )
     desktop.photograph("notice-inside")
     # The nearest window wholly on screen, as the shell picks it.
@@ -1147,17 +1205,18 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     ]
     whole = [(p, s) for p, s in tiles if p[0] >= 0 and p[0] + s[0] <= screen]
     (left, top), (width, _) = min(whole, key=lambda t: (-(t[0][0] + t[1][0]), t[0][1]))
-    step = space["s"]
+    step, edge = space["rung"]["frames"], space["rung"]["screen"]
+    right = int(max(screen - (left + width) + step, edge) + 0.5)
     wanted_at = [
-        int(screen - (left + width) + step + 0.5),
-        int(max(top, 0) + step + 0.5),
-        min(440, int(width - 2 * step)),
+        right,
+        int(max(top + step, edge) + 0.5),
+        min(440, int(screen - right - (left + step))),
     ]
     notices_at = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
     ).split()[-3:]
-    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't a step inside the window"
+    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't inside the window"
     desktop.as_account("qs ipc call notices putAway")
     desktop.as_account(f"niri msg action close-window --id {under['id']}")
     machine.wait_until_fails(
@@ -1193,14 +1252,50 @@ def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
         machine.send_key("meta_l-n")
     # Lines: Bravo two, Bravo one, Alpha two, Alpha one. Chat's run is the first two.
     pressed_and_told(desktop, EVERY_HELD_KEY)
-    # Every way to let go: ZZ, Space w, Super+N, Escape at rest and :q.
-    letting_go: list[str | tuple[str, ...]] = ["ZZ", " w", ("meta_l-n",), ("esc",), ":q\n"]
+    # Every way to let go: ZZ, Space w, Super+N and :q, never Escape (Joel, 2026-11-05: "fuck
+    # escape quitting").
+    letting_go: list[str | tuple[str, ...]] = ["ZZ", " w", ("meta_l-n",), ":q\n"]
     for keys in letting_go:
         pressed_and_told(desktop, [(keys, "lets notices go"), (("meta_l-n",), "keys notices")])
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    # Twelve, more than the eight lines held notices show, scroll as Vim's lines do (Joel,
+    # 2026-11-05: "I can't scroll up and down in a notices list now").
+    for number in range(1, 13):
+        with desktop.told(f"shows card Feed {number}"):
+            desktop.as_account(
+                f"notify-send --app-name=Feed --expire-time=60000 'Feed {number}' 'words'"
+            )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    pressed_and_told(desktop, HELD_SCROLLS)
+    with desktop.told("notice view from 5"):
+        desktop.wheel(0.85, 0.15, 3)
+    with desktop.told("notice view from 2"):
+        desktop.wheel(0.85, 0.15, -1)
+    with desktop.told("lets notices go"):
+        machine.send_chars(":q\n")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+
+
+# Keys pressed on twelve held notices, eight shown with three kept from the view's edges: the
+# arrows as j and k, Ctrl+E and Ctrl+Y a line, and zz zt zb about the cursor, which a scroll
+# keeps in view. Feed 12 is line 1, and the cursor opens on Feed 1, the oldest.
+HELD_SCROLLS: list[tuple[str | tuple[str, ...], str]] = [
+    ("gg", "notice cursor Feed 12"),
+    ("G", "notice cursor Feed 1"),
+    ("gg", "notice cursor Feed 12"),
+    (("down",), "notice cursor Feed 11"),
+    (("up",), "notice cursor Feed 12"),
+    (("ctrl-e",), "notice view from 2"),
+    (("ctrl-y",), "notice view from 1"),
+    ("zt", "notice view from 2"),
+    ("zb", "notice view from 1"),
+    ("zz", "notice view from 2"),
+]
 
 
 # Keys pressed on the held notices of test_every_held_key_does_what_vims_does, each with what
@@ -1234,15 +1329,17 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     ("q", "notice says q does nothing \u00b7 :q closes"),
     ("n", "notice says not here"),
     ("c", "notice says not here"),
-    # No arrow does anything in normal (Joel, 2026-11-05: "rely only on vi right feeling
-    # things"), so one says so as any key with no meaning does.
-    (("down",), "notice says not here"),
+    # An arrow is its letter's motion (Joel, 2026-11-05), and Right's l steps into nothing
+    # here, so it says so as any key with no meaning does.
+    (("right",), "notice says not here"),
     (" ul", "notice numbers absolute"),
     (" ul", "notice numbers relative"),
     # Visual: o goes to its other end, Escape ends it, gv brings it back, x is done with it.
-    ("Vj", "notice selects 2"),
+    # The foot's start names each mode in three capitals, NOR again once it ends.
+    ("V", "notice shows VIS"),
+    ("j", "notice selects 2"),
     ("o", "notice cursor Bravo two"),
-    (("esc",), "notice mode normal"),
+    (("esc",), "notice shows NOR"),
     ("gv", "notice mode visual"),
     ("x", "notice done 2"),
     ("u", "notice brought back 2"),
@@ -1257,17 +1354,21 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     (":set rnu?\n", "notice says   relativenumber"),
     # The find: i opens it, it narrows as it's typed, Down chooses, and Backspace past its
     # start leaves it.
-    ("iAlpha", "notice finds Alpha in 2"),
+    ("i", "notice shows FND"),
+    ("Alpha", "notice finds Alpha in 2"),
     (("down",), "notice cursor Alpha one"),
     (("backspace",) * 6, "notice mode normal"),
     # The menu: Tab chooses its lines, Ctrl+E puts it away, Escape drops the line.
-    (":", "notice mode command"),
+    (":", "notice shows CMD"),
     (("tab",), "notice menu chose delete"),
     (("ctrl-e", "esc"), "notice mode normal"),
     # F1 lists the keys, j scrolls them, and Escape puts them away.
     (("f1",), "notice lists keys"),
     ("j", "notice lists keys from 2"),
     (("esc",), "notice hides keys"),
+    # At rest Escape does nothing, as Vim's, and never lets them go: the notices are still
+    # held for the key after it.
+    (("esc", "right"), "notice says not here"),
 ]
 
 
@@ -1301,14 +1402,14 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
         )
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    with desktop.told("notice mode insert"):
+    with desktop.told("notice mode insert"), desktop.told("notice shows INS"):
         machine.send_chars(":reply\n", delay=KEY_PACE)
     machine.send_chars("on my way", delay=KEY_PACE)
     for scale in JOELS_SCALES:
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.photograph(f"notice-reply-at-{scale.replace('.', '-')}")
     desktop.as_account("niri msg output winit scale 1")
-    with desktop.told("notice mode prompt"):
+    with desktop.told("notice mode prompt"), desktop.told("notice shows NOR"):
         machine.send_key("esc")
     with desktop.told("notice mode insert"):
         machine.send_chars("bcw", delay=KEY_PACE)
@@ -1319,7 +1420,7 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
         timeout=timedelta(seconds=10),
     )
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 

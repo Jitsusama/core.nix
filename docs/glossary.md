@@ -213,7 +213,7 @@ or a copy, can be opened, copied or forgotten.
 | turn on | the action starting a setting, a radio or a light | | |
 | turn off | the action stopping a setting, a radio or a light | | |
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
-| foot | the launcher's bottom line: the time, the battery and what the keys do | | `foot` |
+| foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `WhatsOn.qml` |
 | Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
@@ -400,6 +400,9 @@ The words core.nix is built from. Never a launcher place.
 | sans face | the theme's sans-serif, only for other people's programs that draw their own interface | proportional face | `jitsusama.theme.font.sans` |
 | step | one size on the theme's type scale, by its power of the ratio, such as large | | `jitsusama.theme.type` |
 | level | one rank of text on the desktop: its face, step, weight, case and colour together, such as Name or Note | style, text style | `jitsusama.theme.type.levels`, `Theme.level` |
+| pitch | how far apart two lines of one thing at a level sit, baseline to baseline | | `jitsusama.theme.type.levels.<level>.pitch`, `Theme.level.<level>.pitch` |
+| rung | the space one level of structure sits apart by, wider than the rung inside it, such as items or frames | | `jitsusama.theme.space.rung`, `Theme.space.rung` |
+| beat | half the large pitch, which every space between blocks down a surface is a whole number of | | `jitsusama.theme.space.beat`, `Theme.space.beat` |
 | script face | Noto, script by script, for the letters the other faces lack, with a cut a script beside the serif and mono faces | | `jitsusama.theme.font.script` |
 | account | the account on a machine that home-manager configures | | `home-manager.users.<account>` |
 

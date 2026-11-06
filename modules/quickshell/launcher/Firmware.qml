@@ -159,6 +159,8 @@ Provider {
         const final = device.restarts ? notes["final-at-restart"] : notes.final;
         const sure = () => [thing({
             key: `${id}:sure:${device.id}`,
+            // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+            sure: true,
             name: sureOf(device),
             note: final,
             verb: Words.verb(id),

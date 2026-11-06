@@ -12,9 +12,15 @@ volume+=5; a bang, the other way, as :skip! goes back and :w! replaces;
 or a range of every row, %, as :%forg, only on an act that takes rows.
 A verb Return alone does, as Open the Marked on what's gathered, says so
 as the key language's do and names no command, since a command that
-lists, as :args, can't also open. Fails, naming each, on a verb with no
-command or one the language hasn't got, a :set with nothing to set, an
-argument with spaces around it, a range on an act that takes none, a
+lists, as :args, can't also open. A row that's an act itself, as Lock
+or Wi-Fi Off, names its command the same way where the language has one
+for it, and is held as a verb is. A row knows its state, so a :set
+names the state it sets, as :set wifi, never a toggle, as wifi! or
+invwifi, and a switch whose words have states names each state's own,
+since they turn it opposite ways. Fails, naming each, on a verb with no
+command or one the language hasn't got, a :set with nothing to set or a
+toggle, a switch's state naming nothing of its own, an argument with
+spaces around it, a range on an act that takes none, a
 verb Return alone does that names a command too, and two verbs on one
 row that the line can't tell apart, since two acts on a row differ by
 what follows the command, never by order (VKCF3Z's spec, The Command
@@ -23,6 +29,7 @@ it's there for, or refuse what sits beside it.
 """
 
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -39,6 +46,14 @@ ON = "on"
 EVERY_ROW = "%"
 # The key language's act for Return, which a verb it alone does names.
 RETURN = "do"
+# Vim's ways of toggling a switch, :set wifi! and :set invwifi, which say
+# nothing of which way it goes.
+TOGGLES = re.compile(r"^inv[a-z]+$|!$")
+# A switch turned one way, :set wifi or :set nowifi, which a row in its
+# other state turns the other.
+SWITCH = re.compile(r"^[a-z]+$")
+# What sets an option: the machine's, or with :setl that of what it's on.
+SETS = {"set", "setlocal"}
 
 
 def commands_of(language: Entry) -> Commands:
@@ -79,13 +94,33 @@ def strays(verb: Entry, commands: Commands) -> list[str]:
     out = []
     if command not in commands:
         out.append(f"{name}'s :{command} is no act's in the key language.")
-    if command == "set" and "argument" not in verb:
-        out.append(f"{name}'s :set sets nothing.")
+    if command in SETS and "argument" not in verb:
+        out.append(f"{name}'s :{command} sets nothing.")
     argument = verb.get("argument")
     if argument is not None and (argument != argument.strip() or not argument):
         out.append(f"{name}'s argument {argument!r} isn't one word or more, spaces trimmed.")
     if "range" in verb and (verb["range"] != EVERY_ROW or not commands.get(command)):
         out.append(f"{name}'s range {verb['range']!r} isn't every row of an act that takes rows.")
+    if command in SETS:
+        out += toggles(verb)
+    return out
+
+
+def toggles(verb: Entry) -> list[str]:
+    """Say where a :set or :setl row toggles, or a switch's state names nothing of its own."""
+    name = verb["id"]
+    command = verb["command"]
+    said = {"": verb, **verb.get("states", {})}
+    out = [
+        f"{name}{f' {state}' if state else ''} toggles, :{command} {words['argument']}."
+        for state, words in said.items()
+        if TOGGLES.search(str(words.get("argument", "")))
+    ]
+    out += [
+        f"{name} {state} names no :{command} of its own."
+        for state, words in verb.get("states", {}).items()
+        if "argument" not in words and SWITCH.match(str(verb.get("argument", "")))
+    ]
     return out
 
 
@@ -93,6 +128,10 @@ def unnamed(vocabulary: Entry, commands: Commands) -> list[str]:
     """Say every verb whose command strays, and two a row can't tell apart."""
     verbs = [t for t in vocabulary["things"] if str(t.get("id", "")).startswith("verb:")]
     out = [said for verb in verbs for said in strays(verb, commands)]
+    # A row that's an act itself, as Lock, names its command where the
+    # language has one for it, held as a verb's is.
+    rows = [t for t in vocabulary["things"] if t not in verbs and "command" in t]
+    out += [said for row in rows for said in strays(row, commands)]
     seen: dict[tuple[str, str], str] = {}
     for verb in verbs:
         if "command" not in verb:
@@ -104,8 +143,8 @@ def unnamed(vocabulary: Entry, commands: Commands) -> list[str]:
     return out
 
 
-# A language of two acts, one taking rows, for the check's own strays.
-OWN: Commands = {"forget": True, "set": False}
+# A language of three acts, two taking rows, for the check's own strays.
+OWN: Commands = {"forget": True, "set": False, "setlocal": True}
 
 # What each rule is there to refuse, one stray each, so a rule that stops
 # refusing fails the check rather than passing everything.
@@ -128,6 +167,48 @@ REFUSED: list[tuple[str, list[Entry]]] = [
     (
         "a verb Return alone does naming a command",
         [{"id": "verb:bad", "in": "x", "act": "do", "command": "forget"}],
+    ),
+    (
+        "a row that's an act naming a command no act has",
+        [{"id": "session:bad", "command": "frob"}],
+    ),
+    (
+        "a row's :set setting nothing",
+        [{"id": "session:bad", "command": "set"}],
+    ),
+    (
+        "a :set toggling",
+        [{"id": "verb:bad", "in": "x", "command": "set", "argument": "wifi!"}],
+    ),
+    (
+        "a :setl toggling",
+        [{"id": "verb:bad", "in": "x", "command": "setlocal", "argument": "mute!"}],
+    ),
+    (
+        "a :set toggling as inv does",
+        [{"id": "session:bad", "command": "set", "argument": "invwifi"}],
+    ),
+    (
+        "a state's :set toggling",
+        [
+            {
+                "id": "session:bad",
+                "command": "set",
+                "argument": "nowifi",
+                "states": {"off": {"argument": "wifi!"}},
+            }
+        ],
+    ),
+    (
+        "a :set row whose state names nothing of its own",
+        [
+            {
+                "id": "session:bad",
+                "command": "set",
+                "argument": "nowifi",
+                "states": {"off": {"name": "Wi-Fi On"}},
+            }
+        ],
     ),
     (
         "two verbs alike on a row",
@@ -161,6 +242,21 @@ ALLOWED: list[Entry] = [
     {"id": "verb:on:waiting:go", "in": ON, "command": "forget"},
     {"id": "verb:on:playing:go", "in": ON, "command": "forget"},
     {"id": "thing:not-a-verb", "in": "x"},
+    {
+        "id": "session:good",
+        "command": "set",
+        "argument": "nowifi",
+        "states": {"off": {"argument": "wifi"}},
+    },
+    {"id": "session:invite", "command": "set", "argument": "invite=all"},
+    {
+        "id": "verb:i",
+        "in": "x",
+        "command": "set",
+        "argument": "bluetooth+={name}",
+        "states": {"unpaired": {"name": "Pair and Connect It"}},
+    },
+    {"id": "verb:skip", "in": "x", "command": "forget", "bang": True, "argument": "all"},
 ]
 
 

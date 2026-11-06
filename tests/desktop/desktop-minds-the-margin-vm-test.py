@@ -90,9 +90,9 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.type_in("keep awake")
     desktop.photograph("launcher-keep-awake")
-    # Keeping it awake changes something, so Return would stay; the right
-    # arrow then Return does it and closes.
-    desktop.step_in()
+    # Keeping it awake changes something, so Return would stay; Ctrl+]
+    # then Return does it and closes.
+    desktop.follow()
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=timedelta(seconds=10))
@@ -114,6 +114,8 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.photograph("launcher-home-awake")
     desktop.type_in("let it sleep")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
@@ -337,6 +339,8 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
         print(f"clicked at {glyph} of the screen")
         print(desktop.as_account("niri msg layers; niri msg --json focused-output"))
         raise
+    # From the find, Return lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
@@ -353,8 +357,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("do not disturb")
-    # The right arrow then Return holds them for an hour and closes.
-    desktop.step_in()
+    # Ctrl+] then Return holds them for an hour and closes.
+    desktop.follow()
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.wait_for_surface("margin")
@@ -364,10 +368,10 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
         desktop.as_account("notify-send 'Held back' 'until it ends'")
     machine.fail(desktop.in_session(NOTICES))
     desktop.photograph("margin-quiet")
-    # Its row ends it, and a step in offers the rest, what's held last:
+    # Its row ends it, and Ctrl+] offers the rest, what's held last:
     # An Hour More comes first only when it ends by itself.
     now_down_to(desktop, "Do Not Disturb")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
     desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
@@ -375,6 +379,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.photograph("launcher-held")
     desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")
+    # From the find, Return lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     desktop.as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
@@ -493,6 +499,9 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
             thing["reads"].startswith("Microphone Muted \u00b7 yes") for thing in shown["things"]
         )
     )
+    # A switch changes how things stand, so from the find Return lands on it, and the
+    # second flips it.
+    desktop.land()
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))

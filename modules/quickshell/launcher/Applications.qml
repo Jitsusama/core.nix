@@ -190,7 +190,9 @@ Provider {
             verb: Words.verb(key, state),
             name: Words.name(key, state),
             glyph: Words.glyph(key, state),
-            hue: "action"
+            hue: "action",
+            // Its words' state, so the : line names the command for it.
+            wordState: state
         }, Words.ending(key), fields));
     }
 
@@ -274,6 +276,8 @@ Provider {
         return said(key, "", {
             targets: () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 verb: Words.verb(key),
                 name: `${Words.of(key).sure}, Closing ${closing}`,
                 glyph: Words.glyph(key),
@@ -422,6 +426,43 @@ Provider {
         }
     }
 
+    // Its own options, which :setl sets as Vim's :setlocal sets a buffer's
+    // (VKCF3Z, 2026-11-05): whether its streams are muted, and how loud,
+    // on them alone, never the machine's output, which :set's are
+    // (Sound.qml's setOptions). A level set or raised is meant to be
+    // heard, so it unmutes, as its rows' do.
+    function muteOption(streams) {
+        return {
+            kind: "switch",
+            now: () => provider.muted(streams),
+            set: to => {
+                for (const node of provider.live(streams))
+                    node.audio.muted = to;
+                return "";
+            }
+        };
+    }
+
+    function streamOptions(streams) {
+        return {
+            mute: muteOption(streams),
+            volume: {
+                kind: "number",
+                least: 0,
+                most: 100,
+                now: () => Math.round(provider.level(streams) * 100),
+                set: (to, change) => {
+                    for (const node of provider.live(streams)) {
+                        node.audio.volume = to / 100;
+                        if (change?.how !== "subtract")
+                            node.audio.muted = false;
+                    }
+                    return "";
+                }
+            }
+        };
+    }
+
     // Its Microphone, while it records: whether it's heard, saying so, and
     // a step in whether what it records is Muted, one switch saying yes or
     // no as a device's is (Sound.qml's mutedSwitch).
@@ -430,6 +471,7 @@ Provider {
             : provider.soundSaid("recording");
         const row = said("program:microphone", muted(recorders) ? "muted" : "", {
             hue: "program",
+            options: { mute: provider.muteOption(recorders) },
             targets: () => [provider.said("verb:program:mute",
                 provider.muted(recorders) ? "muted" : "", {
                     key: "verb:program:mute:microphone",
@@ -452,6 +494,7 @@ Provider {
     function sound(streams, recorders) {
         const row = said("program:sound", "", {
             hue: "program",
+            options: streams.length === 0 ? undefined : provider.streamOptions(streams),
             targets: () => {
                 const stepping = by => ({
                     stays: true,
@@ -1003,12 +1046,15 @@ Provider {
         row.weight = provider.weight / 2;
         // One that asks, as Join by Code does, goes to its ask inside the
         // program on Return and the right arrow alike, since what it asks
-        // for is typed there.
+        // for is typed there. Going there changes nothing yet, so Return
+        // from the find goes at once rather than landing, though its verb,
+        // as join, may be one Catalogue.js guesses at.
         if (act.given)
             return Object.assign(row, {
                 trail: trail.concat([act.key]),
                 spot: "",
                 stays: true,
+                changes: false,
                 run: () => provider.launcher?.goTo(row)
             });
         return Object.assign(row, { inside: { trail: trail, spot: act.key }, run: act.run });

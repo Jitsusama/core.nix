@@ -123,7 +123,7 @@ fn each_holder_says_whose_it_is_and_why_the_guard_may_clear_none_of_it() {
     ];
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
     let kept = [(PathBuf::from("/home/u/trees/fix-1/target"), Use::Busy(4242))];
-    let said = holders(&measured, &offered, &kept, &Grown::new(), Some(home));
+    let said = holders(&measured, Some(&offered), &kept, &Grown::new(), Some(home));
     let says: Vec<_> = said.iter().map(|holder| holder.says.as_str()).collect();
     assert_eq!(
         says,
@@ -148,12 +148,30 @@ fn each_holder_says_whose_it_is_and_why_the_guard_may_clear_none_of_it() {
     assert_eq!(json["bytes"], 30 * GIB);
 }
 
+// Measured before the guard's first survey, which may be six hours off
+// on a disk well under its budget, a holder said nothing in it was a
+// build or cache the guard clears, of a tree full of them.
+#[test]
+fn a_holder_measured_before_any_survey_says_the_guard_hasnt_looked_yet() {
+    let measured = [(
+        place("/home/u/trees/fix-1", Kind::Worktree, "fix-1"),
+        40 * GIB,
+    )];
+    let said = holders(&measured, None, &[], &Grown::new(), None);
+    assert!(!said[0].clearable);
+    assert_eq!(
+        said[0].says,
+        "The worktree fix-1 holds 40.0 GiB; the guard hasn't yet looked at what of it \
+         it could clear."
+    );
+}
+
 #[test]
 fn only_the_ten_biggest_are_listed() {
     let measured: Vec<_> = (1..=12)
         .map(|n| (place(&format!("/x/{n}"), Kind::Other, "x"), n * GIB))
         .collect();
-    let said = holders(&measured, &[], &[], &Grown::new(), None);
+    let said = holders(&measured, Some(&[]), &[], &Grown::new(), None);
     assert_eq!(said.len(), 10);
     assert_eq!(said[0].bytes, 12 * GIB);
     assert_eq!(said[9].bytes, 3 * GIB);
@@ -167,7 +185,7 @@ fn a_kept_holder_says_his_reason_and_says_the_guard_s_own_once_let_go() {
         20 * GIB,
     )];
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
-    let mut said = holders(&measured, &offered, &[], &Grown::new(), Some(home));
+    let mut said = holders(&measured, Some(&offered), &[], &Grown::new(), Some(home));
     let judged = said.clone();
     assert_eq!(said[0].kept, None);
     assert_eq!(said[0].clears, 12 * GIB);
@@ -223,7 +241,7 @@ fn a_holder_says_how_much_a_clear_takes_now_and_whether_the_rest_waits() {
         offered("/home/u/trees/fix-1/scratch", 3 * GIB, false),
         offered("/home/u/trees/fix-2/scratch", 4 * GIB, false),
     ];
-    let said = holders(&measured, &offered, &[], &Grown::new(), Some(home));
+    let said = holders(&measured, Some(&offered), &[], &Grown::new(), Some(home));
     assert_eq!(
         said[0].clears,
         6 * GIB,
@@ -245,7 +263,7 @@ fn a_holder_being_cleared_says_so_until_its_clear_ends() {
         20 * GIB,
     )];
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
-    let mut said = holders(&measured, &offered, &[], &Grown::new(), None);
+    let mut said = holders(&measured, Some(&offered), &[], &Grown::new(), None);
     assert!(!said[0].clearing);
     let asked = [PathBuf::from("/home/u/trees/fix-2/target")];
     mark(&mut said, &Keeps::new(), &asked, None);
@@ -277,7 +295,7 @@ fn a_holder_says_how_much_it_grew_in_a_day_from_a_gibibyte() {
             over,
         },
     );
-    let said = holders(&measured, &[], &[], &grew, Some(home));
+    let said = holders(&measured, Some(&[]), &[], &grew, Some(home));
     assert_eq!(
         said[0].says,
         "~/src/app holds 10.0 GiB; nothing in it is a build or cache the guard clears. It \
@@ -318,7 +336,7 @@ fn a_holder_growing_fast_is_listed_beyond_the_ten_biggest() {
             over,
         },
     );
-    let said = holders(&measured, &[], &[], &grew, None);
+    let said = holders(&measured, Some(&[]), &[], &grew, None);
     let listed: Vec<u64> = said.iter().map(|holder| holder.bytes / GIB).collect();
     assert_eq!(listed, [21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 10]);
 }

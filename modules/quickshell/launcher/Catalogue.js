@@ -74,10 +74,94 @@ function ends(row) {
 // something, as one that stays to show its new state does (Joel,
 // 2026-10-26), nor one that ends or disrupts, nor a place, which Return
 // steps into, since Return in visual never changes anything (Y2YBTS's
-// yes, 2026-11-04).
-function opens(row) {
+// yes, 2026-11-04); and never one the key language says changes, given
+// the row's command as changesState is, so Return on one row and over a
+// selection agree.
+function opens(row, command = {}) {
     return typeof row.run === "function" && kindOf(row) === "action" && !row.stays
-        && !ends(row) && !disruptive(row);
+        && !ends(row) && !disruptive(row) && !changesState(row, command);
+}
+
+// The commands the guess holds quiet, whatever the row: it only copies,
+// goes somewhere, finds, shows or holds more. The key language names none
+// of them yet (modules/keys/language.toml); once it does, its flag decides,
+// so tests/catalogue.qml pins the list, which only shrinks.
+const quiet = ["copy", "find", "go", "more", "see", "show"];
+
+// The command a row is named by, as the command line names its act
+// (Commands.js's actLine): the one its words give it (`said`), or else its
+// verb's (`verbal`, Commands.js's commandOf); and the key language's flags
+// for it from `table`, where the language names it. A row whose verb alone
+// says close, as an answer with nothing to copy or a bind with nothing to
+// run, only closes the launcher, which the language calls :quit; a
+// window's Close It has its words' :close.
+function named(said, verbal, table) {
+    const command = said ?? (verbal === "close" ? "quit" : verbal);
+    return { command, flags: table[command] };
+}
+
+// Whether doing it changes how things stand (the vi-paradigm spec's Return),
+// as the key language flags the command the row is named by (`command`,
+// its command and the language's flags for it, as named gives them), so
+// Return and d agree on every row. Return from the find line
+// lands on such a row rather than doing it, so typing a name and Return
+// can only ever show it. A row may say so itself, whatever its command.
+// Where the language names no command for the row, as for the many whose
+// command is read from their name, it's guessed until VCSELW's language
+// names it: it ends something or can't be taken back, or it's done and
+// keeps the launcher, as a network's join is, unless its command is one
+// the guess holds quiet.
+function changesState(row, command = {}) {
+    // A row that says it changes nothing, whatever its verb, as Ask's
+    // question or a file picker's mark, which only picks; and a figure,
+    // which only says a value, its Return copying it or, with nothing to
+    // copy yet, closing the launcher, never the :close of a window its
+    // verb would name; and one that asks for words first, whose Return
+    // only asks, whatever the words then do.
+    if (!row || row.gone || row.changes === false || row.figure === true
+        || typeof row.given === "function") {
+        return false;
+    }
+    if (row.changes === true) {
+        return true;
+    }
+    if (command.flags !== undefined) {
+        return command.flags.changes === true;
+    }
+    if (ends(row) || disruptive(row)) {
+        return true;
+    }
+    return row.stays === true && typeof row.run === "function"
+        && !quiet.includes(command.command ?? "") && !row.spot && !row.from
+        && !(row.verbs && row.targets);
+}
+
+// Whether Return from the find does a row's act though it changes
+// something, rather than landing on it: one holding its own acts whose
+// command starts something (the key language's starts), as a meeting's
+// row joins from ten minutes before it and sees it before then, which the
+// row says, not its act (VKCF3Z, 2026-11-05). One with no acts of its
+// own, as the clipboard's Join the Call, is the act alone, which Return
+// only lands on.
+function startsItself(row, command = {}) {
+    return !!row && row.verbs !== undefined && command.flags?.starts === true;
+}
+
+// A step's rows with a quiet one first, where the first would change
+// something: the first row inside a thing never changes state (See It,
+// Copy, a part), so a Return that steps in and a second Return after it
+// only ever show. Where every row changes something, they keep their order.
+// `naming` gives each row's command as changesState takes it (named).
+function quietFirst(inside, naming) {
+    const changes = one => changesState(one, naming(one));
+    if (inside.length < 2 || !changes(inside[0])) {
+        return inside;
+    }
+    const still = inside.findIndex(one => !changes(one));
+    if (still < 0) {
+        return inside;
+    }
+    return [inside[still]].concat(inside.slice(0, still), inside.slice(still + 1));
 }
 
 // Whether it's a place, which is opened, or an action, which is done: a
@@ -153,8 +237,9 @@ function closingFirst(row, inside) {
     const verb = verbOf(row);
     const said = verb.toLowerCase();
     const already = said === "" ? -1 : inside.findIndex(one => saysAct(one, said));
+    // It no longer keeps the launcher, but it changes what the row did.
     const act = Object.assign({}, already >= 0 ? inside[already] : ownAct(row, verb),
-        { stays: false });
+        { stays: false, changes: true });
     return [act].concat(inside.filter((_one, at) => at !== already));
 }
 

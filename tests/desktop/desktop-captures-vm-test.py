@@ -261,7 +261,7 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
     newest = desktop.machine.succeed(f"ls -t {desktop.pictures}/*.png | head -1").strip()
     desktop.capture()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == newest.rsplit("/", 1)[1]
@@ -563,7 +563,9 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     desktop.type_in("stop", selecting="Stop Recording")
     assert desktop.showing()["selected"]["side"] == "a video from the camera"
     since = desktop.mark()
-    # It stops as Return would, and the viewfinder takes the camera back.
+    # From the find, Return lands on it, since stopping changes how things stand, and the
+    # second stops it as Return would; the viewfinder takes the camera back.
+    desktop.land()
     with desktop.told("shows card Video saved", timeout=WAKING):
         machine.send_key("ret")
     machine.wait_until_fails(f"test -e {state}", timeout=timedelta(seconds=10))
@@ -588,7 +590,9 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
 
     The shell restarts with every switch, and a recording running through one once started
     again from nothing. The recording here is a process that has run since the desktop
-    started, named as a camera video's, as the camera's viewfinder names its own.
+    started, named as a camera video's, as the camera's viewfinder names its own. :set
+    recording? says it records and :set norecording asks it to stop, as Stop Recording
+    does; the process isn't a recorder's, so it's asked and never told.
     """
     state = "/run/user/1000/camera-recording.json"
     recorder = desktop.as_account("pgrep -o -x niri").strip()
@@ -613,6 +617,14 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
         after = ran()
         assert said is not None
         assert before - 1 <= said <= after + 1, (before, said, after)
+        desktop.normal()
+        desktop.machine.send_chars(":set recording?\n")
+        desktop.launcher_until(
+            lambda shown: shown["command"] is None and shown["commandSaid"] == "recording"
+        )
+        desktop.as_account("rm -f /tmp/stop")
+        desktop.machine.send_chars(":set norecording\n")
+        desktop.machine.wait_until_succeeds("test -e /tmp/stop", timeout=timedelta(seconds=10))
     finally:
         desktop.as_account(f"rm -f {state}")
     desktop.launcher_until(lambda shown: length(shown) is None)
@@ -633,14 +645,14 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
-    # The camera, then the copy.
-    desktop.step_in()
+    # It copies on Return, so Ctrl+] goes in: the camera, then the copy.
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Built-In Camera", "Copy"])
     desktop.close_launcher()
     desktop.answer("built-in camera")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     assert desktop.showing()["selected"]["side"] == "in use by chrome"
-    desktop.step_in()
+    desktop.follow()
     # Return's own Open first, then who has it, then what it gives, from
     # the loopback's own file in sysfs. The rate is the loopback's own,
     # whatever the stand-in's writer asks.
@@ -649,14 +661,14 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     assert parts[:2] == ["Open", "In Use \u00b7 chrome"], parts
     assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[2]), parts
     desktop.photograph("launcher-camera")
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In Use")
-    desktop.step_in()
+    desktop.follow()
     # Copying what it says comes last, since nothing inside does anything.
     assert desktop.showing()["rows"] == ["chrome", "Copy"]
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
-    machine.send_key("left")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [])
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     machine.send_key("ret")

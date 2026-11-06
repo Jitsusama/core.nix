@@ -4,7 +4,8 @@
 // write in, and what Return runs, or the error it says, as Vim's command
 // line would, and how its :set reads and sets the launcher's options. The
 // `the-command-line-lists-every-command` check copies
-// modules/quickshell/Commands.js and SetWords.js beside this file and runs
+// modules/quickshell/Commands.js, SetWords.js, Ex.js, CommandBinding.js and
+// Operators.js beside this file and runs
 // `qml -platform offscreen command-line.qml`.
 import QtQuick
 import "Commands.js" as Commands
@@ -34,6 +35,7 @@ QtObject {
         quit: "Close the Launcher",
         help: "List the Keys",
         set: "Set an Option",
+        setlocal: "Set an Option of This",
         history: "List Earlier Lines",
         row: "Go to a Row"
     })
@@ -45,6 +47,8 @@ QtObject {
         quit: { act: "close", short: "q" },
         help: { act: "help", short: "h" },
         set: { act: "set", short: "se", changes: true, undoable: true },
+        setlocal: { act: "setlocal", short: "setl", changes: true, undoable: true,
+            range: true },
         history: { act: "history", short: "his" },
         sort: { act: "sort", short: "sor", changes: true, undoable: true, range: true },
         open: { act: "open-it", short: "ope" },
@@ -110,6 +114,7 @@ QtObject {
             ["q[uit]", "Close the Launcher", "ZZ"],
             ["h[elp]", "List the Keys", "F1"],
             ["se[t]", "Set an Option", ""],
+            ["setl[ocal]", "Set an Option of This", ""],
             ["his[tory]", "List Earlier Lines", ""],
             ["{n}", "Go to a Row", ""]
         ]);
@@ -123,7 +128,7 @@ QtObject {
             menuOf([{ name: "Sign In", verb: "sign in" }])[0].command, "sign");
         holds("a row with no acts lists only what every surface has",
             lines(menuOf([])).map(line => line[0]),
-            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
+            ["q[uit]", "h[elp]", "se[t]", "setl[ocal]", "his[tory]", "{n}"]);
 
         // Typing narrows it: by the command's start, then by the act's words.
         const shown = typed => Commands.narrowed(menu, typed).map(entry => entry.command);
@@ -133,7 +138,7 @@ QtObject {
             ["see", "disconnect", "forget"]);
         holds("an act's words find it where its command doesn't", shown("r"),
             ["sort"]);
-        holds("each line is listed once", shown("s"), ["see", "sort", "set"]);
+        holds("each line is listed once", shown("s"), ["see", "sort", "set", "setlocal"]);
         holds(":set's short form is its own", Commands.ran("se nowifi", menu).entry?.kind, "set");
         holds("case is ignored, as his ignorecase", shown("DISC"), ["disconnect"]);
         holds("a count shows where it goes", shown("12"), ["{n}"]);
@@ -215,13 +220,30 @@ QtObject {
         holds("an act that changes nothing asks nothing, so takes no !",
             Commands.ran("ope!", menuOf([{ name: "Open It", verb: "open" }])).error,
             "E477: No ! allowed");
+        // A window's Close, whose words name it :close, the language's
+        // close-window.
+        const closing = Commands.listed({ acts: [{ name: "Close It", verb: "close" }],
+            table: commands, said: said, called: () => ({ command: "close" }) });
         holds("a guarded act asks nothing on one thing, once on more, so takes !",
-            ["undoable", "guarded", "bang"].map(flag =>
-                menuOf([{ name: "Close It", verb: "close" }])[0][flag]), [false, true, true]);
-        holds("what asks is what changes and can't be undone",
+            ["undoable", "guarded", "bang"].map(flag => closing[0][flag]), [false, true, true]);
+        // As d asks (Operators.asks): what changes asks unless the launcher
+        // can put it back, the language's undoable or not.
+        const back = { name: "Disconnect It", verb: "disconnect", undo: () => {} };
+        holds("what asks is what changes and nothing puts back",
             menuOf([{ name: "Open It", verb: "open" }, { name: "Forget It", verb: "forget" },
                 { name: "Disconnect It", verb: "disconnect" }, { name: "See It", verb: "see" }])
-                .slice(0, 4).map(entry => entry.undoable), [true, false, true, true]);
+                .slice(0, 4).map(entry => entry.undoable), [true, false, false, true]);
+        holds("so an undoable act takes ! until it says how it's put back",
+            [ran("disc!"), Commands.ran("disc!", menuOf([back])).error],
+            ["disconnect!", "E477: No ! allowed"]);
+        // A bare close, its words naming no command, only closes the
+        // launcher, as Provider's row with nothing to copy does: it's :quit,
+        // never the language's close-window (1JQ9TO's finding, 2026-11-05),
+        // and stands for the :q every surface has.
+        const quitting = menuOf([{ name: "Close", verb: "close" }]);
+        holds("a bare close is the launcher's :quit, listed once",
+            lines(quitting).filter(line => line[0] === "q[uit]"), [["q[uit]", "Close", "\u21b5"]]);
+        holds("and asks nothing", [quitting[0].undoable, quitting[0].bang], [true, true]);
         holds("a surface's command takes what follows it", ran("sort name"), "sort name");
 
         // Ctrl+W deletes the word before the caret, as Vim's command line's.
@@ -269,7 +291,7 @@ QtObject {
         const options = {
             wifi: { kind: "switch", takes: true },
             bluetooth: { kind: "switch" },
-            quiet: { kind: "switch" },
+            dnd: { kind: "switch", takes: "number", least: 1 },
             mute: { kind: "switch" },
             volume: { kind: "number", least: 0, most: 100 },
             brightness: { kind: "number", least: 0, most: 100 },
@@ -347,7 +369,7 @@ QtObject {
                 choices: () => ["Home-5G", "Cafe Wifi"] }),
             volume: Object.assign({}, options.volume, { now: () => 40 }),
             mute: Object.assign({}, options.mute, { now: () => false }),
-            quiet: Object.assign({}, options.quiet, { now: () => true }),
+            dnd: Object.assign({}, options.dnd, { now: () => true }),
             bluetooth: Object.assign({}, options.bluetooth, { now: () => true }),
             brightness: Object.assign({}, options.brightness, { now: () => 60 }),
             background: Object.assign({}, options.background, { now: () => "dark" })
@@ -358,7 +380,7 @@ QtObject {
             .map(line => [line.command, line.title]);
         holds(":set and a space lists every option and where it stands", listedAs("set "), [
             ["background", "background=dark"], ["bluetooth", "bluetooth"],
-            ["brightness", "brightness=60"], ["mute", "nomute"], ["quiet", "quiet"],
+            ["brightness", "brightness=60"], ["dnd", "dnd"], ["mute", "nomute"],
             ["volume", "volume=40"], ["wifi", "wifi=Home-5G"]
         ]);
         holds("typing narrows them", listedAs("set b").map(line => line[0]),
@@ -470,8 +492,8 @@ QtObject {
 
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",
-            [SetWords.shown("quiet", true, options.quiet),
-                SetWords.shown("quiet", false, options.quiet)], ["quiet", "noquiet"]);
+            [SetWords.shown("dnd", true, options.dnd),
+                SetWords.shown("dnd", false, options.dnd)], ["dnd", "nodnd"]);
         holds("a network joined says its name", SetWords.shown("wifi", "Home-5G", options.wifi),
             "wifi=Home-5G");
         holds("a number and a choice say theirs",
@@ -479,11 +501,55 @@ QtObject {
                 SetWords.shown("background", "dark", options.background)],
             ["volume=40", "background=dark"]);
 
+        holdMinutes(options);
+        holdSteps();
         holdRanges();
+        holdWords();
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // An act's words for the line by its key, as words.json has them: a
+    // verb's own, or the verb's for one of several made from it; a row that
+    // is an act itself, as Lock, its own, and the step it asks first, as
+    // Power Off's sure, its row's; one in a state, as Wi-Fi On, its state's,
+    // so the line says what runs, never a toggle; a row whose key never walks
+    // back to its words, as a display's Warmth, by the id it names them by;
+    // none for a key whose words name none.
+    function holdWords() {
+        const vocabulary = {
+            "wifi:radio": { id: "wifi:radio", command: "set", argument: "nowifi",
+                states: { off: { argument: "wifi" } } },
+            "verb:sound-port": { id: "verb:sound-port", command: "set",
+                argument: "port={port}" },
+            "displays:warmth": { id: "displays:warmth", command: "set", argument: "nowarmth",
+                states: { off: { argument: "warmth" } } },
+            "keyboards:lights:to": { id: "keyboards:lights:to", command: "set",
+                argument: "kbdlevel={n}" },
+            "session:Lock": { id: "session:Lock", command: "lockscreen" },
+            "session:Power Off": { id: "session:Power Off", command: "poweroff" },
+            "session:quiet": { id: "session:quiet" }
+        };
+        const of = (id, state) => Object.assign({ id }, vocabulary[id] ?? {},
+            ((vocabulary[id] ?? {}).states ?? {})[state] ?? {});
+        const named = key => CommandBinding.wordsFor({ key }, of).command ?? "";
+        const set = state => CommandBinding.wordsFor({ key: "wifi:radio", wordState: state },
+            of).argument ?? "";
+        holds("a row in a state names its state's", [set(""), set("off")], ["nowifi", "wifi"]);
+        holds("a verb made one of several reads the verb's", named("verb:sound-port-2"), "set");
+        holds("a row that's an act names its own", named("session:Lock"), "lockscreen");
+        holds("the step a row asks first names the row's", named("session:Power Off:sure"),
+            "poweroff");
+        const warmth = state => CommandBinding.wordsFor({ key: "displays:eDP-1:warmth",
+            wordsId: "displays:warmth", wordState: state }, of).argument ?? "";
+        holds("a row names its words by their id", [warmth(""), warmth("off"),
+            CommandBinding.wordsFor({ key: "verb:keyboards-lights-2",
+                wordsId: "keyboards:lights:to" }, of).argument ?? ""],
+        ["nowarmth", "warmth", "kbdlevel={n}"]);
+        holds("a row whose words name none has none",
+            [named("session:quiet"), named("session:quiet:60"), named("")], ["", "", ""]);
     }
 
     // A range before a command, read as Vim's (Ex.js): Return says what it
@@ -564,36 +630,159 @@ QtObject {
             ["Leave", "Disconnect It", undefined]);
         holdEarlier();
         holdAsking();
+        holdLocal();
     }
 
-    // What a line asks before it runs, once, as the spec's Operators have it:
-    // nothing where its act can be undone; where it can't, once, on one
-    // thing or many, unless a ! says don't; a guarded one only over more
-    // than one; and where only some of what it's bound to have the act,
-    // once, naming how many can, ! or not. None that can says so.
+    // :setl, as Vim's :setlocal sets the current buffer's option rather
+    // than the global one (VKCF3Z, 2026-11-05): the option of the thing
+    // under the cursor, or of the nearest thing it's inside that has one,
+    // as Muted inside a program sets the program's; over a range, each
+    // thing's own. A thing with none has none, so :setl there says E518
+    // rather than setting the machine's.
+    function holdLocal() {
+        const menu = menuOf([]);
+        const ran = typed => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? [read.entry.kind, read.arg, JSON.stringify(read.range ?? null)];
+        };
+        holds(":setl is its own command, taking a range, and :set still none",
+            [ran("setl mute"), ran("setlocal nomute"), ran("%setl mute"), ran("%set mute")],
+            [["setlocal", "mute", "null"], ["setlocal", "nomute", "null"],
+                ["setlocal", "mute", JSON.stringify("%")], "E481: No range allowed"]);
+        const mute = { kind: "switch", now: () => false };
+        const program = { name: "mpv", options: { mute, volume: { kind: "number" } } };
+        const device = { name: "Speakers", options: { mute, port: { kind: "choice" } } };
+        const muted = { name: "Muted" };
+        const files = { name: "Files" };
+        const whose = found => found.map(options =>
+            [program, device].find(thing => thing.options === options)?.name ?? "none");
+        holds("one thing sets its own",
+            whose(CommandBinding.localOptions([program], [device])), ["mpv"]);
+        holds("an act inside a thing sets the thing's, the nearest first",
+            whose(CommandBinding.localOptions([muted], [device, program])), ["mpv"]);
+        holds("over a range, each thing its own, none for one that has none",
+            whose(CommandBinding.localOptions([program, files, device], [device])),
+            ["mpv", "none", "Speakers"]);
+        holds("a thing with none, or none at all, says E518, never the machine's",
+            [SetWords.setting("mute", CommandBinding.localOptions([files], [])[0]),
+                SetWords.setting("port", CommandBinding.localOptions([], [])[0] ?? {})],
+            [{ error: "E518: Unknown option: mute" }, { error: "E518: Unknown option: port" }]);
+    }
+
+    // A switch that takes minutes, as Do Not Disturb's dnd does (VKCF3Z,
+    // 2026-11-05): dnd holds notices until it's ended, dnd=60 for an hour,
+    // dnd+=60 an hour more, and nodnd ends it; held for some minutes, it
+    // says how many are left.
+    function holdMinutes(options) {
+        const first = arg => (SetWords.setting(arg, options).changes ?? [])[0] ?? null;
+        const toward = (arg, now) => {
+            const change = first(arg);
+            return change === null ? null : SetWords.toward(change, now, options[change.option]);
+        };
+        holds(":set dnd=60 holds it an hour, dnd+=60 an hour more",
+            [first("dnd=60"), first("dnd+=60")],
+            [{ option: "dnd", how: "set", value: 60 }, { option: "dnd", how: "add", value: 60 }]);
+        holds("its minutes are a number", SetWords.setting("dnd=soon", options),
+            { error: "E521: Number required after =: dnd=soon" });
+        holds("of one minute at least", SetWords.setting("dnd=0", options),
+            { error: "E474: Invalid argument: dnd=0" });
+        holds("an hour more is added to the minutes left", toward("dnd+=60", 30), { to: 90 });
+        holds("held until it's ended, it stays so; off, it holds for that long",
+            [toward("dnd+=60", true), toward("dnd+=60", false)], [{ to: true }, { to: 60 }]);
+        holds("an hour less never ends it, nor holds what's off",
+            [toward("dnd-=60", 30), toward("dnd-=60", true), toward("dnd-=60", false)],
+            [{ to: 1 }, { to: true }, { to: false }]);
+        holds("nodnd and dnd! end it, whatever's left", [toward("nodnd", 30), toward("dnd!", 30)],
+            [{ to: false }, { to: false }]);
+        holds("held for some minutes, it says how many are left",
+            SetWords.shown("dnd", 45, options.dnd), "dnd=45");
+    }
+
+    // A level only stepped, as the keyboards' lights where only a board
+    // that can't be asked has them: kbdlevel+=1 steps it, kbdlevel=2 is
+    // refused, since nothing there takes a level, and kbdlevel? can't say,
+    // for the launcher to say so in its own words.
+    function holdSteps() {
+        const options = {
+            kbdlevel: { kind: "number", least: 0, stepsOnly: true, now: () => null },
+            level: { kind: "number", least: 0, most: 3, now: () => 2 }
+        };
+        const first = arg => (SetWords.setting(arg, options).changes ?? [])[0] ?? null;
+        const toward = (arg, now) => {
+            const change = first(arg);
+            return change === null ? null : SetWords.toward(change, now, options[change.option]);
+        };
+        holds("a level only stepped takes no =", SetWords.setting("kbdlevel=2", options),
+            { error: "E474: Invalid argument: kbdlevel=2" });
+        holds("but steps either way, from where it can't say",
+            [toward("kbdlevel+=1", null), toward("kbdlevel-=1", null)],
+            [{ to: null }, { to: null }]);
+        holds("a level read steps from where it stands", toward("level+=1", 2), { to: 3 });
+        holds("one that can't be read says nothing of itself",
+            SetWords.shown("kbdlevel", null, options.kbdlevel), null);
+        holds("nor where it stands in the list",
+            SetWords.setArguments("kb", options), [{ value: "kbdlevel", note: "" }]);
+    }
+
+    // What a line asks before it runs, once, by the rule d asks by
+    // (Operators.asks), so d, the line and the menu are one: an act that
+    // changes asks unless the launcher can put it back (its undo) or it's
+    // guarded and alone; once, on one thing or many, unless a ! says don't;
+    // and where only some of what it's bound to have the act, once, naming
+    // how many can, ! or not. None that can says so; what changes nothing
+    // asks nothing.
     function holdAsking() {
         const menu = menuOf(network());
         const entry = typed => Commands.ran(typed, menu).entry;
-        const guarded = { command: "close", undoable: false, guarded: true };
-        holds("an act that can be undone asks nothing, on one or many",
-            [CommandBinding.asking(entry("disc"), 1, 1, false),
-                CommandBinding.asking(entry("disc"), 3, 3, false)],
+        const acts = (count, act) => Array.from({ length: count }, () => act ?? {});
+        const asking = (typed, count, all, bang, act) =>
+            CommandBinding.asking(entry(typed), acts(count, act), { all, bang }, commands);
+        const back = { undo: () => {} };
+        holds("an act that changes asks, the language's undoable or not, on one or many",
+            [asking("disc", 1, 1, false), asking("disc", 3, 3, false)],
+            [{ ask: "one" }, { ask: "many" }]);
+        holds("unless the launcher can put it back",
+            [asking("disc", 1, 1, false, back), asking("disc", 3, 3, false, back)],
             [{ ask: "" }, { ask: "" }]);
         holds("one that can't asks once, on one or many, unless its ! says don't",
-            [CommandBinding.asking(entry("forg"), 1, 1, false),
-                CommandBinding.asking(entry("forg"), 3, 3, false),
-                CommandBinding.asking(entry("forg"), 3, 3, true)],
+            [asking("forg", 1, 1, false), asking("forg", 3, 3, false),
+                asking("forg", 3, 3, true)],
             [{ ask: "one" }, { ask: "many" }, { ask: "" }]);
+        const guarded = { command: "close", undoable: false, guarded: true };
         holds("a guarded one asks only over more than one",
-            [CommandBinding.asking(guarded, 1, 1, false),
-                CommandBinding.asking(guarded, 2, 2, false)],
+            [CommandBinding.asking(guarded, acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(guarded, acts(2), { all: 2, bang: false }, commands)],
             [{ ask: "" }, { ask: "many" }]);
+        holds("what changes nothing asks nothing", asking("see", 3, 3, false), { ask: "" });
         holds("where only some have it, it asks once, naming how many, ! or not",
-            [CommandBinding.asking(entry("disc"), 2, 3, false),
-                CommandBinding.asking(entry("forg"), 2, 3, true)],
+            [asking("disc", 2, 3, false, back), asking("forg", 2, 3, true)],
             [{ ask: "some" }, { ask: "some" }]);
         holds("where none has it, it says so and asks nothing",
-            CommandBinding.asking(entry("disc"), 0, 3, false), { ask: "", none: true });
+            asking("disc", 0, 3, false), { ask: "", none: true });
+        // A row's :set runs its own act, as Return on it does, and asks
+        // nothing, as a typed :set never asks (2V74KO, 2026-11-05): a
+        // display's Warmth, by :set warmth, with no undo of its own.
+        const warmth = Commands.listed({ acts: [{ key: "displays:warmth", name: "Warmth" }],
+            table: commands, said, called: () => ({ command: "set", argument: "warmth" }),
+            row: 1 });
+        holds("a row's :set asks nothing, on one or many, and its line isn't banged",
+            [CommandBinding.asking(warmth[0], acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(warmth[0], acts(2), { all: 2, bang: false }, commands),
+                warmth[0].bang],
+            [{ ask: "" }, { ask: "" }, false]);
+        holds("though where only some have it, it asks once all the same",
+            CommandBinding.asking(warmth[0], acts(1), { all: 2, bang: false }, commands),
+            { ask: "some" });
+        // :setl never asks either, as Vim's :setlocal doesn't: a program's
+        // Muted, by :setl mute.
+        const hushing = Commands.listed({ acts: [{ key: "verb:program:mute", name: "Muted" }],
+            table: commands, said, called: () => ({ command: "setlocal", argument: "mute" }),
+            row: 1 });
+        holds("a row's :setl asks nothing, on one or many, and its line isn't banged",
+            [CommandBinding.asking(hushing[0], acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(hushing[0], acts(2), { all: 2, bang: false }, commands),
+                hushing[0].bang],
+            [{ ask: "" }, { ask: "" }, false]);
     }
 
     // Earlier lines, as Vim's :his lists them: each line Return ran
@@ -614,10 +803,10 @@ QtObject {
             lines(menu).slice(0, 4).map(line => line[0]), ["12", "disc", "set nowifi", "see"]);
         holds("and lists itself with what every surface has",
             lines(Commands.listed({ acts: [], table: commands, said })).map(line => line[0]),
-            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
+            ["q[uit]", "h[elp]", "se[t]", "setl[ocal]", "his[tory]", "{n}"]);
         holds("typing narrows them by their start",
             Commands.narrowed(menu, "se").map(line => Commands.called(line)),
-            ["set nowifi", "see", "se[t]"]);
+            ["set nowifi", "see", "se[t]", "setl[ocal]"]);
         holds("choosing one writes it in, and Return runs it as typed",
             [Commands.chosen(Commands.typing("se"), 1, Commands.narrowed(menu, "se")).line,
                 Commands.ran("set nowifi", menu).entry?.kind,

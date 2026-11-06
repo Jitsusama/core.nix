@@ -10,10 +10,11 @@
 // piece 3), ranked by its type (docs/design.md, Type): an eyebrow saying
 // when or where at Label, the thing's name at Title, the one strong thing
 // while it's shown, its facts as a label at Note and a value at Figure,
-// its words, then its picture. Every line of it lies on one of the card's lines, so the two
-// read as one page: the eyebrow on the field's centre, the name on the
-// first row's baseline, and the rest on a pitch of half a row from the
-// second row's, one empty line between each group. A row gives it as
+// its words, then its picture. Its head is one unit and the rest lies on
+// the card's beats, so the two read as one page: the eyebrow on the
+// field's baseline, the name a Title pitch under it, and the rest from the
+// first of the card's beats two Title pitches under the name, on the
+// drawer's line pitch, one empty line between each group. A row gives it as
 // `drawer: { eyebrow, title, preview, facts: [{ label, value }], body,
 // styled, picture, across, down }`, the body plain unless it says it's
 // styled, a fact whose value isn't known yet null, shown as a fixed
@@ -205,12 +206,16 @@ Floating {
     // How tall it is, the card's height.
     property real tall: 0
     // The card's lines it's set on, down from the card's top as from its
-    // own, since the two share a top: the field's centre and the first
-    // row's.
-    property real fieldLine: 0
+    // own, since the two share a top: the field's baseline, which the
+    // eyebrow shares, and the middle of the first row, whose baseline the
+    // plate's beats are counted from.
+    property real fieldBase: 0
     property real rowLine: 0
     // The middle of each row the card shows, for the moment's lines.
     property var rowLines: []
+    // How far below a row's line its name's baseline stands, as the card
+    // sets its rows (their capitals centred on the line, Choice.qml).
+    property real rowDrop: 0
 
     readonly property string eyebrow: shown ? shown.eyebrow ?? "" : ""
     readonly property string title: shown ? shown.title ?? "" : ""
@@ -251,22 +256,44 @@ Floating {
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
-    readonly property bool more: view.contentHeight > view.height + 1
+    readonly property bool more: view.contentHeight > drawer.viewRoom + 1
     // How far it's scrolled, for the launcher to report.
     readonly property real scrolled: view.contentY
 
-    // The plate's pitch: half a row, so its lines fall on each row's and
-    // halfway between two.
-    readonly property real pitch: Theme.space.xl
+    // The drawer's line pitch: Figure's, two beats, for every line of the
+    // plate, Note's runs too, so the plate keeps one grid and its lines
+    // fall on the card's beats (VKCF3Z, 2026-11-05).
+    readonly property real pitch: Theme.level.figure.pitch
     // How far below a line's centre a row's name has its baseline, as a row
-    // centred on that line does, and the same at Label for the eyebrow. Every line here is set on such a
+    // centred on that line does. Every line here is set on such a
     // baseline, whatever its own face, since the faces' line boxes differ.
-    readonly property real dropped: monoRuler.y + monoRuler.baselineOffset
-    readonly property real eyebrowDropped: eyebrowRuler.y + eyebrowRuler.baselineOffset
-    // How far apart a Title's lines sit: tighter than the pitch's two, about
-    // 1.15 of its size, so a name that wraps reads as one heading rather
-    // than two (VKCF3Z, 2026-11-04).
-    readonly property real titleLeading: Theme.space.xxl
+    readonly property real dropped: rowDrop
+    // How far apart a Title's lines sit: its own pitch, tighter than the
+    // plate's two, so a name that wraps reads as one heading rather than
+    // two (VKCF3Z, 2026-11-04).
+    readonly property real titleLeading: Theme.level.title.pitch
+    // The plate's head as one unit (docs/design.md, The Ladder): the eyebrow
+    // on the field's baseline, as everything on that line is, and the title
+    // a Title pitch under it, the tightest gap on the plate. What follows
+    // starts on the first of the card's beats at least two Title pitches
+    // under the title's last line, the widest, so the head reads apart
+    // from the body. The beats are counted from the first row's baseline,
+    // so every line after the head lies a whole number of them from every
+    // row of the card, home's gap or not.
+    readonly property real rowBaseline: rowLine + dropped
+    readonly property real titleBase: fieldBase + Theme.level.title.pitch
+    readonly property real titleLastBase: titleBase
+        + (titleText.lineCount - 1) * titleLeading
+    readonly property real bodyBase: onBeat(titleLastBase + 2 * Theme.level.title.pitch)
+    // The first of the card's beats at or below a line, down from the top.
+    // A line already on a beat, to within the sums' rounding, keeps it
+    // rather than going a beat on: the rounding is a share of a beat, not
+    // a space.
+    readonly property real rounding: 0.001
+    function onBeat(line) {
+        return rowBaseline + Math.ceil((line - rowBaseline) / Theme.space.beat - rounding)
+            * Theme.space.beat;
+    }
 
     // Where its lines' baselines are, down from its top, for the launcher
     // to report: the eyebrow's and the middle of its line, the title's first
@@ -350,7 +377,7 @@ Floating {
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
     readonly property var wholeTops: Page.tops({ lines: laid, pitch: drawer.pitch,
-        end: Math.max(0, view.contentHeight - view.height) })
+        end: Math.max(0, view.contentHeight - drawer.viewRoom) })
     property var cursor: ({ line: 0, letter: 0, want: 0 })
     // The search being typed in it, as the launcher's line holds it, and
     // the last one run, { pattern, forward }, which n and N go on with, as
@@ -561,7 +588,7 @@ Floating {
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = view.contentY;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top
-            && laid[at].top + laid[at].height <= top + view.height);
+            && laid[at].top + laid[at].height <= top + drawer.viewRoom);
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
         cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
     }
@@ -576,11 +603,16 @@ Floating {
     }
     // Laid out anew while it holds the keys, as a fact's value comes or the
     // row refreshes: the lines read again once Qt has laid them out, the
-    // cursor kept on its line and letter where they still are.
+    // cursor kept on its line and letter where they still are. A page not
+    // laid out yet gives no lines, as the drawer comes in over the card,
+    // and that says nothing of where the cursor was: clamped into it, the
+    // cursor would fall from the title to the eyebrow and stay.
     function relay() {
         if (keys)
             Qt.callLater(() => {
                 laid = lines();
+                if (laid.length === 0)
+                    return;
                 const line = Math.max(0, Math.min(cursor.line, laid.length - 1));
                 const most = laid.length > 0 ? Math.max(0, laid[line].length - 1) : 0;
                 cursor = { line, letter: Math.min(cursor.letter, most), want: cursor.want };
@@ -597,8 +629,8 @@ Floating {
             letter: cursor.letter,
             want: cursor.want,
             top: view.contentY,
-            height: view.height,
-            end: Math.max(0, view.contentHeight - view.height),
+            height: drawer.viewRoom,
+            end: Math.max(0, view.contentHeight - drawer.viewRoom),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -648,8 +680,8 @@ Floating {
             letter: cursor.letter,
             want: cursor.want,
             top: view.contentY,
-            height: view.height,
-            end: Math.max(0, view.contentHeight - view.height),
+            height: drawer.viewRoom,
+            end: Math.max(0, view.contentHeight - drawer.viewRoom),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -684,8 +716,8 @@ Floating {
         cursor = { line, letter, want: xOf(laid[line], letter) };
         view.contentY = Page.shown(laid[line], view.contentY, {
             lines: laid,
-            height: view.height,
-            end: Math.max(0, view.contentHeight - view.height),
+            height: drawer.viewRoom,
+            end: Math.max(0, view.contentHeight - drawer.viewRoom),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops
@@ -856,24 +888,6 @@ Floating {
     // as a row refreshes, stays where it was scrolled.
     onTitleChanged: view.contentY = 0
 
-    // Empty lines of the mono, centred on a line's centre as a row's words
-    // are, whose baselines say where the plate's are: an empty line keeps
-    // the baseline a filled one has.
-    Text {
-        id: monoRuler
-        y: -height / 2
-        visible: false
-        font.family: Theme.level.name.family
-        font.pointSize: Theme.level.name.pointSize
-    }
-    Text {
-        id: eyebrowRuler
-        y: -height / 2
-        visible: false
-        font.family: Theme.level.label.family
-        font.pointSize: Theme.level.label.pointSize
-    }
-
     // The widest of its facts' names, which their values start beyond, so
     // the values share one edge: a name is never cut short, and a value
     // wraps instead (VKCF3Z, 2026-11-03). Only one so long it would leave
@@ -961,16 +975,74 @@ Floating {
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
-    // A binding doesn't see what a call reads, so it reads both faces, to be
+    // The names' column ends at a name, the widest of those that keep their
+    // values beside them, chosen so the most do: a column as wide as the
+    // widest name pushed half a narrow plate's values under their names,
+    // its two columns lost (VKCF3Z, 2026-11-05). A name wider goes on its
+    // own line, its value under it, as one too wide always has. A key
+    // list's sayings stay beside every key, and the moment's beside every
+    // name, so the column is never narrower than the widest of those. A
+    // binding doesn't see what a call reads, so it reads every face, to be
     // measured again as a key list's face comes and goes.
     readonly property real labelsWide: {
         void valueFace.font;
         void factFace.font;
-        let widest = 0;
-        for (const fact of allFacts)
-            widest = Math.max(widest, factFace.advanceWidth(fact.label ?? ""));
-        return Math.min(column.width - labelsGap - valueFace.advanceWidth("00000000"),
-            Math.ceil(widest));
+        void wordsFace.font;
+        void latinFace.font;
+        const room = column.width - labelsGap;
+        const most = room - valueFace.advanceWidth("00000000");
+        const named = allFacts.filter(fact => fact && fact.heading === undefined)
+            .map(fact => ({
+                name: Math.ceil(nameWidth(fact)),
+                value: fact.value === null || fact.value === undefined ? 0
+                    : faceOf(fact).advanceWidth(unbroken(fact.value))
+            }));
+        const widest = Math.max(0, ...named.map(one => one.name));
+        if (listsKeys || widest <= most && named.every(one => one.value <= room - widest))
+            return Math.min(most, widest);
+        const least = Math.max(0, ...[].concat(...groups.map(group => group.facts))
+            .map(fact => Math.ceil(factFace.advanceWidth(fact.label ?? ""))));
+        const ends = [...new Set(named.map(one => one.name))]
+            .filter(end => end <= most && end >= least).sort((one, other) => other - one);
+        let best = Math.min(most, Math.max(least, widest));
+        let kept = -1;
+        for (const end of ends) {
+            const beside = named.filter(one => one.name <= end && one.value <= room - end)
+                .length;
+            if (beside > kept) {
+                best = end;
+                kept = beside;
+            }
+        }
+        return best;
+    }
+    // A key's name as runs, { said, x }: each key of a chord a run of its
+    // own, the tie rung from the next, so Space Tab reads as one key, and
+    // chord from chord the apart rung, two runs of one thing, rather than
+    // typed spaces that sat nearly as wide as the key from its saying
+    // (VKCF3Z, 2026-11-05).
+    function runsOf(fact) {
+        const chords = fact?.keys ?? (fact?.chords ?? []).map(chord => [chord]);
+        const runs = [];
+        let x = 0;
+        chords.forEach((keys, chord) => {
+            if (chord > 0)
+                x += Theme.space.rung.apart - Theme.space.rung.tie;
+            for (const said of keys) {
+                runs.push({ said, x });
+                x += factFace.advanceWidth(said) + Theme.space.rung.tie;
+            }
+        });
+        return runs;
+    }
+    // How wide a fact's name is drawn: its runs and the room between, or
+    // its label.
+    function nameWidth(fact) {
+        const runs = runsOf(fact);
+        if (runs.length === 0)
+            return factFace.advanceWidth(fact?.label ?? "");
+        const last = runs[runs.length - 1];
+        return last.x + factFace.advanceWidth(last.said);
     }
     // How many of its facts take more than a line, a name or a value
     // wrapped, for the launcher to report when asked: a key list's take one.
@@ -978,7 +1050,7 @@ Floating {
         let wrapped = 0;
         for (let at = 0; at < factRows.count; at++) {
             const row = factRows.itemAt(at);
-            if (row && !row.heading && row.height > drawer.pitch + 0.5)
+            if (row && !row.heading && row.lines > 1)
                 wrapped += 1;
         }
         return wrapped;
@@ -1009,7 +1081,7 @@ Floating {
     // report when asked.
     function labelsWhole() {
         const moment = [].concat(...groups.map(group => group.facts));
-        return moment.every(fact => factFace.advanceWidth(fact.label ?? "") <= labelsWide)
+        return moment.every(fact => nameWidth(fact) <= labelsWide)
             && drawnRows().every(row => row.nameWhole);
     }
     // Whether every value drawn keeps each of its words whole, none so
@@ -1039,16 +1111,33 @@ Floating {
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
-    // Between a name and its value, a run's width apart, so the two never
-    // read as one.
-    readonly property real labelsGap: Theme.space.xl
+    // Between the names' column and the values', two columns, so the two
+    // never read as one.
+    readonly property real labelsGap: Theme.space.rung.groups
+    // Where any thing in a list takes more than a line as it's laid out,
+    // every thing in it stands a beat further from the one before, so a
+    // wrapped line sits nearer its own thing than the next and the list
+    // reads by thing rather than by line; a heading keeps a pitch above
+    // its first (VKCF3Z, 2026-11-05).
+    function apartIn(wraps, first) {
+        return wraps && !first ? Theme.space.beat : 0;
+    }
+    // Whether any of a Repeater's things takes more than a line.
+    function anyWraps(things) {
+        return Array.from({ length: things.count }, (_, at) => things.itemAt(at))
+            .some(thing => (thing?.lines ?? 1) > 1);
+    }
     // A number and its unit kept on one line, so "8 s" never leaves its s
     // alone on the next (VKCF3Z, 2026-11-03).
     function unbroken(words) {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
     }
-    // Where the first line's box begins, down from the content's top.
-    readonly property real firstLine: drawer.rowLine - Theme.border - drawer.pitch / 2
+    // Where the first line's box after the head begins, down from the
+    // content's top: the moment's first row's, or the body's, whose
+    // whole lines the view ends on.
+    readonly property real firstLine: drawer.moment
+        ? drawer.rowLine - Theme.border - drawer.pitch / 2
+        : drawer.bodyBase - Theme.border - drawer.pitch / 2 - drawer.dropped
 
     // The time, read as it turns each second while the moment shows.
     SystemClock {
@@ -1062,23 +1151,75 @@ Floating {
         font: timeText.font
     }
 
+    // How far down the view may show, from its top: to the last whole line
+    // that keeps its inset and a step from the frame below, as the text
+    // does on every other side, so nothing runs into the foot of the plate;
+    // its keys, gone into, bring up the rest (VKCF3Z, 2026-11-03).
+    readonly property real viewRoom: drawer.firstLine + Math.max(0, Math.floor((drawer.tall
+        - 2 * Theme.border - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch))
+        * drawer.pitch
+    // The top of every line's box it lays on the pitch past its title, down
+    // the content: the facts', the moment's, the preview's and the words'.
+    // Each a fact takes as { top, bottom }, all its lines, a heading held
+    // with the thing under it; and each line of the moment, the preview
+    // and the words, which run on as reading does.
+    function lineSpans() {
+        const spans = [];
+        const run = (top, count) => {
+            for (let at = 0; at < count; at++)
+                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch });
+        };
+        let heading = null;
+        for (let at = 0; at < factRows.count; at++) {
+            const row = factRows.itemAt(at);
+            if (!row)
+                continue;
+            const top = flow.y + factsShown.y + row.y + row.base - drawer.pitch / 2
+                - drawer.dropped;
+            const span = { top: heading ?? top, bottom: top + row.lines * drawer.pitch };
+            heading = row.heading ? span.top : null;
+            if (!row.heading)
+                spans.push(span);
+        }
+        for (let at = 0; at < groupsShown.count; at++) {
+            const group = groupsShown.itemAt(at);
+            for (const base of group?.bases ?? [])
+                run(group.y + base - drawer.pitch / 2 - drawer.dropped, 1);
+        }
+        if (previewLines.visible)
+            run(flow.y + previewBox.y, previewBox.lines.length);
+        if (wordsBox.visible)
+            run(flow.y + wordsBox.y, bodyText.lineCount);
+        return spans;
+    }
+    // Where the view ends: at its room, or where a thing would run past it,
+    // at that thing's top, so a thing is shown whole, all its lines, or not
+    // at all (VKCF3Z, 2026-11-05: a saying's first line alone reads as
+    // cut). A list whose things wrap stands them a beat off the pitch the
+    // room is counted on, so one may fall across it. A thing begun above
+    // the view, taller than it shows, ends at its last whole line instead.
+    readonly property real shownTo: {
+        const top = view.contentY;
+        const end = top + viewRoom;
+        const across = lineSpans().filter(span => span.top < end - 0.5
+            && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
+                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch);
+        return Math.min(end, ...across) - top;
+    }
+
     Flickable {
         id: view
         width: parent.width
-        // Ending at the last whole line that keeps its inset and a step
-        // from the frame below, as the text does on every other side, so
-        // nothing runs into the foot of the plate; its keys, gone into,
-        // bring up the rest (VKCF3Z, 2026-11-03).
-        height: drawer.firstLine + Math.max(0, Math.floor((drawer.tall - 2 * Theme.border
-            - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch)) * drawer.pitch
+        height: drawer.shownTo
         clip: true
         interactive: false
         contentWidth: width
         // Never ending between two lines, so scrolled to its end its lines
         // are still the card's.
         readonly property real natural: drawer.moment ? momentShown.ends : flow.y + flow.height
-        contentHeight: natural <= height ? natural
-            : height + Math.ceil((natural - height) / drawer.pitch) * drawer.pitch
+        contentHeight: natural <= drawer.viewRoom ? natural
+            : drawer.viewRoom + Math.ceil((natural - drawer.viewRoom) / drawer.pitch)
+                * drawer.pitch
 
         Item {
             id: column
@@ -1147,7 +1288,7 @@ Floating {
                 id: eyebrowText
                 sought: drawer.washing
                 width: parent.width
-                y: drawer.fieldLine - Theme.border + drawer.eyebrowDropped - baselineOffset
+                y: drawer.fieldBase - Theme.border - baselineOffset
                 visible: drawer.eyebrow !== ""
                 plain: drawer.eyebrow
                 leading: 0
@@ -1261,7 +1402,7 @@ Floating {
                         readonly property var bases: Array.from({ length: facts.count },
                             (_, at) => {
                                 const row = facts.itemAt(at);
-                                return row ? row.y + drawer.pitch / 2 + drawer.dropped : 0;
+                                return row ? row.y + row.base : 0;
                             })
                         // Its last fact's first baseline.
                         readonly property real lastBase: base + height - drawer.pitch
@@ -1281,21 +1422,29 @@ Floating {
                         Repeater {
                             id: facts
                             model: group.modelData.facts
+                            readonly property bool wraps: drawer.anyWraps(facts)
 
                             Item {
                                 id: momentFact
                                 required property var modelData
+                                required property int index
                                 readonly property Item name: factName
                                 readonly property Item figure: figure
+                                readonly property int lines: Math.max(1, factName.lineCount,
+                                    figure.lineCount)
+                                readonly property real apart: drawer.apartIn(facts.wraps,
+                                    index === 0)
+                                // Its first baseline, down from its top.
+                                readonly property real base: apart + drawer.pitch / 2
+                                    + drawer.dropped
                                 width: group.width
-                                height: Math.max(1, factName.lineCount, figure.lineCount)
-                                    * drawer.pitch
+                                height: apart + lines * drawer.pitch
 
                                 PageText {
                                     id: factName
                                     sought: drawer.washing
                                     width: drawer.labelsWide
-                                    y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                    y: momentFact.base - baselineOffset
                                     plain: momentFact.modelData.label ?? ""
                                     leading: drawer.pitch
                                     ink: Theme.muted
@@ -1307,7 +1456,7 @@ Floating {
                                     id: figure
                                     x: drawer.labelsWide + drawer.labelsGap
                                     width: parent.width - x
-                                    y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                    y: momentFact.base - baselineOffset
                                     plain: drawer.qualified(momentFact.modelData)
                                     styled: true
                                     leading: drawer.pitch
@@ -1323,26 +1472,26 @@ Floating {
             }
 
             // The title, then its facts, words and picture, each a group
-            // of whole lines one empty line apart, from the first row's
-            // line on.
+            // of whole lines one empty line apart, from the title's line
+            // on, or the body's where there's no title.
             Column {
                 id: flow
-                y: drawer.firstLine
+                y: (titleBlock.visible ? drawer.titleBase : drawer.bodyBase) - Theme.border
+                    - drawer.pitch / 2 - drawer.dropped
                 width: parent.width
                 spacing: drawer.pitch
                 visible: !drawer.moment
 
                 // The thing's name at Title, sized by capitals as every
-                // serif step is, on the first row's baseline beside it,
-                // whatever its own line box would put it on. A name that
-                // wraps sets its lines a Title's leading apart, and the
-                // block ends on the next whole line of the pitch, so what
-                // follows stays on the plate's.
+                // serif step is, a Title pitch under the eyebrow, whatever
+                // its own line box would put it on. A name that wraps sets
+                // its lines a Title's leading apart, and the block ends a
+                // line above the body's first, so what follows starts on
+                // the card's beat.
                 Item {
                     id: titleBlock
                     width: parent.width
-                    height: Math.ceil((drawer.pitch + (titleText.lineCount - 1)
-                        * drawer.titleLeading) / drawer.pitch) * drawer.pitch
+                    height: drawer.bodyBase - drawer.titleBase - drawer.pitch
                     visible: drawer.title !== ""
 
                     PageText {
@@ -1386,8 +1535,8 @@ Floating {
                         .slice(0, Math.floor(room / drawer.pitch))
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
-                    readonly property real room: Math.max(4 * drawer.pitch, view.height
-                        - drawer.firstLine - (titleBlock.visible ? titleBlock.height
+                    readonly property real room: Math.max(4 * drawer.pitch, drawer.viewRoom
+                        - flow.y - (titleBlock.visible ? titleBlock.height
                         + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 
@@ -1490,11 +1639,13 @@ Floating {
                     Repeater {
                         id: factRows
                         model: drawer.facts
+                        readonly property bool wraps: drawer.anyWraps(factRows)
                         // Every fact's name and value, for the keys' lines.
                         function texts() {
                             return [].concat(...Array.from({ length: count }, (_, at) => {
                                 const row = itemAt(at);
-                                return row ? [row.over, row.name, row.value] : [];
+                                return row ? [row.over, row.name, ...row.laterChords(), row.value]
+                                    : [];
                             }));
                         }
 
@@ -1509,6 +1660,16 @@ Floating {
                             readonly property bool heading: modelData.heading !== undefined
                             readonly property real headingRoom: heading && index > 0 ? drawer.pitch
                                 : 0
+                            // Room above a fact for a list that wraps,
+                            // but under a heading, which stays a pitch
+                            // above its first.
+                            readonly property real apart: heading ? 0
+                                : drawer.apartIn(factRows.wraps, index === 0
+                                    || drawer.facts[index - 1]?.heading !== undefined)
+                            // How many lines it takes as it's laid out.
+                            readonly property int lines: heading ? 1 : under
+                                ? label.lineCount + value.lineCount
+                                : Math.max(1, label.lineCount, value.lineCount)
                             readonly property Item over: headingText
                             readonly property Item name: label
                             readonly property Item value: value
@@ -1516,7 +1677,7 @@ Floating {
                                 && modelData.value !== undefined
                             // Its first baseline, down from its top.
                             readonly property real base: drawer.pitch / 2 + drawer.dropped
-                                + headingRoom
+                                + headingRoom + apart
                             // A name and its value share one line, or the
                             // value takes the plate's whole width on the
                             // line under its name (VKCF3Z, 2026-11-04): a
@@ -1527,8 +1688,10 @@ Floating {
                             // A key list's sayings stay beside their keys,
                             // however many lines, so each key heads its own
                             // (VKCF3Z, 2026-11-04).
-                            readonly property bool nameFits: factFace.advanceWidth(
-                                modelData.label ?? "") <= drawer.labelsWide
+                            readonly property bool nameFits: drawer.nameWidth(modelData)
+                                <= drawer.labelsWide
+                            // A key's name, drawn as runs of its own.
+                            readonly property var runs: drawer.runsOf(modelData)
                             // Whether its value fits beside its name on one
                             // line, measured in the face it's drawn in: a
                             // laid-out text can't tell, since a word too wide
@@ -1554,9 +1717,7 @@ Floating {
                                 || drawer.listsKeys || value.lineCount <= 1
 
                             width: parent.width
-                            height: heading ? headingRoom + drawer.pitch
-                                : (under ? label.lineCount + value.lineCount
-                                    : Math.max(1, label.lineCount, value.lineCount)) * drawer.pitch
+                            height: headingRoom + apart + lines * drawer.pitch
 
                             PageText {
                                 id: headingText
@@ -1583,11 +1744,34 @@ Floating {
                                 visible: !fact.heading
                                 width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
-                                plain: fact.modelData.label ?? ""
+                                // A key's first run, or the whole name.
+                                plain: fact.runs.length > 0 ? fact.runs[0].said
+                                    : fact.modelData.label ?? ""
                                 leading: drawer.pitch
                                 ink: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
+                            }
+                            // Every run of a key's name after its first.
+                            function laterChords() {
+                                return Array.from({ length: chordsShown.count },
+                                    (_, at) => chordsShown.itemAt(at)).filter(text => text);
+                            }
+                            Repeater {
+                                id: chordsShown
+                                model: fact.heading ? [] : fact.runs.slice(1)
+
+                                PageText {
+                                    required property var modelData
+                                    sought: drawer.washing
+                                    x: modelData.x
+                                    y: fact.base - baselineOffset
+                                    plain: modelData.said
+                                    leading: drawer.pitch
+                                    wraps: false
+                                    ink: label.ink
+                                    font: label.font
+                                }
                             }
 
                             // Its figure, or a placeholder while it's

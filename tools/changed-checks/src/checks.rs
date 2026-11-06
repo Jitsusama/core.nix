@@ -24,13 +24,60 @@ pub const WEIGHT: usize = 40;
 /// What a VM test weighs against an ordinary check.
 const VM_TEST: usize = 4;
 
-/// How many chunks are evaluated at once, at most. Measured on core's 305
-/// checks, a comparison's evaluations kept about 1.6 of the machine's 16
-/// cores busy and peaked at 5.8 GB one at a time, so two at once take about
-/// half as long and hold about twice that, well short of the 24 GB that
-/// evaluating every check in one held. The second begins only while memory
-/// isn't stalling (see pressure.rs).
+/// How many chunks are evaluated at once on a machine with little to
+/// spare. Measured on core's 305 checks, a comparison's evaluations kept
+/// about 1.6 of the machine's 16 cores busy and peaked at 5.8 GB one at a
+/// time, so two at once take about half as long and hold about twice that,
+/// well short of the 24 GB that evaluating every check in one held. Each
+/// further one begins only while memory isn't stalling (see pressure.rs).
 pub const AT_ONCE: usize = 2;
+
+/// The most chunks evaluated at once on any machine. The lent builder, with
+/// 32 cores and 125 GB nearly all free, evaluated two at a time for a
+/// median of 8 minutes a side on 5 November, four fifths of a whole run,
+/// while its build took under 2; core's 21 chunks a side go in three turns
+/// of eight.
+const AT_ONCE_MOST: usize = 8;
+
+/// The cores one evaluation is given room for. Each keeps about one busy,
+/// and the rest are left to the builds beside it.
+const CORES_EACH: usize = 4;
+
+/// The memory one evaluation is given room for: the heaviest chunk, ten VM
+/// tests, peaked at 5.6 GiB.
+const MEMORY_EACH: u64 = 6 << 30;
+
+/// How many chunks to evaluate at once on a machine with these cores and
+/// this much memory available: as many as both have room for, between
+/// `AT_ONCE` and `AT_ONCE_MOST`. A person's laptop, with 16 cores and a
+/// few GB free, stays at two; the lent builder takes eight.
+pub fn at_once(cores: usize, available: u64) -> usize {
+    let by_memory = usize::try_from(available / MEMORY_EACH).unwrap_or(usize::MAX);
+    (cores / CORES_EACH)
+        .min(by_memory)
+        .clamp(AT_ONCE, AT_ONCE_MOST)
+}
+
+/// How many chunks this machine evaluates at once, by `at_once`, from its
+/// cores and the memory `/proc/meminfo` says is available. A machine that
+/// says neither gets `AT_ONCE`.
+pub fn at_once_here() -> usize {
+    let cores = thread::available_parallelism().map_or(0, std::num::NonZero::get);
+    let available = fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|text| available(&text))
+        .unwrap_or(0);
+    at_once(cores, available)
+}
+
+/// The bytes `/proc/meminfo`'s `MemAvailable` line says, or none.
+fn available(meminfo: &str) -> Option<u64> {
+    let line = meminfo
+        .lines()
+        .find_map(|line| line.strip_prefix("MemAvailable:"))?;
+    let kib: u64 = line.trim().strip_suffix("kB")?.trim().parse().ok()?;
+    kib.checked_mul(1024)
+}
 
 /// How long a chunk that may not begin yet waits before asking again.
 const WAIT_TO_BEGIN: std::time::Duration = std::time::Duration::from_secs(1);
@@ -386,6 +433,34 @@ mod tests {
         all.extend((0..5).map(|at| format!("vm-{at}")));
         // Thirty and two VM tests weigh 38; a third would bring it to 42.
         assert_eq!(sizes(&chunks(&all)), [32, 3]);
+    }
+
+    #[test]
+    fn a_laptop_with_little_memory_free_evaluates_two_at_once() {
+        assert_eq!(at_once(16, 11 << 30), 2);
+    }
+
+    #[test]
+    fn a_big_idle_builder_evaluates_eight_at_once() {
+        assert_eq!(at_once(32, 122 << 30), 8);
+    }
+
+    #[test]
+    fn the_scarcer_of_cores_and_memory_sets_how_many() {
+        assert_eq!(at_once(32, 24 << 30), 4);
+        assert_eq!(at_once(12, 122 << 30), 3);
+    }
+
+    #[test]
+    fn a_machine_that_says_nothing_still_evaluates_two_at_once() {
+        assert_eq!(at_once(0, 0), AT_ONCE);
+    }
+
+    #[test]
+    fn the_available_memory_is_read_from_meminfo() {
+        let meminfo = "MemTotal:       131072000 kB\nMemAvailable:   127926272 kB\n";
+        assert_eq!(available(meminfo), Some(127_926_272 * 1024));
+        assert_eq!(available("MemTotal: 1 kB\n"), None);
     }
 
     #[test]

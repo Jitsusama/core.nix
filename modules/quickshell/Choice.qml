@@ -51,7 +51,16 @@ Rectangle {
     // (agents-tree-look.md). Its name's room gives the step up, never
     // what it says at its right, and the selection keeps the whole row.
     property int depth: 0
-    readonly property real indent: Math.max(0, Math.min(2, depth)) * Theme.space.xxl
+    readonly property real indent: Math.max(0, Math.min(2, depth)) * glyphColumn
+    // A glyph's column: a mark's square cell, a line pitch wide, and the
+    // mark rung before its text (VKCF3Z, 2026-11-05). The glyph stands an
+    // inset in from the row's left, and what's flush right an inset in from
+    // its right, as the card's frame holds all its text (docs/design.md,
+    // The Ladder).
+    readonly property real glyphColumn: Theme.level.name.pitch + Theme.space.rung.mark
+    // How tall the name's capitals stand, which are centred in the row, and
+    // its ground set round.
+    readonly property real capitals: capitalsFace.tightBoundingRect.height
     // Whether the row can be seen. A closed launcher only fades its card
     // out, keeping its selection, so without this a cut row would read on
     // unseen, drawing every frame of it while nothing is shown.
@@ -77,6 +86,10 @@ Rectangle {
     // is never cut mid-word or slid from its left (Reading.js's
     // wholeItems). Empty, `side` is said as it is, cut to its share.
     property var sideItems: []
+    // What a second Return does, said at its right in the accent in place
+    // of its kind or chord, once Return from the find landed on it rather
+    // than doing it ("\u21b5 turn off"), until the next key.
+    property string landed
     // A word after the name, muted: "here" beside a workspace.
     property string count
     // What kind of thing it is, for a noun; empty for an act or a set.
@@ -122,17 +135,39 @@ Rectangle {
     signal clicked
 
     width: parent.width
-    height: Theme.space.xxxl
-    radius: Theme.inner
+    height: 4 * Theme.space.beat
+    color: "transparent"
     // Selected, it's filled, unless the list draws the selection itself so
     // it can glide from row to row (Launcher.qml's list).
     property bool fills: true
-    color: flashed ? Theme.accent
-        : selected && fills || tinted ? Qt.alpha(Theme.selection, Theme.floating.selection)
-        : "transparent"
+
+    // A TextMetrics, which follows the face as it loads, where a
+    // FontMetrics' call in a binding is asked once, before it has.
+    TextMetrics {
+        id: capitalsFace
+        text: "H"
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+    }
+
+    // Its ground, close round its ink, as Joel liked a highlight (the
+    // aesthetic skill's "Margin round a highlight, not padding inside it"):
+    // a mark round the glyph and what's flush right, above the capitals and
+    // below the baseline, so more room stands outside it than in.
+    Rectangle {
+        x: Theme.space.rung.inset - Theme.space.rung.mark
+        y: (row.height - row.capitals) / 2 - Theme.space.rung.mark
+        width: row.width - 2 * x
+        height: row.capitals + 2 * Theme.space.rung.mark
+        radius: Theme.inner
+        color: row.flashed ? Theme.accent
+            : row.selected && row.fills || row.tinted
+                ? Qt.alpha(Theme.selection, Theme.floating.selection)
+            : "transparent"
+    }
 
     Text {
-        x: Theme.space.l + row.indent
+        x: Theme.space.rung.inset + row.indent
         anchors.verticalCenter: parent.verticalCenter
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
@@ -165,10 +200,10 @@ Rectangle {
     // The name's room, which it's cut to.
     ReadsOn {
         id: nameBox
-        x: Theme.space.l + Theme.space.xxl + row.indent
-        width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.xxl
+        x: Theme.space.rung.inset + row.glyphColumn + row.indent
+        width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.rung.groups
             - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
-                + Theme.space.m)))
+                + Theme.space.rung.apart)))
         // On the mono's line, so the voice sits where the mono's name
         // would, the faces' line boxes differing.
         anchors.baseline: monoLine.baseline
@@ -190,12 +225,12 @@ Rectangle {
         }
     }
 
-    // A line of the mono through the row's middle, never drawn, whose
-    // baseline the name and its words both sit on, so neither face's line
-    // box moves the other.
+    // A line of the mono, never drawn, whose baseline the name and its
+    // words both sit on, so neither face's line box moves the other, set
+    // so the name's capitals stand in the row's middle.
     Text {
         id: monoLine
-        anchors.verticalCenter: parent.verticalCenter
+        y: (row.height + row.capitals) / 2 - baselineOffset
         visible: false
         text: "0"
         font.family: Theme.level.name.family
@@ -209,10 +244,11 @@ Rectangle {
     // the Lc 60 any text needs.
     Text {
         id: countText
-        x: nameBox.x + nameBox.width + Theme.space.m
+        x: nameBox.x + nameBox.width + Theme.space.rung.apart
         // As much as the name leaves, and never less than its share, so a
         // short name's detail (what a category holds) says all it can.
-        width: Math.min(implicitWidth, Math.max(row.width * 0.3, row.ends - x - Theme.space.xxl))
+        width: Math.min(implicitWidth, Math.max(row.width * 0.3,
+            row.ends - x - Theme.space.rung.groups))
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
         visible: row.detail !== ""
@@ -225,7 +261,7 @@ Rectangle {
 
     Graph {
         id: drawing
-        x: right.x - width - (right.width > 0 ? Theme.space.xl : 0)
+        x: right.x - width - (right.width > 0 ? Theme.space.rung.groups : 0)
         anchors.verticalCenter: parent.verticalCenter
         reading: row.warns && row.graphed ? Object.assign({}, row.graph, { warn: true }) : row.graph
         selected: row.selected
@@ -262,21 +298,24 @@ Rectangle {
     Item {
         id: right
         anchors.right: parent.right
-        anchors.rightMargin: Theme.space.l
+        anchors.rightMargin: Theme.space.rung.inset
         y: monoLine.y + monoLine.baselineOffset
             - (right.chorded ? keys.baselineOffset : sideText.baselineOffset)
-        readonly property bool chorded: row.kind === "" && row.chord.length > 0
-        readonly property string said: row.kind !== "" ? row.kind
+        readonly property bool chorded: row.landed === "" && row.kind === ""
+            && row.chord.length > 0
+        readonly property string said: row.landed !== "" ? row.landed
+            : row.kind !== "" ? row.kind
             : itemised ? Reading.wholeItems(row.sideItems, room,
                 words => Math.ceil(sideFace.advanceWidth(words)) + 1)
             : row.side
         readonly property bool sided: !chorded && said !== ""
-        readonly property bool itemised: row.kind === "" && row.sideItems.length > 0
+        readonly property bool itemised: row.landed === "" && row.kind === ""
+            && row.sideItems.length > 0
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
-        readonly property real room: row.width - Theme.space.l - nameBox.x
-            - nameBox.implicitWidth - Theme.space.xxl - (row.detail === "" ? 0
-                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)
+        readonly property real room: row.width - Theme.space.rung.inset - nameBox.x
+            - nameBox.implicitWidth - Theme.space.rung.groups - (row.detail === "" ? 0
+                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.rung.apart)
         // A side of items down to its last that still leaves the name no
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
@@ -290,9 +329,10 @@ Rectangle {
         // reckoned from where a name starts at no depth, so a row a step in
         // says as much at its right as the row above it.
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
-            row.width - nameBox.x + row.indent - nameBox.implicitWidth - 2 * Theme.space.xxl
-            - Theme.space.l - (row.detail === "" ? 0
-                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
+            row.width - nameBox.x + row.indent - nameBox.implicitWidth
+            - Theme.space.rung.groups - row.glyphColumn - Theme.space.rung.inset
+            - (row.detail === "" ? 0
+                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.rung.apart)))
         // As wide as the widest beside a graph in the list, so the graphs
         // line up, and never more than what's said may take; for a row
         // without one, as wide as the widest said here in this step, within
@@ -322,9 +362,11 @@ Rectangle {
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
             text: right.said
             wholeWords: true
+            endsRight: true
             level: Theme.level.note
             // Muted reads under the Lc 60 any text needs on the selection.
             color: row.flashed ? row.flashInk
+                : row.landed !== "" ? Theme.accent
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth

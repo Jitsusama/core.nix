@@ -370,8 +370,9 @@ pub struct Guard {
     kept: Vec<(PathBuf, crate::activity::Use)>,
     /// What the last survey offered, less what passes took since, so a
     /// holder can say how much of it the guard may clear, and how much a
-    /// clear would take now.
-    offered: Vec<crate::holders::Offered>,
+    /// clear would take now; none before the first survey, which a disk
+    /// well under its budget may not make for six hours.
+    offered: Option<Vec<crate::holders::Offered>>,
     /// Whether the holders are to be measured again on the next step,
     /// since a clear has just changed them.
     remeasure: bool,
@@ -658,7 +659,7 @@ impl Guard {
             unread: (0, None),
             damaged,
             kept: Vec::new(),
-            offered: Vec::new(),
+            offered: None,
             remeasure: false,
             measured: Arc::new(Mutex::new(None)),
             measuring: None,
@@ -1934,14 +1935,16 @@ impl Guard {
             return Ok((scan, offers));
         }
         self.kept = kept;
-        self.offered = offers
-            .iter()
-            .map(|offer| crate::holders::Offered {
-                path: offer.candidate.path.clone(),
-                size: offer.candidate.size,
-                now: crate::plan::clears(&offer.candidate),
-            })
-            .collect();
+        self.offered = Some(
+            offers
+                .iter()
+                .map(|offer| crate::holders::Offered {
+                    path: offer.candidate.path.clone(),
+                    size: offer.candidate.size,
+                    now: crate::plan::clears(&offer.candidate),
+                })
+                .collect(),
+        );
         offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
         offers.extend(self.asked_offers());
@@ -2046,8 +2049,10 @@ impl Guard {
     /// failing command waits its window too.
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
-            if *outcome == Outcome::Reclaimed {
-                self.offered.retain(|offer| &offer.path != taken);
+            if *outcome == Outcome::Reclaimed
+                && let Some(offered) = &mut self.offered
+            {
+                offered.retain(|offer| &offer.path != taken);
             }
             let offered = here.iter().find(|offer| &offer.candidate.path == taken);
             match offered.map(|offer| &offer.action) {
@@ -2247,7 +2252,7 @@ impl Guard {
             &*self.measured.lock().unwrap_or_else(PoisonError::into_inner)
         {
             status.holders =
-                crate::holders::holders(measured, &self.offered, &self.kept, grew, home);
+                crate::holders::holders(measured, self.offered.as_deref(), &self.kept, grew, home);
             status.holders_at = Some(*at);
         }
         mark(&mut status, self.state(), home);

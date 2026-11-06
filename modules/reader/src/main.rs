@@ -16,6 +16,7 @@
 //! compositor's presentation feedback, and holds the worst 1% of intervals
 //! against one refresh interval.
 
+mod anchor;
 mod ex;
 mod gl;
 mod keys;
@@ -47,6 +48,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::c_void;
 use std::io::Write;
 use std::time::{Duration, Instant};
+
+use theme::PT_A_PX;
 
 /// For tests: say each key's act and where the view heads after it.
 fn keys_logged() -> bool {
@@ -143,9 +146,6 @@ const LOADING_AT_ONCE: usize = 4;
 /// times the screen's scale over this, so a band at one scale stands in
 /// for another's as a zoom's do.
 const REFERENCE_SCALE: f64 = 2.0;
-/// Points of the page a logical pixel of the window holds at zoom 1, as
-/// CSS has it.
-const PT_A_PX: f64 = 0.75;
 /// How long the first frame may wait for its screen's bands: design.md's
 /// first frame is complete, within the 250 ms the first screen is allowed.
 const FIRST_FRAME_AT_MOST: Duration = Duration::from_millis(250);
@@ -168,6 +168,9 @@ struct Incoming {
     /// Where the view will be on it, in device pixels: the same words at
     /// the top as on the page before.
     offset: f64,
+    /// Where the view was going on the page before when this was set, in
+    /// points, so a key that moves it before this shows is known.
+    set_at_pt: f64,
     lines: Vec<text::Line>,
     textures: HashMap<Key, gl::Texture>,
     asked: HashSet<Key>,
@@ -220,37 +223,6 @@ type Reset = (
     String,
     Result<(typst_layout::Page, f64, Vec<text::Line>), String>,
 );
-
-/// Where the view's top line is on a new page: the same words, the same
-/// how-many-th time they come, at the same height in the view; the end of
-/// the page if the view was at the end, as while writing there. Points.
-fn anchored(
-    old: &[text::Line],
-    new: &[text::Line],
-    top_pt: f64,
-    at_end: bool,
-    new_most_pt: f64,
-) -> f64 {
-    if at_end {
-        return new_most_pt;
-    }
-    let Some((index, line)) = old
-        .iter()
-        .enumerate()
-        .find(|(_, line)| line.baseline_pt >= top_pt)
-    else {
-        return top_pt.min(new_most_pt);
-    };
-    let nth = old[..index]
-        .iter()
-        .filter(|other| other.text == line.text)
-        .count();
-    let same: Vec<&text::Line> = new.iter().filter(|other| other.text == line.text).collect();
-    match same.get(nth).or(same.last()) {
-        Some(found) => (found.baseline_pt - (line.baseline_pt - top_pt)).clamp(0.0, new_most_pt),
-        None => top_pt.min(new_most_pt),
-    }
-}
 
 /// What the loader is told of a band, to know it again when its texture
 /// is made: its key, the page it was drawn from, and how long it took.
@@ -494,7 +466,9 @@ struct App {
 }
 
 /// One line of the page's body text, what Ctrl+E and Ctrl+Y move by.
-const LINE_PT: f64 = page::PITCH_PT;
+fn line_pt() -> f64 {
+    page::pitch_pt()
+}
 
 /// A key's count as lines to move by: one when none was typed.
 fn count_of(count: Option<u32>) -> isize {
@@ -708,9 +682,20 @@ impl App {
     }
 
     /// Whether the view is at the page's end, which it keeps to as the page
-    /// or the window changes under it, as while writing there.
+    /// or the window changes under it, as while writing there, or is on
+    /// its way there.
     fn at_end(&self) -> bool {
-        self.most() > 0.0 && self.offset >= self.most() - 1.0
+        motion::at_end(self.offset, self.jump.as_ref(), self.most())
+    }
+
+    /// Keeps a view at the end to the page's end where it is now: a jump on
+    /// its way to the old end goes on to the new one, as G meant.
+    fn keep_to_end(&mut self) {
+        if self.jump.is_some() {
+            self.jump_to(self.most());
+        } else {
+            self.offset = self.most();
+        }
     }
 
     /// Where the page shown ends, in device pixels from its top at the
@@ -882,7 +867,7 @@ impl App {
                 clippy::cast_precision_loss,
                 reason = "a count of lines, a few thousand at most"
             )]
-            let by_px = by as f64 * LINE_PT * self.px_per_pt();
+            let by_px = by as f64 * line_pt() * self.px_per_pt();
             self.step_to(self.heading() + by_px);
             return;
         };
@@ -900,7 +885,7 @@ impl App {
             return;
         };
         let (top, foot) = self.view_pt();
-        let room = SCROLL_OFF_LINES * LINE_PT;
+        let room = SCROLL_OFF_LINES * line_pt();
         let top = if self.heading() > 0.5 {
             top + room
         } else {
@@ -1488,8 +1473,9 @@ impl App {
     /// A key while gO's outline shows, as Neovim's location list takes
     /// them in normal mode: j and k, gg and G, Ctrl+D and Ctrl+U and the
     /// screen's keys through its rows, / and ? then n and N through its
-    /// words, Return to the heading chosen, and Escape or ZZ away: q does
-    /// nothing, as in his Neovim, since nothing records.
+    /// words, Return to the heading chosen, and ZZ or Space w away: Escape
+    /// closes nothing, as Joel asked, and q does nothing, since nothing
+    /// records.
     fn outline_key(&mut self, key: keys::Key, held: bool) {
         if let Some(typing) = self.outline_typing.as_mut() {
             let said = typing.key(key, held);
@@ -1593,10 +1579,12 @@ impl App {
                     outline.find(&query, forward == (act == Act::Next), n);
                 }
             }
-            Act::Close | Act::Rest => {
+            Act::Close => {
                 self.close_outline();
                 return;
             }
+            // Escape among the rest, which has already dropped a count or a
+            // key waiting, and closes nothing.
             _ => return,
         }
         self.ask_outline();
@@ -1849,6 +1837,9 @@ impl App {
         if shown && !self.keys_shown {
             self.keys_scroll = 0.0;
         }
+        if shown != self.keys_shown && keys_logged() {
+            eprintln!("keys: {}", if shown { "shown" } else { "away" });
+        }
         self.keys_shown = shown;
         let px_per_pt = self.prompt_px_per_pt();
         let width_pt = self.gl.as_ref().map_or(0.0, |gl| f64::from(gl.width)) / px_per_pt;
@@ -1893,7 +1884,7 @@ impl App {
         if most <= 0.0 {
             return false;
         }
-        let row = prompt::KEY_ROW_PT * self.prompt_px_per_pt();
+        let row = page::pitch_pt() * self.prompt_px_per_pt();
         let screen = self.screen_px();
         let times = f64::from(count.unwrap_or(1));
         let by = match act {
@@ -2192,10 +2183,18 @@ impl App {
         ) {
             self.prompt_shown = false;
         }
-        // Any key closes the key list, as which-key's, and does what it does;
-        // Escape only closes it, and Space ? again too. While it's taller
-        // than the window, the keys that move the view scroll it instead.
+        // Any key closes the key list, as which-key's, and does what it does,
+        // and Space ? again too; ZZ and Space w close only the list, and
+        // Escape closes nothing, as Joel asked. While it's taller than the
+        // window, the keys that move the view scroll it instead.
         let listed = self.keys_shown;
+        if listed && matches!(act, Act::Rest | Act::Close) {
+            if act == Act::Close {
+                self.show_keys(false);
+            }
+            self.acted(act, count, from, screen_pt);
+            return;
+        }
         if listed && self.scroll_keys(act, count) {
             if !self.frame_pending {
                 self.draw();
@@ -2224,7 +2223,7 @@ impl App {
     /// leave it on its line while that stays in view.
     fn scroll(&mut self, act: keys::Act, n: f64) {
         use keys::Act;
-        let (screen, line) = (self.screen_px(), LINE_PT * self.px_per_pt());
+        let (screen, line) = (self.screen_px(), line_pt() * self.px_per_pt());
         let (at, here) = (self.heading(), self.cursor_pt());
         let by = match act {
             Act::ScrollDown => n * line,
@@ -2251,7 +2250,7 @@ impl App {
     fn view_act(&mut self, act: keys::Act, count: Option<u32>, listed: bool) {
         use keys::Act;
         let n = f64::from(count.unwrap_or(1));
-        let line = LINE_PT * self.px_per_pt();
+        let line = line_pt() * self.px_per_pt();
         let at = self.heading();
         let here = self.cursor_pt();
         match act {
@@ -3022,12 +3021,12 @@ impl App {
     fn take_in(&mut self) {
         self.upload_arrived();
         if self.held_pt.is_some() && self.whole_page_covers() {
-            // At the first screen's end, the view goes on to the whole
-            // page's, which is where he was.
+            // At the first screen's end, or on its way there, the view goes
+            // on to the whole page's, which is where he was or was going.
             let at_end = self.at_end();
             self.held_pt = None;
             if at_end {
-                self.offset = self.most();
+                self.keep_to_end();
                 self.ask_for_bands();
             }
         }
@@ -3394,9 +3393,9 @@ impl App {
             self.landing(&file, &page, &lines, new_most_pt)
         } else {
             let at_end = self.at_end();
-            let top_pt = self.offset / px_per_pt;
+            let top_pt = self.heading() / px_per_pt;
             match &self.words {
-                Some(old) => anchored(old, &lines, top_pt, at_end, new_most_pt),
+                Some(old) => anchor::anchored(old, &lines, top_pt, at_end, new_most_pt),
                 None => top_pt.min(new_most_pt),
             }
         };
@@ -3406,6 +3405,7 @@ impl App {
             version,
             page: std::sync::Arc::new(page),
             offset: offset_pt * px_per_pt,
+            set_at_pt: self.heading() / px_per_pt,
             lines,
             textures: HashMap::new(),
             asked: HashSet::new(),
@@ -3503,6 +3503,23 @@ impl App {
         let Some(incoming) = self.incoming.take() else {
             return;
         };
+        // A key that moved the view while this page was set, as G pressed
+        // while a first open sets it again at the window's width, still
+        // takes the view where it sent it once this page shows.
+        let carried = if incoming.opens.is_none() {
+            let px_per_pt = self.px_per_pt();
+            let screen_pt = self.screen_px() / px_per_pt;
+            anchor::carried(
+                self.words.as_deref().unwrap_or(&[]),
+                &incoming.lines,
+                incoming.set_at_pt,
+                self.heading() / px_per_pt,
+                self.at_end(),
+                (incoming.page.frame.size().y.to_pt() - screen_pt).max(0.0),
+            )
+        } else {
+            None
+        };
         // Another file's page: where the view was on this one is kept for
         // the next time it's shown, from its own page, before it goes.
         if incoming.opens.is_some() && !self.measuring {
@@ -3540,12 +3557,15 @@ impl App {
         }
         self.offset = incoming.offset;
         self.clamp();
+        if let Some(pt) = carried {
+            self.jump_to(pt * self.px_per_pt());
+        }
         if keys_logged() && incoming.opens.is_none() {
             eprintln!(
                 "saved: set {:.0} ms, shown {:.0} ms after, heading {:.1} pt",
                 incoming.set_ms,
                 incoming.since.elapsed().as_secs_f64() * 1000.0,
-                self.offset / self.px_per_pt()
+                self.heading() / self.px_per_pt()
             );
         }
         self.words = Some(incoming.lines);
@@ -3633,7 +3653,7 @@ impl App {
                 (*letter, block, into_pt)
             })
             .collect();
-        let at_end = self.most() > 0.0 && here >= self.most() - 1.0;
+        let at_end = self.at_end();
         if let Err(error) = place::write(
             file,
             &place::Place {
@@ -3659,7 +3679,7 @@ impl App {
             return;
         }
         self.held_pt = Some(self.painter.height_pt());
-        self.settled_pt = self.painter.height_pt() - page::BOTTOM_PT - 1.0;
+        self.settled_pt = self.painter.height_pt() - page::bottom_pt() - 1.0;
         self.painter.replace(page);
         let settled = self.settled_pt;
         let below: Vec<Key> = self
@@ -4251,7 +4271,7 @@ impl WindowHandler for App {
         // The view's end moves with the buffer's height, so a view at the
         // end keeps to it once the buffer is the window's new size.
         if at_end {
-            self.offset = self.most();
+            self.keep_to_end();
         }
         // A key list showing is set again for the window's new width.
         if self.keys_shown {
@@ -4402,9 +4422,9 @@ fn start_at(place: &place::Place, starts: &[(usize, f64)]) -> Option<f64> {
 
 fn first_width(measuring: bool) -> page::Width {
     if measuring {
-        page::Width::WHOLE
+        page::Width::whole()
     } else {
-        place::window_pt().map_or(page::Width::WHOLE, page::Width::for_window)
+        place::window_pt().map_or_else(page::Width::whole, page::Width::for_window)
     }
 }
 

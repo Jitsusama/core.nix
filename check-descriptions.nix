@@ -185,8 +185,8 @@
     a switch never removes the generation the machine booted
   '';
   btop-backs-out-on-escape = ''
-    btop's Escape backs out a step, off a process chosen and then out of btop, rather than opening its
-    menu
+    btop's Escape backs out a step, off a process chosen, and never ends btop, which q does, rather
+    than opening its menu
   '';
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
@@ -601,15 +601,26 @@
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
     once, and not its harmless taints
   '';
+  key-counts-keeps-no-order = ''
+    key-counts keeps a total of presses and holds for each keyboard, layer, modifiers and key and
+    nothing more, the same file whatever order the keys came in, a key held until it repeats
+    counting one hold, and a restart carrying on from the file
+  '';
+  key-counts-passes-clippy = ''
+    clippy finds nothing in key-counts or its tests
+  '';
   keys-speak-the-language = ''
     every surface naming its kinds has each act they hold, by the key language's keys, binds no
     key the language gives to another act and no act by a key not its own, in each mode its acts
     are pressed in, and Neovim's keys, its command line's among them, agree with the language;
     that the language gives no key or command name to two acts, names no command Neovim names
-    otherwise, gives no surface's act an arrow in normal or visual mode, lets the find line reach
-    no change and guards no act that would never ask; that no modal layer of ours binds an arrow
-    in normal but those still keeping theirs, a list that may only shrink; each way of straying
-    shown to fail first, the reader leaving out a key it takes only while selecting among them
+    otherwise, gives no surface's act an arrow the leader doesn't begin in normal or visual mode,
+    lets the find line reach no change and Return no act that ends or starts something, gives
+    h, l and Backspace nothing on a list, Escape nothing but stepping back, and guards no act
+    that would never ask; that a modal layer of ours binds an arrow in normal only alone, as its
+    letter's motion, and no layer of ours closes or quits by Escape; each way of
+    straying shown to fail first, a leader's arrow and an arrow bound as its letter shown to
+    pass, the reader leaving out a key it takes only while selecting among them
   '';
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
@@ -822,6 +833,10 @@
   '';
   niri-accepts-its-configuration = ''
     niri loads the files an account gets
+  '';
+  niri-centres-a-window-alone = ''
+    niri's layout says always-center-single-column, so a window alone on its workspace sits in the
+    middle of the screen
   '';
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
@@ -1313,6 +1328,11 @@
     the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
     display, and never listens to a headset's microphone while it plays music
   '';
+  space-is-set-by-rung = ''
+    no QML file of the shell's names a space by its step on the size scale, rather than by the
+    rung of the space ladder it sits between, the beat or a level's pitch, but those listed as
+    not yet moved, and none is listed that no longer needs to be
+  '';
   speaker-amps-have-every-dai-named = ''
     the XPS 14's SoundWire machine driver names only DAIs its amplifiers register
   '';
@@ -1445,6 +1465,10 @@
   '';
   the-disk-piece-reads-the-guards = ''
     the disk piece says the worst disk as the guards wrote it, and a guard gone quiet
+  '';
+  the-drawer-over-the-card-meets-it-square = ''
+    a floating surface over another, as the launcher's drawer over its card on a narrow screen,
+    meets it with a square foot and region, its top and the card's foot staying round
   '';
   the-ergodox-command-reaches-the-board = ''
     `ergodox` writes each command whole to the board's channel alone
@@ -1625,8 +1649,10 @@
   the-launcher-names-every-action-a-command = ''
     every launcher verb names a command the key language has, with :set's whole word as its
     argument and % only on an act taking rows, but for one Return alone does, which names none,
-    and no two verbs on one row make the same line; each one that doesn't is printed, and the
-    check refuses a stand-in vocabulary breaking each of its rules
+    and no two verbs on one row make the same line, a row that's an act itself, as Lock, held
+    the same where it names one; no :set toggles, as wifi! does, and a switch names each
+    state's own, as :set nowifi and wifi; each one that doesn't is printed, and the check
+    refuses a stand-in vocabulary breaking each of its rules
   '';
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
@@ -1931,6 +1957,12 @@
     patch reads, for less time than Plymouth takes to quit, so what the splash left stays on the
     screen until the desktop draws
   '';
+  the-splash-prompt-is-the-locks = ''
+    the splash's panel is the lock's field, a prompt's row inside its hairline, at each scale, its
+    padlock's cell the inset rung in from the frame, what's typed as far after it as Qt puts it,
+    between the glyph's advance and its ink with Prompt.qml's room after, and every face it
+    places by its capitals measured at each scale
+  '';
   the-splash-reads-the-generation-from-the-entry = ''
     the splash is told the generation only from an entry whose name carries one
   '';
@@ -2043,7 +2075,8 @@
   '';
   update-to-main-updates-to-signed-main = ''
     update-to-main builds and switches to a main signed by a key it was given and descended from what
-    it ran, builds nothing when main hasn't moved, refuses an unsigned, untrusted or rewritten main
+    it ran, builds nothing when main hasn't moved, neither fetches nor builds a hosted main whose
+    folder hasn't moved, refuses an unsigned, untrusted or rewritten main
     and a low battery, refuses to start or switch while the machine is busy or can't tell, leaves
     the machine as it was when the build fails, goes back when the switch
     fails or the machine isn't whole after it, leaves a new kernel for the next boot, joins asks to
@@ -2579,6 +2612,10 @@
   zathura-accepts-its-configuration = ''
     zathura opens a page with the account's settings and stays open without a warning, its bar in
     the monospaced face, and PDFs open in it
+  '';
+  zathura-escape-closes-no-contents = ''
+    zathura's contents close on none of Escape, Ctrl+[ and Ctrl+C, which are unmapped there, and ZZ
+    closes them as a window
   '';
   zathura-keys-go-where-they-say = ''
     every key zathura lists lands where it says: J, K and the page keys turn the pages, Home, End,

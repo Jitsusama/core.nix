@@ -19,8 +19,6 @@ Scope {
 
     // Wide enough for polkit's longer reasons on two lines at most.
     readonly property int width: 560
-    // The large step's line, on the space grid.
-    readonly property int line: Theme.space.xl
 
     PolkitAgent {
         id: agent
@@ -90,66 +88,34 @@ Scope {
             Column {
                 width: parent.width
 
-                Column {
-                    x: Theme.inset + Theme.space.l
-                    width: parent.width - 2 * x
-                    // The letters an inset and a step from the frame on
-                    // every side, as a launcher row's are.
-                    topPadding: x
-                    bottomPadding: x
-
-                    Text {
-                        width: parent.width
-                        textFormat: Text.RichText
-                        readonly property string asker:
-                            `<span style="font-family:'${Theme.mono.family}'">${root.asker}</span>`
-                        // At Words, in text, its owner a strong span: the
-                        // line takes the face's weight rather than its
-                        // axis, since a span can't set the axis.
-                        readonly property string owner: `<span style="color:${Theme.strong};`
-                            + `font-weight:${Theme.level.words.spans.strong}">${root.who}</span>`
-                        text: `${asker} needs ${owner}'s password`
-                        color: Theme.text
-                        wrapMode: Text.Wrap
-                        lineHeight: root.line
-                        lineHeightMode: Text.FixedHeight
-                        font.family: Theme.level.words.family
-                        font.pointSize: Theme.level.words.pointSize
-                        font.weight: Theme.level.words.spans.weight
-                        font.variableAxes: Theme.level.words.spans.variableAxes
-                    }
-
-                    Text {
-                        width: parent.width
-                        // A line that belongs with who asks, above.
-                        topPadding: Theme.space.xs
-                        text: root.failed ? root.flow.supplementaryMessage : root.why
-                        color: root.failed ? Theme.alert : Theme.level.words.colour
-                        wrapMode: Text.Wrap
-                        lineHeight: root.line
-                        lineHeightMode: Text.FixedHeight
-                        font.family: Theme.level.words.family
-                        font.pointSize: Theme.level.words.pointSize
-                        font.weight: Theme.level.words.weight
-                        font.variableAxes: Theme.level.words.variableAxes
-                    }
-                }
-
-                Rectangle {
+                // Who asks in the mono, as a program is named, and whose
+                // password a strong span; then why, or what went wrong.
+                PromptHead {
                     width: parent.width
-                    height: Theme.border
-                    color: Theme.edge
+                    readonly property string asker:
+                        `<span style="font-family:'${Theme.mono.family}'">${root.asker}</span>`
+                    readonly property string owner: `<span style="color:${Theme.strong};`
+                        + `font-weight:${Theme.level.words.spans.strong}">${root.who}</span>`
+                    asked: `${asker} needs ${owner}'s password`
+                    askedOpens: root.asker.charAt(0)
+                    askedOpensIn: Theme.mono.family
+                    reason: root.failed ? root.flow.supplementaryMessage : root.why
+                    reasonColour: root.failed ? Theme.alert : Theme.level.words.colour
                 }
 
+                Hairline {
+                    width: parent.width
+                }
+
+                // The field, one row, its mark on the head's column.
                 Item {
                     width: parent.width
-                    height: prompt.height + 2 * Theme.inset
+                    height: prompt.height
 
                     Prompt {
                         id: prompt
-                        x: Theme.inset
-                        y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        x: Theme.space.rung.inset - markAt
+                        width: parent.width - 2 * x
                         glyph: Theme.glyph.secret
                         hue: Theme.machine
                         secret: !(root.flow && root.flow.responseVisible)
@@ -164,24 +130,13 @@ Scope {
                     }
                 }
 
-                Rectangle {
+                Hairline {
                     width: parent.width
-                    height: Theme.border
-                    color: Theme.edge
                 }
 
-                Item {
+                PromptFoot {
                     width: parent.width
-                    // The footer's keys an inset and a step inside the
-                    // frame, under the letters above.
-                    height: Theme.space.xxl + 2 * Theme.inset
-
-                    KeyHints {
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.inset + Theme.space.l
-                        anchors.verticalCenter: parent.verticalCenter
-                        keys: [["\u21b5", "allow"], ["Esc", "refuse"]]
-                    }
+                    keys: [["\u21b5", "allow"], ["Esc", "refuse"]]
                 }
             }
         }
