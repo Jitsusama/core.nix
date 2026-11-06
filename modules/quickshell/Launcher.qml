@@ -7122,9 +7122,15 @@ Scope {
                             anchors.baselineOffset: root.footBase
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
+                            // Return's words end its place, on the inset, so
+                            // the room held for a wider word stands to their
+                            // left, never as a gap before the frame (Joel,
+                            // 2026-11-05: "a right padding for text most of
+                            // the time which looks fucking janky"; VKCF3Z).
                             keys: foot.shown
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
                                 ? foot.returnPlace : 0)
+                            endsRight: true
                         }
                     }
                 }
