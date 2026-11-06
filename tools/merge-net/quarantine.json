@@ -5,12 +5,5 @@
     "owner_pr": 1875,
     "reason": "failed, then passed, at b74ab91b4979",
     "test": "vm-screens-keep-the-launcher"
-  },
-  {
-    "at": 1793947363,
-    "commit": "ce74e8332e46b0ebfdcd3ecb37e1fdee5bf31f91",
-    "owner_pr": 375,
-    "reason": "failed, then passed on a rebuild of the same derivation, at ce74e8332e46",
-    "test": "the-keyboard-light-is-heard"
   }
 ]
