@@ -1973,13 +1973,17 @@ Floating {
             // Where the facts start, as the status line says.
             readonly property real factsAt: statusLine.factsAt
 
-            // Whole, as the hints leave it its room as it says it now; it
-            // gives way only where the hints that stay leave none.
+            // Whole, as the hints leave it its room as it says it now. It
+            // gives way whole, never half, only while the hints that stay
+            // leave it none, as visual's at 2 do: there the count chosen is
+            // what d acts on, and the cursor's ground and number say where
+            // it stands (VKCF3Z, 2026-11-06).
             Text {
                 id: facts
                 x: foot.factsAt
-                width: Math.min(implicitWidth, foot.width - foot.factsAt
+                width: hinted.crowded ? 0 : Math.min(implicitWidth, foot.width - foot.factsAt
                     - Theme.space.rung.inset - Theme.space.rung.groups - hinted.wide)
+                visible: width > 0
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.facts
@@ -2046,6 +2050,11 @@ Floating {
                 readonly property real wide: shown.reduce((sum, hint, at) => sum
                     + (at > 0 ? statusLine.keys.spacing : 0)
                     + statusLine.keys.advance(hint[0], hint[1]), 0)
+
+                // Whether the hints that stay leave the facts no room, as
+                // drawn: what was just done, said in their place, takes
+                // only `fits`.
+                readonly property bool crowded: held.said === "" && wide > fits
             }
         }
     }
