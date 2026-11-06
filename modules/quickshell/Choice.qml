@@ -406,7 +406,13 @@ Rectangle {
             : right.sided && (!right.itemised || right.squeezed)
                 ? Math.min(row.sides * noteFace.advanceWidth, right.share) : 0
 
-        width: Math.max(column, chorded ? keys.width : sided ? sideText.width : 0)
+        // Whether a figure stands before the chord, as a collection's count
+        // does, so a count is said at a row's right even where its chord
+        // is (VKCF3Z, 2026-11-05: "12 \u00b7 \u2699 + 0").
+        readonly property bool counted: chorded && said !== ""
+        width: Math.max(column, chorded ? keys.width
+                + (counted ? beforeKeys.implicitWidth + Theme.space.rung.mark : 0)
+            : sided ? sideText.width : 0)
         height: chorded ? keys.height : sideText.height
 
         Chord {
@@ -415,6 +421,70 @@ Rectangle {
             visible: right.chorded
             keys: row.chord
             colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
+        }
+
+        // The figure before the chord, in Note, joined to it as the status
+        // line joins its facts: a muted dot a mark from each, measured to
+        // the dot's ink, so a dot means one thing across the card (VKCF3Z,
+        // 2026-11-05).
+        // The dot's ink, and where the count's ends short of its advance
+        // by its last letter's bearing, measured at the fine size and read
+        // back down, since a measure at the size drawn comes in whole
+        // pixels, which a screen at 1.5 or 2 draws finer than.
+        TextMetrics {
+            id: dotInk
+            text: "\u00b7"
+            font.family: Theme.level.note.family
+            font.italic: Theme.level.note.italic
+            font.weight: Theme.level.note.weight
+            font.pointSize: Theme.level.note.pointSize * row.fine
+        }
+        TextMetrics {
+            id: countInk
+            text: right.said
+            font.family: Theme.level.note.family
+            font.italic: Theme.level.note.italic
+            font.weight: Theme.level.note.weight
+            font.pointSize: Theme.level.note.pointSize * row.fine
+        }
+        // From the figure's width as drawn rather than its fine advance,
+        // since a face hinted fully draws its advance in whole pixels.
+        readonly property real countBearing: right.said === "" ? 0
+            : Math.max(0, countFigure.implicitWidth - (countInk.tightBoundingRect.x
+                + countInk.tightBoundingRect.width) / row.fine)
+        Row {
+            id: beforeKeys
+            anchors.right: keys.left
+            anchors.rightMargin: Theme.space.rung.mark
+            anchors.baseline: keys.baseline
+            baselineOffset: countFigure.baselineOffset
+            spacing: Theme.space.rung.mark - right.countBearing
+            visible: right.counted
+
+            Text {
+                id: countFigure
+                text: right.said
+                textFormat: Text.PlainText
+                color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
+                font.family: Theme.level.note.family
+                font.italic: Theme.level.note.italic
+                font.pointSize: Theme.level.note.pointSize
+                font.weight: Theme.level.note.weight
+                font.variableAxes: Theme.level.note.variableAxes
+                font.features: Theme.level.note.features
+            }
+            Item {
+                width: dotInk.tightBoundingRect.width / row.fine
+                height: dotText.height
+
+                Text {
+                    id: dotText
+                    x: -dotInk.tightBoundingRect.x / row.fine
+                    text: "\u00b7"
+                    color: row.flashed ? row.flashInk : Theme.muted
+                    font: countFigure.font
+                }
+            }
         }
 
         // What the row is, cut to its share, reads on as the name does,

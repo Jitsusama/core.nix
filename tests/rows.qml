@@ -4,8 +4,11 @@
 // every surface: nothing wraps, overlaps or runs past its edge, and what
 // doesn't fit ends in an ellipsis. A row's name and what it is both keep
 // within the row and apart, however long either is, and a field's ghost or
-// hint stops at the field's end. A field's path keeps its steps whole
-// beside a long note, and a short note keeps to the field's right end
+// hint stops at the field's end. A middle folder in a path says all of
+// itself it has room for beside the hint, giving way only to what's typed
+// past it, and past
+// the path's least what's typed scrolls, the ask and the last step whole.
+// A field's path keeps its steps whole beside a long note, and a short note keeps to the field's right end
 // however wide a room it holds. The launcher's note, with nothing typed,
 // ends where a row's value ends and says all it has room for; typed, it
 // stands before the field's keys. Words that fit are left whole. Selected,
@@ -189,6 +192,28 @@ ShellRoot {
                 chips: [{ text: "Save the Notes" }, { text: "~/saving" }]
                 text: "a.md"
             }
+            // Three steps in, a folder in the middle whose whole path the
+            // line has no room for, at rest; then the file picker's own
+            // line, its file mark leading the path, typed in far past its
+            // hint.
+            Prompt {
+                id: foldered
+                width: root.panel
+                steady: true
+                chips: [{ text: "Open the Notes" },
+                    { text: "~/gathering/more", yields: true }, { text: "Found" }]
+                hint: "what to do?"
+            }
+            Prompt {
+                id: folderTyped
+                width: root.panel
+                steady: true
+                glyph: "/"
+                lead: Theme.glyph.category
+                chips: [foldered.chips[0], foldered.chips[1], { text: "Gathered" }]
+                hint: foldered.hint
+                text: "abcdefghijklmno"
+            }
             // Three steps in with a long hint, which leaves a note no room:
             // the note gives way rather than lying over the hint.
             Prompt {
@@ -246,6 +271,9 @@ ShellRoot {
                     }
                 }
             }
+            // A collection's count at its right, before its chord.
+            Choice { id: countedChord; width: root.panel; name: "Agents"; side: "12"
+                chord: [{ text: "Super" }, { text: "0" }]; glyph: "$" }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -317,6 +345,41 @@ ShellRoot {
         return null;
     }
 
+    // The item under one that goes by a name.
+    function byName(item, name) {
+        for (const child of item.children) {
+            if (child.objectName === name)
+                return child;
+            const found = byName(child, name);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    // Where an item is first shown from, in another above it: the start
+    // of the furthest in of the boxes that clip it.
+    function shownFrom(item, above) {
+        let from = -Infinity;
+        for (let at = item; at !== null && at !== above; at = at.parent) {
+            if (at.clip)
+                from = Math.max(from, at.mapToItem(above, 0, 0).x);
+        }
+        return from;
+    }
+
+    // The field a line types in.
+    function inputOf(item) {
+        for (const child of item.children) {
+            if (child.cursorRectangle !== undefined)
+                return child;
+            const found = inputOf(child);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
     // The voice is in a face of its own, as wide as the serif draws it
     // rather than the mono, on the mono's baseline within a device pixel
     // at a scale of 2.
@@ -361,6 +424,14 @@ ShellRoot {
 
     // A head's face, the Title, and what's typed, the Figure: their
     // capitals and small letters, which centre a field's line.
+    // Title's ink, read at eight times its size for its fractions.
+    TextMetrics {
+        id: titleInk
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize * 8
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing * 8
+    }
     TextMetrics {
         id: titleCaps
         text: "H"
@@ -482,6 +553,63 @@ ShellRoot {
                 Math.abs(middle - capsMiddle) <= 0.5,
                 `${shown}, middle ${middle} against ${capsMiddle}`);
         }
+    }
+
+    // A row with a chord says its count at its right before it, joined as
+    // the status line joins its facts, a muted dot a mark from each, on the
+    // name's baseline, and nothing after its name.
+    function textItem(item, words) {
+        for (const child of item.children) {
+            if (child.visible && child.text === words)
+                return child;
+            const found = textItem(child, words);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+    // A count's ink, which ends short of its advance by its last figure's
+    // bearing, read at eight times the size for its fractions.
+    TextMetrics {
+        id: countProbe
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize * 8
+        text: "12"
+    }
+
+    function countBeforeChord() {
+        const texts = drawn(countedChord, []).sort((a, b) => a.from - b.from);
+        const count = texts.find(t => t.text === "12");
+        const inkTo = count === undefined ? NaN : count.from
+            + (countProbe.tightBoundingRect.x + countProbe.tightBoundingRect.width) / 8;
+        const keys = texts.filter(t => count !== undefined && t.from > count.from
+            && t.text !== "\u00b7");
+        const dot = textItem(countedChord, "\u00b7");
+        countProbe.text = "\u00b7";
+        const dotBox = countProbe.tightBoundingRect;
+        const dotFrom = dot ? dot.mapToItem(null, 0, 0).x + dotBox.x / 8 : NaN;
+        const dotTo = dotFrom + dotBox.width / 8;
+        countProbe.text = "12";
+        expect("a mark from the count to the dot's ink, and from it to the chord",
+            count !== undefined && keys.length > 0
+                && Math.abs(dotFrom - inkTo - Theme.space.rung.mark) <= 0.5
+                && Math.abs(keys[0].from - dotTo - Theme.space.rung.mark) <= 0.5,
+            `${said(texts)}, the count's ink to ${inkTo}, the dot's ${dotFrom} to ${dotTo}`);
+        // A key after the first stands past its + by its padding, which
+        // the words drawn leave out, so the chord ends where its last
+        // key's item does.
+        const last = textItem(countedChord, "0");
+        const ends = last ? last.mapToItem(null, last.width, 0).x : NaN;
+        expect("a count stands before the chord, at the row's right",
+            count !== undefined && keys.length > 0 && keys.every(t => t.from >= count.to - 0.5)
+                && Math.abs(ends - (root.panel - Theme.space.rung.inset)) <= 1,
+            `${said(texts)}, the chord ending at ${ends}`);
+        const name = setting(countedChord, "Agents");
+        const figure = setting(countedChord, count.text);
+        expect("on the name's baseline", Math.abs(name.base - figure.base) <= 0.5,
+            `${name.base} against ${figure.base}`);
+        expect("and nothing after its name",
+            texts.filter(t => t.text.includes("12")).length === 1, said(texts));
     }
 
     // The gutter, as his Neovim's number, relativenumber and
@@ -613,6 +741,74 @@ ShellRoot {
             expect("a field's path keeps its steps whole beside a long note",
                 ["Machine", "Processor", "Cores"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
+            // A middle folder gives way only as far as it must: at rest, the
+            // room kept to type is the hint's as drawn, so it keeps all of
+            // its last folders the line has room for, where a dozen
+            // characters kept took one;
+            // typed past the hint, it gives way to what's typed, and past
+            // its least what's typed scrolls, the ask and the last step
+            // whole, its caret in sight (VKCF3Z, 2026-11-06).
+            texts = drawn(foldered, []);
+            expect("a middle folder says all it has room for beside the hint at rest",
+                ["Open the Notes", "~/\u2026/more", "Found", "what to do?"].every(step =>
+                    texts.some(t => t.text === step && !t.truncated)), said(texts));
+            texts = drawn(folderTyped, []);
+            const typedIn = root.inputOf(folderTyped);
+            // Where the caret ends, in the line, which is never past its end.
+            const caret = typedIn === null ? Infinity : typedIn.mapToItem(folderTyped,
+                typedIn.cursorRectangle.x, 0).x + folderTyped.caretWidth;
+            expect("what's typed scrolls past the path's least, the ask whole",
+                ["Open the Notes", "\u2026", "Gathered"].every(step =>
+                    texts.some(t => t.text === step && !t.truncated))
+                    && typedIn !== null && typedIn.cursorPosition === folderTyped.text.length
+                    && caret <= folderTyped.end + 0.5,
+                `${said(texts)}, caret ends at ${caret} of ${folderTyped.end}`);
+            // Scrolled, a muted mark at the field's start says letters went
+            // off it, in room taken from what's typed; at rest there's none.
+            // Every letter shown is shown whole, after the mark, and the
+            // first beside it, as Vim's precedes mark takes a letter's cell.
+            const precedes = root.byName(folderTyped, "precedes");
+            const markEnd = precedes === null ? Infinity
+                : precedes.mapToItem(folderTyped, precedes.contentWidth, 0).x;
+            const clipFrom = typedIn === null ? Infinity : root.shownFrom(typedIn, folderTyped);
+            const letterAt = at => typedIn.mapToItem(folderTyped,
+                typedIn.positionToRectangle(at).x, 0).x;
+            const lettersCut = typedIn === null ? [] : Array.from(folderTyped.text).map((_, at) =>
+                [letterAt(at), letterAt(at + 1)]).filter(([from, to]) =>
+                    to > clipFrom + 0.5 && (from < clipFrom - 0.5 || from < markEnd - 0.5));
+            expect("a field scrolled says so at its start, its letters whole after it",
+                folderTyped.scrolled && !foldered.scrolled && precedes !== null
+                    && !(foldered.children.some(child => child.objectName === "precedes"
+                        && child.visible))
+                    && precedes.visible && Qt.colorEqual(precedes.color, Theme.muted)
+                    && lettersCut.length === 0 && clipFrom <= markEnd + 0.5,
+                precedes === null ? "no mark"
+                    : `mark ends at ${markEnd}, shown from ${clipFrom}, `
+                        + `letters cut: ${JSON.stringify(lettersCut)}`);
+            // A path's mark stands a rung apart from the ink either side, to
+            // its own, so a step reads further off than a word does (the
+            // picker audit's finding 13).
+            // Its ink by its first and last letters' bearings inside the
+            // words as drawn, since a face's measure of whole words leaves
+            // out the title's axes.
+            const inkOf = text => {
+                const letters = Array.from(text.text);
+                titleInk.text = letters[0];
+                const leads = titleInk.tightBoundingRect.x / 8;
+                titleInk.text = letters[letters.length - 1];
+                const box = titleInk.tightBoundingRect;
+                const trails = (titleInk.advanceWidth - box.x - box.width) / 8;
+                return { from: text.from + leads, to: text.to - trails };
+            };
+            texts = drawn(named, []).sort((a, b) => a.from - b.from);
+            const steps = ["Save the Notes", "\u203a", "~/saving"]
+                .map(words => texts.find(t => t.text === words));
+            const inks = steps.every(step => step !== undefined) ? steps.map(inkOf) : [];
+            expect("a path's mark stands a rung apart from the steps' ink either side",
+                inks.length === 3
+                    && Math.abs(inks[1].from - inks[0].to - Theme.space.rung.apart) <= 0.5
+                    && Math.abs(inks[2].from - inks[1].to - Theme.space.rung.apart) <= 0.5,
+                `${said(texts)}, inks ${JSON.stringify(inks)}`);
             // A note beside a head sits on the head's baseline, as his line
             // reads (Joel, 2026-11-05: "which? &etc. need to be baselined
             // with the text to their left"): the hint beside the place's
@@ -698,7 +894,7 @@ ShellRoot {
             // where letters would, so the caret never cuts its first letter
             // (VKCF3Z's space audit, the picker's fault 11: "open which
             // file?" read with its o cut).
-            const line = [...voicedField.children].find(child => child.cursorPosition !== undefined);
+            const line = root.inputOf(voicedField);
             const letters = line.mapToItem(null, 0, 0).x;
             const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
             expect("a hint starts past the caret", hinting !== undefined
@@ -790,6 +986,7 @@ ShellRoot {
             typing.narrowed = "";
             root.gutterHolds();
             root.marksHold();
+            root.countBeforeChord();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

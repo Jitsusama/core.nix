@@ -1412,7 +1412,9 @@ Scope {
 
     // Every command that takes something after it, its form shown, from
     // the providers this machine has: Return or Tab puts its start in the
-    // field, out at the top, so it's finished there.
+    // field, out at the top, so it's finished there. What it does is said
+    // after its form, where a row says what it is or does, never at its
+    // right, which holds a figure or a state (VKCF3Z, 2026-11-06).
     function commands() {
         return Words.commands.filter(command => sources.some(source => source.settings.name
             === command.provider)).map(command => {
@@ -1425,7 +1427,8 @@ Scope {
                 glyph: Theme.glyph.command,
                 hue: "action",
                 chord: [],
-                side: command.says ?? "",
+                side: "",
+                count: command.says ?? "",
                 plain: true
             };
             row.prepared = Fuzzy.prepare(row.name);
@@ -1908,15 +1911,17 @@ Scope {
     }
 
     // The keys the foot names while the drawer holds them, where the row's
-    // Return and arrows do nothing: the way back to the rows (or, while
-    // choosing, back to the page), and the key list where it's bound there,
-    // each as the table first names it (VKCF3Z, 2026-11-05: a lone Return
-    // in the drawer named a key that did nothing).
+    // Return and arrows do nothing: the way back to the rows and the key
+    // list where it's bound there, each as the table first names it
+    // (VKCF3Z, 2026-11-05: a lone Return in the drawer named a key that did
+    // nothing). Choosing names no way back, since only Escape leaves it,
+    // and nothing names Escape, which only ever leaves a mode; VIS and the
+    // count already say where you are (VKCF3Z, 2026-11-05).
     function drawerKeys(mode) {
         const words = Words.field.drawer ?? {};
         const named = act => QueryKeys.table.find(one => one.act === act
             && QueryKeys.inMode(one, mode));
-        const back = named(QueryKeys.chosen(mode) ? "back" : "rows");
+        const back = QueryKeys.chosen(mode) ? null : named("rows");
         const list = named("keys");
         return [back ? [ListedKeys.sequenceFace(back.keys[0]), words.back ?? ""] : null,
             list ? [ListedKeys.sequenceFace(list.keys[0]), words.keys ?? ""] : null]
@@ -2195,8 +2200,10 @@ Scope {
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
         // Room for the drawer's own only once the keys have gone in, so
         // the rows' foot never gives up room to keys they don't show.
-        if (QueryKeys.paged(prompt.mode))
-            said.push(drawerKeys(prompt.mode));
+        // Choosing, the drawer names no key, so it takes no room.
+        const drawn = QueryKeys.paged(prompt.mode) ? drawerKeys(prompt.mode) : [];
+        if (drawn.length > 0)
+            said.push(drawn);
         if (prompt.mode === "normal")
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
@@ -2455,19 +2462,6 @@ Scope {
         // a row apart from the head's hairline to the foot's (VKCF3Z,
         // 2026-11-05).
         const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
-        // Now's plate sets its lines on home's rows (look 3): what needs
-        // Joel on Agents', the day's facts from Programs' and the clock's
-        // from Desktop's, each by where that row is today, or -1 where
-        // it's missing, when the plate sets it below the line before.
-        const plated = rows.findIndex(row => row.plated === true);
-        if (plated >= 0) {
-            const at = id => rows.findIndex(row => row.key === `collection:${id}`
-                || row.category?.id === id);
-            const lines = { say: at("agents"), groups: [at("applications"), at("desktop")] };
-            const made = rows[plated].drawer;
-            rows[plated] = Object.assign({}, rows[plated],
-                { drawer: () => Object.assign(made(), { lines: lines }) });
-        }
         return rows;
     }
 
@@ -2550,12 +2544,13 @@ Scope {
             verb: "open",
             name: collection.title ?? collection.noun,
             plain: true,
-            count: counted ? source.counted() : "",
             note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
-            side: "",
+            // How many it holds at its right, before its chord, where a
+            // row's figure stands (VKCF3Z, 2026-11-05).
+            side: counted ? source.counted() : "",
             gap: gap,
             opens: name,
             from: source,
@@ -5374,19 +5369,6 @@ Scope {
     // as Network's does; home has none; the card's height, the list and the rows' lines all read
     // it, so the plate's lines can't drift from the list's.
     readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
-    // The middle of each row the card shows, down from its top: the first
-    // row's, then a row further for each, and a gap above a row that has
-    // one, so Now's plate can set a line on any of them. Worked out
-    // from the rows shown rather than read from the list, so it holds
-    // while the list is still drawing them.
-    readonly property var rowLines: {
-        let line = rowLine;
-        return matches.slice(0, rows).map((row, at) => {
-            if (at > 0)
-                line += rowTall + (row.gap ? apart : 0);
-            return line;
-        });
-    }
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
@@ -5644,10 +5626,6 @@ Scope {
                     time: drawerCard.momentTime,
                     seconds: drawerCard.momentSeconds,
                     say: drawerCard.shown?.say ?? "",
-                    // The rows its words and each group are set on, -1
-                    // for one missing.
-                    sayOn: drawerCard.momentLines.say ?? -1,
-                    groupsOn: drawerCard.groups.map(group => group.line),
                     groups: drawerCard.groups.map(group => group.facts.map(fact =>
                         [fact.label, fact.value, fact.qualifier ?? ""]))
                 } : null,
@@ -5661,10 +5639,7 @@ Scope {
                     rows: root.matches.slice(0, 20)
                         .map((_, at) => root.hundredths(list.baselineOf(at))),
                     // Each of the same rows' words, where they sit.
-                    words: root.matches.slice(0, 20).map((_, at) => list.wordsOf(at)),
-                    // The middle of each row shown, which the moment's time
-                    // centres its capitals on.
-                    middles: root.rowLines.map(line => root.hundredths(line))
+                    words: root.matches.slice(0, 20).map((_, at) => list.wordsOf(at))
                 },
                 // The facts it draws, by name, whether each name is on one
                 // line whole, and where its last line's box may end.
@@ -5687,6 +5662,11 @@ Scope {
                 digitsStandAsFigures: drawerCard.digitsStandAsFigures(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
+                // What its last slot says of the things it hides below, and
+                // that slot's baseline, "" and -1 when it hides none.
+                moreSays: drawerCard.moreSays,
+                moreBase: drawerCard.moreSays === "" ? -1
+                    : root.hundredths(drawerCard.moreBase),
                 scrolled: Math.round(drawerCard.scrolled),
                 // Whether the view's top cuts a line partway, which it never
                 // should, as Vim's topline is always a whole line.
@@ -7621,7 +7601,6 @@ Scope {
             squareFoot: root.drawerOver
             fieldBase: root.fieldBase
             rowLine: root.rowLine
-            rowLines: root.rowLines
             rowDrop: root.rowCaps / 2
             out: root.drawerOut && (!root.drawerOver || root.drawerHolds)
             waits: root.drawerOut && root.drawerOver && !root.drawerHolds

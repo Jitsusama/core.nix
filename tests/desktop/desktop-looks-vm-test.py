@@ -53,9 +53,12 @@ NEAR = 0.02
 # A Title's pitch: how far the title sits under the eyebrow, and its lines apart when its name
 # wraps, tighter than two of the plate's, so the name reads as one heading.
 TITLE_LEADING = 32
-# How far the text keeps from the plate's frame on every side, its foot included: an inset and a
-# step, 4 and 16, inside the border.
-INSIDE = 20
+# A Display's pitch: how far Now's time sits under its eyebrow, as a title sits a Title's.
+DISPLAY_PITCH = 56
+# How far the text keeps from the plate's frame on every side, its foot included: the inset rung,
+# from the frame's inside edge, its hairline border left out, to the ink.
+INSET = 24
+BORDER = 1
 # A row's words stand a step from its name (Theme.space.m), in the theme's serif, and on its
 # baseline to half a device pixel.
 WORDS_GAP = 12
@@ -144,6 +147,49 @@ def things_apart(firsts: list[float], wrapped: bool) -> bool:
         later - earlier > apart and on_the_pitch(later - apart, earlier)
         for earlier, later in pairwise(firsts)
     )
+
+
+def bottom_set(drawer: Json, lines: list[float]) -> bool:
+    """Say whether the last of these lines shown keeps the inset above the frame's bottom.
+
+    Its baseline stands at least the inset above the frame's inside edge, and where more waits
+    below, the next thing, with its heading if it opens a group, would not have fit whole there.
+    These are each thing's first baselines, so a thing's last stands a step above the next's
+    first: a pitch, a beat more where any thing in the list wraps, and two pitches before a
+    group's heading, a fact with no name. Past the last thing left, the test can't tell. Where
+    it hides any, the line saying so takes the lowest beat the inset above the frame's inside
+    edge, and the things end a step above it.
+    """
+    shown = [line for line in lines if line < drawer["foot"]]
+    if not shown:
+        return False
+    headings = {at for at, name in enumerate(drawer["facts"]) if name == ""}
+    step = PITCH + BEAT if drawer["factsWrapped"] else PITCH
+    floor = drawer["height"] - BORDER - INSET
+    if drawer["moreSays"]:
+        if not floor - BEAT < drawer["moreBase"] <= floor + NEAR:
+            return False
+        floor = drawer["moreBase"] - step
+    if shown[-1] > floor + NEAR:
+        return False
+    thing = len(shown) + (len(shown) in headings)
+    if not drawer["more"] or thing + 1 >= len(lines):
+        return True
+    last = lines[thing + 1] - (2 * PITCH if thing + 1 in headings else step)
+    return bool(last > floor + NEAR)
+
+
+def says_what_it_hides(drawer: Json, lines: list[float]) -> bool:
+    """Say whether its last line counts the things hidden below and how to go in to them.
+
+    A thing is hidden when its first baseline lies past the foot; a heading isn't one.
+    """
+    hidden = sum(
+        1 for at, line in enumerate(lines) if line >= drawer["foot"] and drawer["facts"][at] != ""
+    )
+    if hidden == 0:
+        return bool(drawer["moreSays"] == "")
+    return bool(drawer["moreSays"] == f"{hidden} more \u00b7 Ctrl+W l")
 
 
 def room_beside_the_card(desktop: Desktop) -> int:
@@ -261,6 +307,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
         numbers_programs(desktop, scale)
+        counts_before_its_chord(desktop, scale)
 
 
 def numbers_programs(desktop: Desktop, scale: str) -> None:
@@ -302,6 +349,26 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
+
+
+def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
+    """Step into Desktop, whose collections each open by a chord, and photograph their counts.
+
+    A collection listed whole outside home says how many it holds at its right, a muted dot
+    from its chord, as the status line joins its facts (VKCF3Z, 2026-11-05). A find's rows
+    say no count, which would read all of each at every key.
+    """
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Desktop")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["desktop"])
+    selected = desktop.showing()["selected"]
+    assert selected["side"], f"at {scale} Desktop's first has no count: {selected}"
+    assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
+    desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
 
@@ -375,6 +442,9 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     if scale == "1.5":
         assert drawer["factsWrapped"] == 0, f"at 1.5 {drawer['factsWrapped']} keys wrap: {drawer}"
     assert drawer["more"] or drawer["lines"]["facts"][-1] < drawer["foot"], drawer
+    assert bottom_set(drawer, drawer["lines"]["facts"]), (
+        f"at {scale} the keys' last line isn't the inset above the foot: {drawer}"
+    )
     desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
@@ -992,8 +1062,12 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         assert drawer["more"] or facts[-1] < drawer["foot"], (
             f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
         )
-        assert drawer["height"] - drawer["foot"] >= INSIDE - NEAR, (
-            f"at {scale} the last line runs into the plate's foot: {drawer}"
+        assert bottom_set(drawer, facts), (
+            f"at {scale} the last line isn't the inset above the plate's foot: {drawer}"
+        )
+        # What it hides below, its last line counts, as Vim marks a line cut off.
+        assert says_what_it_hides(drawer, facts), (
+            f"at {scale} the last line doesn't count what's hidden: {drawer}"
         )
         desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
@@ -1026,10 +1100,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.close_launcher()
 
 
-def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
+def test_nows_plate_sets_its_head_and_groups_as_every_plate(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Now's plate centres the time on Now's row and sets the rest on home's rows' lines."""
+    """Now's plate sets its head as one unit and its groups as a body under it, apart."""
     for scale in at_each_scale:
         at_scale(desktop, scale)
         desktop.as_account("qs ipc call launcher toggle")
@@ -1046,33 +1120,36 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
         room = room_beside_the_card(desktop)
         assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide: {drawer}"
         lines, card, moment = drawer["lines"], drawer["cardLines"], drawer["moment"]
-        # The rows' middles the plate sets on are worked out apart from the
-        # list, so each lies the same way above the list's own baseline.
-        middles = card["middles"]
-        drawn = zip(middles, card["rows"][: len(middles)], strict=True)
-        drop = [middle - row for middle, row in drawn if row]
-        assert all(abs(each - drop[0]) <= NEAR for each in drop), (
-            f"at {scale} the plate's row middles drift from the list's rows: {drawer}"
+        # Its head is one unit, as every plate's is: the eyebrow on the field's baseline, the
+        # time a Display pitch under it with its seconds on its baseline, and what needs Joel a
+        # Voice pitch under the time.
+        assert abs(lines["eyebrow"] - card["fieldBase"]) <= NEAR, (
+            f"at {scale} Now's eyebrow is off the field's baseline: {drawer}"
         )
-        assert abs(lines["timeMiddle"] - card["middles"][0]) <= NEAR, (
-            f"at {scale} the time's capitals aren't centred on Now's row: {drawer}"
+        assert abs(lines["time"] - lines["eyebrow"] - DISPLAY_PITCH) <= NEAR, (
+            f"at {scale} the time isn't a Display pitch under the eyebrow: {drawer}"
         )
         assert abs(lines["seconds"] - lines["time"]) <= NEAR, drawer
-        if moment["sayOn"] >= 0:
-            assert abs(lines["say"] - card["rows"][moment["sayOn"]]) <= NEAR, (
-                f"at {scale} what needs Joel is off its row's line: {drawer}"
+        head = lines["time"]
+        if moment["say"]:
+            assert abs(lines["say"] - lines["time"] - PITCH) <= NEAR, (
+                f"at {scale} what needs Joel isn't a Voice pitch under the time: {drawer}"
             )
-        # A group with nothing to show gives up its place, so the first
-        # shown starts on Programs' line, whichever it is: the VM has no
-        # weather, meeting or place, so there it's the clock's.
-        assert moment["groupsOn"][:1] == [shown["rows"].index("Programs")], (
-            f"at {scale} the first group of facts isn't on Programs' line: {drawer}"
+            head = lines["say"]
+        # Its groups are a body under the head: the first on the card's first beat two Title
+        # pitches or more under it, and each after two pitches from the last line before.
+        groups = lines["groups"]
+        assert groups, f"at {scale} Now's plate shows no facts: {drawer}"
+        first = float(card["rows"][0])
+        body = first + -(-(head + 2 * TITLE_LEADING - first - NEAR) // BEAT) * BEAT
+        assert abs(groups[0][0] - body) <= NEAR, (
+            f"at {scale} Now's facts don't start on the beat under its head: {drawer}"
         )
-        for on, group in zip(moment["groupsOn"], lines["groups"], strict=True):
-            if on >= 0:
-                assert abs(group[0] - card["rows"][on]) <= NEAR, (
-                    f"at {scale} a group of facts is off its row's line: {drawer}"
-                )
+        for earlier, later in pairwise(groups):
+            assert abs(later[0] - earlier[-1] - 2 * PITCH) <= NEAR, (
+                f"at {scale} Now's groups aren't two pitches apart: {drawer}"
+            )
+        for group in groups:
             # A group whose facts all take a line has them on the pitch; one where any wraps
             # has each a beat further from the one before, so either way on the card's beat.
             assert things_apart(group, wrapped=False) or things_apart(group, wrapped=True), (
@@ -1419,6 +1496,12 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
+            # Typed past the hint, the middle folder gives way to what's typed, and the
+            # last step and what's typed stay whole (VKCF3Z, 2026-11-06).
+            desktop.type_in("abcdefghijklmno")
+            desktop.photograph(f"file-picker-typed-gathered-at-{said}")
+            machine.send_key("ctrl-u")
+            desktop.launcher_until(lambda shown: shown["typed"] == "")
             desktop.step_out()
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
