@@ -63,6 +63,18 @@ let
   # Room round the padlock's ink as it's drawn, more than it reaches past
   # its cell; none of it shows.
   inkRoom = space.l;
+  # While a hibernation's image is read, the panel is a meter's frame
+  # holding a meter's bar (../quickshell/Meter.qml): a stroke four
+  # hairlines thick, in the edge's colour, from the padlock's cell to as
+  # far from the panel's other side, centred in its height. The kernel
+  # fills it in the text's colour as it reads the image
+  # (../kernel/hibernate-progress.patch), so it lies where the kernel puts
+  # its bar, told below. Its inset is from the panel's top.
+  track = rec {
+    width = panel.width - 2 * (border + space.rung.inset);
+    height = 4 * border;
+    inset = (panel.height - height) / 2;
+  };
   # How far a shadow can reach, its offset and twice its blur, past which a
   # blur's tail is too faint to see.
   farthest = lib.foldl' lib.max 0;
@@ -237,6 +249,11 @@ let
       ${capitals "under" "${serif} ${toString (points "serif" "large")}"}
       ${capitals "said" "${serif} ${toString (points "serif" "body")}"}
       ${capitals "voice" voice}
+      # How far the image's track stands over the foot the panel's set
+      # from, as the script sets the panel: the voice's capitals, a beat and
+      # the panel over the foot, less the track's inset. The kernel takes it
+      # to put its bar on the track (imageBar).
+      echo $((tall + ${at (space.beat + panel.height - track.inset)})) > $out/rise-${toString scale}
       ${capitals "typed" "${mono} ${toString (points "mono" "large")}"}
       ${lifted (file "name") mono (points "mono" "hero") config.networking.hostName}
       ${lib.concatStrings (
@@ -250,6 +267,9 @@ let
       ${lifted (file "digits") mono (points "mono" "small") (lib.concatStrings digits)}
       ${framed (file "panel") colours.accent}
       ${framed (file "panel-urgent") colours.alert}
+      # The meter's frame, in the edge's colour, since it takes no keys.
+      ${framed (file "panel-still") colours.edge}
+      magick -size ${at track.width}x${at track.height} xc:'${colours.edge}' ${file "track"}
       # The lock's ink reaches past its cell, so it's drawn with room round
       # it and cut to the line's height; drawn without, its right side would
       # be cut away. The room is kept at its sides, so the script finds its
@@ -340,6 +360,8 @@ let
     inherit (space.rung) apart screen;
     panelWidth = panel.width;
     panelHeight = panel.height;
+    trackWidth = track.width;
+    trackInset = track.inset;
     # The padlock's cell, from the frame's outside edge.
     markAt = border + space.rung.inset;
     inherit inkRoom;
@@ -388,6 +410,25 @@ let
       '';
 
   waits = pkgs.callPackage ./waits/package.nix { };
+
+  # Tells the kernel where the image's track is, so the bar it fills as it
+  # reads the image lies on it: the track's size, the least foot the panel
+  # is set from, the rise the pictures measured for each scale, and the
+  # text's colour, through the drm module's parameters. A kernel without
+  # ../kernel/hibernate-progress.patch has none of them and is left as it
+  # is. The width goes last, since it's what turns the bar on.
+  rises = pkgs.runCommand "plymouth-image-rises" { } ''
+    dir=${art}/share/plymouth/themes/jitsusama
+    echo "$(cat $dir/rise-1),$(cat $dir/rise-2)" > $out
+  '';
+  imageBar = pkgs.writeShellScript "plymouth-image-bar" ''
+    cd /sys/module/drm/parameters 2>/dev/null && [ -w progress_width ] || exit 0
+    echo ${toString track.height} > progress_height
+    echo ${toString space.rung.screen} > progress_foot
+    cat ${rises} > progress_rise
+    echo 0x${lib.removePrefix "#" colours.text} > progress_color
+    echo ${toString track.width} > progress_width
+  '';
 
   # The shutdown's screens, which systemd's last stage would otherwise end
   # with its first kill, the moment it starts waiting on what's left: the
@@ -471,15 +512,21 @@ in
     # its next frame, fifty a second, and says nothing when it has, so the
     # resume waits a tenth of a second first. One that finds no image to read
     # carries on with the boot, which says it's starting again. systemd's
-    # generator starts the unit only when there may be an image.
+    # generator starts the unit only when there may be an image. The frame
+    # holds the image's empty track, and the kernel is told where it is
+    # first, to fill it as it reads (imageBar).
     boot.initrd.systemd.services.systemd-hibernate-resume.serviceConfig = {
       ExecStartPre = [
+        "-${imageBar}"
         "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:restoring"
         "-${lib.getExe' pkgs.coreutils "sleep"} 0.1"
       ];
       ExecStopPost = [ "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:none" ];
     };
-    boot.initrd.systemd.storePaths = [ (lib.getExe' pkgs.coreutils "sleep") ];
+    boot.initrd.systemd.storePaths = [
+      (lib.getExe' pkgs.coreutils "sleep")
+      imageBar
+    ];
 
     # As soon as the splash is up, so the generation shows before the disk
     # asks for its PIN.

@@ -2194,9 +2194,11 @@
   vm-boot-says-it-wakes-from-hibernation = ''
     the graphical role, hibernated to a swap file on btrfs inside LUKS and started from its
     image with the passphrase typed at the theme's ask, shows the theme's words for a restore
-    on the first, middle and last photographs taken while the kernel reads the image, comes
-    back with what it held in memory, and its hook says how long the restore took after the
-    disk opened
+    on the first, middle and last photographs taken while the kernel reads the image; on each
+    of two screens of different sizes, shows the theme's empty track once every program is
+    frozen, then core's kernel filling it as it reads, its bar exactly on the track, partly
+    filled in some photograph and never going back; comes back with what it held in memory,
+    and its hook says how long the restore took after the disk opened
   '';
   vm-chrome-says-its-open-tabs = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the

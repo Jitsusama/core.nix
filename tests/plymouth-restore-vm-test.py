@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 READING = dt.timedelta(seconds=300)
 # How long a hibernation may take to make its image and power off.
 GOES_OFF = dt.timedelta(minutes=3)
-# What the kernel says as it starts reading the image, and once it has read it all.
+# What the kernel says once every program is frozen and it's about to read the image, as it
+# reads it, and once it has read it all.
+LOADING = re.compile(r"PM: Loading (and decompressing )?image data")
 READS = "PM: Image loading progress:"
 READ = "PM: Image loading done"
 # The theme's words for a restore, as OCR reads them.
@@ -42,21 +44,136 @@ TOOK = (
 # Incompressible bytes held in memory, in MiB, so the image takes seconds to read rather
 # than the moment a bare machine's does.
 HELD = 600
+# How fast the disk reads, in bytes a second, until the empty track is photographed: slow
+# enough that the kernel fills none of it in the meantime, which takes a 350th of the image.
+CRAWL = 64 * 1024
+# The QEMU device of the larger screen, as tests/plymouth-restore.nix names it.
+LARGE = "large"
+# The least run of a colour that can be the track, in pixels: longer than anything of that
+# colour but the panel's frame and the track.
+TRACK_LEAST = 64
 
 
 @dataclass(frozen=True)
 class Shot:
-    """A photograph of the screen, and how much the console had said when it was taken."""
+    """A photograph of each screen, and how much the console had said when they were taken."""
 
     path: Path
+    large: Path
     said: int
+
+
+@dataclass(frozen=True)
+class Picture:
+    """A photograph's pixels, as QEMU writes them: a binary PPM, three bytes a pixel."""
+
+    width: int
+    height: int
+    pixels: bytes
+
+    @classmethod
+    def read(cls, path: Path) -> Picture:
+        """Read a photograph QEMU wrote."""
+        data = path.read_bytes()
+        # The header is the magic, the width, the height and the largest value, each followed
+        # by one whitespace byte; QEMU writes no comments.
+        magic, width, height, largest, pixels = data.split(maxsplit=4)
+        assert magic == b"P6", f"{path.name} isn't a binary PPM"
+        assert largest == b"255", f"{path.name} has {largest!r} levels a channel"
+        return cls(int(width), int(height), pixels)
+
+    def run(self, y: int, left: int, width: int) -> bytes:
+        """Give width pixels of row y, from left on."""
+        start = (y * self.width + left) * 3
+        return self.pixels[start : start + width * 3]
+
+
+@dataclass(frozen=True)
+class Track:
+    """Where the theme drew the image's empty track on a screen."""
+
+    left: int
+    top: int
+    width: int
+    height: int
+
+
+def colour(hex_colour: str) -> bytes:
+    """Give a theme's #rrggbb as a photograph's three bytes."""
+    return bytes.fromhex(hex_colour.removeprefix("#"))
+
+
+def pixel_runs(row: bytes, ink: bytes) -> list[tuple[int, int]]:
+    """Give each run of a colour in a row at least TRACK_LEAST long, as its start and end."""
+    pixels = [row[at : at + 3] for at in range(0, len(row), 3)]
+    runs: list[tuple[int, int]] = []
+    start = None
+    for x, value in enumerate([*pixels, b""]):
+        if value == ink and start is None:
+            start = x
+        elif value != ink and start is not None:
+            if x - start >= TRACK_LEAST:
+                runs.append((start, x))
+            start = None
+    return runs
+
+
+def found_track(picture: Picture, ink: bytes) -> Track:
+    """Find the empty track: the one band of the track's colour more than a row tall.
+
+    The panel's frame is drawn in the same colour, but as a hairline, a row at its top and its
+    bottom.
+    """
+    bands: dict[tuple[int, int], list[int]] = {}
+    for y in range(picture.height):
+        row = picture.run(y, 0, picture.width)
+        if ink not in row:
+            continue
+        for run in pixel_runs(row, ink):
+            bands.setdefault(run, []).append(y)
+    tracks = [
+        Track(left, rows[0], right - left, len(rows))
+        for (left, right), rows in bands.items()
+        if len(rows) > 1 and rows == list(range(rows[0], rows[0] + len(rows)))
+    ]
+    assert len(tracks) == 1, f"the screen shows {len(tracks)} bands of the track's colour"
+    return tracks[0]
+
+
+def filled(picture: Picture, track: Track, bar: bytes, ink: bytes) -> int:
+    """Give how far the kernel's bar fills the track, failing unless it lies exactly on it.
+
+    Every row of the track is the bar from its left end, then the track to its right end,
+    each row the same, and nothing of the bar's colour touches the track from outside.
+    """
+    reached = set()
+    for y in range(track.top, track.top + track.height):
+        row = picture.run(y, track.left, track.width)
+        length = 0
+        while row[length * 3 : length * 3 + 3] == bar:
+            length += 1
+        assert row[length * 3 :] == ink * (track.width - length), (
+            f"row {y} of the track isn't the bar, then the track"
+        )
+        reached.add(length)
+        for x in (track.left - 1, track.left + track.width):
+            assert picture.run(y, x, 1) != bar, f"the bar reaches past the track at {x}, {y}"
+    assert len(reached) == 1, f"the bar's rows end apart, at {sorted(reached)}"
+    for y in (track.top - 1, track.top + track.height):
+        row = picture.run(y, track.left, track.width)
+        assert bar not in [row[at : at + 3] for at in range(0, len(row), 3)], (
+            f"the bar's colour is on row {y}, outside the track"
+        )
+    return reached.pop()
 
 
 @dataclass
 class Restore:
-    """A machine started from its image, and the screen photographed as it was read."""
+    """A machine started from its image, and the screens photographed as it was read."""
 
     machine: QemuMachine
+    # Both screens as the kernel began to read the image, once every program was frozen.
+    before: Shot
     shots: list[Shot]
     # Where the console's log of this start begins.
     began: int
@@ -71,26 +188,51 @@ class Restore:
         ]
 
 
-def photographs_until(machine: QemuMachine, words: str, since: int) -> list[Shot]:
-    """Photograph the screen as fast as QEMU can until the console, from since on, says words.
+def photographed(machine: QemuMachine, burst: Path, name: str) -> Shot:
+    """Photograph both screens.
+
+    As the driver photographs for its own reading: raw, since its OCR can't read PNG.
+    """
+    said = len(machine.get_console_log())
+    shot = Shot(burst / f"{name}.ppm", burst / f"{name}-large.ppm", said)
+    machine.send_monitor_command(f"screendump {shot.path}")
+    machine.send_monitor_command(f"screendump {shot.large} {LARGE}")
+    return shot
+
+
+def photographs_until(machine: QemuMachine, burst: Path, words: str, since: int) -> list[Shot]:
+    """Photograph the screens as fast as QEMU can until the console, from since on, says words.
 
     Each photograph keeps how far the console had got as it was taken, so the ones taken while
     the image was read can be told apart. Reading one takes longer than the image takes to
     read, so they're read afterwards.
     """
-    burst = Path(tempfile.mkdtemp())
     shots: list[Shot] = []
     began = time.monotonic()
     while True:
-        said = len(machine.get_console_log())
-        if words in machine.get_console_log()[since:said]:
+        if words in machine.get_console_log()[since:]:
             return shots
         if time.monotonic() - began > READING.total_seconds():
             pytest.fail(f"the console never said {words}")
-        # As the driver photographs for its own reading: raw, since its OCR can't read PNG.
-        shot = burst / f"{len(shots)}.ppm"
-        machine.send_monitor_command(f"screendump {shot}")
-        shots.append(Shot(shot, said))
+        shots.append(photographed(machine, burst, str(len(shots))))
+
+
+def until_said(machine: QemuMachine, words: re.Pattern[str], since: int) -> None:
+    """Wait until the console, from since on, says words."""
+    began = time.monotonic()
+    while not words.search(machine.get_console_log()[since:]):
+        if time.monotonic() - began > READING.total_seconds():
+            pytest.fail(f"the console never said {words.pattern}")
+        time.sleep(0.1)
+
+
+def the_disk(machine: QemuMachine) -> str:
+    """Give the QEMU drive of the disk the image is on, the test's first empty disk."""
+    said = machine.send_monitor_command("info block")
+    for line in said.splitlines():
+        if "empty0.qcow2" in line:
+            return line.split()[0]
+    pytest.fail(f"QEMU named no drive on empty0.qcow2: {said}")
 
 
 def says_restoring(shot: Shot) -> bool:
@@ -98,12 +240,12 @@ def says_restoring(shot: Shot) -> bool:
     return any(re.search(RESTORING, text) for text in perform_ocr_variants_on_screenshot(shot.path))
 
 
-def kept(machine: QemuMachine, shot: Shot, name: str) -> None:
+def kept(machine: QemuMachine, path: Path, name: str) -> None:
     """Keep a photograph for a person to judge, under name."""
     with (machine.out_dir / f"{name}.png").open("wb") as png:
         # pnmtopng is on the driver's PATH, which its own screenshots use it from, and the
         # photograph is the test's own.
-        subprocess.run(["pnmtopng", shot.path], stdout=png, check=True)  # noqa: S603, S607
+        subprocess.run(["pnmtopng", path], stdout=png, check=True)  # noqa: S603, S607
 
 
 @pytest.fixture(scope="module")
@@ -129,9 +271,11 @@ def swapping(machine: BaseMachine, values: dict[str, Any]) -> QemuMachine:
 
 @pytest.fixture(scope="module")
 def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
-    """Hibernate the machine, then start it from its image, photographing the screen as it reads.
+    """Hibernate the machine, then start it from its image, photographing the screens as it reads.
 
-    The photographs run from the passphrase until the kernel says it has read the image.
+    The disk crawls from the passphrase until the kernel has frozen every program and begins
+    to read, when both screens are photographed; then it's let go, and the photographs run
+    until the kernel says it has read the image.
     """
     machine = swapping
     machine.succeed(
@@ -147,10 +291,16 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     began = len(machine.get_console_log())
     machine.start()
     machine.wait_for_text("disk is locked", timeout=READING)
+    disk = the_disk(machine)
+    machine.send_monitor_command(f"block_set_io_throttle {disk} 0 {CRAWL} 0 0 0 0")
     machine.send_chars(f"{values['passphrase']}\n")
-    shots = photographs_until(machine, READ, began)
+    until_said(machine, LOADING, began)
+    burst = Path(tempfile.mkdtemp())
+    before = photographed(machine, burst, "before")
+    machine.send_monitor_command(f"block_set_io_throttle {disk} 0 0 0 0 0 0")
+    shots = photographs_until(machine, burst, READ, began)
     machine.wait_for_unit("default.target")
-    return Restore(machine, shots, began)
+    return Restore(machine, before, shots, began)
 
 
 def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) -> None:
@@ -163,7 +313,43 @@ def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) 
     middle = reading[len(reading) // 2]
     for shot in dict.fromkeys([reading[0], middle, reading[-1]]):
         assert says_restoring(shot), f"photograph {shot.path.name}, taken as it read, doesn't"
-    kept(restored.machine, middle, "restoring")
+    kept(restored.machine, middle.path, "restoring")
+
+
+def test_each_screen_shows_the_empty_track_as_the_read_begins(
+    restored: Restore, values: dict[str, Any]
+) -> None:
+    """Once every program is frozen, each screen shows the theme's track, none of it filled."""
+    ink, bar = colour(values["track"]), colour(values["bar"])
+    for path in (restored.before.path, restored.before.large):
+        picture = Picture.read(path)
+        reached = filled(picture, found_track(picture, ink), bar, ink)
+        assert reached == 0, f"{path.name}: the bar had filled {reached} pixels before the read"
+    kept(restored.machine, restored.before.path, "restoring-track")
+    kept(restored.machine, restored.before.large, "restoring-track-large")
+
+
+def test_the_kernel_fills_each_track_as_it_reads(restored: Restore, values: dict[str, Any]) -> None:
+    """While the image is read, the kernel's bar lies exactly on each screen's track.
+
+    Some photograph shows it partly filled, and from one photograph to the next it never goes
+    back.
+    """
+    ink, bar = colour(values["track"]), colour(values["bar"])
+    reading = restored.while_reading()
+    for screen in ("path", "large"):
+        track = found_track(Picture.read(getattr(restored.before, screen)), ink)
+        reached = [filled(Picture.read(getattr(shot, screen)), track, bar, ink) for shot in reading]
+        assert reached == sorted(reached), f"the bar went back on {screen}: {reached}"
+        partly = [
+            shot for shot, length in zip(reading, reached, strict=True) if 0 < length < track.width
+        ]
+        assert partly, f"no photograph of {screen} shows the bar partly filled: {reached}"
+        kept(
+            restored.machine,
+            getattr(partly[len(partly) // 2], screen),
+            "restoring-bar" if screen == "path" else "restoring-bar-large",
+        )
 
 
 def test_the_machine_is_back_as_it_was(restored: Restore) -> None:

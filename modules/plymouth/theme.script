@@ -81,6 +81,8 @@ fun drawn_at_scale()
 
     global.panel.calm = drawn("panel");
     global.panel.urgent = drawn("panel-urgent");
+    global.panel.still = drawn("panel-still");
+    global.track.image = drawn("track");
     global.panel.reach = @reach@ * global.scale;
     global.lock.image = drawn("lock");
     global.hints["pin"] = drawn("hint-pin");
@@ -199,6 +201,13 @@ fun lay_out()
                                     global.panel.left - global.panel.reach,
                                     global.panel.top - global.panel.reach, 20);
 
+    # The image's track, centred, its top its inset under the panel's,
+    # where the kernel works its bar out to be from the foot and the rise
+    # the pictures measured (./nixos.nix).
+    global.track.sprite = sprite_at(global.track.sprite, global.track.image,
+                                    global.middle - Math.Int(@trackWidth@ * global.scale / 2),
+                                    global.panel.top + @trackInset@ * global.scale, 21);
+
     # The padlock's picture keeps room round its cell on each side.
     local.cell = global.panel.left + @markAt@ * global.scale;
     local.room = @inkRoom@ * global.scale;
@@ -226,6 +235,22 @@ fun lay_out()
     status_shown();
     if (global.said.text)
       global.said.words = lifted(global.said.text, global.said.top);
+    restoring_shown();
+  }
+
+# While a hibernation's image is read, and nothing is asked, the panel is
+# the meter's frame round the empty track, which the kernel fills as it
+# reads, every program frozen (../kernel/hibernate-progress.patch). Plymouth
+# can't draw again until the image's own kernel has the screen, so this is
+# the frame the kernel draws on.
+fun restoring_shown()
+  {
+    local.restoring = global.under.showing == "restoring" && !global.asked;
+    global.track.sprite.SetOpacity(restoring);
+    if (restoring)
+      global.panel.sprite.SetImage(global.panel.still);
+    if (!global.asked)
+      global.panel.sprite.SetOpacity(restoring);
   }
 
 # What the boot is, small at the bottom left, and once the boot says which
@@ -295,7 +320,7 @@ fun status_shown()
     else
       local.text = "";
 
-    if (global.asked || text == "")
+    if (global.asked || global.under.showing == "restoring" || text == "")
       {
         global.status.words = NULL;
         global.status.said = "";
@@ -315,11 +340,15 @@ fun status_callback(text)
     if (text == "hibernation:restoring")
       {
         says("restoring");
+        status_shown();
+        restoring_shown();
         return;
       }
     if (text == "hibernation:none")
       {
         says("starting");
+        restoring_shown();
+        status_shown();
         return;
       }
     if (global.stages[text])
@@ -374,6 +403,7 @@ fun asking(shown)
     global.caret.sprite.SetOpacity(shown);
     for (index = 0; global.dots[index]; index++)
       global.dots[index].SetOpacity(0);
+    restoring_shown();
   }
 asking(0);
 
