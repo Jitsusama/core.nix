@@ -263,6 +263,13 @@ Floating {
     // How far it's scrolled from its rest, which its keys set and the
     // launcher reports.
     property real scrolled: 0
+    // The content's top the view shows from, as its keys set it. What
+    // reads it takes it from here rather than the view's contentY: a
+    // Flickable whose height changes rounds a contentY off a whole pixel
+    // and sets it again, which since the field's baseline stands on a half
+    // pixel came back through what sets that height (shownAndHidden) as a
+    // binding loop at each change of scale.
+    readonly property real shownFrom: viewTop + scrolled
     function scrollTo(top) {
         scrolled = top - viewTop;
     }
@@ -593,7 +600,7 @@ Floating {
         began = choosing !== "" ? began : null;
         laid = lines();
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
-        const top = view.contentY;
+        const top = drawer.shownFrom;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top
             && laid[at].top + laid[at].height <= top + drawer.viewRoom);
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
@@ -635,7 +642,7 @@ Floating {
             line: cursor.line,
             letter: cursor.letter,
             want: cursor.want,
-            top: view.contentY,
+            top: drawer.shownFrom,
             height: drawer.viewRoom,
             start: drawer.viewTop,
             end: drawer.viewEnd,
@@ -693,7 +700,7 @@ Floating {
             line: cursor.line,
             letter: cursor.letter,
             want: cursor.want,
-            top: view.contentY,
+            top: drawer.shownFrom,
             height: drawer.viewRoom,
             start: drawer.viewTop,
             end: drawer.viewEnd,
@@ -720,7 +727,7 @@ Floating {
     // Whether the view's top cuts one of its lines partway, for the
     // launcher to report; only lines laid while it holds the keys count.
     function topCut() {
-        return keys && Page.cut({ lines: laid, pitch: drawer.pitch }, view.contentY);
+        return keys && Page.cut({ lines: laid, pitch: drawer.pitch }, drawer.shownFrom);
     }
 
     // The cursor put at a place, wanting its letter's place across, and the
@@ -729,7 +736,7 @@ Floating {
         const line = Math.max(0, Math.min(at.line, laid.length - 1));
         const letter = Math.max(0, Math.min(at.letter, laid[line].length - 1));
         cursor = { line, letter, want: xOf(laid[line], letter) };
-        scrollTo(Page.shown(laid[line], view.contentY, {
+        scrollTo(Page.shown(laid[line], drawer.shownFrom, {
             lines: laid,
             height: drawer.viewRoom,
             start: drawer.viewTop,
@@ -1241,7 +1248,7 @@ Floating {
         - Theme.space.rung.inset - rowBaseline) / Theme.space.beat + rounding) * Theme.space.beat
     readonly property var shownAndHidden: {
         const spans = lineSpans();
-        const top = view.contentY;
+        const top = drawer.shownFrom;
         const ending = end => Math.min(end, ...spans.filter(span => span.top < end - 0.5
             && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
                 : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch));
@@ -1313,7 +1320,7 @@ Floating {
         y: drawer.viewTop
         width: parent.width
         height: drawer.shownTo
-        contentY: drawer.viewTop + drawer.scrolled
+        contentY: drawer.shownFrom
         clip: true
         interactive: false
         contentWidth: width
