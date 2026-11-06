@@ -7,8 +7,9 @@
 //!   keeps them an hour a file in `$XDG_STATE_HOME/collector`, for seven
 //!   days and in at most 2 GiB. Beside them it keeps the kernel's own:
 //!   each time the machine, or the account's app or session slice, made
-//!   something wait for the processor, memory or the disk.
-//!   (src/pressure.rs says which.)
+//!   something wait for the processor, memory or the disk
+//!   (src/pressure.rs says which), and every ten seconds what the account
+//!   and its slices with memory floors hold (src/held.rs).
 //! - `collector at 09:01:57 [--around 5s]` lists every span open within
 //!   that much of the moment, by when it began.
 //! - `collector trace <id>` shows one trace's spans as the tree they make.
@@ -16,6 +17,7 @@
 //! `--json` prints a span a line instead, and `--store`, `--socket` and
 //! `--pressure` (where /proc and /sys are) name other places.
 
+mod held;
 mod otlp;
 mod pressure;
 mod serve;

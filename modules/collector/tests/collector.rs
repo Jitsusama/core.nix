@@ -94,6 +94,51 @@ fn a_wait_the_kernel_counts_is_kept_as_its_span() {
     assert!(line.contains(r#""full_ms":250"#), "{line}");
 }
 
+// app.slice's memory is read as the collector starts, below the account's
+// manager its cgroup line names, and kept as the kernel's span.
+#[test]
+fn what_a_floored_slice_holds_is_kept_as_its_span() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let socket = dir.path().join("run/lines.sock");
+    let store = dir.path().join("store");
+    let root = dir.path().join("root");
+    let manager = "user.slice/user-1000.slice/user@1000.service";
+    std::fs::create_dir_all(root.join("proc/self")).unwrap();
+    std::fs::write(
+        root.join("proc/self/cgroup"),
+        format!("0::/{manager}/app.slice/collector.service\n"),
+    )
+    .unwrap();
+    let app = root.join("sys/fs/cgroup").join(manager).join("app.slice");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(app.join("memory.stat"), "anon 6120587264\nfile 644874240\n").unwrap();
+    std::fs::write(app.join("memory.swap.current"), "21367615488\n").unwrap();
+    std::fs::write(app.join("memory.min"), "6690131968\n").unwrap();
+    let _serving = Serving(
+        Command::new(COLLECTOR)
+            .args(["serve", "--socket"])
+            .arg(&socket)
+            .arg("--store")
+            .arg(&store)
+            .arg("--pressure")
+            .arg(&root)
+            .spawn()
+            .expect("collector serves"),
+    );
+
+    let line = within(30, "what app.slice holds", || {
+        let out = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+        let text = String::from_utf8(out.stdout).ok()?;
+        text.lines()
+            .find(|line| line.contains("memory held by app.slice"))
+            .map(str::to_owned)
+    });
+    assert!(line.contains(r#""service":"kernel""#), "{line}");
+    assert!(line.contains(r#""anon_bytes":6120587264"#), "{line}");
+    assert!(line.contains(r#""swap_bytes":21367615488"#), "{line}");
+    assert!(line.contains(r#""floor_bytes":6690131968"#), "{line}");
+}
+
 fn request(now: u128) -> String {
     let start = now - 2_000_000_000;
     format!(
