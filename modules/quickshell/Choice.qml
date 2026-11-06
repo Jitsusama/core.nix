@@ -91,6 +91,10 @@ Rectangle {
     // of its kind or chord, once Return from the find landed on it rather
     // than doing it ("\u21b5 turn off"), until the next key.
     property string landed
+    // The key that carries an act ending something, said at its right in
+    // place of its kind or chord while it's the cursor row, since no
+    // Return does it: "d disconnect", or the line Return writes, ":lockscreen".
+    property string carried
     // A word after the name, muted: "here" beside a workspace.
     property string count
     // What kind of thing it is, for a noun; empty for an act or a set.
@@ -365,16 +369,17 @@ Rectangle {
         anchors.rightMargin: Theme.space.rung.inset
         y: monoLine.y + monoLine.baselineOffset
             - (right.chorded ? keys.baselineOffset : sideText.baselineOffset)
-        readonly property bool chorded: row.landed === "" && row.kind === ""
-            && row.chord.length > 0
+        readonly property bool chorded: row.landed === "" && row.carried === ""
+            && row.kind === "" && row.chord.length > 0
         readonly property string said: row.landed !== "" ? row.landed
+            : row.carried !== "" ? row.carried
             : row.kind !== "" ? row.kind
             : itemised ? Reading.wholeItems(row.sideItems, room,
                 words => Math.ceil(sideFace.advanceWidth(words)) + 1)
             : row.side
         readonly property bool sided: !chorded && said !== ""
-        readonly property bool itemised: row.landed === "" && row.kind === ""
-            && row.sideItems.length > 0
+        readonly property bool itemised: row.landed === "" && row.carried === ""
+            && row.kind === "" && row.sideItems.length > 0
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
         readonly property real room: row.width - Theme.space.rung.inset - nameBox.x

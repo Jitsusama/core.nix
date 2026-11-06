@@ -57,7 +57,9 @@ Scope {
     property var things: []
     // The options :set takes from it, by name, as the command line reads
     // them (SetWords.setting): { kind: "switch" | "number" | "choice",
-    // takes, least, most, values, fixed, stepsOnly, now: () => where it
+    // takes, least, most, values, fixed, stepsOnly, ends (a switch whose
+    // off ends what it holds, so its no form is never run by Return, as
+    // Wi-Fi's drops the network), now: () => where it
     // stands or null where it can't be read, choices: () => the values
     // :set wifi= lists, set: (to, change) => "" or what to say }, so
     // :set nowifi turns off what its Wi-Fi Off row does. Each is still

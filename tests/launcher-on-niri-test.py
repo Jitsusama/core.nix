@@ -165,14 +165,24 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
             )
         )
         shell.close_launcher()
-    # Asked to be sure, the foot says Log Out's verb whole, its first
-    # word alone saying nothing.
+    # Asked to be sure, the foot says Log Out's command whole, since it
+    # ends the session and Return only writes it on the : line, banged:
+    # the step was the asking, so the line runs past it.
     shell.answer("log out")
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Log Out")
     shell.send_key("ret")
     shell.launcher_until(
-        lambda shown: "\u21b5 log out" in (shown["selected"] or {}).get("told", [])
+        lambda shown: "\u21b5 :logout!" in (shown["selected"] or {}).get("told", [])
     )
+    # Written and left, the line goes with the launcher, so the next opening
+    # is on the find, not on a line still held.
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "logout!")
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["command"] is None and shown["mode"] == "find")
     shell.close_launcher()
     # A key's action, by the other words its bind lists.
     shell.answer("fullscreen")

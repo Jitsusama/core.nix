@@ -301,6 +301,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         shows_the_command_line(desktop, scale)
         lands_on_a_setting(desktop, scale)
+        lines_what_ends(desktop, scale)
         lists_every_key(desktop, scale)
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
@@ -511,6 +512,34 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     assert any("\u21b5" in text for text in said), said
     assert not any("choose" in text or "below" in text for text in said), said
     desktop.photograph(f"launcher-command-chosen-at-{scale.replace('.', '-')}")
+    machine.send_key("esc")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
+    )
+
+
+def lines_what_ends(desktop: Desktop, scale: str) -> None:
+    """Find Lock, whose Return writes :lockscreen on the command line, and photograph both.
+
+    Locking ends what's in use, so no Return does it: the row names :lockscreen, as d carries
+    none of it, and the foot's Return says the line it writes, at the right end where Return
+    always is (VKCF3Z, 2026-11-05). Escape lets the line go, back in normal.
+    """
+    machine = desktop.machine
+    at = scale.replace(".", "-")
+    desktop.on_find()
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    desktop.type_in("lock", selecting="Lock")
+    desktop.normal()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("carried") == ":lockscreen")
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == ["\u21b5 :lockscreen"], f"at {scale} an ending row's foot says {told}"
+    assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} its foot: {told}"
+    desktop.photograph(f"launcher-ends-at-{at}")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "lockscreen")
+    desktop.photograph(f"launcher-ends-lined-at-{at}")
     machine.send_key("esc")
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"

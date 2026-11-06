@@ -261,6 +261,11 @@ QtObject {
         const copied = { ends: "forget", name: "84", kind: "copy" };
         holds("the ask names the one row it ends",
             Confirm.question([closing("Notes")], asking), "Close Notes? (y/n)");
+        // A row whose name already says its act, as a line run from Forget
+        // the Clipboard, is asked by its name alone, not "Forget Forget".
+        holds("and one whose name begins with its verb by its name alone",
+            Confirm.question([{ ends: "forget", name: "Forget the Clipboard" }], asking),
+            "Forget the Clipboard? (y/n)");
         holds("and counts more by their kind", Confirm.question([closing("Notes"),
             closing("Mail")], asking), "Close 2 windows? (y/n)");
         holds("and each verb with its own, the first first", Confirm.question([closing("Notes"),

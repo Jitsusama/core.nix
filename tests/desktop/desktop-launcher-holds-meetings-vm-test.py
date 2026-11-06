@@ -228,6 +228,9 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "See It")
     desktop.down_to("Join the Meeting")
+    # Joining starts something, so Return writes :meet, and a fresh Return joins, asking
+    # nothing, since leaving takes it back.
+    desktop.line("meet")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/abc-defg-hij {opened}",
@@ -260,7 +263,8 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
             (shown["selected"] or {}).get("name") == "Maybe" and shown["footer"] == "going"
         )
     )
-    machine.send_key("ret")
+    # Answering reaches the one who asked, so Return writes its line, which asks first.
+    desktop.line_answered("answer maybe")
     # Its note moves at once, before Google answers.
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "your answer")
     line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))
@@ -527,6 +531,10 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Cancel It Now, Telling 1 Guest"
     )
+    machine.fail(f"test -s {asked}")
+    # Cancelling tells the guest, so Return writes its line, banged, since the step was the
+    # asking; it cancels nothing until a fresh Return there runs it, asking no more.
+    desktop.line("cancel!")
     machine.fail(f"test -s {asked}")
     machine.send_key("ret")
     line = json.dumps({"cancel": {"id": "planning"}}, separators=(",", ":"))

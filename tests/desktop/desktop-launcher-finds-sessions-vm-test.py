@@ -658,8 +658,9 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
     desktop.down_to("Not Now")
-    desktop.land()
-    machine.send_key("ret")
+    # Putting off ends what's offered this boot, so Return writes :snooze, and its line
+    # asks first.
+    desktop.line_answered("snooze")
     # Nothing is left to reopen, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account("qs ipc call launcher toggle")

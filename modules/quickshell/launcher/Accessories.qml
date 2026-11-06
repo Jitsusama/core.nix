@@ -56,6 +56,8 @@ Provider {
     setOptions: adapter === null ? ({}) : ({
         bluetooth: {
             kind: "switch",
+            // Off drops every device connected.
+            ends: true,
             now: () => provider.on,
             set: to => {
                 provider.adapter.enabled = to;
