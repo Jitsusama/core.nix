@@ -5804,10 +5804,8 @@ Scope {
 
                     Prompt {
                         id: prompt
-                        // The command line takes its place while it's
-                        // open, and what it said went wrong for a key
-                        // after; hidden by its light, so its focus stays.
-                        opacity: root.commanding === null && !root.commandSays ? 1 : 0
+                        // It stays while the command line is open at the
+                        // bottom, as Vim's buffer stays above its : line.
                         // From the drawer, :{n} and :$ go to its lines,
                         // as they do in his Neovim's window; from visual,
                         // the line takes the rows chosen.
@@ -6104,66 +6102,6 @@ Scope {
                         }
                     }
 
-                    // The command line, in the find line's place while
-                    // : is open, made only then.
-                    Loader {
-                        id: commandLoader
-                        width: parent.width
-                        height: prompt.height
-                        active: root.commanding !== null
-                        onLoaded: item.take(root.commanding?.range ?? "")
-
-                        sourceComponent: CommandLine {
-                            menu: root.commanding?.menu ?? []
-                            argued: (entry, arg) => root.commandArguments(entry, arg)
-                            onRan: read => root.commandRan(read)
-                            // Let go from the drawer, the keys go back onto
-                            // its page however it was let go, choosing
-                            // nothing, as Vim's visual ends at its : line.
-                            onLetGo: how => root.commandLeft(
-                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
-                                : how === "dropped" ? root.commanding?.from ?? "normal"
-                                : "normal")
-                        }
-                    }
-
-                    // What Return on the command line said, in its place
-                    // for the next key alone, as Vim's command line says
-                    // E492 or volume=40: its words in text on the names'
-                    // column, and for what went wrong the failed mark in
-                    // the alert.
-                    Item {
-                        width: parent.width
-                        height: prompt.height
-                        visible: root.commandSays
-
-                        Text {
-                            x: Theme.space.rung.inset
-                            anchors.baseline: commandSaidText.baseline
-                            visible: root.commandFailed
-                            text: Theme.glyph.failed
-                            color: Theme.alert
-                            font.family: Theme.level.figure.family
-                            font.pointSize: Theme.level.figure.pointSize
-                        }
-
-                        Text {
-                            id: commandSaidText
-                            x: Theme.space.rung.inset + root.glyphColumn
-                            width: parent.width - x - Theme.space.rung.inset
-                            // On the field's line at rest, centred by eye.
-                            anchors.baseline: parent.top
-                            anchors.baselineOffset: parent.height / 2 + prompt.restingLift
-                            text: root.commandSaid
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            color: Theme.text
-                            font.family: Theme.level.figure.family
-                            font.pointSize: Theme.level.figure.pointSize
-                            font.weight: Theme.level.figure.weight
-                            font.features: Theme.level.figure.features
-                        }
-                    }
                 }
 
                 // What it reaches, split from what's typed by a hairline,
@@ -6189,16 +6127,103 @@ Scope {
                     Item {
                         id: listBox
                         width: parent.width
-                        // Over a viewer only the line's menu, as tall as it.
-                        height: root.over !== null ? commandMenu.height : root.tall
+                        // Over a viewer only the line and its menu, as tall
+                        // as they are.
+                        height: root.over !== null
+                            ? commandMenu.height + commandBand.height : root.tall
                         opacity: root.wordsShown
 
-                        // The command line's menu rises over the rows'
-                        // bottom, so the cursor row stays in view above
+                        // The command line, at the rows' bottom while : is
+                        // open, above the foot, as Vim's sits under its
+                        // buffer, and what Return on it said for the next
+                        // key after: a row tall, its capitals centred as a
+                        // row's, so it meets the foot as a row does.
+                        Item {
+                            id: commandBand
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: root.commanding !== null || root.commandSays
+                                ? root.rowTall : 0
+                            visible: height > 0
+                            z: 1
+                            // The rows end above it, so the cursor row is
+                            // kept in view as it comes and goes.
+                            onHeightChanged: {
+                                if (root.current >= 0)
+                                    Qt.callLater(() => list.positionViewAtIndex(root.current,
+                                        ListView.Contain));
+                            }
+
+                            Loader {
+                                id: commandLoader
+                                anchors.fill: parent
+                                active: root.commanding !== null
+                                onLoaded: item.take(root.commanding?.range ?? "")
+
+                                sourceComponent: CommandLine {
+                                    menu: root.commanding?.menu ?? []
+                                    argued: (entry, arg) => root.commandArguments(entry, arg)
+                                    onRan: read => root.commandRan(read)
+                                    // Let go from the drawer, the keys go back
+                                    // onto its page however it was let go,
+                                    // choosing nothing, as Vim's visual ends
+                                    // at its : line.
+                                    onLetGo: how => root.commandLeft(
+                                        QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                        : how === "dropped" ? root.commanding?.from ?? "normal"
+                                        : "normal")
+                                }
+                            }
+
+                            // What Return on the command line said, in its
+                            // place for the next key alone, as Vim's command
+                            // line says E492 or volume=40: its words in text
+                            // where what's typed stood, and for what went
+                            // wrong the failed mark in the alert.
+                            Item {
+                                anchors.fill: parent
+                                visible: root.commandSays
+
+                                Text {
+                                    x: Theme.space.rung.inset
+                                    anchors.baseline: commandSaidText.baseline
+                                    visible: root.commandFailed
+                                    text: Theme.glyph.failed
+                                    color: Theme.alert
+                                    font.family: Theme.level.figure.family
+                                    font.pointSize: Theme.level.figure.pointSize
+                                }
+
+                                Text {
+                                    id: commandSaidText
+                                    x: Theme.space.rung.inset + root.glyphColumn
+                                    width: parent.width - x - Theme.space.rung.inset
+                                    y: (parent.height + saidCaps.tightBoundingRect.height) / 2
+                                        - baselineOffset
+                                    text: root.commandSaid
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    color: Theme.text
+                                    font.family: Theme.level.figure.family
+                                    font.pointSize: Theme.level.figure.pointSize
+                                    font.weight: Theme.level.figure.weight
+                                    font.features: Theme.level.figure.features
+                                }
+
+                                TextMetrics {
+                                    id: saidCaps
+                                    text: "H"
+                                    font: commandSaidText.font
+                                }
+                            }
+                        }
+
+                        // The command line's menu rises from the line over
+                        // the rows, so the cursor row stays in view above
                         // it, made only while : is open.
                         Loader {
                             id: commandMenu
-                            anchors.bottom: parent.bottom
+                            anchors.bottom: commandBand.top
                             width: parent.width
                             height: item ? item.implicitHeight : 0
                             active: root.commanding !== null
@@ -6223,7 +6248,9 @@ Scope {
                         Gutter {
                             id: rowsGutter
                             x: Theme.space.rung.inset
-                            height: parent.height
+                            // As tall as the rows, so no number stands
+                            // beside the command line or its menu.
+                            height: parent.height - commandMenu.height - commandBand.height
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
                             current: root.current
@@ -6251,7 +6278,7 @@ Scope {
                             width: parent.width - x
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
-                            anchors.bottomMargin: commandMenu.height
+                            anchors.bottomMargin: commandMenu.height + commandBand.height
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
                             // says it, so their graphs stand in one column that
