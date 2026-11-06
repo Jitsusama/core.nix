@@ -1690,6 +1690,8 @@ fn reach(lent: &Builder, scratch: &Path, ssh: &str) -> Result<(Command, PathBuf,
 fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::process::ExitStatus> {
     use std::os::unix::process::ExitStatusExt;
     fs::create_dir_all(out)?;
+    // One an older run left read-only would refuse what's unpacked into it.
+    writable(out);
     let mut running = command.stdout(Stdio::piped()).spawn()?;
     let tarball = running
         .stdout
@@ -1704,6 +1706,7 @@ fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::proc
         .stderr(Stdio::null())
         .status();
     let status = running.wait()?;
+    writable(out);
     if status.success() && !unpacking.is_ok_and(|unpacked| unpacked.success()) {
         eprintln!(
             "nix-offload: couldn't unpack the output into {}, so the run failed",
@@ -1712,6 +1715,29 @@ fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::proc
         return Ok(std::process::ExitStatus::from_raw(1 << 8));
     }
     Ok(status)
+}
+
+/// Lets the account write to `path` and everything in it. tar keeps the
+/// modes an output had in the store, where nothing is writable, so on 6
+/// November a run left its folder read-only and the next into it couldn't
+/// unpack. A link is left alone, since its mode is its target's.
+fn writable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(held) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if held.file_type().is_symlink() {
+        return;
+    }
+    let mode = held.permissions().mode();
+    if mode & 0o200 == 0 {
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode | 0o200));
+    }
+    if held.is_dir() {
+        for entry in fs::read_dir(path).into_iter().flatten().flatten() {
+            writable(&entry.path());
+        }
+    }
 }
 
 /// How many times a copy back is tried before `there` gives up on it. A
