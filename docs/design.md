@@ -435,7 +435,7 @@ axis.
 | Name    | Monaspace Medium 500                                     | large   | as written          | text; strong when selected or as a notice's sender       | a row's name, a notice's sender, a window's title                                                                             |
 | Figure  | Monaspace 400, tabular figures                           | large   | as written          | text; strong while typed                                 | a fact's value, a figure in a row, the typed query                                                                            |
 | Words   | Fraunces upright, wght 380, opsz 14, SOFT 50, WONK 0     | large   | sentence            | muted beside a name; text alone                          | a row's words, a notice's words, a drawer's prose, the lock's day, a prompt's ask                                             |
-| Voice   | Fraunces italic, wght 380, opsz 24, SOFT 100, WONK 1     | large   | sentence            | muted as a hint; text when it speaks                     | the hint while nothing's typed, what's said when nothing is found, the drawer's line on what needs him                        |
+| Voice   | Fraunces italic, wght 380, opsz 24, SOFT 100, WONK 1     | large   | sentence            | muted as a hint; text when it speaks                     | a prompt's hint while nothing's typed, what's said when nothing is found, the drawer's line on what needs him               |
 | Note    | Monaspace 400                                            | body    | as written          | muted; text on the selection and for a chord             | a row's side note, the count, chords and their hints, the foot, a fact's label, a notice's program and time; units at small |
 | Label   | Monaspace Medium 500, the `case` feature                 | body    | capitals, +0.16 em  | muted                                                    | a drawer's eyebrow, a group's heading in a list                                                                               |
 
@@ -553,7 +553,8 @@ The rest follows from the ladder:
   band and the rows never move.
 - **Held room at the far end.** A place that keeps the widest room it's needed
   keeps it after its cluster's last item, never between items, so every gap is
-  its rung: Return holds no room before it.
+  its rung. Return's slack sits before the dot that joins it, so the dot goes
+  with Return and none hangs alone before a gap.
 - **A chosen line's ground hugs its ink**, as Joel liked (the skill's "Margin
   round a highlight, not padding inside it"): a mark (8) round its first and
   last ink and above its capitals and below its baseline, square, with more
@@ -1866,8 +1867,8 @@ sideways. The find line, the command line
 and the head start at the card's inset, over the numbers, as Vim's / and :
 lines start at column 0 left of its number column: the gutter is the list's,
 and the lines are the card's. A picker's ask keeps its room that way.
-While a find narrows the rows, the find line keeps it after a muted `/`,
-with what it found: "/slack · 3 found". The status line says where the
+While a find narrows the rows, the head keeps it after the place's Title,
+with what it found: "Home slack · 3 found". The status line says where the
 cursor stands ("1 of 3"), so the two never both read "of".
 
 - **Moving:** j k, gg G and {n}G, H M L, Ctrl+D Ctrl+U Ctrl+F Ctrl+B, and
@@ -1904,10 +1905,10 @@ cursor stands ("1 of 3"), so the two never both read "of".
   line, closing which-key or the menu with them. At rest it does nothing,
   on every surface: it never closes or quits anything of ours, the
   launcher, notices, the drawer, the picker and the viewers included, and
-  never goes up a level (Joel, 2026-11-05: "fuck escape quitting").
-  Closing is :q, ZZ or Space w alone. Escape still leaves a secret's field
-  for its row, and takes mpv and swayimg out of full screen or a slideshow,
-  since neither closes anything.
+  never goes up a level (Joel, 2026-11-05: "fuck escape quitting"), so no
+  hint or key list names it. Closing is :q, ZZ or Space w alone. Escape
+  still leaves a secret's field for its row, and takes mpv and swayimg out
+  of full screen or a slideshow, since neither closes anything.
 - **q does nothing.** There are no macros, since recording is a mode no one
   sees. The foot says "q does nothing · :q closes" until the next key, as
   every key with no meaning on a surface says "not here", never silent.
@@ -1919,8 +1920,8 @@ typed, the letters each row matched in Neovim's Search wash, the selected
 row's on rule, a shade past the selection, since raised sinks into it, and
 none on the accent, since a find has no match the cursor is on (Wash.qml).
 What's typed is
-the mono at Figure after the accent's `/`, with the mono's bar caret at
-every scale.
+the mono at Figure after the place's Title, the accent's `/` at the head's
+start, with the mono's bar caret at every scale.
 
 - Letters, Backspace, Ctrl+W, Ctrl+U and Ctrl+H type and delete; ← →, Home
   and End move the caret, as on Vim's command line.
@@ -2094,19 +2095,31 @@ need for notifications and the laucnher to feel more similar ... i like the
 status line in notifications better"). Each is the same card: a head, a
 hairline, the rows, a hairline, the status line.
 
-- **The head** holds the find line, `/` at the card's inset and what's
-  typed after it, with the place's glyph and Title before what's typed where
-  there is one ("Notices", "Time › Servers"). A find's count sits
-  beside it, as Vim's search count sits beside the search; the head's right
-  end is the selection's note's.
+- **The head** is the card's one line for typing. Its first column, at the
+  card's inset over the gutter's numbers, holds the mode's mark: the
+  accent's `/` on the find, `:` on the command line, and nothing in normal
+  or visual (Joel, 2026-11-06: "when in normal mode, it sholudn't have a /
+  at the front"). The place's glyph stands over the rows' glyphs and its
+  Title over their names, home's too ("Home", "Notices", "Time ›
+  Servers"), so the mark comes and goes and nothing else moves. What's
+  typed follows the Title, and a find's count sits beside it, as Vim's
+  search count sits beside the search. The head holds two levels, the Title
+  and Figure, on one baseline (Joel, 2026-11-06: "it is like a bumpy hill
+  and a bit too chaotic"): the launcher's find has no bare ask, since the
+  mark and the caret say to type, and a prompt keeps its particular one
+  ("open which file?").
 - **The rows** are the launcher's: the gutter, the glyph, the name and its
   words, the side at the far end, the ground hugging its ink. What a row
   is, holds or does follows its name, in Words ("Shortcuts" then "Tabs,
   Tab Numbers"; "brightness ⟨percent⟩" then "Sets the screen's
   brightness"). A figure
   or a state, a count, a size, a time or a chord, sits at the far end in
-  Note, ending on the inset, a count before its chord across a dot. A held
-  notice's card opens under its line, typed as the drawer's plate is.
+  Note, ending on the inset, a count before its chord across a dot. The
+  cursor row alone says what nothing else draws, a toggle's state, a
+  piece's context ("full in 40 min") or where an answer came from: at the
+  far end in Note, before its side across a dot, cut from its end and
+  never narrowing the name, and whole in the drawer. A held notice's card
+  opens under its line, typed as the drawer's plate is.
 - **A path** gives way from its middle: a middle step shortens to its last
   folder ("…/more"), then to "…", while the ask and the last step stay
   whole at every width. What's typed after it scrolls inside its own room
@@ -2131,11 +2144,19 @@ keys · ↵ go to": Return
 at the right end, as Joel chose, and Space ? just before it, so the way to
 the keys is always on screen. Short of room, once the facts read their
 least, the keys drawn furthest from Return give way first, never Return
-nor Space ?: in visual the command line, then d, then y. On the command line the foot names the
-line's own keys: "Tab choose" until a line is chosen or typed, then what
-Return runs. Its hints come from the table that handles the keys, filtered
-by mode and row, so none names a key that does nothing, and a check
-presses every hint drawn. The mode word's room is as wide as its widest
+nor Space ?: in visual the command line, then d, then y. A key that comes
+and goes with the row is drawn furthest from Return, so nothing else moves
+when it does, and which gives way follows need rather than place: on the
+find the completion first, then next time, and never Ctrl+] in. On held
+notices d stays too, and the position gives way whole before any of them.
+Return's place holds the widest verb among the rows it may name: on the
+find those listed as it opens, growing once for a wider row found within
+that find; in normal and visual the place's own rows, ending lines and all.
+On the command line the foot names the line's own keys: "Tab choose" until
+a line is chosen or typed, then what Return runs. Its hints come from the
+table that handles the keys, filtered by mode and row, so none names a key
+that does nothing, and a check presses every hint drawn. The mode word's
+room is as wide as its widest
 word in its own font, a count in as many figures as the place has rows,
 set before the hints, which give way around it,
 so it's never cut (Joel, 2026-11-04: "the mode text is truncated so I
