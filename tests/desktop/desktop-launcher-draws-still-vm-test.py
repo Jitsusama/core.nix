@@ -275,19 +275,29 @@ def closed_from_normal(desktop: Desktop) -> None:
 
 
 def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
-    """See home's foot hold room for Return and its widest word, and none for keys it lacks.
+    """See the find's foot hold room for Return's widest word and the completion, and no more.
 
-    Home's rows say Return alone on the find, so the keys reach no further in than Return's
-    place. Room once held for Shift+Return's "below" and the right arrow, which no foot here
-    draws, cut the date at 1.5 beside an empty stretch (VKCF3Z, 2026-11-05: "room is held only
-    for what this mode draws").
+    The first letter brings Ctrl+Y's completion beside Return, which then starts just where
+    the room held from the opening does: no further in, and not past it. Room once held for
+    Shift+Return's "below" and the right arrow, which no foot here draws, cut the date at 1.5
+    beside an empty stretch; held for Return alone, the completion cut it on the first letter
+    (VKCF3Z, 2026-11-05: "room is held only for what this mode draws").
     """
+    machine = desktop.machine
+    opened = desktop.showing()
+    assert [hint.split(" ")[0] for hint in opened["hints"]] == ["\u21b5"], opened["hints"]
+    machine.send_chars("s")
+    desktop.launcher_until(lambda shown: any("complete" in hint for hint in shown["hints"]))
     shown = desktop.showing()
-    assert [hint.split(" ")[0] for hint in shown["hints"]] == ["\u21b5"], shown["hints"]
-    assert shown["keysFrom"] == shown["keysAt"], (
-        f"the keys hold {shown['keysAt'] - shown['keysFrom']} px before Return for keys home's"
-        f" foot doesn't draw: {shown['hints']}"
+    foot = laid_out(desktop)["foot"]
+    completion = next(word for word in foot if word["text"].endswith("complete"))
+    assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
+    assert abs(completion["starts"] - opened["keysFrom"]) <= 1, (
+        f"the keys held {completion['starts'] - opened['keysFrom']} px before the completion"
+        f" at {completion['starts']}, from {opened['keysFrom']}: {shown['hints']}"
     )
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
 
 
 def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) -> None:
