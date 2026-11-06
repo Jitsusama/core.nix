@@ -212,6 +212,14 @@
       name = "surface-power-asks-only-awake";
       patch = ./kernel/surface-power-asks-only-awake.patch;
     }
+    # A restore from hibernation asked the controller to turn the keyboard's
+    # and touchpad's events back on while it couldn't answer, and waited 27 s
+    # on its timeouts with the screen dark, leaving them off. They're asked
+    # for once the restore is over.
+    {
+      name = "surface-events-after-restore";
+      patch = ./kernel/surface-events-after-restore.patch;
+    }
     # The PSP refuses the secure display TA at every boot, and only a
     # debugfs test of the display uses it.
     {
