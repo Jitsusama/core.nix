@@ -5204,6 +5204,9 @@ Scope {
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
+            // Where the status line's last ink should end: the inset in
+            // from the frame, as its first starts.
+            footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
             // The keys the foot says now, each its mark and its word.
             hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
@@ -7119,9 +7122,15 @@ Scope {
                             anchors.baselineOffset: root.footBase
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
+                            // Return's words end its place, on the inset, so
+                            // the room held for a wider word stands to their
+                            // left, never as a gap before the frame (Joel,
+                            // 2026-11-05: "a right padding for text most of
+                            // the time which looks fucking janky"; VKCF3Z).
                             keys: foot.shown
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
                                 ? foot.returnPlace : 0)
+                            endsRight: true
                         }
                     }
                 }
