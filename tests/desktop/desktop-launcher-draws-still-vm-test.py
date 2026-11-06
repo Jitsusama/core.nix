@@ -322,7 +322,11 @@ def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
     said = opened
     for typed in ("kitty"[:end] for end in range(1, len("kitty") + 1)):
         machine.send_chars(typed[-1])
-        desktop.launcher_until(lambda shown, want=typed: shown["typed"] == want)
+
+        def typed_so_far(shown: Json, want: str = typed) -> bool:
+            return bool(shown["typed"] == want)
+
+        desktop.launcher_until(typed_so_far)
         now = desktop.showing()["glance"].split("  ")[1:]
         assert len("  ".join(now)) <= len("  ".join(said)), (typed, said, now)
         said = now
