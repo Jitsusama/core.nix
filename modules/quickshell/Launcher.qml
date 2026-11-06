@@ -5329,9 +5329,12 @@ Scope {
         // 0 there, less once scrolled, and null when it isn't drawn.
         const first = list.itemAtIndex(0);
         const firstAt = first ? Math.round(first.y - list.contentY) : null;
+        // The command line's words while it's open, and its menu's, so a
+        // test can say where the line stands and where its lines start.
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
-            drawn: root.rowsDrawn, firstAt });
+            drawn: root.rowsDrawn, firstAt, line: wordsIn(commandLoader.item, card),
+            lines: wordsIn(commandMenu.item, card) });
     }
 
     // The drawer beside the card (Drawer.qml): what the selected row shows
