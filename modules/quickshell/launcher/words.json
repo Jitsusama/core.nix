@@ -6689,11 +6689,6 @@
   "field": {
     "found": "{at} of {all}",
     "waiting": "{count} new",
-    "keys": {
-      "complete": "complete",
-      "clear": "clear",
-      "restore": "restore"
-    },
     "drawer": {
       "back": "back",
       "keys": "keys"
