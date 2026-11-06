@@ -177,12 +177,11 @@ def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMa
 
 
 def test_what_is_swapped_out_for_the_image_goes_to_the_swap_file(swapping: QemuMachine) -> None:
-    """What's swapped out for the image goes to the swap file, and zswap stores again after.
+    """What's swapped out to make room for the image doesn't stay in memory.
 
-    zswap keeps what it's given in memory, up to a fifth of it, and random bytes it keeps as they
-    are, so what the kernel swaps out to make room for the image, stored in the pool, is still in
-    the image. 300 MiB of them is more than the image's cap of about 213 MiB beside the reserve:
-    without the hook switching zswap off, the hibernation rolls back short of memory.
+    300 MiB of random bytes is more than the image's cap of about 213 MiB beside the reserve, so
+    they have to reach the swap file. Swapped to zram, which kept them in memory, they stayed in
+    the image and it rolled back 58,596 pages short; zswap's pool passes them on to the disk.
     """
     swapping.succeed(
         "mkdir -p /run/unpacked",
@@ -192,9 +191,6 @@ def test_what_is_swapped_out_for_the_image_goes_to_the_swap_file(swapping: QemuM
     )
     hibernate_and_come_back(swapping)
     swapping.succeed("sha256sum --check --quiet /run/unpacked.sha256")
-    # Once the hook is done after the resume, zswap stores again.
-    swapping.wait_until_succeeds(f"journalctl --boot --grep '{LET_GO}'", timeout=30)
-    assert swapping.succeed(f"cat {ZSWAP}").strip() == "Y"
     swapping.succeed("umount /run/unpacked")
 
 
