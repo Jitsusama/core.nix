@@ -58,8 +58,6 @@ class Restore:
 
     machine: QemuMachine
     shots: list[Shot]
-    # Where the console's log of this start begins.
-    began: int
 
     def while_reading(self) -> list[Shot]:
         """Give the photographs taken while the kernel read the image."""
@@ -67,13 +65,14 @@ class Restore:
         return [
             shot
             for shot in self.shots
-            if READS in log[self.began : shot.said] and READ not in log[self.began : shot.said]
+            if READS in log[: shot.said] and READ not in log[: shot.said]
         ]
 
 
-def photographs_until(machine: QemuMachine, words: str, since: int) -> list[Shot]:
-    """Photograph the screen as fast as QEMU can until the console, from since on, says words.
+def photographs_until(machine: QemuMachine, words: str) -> list[Shot]:
+    """Photograph the screen as fast as QEMU can until the console says words.
 
+    The driver's console log starts again with each start, so what it says is this start's.
     Each photograph keeps how far the console had got as it was taken, so the ones taken while
     the image was read can be told apart. Reading one takes longer than the image takes to
     read, so they're read afterwards.
@@ -83,7 +82,7 @@ def photographs_until(machine: QemuMachine, words: str, since: int) -> list[Shot
     began = time.monotonic()
     while True:
         said = len(machine.get_console_log())
-        if words in machine.get_console_log()[since:said]:
+        if words in machine.get_console_log()[:said]:
             return shots
         if time.monotonic() - began > READING.total_seconds():
             pytest.fail(f"the console never said {words}")
@@ -144,13 +143,12 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
         machine.wait_for_shutdown(timeout=GOES_OFF)
     except subprocess.TimeoutExpired:
         pytest.fail("the machine never went off to hibernate")
-    began = len(machine.get_console_log())
     machine.start()
     machine.wait_for_text("disk is locked", timeout=READING)
     machine.send_chars(f"{values['passphrase']}\n")
-    shots = photographs_until(machine, READ, began)
+    shots = photographs_until(machine, READ)
     machine.wait_for_unit("default.target")
-    return Restore(machine, shots, began)
+    return Restore(machine, shots)
 
 
 def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) -> None:
