@@ -842,8 +842,9 @@ QtObject {
 
         // Where a search lands (DrawerPage.sought): lines of the pitch, the
         // view ten of them, and the cursor's line and letter. [what, from
-        // line, from letter, pattern, forward, count, [line, letter,
-        // wrapped]], or null where it's found nowhere.
+        // line, from letter, pattern, forward, count, [line, letter, the
+        // end it went round, as Vim's wrapscan says it hit the bottom or
+        // the top]], or null where it's found nowhere.
         const texts = ["Deploy log", "line 1 of the deploy", "line 2 of the Deploy",
             "nothing here"].concat(Array.from({ length: 16 }, (_, at) => `filler ${at}`));
         const lines = texts.map((text, at) => ({ top: at * 24, height: 24, length: text.length,
@@ -854,15 +855,16 @@ QtObject {
             letterAt: (at, x) => Math.round(x / 10)
         });
         const landings = [
-            ["the next match after the cursor", 0, 0, "deploy", true, 0, [1, 14, false]],
-            ["a count goes on that many", 0, 0, "deploy", true, 2, [2, 14, false]],
-            ["past the last, round to the first", 0, 0, "deploy", true, 3, [0, 0, true]],
-            ["a capital finds only itself", 0, 0, "Deploy", true, 0, [2, 14, false]],
-            ["on the cursor's own line, further along", 1, 0, "the", true, 0, [1, 10, false]],
-            ["never where the cursor stands", 1, 10, "the", true, 0, [2, 10, false]],
-            ["? the one before", 1, 14, "the", false, 0, [1, 10, false]],
-            ["? from the first, round to the last", 0, 0, "deploy", false, 0, [2, 14, true]],
-            ["a space is a letter like any", 0, 0, "1 of", true, 0, [1, 5, false]]
+            ["the next match after the cursor", 0, 0, "deploy", true, 0, [1, 14, ""]],
+            ["a count goes on that many", 0, 0, "deploy", true, 2, [2, 14, ""]],
+            ["past the last, round to the first", 0, 0, "deploy", true, 3, [0, 0, "bottom"]],
+            ["a capital finds only itself", 0, 0, "Deploy", true, 0, [2, 14, ""]],
+            ["on the cursor's own line, further along", 1, 0, "the", true, 0, [1, 10, ""]],
+            ["never where the cursor stands", 1, 10, "the", true, 0, [2, 10, ""]],
+            ["? the one before", 1, 14, "the", false, 0, [1, 10, ""]],
+            ["? from the first, round to the last", 0, 0, "deploy", false, 0, [2, 14, "top"]],
+            ["? a count round past the first", 2, 14, "deploy", false, 3, [2, 14, "top"]],
+            ["a space is a letter like any", 0, 0, "1 of", true, 0, [1, 5, ""]]
         ];
         const where = landed => landed === null ? null
             : [landed.line, landed.letter, landed.wrapped];
