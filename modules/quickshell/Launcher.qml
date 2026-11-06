@@ -2948,7 +2948,9 @@ Scope {
     // visual and as each row is on the find and the command line, as his
     // numbertoggle does (Joel, 2026-11-05: "it needs to show in find as
     // well as normal mode, showing real numbers in find mode").
-    readonly property bool numbered: prompt.modal && matches.length > 0 && over === null
+    // On the : line, its menu's lines are the rows numbered.
+    readonly property bool numbered: prompt.modal && over === null
+        && (commanding !== null ? commandRows.count > 0 : matches.length > 0)
     readonly property bool numbersCounted: numbersRelative && commanding === null
         && (prompt.mode === "normal" || prompt.mode === "visual")
     // How many digits the gutter holds: the most this place's find can
@@ -2963,6 +2965,8 @@ Scope {
             gutterDigits = digits;
     }
     onNumberedChanged: placeNumbers()
+    // The : line's lines numbered while it's open, and the rows again after.
+    onCommandingChanged: Qt.callLater(placeNumbers)
     onRowsDrawnChanged: Qt.callLater(placeNumbers)
 
     // Tells the gutter where each row in view has its name's baseline, from
@@ -2973,12 +2977,13 @@ Scope {
                 rowsGutter.rows = [];
             return;
         }
-        const from = list.contentY;
+        const shown = commanding !== null ? commandRows : list;
+        const from = shown.contentY;
         const placed = [];
-        for (let at = Math.max(0, list.indexAt(list.width / 2, from));
-            at < matches.length && placed.length < rowsGutter.slots; at += 1) {
-            const entry = list.itemAtIndex(at);
-            if (!entry || entry.y - from >= list.height)
+        for (let at = Math.max(0, shown.indexAt(shown.width / 2, from));
+            at < shown.count && placed.length < rowsGutter.slots; at += 1) {
+            const entry = shown.itemAtIndex(at);
+            if (!entry || entry.y - from >= shown.height)
                 break;
             placed.push({ at, base: entry.y - from + entry.nameBaseline });
         }
@@ -3086,6 +3091,9 @@ Scope {
             options: standingOptions(setOptions),
             local: standingOptions(localOptions(on)[0])
         };
+        // Its lines are numbered as the rows are, so the gutter holds
+        // their digits too.
+        gutterDigits = Math.max(gutterDigits, String(commanding.menu.length).length);
     }
 
     // The command line's opening while the launcher is open over a viewer,
@@ -3156,9 +3164,8 @@ Scope {
         prompt.resume(to === "said" ? "normal" : to);
     }
 
-    // Whether a line of the menu is chosen, which takes the selection ground
-    // from the cursor row, raised beneath it, so the screen has one focal
-    // point (VKCF3Z, 2026-11-05); the row takes it back as the line closes.
+    // Whether a line of the menu is chosen, which then wears the selection
+    // as the cursor row does, so the foot says Return rather than Tab.
     readonly property bool commandChosen: (commandLoader.item?.chosenLine ?? null) !== null
 
     // The command line's own keys, as the foot says them while it's open:
@@ -5334,7 +5341,7 @@ Scope {
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
             drawn: root.rowsDrawn, firstAt, line: wordsIn(commandLoader.item, card),
-            lines: wordsIn(commandMenu.item, card) });
+            lines: wordsIn(commandRows, card) });
     }
 
     // The drawer beside the card (Drawer.qml): what the selected row shows
@@ -6350,8 +6357,11 @@ Scope {
 
                     Prompt {
                         id: prompt
-                        // It stays while the command line is open at the
-                        // bottom, as Vim's buffer stays above its : line.
+                        // It gives the head to the command line while that's
+                        // open, and to what Return on it said until the key
+                        // after, as Vim's / and : are one line, keeping the
+                        // keys for that key: unseen, not gone.
+                        opacity: root.commanding === null && !root.commandSays ? 1 : 0
                         // From the drawer, :{n} and :$ go to its lines,
                         // as they do in his Neovim's window; from visual,
                         // the line takes the rows chosen.
@@ -6688,6 +6698,78 @@ Scope {
                         }
                     }
 
+                    // The command line, in the find line's place while : is
+                    // open, its : where the find's / stands and what's typed
+                    // on the rows' names, over the name it completes.
+                    Loader {
+                        id: commandLoader
+                        anchors.fill: parent
+                        active: root.commanding !== null
+                        onLoaded: item.take(root.commanding?.range ?? "",
+                            root.commanding?.typed ?? "")
+
+                        sourceComponent: CommandLine {
+                            markAt: Theme.space.rung.inset
+                            typedAt: root.textAreaAt + Theme.space.rung.inset + root.glyphColumn
+                            menu: root.commanding?.menu ?? []
+                            argued: (entry, arg) => root.commandArguments(entry, arg)
+                            onRan: read => root.commandRan(read)
+                            // Let go from the drawer, the keys go back onto
+                            // its page however it was let go, choosing
+                            // nothing, as Vim's visual ends at its : line.
+                            onLetGo: how => root.commandLeft(
+                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                : how === "dropped" ? root.commanding?.from ?? "normal"
+                                : "normal")
+                        }
+                    }
+
+                    // What Return on the command line said, in its place
+                    // for the next key alone, as Vim's command line says
+                    // E492 or volume=40: its words in text where what's
+                    // typed stood, and for what went wrong the failed mark
+                    // in the alert where the : stood.
+                    Item {
+                        anchors.fill: parent
+                        visible: root.commandSays
+
+                        Text {
+                            x: Theme.space.rung.inset
+                            anchors.baseline: commandSaidText.baseline
+                            visible: root.commandFailed
+                            text: Theme.glyph.failed
+                            color: Theme.alert
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                        }
+
+                        Text {
+                            id: commandSaidText
+                            x: root.textAreaAt + Theme.space.rung.inset + root.glyphColumn
+                            width: parent.width - x - Theme.space.rung.inset
+                            y: Bands.baseline(parent.height, saidCaps.tightBoundingRect.height,
+                                saidSmalls.tightBoundingRect.height) - baselineOffset
+                            text: root.commandSaid
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: Theme.text
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                            font.weight: Theme.level.figure.weight
+                            font.features: Theme.level.figure.features
+                        }
+
+                        TextMetrics {
+                            id: saidCaps
+                            text: "H"
+                            font: commandSaidText.font
+                        }
+                        TextMetrics {
+                            id: saidSmalls
+                            text: "x"
+                            font: commandSaidText.font
+                        }
+                    }
                 }
 
                 // What it reaches, split from what's typed by a hairline,
@@ -6713,119 +6795,70 @@ Scope {
                     Item {
                         id: listBox
                         width: parent.width
-                        // Over a viewer only the line and its menu, as tall
-                        // as they are.
+                        // Over a viewer only the line's menu, as tall as its
+                        // lines, ten at most, as his pumheight.
                         height: root.over !== null
-                            ? commandMenu.height + commandBand.height : root.tall
+                            ? Math.min(commandRows.count, 10) * root.rowTall : root.tall
                         opacity: root.wordsShown
 
-                        // The command line, at the rows' bottom while : is
-                        // open, above the foot, as Vim's sits under its
-                        // buffer, and what Return on it said for the next
-                        // key after: a row tall, its capitals centred as a
-                        // row's, so it meets the foot as a row does.
-                        Item {
-                            id: commandBand
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: root.commanding !== null || root.commandSays
-                                ? root.rowTall : 0
-                            visible: height > 0
-                            z: 1
-                            // The rows end above it, so the cursor row is
-                            // kept in view as it comes and goes.
-                            onHeightChanged: {
-                                if (root.current >= 0)
-                                    Qt.callLater(() => list.positionViewAtIndex(root.current,
-                                        ListView.Contain));
+                        // The command line's menu, while : is open: its lines
+                        // are the list, in the rows' place, each a row as any
+                        // other is, its glyph, its command in Vim's help
+                        // notation on the names' column under what's typed,
+                        // the act it names in its words and its key at its
+                        // right, rather than a menu indented under the line
+                        // (Joel, 2026-11-06: "i don't like how auto
+                        // completions are indented, they signal the wrong
+                        // organizational concept"). The place's rows stay
+                        // as they were beneath it, the cursor on its row, so
+                        // they come back as the line is let go.
+                        ListView {
+                            id: commandRows
+                            x: root.textAreaAt
+                            width: parent.width - x
+                            height: parent.height
+                            visible: root.commanding !== null
+                            clip: true
+                            interactive: false
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: commandLoader.item?.shown ?? []
+                            currentIndex: commandLoader.item?.choosing.at ?? -1
+                            onCurrentIndexChanged: {
+                                if (currentIndex >= 0)
+                                    positionViewAtIndex(currentIndex, ListView.Contain);
+                                else
+                                    positionViewAtBeginning();
                             }
+                            onContentYChanged: Qt.callLater(root.placeNumbers)
+                            onCountChanged: Qt.callLater(root.placeNumbers)
 
-                            Loader {
-                                id: commandLoader
-                                anchors.fill: parent
-                                active: root.commanding !== null
-                                onLoaded: item.take(root.commanding?.range ?? "",
-                                    root.commanding?.typed ?? "")
+                            delegate: Item {
+                                id: commandRow
 
-                                sourceComponent: CommandLine {
-                                    menu: root.commanding?.menu ?? []
-                                    argued: (entry, arg) => root.commandArguments(entry, arg)
-                                    onRan: read => root.commandRan(read)
-                                    // Let go from the drawer, the keys go back
-                                    // onto its page however it was let go,
-                                    // choosing nothing, as Vim's visual ends
-                                    // at its : line.
-                                    onLetGo: how => root.commandLeft(
-                                        QueryKeys.paged(root.commanding?.from ?? "") ? "page"
-                                        : how === "dropped" ? root.commanding?.from ?? "normal"
-                                        : "normal")
+                                required property int index
+                                required property var modelData
+                                readonly property var act: modelData.act ?? null
+                                readonly property string named: Commands.called(modelData)
+                                    + (modelData.after ?? "")
+
+                                width: commandRows.width
+                                height: root.rowTall
+                                // Its name's baseline, down from its top, which
+                                // the gutter sets its number on.
+                                readonly property real nameBaseline: commandChoice.nameBaseline
+
+                                Choice {
+                                    id: commandChoice
+                                    anchors.fill: parent
+                                    selected: commandRow.index === commandRows.currentIndex
+                                    shown: card.opacity > 0
+                                    glyph: commandRow.act?.glyph ?? ""
+                                    hue: Theme[commandRow.act?.hue ?? ""] ?? Theme.text
+                                    name: commandRow.named
+                                    plainName: commandRow.named
+                                    count: commandRow.modelData.title ?? ""
+                                    side: commandRow.modelData.key ?? ""
                                 }
-                            }
-
-                            // What Return on the command line said, in its
-                            // place for the next key alone, as Vim's command
-                            // line says E492 or volume=40: its words in text
-                            // where what's typed stood, and for what went
-                            // wrong the failed mark in the alert.
-                            Item {
-                                anchors.fill: parent
-                                visible: root.commandSays
-
-                                Text {
-                                    x: Theme.space.rung.inset
-                                    anchors.baseline: commandSaidText.baseline
-                                    visible: root.commandFailed
-                                    text: Theme.glyph.failed
-                                    color: Theme.alert
-                                    font.family: Theme.level.figure.family
-                                    font.pointSize: Theme.level.figure.pointSize
-                                }
-
-                                Text {
-                                    id: commandSaidText
-                                    x: Theme.space.rung.inset + root.glyphColumn
-                                    width: parent.width - x - Theme.space.rung.inset
-                                    y: (parent.height + saidCaps.tightBoundingRect.height) / 2
-                                        - baselineOffset
-                                    text: root.commandSaid
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    color: Theme.text
-                                    font.family: Theme.level.figure.family
-                                    font.pointSize: Theme.level.figure.pointSize
-                                    font.weight: Theme.level.figure.weight
-                                    font.features: Theme.level.figure.features
-                                }
-
-                                TextMetrics {
-                                    id: saidCaps
-                                    text: "H"
-                                    font: commandSaidText.font
-                                }
-                            }
-                        }
-
-                        // The command line's menu rises from the line over
-                        // the rows, so the cursor row stays in view above
-                        // it, made only while : is open.
-                        Loader {
-                            id: commandMenu
-                            anchors.bottom: commandBand.top
-                            width: parent.width
-                            height: item ? item.implicitHeight : 0
-                            active: root.commanding !== null
-                            z: 1
-                            onHeightChanged: {
-                                if (root.current >= 0)
-                                    Qt.callLater(() => list.positionViewAtIndex(root.current,
-                                        ListView.Contain));
-                            }
-
-                            sourceComponent: CommandMenu {
-                                split: root.over === null
-                                all: root.commanding?.menu ?? []
-                                lines: commandLoader.item?.shown ?? []
-                                chosen: commandLoader.item?.choosing.at ?? -1
                             }
                         }
 
@@ -6835,12 +6868,13 @@ Scope {
                         Gutter {
                             id: rowsGutter
                             x: Theme.space.rung.inset
-                            // As tall as the rows, so no number stands
-                            // beside the command line or its menu.
-                            height: parent.height - commandMenu.height - commandBand.height
+                            height: parent.height
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
-                            current: root.current
+                            // On the : line, its menu's chosen line, which
+                            // its numbers count as the rows' are counted.
+                            current: root.commanding !== null
+                                ? commandRows.currentIndex : root.current
                             relative: root.numbersCounted
                             digits: root.gutterDigits
                             shown: root.numbered
@@ -6858,7 +6892,7 @@ Scope {
                         ListView {
                             id: list
 
-                            visible: root.over === null
+                            visible: root.over === null && root.commanding === null
                             // Beside the gutter, which numbers its rows in
                             // normal and keeps its room everywhere else, out
                             // to the frame, its rows keeping their own inset.
@@ -6866,7 +6900,6 @@ Scope {
                             width: parent.width - x
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
-                            anchors.bottomMargin: commandMenu.height + commandBand.height
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
                             // says it, so their graphs stand in one column that
@@ -7141,10 +7174,8 @@ Scope {
                                 // stays marked, in the raised role rather
                                 // than the selection's, since the keys
                                 // aren't here: a mark, not a selection.
-                                color: root.commandChosen
-                                    ? Qt.alpha(Theme.raised, Theme.floating.opacity)
-                                    : Qt.alpha(QueryKeys.paged(prompt.mode) ? Theme.raised
-                                        : Theme.selection, Theme.floating.selection)
+                                color: Qt.alpha(QueryKeys.paged(prompt.mode) ? Theme.raised
+                                    : Theme.selection, Theme.floating.selection)
                             }
 
                             delegate: Item {
@@ -7269,7 +7300,7 @@ Scope {
                                 ? root.held[root.held.length - 1].row : null
                             readonly property var inside: holder?.from ?? null
                             visible: root.matches.length === 0 && root.answer === null
-                                && root.asking === null
+                                && root.asking === null && root.commanding === null
                             glyph: root.typed === "" ? Theme.glyph.greeting
                                 : Theme.glyph.nothingFound
                             hue: Theme.voice

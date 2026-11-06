@@ -512,7 +512,7 @@ Floating {
     readonly property var entries: {
         const one = current;
         const out = [];
-        // As the launcher's menu (CommandMenu.qml) reads a line: its command
+        // As the menu (CommandMenu.qml) reads a line: its command
         // and short form, what follows them where the line names its
         // argument, its title and its key; `writes` is what Tab writes.
         const entry = (command, short, name, key, writes, after) => ({
@@ -1894,9 +1894,8 @@ Floating {
             }
         }
 
-        // The menu, rising above the command line: the launcher's own
-        // (CommandMenu.qml), one menu for every : line, as many lines as
-        // the screen has room for.
+        // The menu, rising above the command line (CommandMenu.qml), as
+        // many lines as the screen has room for.
         CommandMenu {
             id: commandMenu
             width: sheet.width

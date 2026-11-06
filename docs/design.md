@@ -1938,9 +1938,13 @@ letter, it takes the find line's place, which comes back on Escape; on the
 notices it takes the acts' place, and in the reader the bottom line.
 
 - **The menu shows as `:` is typed** (Joel, 2026-11-04: "Ex mode makes no
-  sense, i don't know what I can do and there is no autocomplete"). It
-  rises over the bottom of the rows, keeping the cursor row or the
-  selection in view, ten lines at most as his `pumheight`: the row's or
+  sense, i don't know what I can do and there is no autocomplete"). In
+  the launcher its lines are the list, in the rows' place, each drawn as
+  a row, its command on the names' column under what's typed, never
+  indented under the line (Joel, 2026-11-06: "they signal the wrong
+  organizational concept"); the place's rows come back as it's let go,
+  the cursor where it was. Over a viewer it holds ten lines at most, as
+  his `pumheight`; on the notices it rises over their bottom. It lists the row's or
   the selection's acts first, Return's leading, then the surface's, then
   :q, :help, :set and :{n}. Each line reads `disc[onnect]   Disconnect It
   d`, the command in Vim's help notation, the act's name and its key, so
@@ -2107,9 +2111,10 @@ hairline, the rows, a hairline, the status line.
   folder ("…/more"), then to "…", while the ask and the last step stay
   whole at every width. What's typed after it scrolls inside its own room
   past that point, a muted "…" at its start saying some went off.
-- **The command line** sits at the bottom, over the status line, with its
-  menu rising from it, as Vim's does: what's typed sits beside what it
-  offers.
+- **The command line** takes the head, the find line's place, as Vim's
+  `:` and `/` are one line (Joel, 2026-11-06: "it is basically / by
+  default"): its `:` where the find's `/` stands, what's typed on the
+  rows' names, over the line it completes.
 - **The status line** is one component both read (StatusLine.qml), below.
 
 **The foot, the mode mark, the mode word and the key list.** The foot is

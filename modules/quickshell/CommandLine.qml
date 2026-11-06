@@ -1,12 +1,15 @@
 // The command line, the : line, as Vim's command line after a colon
-// (VKCF3Z's spec, The Command Line): it stands at the card's bottom while
-// it's open, its menu rising from it, as Vim's does, the accent's : leading it in the glyph's column and what's
-// typed in the mono at Figure on the names' column, with the mono's bar
-// caret in the accent, as insert's is (docs/design.md, Vi's Keys). What its
-// menu lists, how typing narrows it and what Return runs are Commands.js's;
-// this holds how the keys stand, and CommandMenu.qml draws the menu above
-// it, over the rows. The launcher makes it only while : is open (a Loader), so a launcher
-// that never sees : makes nothing.
+// (VKCF3Z's spec, The Command Line): while it's open it takes the head, the
+// find line's place, since Vim's : and / are one line (Joel, 2026-11-06:
+// "the top bar should be taken over when you go into :, it is basically /
+// by default"). The accent's : stands in the head's first column, where the
+// find's / does, and what's typed in the mono at Figure on the rows' names'
+// column, with the mono's bar caret in the accent, as insert's is
+// (docs/design.md, Vi's Keys). What its menu lists, how typing narrows it
+// and what Return runs are Commands.js's; this holds how the keys stand,
+// and the launcher lists its menu as its rows. The launcher makes it only
+// while : is open (a Loader), so a launcher that never sees : makes
+// nothing.
 //
 // Its keys are Vim's command line's and his cmp's (modules/neovim/keys.nix):
 // letters type, ← → Home End move the caret, Backspace, Ctrl+H, Ctrl+W and
@@ -18,6 +21,7 @@
 // what it only reached.
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Bands.js" as Bands
 import "Commands.js" as Commands
 
 Item {
@@ -50,10 +54,12 @@ Item {
     implicitHeight: 4 * Theme.space.beat
     // On what's typed's baseline, so a surface can set the line on its own.
     baselineOffset: input.y + input.baselineOffset
-    // Its : on the rows' glyph column, an inset in, and what's typed a
-    // glyph's column on, on their names' (Choice.qml): a mark's square
-    // cell, a line pitch wide, and the mark rung before its text.
-    readonly property real typedAt: Theme.space.rung.inset + Theme.level.name.pitch
+    // Where its : stands and what's typed starts, which the launcher sets
+    // to the find's / and its rows' names (Choice.qml): by themselves, an
+    // inset in and a glyph's column on, a mark's square cell, a line pitch
+    // wide, and the mark rung before its text.
+    property real markAt: Theme.space.rung.inset
+    property real typedAt: Theme.space.rung.inset + Theme.level.name.pitch
         + Theme.space.rung.mark
 
     // Takes the keys, as : opens it, with the range it opens on written in,
@@ -171,18 +177,24 @@ Item {
         font: input.font
     }
 
-    // How tall its capitals stand, which it centres in its height, as a
-    // row centres its own: TextMetrics, which measures once the face has
-    // loaded, as a FontMetrics' call in a binding doesn't.
+    // How tall its capitals and small letters stand, which it centres in
+    // its height by eye, as the find line centres its own (Bands.js), so
+    // the : sits where the / did: TextMetrics, which measures once the face
+    // has loaded, as a FontMetrics' call in a binding doesn't.
     TextMetrics {
         id: caps
         text: "H"
         font: input.font
     }
+    TextMetrics {
+        id: smalls
+        text: "x"
+        font: input.font
+    }
 
     Text {
         id: sigil
-        x: Theme.space.rung.inset
+        x: line.markAt
         anchors.baseline: input.baseline
         text: ":"
         color: Theme.accent
@@ -193,7 +205,8 @@ Item {
         id: input
         x: line.typedAt
         width: parent.width - x - Theme.space.rung.inset
-        y: (line.height + caps.tightBoundingRect.height) / 2 - baselineOffset
+        y: Bands.baseline(line.height, caps.tightBoundingRect.height,
+            smalls.tightBoundingRect.height) - baselineOffset
         focus: true
         clip: true
         color: Theme.strong
