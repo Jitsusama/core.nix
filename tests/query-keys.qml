@@ -1409,7 +1409,7 @@ QtObject {
         // A begun Space waits for its next key however long, as his
         // which-key holds it (Prompt.qml's standing); Escape lets it go.
         holds("Escape lets a begun Space go, so a ? after it finds upward",
-            typed(["Escape", "Space", "Escape", "?"]).acts, ["normal", "freshFind"]);
+            typed(["Escape", "Space", "Escape", "?"]).acts, ["normal", "freshFindBack"]);
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in",
