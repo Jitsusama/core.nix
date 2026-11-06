@@ -610,6 +610,7 @@ Scope {
     property int choicesJoined: 0
     function stale() {
         choicesStale = true;
+        forgetLives();
         if (open)
             Qt.callLater(freshen);
     }
@@ -2701,21 +2702,51 @@ Scope {
     // through. Let go as the launcher opens, with the jumps.
     property var tagsBack: []
 
-    // Where every row lives, by its steady id, walked from home by the
-    // first Ctrl+] in an open that asks, so the presses after it only look
-    // their row up: a walk on every press took 20 to 85 ms in the VM,
-    // against a key's 4 ms (Y2YBTS, 2026-11-05). Let go as the launcher
-    // opens, so a row made since is found at the next.
+    function forgetFollows() {
+        tagsBack = [];
+    }
+
+    // Where every row lives, by its steady id, so Ctrl+] only looks its
+    // row up: the walk took 20 to 85 ms in the VM, against a key's 4 ms
+    // (Y2YBTS, 2026-11-05). It's walked while the launcher is open, once
+    // the list has been quiet a moment, so neither a key nor the opening
+    // pays it, and kept until a provider's rows change. A press before
+    // then walks on its key, which its trace says (`indexed`).
     property var followIndex: null
+    // How long the last walk took, in ms, or null while it's to be made.
+    property var livesWalked: null
 
     function livesFor(id) {
         if (followIndex === null)
-            followIndex = Catalogue.lives(home(), {
-                idOf: one => steadyId(one),
-                holds: (one, above) => catalogueHolds(one,
-                    above === null || collects({ row: above }))
-            });
+            walkLives();
         return followIndex[id] ?? null;
+    }
+
+    function walkLives() {
+        const walking = Date.now();
+        followIndex = Catalogue.lives(home(), {
+            idOf: one => steadyId(one),
+            holds: (one, above) => catalogueHolds(one,
+                above === null || collects({ row: above }))
+        });
+        livesWalked = Date.now() - walking;
+    }
+
+    function forgetLives() {
+        followIndex = null;
+        livesWalked = null;
+        if (open)
+            livesLater.restart();
+    }
+
+    Timer {
+        id: livesLater
+
+        interval: 300
+        onTriggered: {
+            if (root.open && root.followIndex === null)
+                root.walkLives();
+        }
     }
 
     // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
@@ -3920,6 +3951,8 @@ Scope {
     // The list has settled: the spans waiting on it end, with how it's laid.
     function settledNow() {
         traces.settled(laidNow());
+        if (open && followIndex === null)
+            livesLater.restart();
     }
 
     // Where the list lays its rows now, for the spans waiting on it to
@@ -5313,6 +5346,8 @@ Scope {
             jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
             // And those Ctrl+] left, which Ctrl+T comes back through.
             tags: root.tagsBack.length,
+            // How long where every row lives took to walk, or null.
+            livesWalked: root.livesWalked,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
@@ -5675,8 +5710,7 @@ Scope {
         lastPlace = null;
         jumpsBack = [];
         jumpsAhead = [];
-        tagsBack = [];
-        followIndex = null;
+        forgetFollows();
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -5716,8 +5750,7 @@ Scope {
             lastPlace = null;
             jumpsBack = [];
             jumpsAhead = [];
-            tagsBack = [];
-            followIndex = null;
+            forgetFollows();
             listing = false;
             listedInDrawer = false;
             prompt.forget();
