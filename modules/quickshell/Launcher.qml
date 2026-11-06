@@ -3392,9 +3392,13 @@ Scope {
                 run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
         };
         if (asked.ask !== "") {
+            // The ask says the act's own verb, never the line's command,
+            // and for an act the cursor is on, what it's an act of.
+            const of = one => one.act === one.thing && held.length > 0
+                ? held[held.length - 1].row : one.thing;
             const question = asked.ask === "some" ? fill(words.some)
-                : Confirm.question(found.map(one => ({ ends: entry.command,
-                    name: one.thing?.name ?? "", kind: kindOf(one.thing) })),
+                : Confirm.question(found.map(one => ({ ends: one.act.ends || verbOf(one.act),
+                    name: of(one)?.name ?? "", kind: kindOf(of(one)) })),
                     Words.field.operators ?? {});
             askOnce(question, sure, () => {}, found.map(one => matches.indexOf(one.thing))
                 .filter(at => at >= 0));
