@@ -371,6 +371,7 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
         "quit Close the Launcher",
         "help List the Keys",
         "set Set an Option",
+        "setlocal Set an Option of This",
         "history List Earlier Lines",
         "{n} Go to a Row",
     ]

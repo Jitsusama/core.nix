@@ -32,6 +32,7 @@ import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
+import "Bands.js" as Bands
 
 Item {
     id: prompt
@@ -808,13 +809,24 @@ Item {
     implicitHeight: 4 * Theme.space.beat
     // The line's baseline, which the typed letters, the hint, the aside,
     // the glyph and a place's name all sit on, and the launcher's drawer
-    // sets its eyebrow on. It's the largest level's, the place's name at
-    // Title, set by centring its capitals on the field (docs/design.md, One
-    // Baseline a Line), and it's there out of a place too, where no name
-    // shows, so nothing on the line moves as one opens (Joel, 2026-11-05:
-    // "which? &etc. need to be baselined with the text to their left").
-    readonly property real lineBaseline: (height + titleCapitals) / 2
+    // sets its eyebrow on (Joel, 2026-11-05: "which? &etc. need to be
+    // baselined with the text to their left"). It's the largest level's,
+    // centred by eye in the field, the band a surface sizes it to: a
+    // place's name at Title in a place, and what's typed out of one, so
+    // each reads centred, the line settling as a place opens and its name
+    // arrives (docs/design.md: one baseline a line).
+    readonly property real lineBaseline: chips.length > 0
+        ? Bands.baseline(height, titleCaps.tightBoundingRect.height,
+            titleSmall.tightBoundingRect.height)
+        : Bands.baseline(height, figureCaps.tightBoundingRect.height,
+            figureSmall.tightBoundingRect.height)
     baselineOffset: lineBaseline
+    // How far the line stands below the field's middle out of a place,
+    // what's typed at the Figure: the line at rest, which a surface sizes
+    // the field's band by, so the band holds still as a place opens and
+    // only the line settles (docs/design.md: one baseline a line).
+    readonly property real restingLift: Bands.lift(figureCaps.tightBoundingRect.height,
+        figureSmall.tightBoundingRect.height)
 
     // Its glyph an inset from its left and its keys an inset from its right,
     // as a frame holds its text (docs/design.md, The Ladder), so a surface
@@ -902,15 +914,29 @@ Item {
         font.variableAxes: Theme.level.title.variableAxes
         font.letterSpacing: Theme.level.title.letterSpacing
     }
-    // How tall the title's capitals stand, which are centred on the field:
-    // TextMetrics, which measures again once the face has loaded, where a
-    // FontMetrics' call in a binding is asked once, before it has, and
+    // How tall the Title's and the Figure's capitals and small letters
+    // stand, which centre the line: TextMetrics rather than a FontMetrics'
+    // call, which a binding asks once, before the face has loaded, and
     // reads small ever after (HVD6O3, 2026-11-05).
-    readonly property real titleCapitals: titleCaps.tightBoundingRect.height
     TextMetrics {
         id: titleCaps
         text: "H"
         font: titleFace.font
+    }
+    TextMetrics {
+        id: titleSmall
+        text: "x"
+        font: titleFace.font
+    }
+    TextMetrics {
+        id: figureCaps
+        text: "H"
+        font: figureFace.font
+    }
+    TextMetrics {
+        id: figureSmall
+        text: "x"
+        font: figureFace.font
     }
 
     // What stands between two steps of the path, so they read as one place

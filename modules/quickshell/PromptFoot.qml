@@ -1,13 +1,14 @@
 // A prompt's foot (docs/design.md, Shape and Kinds, the prompt kind): what
 // the keys do, at the right, and where they lead, at the left, when a
 // prompt says so. Its capitals sit as far under its hairline as a row's sit
-// under the row's top, as the field's do, and its baseline the frame's
-// inset over the frame's bottom (Space, The Ladder), so the room round the
-// whole prompt is the same on every side. A prompt's field is one row, so
-// the foot's baseline then falls a row, four beats, under the field's.
+// under the row's top, as the field's do, so its baseline falls a row, four
+// beats, under the field's, a prompt's field being one row; and the frame's
+// bottom falls where its words read centred between the hairline and it
+// (docs/design.md, A frame's bottom is set).
 // Polkit's, the askpass's and the greeter's are one foot.
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Bands.js" as Bands
 
 Item {
     id: foot
@@ -22,13 +23,14 @@ Item {
     readonly property int inset: Theme.space.rung.inset
     // A row: the field's height, four beats.
     readonly property int row: 4 * Theme.space.beat
-    readonly property real capitals: noteFace.tightBoundingRect("H").height
+    readonly property real capitals: noteCaps.tightBoundingRect.height
     // Its words' baseline, from its top.
     readonly property real words: (row + capitals) / 2
 
     // Whole device pixels tall, as every band beside a rule is
     // (Hairline.qml).
-    implicitHeight: rule.whole(words + inset)
+    implicitHeight: rule.whole(Bands.around(words, capitals,
+        noteSmall.tightBoundingRect.height))
     // How wide it wants to be: its keys with the inset each side.
     readonly property real wanted: hints.implicitWidth + 2 * inset
 
@@ -37,6 +39,20 @@ Item {
         visible: false
     }
     baselineOffset: words
+
+    // The Note's capitals and small letters: TextMetrics rather than a
+    // FontMetrics' call, which a binding asks once, before the face has
+    // loaded, and reads small ever after.
+    TextMetrics {
+        id: noteCaps
+        text: "H"
+        font: noteFace.font
+    }
+    TextMetrics {
+        id: noteSmall
+        text: "x"
+        font: noteFace.font
+    }
 
     FontMetrics {
         id: noteFace
