@@ -629,8 +629,12 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
 # its word read as one, so the last hint's key, which stands left of its
 # word to end it on the inset (VKCF3Z, 2026-11-05), moves only as its
 # word changes. A key's word stands a mark after it (KeyHints), nearer
-# than any two facts stand.
+# than any two facts stand, and the dot before a hint stands a mark
+# before its key, so the three read as one piece and the dot before
+# Return moves with Return's word (VKCF3Z, 2026-11-06).
 A_KEYS_WORD = 10
+# The dot that joins two hints on a card's status line.
+HINTS_DOT = "\u00b7"
 
 
 def moved(before: Json, after: Json) -> list[str]:
@@ -646,6 +650,9 @@ def moved(before: Json, after: Json) -> list[str]:
                 and later["y"] == word["y"]
                 and 0 <= later["starts"] - word["starts"] - word["inked"] <= A_KEYS_WORD
             )
+            if beside and word["text"] == HINTS_DOT:
+                # A dot belongs to the hint after it, and reads as it does.
+                return f"{word['text']}\0{reads(words, at + 1)}"
             return f"{word['text']}\0{later['text'] if beside and later else ''}"
 
         unmatched: dict[str, list[Json]] = {}
