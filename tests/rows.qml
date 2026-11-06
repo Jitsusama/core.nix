@@ -517,8 +517,11 @@ ShellRoot {
         const keys = texts.filter(t => count !== undefined && t.from > count.from
             && t.text !== "\u00b7");
         const dot = textItem(countedChord, "\u00b7");
-        const dotFrom = dot ? dot.parent.mapToItem(null, 0, 0).x : NaN;
-        const dotTo = dot ? dotFrom + dot.parent.width : NaN;
+        countProbe.text = "\u00b7";
+        const dotBox = countProbe.tightBoundingRect;
+        const dotFrom = dot ? dot.mapToItem(null, 0, 0).x + dotBox.x / 8 : NaN;
+        const dotTo = dotFrom + dotBox.width / 8;
+        countProbe.text = "12";
         expect("a mark from the count to the dot's ink, and from it to the chord",
             count !== undefined && keys.length > 0
                 && Math.abs(dotFrom - inkTo - Theme.space.rung.mark) <= 0.5

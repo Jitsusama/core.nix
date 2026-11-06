@@ -427,14 +427,18 @@ Rectangle {
         // line joins its facts: a muted dot a mark from each, measured to
         // the dot's ink, so a dot means one thing across the card (VKCF3Z,
         // 2026-11-05).
+        // The dot's ink, and where the count's ends short of its advance
+        // by its last letter's bearing, measured at eight times the size
+        // and read back down, since a measure at the size drawn comes in
+        // whole pixels, which a screen at 1.5 or 2 draws finer than.
         TextMetrics {
             id: dotInk
             text: "\u00b7"
-            font: dotText.font
+            font.family: Theme.level.note.family
+            font.italic: Theme.level.note.italic
+            font.weight: Theme.level.note.weight
+            font.pointSize: Theme.level.note.pointSize * 8
         }
-        // The count's ink ends short of its advance by its last letter's
-        // bearing, measured at eight times the size and read back down,
-        // since a measure at the size drawn comes in whole pixels.
         TextMetrics {
             id: countInk
             text: right.said
@@ -468,12 +472,12 @@ Rectangle {
                 font.features: Theme.level.note.features
             }
             Item {
-                width: dotInk.tightBoundingRect.width
+                width: dotInk.tightBoundingRect.width / 8
                 height: dotText.height
 
                 Text {
                     id: dotText
-                    x: -dotInk.tightBoundingRect.x
+                    x: -dotInk.tightBoundingRect.x / 8
                     text: "\u00b7"
                     color: row.flashed ? row.flashInk : Theme.muted
                     font: countFigure.font
