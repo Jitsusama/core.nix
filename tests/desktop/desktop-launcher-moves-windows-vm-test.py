@@ -536,6 +536,18 @@ def names_each_mode(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["modeMark"] == "NOR")
 
 
+def visual_foot_says(desktop: Desktop, opens: str) -> None:
+    """Check visual's foot: Return's count, d and y, then : and Space ?, as normal's foot.
+
+    Return's count comes first, the foot drawing it last; d is named by the cursor row's
+    ending, and the command line and the way to every key stay on screen.
+    """
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == [opens], told
+    assert told[-2:] == [": commands", "Space ? keys"], told
+    assert [key for key in told if key.startswith(("d ", "y "))] == ["d close", "y copy"], told
+
+
 def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     """V and j choose windows, y copies their titles, d closes them once asked, Return opens."""
     machine = desktop.machine
@@ -575,12 +587,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "2 chosen"
     )
-    # Return's count first, the foot drawing it last; then visual's own letters, d by the
-    # cursor row's ending, and the command line and the way to every key, as normal's foot.
-    told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5 open 2"], told
-    assert told[-2:] == [": commands", "Space ? keys"], told
-    assert [key for key in told if key.startswith(("d ", "y "))] == ["d close", "y copy"], told
+    visual_foot_says(desktop, "\u21b5 open 2")
     # y copies both titles, a line each, flashes them, and ends visual.
     since = desktop.mark()
     machine.send_chars("y")
