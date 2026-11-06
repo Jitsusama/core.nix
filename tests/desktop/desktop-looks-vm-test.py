@@ -1485,6 +1485,12 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
+            # Typed past the hint, the middle folder gives way to what's typed, and the
+            # last step and what's typed stay whole (VKCF3Z, 2026-11-06).
+            desktop.type_in("abcdefghijklmno")
+            desktop.photograph(f"file-picker-typed-gathered-at-{said}")
+            machine.send_key("ctrl-u")
+            desktop.launcher_until(lambda shown: shown["typed"] == "")
             desktop.step_out()
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
