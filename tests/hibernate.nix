@@ -8,7 +8,9 @@
 # coming back asks there once and the lock lets go by itself. It keeps a
 # reserve for drivers as the Surface Laptop 4 does, and can be made to roll a
 # hibernation back, short of memory or with its swap file gone, so the
-# notice's reasons are seen end to end. The tests are
+# notice's reasons are seen end to end. A slice holds memory under a hard
+# floor, as the laptops' slices do, past what the image may hold, to prove
+# the floors are set aside while it's made. The tests are
 # hibernate-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:

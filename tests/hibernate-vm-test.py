@@ -37,6 +37,9 @@ RESERVE = 128 * 1024 * 1024
 # (hibernate.nix says how).
 ROLLS_BACK = "/run/rolls-back"
 NO_SWAP_FILE = "/run/no-swap-file"
+# A slice at the top, as user.slice is, with a hard floor under what it holds, in bytes.
+FLOORED = "floored.slice"
+FLOOR = 400 * 1024 * 1024
 
 
 def start_through_the_disk_prompt(machine: QemuMachine) -> None:
@@ -139,6 +142,55 @@ def test_a_loaded_machine_fits_beside_the_reserve(swapping: QemuMachine) -> None
     hibernate_and_come_back(swapping)
     swapping.succeed("sha256sum --check --quiet /run/held.sha256")
     swapping.succeed("rm /dev/shm/held /mnt/disk/cached")
+
+
+def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMachine) -> None:
+    """What a slice's hard floor guards still makes room for the image, and the floor comes back.
+
+    The kernel takes back nothing under a cgroup's memory.min, whatever is reclaiming, so 300 MiB
+    held under one is more than the image's cap of about 213 MiB beside the reserve: without the
+    hook setting the floors aside, the hibernation rolls back short of memory. It's zeros, which
+    zram keeps in no memory at all, so what's measured is the floor, not how well zram packs.
+    """
+    swapping.succeed(
+        "mkdir -p /run/floored",
+        "mount -t tmpfs -o size=400m tmpfs /run/floored",
+        # tmpfs pages count against the cgroup that wrote them, so the writer stays to hold
+        # them there. A transient service's PATH holds none of the system's programs.
+        f"systemd-run --slice={FLOORED} --unit=floored --property=MemoryMin={FLOOR}"
+        " --setenv=PATH=/run/current-system/sw/bin"
+        " sh -c 'head -c 300M /dev/zero > /run/floored/held && touch /run/floored/full;"
+        " exec sleep infinity'",
+        f"systemctl set-property --runtime {FLOORED} MemoryMin={FLOOR}",
+    )
+    swapping.wait_until_succeeds("test -e /run/floored/full", timeout=60)
+    swapping.succeed("sha256sum /run/floored/held > /run/floored.sha256")
+    held = int(swapping.succeed(f"cat /sys/fs/cgroup/{FLOORED}/memory.current"))
+    assert held > 300 * 1024 * 1024, f"the floored slice holds only {held} bytes"
+    hibernate_and_come_back(swapping)
+    swapping.succeed("sha256sum --check --quiet /run/floored.sha256")
+    floor = int(swapping.succeed(f"cat /sys/fs/cgroup/{FLOORED}/memory.min"))
+    assert floor == FLOOR, f"the floor came back as {floor} bytes"
+    swapping.succeed("systemctl stop floored.service", "umount /run/floored")
+
+
+def test_it_says_beforehand_whether_the_image_fits(swapping: QemuMachine) -> None:
+    """Asked first, it says a quiet machine's image fits, and with no room, plainly, that not.
+
+    A reserve as large as memory leaves the image no room, and nothing is asked to hibernate.
+    """
+    said = swapping.succeed("hibernate-unlock fits")
+    assert said.startswith("It fits: "), said
+    swapping.succeed(
+        "awk '/^MemTotal:/ { print $2 * 1024 }' /proc/meminfo > /sys/power/reserved_size"
+    )
+    try:
+        status, said = swapping.execute("hibernate-unlock fits")
+    finally:
+        swapping.succeed(f"echo {RESERVE} > /sys/power/reserved_size")
+    assert status == 1, f"it exited {status}"
+    assert said.startswith("Not enough memory to hibernate: "), said
+    assert "Nothing was changed." in said, said
 
 
 def test_a_hibernation_with_no_swap_file_says_so(swapping: QemuMachine) -> None:

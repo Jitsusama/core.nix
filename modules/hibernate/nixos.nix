@@ -4,7 +4,10 @@
 # the machine comes back). Coming back asks once, at the disk prompt: the
 # lock screen lets go by itself. A hibernation that rolled back, leaving the
 # machine on, is said with why, tried again or slept through instead
-# (unlock/src/main.rs says when).
+# (unlock/src/main.rs says when). While the image is made the slices' hard
+# memory floors are set aside, or the kernel can't take back what they guard
+# to make room (unlock/src/floors.rs), and `hibernate-unlock fits` says
+# beforehand whether the image would fit, by the kernel's own sums.
 {
   config,
   lib,
@@ -64,6 +67,11 @@ in
     # opens. Where a kernel builds it in, as the laptops' does, this asks for
     # nothing more.
     boot.initrd.kernelModules = [ "lz4" ];
+
+    # For `hibernate-unlock fits`, for whatever asks for a hibernation to run
+    # first: asked inside the sleep, it would come after the screen locked.
+    # Nothing here asks it.
+    environment.systemPackages = [ unlock ];
 
     # systemd-sleep runs each program here before a sleep and after it, with
     # "pre" or "post" and the sleep's name.

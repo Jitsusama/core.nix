@@ -6,6 +6,7 @@
 //! ```text
 //! hibernate-unlock pre|post <action> [<disk>...]
 //! hibernate-unlock rescue [<why>...]
+//! hibernate-unlock fits
 //! ```
 //!
 //! systemd-sleep runs it before and after each sleep, naming the action
@@ -42,6 +43,15 @@
 //! so the laptop goes to sleep instead, the notice waiting for the lid to
 //! open. Otherwise it hibernates once more, and powers off if that rolls
 //! back too.
+//!
+//! Before an image is made it sets the hard memory floors aside, and puts
+//! them back after, or the kernel can't take back what they guard to make
+//! room (floors.rs). `fits` says whether the image would fit, by the
+//! kernel's sums, before anything is asked to hibernate (fits.rs), and
+//! exits 1 when it wouldn't.
+
+mod fits;
+mod floors;
 
 use serde_json::Value;
 use std::env;
@@ -57,6 +67,13 @@ const KEPT: &str = "/run/hibernate-unlock";
 /// Where the number of the kernel's last log record before a hibernation is
 /// kept, so what it logged after can be read alone.
 const LOGGED: &str = "/run/hibernate-unlock-logged";
+
+/// Where the hard memory floors set aside for an image are kept until
+/// they're put back.
+const FLOORS: &str = "/run/hibernate-unlock-floors";
+
+/// Where the cgroups are, the floors in them.
+const CGROUPS: &str = "/sys/fs/cgroup";
 
 /// Kept while a rolled-back hibernation is tried again, so a second
 /// rollback powers off rather than trying forever.
@@ -482,6 +499,11 @@ fn before(action: &str) {
     if !writes_an_image(action) {
         return;
     }
+    match floors::lift(Path::new(CGROUPS), Path::new(FLOORS)) {
+        Ok(0) => {}
+        Ok(lifted) => eprintln!("hibernate-unlock: set {lifted} memory floors aside for the image"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't set the memory floors aside: {error}"),
+    }
     match starts() {
         Some(now) => {
             if let Err(error) = fs::write(KEPT, now.kept()) {
@@ -518,6 +540,11 @@ fn logged_since_before() -> Vec<String> {
 /// After the machine is back, let the locks go if it came back through the
 /// disk prompt, and rescue a hibernation that never went off.
 fn after(action: &str, disks: &[String]) {
+    match floors::restore(Path::new(CGROUPS), Path::new(FLOORS)) {
+        Ok(0) => {}
+        Ok(restored) => eprintln!("hibernate-unlock: put {restored} memory floors back"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't put the memory floors back: {error}"),
+    }
     let logged = logged_since_before();
     let _ = fs::remove_file(LOGGED);
     let Some(then) = fs::read_to_string(KEPT)
@@ -673,6 +700,41 @@ fn rescue_now(why: &Why) {
     }
 }
 
+/// Says whether an image would fit now, exiting 1 when it wouldn't. What
+/// it can't read it doesn't stand in the way of.
+fn fits_now() -> ExitCode {
+    let read = |path: &str| fs::read_to_string(path).ok();
+    let memory = read("/proc/meminfo").and_then(|text| fits::Memory::parse(&text));
+    let reserve = read("/sys/power/reserved_size").and_then(|text| text.trim().parse().ok());
+    let swaps = read("/proc/swaps");
+    let zones = read("/proc/zoneinfo");
+    let (Some(memory), Some(reserve), Some(swaps), Some(zones)) = (memory, reserve, swaps, zones)
+    else {
+        println!("It couldn't tell whether the image fits, so it doesn't stand in the way.");
+        return ExitCode::SUCCESS;
+    };
+    let mm_stats: Vec<String> = fs::read_dir("/sys/block")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|device| device.file_name().to_string_lossy().starts_with("zram"))
+        .filter_map(|device| fs::read_to_string(device.path().join("mm_stat")).ok())
+        .collect();
+    let fit = fits::Fit::of(
+        memory,
+        fits::Zones::parse(&zones),
+        reserve,
+        &fits::swap_areas(&swaps),
+        fits::Squeeze::parse(&mm_stats),
+    );
+    println!("{}", fit.said());
+    if fit.fits() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
 fn power_off() {
     let _ = fs::remove_file(TRIED_AGAIN);
     let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
@@ -684,8 +746,11 @@ fn main() -> ExitCode {
         [when, action, ..] if when == "pre" => before(action),
         [when, action, disks @ ..] if when == "post" => after(action, disks),
         [what, why @ ..] if what == "rescue" => rescue_now(&Why::from_args(why)),
+        [what] if what == "fits" => return fits_now(),
         _ => {
-            eprintln!("usage: hibernate-unlock pre|post <action> [<disk>...] | rescue [<why>...]");
+            eprintln!(
+                "usage: hibernate-unlock pre|post <action> [<disk>...] | rescue [<why>...] | fits"
+            );
             return ExitCode::from(2);
         }
     }

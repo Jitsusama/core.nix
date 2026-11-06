@@ -541,7 +541,11 @@
     the swap file gone or full, a driver or program by its name refusing, the writer failing, a
     wakeup, or nothing said), and rescues it: said with the lid open, each notice word for word in
     plain text, slept through with it shut when memory or swap ran short, otherwise tried once more
-    with it shut, then powered off
+    with it shut, then powered off; sets the top level's hard memory floors aside and keeps them,
+    and puts each back as it was; and says whether an image fits by the kernel's sums (half of
+    memory less what it keeps back and twice the reserve, against what's in use less cache,
+    slabs, the free pages waiting on each processor's list and what swap frees, of zram only what
+    compression saves)
   '';
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
@@ -2419,12 +2423,16 @@
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
     comes back from an lz4 image through systemd's initrd as it was, once the TPM and a PIN typed
-    at its prompt open the disk, lets the lock go for that one prompt, and boots anew after
+    at its prompt open the disk, lets the lock go for that one prompt, and boots anew after; with
+    more held under a slice's hard memory floor than the image may hold, it still comes back, the
+    floor as it was; and asked first, says a quiet machine's image fits, and with no room exits 1
+    saying not, plainly
   '';
   vm-idle-sleep-comes-only-on-battery = ''
     a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even
-    as the last of a burst of twenty power supply events; on battery a session still in use keeps it awake, and an idle one stays awake while a program
-    holds logind's lock against idling and sleeps once it lets go
+    as the last of a burst of twenty power supply events; on battery a session still in use keeps
+    it awake, and an idle one stays awake while a program holds logind's lock against idling and
+    sleeps once it lets go
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
