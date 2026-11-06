@@ -1,6 +1,6 @@
-// The command line's menu (CommandLine.qml), as his completion menu shows
-// over his command line: it rises over the bottom of the rows the moment :
-// is typed, so the cursor row stays in view above it, and holds ten lines
+// The held notices' command line's menu (HeldNotices.qml), as his completion
+// menu shows over his command line: it rises over the bottom of the notices
+// the moment : is typed, so the cursor row stays in view above it, and holds ten lines
 // at most, as his pumheight does (modules/neovim/init.lua), scrolling to
 // keep the chosen one in view. A hairline splits it from the rows, as it
 // splits the field from them, rather than a box of its own.

@@ -5,12 +5,5 @@
     "owner_pr": 1984,
     "reason": "failed, then passed, at 90154593060a",
     "test": "vm-desktop-opens-and-sets"
-  },
-  {
-    "at": 1793987874,
-    "commit": "d3d892f442691e22cc40e595d25b0d69cc44ae9f",
-    "owner_pr": 2032,
-    "reason": "failed, then passed, at d3d892f44269",
-    "test": "vm-desktop-launcher-finds-sessions"
   }
 ]

@@ -46,15 +46,20 @@ KBD_LIGHT = "/sys/class/leds/stand-in::kbd_backlight/brightness"
 KBD_LEVELS = ["Light Off", "Light to 1 of 2", "Light to 2 of 2"]
 
 
-def copied(desktop: Desktop, typed: str, expected: str) -> None:
-    """Ask the launcher, take its answer with Return, and check that it copied this."""
-    desktop.answer(typed)
-    # It says so as it closes.
-    with desktop.told("parted copied"):
-        desktop.machine.send_key("ret")
-    closed = desktop.in_session(LAUNCHER_OPEN)
-    desktop.machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    assert desktop.as_account("wl-paste --no-newline") == expected
+def yanked(desktop: Desktop) -> str:
+    """Copy the answer shown by yy from normal, and give what was copied.
+
+    An answer holding parts is gone into by Return, as every row holding more is, so y is
+    what copies it (Joel, 2026-11-06: "i type memory in the launcher, hit enter and it
+    copies and does not go into more details").
+    """
+    desktop.normal()
+    since = desktop.mark()
+    desktop.machine.send_chars("yy")
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
+    taken = desktop.as_account("wl-paste --no-newline")
+    desktop.close_launcher()
+    return taken
 
 
 # In normal mode y copies an answer as Return does, and keeps the launcher
@@ -91,19 +96,21 @@ def test_yy_copies_an_answer_and_dd_has_nothing_to_end(desktop: Desktop) -> None
 def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     desktop: Desktop,
 ) -> None:
-    """The launcher copies a MAC's vendor and the charge, and steps into the charger's parts."""
-    machine = desktop.machine
+    """The launcher copies a MAC's vendor and the charge by y, and steps into the charger's."""
     # What a sum or a measure says is tests/answers.qml's to hold; here,
     # only what needs the machine. The vendor comes from the list built
-    # from hwdata, so this proves it's there, and that Return copies.
-    copied(desktop, "3c:22:fb:12:34:56", "Apple, Inc.")
+    # from hwdata, so this proves it's there; the answer holds its parts,
+    # so Return goes in, and yy copies the vendor.
+    desktop.answer("3c:22:fb:12:34:56")
+    desktop.step_in()
+    desktop.close_launcher()
+    desktop.answer("3c:22:fb:12:34:56")
+    assert yanked(desktop) == "Apple, Inc."
     # The battery's charge leads, as the kernel's stand-in has it.
     charge = charged(desktop)
     desktop.answer("battery")
     desktop.photograph("launcher-battery")
-    machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
+    assert yanked(desktop).startswith(f"{charge}%, ")
     # Then what feeds it: the stand-in's charger, plugged in, a step
     # into the answer's row.
     desktop.answer("charger")
@@ -152,14 +159,12 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
     desktop.answer("heat")
     desktop.photograph("launcher-heat")
-    machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert re.search("^-?\\d+ \\u00b0C at the ", desktop.as_account("wl-paste --no-newline"))
-    # Each part reads name first, a step in; Return opens one, its
-    # history first, and again once back out by -.
+    assert re.search("^-?\\d+ \\u00b0C at the ", yanked(desktop))
+    # Each part reads name first, a step in by Return; Return opens one,
+    # its history first, and again once back out by -.
     desktop.answer("heat")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.follow()
+    desktop.step_in()
     desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
     desktop.type_in("battery", "Battery")
     assert re.search("^-?\\d+ \\u00b0C$", desktop.showing()["selected"]["side"])
@@ -274,12 +279,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     # The keyboards QEMU gives it, however many, and caps lock.
     desktop.answer("keyboards")
     desktop.photograph("launcher-keyboards")
-    machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert re.search(
-        "^(one keyboard|[1-9]\\d* keyboards), caps lock off$",
-        desktop.as_account("wl-paste --no-newline"),
-    )
+    assert re.search("^(one keyboard|[1-9]\\d* keyboards), caps lock off$", yanked(desktop))
     # The keyboards are a step into the answer, and each holds its parts,
     # named first, a step further by Return. QEMU's
     # own is the laptop's kind, with all three lock lights and a PS/2 port.
@@ -292,9 +292,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
         " && mv $XDG_RUNTIME_DIR/desk/.k $XDG_RUNTIME_DIR/desk/keyboards.json"
     )
     board = "The Laptop's Keyboard"
-    # An answer asked at the top copies on Return, so Ctrl+] goes into it.
+    # An answer asked at the top holds its parts, so Return goes into it.
     desktop.answer("keyboards")
-    desktop.follow()
+    desktop.step_in()
     desktop.launcher_until(lambda shown: board in shown["rows"])
     desktop.down_to(board)
     desktop.step_in("ret")
@@ -644,10 +644,11 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
                 and re.fullmatch(footer, shown["footer"]) is not None  # noqa: B023
             )
         )
-    # With no session's window to go to, Return copies its name; Ctrl+]
-    # goes in, to what it runs and the rest the queue knows of it.
+    # With no session's window to go to, its act is copying its name, which
+    # y does; Return goes in, to what it runs and the rest the queue knows
+    # of it, as Return goes in wherever a row holds more.
     assert desktop.showing()["selected"]["verb"] == "copy", desktop.showing()["selected"]
-    desktop.follow()
+    desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
             {"Command", "Class", "Needs", "Since"} <= set(shown["rows"])
@@ -666,18 +667,21 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
             and shown["footer"] == "just now"
         )
     )
-    desktop.follow()
+    # Return goes into an answer that holds parts, and into a part that
+    # holds its own, rather than copying it (Joel, 2026-11-06: "i type
+    # memory in the launcher, hit enter and it copies").
+    desktop.step_in()
     desktop.launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
     # Past the answer's own Copy, which leads, to Cores.
     desktop.down_to("Cores")
-    desktop.follow()
+    desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Core 0")
     desktop.close_launcher()
     # The memory, and the programs holding most of it, read once it's
     # asked.
     desktop.answer("memory")
     desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
-    desktop.follow()
+    desktop.step_in()
     desktop.launcher_until(lambda shown: {"Used", "Cached", "Using It"} <= set(shown["rows"]))
     desktop.close_launcher()
 
@@ -1058,7 +1062,7 @@ def time_inside(desktop: Desktop) -> None:
         rows = cast("list[str]", shown["rows"])
         return "Clock" in rows and rows[rows.index("Clock") :][:2] == keeping
 
-    # The time copies on Return, so Ctrl+] goes into what keeps it.
+    # Ctrl+] goes into what keeps the time, as Return does.
     desktop.answer("time")
     desktop.follow()
     # A step holds its rows still, so a row come after it was made goes last (Steady.js):

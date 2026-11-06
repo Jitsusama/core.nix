@@ -57,6 +57,22 @@ def copied(shell: Shell, typed: str, expected: str) -> None:
     assert shell.copied() == expected
 
 
+def yanked(shell: Shell, typed: str) -> str:
+    """Ask the launcher, copy its answer by yy from normal, and give what was copied.
+
+    An answer holding parts is gone into by Return, as every row holding more is, so y is
+    what copies it, and the launcher stays until it's closed.
+    """
+    shell.answer(typed)
+    shell.normal()
+    since = shell.mark()
+    shell.send_chars("yy")
+    shell.reported("yanked 1", lambda rest: rest == "", since)
+    taken = shell.copied()
+    shell.close_launcher()
+    return taken
+
+
 def answer_is_whole(shell: Shell, answer: str) -> None:
     """Wait for the answer to come, and check it's drawn whole in the row it held.
 
@@ -78,17 +94,14 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
     # The zones come from the list built from tzdata, so this proves it's
     # there. The minute may turn while it's asked, so either will do.
     before = now("-u", "+%H:%M")
-    shell.answer("time in utc")
-    shell.send_key("ret")
-    shell.launcher_closed()
-    assert shell.copied() in [before, now("-u", "+%H:%M")]
+    assert yanked(shell, "time in utc") in [before, now("-u", "+%H:%M")]
     # A theme's colour is found by its name, as the theme exports it.
     theme = json.loads(shell.as_account("cat $XDG_CONFIG_HOME/jitsusama/theme.json"))
-    copied(shell, "colour accent", theme["colours"]["accent"].lower())
+    assert yanked(shell, "colour accent") == theme["colours"]["accent"].lower()
     # Slack takes its theme only by hand, so the launcher copies it,
     # in the theme's own colours.
     slack = ["accent", "selection", "success", "warning"]
-    copied(shell, "slack theme", ",".join(theme["colours"][colour] for colour in slack))
+    assert yanked(shell, "slack theme") == ",".join(theme["colours"][c] for c in slack)
     # The build has no network, so what has to ask one says it couldn't,
     # and nothing breaks. Each waits for its answer to settle, failed;
     # asked again while that failure stands, it says so at once. When a
@@ -126,15 +139,40 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
     shell.close_launcher()
 
 
+def test_return_goes_into_an_answer_with_parts_and_y_copies_it(shell: Shell) -> None:
+    """Return goes into an answer holding parts, and y copies it, as a sum's Return does.
+
+    Return is the one way in, so a copy on it hid every part (Joel, 2026-11-06: "i type
+    memory in the launcher, hit enter and it copies and does not go into more details").
+    """
+    for typed, part in [("memory", "Used"), ("processor", "Load")]:
+        shell.answer(typed)
+        shell.launcher_until(lambda shown: shown["kind"] == "answer")
+        shown = shell.showing()
+        assert (shown["selected"] or {}).get("told", [""])[0] == "\u21b5 open", shown
+        shell.step_in()
+        shell.launcher_until(lambda shown: part in shown["rows"])  # noqa: B023
+        shell.close_launcher()
+    # From normal, y copies the answer Return went into, and keeps the launcher.
+    shell.answer("memory")
+    shell.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    shell.normal()
+    assert "y copy" in shell.showing()["selected"]["told"], shell.showing()["selected"]
+    since = shell.mark()
+    shell.send_chars("yy")
+    shell.reported("yanked 1", lambda rest: rest == "", since)
+    assert "GiB used" in shell.copied(), shell.copied()
+    shell.close_launcher()
+    # A sum holds nothing to go into, so its Return copies it still.
+    copied(shell, "12*7", "84")
+
+
 def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell) -> None:
     """The date is copied, the power acts ask first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's
     # asked, so either will do.
     before = now("+%A %-d %B %Y")
-    shell.answer("date")
-    shell.send_key("ret")
-    shell.launcher_closed()
-    assert shell.copied() in [before, now("+%A %-d %B %Y")]
+    assert yanked(shell, "date") in [before, now("+%A %-d %B %Y")]
     # The power actions answer to their names, and only those; closed by
     # :q, never Return, since Return would do them.
     for typed, action, verb in [
