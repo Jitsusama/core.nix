@@ -437,6 +437,50 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_the_head_holds_the_finds_mark_alone_and_no_bare_question(shell: Shell) -> None:
+    """The head's / stands only on the find, it asks no bare which?, and a find says its count."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shown = shell.showing()
+    assert (shown["mode"], shown["sigil"], shown["hint"]) == ("find", "/", ""), shown
+    # Normal's keys are on the rows, so the mark's column stands empty (Joel, 2026-11-06:
+    # "when in normal mode, it shouldn't have a / at the front").
+    shell.normal()
+    shown = shell.showing()
+    assert (shown["sigil"], shown["hint"]) == ("", ""), shown
+    # Home is a place, so its glyph leads its Title, where a bare band said nothing.
+    assert shown["lead"] != "", shown
+    # Now asks only "which?", which the mark and the caret already say.
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["Now"])
+    assert shell.showing()["hint"] == "", shell.showing()
+    shell.close_launcher()
+    # A find left for normal says how many it found, never where the cursor is among them.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("power")
+    # Home is a place, so its Title stands on the rows' names' column, as the : line's typing
+    # does, so nothing moves between the two, and what's typed follows it.
+    laid = laid_out(shell)
+    titled = [word["x"] for word in laid["field"] if word["text"] == "Home"]
+    typed = [word["x"] for word in laid["field"] if word["text"] == "power"]
+    named = [
+        word["x"]
+        for row in laid["rows"]
+        if row["selected"]
+        for word in row["words"]
+        if word["text"] == shell.showing()["selected"]["name"]
+    ]
+    assert titled, laid["field"]
+    assert typed, laid["field"]
+    assert named, laid["rows"]
+    assert abs(titled[0] - named[0]) <= 1, (titled, named)
+    assert typed[0] > titled[0], (typed, titled)
+    shell.normal()
+    shell.launcher_until(lambda shown: re.fullmatch(r"[1-9]\d* found", shown["found"]) is not None)
+    shell.close_launcher()
+
+
 def laid_out(shell: Shell) -> Json:
     """Give where the launcher draws each word, once two reads in a row agree."""
     was = None
