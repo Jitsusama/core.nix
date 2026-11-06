@@ -150,6 +150,10 @@ Item {
     // key as its answer, as Vim's ask_yesno does, until one answers it.
     property bool confirming: false
     signal answered(string key)
+    // How soon after visual's operator the same key again is taken with
+    // it (Operators.takenWith), as his Neovim's timeoutlen
+    // (modules/keys/language.toml); a sequence begun never times out.
+    property int wait: 300
     // Whether the caret blinks: while the line is on screen and modal.
     property bool awake: true
     // Says how far an aside may run, so a long one never crowds what's typed

@@ -5879,6 +5879,7 @@ Scope {
                         awake: root.open
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
+                        wait: Options.keyTiming.wait
                         // From the frame, its own inset inside, at the card's
                         // inset over the gutter's numbers, as Vim's / and :
                         // lines start at column 0, left of its number column:
