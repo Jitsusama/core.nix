@@ -1252,26 +1252,14 @@ works the same way everywhere.
 - **Ctrl+Y only completes.** It takes the grey completion the field shows,
   as his Neovim's completion menu takes its selection, and does nothing
   while none shows; Tab moves through the rows, as that menu's does. The
-  field says so at its right edge, "Ctrl+Y complete", only then and only
-  in insert, and in normal "← clear" in the same place while something's
-  typed, rather than the foot, where its coming and
-  going with each letter moved the other keys or took room from how things
-  stand. Its place there is kept while anything is typed, though nothing
-  shows in it, so nothing in the field moves as it comes and goes with
-  each letter. With nothing typed and nothing to restore no key can show,
-  so no place is kept, and the aside ends at the field's end, where the
+  field says no keys of its own: it holds only the find and how far it
+  narrows, and its hints are the foot's, by key and lowercase word
+  (VKCF3Z, 2026-11-05). So the aside ends at the field's end, where the
   rows' sides end (Joel, 2026-11-04: "the text in being inset left from
-  the right edge of the launcher"); the first letter moves it over once,
-  as it changes what the aside says. The aside has all the room the path,
-  what's typed and the keys leave it before it gives way. Flush after the
-  completion, a bare ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
-  text feels wrong and they are not super obvious what they mean"). The
-  keys' words take a third of the field, so they're said only while the
-  path, what's typed with its completion and the aside all fit whole
-  beside them; otherwise the keys stand alone, and once a step runs out of
-  room they stay alone until it ends, rather than coming and going. What's
-  typed and its completion come before the aside, which says less as they
-  grow.
+  the right edge of the launcher"). Nor does an arrow clear what's typed
+  or step anywhere: the arrows move the caret, Return goes in and - goes
+  up. The aside has all the room the path and what's typed with its
+  completion leave it, and says less as they grow.
 - **Every row is a thing with verbs.** Return goes into a thing that holds
   more, as oil's Return opens a folder, so a few letters and Return reach
   inside a thing from anywhere: what can be done to it,
