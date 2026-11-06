@@ -19,8 +19,12 @@ evaluates every check at the change's merge base with origin's main and in
 the working tree, and names each whose derivation was added, changed or
 removed, or no longer evaluates. A check whose derivation is the same
 proves what it proved before, so only the others need building, and it
-builds them, all but the VM tests, which `--build` adds and `run-subtests`
-can take a piece of. A named check proves nothing until it's built:
+builds them, all but the VM tests, which `run-subtests` takes a piece of
+and `merge-net needs` names where one runs whole before a merge.
+`--build` adds every VM test the change moved, which no gate asks for, so
+it says how many before it sends them: on 6 November one run for a change
+to the shell alone held every VM builder for 66 minutes. A named check
+proves nothing until it's built:
 core's main broke on 30 October on a change whose run named checks and
 built only some, and `--name-only` is for naming alone. With no
 `--system` it compares the system with the most checks, since core holds

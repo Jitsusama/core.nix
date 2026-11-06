@@ -273,6 +273,40 @@ fn by_default_or_asked_it_builds_what_was_added_and_changed_but_the_vm_tests() {
     }
 }
 
+// A run that builds VM tests whole says how many before it sends them,
+// and that the gate before a merge doesn't ask for them; one that leaves
+// them out says nothing of them.
+#[test]
+fn building_vm_tests_whole_says_how_many_and_what_the_gate_needs() {
+    for (label, arguments, said) in [
+        (
+            "with-vm",
+            &["--system", "x86_64-linux", "--build"][..],
+            true,
+        ),
+        ("without-vm", &["--system", "x86_64-linux"][..], false),
+    ] {
+        let stand_in = StandIn::new(label);
+        stand_in.checks("base", BASE);
+        stand_in.checks("working", WORKING);
+
+        let ran = stand_in.run(arguments);
+
+        assert!(ran.status.success(), "{label}: {}", text(&ran.stderr));
+        assert_eq!(
+            text(&ran.stderr).contains("building 1 VM test whole, as --build asks"),
+            said,
+            "{label}: {}",
+            text(&ran.stderr)
+        );
+        assert_eq!(
+            text(&ran.stderr).contains("needs only those `merge-net needs` names"),
+            said,
+            "{label}"
+        );
+    }
+}
+
 #[test]
 fn a_check_main_quarantines_is_built_alone_and_its_failure_blocks_nothing() {
     let stand_in = StandIn::new("quarantined");
