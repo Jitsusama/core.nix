@@ -709,9 +709,20 @@ impl App {
     }
 
     /// Whether the view is at the page's end, which it keeps to as the page
-    /// or the window changes under it, as while writing there.
+    /// or the window changes under it, as while writing there, or is on
+    /// its way there.
     fn at_end(&self) -> bool {
-        self.most() > 0.0 && self.offset >= self.most() - 1.0
+        motion::at_end(self.offset, self.jump.as_ref(), self.most())
+    }
+
+    /// Keeps a view at the end to the page's end where it is now: a jump on
+    /// its way to the old end goes on to the new one, as G meant.
+    fn keep_to_end(&mut self) {
+        if self.jump.is_some() {
+            self.jump_to(self.most());
+        } else {
+            self.offset = self.most();
+        }
     }
 
     /// Where the page shown ends, in device pixels from its top at the
@@ -3037,12 +3048,12 @@ impl App {
     fn take_in(&mut self) {
         self.upload_arrived();
         if self.held_pt.is_some() && self.whole_page_covers() {
-            // At the first screen's end, the view goes on to the whole
-            // page's, which is where he was.
+            // At the first screen's end, or on its way there, the view goes
+            // on to the whole page's, which is where he was or was going.
             let at_end = self.at_end();
             self.held_pt = None;
             if at_end {
-                self.offset = self.most();
+                self.keep_to_end();
                 self.ask_for_bands();
             }
         }
@@ -3648,7 +3659,7 @@ impl App {
                 (*letter, block, into_pt)
             })
             .collect();
-        let at_end = self.most() > 0.0 && here >= self.most() - 1.0;
+        let at_end = self.at_end();
         if let Err(error) = place::write(
             file,
             &place::Place {
@@ -4266,7 +4277,7 @@ impl WindowHandler for App {
         // The view's end moves with the buffer's height, so a view at the
         // end keeps to it once the buffer is the window's new size.
         if at_end {
-            self.offset = self.most();
+            self.keep_to_end();
         }
         // A key list showing is set again for the window's new width.
         if self.keys_shown {
