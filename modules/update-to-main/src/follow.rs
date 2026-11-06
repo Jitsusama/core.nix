@@ -211,13 +211,13 @@ mod tests {
         }
     }
 
-    const COMMIT: &str = "c772d9bf9ccf6bb6feecebd5270cc19a375820b0";
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
     fn hosted_saying(script: &str) -> Hosted {
         Hosted {
             user: "someone".to_owned(),
             checkout: std::env::temp_dir(),
-            directory: "home/someone/dotfiles".to_owned(),
+            directory: "flake".to_owned(),
             token: Vec::new(),
             changed: Some(vec!["sh".to_owned(), "-c".to_owned(), script.to_owned()]),
             path: std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect(),
