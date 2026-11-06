@@ -7,10 +7,13 @@
 //! half of memory, less what the kernel keeps back for itself, less twice
 //! the reserve (`/sys/power/reserved_size`), counted in pages:
 //! `hibernate_preallocate_memory`'s `max_size`, short only the few pages of
-//! the image's own bitmaps. What it
-//! can't leave out is what's in use less what reclaim can take back: the
-//! page cache, the kernel's reclaimable slabs and the anonymous pages,
-//! which `minimum_image_size` counts, as far as swap has room for those.
+//! the image's own bitmaps. What it can't leave out is what's in use less
+//! what reclaim can take back: the page cache, the kernel's reclaimable
+//! slabs and the anonymous pages, which `minimum_image_size` counts, as far
+//! as swap has room for those. Free pages waiting on each processor's own
+//! list count as in use there, since only the free lists mark a page free,
+//! but they're the first the image's own allocation takes, so here they're
+//! free: on a 1 GiB machine they were a ninth of memory.
 //! The floors count as nothing, since the hook sets them aside first
 //! (floors.rs says why).
 
@@ -49,37 +52,55 @@ impl Memory {
     }
 }
 
-/// What the kernel keeps back from every allocation, `totalreserve_pages`,
-/// in bytes, as mm/page_alloc.c's `calculate_totalreserve_pages` sums it
-/// from what `/proc/zoneinfo` shows: each zone's largest lowmem reserve
-/// (`protection`) and its high watermark, at most the pages it manages.
-pub fn kept_back(zoneinfo: &str) -> u64 {
-    let mut zones: Vec<(u64, u64, u64)> = Vec::new();
-    for line in zoneinfo.lines() {
-        let line = line.trim();
-        let number = |name: &str| line.strip_prefix(name)?.trim().parse::<u64>().ok();
-        if line.starts_with("Node ") && line.contains(", zone ") {
-            zones.push((0, 0, 0));
-        } else if let Some(zone) = zones.last_mut() {
-            if let Some(high) = number("high ") {
-                zone.0 = high;
-            } else if let Some(managed) = number("managed ") {
-                zone.1 = managed;
-            } else if let Some(listed) = line.strip_prefix("protection:") {
-                zone.2 = listed
-                    .trim_matches(|c: char| c == '(' || c == ')' || c.is_whitespace())
-                    .split(',')
-                    .filter_map(|reserve| reserve.trim().parse().ok())
-                    .max()
-                    .unwrap_or(0);
+/// What `/proc/zoneinfo` says, in bytes.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Zones {
+    /// What the kernel keeps back from every allocation,
+    /// `totalreserve_pages`, as mm/page_alloc.c's
+    /// `calculate_totalreserve_pages` sums it: each zone's largest lowmem
+    /// reserve (`protection`) and its high watermark, at most the pages it
+    /// manages.
+    pub kept_back: u64,
+    /// The free pages waiting on each processor's own list, its pagesets'
+    /// `count`, which `MemFree` leaves out.
+    pub parked: u64,
+}
+
+impl Zones {
+    pub fn parse(zoneinfo: &str) -> Self {
+        let mut zones: Vec<(u64, u64, u64)> = Vec::new();
+        let mut parked = 0;
+        for line in zoneinfo.lines() {
+            let line = line.trim();
+            let number = |name: &str| line.strip_prefix(name)?.trim().parse::<u64>().ok();
+            if line.starts_with("Node ") && line.contains(", zone ") {
+                zones.push((0, 0, 0));
+            } else if let Some(count) = number("count:") {
+                parked += count;
+            } else if let Some(zone) = zones.last_mut() {
+                if let Some(high) = number("high ") {
+                    zone.0 = high;
+                } else if let Some(managed) = number("managed ") {
+                    zone.1 = managed;
+                } else if let Some(listed) = line.strip_prefix("protection:") {
+                    zone.2 = listed
+                        .trim_matches(|c: char| c == '(' || c == ')' || c.is_whitespace())
+                        .split(',')
+                        .filter_map(|reserve| reserve.trim().parse().ok())
+                        .max()
+                        .unwrap_or(0);
+                }
             }
         }
+        let kept_back = zones
+            .iter()
+            .map(|(high, managed, protection)| (high + protection).min(*managed))
+            .sum::<u64>();
+        Self {
+            kept_back: kept_back * PAGE,
+            parked: parked * PAGE,
+        }
     }
-    zones
-        .iter()
-        .map(|(high, managed, protection)| (high + protection).min(*managed))
-        .sum::<u64>()
-        * PAGE
 }
 
 /// The room left in every swap area `/proc/swaps` lists, in bytes.
@@ -104,12 +125,15 @@ pub struct Fit {
 }
 
 impl Fit {
-    pub fn of(memory: Memory, held_back: u64, reserve: u64, swap_free: u64) -> Self {
-        let pages = memory.total.saturating_sub(held_back) / PAGE;
+    pub fn of(memory: Memory, zones: Zones, reserve: u64, swap_free: u64) -> Self {
+        let pages = memory.total.saturating_sub(zones.kept_back) / PAGE;
         let most = (pages.saturating_sub(PAGES_FOR_IO) / 2)
             .saturating_sub(2 * reserve.div_ceil(PAGE))
             * PAGE;
-        let used = memory.total.saturating_sub(memory.free);
+        let used = memory
+            .total
+            .saturating_sub(memory.free)
+            .saturating_sub(zones.parked);
         let taken_back = memory.file + memory.slab + memory.anon.min(swap_free);
         Self {
             most,
@@ -175,14 +199,43 @@ mod tests {
 
     fn laptop(reserve: u64, swap_free: u64) -> Fit {
         let memory = Memory::parse(LAPTOP).unwrap();
-        Fit::of(memory, kept_back(ZONES), reserve, swap_free)
+        Fit::of(memory, Zones::parse(ZONES), reserve, swap_free)
     }
 
     #[test]
     fn what_the_kernel_keeps_back_is_each_zones_reserve_and_high_mark_at_most_its_own() {
         // DMA's 7,369 and 72 held to its 3,841; DMA32's 5,437 and 9,366;
         // Normal's 26,360; Movable manages nothing.
-        assert_eq!(kept_back(ZONES), (3841 + 14_803 + 26_360) * PAGE);
+        assert_eq!(
+            Zones::parse(ZONES).kept_back,
+            (3841 + 14_803 + 26_360) * PAGE
+        );
+    }
+
+    #[test]
+    fn every_processors_waiting_free_pages_count_and_nothing_else_does() {
+        let zones = Zones::parse(
+            "Node 0, zone    DMA32\n        high     16646\n        managed  241596\n\
+             protection: (0, 0, 0, 0, 0)\n  pagesets\n    cpu: 0\n              count: 29279\n\
+                           high:  29760\n              batch: 63\n    cpu: 1\n\
+                           count: 21\n              high:  29760\n              batch: 63\n",
+        );
+        assert_eq!(zones.parked, (29_279 + 21) * PAGE);
+        assert_eq!(zones.kept_back, 16_646 * PAGE);
+    }
+
+    #[test]
+    fn pages_waiting_on_a_processors_list_are_free_for_the_image() {
+        let memory = Memory::parse(LAPTOP).unwrap();
+        let none = Zones::parse(ZONES);
+        let parked = Zones {
+            parked: 100 * PAGE,
+            ..none
+        };
+        let without = Fit::of(memory, none, GIB, swap_free(SWAPS));
+        let with = Fit::of(memory, parked, GIB, swap_free(SWAPS));
+        assert_eq!(without.least - with.least, 100 * PAGE);
+        assert_eq!(without.most, with.most);
     }
 
     #[test]

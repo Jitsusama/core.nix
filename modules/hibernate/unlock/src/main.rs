@@ -715,7 +715,7 @@ fn fits_now() -> ExitCode {
     };
     let fit = fits::Fit::of(
         memory,
-        fits::kept_back(&zones),
+        fits::Zones::parse(&zones),
         reserve,
         fits::swap_free(&swaps),
     );

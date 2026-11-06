@@ -543,7 +543,8 @@
     plain text, slept through with it shut when memory or swap ran short, otherwise tried once more
     with it shut, then powered off; sets the top level's hard memory floors aside and keeps them,
     and puts each back as it was; and says whether an image fits by the kernel's sums (half of
-    memory less twice the reserve, against what's in use less cache, slabs and what swap can take)
+    memory less what it keeps back and twice the reserve, against what's in use less cache,
+    slabs, what swap can take and the free pages waiting on each processor's list)
   '';
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
