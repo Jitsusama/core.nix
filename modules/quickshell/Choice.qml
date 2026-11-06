@@ -166,34 +166,49 @@ Rectangle {
             : "transparent"
     }
 
-    // The glyph's ink as the face draws it at Figure, measured as it loads,
-    // to size it by.
+    // The glyph's ink and the name's capitals as the faces draw them,
+    // measured as they load at many times their size and read back down,
+    // since a measure at the size drawn comes in whole pixels, a twelfth of
+    // a mark's height.
+    readonly property real fine: 8
     TextMetrics {
         id: markInk
         text: row.glyph
         font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.pointSize: Theme.level.figure.pointSize * row.fine
+    }
+    TextMetrics {
+        id: capitalsFine
+        text: "H"
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize * row.fine
     }
     // Every mark at one optical size beside the type, whatever its shape,
     // so a wide one such as the keyboard doesn't read smaller than the
     // rest down the column (the launcher audit's finding 10): scaled so its
-    // ink's area is the em's square, never taller than the em, so a narrow
+    // ink's area is the size's square, never taller than it, so a narrow
     // mark doesn't outgrow the type, and never wider than its cell, so it
-    // keeps its column (VKCF3Z, 2026-11-05). The em is the face's size in
-    // pixels, its points at 96 to the inch.
-    readonly property real markEm: Theme.level.figure.pointSize * 4 / 3
+    // keeps its column. The size is fifteen sixteenths of the em, the
+    // face's size in pixels at 96 points to the inch: 15 at Figure, a step
+    // lighter than the em beside the names (VKCF3Z, 2026-11-05).
+    readonly property real markSize: Theme.level.figure.pointSize * 4 / 3 * 15 / 16
     readonly property real markScale: {
-        const ink = markInk.tightBoundingRect;
-        return ink.width <= 0 || ink.height <= 0 ? 1
-            : Math.min(markEm / Math.sqrt(ink.width * ink.height), markEm / ink.height,
-                Theme.level.name.pitch / ink.width);
+        const wide = markInk.tightBoundingRect.width / fine;
+        const tall = markInk.tightBoundingRect.height / fine;
+        return wide <= 0 || tall <= 0 ? 1
+            : Math.min(markSize / Math.sqrt(wide * tall), markSize / tall,
+                Theme.level.name.pitch / wide);
     }
+    // Where the mark's ink centres, down from the row's top: on the name's
+    // capitals' middle, its baseline less half their height as drawn.
+    readonly property real markOn: (height + capitals) / 2
+        - capitalsFine.tightBoundingRect.height / fine / 2
 
     Text {
         x: Theme.space.rung.inset + row.indent
-        // Its ink's middle on the capitals', which stand in the row's.
-        y: row.height / 2 - (markInk.tightBoundingRect.y
-            + markInk.tightBoundingRect.height / 2) * row.markScale - baselineOffset
+        // Its ink's middle on the capitals'.
+        y: row.markOn - (markInk.tightBoundingRect.y
+            + markInk.tightBoundingRect.height / 2) / row.fine * row.markScale - baselineOffset
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph

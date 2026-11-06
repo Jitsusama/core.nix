@@ -23,7 +23,7 @@
 // view, relative to the cursor row's absolute one in text, or all absolute,
 // right-aligned on each row's baseline, from a handful of numbers however
 // many rows there are, and none at all off normal. A row's mark, whatever
-// its shape, stands at one optical size, its ink on the row's middle. It
+// its shape, stands at one optical size, its ink on the capitals' middle. It
 // exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -429,24 +429,36 @@ ShellRoot {
     }
 
     // Every mark stands at one optical size beside the type: its ink's area
-    // the em's square unless that would make it taller than the em or
-    // wider than its cell, and its middle on the capitals', the row's.
+    // the square of fifteen sixteenths of the em unless that would make it
+    // taller than that or wider than its cell, and its middle on the
+    // name's capitals'.
     function marksHold() {
-        const em = Theme.level.figure.pointSize * 4 / 3;
+        // Measured at eight times the size and read back down, since a
+        // measure at the size drawn comes in whole pixels.
+        const fine = 8;
+        const size = Theme.level.figure.pointSize * 4 / 3 * 15 / 16;
         const cell = Theme.level.name.pitch;
+        inkProbe.font.family = Theme.level.name.family;
+        inkProbe.font.pointSize = Theme.level.name.pointSize * fine;
+        inkProbe.text = "H";
+        const caps = inkProbe.tightBoundingRect.height / fine;
         for (const row of marks.children) {
             const mark = row.children.find(child => child.text === row.glyph);
-            inkProbe.font = mark.font;
+            inkProbe.font.family = mark.font.family;
+            inkProbe.font.pointSize = mark.font.pointSize * fine;
             inkProbe.text = mark.text;
-            const ink = inkProbe.tightBoundingRect;
-            const shown = `${row.name}: ${ink.width}x${ink.height} at ${ink.y}, em ${em}`;
-            const sized = Math.abs(Math.sqrt(ink.width * ink.height) - em) <= 1
-                || Math.abs(ink.height - em) <= 1 || Math.abs(ink.width - cell) <= 1;
-            expect("a mark is the em's area, or as tall as the em or as wide as its cell",
-                sized && ink.height <= em + 1 && ink.width <= cell + 1, shown);
+            const box = inkProbe.tightBoundingRect;
+            const ink = { width: box.width / fine, height: box.height / fine, y: box.y / fine };
+            const shown = `${row.name}: ${ink.width}x${ink.height} at ${ink.y}, size ${size}`;
+            const sized = Math.abs(Math.sqrt(ink.width * ink.height) - size) <= 0.5
+                || Math.abs(ink.height - size) <= 0.5 || Math.abs(ink.width - cell) <= 0.5;
+            expect("a mark is the size's area, or as tall as the size or as wide as its cell",
+                sized && ink.height <= size + 0.5 && ink.width <= cell + 0.5, shown);
             const middle = mark.y + mark.baselineOffset + ink.y + ink.height / 2;
-            expect("a mark's ink stands on the row's middle",
-                Math.abs(middle - row.height / 2) <= 1, `${shown}, middle ${middle}`);
+            const capsMiddle = (row.height + row.capitals) / 2 - caps / 2;
+            expect("a mark's ink stands on the capitals' middle",
+                Math.abs(middle - capsMiddle) <= 0.5,
+                `${shown}, middle ${middle} against ${capsMiddle}`);
         }
     }
 
