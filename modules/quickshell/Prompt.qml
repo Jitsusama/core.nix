@@ -447,7 +447,6 @@ Item {
             prompt.commanded("");
             return;
         }
-        const rested = key === "Escape" && mode === "normal" && !QueryKeys.pending(standing);
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -469,7 +468,7 @@ Item {
         if (!read.ours)
             return;
         event.accepted = true;
-        if (rested) {
+        if (read.rested) {
             prompt.rested();
             return;
         }

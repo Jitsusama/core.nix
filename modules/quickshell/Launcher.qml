@@ -4105,9 +4105,6 @@ Scope {
     property int keysTimed: 0
     property int keysWaiting: 0
 
-    // Moves the selection as an arrow does, timing the key to its frame as
-    // a typed one is. A key that moves nothing draws nothing, so it isn't
-    // timed: its frame would be whatever came next.
     // The last f or F, which ; and , go again (Finding.js).
     property var lastLetter: null
 
@@ -4155,6 +4152,9 @@ Scope {
         arrowed(to, QueryKeys.keyOf(act, "normal"));
     }
 
+    // Moves the selection as an arrow does, timing the key to its frame as
+    // a typed one is. A key that moves nothing draws nothing, so it isn't
+    // timed: its frame would be whatever came next.
     function arrowed(to, arrow) {
         trials.pressed("arrows");
         if (to === current)
