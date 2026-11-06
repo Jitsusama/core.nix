@@ -106,9 +106,8 @@ const table = [
     { act: "scroll", keys: ["j k"], modes: ["listing"], hint: "scroll" },
     { act: "back", keys: ["Escape"], modes: ["listing"], hint: "back" },
 
-    // The find line: what types is the line's, these its own. No line's
-    // foot names Escape, which only leaves its mode, as the drawer's
-    // find names none (VKCF3Z, 2026-11-05).
+    // The find line: what types is the line's, these its own. No foot
+    // names Escape, which only leaves a mode (VKCF3Z, 2026-11-05).
     { act: "open", keys: ["Return", "Enter"], modes: ["find"], hint: "go to",
         does: "go to its sender" },
     { act: "choose", keys: ["Down", "Tab", "Ctrl+N"], modes: ["find", "command"],
