@@ -2036,6 +2036,82 @@ fn subtests_that_passed_at_a_commit_arent_run_again_and_their_pictures_come_from
     assert_eq!(builds(), 4, "a change is run");
 }
 
+/// An output unpacked with the store's modes leaves the folder writable, so
+/// the next run can unpack into it: on 6 November a run that took no
+/// pictures left its folder read-only, and the next into it passed its
+/// subtests and failed to unpack, its pictures lost.
+#[test]
+fn a_folder_an_output_was_unpacked_into_takes_the_next() {
+    let changed = Changed::new();
+    let built = changed.folder.path().join("built");
+    let shots = built.join("shots");
+    fs::create_dir_all(&shots).unwrap();
+    fs::write(shots.join("shot.png"), "a picture").unwrap();
+    let mode = |path: &Path, mode| fs::set_permissions(path, fs::Permissions::from_mode(mode));
+    // As the store keeps it, nothing in it writable, and as the lent
+    // builder sends it back: a tarball on the build's output.
+    mode(&shots.join("shot.png"), 0o444).unwrap();
+    mode(&shots, 0o555).unwrap();
+    mode(&built, 0o555).unwrap();
+    let packed = Command::new("tar")
+        .arg("-czf")
+        .arg(changed.bin.join("says"))
+        .arg("-C")
+        .arg(&built)
+        .arg(".")
+        .status()
+        .unwrap();
+    assert!(packed.success());
+    for path in [&built, &shots] {
+        mode(path, 0o755).unwrap();
+    }
+    let out = changed.folder.path().join("out");
+    let subtests = |words: &str| {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "--out"])
+            .arg(&out)
+            .args([
+                "--apply",
+                &format!("subtests: subtests {{ words = [ {words} ]; }}"),
+            ])
+            .arg(&changed.tree)
+            .arg("legacyPackages.x.subtests")
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    changed.bin.display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", &changed.offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", changed.folder.path())
+            .env("XDG_STATE_HOME", changed.folder.path())
+            .env("XDG_CONFIG_HOME", changed.folder.path())
+            .output()
+            .unwrap()
+    };
+
+    let ran = subtests("\"a\"");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let ran = subtests("\"b\"");
+    let unpacked = fs::read_to_string(out.join("shots").join("shot.png"));
+    let unwritable: Vec<PathBuf> = [out.clone(), out.join("shots"), out.join("shots/shot.png")]
+        .into_iter()
+        .filter(|path| fs::metadata(path).is_ok_and(|held| held.permissions().mode() & 0o200 == 0))
+        .collect();
+    // Writable again whatever happened, so the temporary folder can go.
+    let _ = Command::new("chmod")
+        .arg("-R")
+        .arg("u+w")
+        .arg(&out)
+        .status();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(unpacked.unwrap(), "a picture");
+    assert!(unwritable.is_empty(), "left unwritable: {unwritable:?}");
+}
+
 /// A run whose output can't be unpacked here has failed, whatever its
 /// build said, and isn't kept as passed: on 4 November a gallery's run
 /// exited 0 with its pictures unpacked nowhere, and the next at that
