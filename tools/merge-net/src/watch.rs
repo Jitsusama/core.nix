@@ -411,18 +411,20 @@ fn blames_none(
     Ok(())
 }
 
-/// Whether `test`, broken by `commit` and failing at `head`, passes at
-/// main's newest head, so a fix forward has landed since and a revert
-/// would only undo the merge under it; if so its owner is told. A round
-/// and its search take hours while merges keep landing, and on 5 November
-/// both tests the round at b74ab91b searched for were fixed forward
-/// before it could revert.
+/// Whether `test`, failing at `head`, passes at main's newest head, so a
+/// fix forward has landed since; if so its owner is told. `commit` is the
+/// merge a search found broke it, none before the search. A round and its
+/// search take hours while merges keep landing: on 5 November both tests
+/// the round at b74ab91b searched for were fixed forward, and the search
+/// held the net nine hours behind main. So it is asked before a search,
+/// which it then skips, and again before a revert, which would only undo
+/// the merge a fix sits on.
 fn fixed_forward(
     world: &dyn World,
     state: &State,
     head: &str,
     test: &str,
-    commit: &str,
+    commit: Option<&str>,
 ) -> Result<bool, String> {
     let newest = world.head()?;
     if newest == head
@@ -433,14 +435,18 @@ fn fixed_forward(
     {
         return Ok(false);
     }
+    // Before a search no merge is known, so the finding names the head it
+    // failed at and no owner.
     state.find(&json!({
-        "kind": "fixed-forward", "test": test, "commit": commit,
-        "owner_pr": pr_of(&world.subject(commit)), "fixed_at": newest, "at": now(),
+        "kind": "fixed-forward", "test": test, "commit": commit.unwrap_or(head),
+        "owner_pr": commit.and_then(|commit| pr_of(&world.subject(commit))),
+        "fixed_at": newest, "at": now(),
     }))?;
+    let what = if commit.is_some() { "broke" } else { "fails" };
     state.say(&format!(
-        "{test} broke at {}, but passes at main's newest head {}, so it was fixed forward: \
-         nothing is reverted or held",
-        short(commit),
+        "{test} {what} at {}, but passes at main's newest head {}, so it was fixed forward: \
+         nothing is searched for, reverted or held",
+        short(commit.unwrap_or(head)),
         short(&newest)
     ));
     Ok(true)
@@ -633,6 +639,9 @@ fn broke(
     head: &str,
     test: &str,
 ) -> Result<(), String> {
+    if fixed_forward(world, state, head, test, None)? {
+        return Ok(());
+    }
     let merges = world.merges(base, head)?;
     let bad = if merges.len() == 1 {
         merges.first().cloned()
@@ -656,7 +665,7 @@ fn broke(
         None => None,
     };
     if let Some(commit) = &bad
-        && fixed_forward(world, state, head, test, commit)?
+        && fixed_forward(world, state, head, test, Some(commit))?
     {
         return Ok(());
     }
@@ -1049,6 +1058,39 @@ mod tests {
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "fixed-forward");
         assert_eq!(found[0]["fixed_at"], "n");
+
+        let state = super::tests::state("fixed-before-the-search");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            world.built(),
+            [("h", "vm-a"), ("h", "vm-a"), ("n", "vm-a")]
+                .map(|(commit, check)| (commit.to_owned(), check.to_owned())),
+            "no merge is searched for once main's head passes"
+        );
+        assert_eq!(
+            state.heads(),
+            (Some("h".into()), Some("h".into())),
+            "the next round starts from the head and runs to main's newest"
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        let found = findings(&state);
+        assert_eq!(
+            (&found[0]["kind"], &found[0]["commit"]),
+            (&json!("fixed-forward"), &json!("h"))
+        );
 
         let state = super::tests::state("still-broken");
         state.set_heads("s", "s").unwrap();
