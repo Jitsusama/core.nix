@@ -260,6 +260,30 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         lists_every_key(desktop, scale)
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
+        numbers_programs(desktop, scale)
+
+
+def numbers_programs(desktop: Desktop, scale: str) -> None:
+    """Step into Programs, and photograph its normal and a find in it, the gutter numbering both.
+
+    Normal counts from the cursor and the find numbers each row as it is, in one room, as wide
+    as Programs' own rows need (VKCF3Z, 2026-11-05).
+    """
+    at = scale.replace(".", "-")
+    desktop.answer("programs")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Programs")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: len(shown["held"]) == 1 and shown["gutter"]["shown"])
+    gutter = desktop.showing()["gutter"]
+    assert gutter["relative"], f"at {scale} normal in Programs: {gutter}"
+    desktop.photograph(f"launcher-programs-normal-at-{at}")
+    desktop.type_in("k")
+    desktop.launcher_until(
+        lambda shown: shown["gutter"]["shown"] and not shown["gutter"]["relative"]
+    )
+    assert desktop.showing()["gutter"]["room"] == gutter["room"], f"at {scale} {gutter}"
+    desktop.photograph(f"launcher-programs-found-at-{at}")
+    desktop.close_launcher()
 
 
 def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
