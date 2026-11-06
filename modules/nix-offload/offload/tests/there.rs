@@ -3191,6 +3191,10 @@ fn vm_tests_go_to_a_warm_vm_builder_while_one_stands() {
         2,
         "warm now: {built:?}"
     );
+    assert!(
+        !said.contains("warm one"),
+        "a lender with no builder on its way says nothing: {said}"
+    );
 }
 
 // A run sent where others wait for room goes only after them, so those

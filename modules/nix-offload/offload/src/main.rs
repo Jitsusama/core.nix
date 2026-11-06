@@ -666,9 +666,13 @@ fn warm_of(
     for index in &unasked[..asking] {
         there::want(&vm_dirs[*index]);
     }
-    let cold_said = match cold.len() {
-        1 => "1 of the VM builders is cold".to_owned(),
-        count => format!("{count} of the VM builders are cold"),
+    if coming.is_empty() && asking == 0 {
+        return warm;
+    }
+    let cold_said = match coming.len() {
+        0 => String::new(),
+        1 => "1 VM builder is still standing or warming, so ".to_owned(),
+        count => format!("{count} VM builders are still standing or warming, so "),
     };
     let warm_said = match warm.len() {
         1 => "the warm one".to_owned(),
@@ -679,7 +683,7 @@ fn warm_of(
         1 => ", and 1 more is asked for, to warm for the runs after".to_owned(),
         asking => format!(", and {asking} more are asked for, to warm for the runs after"),
     };
-    eprintln!("nix-offload: {cold_said}, so VM tests go to {warm_said}{asked_said}");
+    eprintln!("nix-offload: {cold_said}VM tests go to {warm_said}{asked_said}");
     warm
 }
 
