@@ -293,6 +293,15 @@ in
 
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
 
+    # What pi compiles its TypeScript into, shared by every pi here. Each
+    # install of a package compiles its changed files afresh and nothing
+    # removes the old ones: by 6 November it held 265,000 files in 2.1 GB.
+    # Files go two days after they were made, since /tmp keeps no read
+    # times; one still in use costs a compile the next time it loads.
+    systemd.user.tmpfiles.rules = lib.mkIf pkgs.stdenv.hostPlatform.isLinux [
+      "e /tmp/jiti - - - 2d"
+    ];
+
     home.packages = lib.optional (!onClaude) piClaude ++ [
       (import ./ask.nix {
         inherit pkgs lib piClaude;
