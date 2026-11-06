@@ -4,9 +4,8 @@
 //!
 //! A test fails for real when it fails twice at the same commit, which is
 //! the same input. One that fails and then passes is flaky: it goes on the
-//! quarantine list with the PR of the newest merge that moved it as its
-//! owner, and nothing is
-//! reverted for it, nor for a quarantined test that fails. A run the
+//! quarantine list with the PR of the newest merge that moved it, and not
+//! the whole system with it, as its owner, and nothing is reverted for it, nor for a quarantined test that fails. A run the
 //! builder never took (`nix-offload` exits 75) is tried again later, and is
 //! no failure, and so is one stopped before it ended, for running too long
 //! or going silent: twice at a commit, and the test is left there with a
@@ -502,20 +501,50 @@ fn fixed_forward(
 /// The PR that owns `test` in a round from `base` to `head`: the newest
 /// merge in it that moved the test's derivation, or added the test, since
 /// that is what the round ran it for. The round's head may have touched
-/// nothing of it, as when the net's own quarantine PR was the head. None
-/// when no merge since `base` moved it. Each merge asks for two
-/// derivations, so it's read only for an outcome that names an owner.
-fn owner_of(world: &dyn World, base: &str, head: &str, test: &str) -> Option<u64> {
+/// nothing of it, as when the net's own quarantine PR was the head.
+///
+/// A merge that moves the whole system moves every VM test's derivation,
+/// so it is passed over when it also moved a test of another family among
+/// the round's `tests` (`vm-desktop-*` against `vm-install-*`): on 6
+/// November #2048, a change to docs/design.md alone, which the aesthetic
+/// skill installs, was named owner of every flaky desktop test. None when
+/// no merge since `base` moved it alone. Each merge asks for two
+/// derivations, or four, so it's read only for an outcome that names an
+/// owner.
+fn owner_of(
+    world: &dyn World,
+    base: &str,
+    head: &str,
+    test: &str,
+    tests: &[String],
+) -> Option<u64> {
+    let other = tests.iter().find(|other| family(other) != family(test));
     let merges = world.merges(base, head).ok()?;
     merges.iter().rev().find_map(|merge| {
         let before = world.parent(merge).ok()?;
-        let moved = match (world.drv(merge, test), world.drv(&before, test)) {
-            (Ok(now), Ok(was)) => now != was,
-            (Ok(_), Err(_)) => true,
-            (Err(_), _) => false,
-        };
-        moved.then(|| pr_of(&world.subject(merge))).flatten()
+        let everything = other.is_some_and(|other| moved(world, merge, &before, other));
+        (moved(world, merge, &before, test) && !everything)
+            .then(|| pr_of(&world.subject(merge)))
+            .flatten()
     })
+}
+
+/// Whether `merge` moved `test`'s derivation from the commit `before` it,
+/// or added the test.
+fn moved(world: &dyn World, merge: &str, before: &str, test: &str) -> bool {
+    match (world.drv(merge, test), world.drv(before, test)) {
+        (Ok(now), Ok(was)) => now != was,
+        (Ok(_), Err(_)) => true,
+        (Err(_), _) => false,
+    }
+}
+
+/// A VM test's family, the words its name opens with: `vm-desktop` for
+/// `vm-desktop-opens-and-sets`, whose tests share a machine.
+fn family(test: &str) -> &str {
+    test.match_indices('-')
+        .nth(1)
+        .map_or(test, |(at, _)| &test[..at])
 }
 
 /// The PR a merge commit's subject names, as GitHub writes it.
@@ -623,7 +652,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
                 let reason = format!("failed, then passed, at {}", short(&head));
-                let owner = owner_of(world, &base, &head, test);
+                let owner = owner_of(world, &base, &head, test, &tests);
                 let made = world.quarantine(test, owner, &head, &reason);
                 state.find(&json!({
                     "kind": "flaky",
@@ -642,7 +671,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                     "kind": "failed-in-quarantine",
                     "test": test,
                     "commit": head,
-                    "owner_pr": owner_of(world, &base, &head, test),
+                    "owner_pr": owner_of(world, &base, &head, test, &tests),
                     "log": state.log(&head, test, 2).display().to_string(),
                     "at": now(),
                 }))?;
@@ -663,7 +692,12 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             // but no merge is blamed for it.
             Outcome::Stalled => {
                 failed = true;
-                stalled(state, &head, test, owner_of(world, &base, &head, test))?;
+                stalled(
+                    state,
+                    &head,
+                    test,
+                    owner_of(world, &base, &head, test, &tests),
+                )?;
             }
         }
     }
@@ -841,6 +875,8 @@ mod tests {
         missing: Vec<(String, String)>,
         /// Merges that change no check since the commit before them.
         same: Vec<String>,
+        /// Merges that leave the one check named with them unchanged.
+        still: Vec<(String, String)>,
         quarantined: Vec<String>,
         reverted: Mutex<Vec<String>>,
         put_in_quarantine: Mutex<Vec<String>>,
@@ -889,9 +925,11 @@ mod tests {
                 .missing
                 .contains(&(commit.to_owned(), check.to_owned())))
         }
-        /// A merge in `same` builds what the merge before it built.
+        /// A merge in `same`, or in `still` with this check, builds what
+        /// the merge before it built.
         fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
-            if self.same.iter().any(|same| same == commit) {
+            let still = (commit.to_owned(), check.to_owned());
+            if self.same.iter().any(|same| same == commit) || self.still.contains(&still) {
                 return self.drv(&self.parent(commit)?, check);
             }
             Ok(format!("{commit}-{check}"))
@@ -1230,6 +1268,41 @@ mod tests {
             found[0]["owner_pr"], 2,
             "not the head's #3, which moved nothing"
         );
+    }
+
+    #[test]
+    fn a_merge_that_moved_the_whole_system_owns_no_flaky_test() {
+        // bb moved every test, as a change to the system all tests boot
+        // does; a moved the desktop tests alone.
+        let round_of = |merges: &str, name: &str| {
+            let state = state(name);
+            let world = Stand {
+                head: "bb".into(),
+                merges: names(merges),
+                changed: changed("vm-desktop-a vm-install-b"),
+                still: vec![("a".into(), "vm-install-b".into())],
+                ..Stand::default()
+            }
+            .exits("bb", "vm-desktop-a", &[1, 0]);
+            round(&world, &state, "s").unwrap();
+            findings(&state)[0]["owner_pr"].clone()
+        };
+        assert_eq!(
+            round_of("a bb", "whole-system-passed-over"),
+            1,
+            "a, which moved the desktop alone, not bb"
+        );
+        assert_eq!(
+            round_of("bb", "whole-system-alone"),
+            Value::Null,
+            "no merge moved it alone"
+        );
+    }
+
+    #[test]
+    fn a_test_s_family_is_the_words_its_name_opens_with() {
+        assert_eq!(family("vm-desktop-opens-and-sets"), "vm-desktop");
+        assert_eq!(family("vm-install"), "vm-install");
     }
 
     #[test]
