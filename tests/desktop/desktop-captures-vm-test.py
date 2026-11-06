@@ -675,7 +675,7 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
-    # It copies on Return, so Ctrl+] goes in: the camera, then the copy.
+    # Ctrl+] goes in, as Return does: the camera, then the copy.
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Built-In Camera", "Copy"])
     desktop.close_launcher()
