@@ -130,7 +130,9 @@ and over 20 GB on a machine other work shares. There's no CI, and nothing runs
 on a schedule but the net, which follows main ([docs/testing.md][1]). A
 refactor is done when the machine repositories' machines evaluate to the same
 derivations as before. A new check has to earn its place. All of
-it is in [docs/testing.md][1].
+it is in [docs/testing.md][1]. How to spend the shared builders, and the
+targets that keep the cycle fast, are in [docs/delivery.md][21]: read it
+before sending a VM run.
 
 ## Commits
 
@@ -180,3 +182,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [18]: docs/testing.md#the-desktops-logic
 [19]: docs/testing.md#the-desktop-on-niri
 [20]: docs/testing.md#virtual-machines
+[21]: docs/delivery.md
