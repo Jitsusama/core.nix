@@ -1235,7 +1235,11 @@ QtObject {
             // those followed.
             ["Ctrl+] follows the row to its own place, and Ctrl+T back",
                 ["Escape", "Ctrl+]", "Ctrl+t"], ["normal", "follow", "tagBack"]],
-            ["on the find, Ctrl+] and Ctrl+T are the field's", ["Ctrl+]", "Ctrl+t"], []],
+            // And Ctrl+] from the find, where a program's name is typed, so
+            // its commands and windows are a key away (Joel, 2026-11-05);
+            // Ctrl+T there stays the field's.
+            ["and from the find", ["Ctrl+]"], ["follow"]],
+            ["on the find, Ctrl+T is the field's", ["Ctrl+t"], []],
             ["Space ? and F1 show every key here", ["Escape", "Space", "?", "F1"],
                 ["normal", "keys", "keys"]],
             ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
