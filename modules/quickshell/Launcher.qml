@@ -1996,7 +1996,7 @@ Scope {
         // "Ctrl+] in \u00b7 Space ? keys \u00b7 \u21b5 open").
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             keys.push([hintKey("follow"), hints.in ?? ""]);
-        if (held.length > 0)
+        if (canGoUp)
             keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
@@ -2570,6 +2570,27 @@ Scope {
         jumping = false;
         restart(to.here.typed);
         reselect(to.here);
+    }
+    // Goes somewhere by several steps as one jump, as Vim's :cd or :bnext
+    // is one: the place left goes on the jump list and is the place used
+    // last, never a step on the way, so Ctrl+O goes back to where Joel
+    // was; one that ends where it began, as a place made again in place
+    // does, is no jump at all. A walk that opens a collection afresh
+    // (into) lets go what was on the way back, which is kept here.
+    function oneJump(walk) {
+        const left = { held: held, here: here() };
+        const was = { back: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last: lastPlace };
+        jumping = true;
+        try {
+            walk();
+        } finally {
+            jumping = false;
+        }
+        const moved = placeOf(left.held) !== placeOf(held);
+        jumpsBack = moved ? was.back.concat([left]) : was.back;
+        jumpsAhead = moved ? [] : was.ahead;
+        tagsBack = was.tags;
+        lastPlace = moved ? left : was.last;
     }
     // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
     // that opens on Return, as a mail, a program or a session do, into the
@@ -3640,6 +3661,12 @@ Scope {
     function beside(by) {
         held[held.length - 1]?.row?.beside?.(by);
     }
+
+    // Whether - has a place to go up to: anywhere but home, and but a
+    // collection with nothing above it, as a dialog's (`outermost`), which
+    // - would leave for a home it never showed, its ask still waiting.
+    readonly property bool canGoUp: held.length > 1
+        || (held.length === 1 && held[0].row.from?.collection?.outermost !== true)
 
     function back() {
         if (held.length === 0)
@@ -6032,7 +6059,7 @@ Scope {
                         onBackward: {
                             root.searchNow();
                             trials.pressed("backs");
-                            if (root.held.length === 0)
+                            if (!root.canGoUp)
                                 root.say([[root.hintKey("out"),
                                     (Words.field.hints ?? {}).notHere ?? ""]]);
                             else

@@ -2,8 +2,13 @@
 // portal's chooser of files (open-with, src/files.rs), which asks here
 // rather than GTK drawing a dialog of its own. The launcher opens in the
 // folder the program asked for, else the folder of the file it saves over,
-// else home, every folder on the way held above it, so the left arrow goes
-// one out, and back the way Joel came once he's stepped in.
+// else home, every folder on the way held above it, up to /, which has
+// nothing above it (`outermost`). As in his oil, Return goes into a folder
+// and - to the one holding it, the cursor on the folder it came from, and
+// Ctrl+O and Ctrl+I go back and forward through the folders he's been in,
+// each way there (]b, :cd, :e) one jump; h and l mean nothing on a row
+// (Joel, 2026-11-05: "enter and - should be the only level stepping
+// keys").
 //
 // A folder lists what it holds as it's stepped into, read then and again as
 // it changes, never on a timer: the files opened lately first, where it
@@ -11,17 +16,15 @@
 // each drawn as every file and folder is (Files.qml); then the program's
 // filters and its choices, apart again. What's hidden shows once a "." is
 // typed. Opening, Return on a file picks it, by the program's own word for
-// it; where several may be opened, Return marks it instead, its glyph the
-// mark while it's marked, and Open the Marked, leading every folder from
-// the start, counts them, names them and opens every file marked, wherever
-// each was, its right arrow stepping into Marked to unmark them (VKCF3Z,
-// 2026-11-03); every folder lists by name, change or size, folders first,
-// as its Order row, last, sets for every ask after (VKCF3Z, 2026-11-04);
-// asked for a folder, each folder leads with Open This
-// Folder, one folder picked though the program could take several. Saving,
-// each folder leads with the name the program gave, and what's typed names
-// it instead; a name already there steps in to Replace It, the one ask.
-// Escape, or closing the launcher, picks nothing.
+// it; where several may be opened, Return takes every file in a V
+// selection, and :arga gathers files across folders, which Return then
+// takes, :args listing them (VKCF3Z's vi-paradigm spec, The File Picker);
+// every folder lists by name, change or size, folders first, as :sort
+// sets for every ask after; asked for a folder, each folder leads with
+// Open This Folder, one folder picked though the program could take
+// several. Saving, the line holds the name, and a name already there asks
+// once. :q, or closing the launcher, picks nothing; Escape closes nothing
+// (Joel, 2026-11-05: "fuck escape quitting").
 //
 // Each file and folder says beside its name how big it is and when it last
 // changed, "2.4 MB \u00b7 28 Oct", a folder how many items it shows, read
@@ -163,6 +166,9 @@ Provider {
         title: request.title || (saving || mode === "save-files" ? "Save" : "Open"),
         searched: false,
         glyph: Theme.glyph[folders ? "folder" : "path"],
+        // A dialog, it has nothing above it: - at / says so, rather than
+        // leaving the ask waiting for a home it never showed.
+        outermost: true,
         ask: question(),
         empty: "Nothing here."
     })
@@ -280,9 +286,8 @@ Provider {
     //
     // Held, each folder on the way is titled as the one held deepest, read
     // as the launcher says its path, so the path says the program's title
-    // and then one folder, "~/Downloads", which changes in place as the
-    // left arrow goes up, rather than a crumb a folder (VKCF3Z,
-    // 2026-10-29).
+    // and then one folder, "~/Downloads", which changes in place as - goes
+    // up, rather than a crumb a folder (VKCF3Z, 2026-10-29).
     function folderRow(path, away) {
         const acts = !folders ? [] : [act(mode === "save-files" ? "verb:file-chooser:here"
             : "verb:file-chooser:folder", path, [path])];
@@ -1101,8 +1106,10 @@ Provider {
         const at = around.indexOf(path);
         if (at < 0 || around.length < 2)
             return;
-        launcher.back();
-        launcher.enter(folderRow(around[(at + by + around.length) % around.length]));
+        launcher.oneJump(() => {
+            launcher.back();
+            launcher.enter(folderRow(around[(at + by + around.length) % around.length]));
+        });
     }
 
     function everything() {
@@ -1222,9 +1229,8 @@ Provider {
         launcher.into(settings.name);
         for (const path of onTheWay(start))
             launcher.enter(folderRow(path));
-        // The folder it opens in is where it opened, so normal's Escape
-        // there refuses the ask, as a dialog's Escape does, rather than
-        // climbing out through every folder on the way first.
+        // The folder it opens in is where it opened: the folders on the
+        // way were never shown, so Ctrl+O has none of them to go back to.
         launcher.openedHere();
     }
 
@@ -1546,14 +1552,16 @@ Provider {
     }
 
     // Goes to a folder as if the ask had opened there: each folder on the
-    // way held, and Escape there refusing the ask, as :cd moves Vim.
+    // way held, as :cd moves Vim, in one jump, so Ctrl+O goes back to the
+    // folder it was in.
     function goTo(folder) {
         if (asking === null || !folder.startsWith("/"))
             return;
-        launcher.into(settings.name);
-        for (const each of onTheWay(folder))
-            launcher.enter(folderRow(each));
-        launcher.openedHere();
+        launcher.oneJump(() => {
+            launcher.into(settings.name);
+            for (const each of onTheWay(folder))
+                launcher.enter(folderRow(each));
+        });
     }
 
     // :e a folder goes there, as :e on a directory opens his oil; a file
@@ -1606,8 +1614,11 @@ Provider {
         const folder = steps[steps.length - 1]?.row;
         if (!String(folder?.key ?? "").startsWith("folder:"))
             return;
-        launcher.back();
-        launcher.enter(folder);
+        // Made again where it is, it's no jump.
+        launcher.oneJump(() => {
+            launcher.back();
+            launcher.enter(folder);
+        });
     }
 
     function withdrawn(reply) {
