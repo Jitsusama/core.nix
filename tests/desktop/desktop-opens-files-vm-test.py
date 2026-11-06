@@ -489,7 +489,8 @@ def goes_up_and_back(desktop: Desktop, chose: str, held: int) -> None:
     and - instead, and the arrows are Vim's: Down and Up move as j and k, Right and Left nowhere.
     """
     machine = desktop.machine
-    account = desktop.account
+    # In /home, the account's own folder is listed as home is said everywhere, ~.
+    home = "~"
 
     def stands(folder: str, depth: int, name: str) -> None:
         """Wait until the picker shows this folder this deep, the cursor on this row."""
@@ -528,7 +529,7 @@ def goes_up_and_back(desktop: Desktop, chose: str, held: int) -> None:
     machine.send_key("up")
     stands("~", held - 1, "chosen-notes")
     machine.send_chars("-")
-    stands("/home", held - 2, account)
+    stands("/home", held - 2, home)
     jumped(desktop, "ctrl-o", "~", held - 1)
     stands("~", held - 1, "chosen-notes")
     jumped(desktop, "ctrl-i", "/home", held - 2)
@@ -543,7 +544,7 @@ def goes_up_and_back(desktop: Desktop, chose: str, held: int) -> None:
     assert len(top["held"]) == 1, top["held"]
     assert top["path"][-1:] == ["/"], top["path"]
     # Return goes back down, folder by folder, to where the ask opened.
-    for folder, name in [("/home", account), ("~", "chosen-notes")]:
+    for folder, name in [("/home", home), ("~", "chosen-notes")]:
         machine.send_key("ret")
 
         def inside(shown: Json, folder: str = folder) -> bool:
