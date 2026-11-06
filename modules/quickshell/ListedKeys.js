@@ -2,8 +2,9 @@
 // mode takes, from the table QueryKeys.js reads them by, each as the
 // desktop draws a key, beside what it does.
 
-// The keys as Space ? lists them, a section a mode, normal's first since
-// the list is opened there, each in the table's order of use: each line
+// The keys as Space ? lists them, a section a mode, each named by its
+// purpose (the vi-paradigm spec's key list), normal's first since the list
+// is opened there, each in the table's order of use: each line
 // what it does, named in words.json by its `name`, and the acts whose keys
 // it shows in its mode, the first alone where `firsts` says, since
 // Return's with Shift and Ctrl are told apart where they're done. A line's
@@ -16,11 +17,6 @@ const normal = [
     { name: "half", acts: ["halfDown", "halfUp"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "count", acts: [], also: ["3j", "12G"] },
-    { name: "row", acts: [], also: [":12"] },
-    // An option, the machine's, and that of what it's on, as Vim's
-    // :setlocal is the buffer's.
-    { name: "option", acts: [], also: [":set dnd"] },
-    { name: "optionHere", acts: [], also: [":setl mute"] },
     // Return opens a row or goes into it and - goes up, as his oil's; h
     // and l aren't listed, since on a row they only say so.
     { name: "openIn", acts: ["run"], firsts: true },
@@ -38,6 +34,11 @@ const normal = [
     // d and y, over the row as dd and yy, or as far as a motion goes.
     { name: "ending", acts: ["ending"], also: ["dj"] },
     { name: "copyRow", acts: ["copy"], also: ["yG"] },
+    // u takes back what d did, Ctrl+R does it again, and . does the last
+    // d again.
+    { name: "undo", acts: ["undoChange"] },
+    { name: "redo", acts: ["redoChange"] },
+    { name: "again", acts: ["again"] },
     // Vim's Ctrl+W l alone, as the way back names Ctrl+W h alone, so the
     // line sits whole at Joel's scale.
     { name: "intoDrawer", acts: ["drawer"], firsts: true },
@@ -48,14 +49,47 @@ const normal = [
     { name: "close", acts: ["close"], also: [":q"] }
 ];
 
-// The find's, the line the launcher opens on, whose keys a prompt's
-// insert shares.
+// The find's, the line the launcher opens on: its rows and Return, the
+// way its letters are edited being insert's, below, which it shares.
 const find = [
     { name: "nextRow", acts: ["next"] },
     { name: "previousRow", acts: ["previous"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "run", acts: ["run"], firsts: true },
-    { name: "complete", acts: ["complete"] },
+    { name: "complete", acts: ["complete"] }
+];
+
+// The command line's, whose keys are its own (CommandLine.qml), so none
+// is a row of the table: a line's range, what it runs on, and its menu.
+const commands = [
+    { name: "row", acts: [], also: [":12"] },
+    { name: "global", acts: [], also: [":g/Notes/q"] },
+    // An option, the machine's, and that of what it's on, as Vim's
+    // :setlocal is the buffer's.
+    { name: "option", acts: [], also: [":set dnd"] },
+    { name: "optionHere", acts: [], also: [":setl mute"] },
+    { name: "menu", acts: [], also: ["Ctrl+N", "Ctrl+P"] },
+    { name: "take", acts: [], also: ["Ctrl+Y"] },
+    { name: "away", acts: [], also: ["Ctrl+E"] },
+    { name: "commandAgain", acts: [], also: ["@:"] },
+    { name: "history", acts: [], also: [":his"] }
+];
+
+// Visual's, on the rows, normal's moves extending it; gv and ip and ap
+// are begun from normal, and an operator's, so no visual row holds them.
+const visual = [
+    { name: "chooseRows", acts: ["selectLines"] },
+    { name: "reselect", acts: [], also: ["gv"] },
+    { name: "otherEnd", acts: ["otherEnd"] },
+    { name: "paragraph", acts: [], also: ["ip", "ap"] },
+    { name: "endChosen", acts: ["ending"] },
+    { name: "copyChosen", acts: ["copy"] },
+    { name: "openChosen", acts: ["run"], firsts: true },
+    { name: "commandChosen", acts: [], also: [":"] }
+];
+
+// Insert's, where words are typed, the find's and a prompt's alike.
+const insert = [
     { name: "caret", acts: ["caretLeft", "caretRight"] },
     { name: "caretEnds", acts: ["caretStart", "caretEnd"] },
     { name: "letter", acts: ["deleteBack"] },
@@ -92,8 +126,12 @@ const pageVisual = [
     { name: "copy", acts: ["copy", "copyLines"] }
 ];
 
+// A section's mode is the one its keys are pressed in, and names its
+// heading in `modes`; the command line's keys are no mode's in the table.
 const sections = [{ mode: "normal", lines: normal }, { mode: "find", lines: find },
-    { mode: "page", lines: page }, { mode: "pageVisual", lines: pageVisual }];
+    { mode: "command", lines: commands }, { mode: "visual", lines: visual },
+    { mode: "insert", lines: insert }, { mode: "page", lines: page },
+    { mode: "pageVisual", lines: pageVisual }];
 
 // Whether a table's row is pressed in a mode, as QueryKeys.inMode says:
 // "line" is the find's and insert's, "both" every mode's.
