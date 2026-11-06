@@ -9,7 +9,11 @@
 //! has stood that long: replaying that day's 101 heads, waiting two
 //! minutes kept 74 and spared 29 of those 42 evaluations, where keeping
 //! every head spared 38 for 101. A head is kept only where nix-offload
-//! sends it, never on this machine, whose own runs are sent too.
+//! sends it, never on this machine, whose own runs are sent too. A kept
+//! head is sent again when another builder is lent, since one lent afresh
+//! starts with nothing kept, as one lent that evening did; never on a
+//! timer, since a builder is given back after 15 idle minutes and sending
+//! on one would keep it lent all day.
 
 use std::path::Path;
 use std::process::Command;
@@ -21,47 +25,53 @@ pub const LOOK_EVERY: Duration = Duration::from_secs(30);
 /// How long a head stands before it's kept.
 pub const STOOD: Duration = Duration::from_mins(2);
 
-/// How long a head that couldn't be kept waits before it's tried again,
-/// as when no builder is lent; a head that moves on is tried at once.
-pub const FAILED_AGAIN: Duration = Duration::from_mins(10);
+/// How long a head that couldn't be kept waits before it's sent again:
+/// longer than a lent builder's 15 idle minutes, so a keep that fails
+/// every time never holds one lent. A head that moves on is sent once it
+/// stands, and one that couldn't be kept once another builder is lent.
+pub const FAILED_AGAIN: Duration = Duration::from_mins(20);
 
-/// What the keeper has seen of main, which says when a head is kept.
+/// What the keeper has seen of main, which says when a head is sent.
 #[derive(Default)]
 pub struct Keeper {
     /// The head last read, and when it was first read.
     seen: Option<(String, Instant)>,
-    /// The head last kept.
-    kept: Option<String>,
-    /// The head last tried and not kept, and when.
-    failed: Option<(String, Instant)>,
+    /// The head last kept, and the builder it was kept on.
+    kept: Option<(String, String)>,
+    /// The head last sent and not kept, the builder it was sent to, and when.
+    failed: Option<(String, String, Instant)>,
 }
 
 impl Keeper {
-    /// The head to keep now, given main's head as read at `now`: one that
-    /// has stood `STOOD`, isn't kept yet, and didn't just fail.
-    pub fn due(&mut self, head: &str, now: Instant) -> Option<String> {
+    /// The head to send now, given main's head and the lent builder as read
+    /// at `now`: one that has stood `STOOD`, with a builder lent that
+    /// hasn't kept it, and that didn't just fail there.
+    pub fn due(&mut self, head: &str, builder: Option<&str>, now: Instant) -> Option<String> {
         if self.seen.as_ref().is_none_or(|(seen, _)| seen != head) {
             self.seen = Some((head.to_owned(), now));
         }
+        let builder = builder?;
         let (seen, since) = self.seen.as_ref()?;
         let stood = now.duration_since(*since) >= STOOD;
-        let kept = self.kept.as_deref() == Some(head);
-        let failing = self
-            .failed
+        let kept = self
+            .kept
             .as_ref()
-            .is_some_and(|(failed, at)| failed == head && now.duration_since(*at) < FAILED_AGAIN);
+            .is_some_and(|(kept, on)| kept == head && on == builder);
+        let failing = self.failed.as_ref().is_some_and(|(failed, on, at)| {
+            failed == head && on == builder && now.duration_since(*at) < FAILED_AGAIN
+        });
         (stood && !kept && !failing).then(|| seen.clone())
     }
 
-    /// Note that `head` is kept.
-    pub fn kept(&mut self, head: &str) {
-        self.kept = Some(head.to_owned());
+    /// Note that `head` is kept on `builder`.
+    pub fn kept(&mut self, head: &str, builder: &str) {
+        self.kept = Some((head.to_owned(), builder.to_owned()));
         self.failed = None;
     }
 
-    /// Note that `head` couldn't be kept at `now`.
-    pub fn failed(&mut self, head: &str, now: Instant) {
-        self.failed = Some((head.to_owned(), now));
+    /// Note that `head` couldn't be kept on `builder` at `now`.
+    pub fn failed(&mut self, head: &str, builder: &str, now: Instant) {
+        self.failed = Some((head.to_owned(), builder.to_owned(), now));
     }
 }
 
@@ -125,45 +135,82 @@ fn git(folder: Option<&Path>, arguments: &[&str]) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    const ONE: Option<&str> = Some("one");
+
     #[test]
     fn a_new_head_waits_until_it_has_stood() {
         let mut keeper = Keeper::default();
         let start = Instant::now();
-        assert_eq!(keeper.due("a", start), None);
-        assert_eq!(keeper.due("a", start + STOOD / 2), None);
-        assert_eq!(keeper.due("a", start + STOOD), Some("a".to_owned()));
+        assert_eq!(keeper.due("a", ONE, start), None);
+        assert_eq!(keeper.due("a", ONE, start + STOOD / 2), None);
+        assert_eq!(keeper.due("a", ONE, start + STOOD), Some("a".to_owned()));
     }
 
     #[test]
     fn a_head_that_moves_on_starts_its_wait_again() {
         let mut keeper = Keeper::default();
         let start = Instant::now();
-        keeper.due("a", start);
-        assert_eq!(keeper.due("b", start + STOOD), None, "b was only just seen");
-        assert_eq!(keeper.due("b", start + STOOD * 2), Some("b".to_owned()));
+        keeper.due("a", ONE, start);
+        assert_eq!(
+            keeper.due("b", ONE, start + STOOD),
+            None,
+            "b was only just seen"
+        );
+        assert_eq!(
+            keeper.due("b", ONE, start + STOOD * 2),
+            Some("b".to_owned())
+        );
     }
 
     #[test]
-    fn a_kept_head_is_kept_once() {
+    fn nothing_is_sent_with_no_builder_lent() {
         let mut keeper = Keeper::default();
         let start = Instant::now();
-        keeper.due("a", start);
-        keeper.kept("a");
-        assert_eq!(keeper.due("a", start + STOOD * 3), None);
+        keeper.due("a", None, start);
+        assert_eq!(keeper.due("a", None, start + STOOD), None);
+        assert_eq!(keeper.due("a", ONE, start + STOOD), Some("a".to_owned()));
     }
 
     #[test]
-    fn a_head_that_failed_is_tried_again_after_a_while_or_once_main_moves() {
+    fn a_kept_head_is_sent_again_only_to_another_builder() {
         let mut keeper = Keeper::default();
         let start = Instant::now();
-        keeper.due("a", start);
+        keeper.due("a", ONE, start);
+        keeper.kept("a", "one");
+        assert_eq!(keeper.due("a", ONE, start + STOOD * 30), None);
+        assert_eq!(
+            keeper.due("a", Some("two"), start + STOOD * 30),
+            Some("a".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_head_that_failed_waits_past_a_builders_idle_spell_unless_another_is_lent() {
+        let mut keeper = Keeper::default();
+        let start = Instant::now();
+        keeper.due("a", ONE, start);
         let tried = start + STOOD;
-        keeper.failed("a", tried);
-        assert_eq!(keeper.due("a", tried + LOOK_EVERY), None);
-        assert_eq!(keeper.due("a", tried + FAILED_AGAIN), Some("a".to_owned()));
-        keeper.failed("a", tried + FAILED_AGAIN);
-        let moved = tried + FAILED_AGAIN + LOOK_EVERY;
-        keeper.due("b", moved);
-        assert_eq!(keeper.due("b", moved + STOOD), Some("b".to_owned()));
+        keeper.failed("a", "one", tried);
+        assert!(FAILED_AGAIN > Duration::from_mins(15));
+        assert_eq!(keeper.due("a", ONE, tried + LOOK_EVERY), None);
+        assert_eq!(
+            keeper.due("a", Some("two"), tried + LOOK_EVERY),
+            Some("a".to_owned())
+        );
+        assert_eq!(
+            keeper.due("a", ONE, tried + FAILED_AGAIN),
+            Some("a".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_head_that_moves_on_is_sent_once_it_stands_whatever_failed_before() {
+        let mut keeper = Keeper::default();
+        let start = Instant::now();
+        keeper.due("a", ONE, start);
+        keeper.failed("a", "one", start + STOOD);
+        let moved = start + STOOD + LOOK_EVERY;
+        keeper.due("b", ONE, moved);
+        assert_eq!(keeper.due("b", ONE, moved + STOOD), Some("b".to_owned()));
     }
 }

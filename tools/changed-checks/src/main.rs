@@ -246,19 +246,28 @@ fn keep_main(rest: &[String]) -> ExitCode {
         keep::STOOD.as_secs()
     );
     loop {
+        // The store line names the lent builder by its host key, which is
+        // new for each one lent, so it says when what's kept is gone.
+        let builder = std::fs::read_to_string(offload_dir().join("store")).ok();
+        let builder = builder
+            .as_deref()
+            .map(str::trim)
+            .filter(|line| !line.is_empty());
         match keep::head(&url) {
             Ok(head) => {
-                if let Some(head) = keeper.due(&head, Instant::now()) {
+                if let (Some(head), Some(builder)) =
+                    (keeper.due(&head, builder, Instant::now()), builder)
+                {
                     let short = head.get(..12).unwrap_or(&head);
                     match keep_head(&url, &clone, &head) {
-                        Ok(true) => keeper.kept(&head),
+                        Ok(true) => keeper.kept(&head, builder),
                         Ok(false) => {
                             eprintln!("changed-checks: nothing took {short}, so it waits");
-                            keeper.failed(&head, Instant::now());
+                            keeper.failed(&head, builder, Instant::now());
                         }
                         Err(why) => {
                             eprintln!("changed-checks: couldn't keep {short}: {why}");
-                            keeper.failed(&head, Instant::now());
+                            keeper.failed(&head, builder, Instant::now());
                         }
                     }
                 }
