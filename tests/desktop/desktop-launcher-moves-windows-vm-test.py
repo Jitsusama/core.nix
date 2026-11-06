@@ -537,16 +537,16 @@ def names_each_mode(desktop: Desktop) -> None:
 
 
 def visual_keeps_its_keys(desktop: Desktop) -> None:
-    """See visual's foot keep d and Space ? beside Return, and Space ? and F1 list over two rows.
+    """See visual's foot keep d, y, : and Space ? beside Return, and Space ? and F1 list.
 
-    The foot keeps the way to every key just before Return, as normal's does, with d by the
-    cursor row's ending (VKCF3Z, 2026-11-05); Space ? lists the keys and lets them go, the
-    selection standing, and F1 does the same, as help does in normal.
+    Return's count comes first, the foot drawing it last; the command line is drawn furthest
+    from Return, to give way first, d is named by the cursor row's ending, and the way to
+    every key stays just before Return (VKCF3Z, 2026-11-05). Space ? lists the keys over two
+    rows and lets them go, the selection standing, and F1 does the same, as help does in
+    normal.
     """
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5 open 2"], told
-    assert told[-1] == "Space ? keys", told
-    assert any(hint.startswith("d ") for hint in told), told
+    assert told == ["\u21b5 open 2", ": commands", "d close", "y copy", "Space ? keys"], told
     desktop.machine.send_chars(" ?")
     desktop.launcher_until(lambda shown: shown["listing"] and shown["tinted"] == [0, 1])
     desktop.machine.send_chars(" ?")

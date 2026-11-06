@@ -2,10 +2,10 @@
 // Notices): a line a card, the newest on line 1, a cursor on one, and what
 // the keys (NoticeKeys.js) do to them worked out apart from drawing them
 // (Notifications.qml): where a motion lands, which cards an operator or a
-// range takes, the view kept around the cursor, the gutter's numbers, the
-// changes u takes back, the command line's menu, and the hints the foot
-// keeps. Apart from the shell, so tests/notice-list.qml can hold it in
-// Qt's own engine.
+// range takes, the view kept around the cursor, the gutter's numbers, what
+// u takes back (each change's { ids, kind }, kept in Changes.js), the
+// command line's menu, and the hints the foot keeps. Apart from the shell,
+// so tests/notice-list.qml can hold it in Qt's own engine.
 .pragma library
 
 // How many lines show at once, and how far the view keeps from the cursor,
@@ -165,42 +165,6 @@ function between(lines, span) {
 // The ids that are away: what every change still standing took.
 function away(standing) {
     return standing.reduce((all, change) => all.concat(change.ids), []);
-}
-
-// The changes u and Ctrl+R move between: what's done, as a list each of
-// { ids, kind }, the last last, and what was taken back.
-function changes() {
-    return { done: [], undone: [] };
-}
-
-function changed(history, change) {
-    return { done: history.done.concat([change]), undone: [] };
-}
-
-// u takes back the last change, as many as counted; Ctrl+R does again what
-// u took back. Each says what moved, or null where there was nothing.
-function undo(history, count) {
-    const by = Math.min(Math.max(count, 1), history.done.length);
-    if (by === 0) {
-        return { history, moved: null };
-    }
-    const back = history.done.slice(-by);
-    return {
-        history: { done: history.done.slice(0, -by), undone: history.undone.concat(back.reverse()) },
-        moved: back
-    };
-}
-
-function redo(history, count) {
-    const by = Math.min(Math.max(count, 1), history.undone.length);
-    if (by === 0) {
-        return { history, moved: null };
-    }
-    const again = history.undone.slice(-by).reverse();
-    return {
-        history: { done: history.done.concat(again), undone: history.undone.slice(0, -by) },
-        moved: again
-    };
 }
 
 // How many lines words take `wide` across, broken at their spaces as

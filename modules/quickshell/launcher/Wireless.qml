@@ -821,11 +821,14 @@ Provider {
                 glyph: Words.glyph("verb:wifi-sign-in"),
                 run: () => SignIn.open()
             })));
+        // A network left was one joined, so its password is known and
+        // joining it again is how u puts it back.
         if (network.connected)
             rows.push(thing(act("wifi-leave", "", {
                 glyph: Theme.glyph.offline,
                 stays: true,
-                run: () => Wifi.leave(network.name)
+                run: () => Wifi.leave(network.name),
+                undo: () => provider.join(network)
             })));
         else if (network.known || !locked.locked || locked.password)
             rows.push(thing(act("wifi-join", "", {

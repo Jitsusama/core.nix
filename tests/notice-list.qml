@@ -4,6 +4,7 @@
 // `qml -platform offscreen notice-list.qml`.
 import QtQuick
 import "NoticeList.js" as List
+import "Changes.js" as Changes
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -99,19 +100,19 @@ QtObject {
             [{ from: 2, to: 5 }, { from: 2, to: 5 }]);
         holds("the ids between", List.between([7, 8, 9, 10], { from: 1, to: 2 }), [8, 9]);
 
-        let history = List.changes();
-        history = List.changed(history, { ids: [1, 2], kind: "done" });
-        history = List.changed(history, { ids: [3], kind: "forget" });
+        let history = Changes.changes();
+        history = Changes.changed(history, { ids: [1, 2], kind: "done" });
+        history = Changes.changed(history, { ids: [3], kind: "forget" });
         holds("away is every change's cards", List.away(history.done), [1, 2, 3]);
-        const undone = List.undo(history, 0);
+        const undone = Changes.undo(history, 0);
         holds("u takes back the last", undone.moved, [{ ids: [3], kind: "forget" }]);
         holds("leaving the one before", List.away(undone.history.done), [1, 2]);
-        const redone = List.redo(undone.history, 0);
+        const redone = Changes.redo(undone.history, 0);
         holds("Ctrl+R does it again", List.away(redone.history.done), [1, 2, 3]);
-        holds("2u takes back two", List.away(List.undo(history, 2).history.done), []);
-        holds("u with nothing done does nothing", List.undo(List.changes(), 0).moved, null);
+        holds("2u takes back two", List.away(Changes.undo(history, 2).history.done), []);
+        holds("u with nothing done does nothing", Changes.undo(Changes.changes(), 0).moved, null);
         holds("a new change forgets what was taken back",
-            List.changed(undone.history, { ids: [4], kind: "done" }).undone, []);
+            Changes.changed(undone.history, { ids: [4], kind: "done" }).undone, []);
 
 
         const entries = [

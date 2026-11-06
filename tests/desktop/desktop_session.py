@@ -1243,6 +1243,21 @@ def laid_out(desktop: Desktop) -> Json:
     return cast("Json", was)
 
 
+def foot_overlaps(desktop: Desktop) -> list[str]:
+    """Give each of the foot's words whose ink runs into the next one's, its one line read left on.
+
+    A key drawn over the glance's marks reads as neither (QIFT5D, 2026-11-06: Programs' normal
+    drew "Ctrl+] in" over the network and volume marks), so the keys give way instead.
+    """
+    words = sorted(laid_out(desktop)["foot"], key=lambda word: word["starts"])
+    return [
+        f"{one['text']!r} inks to {one['starts'] + one['inked']}, {after['text']!r} starts at"
+        f" {after['starts']}"
+        for one, after in itertools.pairwise(words)
+        if one["starts"] + one["inked"] > after["starts"]
+    ]
+
+
 def drawn_held_still(desktop: Desktop) -> int:
     """Count the frames the open launcher draws in three seconds left still.
 

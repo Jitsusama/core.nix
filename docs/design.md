@@ -2124,12 +2124,15 @@ in this mode by letter and lowercase verb, each key in text and its word
 muted, joined by a muted dot a mark each side, "d disconnect · Space ?
 keys · ↵ go to": Return
 at the right end, as Joel chose, and Space ? just before it, so the way to
-the keys is always on screen. On the command line the foot names the
+the keys is always on screen. Short of room, once the facts read their
+least, the keys drawn furthest from Return give way first, never Return
+nor Space ?: in visual the command line, then d, then y. On the command line the foot names the
 line's own keys: "Tab choose" until a line is chosen or typed, then what
 Return runs. Its hints come from the table that handles the keys, filtered
 by mode and row, so none names a key that does nothing, and a check
 presses every hint drawn. The mode word's room is as wide as its widest
-word in its own font, set before the hints, which give way around it,
+word in its own font, a count in as many figures as the place has rows,
+set before the hints, which give way around it,
 so it's never cut (Joel, 2026-11-04: "the mode text is truncated so I
 only see ...rt instead of insert"). Room is held only for what this mode
 draws, never for keys another mode would show. While an operator waits no hint applies, so the

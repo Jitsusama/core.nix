@@ -81,9 +81,13 @@ const table = [
     // Vim's operators on the rows as lines: d does each row's ending
     // action (Forget It, Close It) and y its copy, over the row again as
     // dd and yy, or as far as a motion goes (operated, below), so these
-    // rows name only the doubled keys, for saying them.
+    // rows name only the doubled keys, for saying them. u takes back what
+    // d did, Ctrl+R does it again, and . does the last d again.
     { act: "ending", mode: "normal", keys: [["d", "d"]] },
     { act: "copy", mode: "normal", keys: [["y", "y"]] },
+    { act: "undoChange", mode: "normal", keys: ["u"] },
+    { act: "redoChange", mode: "normal", keys: ["Ctrl+r"] },
+    { act: "again", mode: "normal", keys: ["."] },
     // Visual line, Vim's V: the rows from where it began to the cursor,
     // extended by normal's moves (inMode) and taken at once by d, y and
     // Return; a colon hands them to the command line. On rows v is V, a row
@@ -261,18 +265,6 @@ function pending(standing) {
     return standing.count !== "" || standing.typed.length > 0
         || standing.operator !== undefined || standing.seek !== undefined
         || standing.letter !== undefined;
-}
-
-// The range a count before a colon gives the command line, as Vim's 3:
-// gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
-function counted(count) {
-    return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
-}
-
-// The range a colon gives the command line in a mode: visual's selection,
-// as Vim's '<,'>, whatever was counted, or the count's in normal.
-function rangeFor(count, mode) {
-    return mode === "visual" ? "'<,'>" : counted(count);
 }
 
 const digit = /^[0-9]$/;

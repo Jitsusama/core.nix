@@ -58,6 +58,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Finding.js" as Finding
 import "Confirm.js" as Confirm
+import "Changes.js" as Changes
 import "QueryKeys.js" as QueryKeys
 import "ModeMarks.js" as ModeMarks
 import "Reading.js" as Reading
@@ -1986,15 +1987,19 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        // In visual, Return opens the selection's rows it can, by count;
-        // d and y say what they do to the cursor row, and Space ? stands
-        // just before Return, the way to every key, as in normal (VKCF3Z,
-        // 2026-11-05).
-        if (visual)
-            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
-                commandNamed(row))).length, Words.field.visual ?? {})],
-                ...operatorKeys(choice),
-                [hintKey("keys", "visual"), (Words.field.hints ?? {}).keys ?? ""]];
+        // In visual, Return opens the selection's rows it can, by count,
+        // and the rest is as normal's foot: :, d by the cursor row's ending,
+        // y and Space ?, so the way to every key stays (VKCF3Z, 2026-11-05).
+        // The colon is drawn furthest from Return, so it gives way first
+        // where room is short: Space ? lists it, and d and y are what
+        // visual is for.
+        if (visual) {
+            const hints = Words.field.hints ?? {};
+            const opens = visualRows().filter(row => Catalogue.opens(row, commandNamed(row)));
+            return [["\u21b5", Operators.opensSaid(opens.length, Words.field.visual ?? {})],
+                [":", hints.commands ?? ""]]
+                .concat(operatorKeys(choice), [[hintKey("keys", "visual"), hints.keys ?? ""]]);
+        }
         // The row landed on says the act a second Return does, in the
         // accent, since it's the one key that changes something now; the
         // rest is normal's foot, as a landing is normal, so its shape never
@@ -2058,8 +2063,11 @@ Scope {
         const taught = [];
         // A row Return opens that holds parts, as a program its commands
         // and windows, says Ctrl+] goes into them, first, furthest from
-        // Return, as normal's foot does (Joel, 2026-11-05: "in programs i
-        // don't understand how to go to sub commands on a program").
+        // Return, as normal's foot does, so nothing slides as it comes and
+        // goes with the row (Joel, 2026-11-05: "in programs i don't
+        // understand how to go to sub commands on a program"). It's the
+        // most needed, though, so the others give way before it
+        // (findYielding).
         const stepping = stepsIn(choice) || stepsThing(choice);
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             taught.push([hintKey("follow", "find"), hints.in ?? ""]);
@@ -2072,6 +2080,16 @@ Scope {
             taught.push([chordText(choice.chord), hints.nextTime ?? ""]);
         return taught;
     }
+
+    // The find's keys that give way first, short of room, in order of
+    // need rather than as drawn: the completion, whose ghost the line
+    // already shows, then less to type or next time, so Ctrl+] in and
+    // Return never go (VKCF3Z, 2026-11-06: at "k", "Ctrl+] in \u00b7
+    // Super+\u21b5 next time \u00b7 \u21b5 start"). Other modes give way
+    // furthest from Return first.
+    readonly property var findYielding: prompt.mode !== "find" ? [] : [
+        (Words.field.hints ?? {}).complete, (Words.field.hints ?? {}).enough,
+        (Words.field.hints ?? {}).nextTime].filter(word => !!word)
 
     // An ending row's keys: Return and the line it writes, "\u21b5 :disconnect";
     // on the find, how to get to normal's keys; in normal, - up where a step
@@ -2135,8 +2153,11 @@ Scope {
         const keyOf = act => Object.keys(Operators.operators)
             .find(key => Operators.operators[key] === act) ?? "";
         const keys = [];
+        // d says what it ends by, as the pending operator's room does
+        // (pendingSaid): a window's close, a notice's read or forget, never
+        // the verb a row's own action may lack.
         if (ending !== null && ending !== choice)
-            keys.push([keyOf("ending"), verbOf(ending)]);
+            keys.push([keyOf("ending"), ending.ends || verbOf(ending)]);
         if (copy && copy !== choice)
             keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
         return keys;
@@ -2238,8 +2259,8 @@ Scope {
     // which never gives way; - up is said only once a step is held, and
     // Ctrl+] in only on a row holding parts, whose rows grow the room as
     // any row does.
-    readonly property var footNormalRoom: [["\u21b5", footVerbRoom],
-        [":", "commands"], ["Space ?", "keys"]]
+    readonly property var footNormalRoom: [["\u21b5", ""], [":", "commands"],
+        ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -2247,10 +2268,27 @@ Scope {
     // category's (Joel, 2026-10-25: "jumpy ... at home arrowing around").
     property real footReturnWidest: 0
     property real footKeysWidest: 0
+    // How many figures the chosen count holds room for: as many as the
+    // place has rows, three while the drawer is out, and only ever more
+    // within a place, so rows arriving with no key pressed, as a scan's,
+    // or the drawer going back in never narrow the facts (Y2YBTS,
+    // 2026-11-06: Joel's "nothing moves on its own").
+    readonly property int footFiguresNow: drawerCard.out ? 3
+        : String(Math.max(1, matches.length)).length
+    property int footFiguresWidest: 1
+    onFootFiguresNowChanged: footFiguresWidest = Math.max(footFiguresWidest, footFiguresNow)
 
+    // Return's place starts as wide as the widest verb any row can say on
+    // the find, whose rows change with every letter, so typing never moves
+    // it. In normal and visual it starts from nothing and grows from the
+    // place's own rows, weighed again as the place changes, since room for
+    // a verb no row there can say ranks nothing, and over two windows in
+    // visual it cost the foot its y (VKCF3Z, 2026-11-06).
     function footReset() {
-        footReturnWidest = statusLine.keys.advance("\u21b5", footVerbRoom);
+        footReturnWidest = prompt.mode === "find"
+            ? statusLine.keys.advance("\u21b5", footVerbRoom) : 0;
         footKeysWidest = keysWide(footKeysRoom);
+        footFiguresWidest = footFiguresNow;
     }
 
     // How wide a row's keys are, Return in its place.
@@ -2679,6 +2717,9 @@ Scope {
         // A place's gutter is as wide as its own rows need, home's three.
         gutterDigits = held.length === 0 ? 3 : 1;
         if (open && placeOf(left) !== placeOf(held)) {
+            // A place opening redraws every row, so its foot's room is
+            // weighed afresh then, as its rows come.
+            footReset();
             lastPlace = { held: left, here: here() };
             // A place stepped to afresh goes on the way back, and leaves
             // nothing ahead, as Vim's jump list does.
@@ -3387,10 +3428,8 @@ Scope {
             commandSay(fill(words.none), true);
             return;
         }
-        const sure = () => {
-            for (const act of acts)
-                run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
-        };
+        const sure = () => commandActs(acts.map(act => act.confirm
+            ? Object.assign({}, act, { confirm: false }) : act));
         if (asked.ask !== "") {
             // The ask says the act's own verb, never the line's command,
             // and for an act the cursor is on, what it's an act of.
@@ -3408,8 +3447,25 @@ Scope {
             sure();
             return;
         }
-        for (const act of acts)
-            run(act, false);
+        commandActs(acts);
+    }
+
+    // A line's acts run: one u can take back done where it stands, as d
+    // does it, the launcher kept open so u can, as Vim's :g/x/d leaves the
+    // buffer in view; the rest as Return does them. Where every one can be
+    // taken back, the foot says so, as after d. One done as d does it is
+    // a change made where the row stands rather than a thing chosen, so
+    // it teaches the find nothing and starts no act's trace, as d from
+    // the rows doesn't; Return's acts from the line still do both.
+    function commandActs(acts) {
+        for (const act of acts) {
+            if (typeof act.undo === "function")
+                Operators.doing(act)();
+            else
+                run(act, false);
+        }
+        if (changedBy(acts) === acts.length)
+            operatorTells(Operators.doneSaid(acts.length, Words.field.operators ?? {}));
     }
 
     // @:, the last line Return ran run again on the cursor row as it is
@@ -4493,6 +4549,82 @@ Scope {
         operatorSaidFor = prompt.keysTaken;
     }
 
+    // What's done, and how to take it back, in the success colour until the
+    // next key, as the spec's "3 done \u00b7 u brings them back".
+    function operatorTells(word) {
+        operatorSaid = [Theme.glyph.done, word, Theme.success];
+        operatorSaidFor = prompt.keysTaken;
+    }
+
+    // The changes d made that u can take back and Ctrl+R do again, each the
+    // undoable actions of one d (Operators.undoable), for as long as the
+    // launcher stays open, as the spec has every surface keep them; and
+    // the last d, its count and motion, for . to do again.
+    property var rowChanges: Changes.changes()
+    property var lastChange: null
+
+    // Keeps what u can take back of the actions just run, by d or by a
+    // command line, which asks for none of them since u can; how many.
+    function changedBy(actions) {
+        const undoable = Operators.undoable(actions);
+        if (undoable.length > 0)
+            rowChanges = Changes.changed(rowChanges, undoable);
+        changedRow();
+        return undoable.length;
+    }
+
+    // The cursor row's actions read again once a change has run, since a
+    // change can leave the row standing with other actions, as a notice
+    // forgotten until the launcher closes has no d left; read only once
+    // selected, its foot would go on naming the d that's done.
+    function changedRow() {
+        readSelectedActions();
+    }
+
+    // u: the last change taken back, or as many as counted, each action put
+    // back by its own undo; with none, Vim's word for it.
+    function undoChange(count) {
+        const words = Words.field.operators ?? {};
+        const back = Changes.undo(rowChanges, count);
+        if (back.moved === null) {
+            operatorSays(words.oldest);
+            return;
+        }
+        rowChanges = back.history;
+        const entries = [].concat(...back.moved);
+        for (const entry of entries)
+            entry.undo();
+        changedRow();
+        operatorTells((words.undone ?? "").replace("{count}", String(entries.length)));
+        Report.say(`undid ${entries.length}`);
+    }
+
+    // Ctrl+R: what u took back done again, as many changes as counted.
+    function redoChange(count) {
+        const words = Words.field.operators ?? {};
+        const again = Changes.redo(rowChanges, count);
+        if (again.moved === null) {
+            operatorSays(words.newest);
+            return;
+        }
+        rowChanges = again.history;
+        const entries = [].concat(...again.moved);
+        for (const entry of entries)
+            entry.redo();
+        changedRow();
+        operatorTells((words.redone ?? "").replace("{count}", String(entries.length)));
+        Report.say(`redid ${entries.length}`);
+    }
+
+    // .: the last d again from the cursor, as Vim's . repeats a change, with
+    // the count typed before it in its own's place; with none yet, nothing.
+    function doAgain(count) {
+        if (lastChange === null)
+            return;
+        const next = Operators.again(lastChange, count);
+        operated("ending", next.count, next.motion);
+    }
+
     // What a pending d or y will take, for the mode word's room, said at
     // once so d is never pressed blind: the keys typed, then the cursor
     // row's ending verb or copy and its name, or the count's rows ("d \u00b7
@@ -4638,6 +4770,10 @@ Scope {
         searchNow();
         if (motion?.act === "visual") {
             const taken = Operators.taken(matches, visualSpan, headline);
+            // Visual's d is done again by . over as many rows as it took,
+            // from the cursor, as Vim's is.
+            if (act === "ending")
+                lastChange = { count: visualSpan.to - visualSpan.from + 1, motion: null };
             if (act === "copy")
                 yanked(taken);
             else if (act === "ending")
@@ -4659,8 +4795,10 @@ Scope {
         const taken = Operators.taken(matches, span, headline);
         if (act === "copy")
             yanked(taken);
-        else
+        else {
+            lastChange = { count, motion };
             ended(taken);
+        }
     }
 
     // y: every copy over the rows joined a line each and put on the
@@ -4698,9 +4836,13 @@ Scope {
             return;
         }
         const actions = endings.map(ending => ending.action);
+        // What can be put back is kept for u; where all of it can, the
+        // foot says so until the next key.
         const doing = () => {
             for (const action of actions)
                 Operators.doing(action)();
+            if (changedBy(actions) === actions.length)
+                operatorTells(Operators.doneSaid(actions.length, words));
             Report.say(`ended ${actions.length}`);
         };
         if (!Operators.asks(actions, Options.commands ?? {})) {
@@ -5563,11 +5705,16 @@ Scope {
             // may say included, which the facts are fitted short of.
             keysFrom: Math.round(foot.keysFrom),
             // The room held for the widest keys since opening, and what the
-            // keys said now take, so a test can tell which held it.
-            keysRoom: { held: Math.round(root.footKeysWidest),
-                said: Math.round(root.keysWide(foot.told)) },
+            // keys said now take, so a test can tell which held it; and the
+            // room the facts at their least and the mode's word leave them,
+            // with what every key told would take, so a key given way can
+            // be told short by how much.
+            keysRoom: { held: Math.round(Math.min(root.footKeysWidest, foot.keysRoom)),
+                said: Math.round(root.keysWide(foot.kept)), left: Math.round(foot.keysRoom),
+                told: Math.round(root.keysWide(foot.told)),
+                mode: Math.round(modeWord.room), least: Math.round(standing.least) },
             // The keys the foot says now, each its mark and its word.
-            hints: foot.told.map(key => `${key[0]} ${key[1]}`),
+            hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
@@ -5800,6 +5947,8 @@ Scope {
         if (!open) {
             over = null;
             lastVisual = null;
+            rowChanges = Changes.changes();
+            lastChange = null;
             commanding = null;
         }
         madeSince(open ? "opening" : "closing");
@@ -6442,6 +6591,15 @@ Scope {
                             switch (act) {
                             case "xit":
                                 root.xit();
+                                return;
+                            case "undoChange":
+                                root.undoChange(count);
+                                return;
+                            case "redoChange":
+                                root.redoChange(count);
+                                return;
+                            case "again":
+                                root.doAgain(count);
                                 return;
                             case "close":
                                 root.open = false;
@@ -7196,8 +7354,22 @@ Scope {
                         // word, at the frame's side, so the gap before it is
                         // a hint's like every other (VKCF3Z, 2026-11-05:
                         // held room at the far end, never before Return).
-                        readonly property var shown: told.length === 0 ? []
-                            : told.slice(1).concat([told[0]])
+                        readonly property var shown: kept.length === 0 ? []
+                            : kept.slice(1).concat([kept[0]])
+                        // The keys in the room the facts at their least,
+                        // what waits and the mode's word leave them, those
+                        // furthest from Return giving way first: drawn
+                        // whatever their room, they ran over "1 new" and
+                        // "2 chosen" in visual over a full list at 2. The
+                        // find says no mode word, so its room is the keys'
+                        // too, as it is the facts' (room, below): held for
+                        // it, the find's Ctrl+] cut the opening's room short,
+                        // and the first letter moved the keys.
+                        readonly property real keysRoom: width - Theme.space.rung.inset
+                            - statusLine.factsAt - standing.least - Theme.space.rung.groups
+                            - (prompt.mode === "find" ? 0 : modeWord.room)
+                        readonly property var kept: Standing.keysFitted(told,
+                            told => root.keysWide(told), keysRoom, root.findYielding)
                         readonly property real returnPlace: told.length === 0 ? 0
                             : root.returnPlace(told[0])
                         // Where Return's place starts, which holds still.
@@ -7210,8 +7382,12 @@ Scope {
                         // which lags to its next layout pass: opening from
                         // normal, it still held normal's keys as the facts
                         // were fitted, and the glance opened cut for good.
+                        // Only the keys drawn are measured, and the room held
+                        // for any never passes theirs, or visual's would run
+                        // over "1 new" again.
                         readonly property real keysFrom: width - Theme.space.rung.inset
-                            - Math.max(root.footKeysWidest, root.keysWide(told))
+                            - Math.max(Math.min(root.footKeysWidest, keysRoom),
+                                root.keysWide(kept))
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode it
                         // speaks in so the facts say the same as it comes and
@@ -7330,20 +7506,26 @@ Scope {
                                         Words.field.visual ?? {})
                                 : ""
                             // The widest it says often and its gap, held
-                            // whatever shows: visual's count of three figures,
-                            // "999 chosen", as the spec sizes the room, so a
-                            // count or an operator's words never move the
-                            // facts beside it. A binding doesn't see what a
-                            // call reads, so it reads the face itself, to be
-                            // measured again in the theme's face once that
-                            // arrives.
+                            // whatever shows: visual's count in as many figures
+                            // as the place has rows, which hold still while it
+                            // chooses, or three while the drawer is out, its
+                            // page counting letters too, so a count or an
+                            // operator's words never move the facts beside it.
+                            // Three figures always held "999 chosen" beside two
+                            // rows, and cost visual its y (VKCF3Z, 2026-11-06).
+                            // The drawer's out, not what it shows, since it
+                            // holds a row's page while it's in. A binding
+                            // doesn't see what a call reads, so it reads the
+                            // face itself, to be measured again in the theme's
+                            // face once that arrives.
                             readonly property real room: {
                                 void measure.font;
                                 // What the place says widens it while it says
                                 // it, so it's read whole.
                                 const widest = Math.max(root.placeSays === "" ? 0
                                     : measure.advanceWidth(root.placeSays),
-                                    measure.advanceWidth(Operators.chosenSaid(999,
+                                    measure.advanceWidth(Operators.chosenSaid(
+                                        "9".repeat(root.footFiguresWidest),
                                         Words.field.visual ?? {})));
                                 return Theme.space.rung.groups + Math.ceil(widest);
                             }
@@ -7450,6 +7632,15 @@ Scope {
                                     root.footStage);
                             }
                             readonly property var kept: fit.told.concat(waiting)
+                            // The room they take at their least, the glyphs
+                            // and the time, with what waits: what the keys
+                            // leave them however many a row has.
+                            readonly property real least: {
+                                const floor = Standing.fittedFrom(facts, () => false, 0).told
+                                    .concat(waiting);
+                                return floor.reduce((sum, fact) => sum + place(fact), 0)
+                                    + Math.max(0, floor.length - 1) * spacing;
+                            }
 
                             // Noted once the binding has settled, since `fit`
                             // reads what this writes.

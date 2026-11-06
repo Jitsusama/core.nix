@@ -756,6 +756,74 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
 
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
+# How many times wifid has left Lantern as asked, so a wait sees a new one.
+LEFT_LANTERN = "journalctl -u wifid | grep -c 'left Lantern, as asked' || true"
+
+
+def left_lantern(desktop: Desktop) -> int:
+    """Say how many times wifid has left Lantern as asked."""
+    return int(desktop.machine.succeed(LEFT_LANTERN).strip() or "0")
+
+
+def disconnects_and_takes_back(desktop: Desktop) -> None:
+    """End Lantern by dd, unasked; u joins it again, Ctrl+R leaves it again, and u once more.
+
+    dd on a network disconnects it, never forgets it, and doesn't ask, since u joins it again;
+    the foot says so until the next key. Disconnected, it has no end, since d never forgets a
+    network, so . doing dd again says so. The last u leaves it joined for the steps after.
+    """
+    machine = desktop.machine
+
+    def lantern_reads(side: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            f"Lantern \u00b7 {side} \u00b7 network" in [thing["reads"] for thing in shown["things"]]
+        )
+
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.normal()
+    # Normal's foot names d by the row's ending verb, as docs/design.md's foot does.
+    told = desktop.showing()["selected"]["told"]
+    assert "d disconnect" in told, told
+    machine.send_chars("d")
+    desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
+    before = left_lantern(desktop)
+    with desktop.told("ended 1"):
+        machine.send_chars("d")
+    desktop.launcher_until(
+        lambda shown: shown["operated"].endswith("1 done \u00b7 u brings it back")
+    )
+    machine.wait_until_succeeds(
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+    )
+    machine.send_key("ctrl-r")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("Already at newest change"))
+    desktop.launcher_until(lantern_reads("saved"))
+    joined = "networkctl status wlan1 | grep -q 10.42.0."
+    with desktop.told("undid 1"):
+        machine.send_chars("u")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("1 brought back"))
+    machine.wait_until_succeeds(joined, timeout=timedelta(seconds=60))
+    desktop.launcher_until(lantern_reads("connected"))
+    before = left_lantern(desktop)
+    with desktop.told("redid 1"):
+        machine.send_key("ctrl-r")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("1 done again"))
+    machine.wait_until_succeeds(
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+    )
+    # Once the row says it's only saved, . does dd again on it, which
+    # finds nothing to end, and u then takes back the Ctrl+R.
+    desktop.launcher_until(lantern_reads("saved"))
+    machine.send_chars(".")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("nothing to end"))
+    with desktop.told("undid 1"):
+        machine.send_chars("u")
+    machine.wait_until_succeeds(joined, timeout=timedelta(seconds=60))
+    desktop.close_launcher()
+
+
 def commands_a_network(desktop: Desktop) -> None:
     """Press every key the command line takes on Lantern's row, then bind a range.
 
@@ -843,8 +911,8 @@ def binds_a_range(desktop: Desktop) -> None:
     """Over every network, say E481 for :%q, ask how many can for :%disc, then :g/Lant/disc.
 
     Lantern alone can disconnect, so :%disc asks once, naming how many can, and n leaves every
-    network as it was; :g finds Lantern by name and asks once in d's words, as d would, since
-    nothing in the launcher puts a network back, and y disconnects it by its own act.
+    network as it was; :g finds Lantern by name and disconnects it at once, as d would, since u
+    joins it again, as it does here before Ctrl+R leaves it again.
     """
     machine = desktop.machine
 
@@ -872,15 +940,23 @@ def binds_a_range(desktop: Desktop) -> None:
     machine.send_chars("n")
     desktop.launcher_until(lambda shown: shown["question"] == "")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    before = left_lantern(desktop)
     machine.send_chars(":g/Lant/disc\n")
-    desktop.launcher_until(
-        lambda shown: shown["question"] == "Disconnect Lantern? (y/n)" and shown["takesAnswer"]
-    )
-    machine.send_chars("y")
     machine.wait_until_succeeds(
-        "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
     )
-    desktop.launcher_until(lambda shown: shown["command"] is None)
+    desktop.launcher_until(lambda shown: shown["command"] is None and shown["question"] == "")
+    with desktop.told("undid 1"):
+        machine.send_chars("u")
+    machine.wait_until_succeeds(
+        "networkctl status wlan1 | grep -q 10.42.0.", timeout=timedelta(seconds=60)
+    )
+    before = left_lantern(desktop)
+    with desktop.told("redid 1"):
+        machine.send_key("ctrl-r")
+    machine.wait_until_succeeds(
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+    )
     lists_earlier_lines(desktop)
 
 
@@ -1152,23 +1228,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # goes to the line too, and a fresh Return there does it.
     desktop.close_launcher()
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
-    # In normal, dd on the network ends it by disconnecting it, never by
-    # forgetting it, and asks first; Escape says no, and it stays.
-    desktop.as_account("qs ipc call launcher collection wifi")
-    desktop.launcher_ready()
-    desktop.type_in("lant", selecting="Lantern")
-    desktop.normal()
-    # Normal's foot names d by the row's ending verb, as docs/design.md's foot does.
-    told = desktop.showing()["selected"]["told"]
-    assert "d disconnect" in told, told
-    machine.send_chars("d")
-    desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
-    with desktop.told("ask ready"), desktop.told("asked Disconnect Lantern? (y/n)"):
-        machine.send_chars("d")
-    with desktop.told("answered no"):
-        machine.send_key("esc")
-    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
-    desktop.close_launcher()
+    disconnects_and_takes_back(desktop)
     commands_a_network(desktop)
     # The Office asks for an account: met for the first time, it asks
     # the account's name, its server's domain and its password in

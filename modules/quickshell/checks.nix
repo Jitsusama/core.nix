@@ -3178,6 +3178,7 @@ onLinux {
     pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
       cp ${../../tests/notice-list.qml} notice-list.qml
       cp ${./NoticeList.js} NoticeList.js
+      cp ${./Changes.js} Changes.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3212,8 +3213,9 @@ onLinux {
       cp ${./DrawerPage.js} DrawerPage.js
       cp ${./Search.js} Search.js
       cp ${./LineEditing.js} LineEditing.js
+      cp ${./launcher/words.json} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
+      export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml query-keys.qml
       touch $out

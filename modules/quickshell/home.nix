@@ -151,6 +151,7 @@ let
     "NoticeKeys.js"
     "LineEditing.js"
     "NoticeList.js"
+    "Changes.js"
     "Ex.js"
     "HeldNotices.qml"
     "Notifications.qml"

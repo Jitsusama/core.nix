@@ -79,6 +79,26 @@ function fittedFrom(facts, fits, from) {
     return { told: all[all.length - 1], stage: all.length - 1 };
 }
 
+// The keys the foot draws in the room the facts leave them, as `wide`
+// measures them, Return first and drawn last: short of room, the
+// key drawn furthest from Return gives way first, as Ctrl+] in does
+// (VKCF3Z, 2026-11-05), and never Return nor the key just before it,
+// Space ?, the way to every key. Drawn whatever their room, visual's keys
+// ran over "1 new" and "2 chosen" on a full list at 2. Where keys are
+// drawn so nothing slides and give way by need, as on the find, the words
+// `yielding` names go first, in its order, wherever they're drawn, and
+// the rest as above (VKCF3Z, 2026-11-06: the completion, then next time,
+// and Ctrl+] in never).
+function keysFitted(keys, wide, room, yielding = []) {
+    let kept = keys;
+    while (kept.length > 2 && wide(kept) > room) {
+        const word = yielding.find(one => kept.slice(1).some(key => key[1] === one));
+        const going = word === undefined ? 1 : kept.findIndex((key, at) => at > 0 && key[1] === word);
+        kept = kept.filter((_, at) => at !== going);
+    }
+    return kept;
+}
+
 // The facts as the foot draws them, each with what it `said`, given
 // whether facts so told `fit` the room.
 function fitted(facts, fits) {

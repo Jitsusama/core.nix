@@ -311,7 +311,11 @@ def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
     """See the find's facts only shorten as kitty is typed, and read whole again in a new mode.
 
     kitty's row brings Ctrl+Y's completion and Super+Return's next time beside Ctrl+] in, more
-    than the room held from the opening, so the glance gives way. Once kitty is whole and its
+    than the room held from the opening, so the glance would give way; where even its least
+    leaves too little, keys give way rather than run over it, by need: the completion, whose
+    ghost the field shows, goes first, and Ctrl+] in stays on every letter, as Joel asked of
+    a program's name (VKCF3Z, 2026-11-06: at "k", "Ctrl+] in \u00b7 Super+\u21b5 next time
+    \u00b7 \u21b5 start"). Once kitty is whole and its
     completion goes, the room it took stays bare rather than the glance reading longer again,
     since the foot jumping with each letter was Joel's sharpest complaint about it; that room
     is the record of a row that needed it, and it ends with the find (VKCF3Z, 2026-11-06).
@@ -320,6 +324,7 @@ def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
     # The time aside, since a minute may turn.
     opened = desktop.showing()["glance"].split("  ")[1:]
     said = opened
+    wanted = 0
     for typed in ("kitty"[:end] for end in range(1, len("kitty") + 1)):
         machine.send_chars(typed[-1])
 
@@ -327,11 +332,15 @@ def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
             return bool(shown["typed"] == want)
 
         desktop.launcher_until(typed_so_far)
-        now = desktop.showing()["glance"].split("  ")[1:]
+        shown = desktop.showing()
+        now = shown["glance"].split("  ")[1:]
+        wanted = max(wanted, shown["keysRoom"]["told"])
+        assert "Ctrl+] in" in shown["hints"], (typed, shown["hints"])
         assert len("  ".join(now)) <= len("  ".join(said)), (typed, said, now)
         said = now
-    # It measures something: kitty's keys took room the opening's glance had.
-    assert said != opened, opened
+    # It measures something: kitty's keys asked for more room than the opening held.
+    held = desktop.showing()["keysRoom"]["held"]
+    assert wanted > held, (wanted, held)
     machine.send_key("ctrl-u")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
     desktop.normal()

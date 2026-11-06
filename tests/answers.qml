@@ -1000,6 +1000,40 @@ QtObject {
             .stage, 0);
         machine("a way past the last is the last", Standing.fittedFrom(facts, roomy, 99)
             .told.map(one => one.said).join("  "), "17:30  B  N  V  R");
+        // The keys in the room the facts leave them, Return first as told:
+        // those furthest from Return give way first, never Return nor
+        // Space ? just before it, each key its letters wide here, two
+        // between, as visual's foot over a full list at 2.
+        const visualKeys = [["\u21b5", "open 2"], [":", "commands"], ["d", "close"], ["y", "copy"],
+            ["Space ?", "keys"]];
+        const keysWide = keys => keys.reduce((sum, key) => sum + `${key[0]} ${key[1]}`.length, 0)
+            + 2 * Math.max(0, keys.length - 1);
+        for (const [room, kept] of [
+            [60, "\u21b5 : d y Space ?"],
+            [44, "\u21b5 d y Space ?"],
+            [33, "\u21b5 y Space ?"],
+            [26, "\u21b5 Space ?"],
+            [5, "\u21b5 Space ?"]
+        ])
+            machine(`the foot's keys in ${room}`, Standing.keysFitted(visualKeys, keysWide, room)
+                .map(key => key[0]).join(" "), kept);
+        machine("Return alone stays", Standing.keysFitted([["\u21b5", "open"]], keysWide, 0)
+            .length, 1);
+        // On the find they give way by need instead, the words named first
+        // going first, in their order, wherever they're drawn: the
+        // completion, whose ghost the line shows, then next time, and
+        // Ctrl+] in never, though it's drawn furthest from Return so nothing
+        // slides as it comes and goes (VKCF3Z, 2026-11-06).
+        const findKeys = [["\u21b5", "start"], ["Ctrl+]", "in"], ["Ctrl+Y", "complete"],
+            ["Super+\u21b5", "next time"]];
+        for (const [room, kept] of [
+            [54, "\u21b5 Ctrl+] Ctrl+Y Super+\u21b5"],
+            [40, "\u21b5 Ctrl+] Super+\u21b5"],
+            [30, "\u21b5 Ctrl+]"],
+            [5, "\u21b5 Ctrl+]"]
+        ])
+            machine(`the find's keys in ${room}`, Standing.keysFitted(findKeys, keysWide, room,
+                ["complete", "next time"]).map(key => key[0]).join(" "), kept);
 
         // The network's figures, from /proc/net/dev and the shaper's file.
         const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"

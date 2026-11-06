@@ -295,6 +295,7 @@ QtObject {
             Confirm.answer(ask, "", 1400, 300), "early");
         pending(holds);
         visual(holds);
+        changes(holds);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
@@ -311,6 +312,28 @@ QtObject {
         const made = { run, float, close, actions, copies, commands };
         operatorsTimed(holds, 400, 2, made);
         operatorsTimed(holds, 1000, 4, made);
+    }
+
+    // The key list in the launcher's own words (words.json): each section
+    // named by its purpose, as the vi-paradigm spec names them, and each
+    // chord at most 14, for the keys' column. A saying is as long as it
+    // needs to be clear, wrapping at a word where it must, since the list
+    // is for someone who forgets (VKCF3Z, 2026-11-06).
+    function listedWords(holds) {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("words.json"), false);
+        request.send();
+        const listed = JSON.parse(request.responseText).field.listed;
+        const list = Listed.keyList(Keys.table, listed.lines, listed.modes);
+        holds("the key list's sections, by their purposes",
+            list.filter(line => line.heading !== undefined).map(line => line.heading),
+            ["Normal: moving and acting", "The find: the / line", "Commands: the : line",
+                "Visual: choosing several", "Insert: writing words", "Drawer", "Choosing"]);
+        const lines = list.filter(line => line.heading === undefined);
+        holds("every line says what it does", lines.filter(line => line.value === "")
+            .map(line => line.label), []);
+        holds("and each chord in at most 14", [].concat(...lines.map(line => line.chords))
+            .filter(chord => chord.length > 14), []);
     }
 
     // yG and dG over a place of `count` windows, made of `made`'s acts as
@@ -440,6 +463,32 @@ QtObject {
 
     // Visual line, Vim's V over the rows: its keys, the rows it takes and
     // what Return over them says.
+    // Changes to the rows, as Vim's to lines: Ctrl+R does again what u took
+    // back, and . the last change with its count, or the count typed
+    // before it in its place, each once a press. d's actions that say how
+    // they're put back are what u takes back, and the foot says so.
+    function changes(holds) {
+        holds("Ctrl+R does again what u took back, and . the last change",
+            typed(["Escape", "Ctrl+r", "3", "."]).counted, ["normal", "redoChange", "3 again"]);
+        for (const act of ["undoChange", "redoChange", "again"])
+            holds(`${act} is once a press`, Keys.repeats(act), false);
+        const dd = { count: 2, motion: null };
+        const dj = { count: 0, motion: { act: "next", count: 3 } };
+        holds(". does the last change as it was", Operators.again(dd, 0), dd);
+        holds("and a count before it stands in for its count", [Operators.again(dd, 4),
+            Operators.again(dj, 4)], [{ count: 4, motion: null },
+            { count: 0, motion: { act: "next", count: 4 } }]);
+        const run = () => {};
+        const back = () => {};
+        holds("u takes back what d did that says how it's put back",
+            Operators.undoable([{ run, undo: back }, { run }]), [{ redo: run, undo: back }]);
+        const words = { done: "{count} done \u00b7 u brings them back",
+            doneOne: "1 done \u00b7 u brings it back" };
+        holds("and the foot says so until the next key",
+            [Operators.doneSaid(3, words), Operators.doneSaid(1, words)],
+            ["3 done \u00b7 u brings them back", "1 done \u00b7 u brings it back"]);
+    }
+
     function visual(holds) {
         const doing = [
             ["V begins visual line", ["Escape", "V"], ["normal", "selectLines"], "visual"],
@@ -522,8 +571,9 @@ QtObject {
             Operators.takenWith({ key: "x", at: 1000 }, "x", 1100, 300), false);
         holds("nor with none before", Operators.takenWith(null, "d", 1100, 300), false);
         paragraphs(holds);
-        holds("the command line takes the selection's range", [Keys.rangeFor(0, "visual"),
-            Keys.rangeFor(3, "visual"), Keys.rangeFor(3, "normal"), Keys.rangeFor(0, "normal")],
+        holds("the command line takes the selection's range", [Operators.rangeFor(0, "visual"),
+            Operators.rangeFor(3, "visual"), Operators.rangeFor(3, "normal"),
+            Operators.rangeFor(0, "normal")],
         ["'<,'>", "'<,'>", ".,.+2", ""]);
 
         // The rows the selection takes, from where it began to the cursor,
@@ -620,8 +670,8 @@ QtObject {
         for (const [what, keys, want] of doing)
             holds(`on a prompt's words, ${what}`, wordsTyped(keys).acts, want);
         holds("cw leaves the line in insert", wordsTyped(["Escape", "c", "w"]).mode, "insert");
-        holds("on a find, u undoes nothing, since h never clears", typed(["Escape", "u"]).acts,
-            ["normal"]);
+        holds("on the rows, u takes back what d did, never the find",
+            typed(["Escape", "u"]).acts, ["normal", "undoChange"]);
         holds("and w and x do nothing", typed(["Escape", "w", "x"]).acts, ["normal"]);
         holds("Ctrl+H deletes back in insert", typed(["Ctrl+h"]).acts, ["deleteBack"]);
         for (const act of ["wordNext", "wordBack", "wordEnd"])
@@ -1408,7 +1458,8 @@ QtObject {
         holds("and stands until its move", typed(["Escape", "4", "2"]).standing,
             { count: "42", typed: [] });
         holds("a count before a colon is the range Vim's 3: gives",
-            [Keys.counted(0), Keys.counted(1), Keys.counted(3)], ["", ".", ".,.+2"]);
+            [Operators.counted(0), Operators.counted(1), Operators.counted(3)],
+            ["", ".", ".,.+2"]);
         holds("and the keys stand at rest once it opens",
             typed(["Escape", "3", ":"]).standing, { count: "", typed: [] });
         holds("the find's Space is the field's to type", typed(["Space"]).ours, false);
@@ -1438,8 +1489,8 @@ QtObject {
             Keys.read(Keys.rest(), "f", "normal", true).idle, true);
         // A key with no meaning here says so, never silent (the vi-paradigm
         // spec, Normal); a count or a sequence begun means something.
-        holds("p and u mean nothing in normal, and say so",
-            typed(["Escape", "p", "u"]).idle, ["p", "u"]);
+        holds("p means nothing in normal, and says so",
+            typed(["Escape", "p"]).idle, ["p"]);
         holds("a key that ends what was begun means nothing, and says so",
             typed(["Escape", "]", "x"]).idle, ["x"]);
         holds("a count, a sequence begun and a move each mean something",
@@ -1476,10 +1527,12 @@ QtObject {
             word: "word", intoDrawer: "into the drawer", lines: "lines", along: "along",
             scroll: "scroll", back: "back", ending: "ending", seek: "seek", seekOn: "seek on",
             select: "select", reselect: "reselect", otherEnd: "other end", copy: "copy",
-            copyRow: "copy row", option: "option", optionHere: "option here",
-            matches: "matches", letters: "letters" };
-        const modes = { normal: "Normal", find: "Find", page: "Drawer",
-            pageVisual: "Choosing" };
+            copyRow: "copy row", option: "option", optionHere: "option here", undo: "undo",
+            redo: "redo", again: "again", chooseRows: "choose rows", paragraph: "paragraph",
+            endChosen: "end chosen", copyChosen: "copy chosen", openChosen: "open chosen",
+            menu: "menu", matches: "matches", letters: "letters" };
+        const modes = { normal: "Normal", find: "Find", command: "Commands", visual: "Visual",
+            insert: "Insert", page: "Drawer", pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
         holds("the list's rows, Vim's alone", keyed("rows"), "j  k");
@@ -1518,6 +1571,12 @@ QtObject {
         holds("the list's options, the machine's and what it's on",
             [keyed("option"), keyed("option here")], [":set dnd", ":setl mute"]);
         holds("and y", keyed("copy row"), "yy  yG");
+        holds("u, Ctrl+R and . over the rows' changes",
+            [keyed("undo"), keyed("redo"), keyed("again")], ["u", "Ctrl+R", "."]);
+        holds("visual's own keys, as it takes them", [keyed("choose rows"),
+            keyed("paragraph"), keyed("end chosen"), keyed("copy chosen"),
+            keyed("open chosen")], ["V  v", "ip  ap", "d  x", "y", "\u21b5"]);
+        holds("the command line's menu, as Vim's", keyed("menu"), "Ctrl+N  Ctrl+P");
         holds("no line scrolls the drawer with Shift and an arrow",
             list.filter(line => (line.label ?? "").includes("\u21e7+\u2193")).length, 0);
         holds("the list's way into the drawer, Vim's window keys first",
@@ -1562,7 +1621,8 @@ QtObject {
         });
         holds("the list's sections, normal's where it's opened first",
             list.filter(line => line.heading !== undefined).map(line => line.heading),
-            ["Normal", "Find", "Drawer", "Choosing"]);
+            ["Normal", "Find", "Commands", "Visual", "Insert", "Drawer", "Choosing"]);
+        listedWords(holds);
         holds("the drawer's moves, as normal's on the rows",
             ["gg  G", "H  M  L", "Ctrl+D  Ctrl+U", "Ctrl+F  Ctrl+B", "3j  12G"]
                 .filter(keys => !sections.Drawer.includes(keys.split("  ")[0])), []);

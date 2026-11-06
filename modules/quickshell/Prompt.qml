@@ -599,7 +599,7 @@ Item {
             prompt.operated(read.act, read.count, read.motion);
             break;
         case "command":
-            prompt.commanded(QueryKeys.rangeFor(read.count, mode));
+            prompt.commanded(Operators.rangeFor(read.count, mode));
             break;
         case "letterBack":
         case "letterNext":

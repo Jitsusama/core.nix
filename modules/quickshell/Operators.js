@@ -367,6 +367,33 @@ function asks(actions, commands) {
     });
 }
 
+// What u takes back of what d did: each action that says how it's put
+// back, with how to do it again for Ctrl+R; those that can't be put back
+// are passed over, as Vim's undo has nothing to take back of them.
+function undoable(actions) {
+    return actions
+        .filter(action => typeof action.undo === "function")
+        .map(action => ({ redo: doing(action), undo: action.undo }));
+}
+
+// The last change again, as Vim's . does it: as it was, or with the count
+// typed before . in place of its own, whether it stood before the
+// operator, as 3dd's, or with its motion, as d3j's.
+function again(last, count) {
+    if (count === 0) {
+        return last;
+    }
+    return last.motion === null ? { count, motion: null }
+        : { count: 0, motion: { act: last.motion.act, count } };
+}
+
+// What the foot says once d has done what u can take back, until the next
+// key: "3 done \u00b7 u brings them back", or "it" for one.
+function doneSaid(count, words) {
+    return count === 1 ? words.doneOne ?? ""
+        : (words.done ?? "").replace("{count}", String(count));
+}
+
 // An operator waiting for what it acts on, from how the keys stand: the
 // keys typed since its count, as 3d or d2 or dg, and the count its rows
 // would be as the two multiply, 0 where none was typed. Null with none
@@ -396,6 +423,18 @@ function pendingSays(hit, words) {
             .replace("{name}", hit.name)
             .replace("{count}", String(hit.count));
     return words.pending.replace("{typed}", hit.typed).replace("{what}", what ?? "");
+}
+
+// The range a count before a colon gives the command line, as Vim's 3:
+// gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
+function counted(count) {
+    return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
+}
+
+// The range a colon gives the command line in a mode: visual's selection,
+// as Vim's '<,'>, whatever was counted, or the count's in normal.
+function rangeFor(count, mode) {
+    return mode === "visual" ? "'<,'>" : counted(count);
 }
 
 // The rows visual line takes, from where it began to the cursor, either

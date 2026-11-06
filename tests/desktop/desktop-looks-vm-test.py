@@ -267,9 +267,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         assert not arrowed, f"at {scale} normal's foot names an arrow: {arrowed}"
         told = desktop.showing()["selected"]["told"]
         assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
-        desktop.on_find()
-        desktop.type_in("kitty")
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+        finds_kitty(desktop, scale)
         card = desktop.showing()["drawer"]["cardLines"]
         assert words_on_their_names(card, scale, serif) > 0, (
             f"at {scale} kitty's row says nothing: {card}"
@@ -315,7 +313,8 @@ def numbers_programs(desktop: Desktop, scale: str) -> None:
     """Step into Programs, and photograph its normal and a find in it, the gutter numbering both.
 
     Normal counts from the cursor and the find numbers each row as it is, in one room, as wide
-    as Programs' own rows need (VKCF3Z, 2026-11-05).
+    as Programs' own rows need (VKCF3Z, 2026-11-05). Normal's keys give way rather than run
+    over the glance.
     """
     at = scale.replace(".", "-")
     desktop.answer("programs")
@@ -324,6 +323,8 @@ def numbers_programs(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(lambda shown: len(shown["held"]) == 1 and shown["gutter"]["shown"])
     gutter = desktop.showing()["gutter"]
     assert gutter["relative"], f"at {scale} normal in Programs: {gutter}"
+    overlaps = desktop_session.foot_overlaps(desktop)
+    assert not overlaps, f"at {scale} normal in Programs: {overlaps}"
     desktop.photograph(f"launcher-programs-normal-at-{at}")
     desktop.type_in("k")
     desktop.launcher_until(
@@ -371,6 +372,22 @@ def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
     assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
     desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def finds_kitty(desktop: Desktop, scale: str) -> None:
+    """Find kitty from its first letter, photographing the foot at k.
+
+    The first letter tells the foot more keys than it holds, so the completion, whose ghost the
+    field shows, gives way, and Ctrl+] in stays, furthest from Return (VKCF3Z, 2026-11-06).
+    """
+    desktop.on_find()
+    desktop.type_in("k")
+    desktop.launcher_until(lambda shown: shown["typed"] == "k")
+    overlaps = desktop_session.foot_overlaps(desktop)
+    assert not overlaps, f"at {scale} on k: {overlaps}"
+    desktop.photograph(f"launcher-finds-k-at-{scale.replace('.', '-')}")
+    desktop.type_in("itty")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
 
 
 def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
@@ -736,7 +753,9 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
     """V j counts two in the mode word, and a window arriving waits as "1 new" in the foot.
 
     It's shown in Super+Tab's windows, which is all of them, since a typed search said again
-    finds only what it found.
+    finds only what it found. The foot names y, one of what visual chooses rows for, with "1
+    new" beside it or not: holding "999 chosen" and Return's room for verbs no window says,
+    it gave y way (VKCF3Z, 2026-11-06).
     """
     machine = desktop.machine
     desktop.notes_window()
@@ -752,10 +771,16 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         desktop.normal()
         machine.send_chars("ggVj")
         desktop.launcher_until(lambda shown: shown["modeWord"] == "2 chosen")
+        hints = desktop.showing()["hints"]
+        assert "y copy" in hints, f"at {scale} the foot drew {hints}"
         arriving = desktop.opened(f"Notes for the shot at {named}")
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
         )
+        hints = desktop.showing()["hints"]
+        assert "y copy" in hints, f"at {scale} with one new the foot drew {hints}"
+        overlaps = desktop_session.foot_overlaps(desktop)
+        assert not overlaps, f"at {scale} with one new: {overlaps}"
         desktop.photograph(f"launcher-visual-waits-at-{named}")
         machine.send_key("esc")
         desktop.launcher_until(

@@ -1818,7 +1818,8 @@ Floating {
                                 : drawer.apartIn(factRows.wraps, index === 0
                                     || drawer.facts[index - 1]?.heading !== undefined)
                             // How many lines it takes as it's laid out.
-                            readonly property int lines: heading ? 1 : under
+                            readonly property int lines: heading ? Math.max(1, headingText.lineCount)
+                                : under
                                 ? label.lineCount + value.lineCount
                                 : Math.max(1, label.lineCount, value.lineCount)
                             readonly property Item over: headingText
@@ -1878,8 +1879,11 @@ Floating {
                                 y: fact.base - baselineOffset
                                 visible: fact.heading
                                 plain: fact.modelData.heading ?? ""
-                                leading: 0
-                                elides: true
+                                // A heading wraps at a word rather than
+                                // being cut, keeping the spec's names
+                                // whole: "Normal: moving and acting" lost
+                                // its last letters at 2 (VKCF3Z, 2026-11-06).
+                                leading: drawer.pitch
                                 ink: Theme.muted
                                 font.family: Theme.level.label.family
                                 font.pointSize: Theme.level.label.pointSize

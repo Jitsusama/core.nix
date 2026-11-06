@@ -389,7 +389,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
 
 
 def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop: Desktop) -> None:
-    """A missed notice shows its glyph, and What's on shows the notices."""
+    """A missed notice shows its glyph, What's on shows the notices, and u undoes dd there."""
     machine = desktop.machine
     # On screen it isn't waiting yet; once it goes by itself, it is, and
     # it wants Joel, so it's strong.
@@ -424,9 +424,34 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-from-margin")
+    forgets_then_brings_back(desktop)
     desktop.close_launcher()
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+
+
+def forgets_then_brings_back(desktop: Desktop) -> None:
+    """Dd forgets Peter's notice, which offers no Read, and u brings it back.
+
+    The foot names d by what it does, forget, since notify-send's notice has no Read to mark;
+    once it's done the foot says how to take it back, and u does, until the launcher closes.
+    """
+    desktop.normal()
+    assert "d forget" in desktop.showing()["selected"]["told"], desktop.showing()["selected"]
+    with desktop.told("ended 1"):
+        desktop.machine.send_chars("dd")
+    desktop.launcher_until(
+        lambda shown: shown["operated"].endswith("1 done \u00b7 u brings it back")
+    )
+    desktop.photograph("launcher-notice-done")
+    assert "d forget" not in desktop.showing()["selected"]["told"], desktop.showing()
+    with desktop.told("undid 1"):
+        desktop.machine.send_chars("u")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["operated"].endswith("1 brought back") and "d forget" in shown["selected"]["told"]
+        )
+    )
 
 
 def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Desktop) -> None:
