@@ -538,7 +538,10 @@ def goes_up_and_back(desktop: Desktop, chose: str, held: int) -> None:
     )
     machine.send_chars("-")
     says("- not here")
-    assert len(desktop.showing()["held"]) == 1, desktop.showing()["held"]
+    # The dialog's top is still a place: the path says it is /.
+    top = desktop.showing()
+    assert len(top["held"]) == 1, top["held"]
+    assert top["path"][-1:] == ["/"], top["path"]
     # Return goes back down, folder by folder, to where the ask opened.
     for folder, name in [("/home", account), ("~", "chosen-notes")]:
         machine.send_key("ret")

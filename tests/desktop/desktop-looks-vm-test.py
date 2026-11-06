@@ -1251,6 +1251,7 @@ def at_the_top(desktop: Desktop, scale: str) -> None:
     """Go up by - to /, a dialog's top, where - says it has nowhere to go; photograph it.
 
     Each folder's foot offers - up, and / offers none, since - there would leave the ask.
+    The head still says where he is, "Open the Notes \u203a /", as it does a folder down.
     """
     machine = desktop.machine
     desktop.normal()
@@ -1267,7 +1268,11 @@ def at_the_top(desktop: Desktop, scale: str) -> None:
     assert "- up" not in desktop.showing()["selected"]["told"], desktop.showing()["selected"]
     machine.send_chars("-")
     desktop.launcher_until(
-        lambda shown: shown["saying"] == ["- not here"] and len(shown["held"]) == 1
+        lambda shown: (
+            shown["saying"] == ["- not here"]
+            and len(shown["held"]) == 1
+            and shown["path"][-1:] == ["/"]
+        )
     )
     desktop.photograph(f"file-picker-at-the-top-at-{scale.replace('.', '-')}")
 

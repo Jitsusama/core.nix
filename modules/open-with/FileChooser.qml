@@ -169,6 +169,9 @@ Provider {
         // A dialog, it has nothing above it: - at / says so, rather than
         // leaving the ask waiting for a home it never showed.
         outermost: true,
+        // What it lists is /, so the path says so there, "Open › /", as it
+        // says "~/Downloads" a folder below (VKCF3Z, 2026-11-05).
+        place: Files.shown("/"),
         ask: question(),
         empty: "Nothing here."
     })

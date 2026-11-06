@@ -1178,12 +1178,19 @@ Scope {
     // Where Joel is, as the field shows it: each step as its row named it,
     // in the rows' own case (Shortcuts, Desktop), so the path reads as the
     // rows he picked did. A step named as the one before it (the Shortcuts
-    // category's Shortcuts) is said once.
-    readonly property var path: held.reduce((steps, step) => {
-        const said = step.row.title ?? step.row.name;
-        const last = steps.length > 0 ? steps[steps.length - 1] : "";
-        return said.toLowerCase() === last.toLowerCase() ? steps : steps.concat([said]);
-    }, [])
+    // category's Shortcuts) is said once. A collection standing in a place
+    // of its own, as the file picker's lists /, says it after its title
+    // while nothing below it is held, as each folder below says its own,
+    // so the path never loses where he is (VKCF3Z, 2026-11-05).
+    readonly property var path: {
+        const steps = held.reduce((said, step) => {
+            const own = step.row.title ?? step.row.name;
+            const last = said.length > 0 ? said[said.length - 1] : "";
+            return own.toLowerCase() === last.toLowerCase() ? said : said.concat([own]);
+        }, []);
+        const place = held.length === 1 ? held[0].row.from?.collection?.place : undefined;
+        return typeof place === "string" && place !== "" ? steps.concat([place]) : steps;
+    }
 
     // Words with their first letter a capital, as a row's name starts.
     function capitalised(words) {

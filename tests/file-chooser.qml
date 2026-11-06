@@ -474,6 +474,8 @@ ShellRoot {
             launcher.homeDepth === launcher.held.length, `${launcher.homeDepth}`);
         expect("and the dialog has nothing above it, for - to leave the ask for",
             chooser.collection.outermost === true, JSON.stringify(chooser.collection));
+        expect("and at its top the path says it is /, as a folder below says its own",
+            chooser.collection.place === "/", JSON.stringify(chooser.collection));
         const titles = launcher.held.slice(1).map(step => step.row.title);
         expect("the path says one folder, the one held deepest",
             titles.every(title => title === "~/notes"), titles.join(" "));
