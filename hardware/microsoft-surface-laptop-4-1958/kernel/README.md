@@ -8,6 +8,7 @@ patch's header says what it fixes and how it was found.
 | Patch                                      | Gives                                                    |
 | ------------------------------------------ | -------------------------------------------------------- |
 | `amdgpu-no-secure-display.patch`           | a boot with no refused TA from the graphics' PSP         |
+| `amdgpu-vrr-reference-only-while-on.patch` | a wake with no graphics warning when a screen was off    |
 | `amd-pstate-skip-matching-auto-sel.patch`  | amd-pstate despite a fixed `_CPC` entry, from mainline   |
 | `iwlmvm-country-while-associated.patch`    | Wi-Fi's country, heard after joining at boot             |
 | `surface-laptop-amd-sensors-and-fan.patch` | the controller's eight thermal sensors and its fan speed |

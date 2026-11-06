@@ -218,6 +218,13 @@
       name = "amdgpu-no-secure-display";
       patch = ./kernel/amdgpu-no-secure-display.patch;
     }
+    # A wake warned when a screen was off as the laptop slept: the restored
+    # state kept VRR on for the dark screen, and the driver asked for its
+    # vblank while it was off. VRR now counts only while a screen is on.
+    {
+      name = "amdgpu-vrr-reference-only-while-on";
+      patch = ./kernel/amdgpu-vrr-reference-only-while-on.patch;
+    }
     # The AX200 joined Wi-Fi at boot before it had heard a country, and the
     # driver ignored the one it heard while connected, so it stayed on the
     # world domain.
