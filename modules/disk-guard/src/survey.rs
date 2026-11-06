@@ -358,13 +358,27 @@ fn offer_git(repo: &Path, world: &World, offers: &mut Vec<Offer>) {
     }
 }
 
-/// The quest workspaces in `path`, judged by their quests' READMEs in `quests`.
+/// The quest workspaces in `path`, judged by their quests' READMEs in
+/// `quests`, and in each one still at work the browser profiles its `tmp/`
+/// holds at rest.
 fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
-    for workspace in workspaces::find(path, quests)
+    let (over, working): (Vec<_>, Vec<_>) = workspaces::find(path, quests)
         .into_iter()
-        .filter(workspaces::over)
-    {
+        .partition(workspaces::over);
+    for workspace in working {
+        let tmp = workspace.path.join("tmp");
+        for entry in temp::profiles(&tmp, world.uid, world.now) {
+            offers.push(Offer {
+                candidate: temp::profile_candidate(&entry, world.awake, world.now),
+                action: Action::Entry {
+                    root: resolved(&tmp),
+                },
+                device,
+            });
+        }
+    }
+    for workspace in over {
         let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);
         let size = size(&workspace.path, world);
         if let Some(candidate) =
