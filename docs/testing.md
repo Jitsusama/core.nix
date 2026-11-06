@@ -61,7 +61,8 @@ once a base is kept a comparison pays for one evaluation, the working
 tree's: 461 s on 2026-10-26, against 1,373 s and more for one that had to
 evaluate a base that had just merged. `changed-checks --keep-base` keeps a
 commit ahead of time, so a branch rebased onto it pays for its own tree
-alone, and `changed-checks keep-main`, a service beside the net, does it
+alone; it goes only to a builder already standing, never asking for one,
+and keeps it on this machine only with `--here`. And `changed-checks keep-main`, a service beside the net, does it
 for each head of main once it has stood two minutes, and again on each
 builder lent afresh, which starts with nothing kept: on 2026-11-05, before
 it ran, 42 of the lent builder's 105 runs evaluated their base first, a

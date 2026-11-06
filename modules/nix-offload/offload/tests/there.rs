@@ -1671,7 +1671,7 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
-            "here-when-idle\nprint\nderivation\noutlive\nbulk\n"
+            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\n"
         )
     );
 }
