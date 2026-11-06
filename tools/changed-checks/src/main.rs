@@ -335,7 +335,10 @@ fn busiest_system(flake: &str) -> Result<String, String> {
 /// The run sent to another machine by `nix-offload there --changed`, its
 /// exit, or none when it runs here: asked to, already the far side's, a
 /// base whose merge base origin's main doesn't hold, a nix-offload that
-/// doesn't take it, edits not yet in a commit, or nowhere that took it.
+/// doesn't take it, edits not yet in a commit, or nowhere that took it. A
+/// run that only keeps a base is never worth a builder of its own, so it
+/// goes only to one that stands, and needs a nix-offload that takes
+/// `--never-ask`.
 fn elsewhere(
     options: &Options,
     root: &str,
@@ -362,11 +365,17 @@ fn elsewhere(
         .args(["there", "--takes"])
         .stderr(std::process::Stdio::null())
         .output();
+    let wanted: &[&str] = if options.keep_base {
+        &["changed", "never-ask"]
+    } else {
+        &["changed"]
+    };
     let takes_it = takes.is_ok_and(|takes| {
+        let words = String::from_utf8_lossy(&takes.stdout);
         takes.status.success()
-            && String::from_utf8_lossy(&takes.stdout)
-                .lines()
-                .any(|word| word == "changed")
+            && wanted
+                .iter()
+                .all(|word| words.lines().any(|line| line == *word))
     });
     if !takes_it {
         return Ok(None);
@@ -396,7 +405,9 @@ fn elsewhere(
     }
     eprintln!("changed-checks: sending the run elsewhere; --here runs it on this machine");
     let status = Command::new("nix-offload")
-        .args(["there", "--changed"])
+        .arg("there")
+        .args(options.keep_base.then_some("--never-ask"))
+        .arg("--changed")
         .args(&given)
         .current_dir(root)
         .status()

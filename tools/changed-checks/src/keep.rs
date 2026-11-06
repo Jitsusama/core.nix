@@ -9,7 +9,10 @@
 //! has stood that long: replaying that day's 101 heads, waiting two
 //! minutes kept 74 and spared 29 of those 42 evaluations, where keeping
 //! every head spared 38 for 101. A head is kept only where nix-offload
-//! sends it, never on this machine, whose own runs are sent too. A kept
+//! sends it, never on this machine, whose own runs are sent too, and only
+//! to a builder already lent, never one asked for: a store file left
+//! naming a builder whose tunnel had gone asked for one at 00:11 on 6
+//! November, before nix-offload took `--never-ask`. A kept
 //! head is sent again when another builder is lent, since one lent afresh
 //! starts with nothing kept, as one lent that evening did; never on a
 //! timer, since a builder is given back after 15 idle minutes and sending

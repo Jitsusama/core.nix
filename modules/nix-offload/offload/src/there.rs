@@ -35,6 +35,10 @@
 //! asks, and the lender holds that builder meanwhile, though no ssh here
 //! reaches it. The same build sent again while it runs attaches to what it
 //! builds through Nix's lock on each derivation, as any run sent again does.
+//! `--never-ask`, given first, has it use only a builder that already
+//! stands, and never ask the lender for one, for a run not worth a
+//! builder of its own, as keeping main's checks ahead isn't: asked at
+//! 00:11 on 6 November, through a tunnel gone dead, it asked for one.
 //! `there --takes` says which of these it takes, a word a line.
 //!
 //! Derivations, given by their paths in place of a flake and its
@@ -1174,10 +1178,11 @@ impl Source {
 /// folder no commit names, `--changed`, changed-checks run elsewhere,
 /// `--here`, a build no builder took made here, `--here-when-idle`, one
 /// made here while this machine is idle, `--print-out-paths`,
-/// what was built brought into this store, derivations' paths, and
-/// `--outlive`, a build that goes on once its caller is gone, and
-/// `--bulk`, one whose VM tests let others' go first.
-pub const TAKES: [&str; 12] = [
+/// what was built brought into this store, derivations' paths,
+/// `--outlive`, a build that goes on once its caller is gone, `--bulk`,
+/// one whose VM tests let others' go first, and `--never-ask`, a run
+/// that asks the lender for no builder.
+pub const TAKES: [&str; 13] = [
     "tree",
     "apply",
     "out",
@@ -1190,6 +1195,7 @@ pub const TAKES: [&str; 12] = [
     "derivation",
     "outlive",
     "bulk",
+    "never-ask",
 ];
 
 /// A ref for one bundle to carry its commit under, here only while it's
@@ -1765,9 +1771,11 @@ fn brought_from(
 /// has to start making one, since it reads what's wanted every 20 s, how
 /// long a lender that stopped may take to start again, and how long one
 /// may take to stand, about 70 s on 29 October, and how long a build sent
-/// again must have run for its loss to start a wait of its own.
+/// again must have run for its loss to start a wait of its own. A run
+/// given `--never-ask` doesn't ask at all, so it waits for nothing.
 #[derive(Clone, Copy)]
 pub struct Waiting {
+    pub asks: bool,
     pub answered: std::time::Duration,
     pub restarting: std::time::Duration,
     pub longest: std::time::Duration,
@@ -1775,6 +1783,7 @@ pub struct Waiting {
 }
 
 pub const WAITING: Waiting = Waiting {
+    asks: true,
     answered: std::time::Duration::from_secs(30),
     // A switch stops the lender and starts it again once it's done the
     // rest: 1 s apart at 20:15 on 2 November, and 35 s apart at 21:14.
@@ -1857,6 +1866,10 @@ fn pid_in(path: &Path) -> Option<i32> {
 /// ends just as a build that would have used its builder asks. It gives
 /// the store's text once one stands.
 pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
+    if !waiting.asks {
+        eprintln!("nix-offload: no builder stands, and --never-ask leaves the lender unasked");
+        return None;
+    }
     if !lender_runs(dir, waiting) {
         return None;
     }
@@ -3211,6 +3224,7 @@ mod tests {
     }
 
     const QUICK: Waiting = Waiting {
+        asks: true,
         answered: std::time::Duration::from_millis(300),
         restarting: std::time::Duration::from_secs(1),
         longest: std::time::Duration::from_secs(5),
@@ -3281,6 +3295,27 @@ mod tests {
         });
         assert_eq!(waited(dir.path(), QUICK).as_deref(), Some("ssh-ng://far\n"));
         restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_run_that_never_asks_asks_for_no_builder_though_a_lender_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let never = Waiting {
+            asks: false,
+            ..QUICK
+        };
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), never), None);
+        assert!(began.elapsed() < QUICK.answered, "it waits for nothing");
+        assert!(
+            !dir.path().join("wanted").exists(),
+            "the lender is never told one is wanted"
+        );
     }
 
     #[test]
