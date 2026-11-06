@@ -1084,8 +1084,12 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
             )
         )
 
+    machine.send_key("ctrl-bracket_right")
+    followed()
+    # A follow is one jump, as Vim's tag is, however many steps down its place lies.
+    jumps = desktop.showing()["jumps"]
+    assert bool(jumps == {"back": 1, "ahead": 0}), f"a follow made jumps {jumps}"
     for key, then in [
-        ("ctrl-bracket_right", followed),
         ("ctrl-t", came_back),
         ("ctrl-bracket_right", followed),
         ("ctrl-o", came_back),
