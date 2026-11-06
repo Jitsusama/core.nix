@@ -1055,6 +1055,10 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
             and "Ctrl+] in" not in shown["selected"]["told"]
         )
     )
+    # Where every row lives is walked once the launcher is quiet, off every key, and kept
+    # until a provider's rows change: its time is said here for the reviewer to read.
+    desktop.launcher_until(lambda shown: shown["livesWalked"] is not None)
+    print(f"Where every row lives was walked in {desktop.showing()['livesWalked']} ms")
     # Where it lives is read from the first follow and held to after, so the walk says the
     # place is the same each time without naming the catalogue's crumbs.
     lives: list[object] = []
@@ -1100,8 +1104,8 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
     )
     desktop.close_launcher()
     # Each Ctrl+] with no parts to go into looks for the row's own place, or none, in where
-    # every row lives, walked from home once an open by the first: the trace holds how long
-    # each look took, said here for the reviewer to read, and which made the walk.
+    # every row lives, walked before any press: the trace holds how long each look took,
+    # said here for the reviewer to read, and that none made the walk on its key.
     spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
     opening = [span for span in spans if span["name"] == "open"][-1]
     looks = [
@@ -1115,7 +1119,7 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
     print(f"Ctrl+] looked for its place in {walks} ms")
     assert all(isinstance(walked, int) for walked in walks), walks
     made = [look["indexed"] for look in looks]
-    assert made == [True, False, False], f"each look made the walk: {made}"
+    assert made == [False, False, False], f"a look made the walk on its key: {made}"
 
 
 def walk_a_found_program_follows(desktop: Desktop) -> None:
