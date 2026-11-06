@@ -2172,7 +2172,7 @@ Scope {
     // a verb no row there can say ranks nothing, and over two windows in
     // visual it cost the foot its y (VKCF3Z, 2026-11-06).
     function footReset() {
-        footReturnWidest = prompt.mode === "insert"
+        footReturnWidest = prompt.mode === "find"
             ? statusLine.keys.advance("\u21b5", footVerbRoom) : 0;
         footKeysWidest = keysWide(footKeysRoom);
     }
