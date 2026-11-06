@@ -2778,6 +2778,8 @@ struct TwoVm {
     offload: PathBuf,
     vm: PathBuf,
     more: PathBuf,
+    /// A third VM lender's folder, lending once `lend_third` is called.
+    third: PathBuf,
 }
 
 impl TwoVm {
@@ -2789,6 +2791,7 @@ impl TwoVm {
         let offload = lending(folder.path(), "offload", "nix-offload");
         let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
         let more = folder.path().join("offload-vm-more");
+        let third = folder.path().join("offload-vm-3");
         fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
         fs::write(
             folder.path().join("nix-offload/vm-tests"),
@@ -2802,7 +2805,18 @@ impl TwoVm {
             offload,
             vm,
             more,
+            third,
         }
+    }
+
+    fn lend_third(&self) {
+        fs::create_dir(&self.third).unwrap();
+        fs::write(self.third.join("lender"), std::process::id().to_string()).unwrap();
+        fs::write(
+            self.third.join("store"),
+            STORE.replace("nix-offload", "nix-offload-vm-3"),
+        )
+        .unwrap();
     }
 
     fn lend_second(&self) {
@@ -2837,6 +2851,7 @@ impl TwoVm {
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &self.vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", &self.more)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &self.third)
             .env("XDG_RUNTIME_DIR", self.folder.path())
             .env("XDG_STATE_HOME", self.folder.path())
             .env("XDG_CONFIG_HOME", self.folder.path())
@@ -2952,6 +2967,36 @@ fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
     );
     let claims = fs::read_dir(rig.vm.join("sending")).unwrap().count();
     assert_eq!(claims, 1, "each run takes its own away as it ends");
+}
+
+// On 5 November 168 VM runs in four hours waited a median of 23 to 27
+// minutes on two VM builders, mostly for room, so a third and more take
+// what's past the first two's room, at once, and each run says how long
+// it waited for its builder.
+#[test]
+fn vm_tests_past_two_vm_builders_room_go_to_a_third_at_once() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    rig.lend_third();
+    for dir in [&rig.vm, &rig.more] {
+        fs::create_dir_all(dir.join("sending")).unwrap();
+        fs::write(dir.join(format!("sending/{}.0", std::process::id())), "6\n").unwrap();
+    }
+    let (built, said) = rig.sent(3);
+    assert_eq!(tests_on(&built, "nix-offload-vm-3"), 3, "{built:?} {said}");
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 0, "{built:?}");
+    let journal = fs::read_to_string(rig.folder.path().join("nix-offload/there.jsonl")).unwrap();
+    let lines: Vec<serde_json::Value> = journal
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(
+        lines
+            .iter()
+            .all(|line| line["waited"].as_u64().is_some_and(|waited| waited < 30)),
+        "each part says how long it waited for its builder: {journal}"
+    );
 }
 
 // A run sent where others wait for room goes only after them, so those
