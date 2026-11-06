@@ -1,0 +1,62 @@
+drm/amd/display: hold the VRR vblank reference only while a CRTC is on
+
+amdgpu_dm_handle_vrr_transition() takes a vblank reference when a
+CRTC's VRR goes from inactive to active and gives it back on the way
+down, judging only the freesync config. An inactive CRTC can carry an
+active config, and then the reference is asked for while its vblank is
+off. On an 8 GiB Surface Laptop 4, every wake after a screen was
+switched off before suspend warned:
+
+  WARNING: drivers/gpu/drm/amd/amdgpu/../display/amdgpu_dm/
+  amdgpu_dm_freesync.c:333 at amdgpu_dm_handle_vrr_transition+0x1cd
+   amdgpu_dm_atomic_commit_tail+0x18d9/0x3a10 [amdgpu]
+   drm_atomic_helper_commit_duplicated_state+0x155/0x170
+   drm_atomic_helper_resume+0xca/0x170
+   dm_resume+0xb7c/0xd10 [amdgpu]
+
+dm_resume() commits the cached state through drm_atomic_helper_resume().
+The CRTC that was switched off is still inactive in it, so
+amdgpu_dm_atomic_commit_tail() doesn't call manage_dm_interrupts() for
+it, but its freesync config there is active, so the transition sees VRR
+go from off to on (amdgpu_dm_reset_freesync_config_for_crtc(), which
+dm_destroy_cached_state() calls, leaves freesync_config.state as it
+was). drm_crtc_vblank_get() finds the refcount held by
+drm_crtc_vblank_off() and vblank disabled, and returns -EINVAL. The
+capture with drm.debug shows it in order: drm_crtc_vblank_off on crtc 1
+at 941.590 as the screen went off, the warning at 943.164 inside
+dm_resume, and drm_crtc_vblank_on_config on crtc 1 only at 943.322, when
+the compositor turned the screen back on. The failed get also leaves the
+reference uncounted, so the next VRR on->off put gives back one it never
+took.
+
+Count VRR as active only while the CRTC state is active. A CRTC coming
+on gets its reference after manage_dm_interrupts() has called
+drm_crtc_vblank_on() earlier in the same loop; one going off puts it
+after amdgpu_dm_commit_streams() has called drm_crtc_vblank_off(), whose
+inmodeset reference keeps the count above zero. A modeset of a CRTC that
+stays on keeps its reference as before. Mainline's "Fix vblank refcount
+in vrr transition" (2022) fixed the order of these calls, not this case.
+
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_freesync.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_freesync.c
+@@ -313,8 +313,18 @@ void amdgpu_dm_handle_vrr_transition(str
+ 				     struct dm_crtc_state *new_state)
+ {
+ 	struct amdgpu_device *adev = dm->adev;
+-	bool old_vrr_active = amdgpu_dm_crtc_vrr_active(old_state);
+-	bool new_vrr_active = amdgpu_dm_crtc_vrr_active(new_state);
++	/*
++	 * A CRTC holds its VRR vblank reference only while it is on. An
++	 * inactive CRTC can still carry an active freesync config, as when a
++	 * resume restores a CRTC that was off before suspend, and its vblank
++	 * is off, so drm_crtc_vblank_get() would fail. The reference is taken
++	 * once the CRTC comes on, after drm_crtc_vblank_on(), and given back
++	 * when it goes off, after drm_crtc_vblank_off().
++	 */
++	bool old_vrr_active = old_state->base.active &&
++			      amdgpu_dm_crtc_vrr_active(old_state);
++	bool new_vrr_active = new_state->base.active &&
++			      amdgpu_dm_crtc_vrr_active(new_state);
+ 
+ 	/* Only DCE gates vupdate on VRR, keep it enabled for DCN */
+ 	bool vrr_gates_vupdate = amdgpu_ip_version(adev, DCE_HWIP, 0) == 0;
