@@ -542,6 +542,32 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         fresh = "qs ipc call launcher showing | grep -qF '\"landedFresh\":false'"
         self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
 
+    def line(self, written: str) -> None:
+        """Press Return on a row that ends something, and wait for its command on the : line.
+
+        Return on it, from the find or normal, only writes its command there, so a test presses
+        Return again for it to be done, once a Return no longer comes so soon after the writing
+        that the launcher takes it for the same press doubled.
+        """
+        self.machine.send_key("ret")
+        self.launcher_until(lambda shown: (shown["command"] or {}).get("line") == written)
+        fresh = "qs ipc call launcher showing | grep -qF '\"linedFresh\":false'"
+        self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
+
+    def line_answered(self, written: str, asked: str | None = None) -> None:
+        """Press Return on a row that ends something, run its line, and answer its ask yes.
+
+        What can't be taken back asks once the line runs, as d's does, and y does it. Given
+        `asked`, the ask says that: the row's own verb and name, never the line's command.
+        """
+        self.line(written)
+        with self.told("ask ready"):
+            self.machine.send_key("ret")
+        if asked is not None:
+            self.launcher_until(lambda shown: shown["question"] == asked)
+        with self.told("answered yes"):
+            self.machine.send_chars("y")
+
     def on_find(self) -> None:
         """Put the launcher's line back to typing, by A from normal, and wait for it.
 

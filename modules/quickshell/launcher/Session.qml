@@ -54,6 +54,8 @@ Provider {
     setOptions: Object.assign({
         recording: {
             kind: "switch",
+            // Off stops what records, as Stop Recording does.
+            ends: true,
             now: () => Recorder.recording,
             set: to => {
                 if (to && !Recorder.recording)

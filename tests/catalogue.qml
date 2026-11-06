@@ -198,6 +198,53 @@ QtObject {
             "See It, Disconnect It");
         expect("rows that all change something keep their order",
             names(Catalogue.quietFirst([cut, forget], named)), "Disconnect It, Forget It");
+        // What never runs on Return, from any mode, its command put on the
+        // : line instead: an act that ends, takes away or reaches someone,
+        // as the language's ends flag says of its command, and :set's no
+        // form, which turns something off (`off`, read from the command's
+        // value as SetWords reads it, since the flag is the command's and
+        // :set wifi turns it on).
+        const ending = (row, off) => Catalogue.endsSomething(row, named(row), off ?? false);
+        const endings = [
+            ["a disconnect", { verb: "disconnect", command: "disconnect", run: does }],
+            ["a forget", { verb: "forget", command: "forget", act: "ending", run: does }],
+            ["a window's Close It, by :close", { verb: "close", command: "close", run: does }],
+            ["a reply", { verb: "reply", command: "reply", run: does }],
+            ["the session's Power Off", { verb: "off", command: "poweroff", run: does }],
+            ["Join the Call in the Clipboard, by :meet", { verb: "join", command: "meet",
+                run: does }],
+            // Where the language names no command for it, an ending act, as
+            // words.json marks one, still ends.
+            ["an ending act whose command isn't named", { verb: "zap", act: "ending",
+                run: does }]
+        ];
+        for (const [what, row] of endings)
+            expect(`${what} ends something`, ending(row), true);
+        expect("Wi-Fi Off, :set nowifi, ends something",
+            ending({ verb: "off", command: "set", run: does }, true), true);
+        // What calls someone or starts something new is the spec's other
+        // rule for Return, the language's starts flag, and goes to the line
+        // as an ending does (VKCF3Z, 2026-11-05).
+        expect("what starts something, as :share, goes to the line",
+            Catalogue.endsSomething({ verb: "share", run: does },
+                { command: "share", flags: { starts: true } }), true);
+        const lasting = [
+            ["Wi-Fi On, :set wifi", { verb: "on", command: "set", run: does }],
+            ["a copy", { verb: "copy", command: "yank", run: does }],
+            ["a window moved", { verb: "move", run: does }],
+            ["a place", { category: {}, verbs: opens }],
+            // A thing holding acts of its own opens on Return, its ending
+            // among its acts for d, so a meeting joins its call from ten
+            // minutes before it starts, Joel's own rule, though its
+            // command is :meet.
+            ["a meeting, holding its acts", { verb: "join", command: "meet", verbs: opens,
+                run: does }],
+            ["one gone", { verb: "disconnect", command: "disconnect", gone: true, run: does }],
+            ["a row asking its words first", { verb: "disconnect", command: "disconnect",
+                given: does, run: does }]
+        ];
+        for (const [what, row] of lasting)
+            expect(`${what} ends nothing`, ending(row), false);
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
             false);

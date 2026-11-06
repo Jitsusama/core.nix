@@ -44,6 +44,9 @@ Provider {
     setOptions: !present ? ({}) : ({
         wifi: {
             kind: "switch",
+            // Off drops the network joined, so :set nowifi is never run
+            // by Return.
+            ends: true,
             takes: true,
             now: () => !provider.on ? false : Wifi.joined?.network ?? true,
             // :set wifi= lists the networks saved, which it can join.
