@@ -307,20 +307,21 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
 
 
 def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
-    """Find the notices, whose chord opens them, and photograph their count before it.
+    """Step into Desktop, whose collections each open by a chord, and photograph their counts.
 
     A collection listed whole outside home says how many it holds at its right, a muted dot
-    from its chord, as the status line joins its facts (VKCF3Z, 2026-11-05).
+    from its chord, as the status line joins its facts (VKCF3Z, 2026-11-05). A find's rows
+    say no count, which would read all of each at every key.
     """
-    desktop.answer("notices")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Notices" and shown["kind"] == "collection"
-        )
-    )
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Desktop")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["desktop"])
     selected = desktop.showing()["selected"]
-    assert selected["side"], f"at {scale} the notices say no count: {selected}"
-    desktop.photograph(f"launcher-found-collection-at-{scale.replace('.', '-')}")
+    assert selected["side"] and selected["chord"], f"at {scale} Desktop's first: {selected}"
+    desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
 
