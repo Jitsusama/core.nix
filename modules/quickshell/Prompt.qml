@@ -281,8 +281,8 @@ Item {
     }
 
     // Takes the keys back from whatever else in its window had them, as it
-    // opens, so nothing cleared before is offered back, and a modal line
-    // opens on the find, so typing finds at once.
+    // opens, with no change or half-pressed key left from before, and a
+    // modal line opens on the find, so typing finds at once.
     function take() {
         changes = [];
         standing = QueryKeys.rest();
