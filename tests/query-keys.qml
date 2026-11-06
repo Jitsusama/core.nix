@@ -131,12 +131,6 @@ QtObject {
             { count: "", typed: [], operator: { key: "d", count: "2" } });
         holds("d and y leave the line in normal", typed(["Escape", "d", "d", "y", "j"]).mode,
             "normal");
-        holds("an operator waits past timeoutlen, as Vim's does",
-            Keys.waited({ count: "3", typed: [], operator: { key: "d", count: "" } }),
-            { count: "3", typed: [], operator: { key: "d", count: "" } });
-        holds("though a g after it lets go",
-            Keys.waited({ count: "", typed: ["g"], operator: { key: "y", count: "2" } }),
-            { count: "", typed: [], operator: { key: "y", count: "2" } });
         for (const act of ["ending", "copy"])
             holds(`${act} is once a press, so a held d never makes dd`, Keys.repeats(act), false);
         holds("the field says dd for ending", Keys.keyOf("ending", "normal"), "dd");
@@ -1412,8 +1406,10 @@ QtObject {
             Keys.table.filter(one => one.keys.includes("Escape")
                 && ["close", "dismiss", "quit"].includes(one.act)).map(one => one.act), []);
         holds("a letter on the find types, meaning nothing idle", typed(["n"]).idle, []);
-        holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
-            { count: "", typed: [] });
+        // A begun Space waits for its next key however long, as his
+        // which-key holds it (Prompt.qml's standing); Escape lets it go.
+        holds("Escape lets a begun Space go, so a ? after it finds upward",
+            typed(["Escape", "Space", "Escape", "?"]).acts, ["normal", "freshFind"]);
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in",
@@ -1557,8 +1553,6 @@ QtObject {
         // glyph's room.
         holds("every line's keys are short enough to sit whole",
             facts.filter(line => line.label.length > 14).map(line => line.label), []);
-        holds("a g waiting its timeoutlen lets go, keeping the count",
-            Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp", "matchNext", "matchBack",
             "letterAgain", "letterAgainBack"])

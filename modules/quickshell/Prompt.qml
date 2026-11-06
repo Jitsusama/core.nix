@@ -140,27 +140,16 @@ Item {
     // Whether letters type in the mode it's in.
     readonly property bool typingNow: mode === "find" || mode === "insert"
     // The keys of a sequence begun in normal, as cc's first c, and a count
-    // typed before a move.
+    // typed before a move. A sequence begun waits for its next key however
+    // long Joel pauses, as his Neovim's which-key holds a begun key once
+    // its list shows: let go after timeoutlen, a Space then a pause before
+    // the Shift that ? takes found the find upward instead of the key list
+    // (Joel, 2026-11-05: "space ? does not work"). Escape lets it go.
     property var standing: QueryKeys.rest()
     // Whether an ask stands (Launcher.qml's askOnce), which takes every
     // key as its answer, as Vim's ask_yesno does, until one answers it.
     property bool confirming: false
     signal answered(string key)
-    // How long a sequence begun waits for its next key before it's let go,
-    // as his Neovim's timeoutlen (modules/keys/language.toml).
-    property int wait: 300
-    onStandingChanged: {
-        if (standing.typed.length > 0)
-            waiting.restart();
-        else
-            waiting.stop();
-    }
-
-    Timer {
-        id: waiting
-        interval: prompt.wait
-        onTriggered: prompt.standing = QueryKeys.waited(prompt.standing)
-    }
     // Whether the caret blinks: while the line is on screen and modal.
     property bool awake: true
     // Says how far an aside may run, so a long one never crowds what's typed
