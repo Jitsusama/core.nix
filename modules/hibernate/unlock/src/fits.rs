@@ -18,7 +18,13 @@
 //! image's own allocation takes, so here they're free: on a 1 GiB machine
 //! they were a ninth of memory.
 //! The floors count as nothing, since the hook sets them aside first
-//! (floors.rs says why).
+//! (floors.rs says why). Pages the graphics drivers' pool keeps once a
+//! buffer is freed, `GPUReclaim`, the pool's shrinker gives back under the
+//! same reclaim, so they count as freed too: after a restore, the video
+//! memory the driver brought back left 868 MB there on the 8 GiB laptop,
+//! which put the sums at the cap with its desktop barely open.
+//! `minimum_image_size` leaves them out of its count, but its count only
+//! sizes the target; the image's own allocation is what reclaims.
 
 /// A page, as the kernel counts memory for the image.
 const PAGE: u64 = 4096;
@@ -34,6 +40,7 @@ pub struct Memory {
     file: u64,
     slab: u64,
     anon: u64,
+    gpu: u64,
 }
 
 impl Memory {
@@ -51,6 +58,8 @@ impl Memory {
             file: kib("Active(file)")? + kib("Inactive(file)")?,
             slab: kib("SReclaimable")?,
             anon: kib("Active(anon)")? + kib("Inactive(anon)")?,
+            // A kernel that doesn't count the pool says nothing of it.
+            gpu: kib("GPUReclaim").unwrap_or(0),
         })
     }
 }
@@ -137,7 +146,7 @@ impl Fit {
             .total
             .saturating_sub(memory.free)
             .saturating_sub(zones.parked);
-        let taken_back = memory.file + memory.slab + memory.anon.min(swap_room);
+        let taken_back = memory.file + memory.slab + memory.gpu + memory.anon.min(swap_room);
         Self {
             most,
             least: used.saturating_sub(taken_back),
@@ -194,8 +203,18 @@ mod tests {
         Active(file):          0 kB\nInactive(file):  3215884 kB\n\
         SReclaimable:     406536 kB\n";
 
-    /// Its /proc/zoneinfo's zones then, with only the lines the sums read,
-    /// each zone's twelve processors' counts summed into one.
+    /// The laptop's /proc/meminfo with its desktop open, 20 minutes after a
+    /// restore, when `fits` said 1.6 GB had to be saved against room for
+    /// 1.6 GB.
+    const RESTORED: &str = "MemTotal:        7562124 kB\nMemFree:         2357520 kB\n\
+        Active(anon):     364504 kB\nInactive(anon):   210928 kB\n\
+        Active(file):     341180 kB\nInactive(file):  2241548 kB\n\
+        SReclaimable:     424908 kB\nGPUActive:        216140 kB\n\
+        GPUReclaim:       868612 kB\n";
+
+    /// Its /proc/zoneinfo's zones the hour before the desktop was refused,
+    /// with only the lines the sums read, each zone's twelve processors'
+    /// counts summed into one.
     const ZONES: &str = "Node 0, zone      DMA\n        high     72\n        managed  3841\n\
         protection: (0, 1932, 7369, 7369, 7369)\n              count:    0\n\
         Node 0, zone    DMA32\n        high     9366\n        managed  494655\n\
@@ -255,6 +274,26 @@ mod tests {
         assert_eq!(memory.file, (458_652 + 1_547_624) * 1024);
         assert_eq!(memory.anon, (576_328 + 140_680) * 1024);
         assert_eq!(memory.slab, 107_788 * 1024);
+    }
+
+    #[test]
+    fn a_meminfo_without_the_graphics_pool_has_none() {
+        assert_eq!(Memory::parse(LAPTOP).unwrap().gpu, 0);
+        assert_eq!(Memory::parse(RESTORED).unwrap().gpu, 868_612 * 1024);
+    }
+
+    #[test]
+    fn the_desktop_after_a_restore_fits_with_the_graphics_pool_given_back() {
+        let memory = Memory::parse(RESTORED).unwrap();
+        let fit = Fit::of(memory, Zones::parse(ZONES), GIB, swap_room(SWAPS));
+        // In use 5,204,604 KiB, less 15,369 pages waiting on the
+        // processors' lists (not read then), 2,582,728 KiB of cache, 424,908
+        // of slabs, 868,612 in the graphics pool and 575,432 anonymous.
+        assert_eq!(fit.least, 708_042_752);
+        assert_eq!(
+            fit.said(),
+            "It fits: at least 0.7 GB of memory has to be saved, and there's room for 1.6 GB."
+        );
     }
 
     #[test]

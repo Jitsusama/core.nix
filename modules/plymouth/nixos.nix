@@ -139,6 +139,7 @@ let
     starting = "starting";
     locked = "the disk is locked";
     restarting = "restarting";
+    restoring = "restoring from hibernation";
     stopping = "shutting down";
     touching = "touch the security key";
   };
@@ -462,6 +463,23 @@ in
     # so its lines showed until the GPU's own screen came for Plymouth, 1.8 s
     # later, and again as a shutdown began. A failure is still written.
     boot.kernelParams = [ "systemd.show_status=error" ];
+
+    # The kernel stops every program before it reads a hibernation's image
+    # back, Plymouth with them, so the screen keeps the last frame drawn until
+    # the image's own kernel takes it. That frame says the machine is being
+    # restored, rather than starting, as a resume begins: Plymouth draws at
+    # its next frame, fifty a second, and says nothing when it has, so the
+    # resume waits a tenth of a second first. One that finds no image to read
+    # carries on with the boot, which says it's starting again. systemd's
+    # generator starts the unit only when there may be an image.
+    boot.initrd.systemd.services.systemd-hibernate-resume.serviceConfig = {
+      ExecStartPre = [
+        "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:restoring"
+        "-${lib.getExe' pkgs.coreutils "sleep"} 0.1"
+      ];
+      ExecStopPost = [ "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:none" ];
+    };
+    boot.initrd.systemd.storePaths = [ (lib.getExe' pkgs.coreutils "sleep") ];
 
     # As soon as the splash is up, so the generation shows before the disk
     # asks for its PIN.

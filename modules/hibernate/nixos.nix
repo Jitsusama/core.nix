@@ -9,7 +9,8 @@
 # to make room (unlock/src/floors.rs), zswap is switched off, or what's
 # swapped out for it can stay in memory (unlock/src/zswap.rs), and
 # `hibernate-unlock fits` says
-# beforehand whether the image would fit, by the kernel's own sums.
+# beforehand whether the image would fit, by the kernel's own sums. Once a
+# restore is back, the hook says how long it took (unlock/src/restored.rs).
 {
   config,
   lib,
@@ -69,6 +70,17 @@ in
     # opens. Where a kernel builds it in, as the laptops' does, this asks for
     # nothing more.
     boot.initrd.kernelModules = [ "lz4" ];
+
+    # Just before the image is read, the initrd keeps when, in an EFI
+    # variable, so the hook can say how long the restore took once the
+    # machine is back: the image's kernel takes the initrd's memory and its
+    # log with it (unlock/src/restored.rs). systemd's generator starts this
+    # unit only when there's an image to look for, and nothing kept stands
+    # in the restore's way.
+    boot.initrd.systemd.services.systemd-hibernate-resume.serviceConfig.ExecStartPre = [
+      "-${lib.getExe unlock} restoring"
+    ];
+    boot.initrd.systemd.storePaths = [ (lib.getExe unlock) ];
 
     # For `hibernate-unlock fits`, for whatever asks for a hibernation to run
     # first: asked inside the sleep, it would come after the screen locked.

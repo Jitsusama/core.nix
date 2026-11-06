@@ -7,6 +7,7 @@
 //! hibernate-unlock pre|post <action> [<disk>...]
 //! hibernate-unlock rescue [<why>...]
 //! hibernate-unlock fits
+//! hibernate-unlock restoring
 //! ```
 //!
 //! systemd-sleep runs it before and after each sleep, naming the action
@@ -50,9 +51,14 @@
 //! what's swapped out for the image can stay in memory (zswap.rs). `fits`
 //! says whether the image would fit, by the kernel's sums, before anything
 //! is asked to hibernate (fits.rs), and exits 1 when it wouldn't.
+//!
+//! `restoring` runs in the initrd just before the image is read, keeping
+//! when in an EFI variable, so that once the machine is back the hook says
+//! how long the restore took (restored.rs).
 
 mod fits;
 mod floors;
+mod restored;
 mod zswap;
 
 use serde_json::Value;
@@ -589,6 +595,7 @@ fn after(action: &str, disks: &[String]) {
         return;
     }
     let _ = fs::remove_file(TRIED_AGAIN);
+    say_how_long_the_restore_took();
     if disks.is_empty() {
         eprintln!("hibernate-unlock: no disk asked at the prompt; the lock stays");
         return;
@@ -603,6 +610,39 @@ fn after(action: &str, disks: &[String]) {
     match said("loginctl", &["unlock-sessions"]) {
         Some(_) => eprintln!("hibernate-unlock: back through the disk prompt; the lock is let go"),
         None => eprintln!("hibernate-unlock: loginctl couldn't let the lock go"),
+    }
+}
+
+/// Says how long the restore took, when this start's initrd kept when it
+/// began.
+fn say_how_long_the_restore_took() {
+    let variable = Path::new(restored::VARIABLE);
+    let Some(then) = restored::kept(variable) else {
+        eprintln!("hibernate-unlock: the initrd kept no count, so how long it took is unsaid");
+        return;
+    };
+    // The firmware keeps it across starts, so a later restore whose initrd
+    // couldn't keep one would read this one.
+    if let Err(error) = restored::forget(variable) {
+        eprintln!("hibernate-unlock: couldn't remove the restore's count: {error}");
+    }
+    let said = restored::counted()
+        .zip(restored::rate())
+        .and_then(|(now, rate)| restored::said(then, now, rate));
+    match said {
+        Some(said) => eprintln!("hibernate-unlock: {said}"),
+        None => eprintln!("hibernate-unlock: couldn't count how long the restore took"),
+    }
+}
+
+/// Keeps when the restore began, in the initrd, never failing it.
+fn restoring() {
+    let Some(now) = restored::counted() else {
+        eprintln!("hibernate-unlock: no counter to keep when the restore began");
+        return;
+    };
+    if let Err(error) = restored::keep(Path::new(restored::VARIABLE), now) {
+        eprintln!("hibernate-unlock: couldn't keep when the restore began: {error}");
     }
 }
 
@@ -786,9 +826,11 @@ fn main() -> ExitCode {
         [when, action, disks @ ..] if when == "post" => after(action, disks),
         [what, why @ ..] if what == "rescue" => rescue_now(&Why::from_args(why)),
         [what] if what == "fits" => return fits_now(),
+        [what] if what == "restoring" => restoring(),
         _ => {
             eprintln!(
-                "usage: hibernate-unlock pre|post <action> [<disk>...] | rescue [<why>...] | fits"
+                "usage: hibernate-unlock pre|post <action> [<disk>...] | rescue [<why>...] | fits \
+                 | restoring"
             );
             return ExitCode::from(2);
         }
