@@ -739,7 +739,14 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # lists what it offers as commands under its words, and : puts them first in the menu;
     # Tab chooses it and Return does it, with a token to come forward, giving the keys back.
     desktop.listen()
-    with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
+    # Its status line reaches the frame, so its text centres between the
+    # hairline and the frame, as the launcher's does (docs/design.md: text
+    # in a band centres in it).
+    with (
+        desktop.told("keys notices"),
+        desktop.told("notice cursor Lunch"),
+        desktop.told("notice foot ends at the frame"),
+    ):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
     for key in ["tab", "backspace", "h", "l"]:
