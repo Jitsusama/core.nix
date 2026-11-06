@@ -58,6 +58,20 @@ def placed(foot: list[Json]) -> set[tuple[str, int]]:
     }
 
 
+def status_facts(foot: list[Json], told: list[str]) -> tuple[int, set[tuple[str, int]]]:
+    """Give where the foot's mode mark starts, and its status facts with where each starts.
+
+    The facts are the words between the mark and the first of the keys told: the mark reads
+    each mode's own three capitals, and each mode tells its own keys, so neither is a fact.
+    """
+    keys = {key.split(" ", 1)[0] for key in told}
+    ordered = sorted(foot, key=lambda word: word["x"])
+    keys_from = min((word["x"] for word in ordered if word["text"] in keys), default=None)
+    assert keys_from is not None, (told, foot)
+    facts = [word for word in ordered[1:] if word["x"] < keys_from]
+    return ordered[0]["x"], {(text, x) for text, x in placed(facts) if "<font" not in text}
+
+
 def the_modes_look_as_vims(desktop: Desktop) -> None:
     """See the line on the find, then in normal by Escape, then on the find again by A.
 
@@ -65,14 +79,14 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     """
     machine = desktop.machine
     # The line opens on the find, Vim's / line, led by its / in the accent,
-    # the foot naming no mode, since a line is no mode of Vim's own, and
+    # the foot naming it by its mark alone, never by a word, and
     # the caret a bar a quarter of a letter wide.
     shown = desktop.showing()
     assert (shown["mode"], shown["sigil"], shown["sigilHue"]) == ("find", "/", "accent"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     field = laid["field"]
     assert not any(word["text"] in ("insert", "find") for word in laid["foot"]), laid["foot"]
-    rest = placed(laid["foot"])
+    mark, facts = status_facts(laid["foot"], shown["selected"]["told"])
     # The line holds only the find and how far it narrows: Ctrl+Y's completing is said in
     # the foot, by its key and lowercase word, with every other hint, and no key is on the
     # line.
@@ -95,8 +109,10 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     assert (shown["sigil"], shown["sigilHue"]) == ("/", "muted"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     held = placed(laid["foot"])
-    # The status facts hold their places; the keys are normal's own, drawn with their marks.
-    facts = {(text, x) for text, x in rest if "<font" not in text}
+    # The mode's mark and the status facts hold their places; the keys are normal's own,
+    # drawn with their marks.
+    assert status_facts(laid["foot"], shown["selected"]["told"])[0] == mark, laid["foot"]
+    assert facts, laid["foot"]
     assert facts <= held, (facts, laid["foot"])
     # The answer copies on Return and holds more, so Ctrl+] in comes first, furthest from
     # Return, and the key list's stays just before Return.
