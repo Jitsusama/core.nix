@@ -503,7 +503,8 @@ fn fixed_forward(
 /// merge in it that moved the test's derivation, or added the test, since
 /// that is what the round ran it for. The round's head may have touched
 /// nothing of it, as when the net's own quarantine PR was the head. None
-/// when no merge since `base` moved it.
+/// when no merge since `base` moved it. Each merge asks for two
+/// derivations, so it's read only for an outcome that names an owner.
 fn owner_of(world: &dyn World, base: &str, head: &str, test: &str) -> Option<u64> {
     let merges = world.merges(base, head).ok()?;
     merges.iter().rev().find_map(|merge| {
@@ -607,9 +608,6 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     let mut unfinished = false;
     for (test, outcome) in tests.iter().zip(outcomes) {
         let kept_out = quarantined.contains(test);
-        // Read only for an outcome that names one, since each merge asks
-        // for two derivations.
-        let owner = || owner_of(world, &base, &head, test);
         match outcome {
             Outcome::Passed => {
                 if hold
@@ -625,7 +623,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
                 let reason = format!("failed, then passed, at {}", short(&head));
-                let owner = owner();
+                let owner = owner_of(world, &base, &head, test);
                 let made = world.quarantine(test, owner, &head, &reason);
                 state.find(&json!({
                     "kind": "flaky",
@@ -644,7 +642,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                     "kind": "failed-in-quarantine",
                     "test": test,
                     "commit": head,
-                    "owner_pr": owner(),
+                    "owner_pr": owner_of(world, &base, &head, test),
                     "log": state.log(&head, test, 2).display().to_string(),
                     "at": now(),
                 }))?;
@@ -665,7 +663,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             // but no merge is blamed for it.
             Outcome::Stalled => {
                 failed = true;
-                stalled(state, &head, test, owner())?;
+                stalled(state, &head, test, owner_of(world, &base, &head, test))?;
             }
         }
     }
