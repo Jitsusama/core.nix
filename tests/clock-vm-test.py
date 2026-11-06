@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 HEARING = timedelta(minutes=1)
 # How long chrony may take to set the clock from the machine's own server.
 SYNCING = timedelta(minutes=2)
+# A link's state written this many times, a moment apart, as networkd wrote them on a laptop
+# as it started: six in under three seconds, past systemd's default of five starts in ten.
+BURST = 10
 
 
 @pytest.fixture(scope="module")
@@ -49,6 +52,28 @@ def test_chrony_is_told_the_networks_server(syncing: BaseMachine, silent: str) -
     syncing.wait_until_succeeds(
         f"chronyc -n -c sources | cut -d, -f3 | grep -qx {silent}", timeout=HEARING
     )
+
+
+def test_a_burst_of_link_states_leaves_it_listening(syncing: BaseMachine) -> None:
+    """Link states written in a burst are each heard, and it's still listening after."""
+    state = "/run/systemd/netif/links/burst"
+    try:
+        for _ in range(BURST):
+            # Each write closes the file, which is what the path waits for; a moment
+            # apart, each one starts a run of its own.
+            syncing.succeed(f": > {state} && sleep 0.3")
+    finally:
+        syncing.succeed(f"rm -f {state}")
+    # Done once it's no longer running: inactive, or failed if it stopped hearing.
+    syncing.wait_until_succeeds(
+        "systemctl show -p ActiveState --value chrony-network-servers.service"
+        " | grep -qvx activating",
+        timeout=60,
+    )
+    for unit in ("chrony-network-servers.path", "chrony-network-servers.service"):
+        result = syncing.succeed(f"systemctl show -p Result --value {unit}").strip()
+        assert result == "success", f"{unit}: {result}"
+    syncing.succeed("systemctl is-active chrony-network-servers.path")
 
 
 def test_the_clock_sets_from_the_machines_own_server(syncing: BaseMachine, silent: str) -> None:
