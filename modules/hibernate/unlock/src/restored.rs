@@ -5,16 +5,18 @@
 //! kernel takes its memory, its log included, so nothing the starting
 //! kernel knew survives the jump but what the firmware keeps. Just before
 //! the image is read, `hibernate-unlock restoring` runs in the initrd and
-//! keeps the processor's time stamp counter in a volatile EFI variable.
-//! The counter starts at zero as the firmware starts and counts on through
-//! the jump, so once the machine is back the hook reads it again and says
-//! how long reading the image and bringing the machine back took after the
-//! disk opened, and how long the whole start took from the power button. A
-//! volatile variable is gone at the next start, so the one there was kept
-//! by this start's initrd.
+//! keeps the processor's time stamp counter in an EFI variable. The counter
+//! starts at zero as the firmware starts and counts on through the jump, so
+//! once the machine is back the hook reads it again and says how long
+//! reading the image and bringing the machine back took after the disk
+//! opened, and how long the whole start took from the power button. Once
+//! the firmware has handed over, it sets only variables it keeps across
+//! starts, and refuses a volatile one, so the hook removes the variable
+//! once it has read it: one there was kept by this start's initrd.
 
 use std::fs;
 use std::io;
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -24,9 +26,16 @@ pub const VARIABLE: &str =
     "/sys/firmware/efi/efivars/HibernateRestoring-dd4c2ee2-8abd-413f-8f63-48837b8a3f23";
 
 /// The variable's attributes, which efivarfs takes as its first four
-/// bytes: boot services and runtime access, and not non-volatile, so the
-/// firmware forgets it at the next start.
-const VOLATILE: [u8; 4] = [0x06, 0, 0, 0];
+/// bytes: non-volatile, with boot services and runtime access, the only
+/// kind the firmware sets once the kernel runs.
+const ATTRIBUTES: [u8; 4] = [0x07, 0, 0, 0];
+
+/// `FS_IOC_GETFLAGS` and `FS_IOC_SETFLAGS` on x86-64, and the flag efivarfs
+/// sets on every variable it doesn't name as safe to remove, which keeps an
+/// unlink from deleting it.
+const GET_FLAGS: libc::c_ulong = 0x8008_6601;
+const SET_FLAGS: libc::c_ulong = 0x4008_6602;
+const IMMUTABLE: libc::c_int = 0x10;
 
 /// How long the counter's rate is measured over: long enough that the
 /// clock's reading takes a vanishing share of it.
@@ -56,7 +65,7 @@ pub fn counted() -> Option<u64> {
 
 /// Keeps the count now in `variable`, in one write, as efivarfs takes it.
 pub fn keep(variable: &Path, count: u64) -> io::Result<()> {
-    let mut written = VOLATILE.to_vec();
+    let mut written = ATTRIBUTES.to_vec();
     written.extend_from_slice(count.to_string().as_bytes());
     fs::write(variable, written)
 }
@@ -64,8 +73,27 @@ pub fn keep(variable: &Path, count: u64) -> io::Result<()> {
 /// The count kept in `variable`, or none when there isn't one.
 pub fn kept(variable: &Path) -> Option<u64> {
     let read = fs::read(variable).ok()?;
-    let text = std::str::from_utf8(read.get(VOLATILE.len()..)?).ok()?;
+    let text = std::str::from_utf8(read.get(ATTRIBUTES.len()..)?).ok()?;
     text.trim().parse().ok()
+}
+
+/// Removes `variable`, clearing efivarfs's immutable flag first. A file
+/// elsewhere has no such flag to clear, so failing to clear it is no
+/// failure; failing to remove it is.
+pub fn forget(variable: &Path) -> io::Result<()> {
+    if let Ok(file) = fs::File::open(variable) {
+        let fd = file.as_raw_fd();
+        let mut flags: libc::c_int = 0;
+        // SAFETY: each call passes an open descriptor and a pointer to an
+        // int, which is what both requests read or write.
+        unsafe {
+            if libc::ioctl(fd, GET_FLAGS, &raw mut flags) == 0 && flags & IMMUTABLE != 0 {
+                flags &= !IMMUTABLE;
+                libc::ioctl(fd, SET_FLAGS, &raw const flags);
+            }
+        }
+    }
+    fs::remove_file(variable)
 }
 
 /// How many counts the counter makes in a second, measured against the
@@ -120,8 +148,21 @@ mod tests {
         let variable = folder("kept").join("HibernateRestoring");
         keep(&variable, 123_456_789).unwrap();
         let written = fs::read(&variable).unwrap();
-        assert_eq!(written[..4], VOLATILE);
+        assert_eq!(written[..4], ATTRIBUTES);
         assert_eq!(kept(&variable), Some(123_456_789));
+    }
+
+    #[test]
+    fn a_forgotten_count_is_gone() {
+        let variable = folder("forget").join("HibernateRestoring");
+        keep(&variable, 7).unwrap();
+        forget(&variable).unwrap();
+        assert_eq!(kept(&variable), None);
+    }
+
+    #[test]
+    fn no_variable_to_forget_is_a_failure() {
+        assert!(forget(&folder("none-to-forget").join("HibernateRestoring")).is_err());
     }
 
     #[test]
