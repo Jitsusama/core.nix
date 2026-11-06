@@ -7100,10 +7100,13 @@ Scope {
                                         Words.field.visual ?? {})
                                 : ""
                             // The widest it says often and its gap, held
-                            // whatever shows: visual's count of three figures,
-                            // "999 chosen", as the spec sizes the room, so a
-                            // count or an operator's words never move the
-                            // facts beside it. A binding doesn't see what a
+                            // whatever shows: visual's count in as many figures
+                            // as the place has rows, which hold still while it
+                            // chooses, or three while the drawer shows a page,
+                            // which counts letters too, so a count or an
+                            // operator's words never move the facts beside it.
+                            // Three figures always held "999 chosen" beside two
+                            // rows, and cost visual its y (VKCF3Z, 2026-11-06). A binding doesn't see what a
                             // call reads, so it reads the face itself, to be
                             // measured again in the theme's face once that
                             // arrives.
@@ -7113,7 +7116,9 @@ Scope {
                                 // it, so it's read whole.
                                 const widest = Math.max(root.placeSays === "" ? 0
                                     : measure.advanceWidth(root.placeSays),
-                                    measure.advanceWidth(Operators.chosenSaid(999,
+                                    measure.advanceWidth(Operators.chosenSaid("9".repeat(
+                                        drawerCard.shown ? 3
+                                            : String(Math.max(1, root.matches.length)).length),
                                         Words.field.visual ?? {})));
                                 return Theme.space.rung.groups + Math.ceil(widest);
                             }
@@ -7211,21 +7216,27 @@ Scope {
                             // it leaves (VKCF3Z, 2026-11-05).
                             readonly property var waiting: root.waitingSaid === "" ? []
                                 : [{ entry: { name: "waiting" }, way: "", said: root.waitingSaid }]
+                            // In visual, on the rows or the drawer's page, the
+                            // facts give way whole before visual's acts, the
+                            // time staying (VKCF3Z, 2026-11-06).
+                            readonly property bool yielding: root.visual
+                                || QueryKeys.chosen(prompt.mode)
                             readonly property var fit: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
                                 const left = foot.room - (waiting.length === 0 ? 0
                                     : place(waiting[0]) + spacing);
                                 return Standing.fittedFrom(facts, told => wide(told) <= left,
-                                    root.footStage);
+                                    root.footStage, yielding);
                             }
                             readonly property var kept: fit.told.concat(waiting)
                             // The room they take at their least, the glyphs
-                            // and the time, with what waits: what the keys
-                            // leave them however many a row has.
+                            // and the time, or in visual the time alone, with
+                            // what waits: what the keys leave them however
+                            // many a row has.
                             readonly property real least: {
-                                const floor = Standing.fittedFrom(facts, () => false, 0).told
-                                    .concat(waiting);
+                                const floor = Standing.fittedFrom(facts, () => false, 0, yielding)
+                                    .told.concat(waiting);
                                 return floor.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, floor.length - 1) * spacing;
                             }
