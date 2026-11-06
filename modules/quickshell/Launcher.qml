@@ -4221,7 +4221,16 @@ Scope {
         const undoable = Operators.undoable(actions);
         if (undoable.length > 0)
             rowChanges = Changes.changed(rowChanges, undoable);
+        changedRow();
         return undoable.length;
+    }
+
+    // The cursor row's actions read again once a change has run, since a
+    // change can leave the row standing with other actions, as a notice
+    // forgotten until the launcher closes has no d left; read only once
+    // selected, its foot would go on naming the d that's done.
+    function changedRow() {
+        readSelectedActions();
     }
 
     // u: the last change taken back, or as many as counted, each action put
@@ -4237,6 +4246,7 @@ Scope {
         const entries = [].concat(...back.moved);
         for (const entry of entries)
             entry.undo();
+        changedRow();
         operatorTells((words.undone ?? "").replace("{count}", String(entries.length)));
         Report.say(`undid ${entries.length}`);
     }
@@ -4253,6 +4263,7 @@ Scope {
         const entries = [].concat(...again.moved);
         for (const entry of entries)
             entry.redo();
+        changedRow();
         operatorTells((words.redone ?? "").replace("{count}", String(entries.length)));
         Report.say(`redid ${entries.length}`);
     }
