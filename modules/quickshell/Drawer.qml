@@ -1464,8 +1464,8 @@ Floating {
                 PageText {
                     id: secondsText
                     sought: drawer.washing
-                    x: timeText.x + timeInk.tightBoundingRect.x + timeInk.tightBoundingRect.width
-                        + Theme.space.rung.mark - secondsInk.tightBoundingRect.x
+                    x: timeText.x + timeInk.drawnEnd + Theme.space.rung.mark
+                        - secondsInk.tightBoundingRect.x
                     width: parent.width - x
                     y: timeText.base - Theme.border - baselineOffset
                     plain: String(drawer.shown?.seconds ?? "")
@@ -1482,6 +1482,15 @@ Floating {
                 // which follow the face as it loads (HVD6O3, 2026-11-05).
                 TextMetrics {
                     id: timeInk
+                    // Where the time's ink ends as it's drawn: its box leaves
+                    // out the letter spacing the Text puts between its
+                    // letters, the Display level's tracking, which set the
+                    // seconds 2 past their mark (10 at 2, 9.3 at 1.5). The
+                    // spacing is read off the time's Text, since a binding
+                    // here that reads this object's own font loops.
+                    readonly property real drawnEnd: tightBoundingRect.x
+                        + tightBoundingRect.width
+                        + Math.max(0, timeText.plain.length - 1) * timeText.font.letterSpacing
                     font: timeText.font
                     text: timeText.plain
                 }
