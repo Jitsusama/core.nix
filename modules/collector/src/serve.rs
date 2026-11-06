@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::held;
 use crate::otlp;
 use crate::pressure;
 use crate::store::Store;
@@ -23,7 +24,8 @@ use crate::store::Store;
 const LONGEST: u64 = 4 << 20;
 
 /// Takes spans on `socket` into `store` until the process is stopped,
-/// with the waits the kernel counts below `root`.
+/// with the waits the kernel counts below `root` and what the account's
+/// floored slices hold.
 ///
 /// # Errors
 ///
@@ -31,13 +33,19 @@ const LONGEST: u64 = 4 << 20;
 pub fn serve(socket: &Path, store: Store, root: &Path) -> Result<(), String> {
     let store = Arc::new(Mutex::new(store));
     // Read before the socket is made, so a sender that finds the socket
-    // knows the first reading is taken.
-    let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let watching =
-        pressure::Watching::start(pressure::sources(root, &cgroup), root.join("sys/fs/cgroup"));
+    // knows the first reading is taken. This process's cgroup line is read
+    // below `root` too, so a test can say where it runs.
+    let cgroup = fs::read_to_string(root.join("proc/self/cgroup")).unwrap_or_default();
+    let cgroups = root.join("sys/fs/cgroup");
+    let watching = pressure::Watching::start(pressure::sources(root, &cgroup), cgroups.clone());
     {
         let store = Arc::clone(&store);
         thread::spawn(move || watching.run(&store));
+    }
+    let places = held::places(&cgroups, &cgroup);
+    {
+        let store = Arc::clone(&store);
+        thread::spawn(move || held::run(&places, &store));
     }
     if let Some(dir) = socket.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("making {}: {e}", dir.display()))?;

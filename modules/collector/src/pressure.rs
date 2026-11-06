@@ -104,7 +104,7 @@ pub fn sources(root: &Path, cgroup: &str) -> Vec<Source> {
 
 /// The account's manager's cgroup, without its leading slash, from this
 /// process's line: everything up to its `user@` service.
-fn manager(cgroup: &str) -> Option<String> {
+pub(crate) fn manager(cgroup: &str) -> Option<String> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
     let mut kept = Vec::new();
     for part in path.split('/') {
@@ -294,7 +294,7 @@ fn leaves(dir: &Path, held: &mut Vec<(PathBuf, u64)>) {
     }
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -303,7 +303,7 @@ fn now() -> i64 {
 }
 
 /// `bytes` random bytes as hex, an id no other span has.
-fn random(bytes: usize) -> String {
+pub(crate) fn random(bytes: usize) -> String {
     let mut taken = vec![0; bytes];
     if fs::File::open("/dev/urandom")
         .and_then(|mut source| source.read_exact(&mut taken))
