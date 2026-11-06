@@ -290,16 +290,18 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: any("complete" in hint for hint in shown["hints"]))
     shown = desktop.showing()
     foot = laid_out(desktop)["foot"]
-    completion = next(word for word in foot if word["text"].endswith("complete"))
-    enter = next(word for word in foot if word["text"].startswith("\u21b5"))
     assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
-    # Measured from Return, as the foot's words are laid out in the card and keysFrom and
-    # keysAt in the foot, so only their gaps compare.
-    held = shown["keysAt"] - shown["keysFrom"]
-    drawn = enter["starts"] - completion["starts"]
-    assert abs(held - drawn) <= 1, (
-        f"the keys held {held} px before Return and drew {drawn}: {shown['hints']},"
-        f" opened {opened['keysRoom']}, now {shown['keysRoom']}"
+    # The room the opening held is just what the keys the letter brought take.
+    assert opened["keysRoom"]["held"] == shown["keysRoom"]["said"], (
+        f"the opening held {opened['keysRoom']['held']} px for the keys, which take"
+        f" {shown['keysRoom']['said']}: {shown['hints']}"
+    )
+    # And that's how they're drawn: the first key starts as far in from the status line's end
+    # as they take, in the card's frame, where the foot's words are laid out.
+    first = next(word for word in foot if word["text"].startswith("Ctrl"))
+    reach = shown["footEnd"] - first["starts"]
+    assert abs(reach - shown["keysRoom"]["said"]) <= 1, (
+        f"the keys take {shown['keysRoom']['said']} px and are drawn over {reach}"
     )
     machine.send_key("ctrl-u")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
