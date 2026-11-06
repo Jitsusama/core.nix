@@ -25,6 +25,7 @@
 pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
+import "Bands.js" as Bands
 import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
@@ -1212,12 +1213,23 @@ Floating {
         font.letterSpacing: Theme.level.title.letterSpacing
     }
 
-    // The head's one baseline, as a place's in the launcher (VKCF3Z's
-    // family cut, 2026-11-05): the place's Title its capitals the inset
-    // under the frame, and the hairline under it set so the first row's
-    // baseline stands a row under it.
-    readonly property real headBase: Theme.space.rung.inset + titleCaps.tightBoundingRect.height
-    readonly property real headTall: Math.round(headBase + rowHeight - Theme.border - rowBase)
+    TextMetrics {
+        id: titleSmall
+        text: "x"
+        font: titleCaps.font
+    }
+
+    // The head is a band, the frame's inside to its hairline, its one line
+    // centred in it by eye (docs/design.md: text in a band centres in it),
+    // and as tall as leaves that line a row over the first row's, as the
+    // launcher's head stands (Y2YBTS, 2026-11-05). Its largest level is
+    // always the Title, so the band is sized by the Title's lift, not the
+    // Figure's the launcher rests on, and the line never settles.
+    readonly property real headLift: Bands.lift(titleCaps.tightBoundingRect.height,
+        titleSmall.tightBoundingRect.height)
+    readonly property real headTall: Bands.above(rowHeight, rowCaps, headLift, Theme.border)
+    readonly property real headBase: Bands.baseline(headTall, titleCaps.tightBoundingRect.height,
+        titleSmall.tightBoundingRect.height)
 
     // The caret's blink, as the launcher's and his kitty's: a key shows it
     // whole, it fades out and back in, and with no key for a while it holds
@@ -1968,8 +1980,7 @@ Floating {
                 id: facts
                 x: foot.factsAt
                 width: Math.min(implicitWidth, foot.width - foot.factsAt
-                    - Theme.space.rung.inset - Theme.space.rung.groups
-                    - statusLine.keys.implicitWidth)
+                    - Theme.space.rung.inset - Theme.space.rung.groups - hinted.wide)
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.facts
@@ -1983,7 +1994,7 @@ Floating {
                 x: facts.x + facts.width + (facts.width > 0 ? Theme.space.rung.groups : 0)
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
                     - foot.factsAt - Theme.space.rung.inset - facts.width
-                    - statusLine.keys.implicitWidth - 2 * Theme.space.rung.groups))
+                    - hinted.wide - 2 * Theme.space.rung.groups))
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.modeWord
@@ -2032,6 +2043,14 @@ Floating {
                     return two.length === 2 && wide(two[0]) + join + wide(two[1]) > fits
                         ? two.slice(1) : two;
                 }
+
+                // How wide the hints that stay are, by the same advances
+                // `fits` was measured against, so the facts and the mode
+                // word leave them their room before the keys have laid out
+                // (Y2YBTS, 2026-11-06).
+                readonly property real wide: shown.reduce((sum, hint, at) => sum
+                    + (at > 0 ? statusLine.keys.spacing : 0)
+                    + statusLine.keys.advance(hint[0], hint[1]), 0)
             }
         }
     }
