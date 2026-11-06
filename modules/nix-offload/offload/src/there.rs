@@ -68,7 +68,7 @@
 //! commit (`passed.rs`), and a check kept is journalled `already`, built
 //! nowhere.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
