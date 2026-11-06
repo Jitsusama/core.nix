@@ -616,10 +616,16 @@ fn after(action: &str, disks: &[String]) {
 /// Says how long the restore took, when this start's initrd kept when it
 /// began.
 fn say_how_long_the_restore_took() {
-    let Some(then) = restored::kept(Path::new(restored::VARIABLE)) else {
+    let variable = Path::new(restored::VARIABLE);
+    let Some(then) = restored::kept(variable) else {
         eprintln!("hibernate-unlock: the initrd kept no count, so how long it took is unsaid");
         return;
     };
+    // The firmware keeps it across starts, so a later restore whose initrd
+    // couldn't keep one would read this one.
+    if let Err(error) = restored::forget(variable) {
+        eprintln!("hibernate-unlock: couldn't remove the restore's count: {error}");
+    }
     let said = restored::counted()
         .zip(restored::rate())
         .and_then(|(now, rate)| restored::said(then, now, rate));

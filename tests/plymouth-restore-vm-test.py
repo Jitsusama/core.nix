@@ -175,8 +175,6 @@ class Restore:
     # Both screens as the kernel began to read the image, once every program was frozen.
     before: Shot
     shots: list[Shot]
-    # Where the console's log of this start begins.
-    began: int
 
     def while_reading(self) -> list[Shot]:
         """Give the photographs taken while the kernel read the image."""
@@ -184,7 +182,7 @@ class Restore:
         return [
             shot
             for shot in self.shots
-            if READS in log[self.began : shot.said] and READ not in log[self.began : shot.said]
+            if READS in log[: shot.said] and READ not in log[: shot.said]
         ]
 
 
@@ -200,9 +198,10 @@ def photographed(machine: QemuMachine, burst: Path, name: str) -> Shot:
     return shot
 
 
-def photographs_until(machine: QemuMachine, burst: Path, words: str, since: int) -> list[Shot]:
-    """Photograph the screens as fast as QEMU can until the console, from since on, says words.
+def photographs_until(machine: QemuMachine, burst: Path, words: str) -> list[Shot]:
+    """Photograph the screens as fast as QEMU can until the console says words.
 
+    The driver's console log starts again with each start, so what it says is this start's.
     Each photograph keeps how far the console had got as it was taken, so the ones taken while
     the image was read can be told apart. Reading one takes longer than the image takes to
     read, so they're read afterwards.
@@ -210,17 +209,17 @@ def photographs_until(machine: QemuMachine, burst: Path, words: str, since: int)
     shots: list[Shot] = []
     began = time.monotonic()
     while True:
-        if words in machine.get_console_log()[since:]:
+        if words in machine.get_console_log():
             return shots
         if time.monotonic() - began > READING.total_seconds():
             pytest.fail(f"the console never said {words}")
         shots.append(photographed(machine, burst, str(len(shots))))
 
 
-def until_said(machine: QemuMachine, words: re.Pattern[str], since: int) -> None:
-    """Wait until the console, from since on, says words."""
+def until_said(machine: QemuMachine, words: re.Pattern[str]) -> None:
+    """Wait until the console says words."""
     began = time.monotonic()
-    while not words.search(machine.get_console_log()[since:]):
+    while not words.search(machine.get_console_log()):
         if time.monotonic() - began > READING.total_seconds():
             pytest.fail(f"the console never said {words.pattern}")
         time.sleep(0.1)
@@ -288,19 +287,18 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
         machine.wait_for_shutdown(timeout=GOES_OFF)
     except subprocess.TimeoutExpired:
         pytest.fail("the machine never went off to hibernate")
-    began = len(machine.get_console_log())
     machine.start()
     machine.wait_for_text("disk is locked", timeout=READING)
     disk = the_disk(machine)
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 {CRAWL} 0 0 0 0")
     machine.send_chars(f"{values['passphrase']}\n")
-    until_said(machine, LOADING, began)
+    until_said(machine, LOADING)
     burst = Path(tempfile.mkdtemp())
     before = photographed(machine, burst, "before")
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 0 0 0 0 0")
-    shots = photographs_until(machine, burst, READ, began)
+    shots = photographs_until(machine, burst, READ)
     machine.wait_for_unit("default.target")
-    return Restore(machine, before, shots, began)
+    return Restore(machine, before, shots)
 
 
 def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) -> None:
