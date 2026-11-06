@@ -59,6 +59,7 @@ const find = [
     { name: "previousRow", acts: ["previous"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "run", acts: ["run"], firsts: true },
+    { name: "follow", acts: ["follow"] },
     { name: "complete", acts: ["complete"] }
 ];
 

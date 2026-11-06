@@ -2003,6 +2003,13 @@ Scope {
             return [];
         const hints = Words.field.hints ?? {};
         const taught = [];
+        // A row Return opens that holds parts, as a program its commands
+        // and windows, says Ctrl+] goes into them, first, furthest from
+        // Return, as normal's foot does (Joel, 2026-11-05: "in programs i
+        // don't understand how to go to sub commands on a program").
+        const stepping = stepsIn(choice) || stepsThing(choice);
+        if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
+            taught.push([hintKey("follow", "find"), hints.in ?? ""]);
         if (typed !== "" && prompt.ghost !== "")
             taught.push([prompt.completeKey, hints.complete ?? ""]);
         const shorter = enough(choice);
@@ -2150,9 +2157,12 @@ Scope {
     // Shift+Return's "below" and the right arrow too, which no foot on the
     // find draws, it cut the date at 1.5 beside an empty stretch; held for
     // Return alone, "Ctrl+Y complete" on the first letter cut it then and
-    // slid every fact after it. A row's own keys grow it as they come
-    // (noteKeys).
+    // slid every fact after it. Ctrl+] in is drawn on the find beside a
+    // row holding parts, so it's held too: left out, the first letter
+    // picking a program slid the keys in by its width. A row's own keys
+    // grow it as they come (noteKeys).
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
+        [hintKey("follow", "find"), (Words.field.hints ?? {}).in ?? ""],
         [prompt.completeKey, (Words.field.hints ?? {}).complete ?? ""]]
     // What normal says beside Return at home: the commands and the keys,
     // kept while normal is taken rather than from the opening. Kept from
@@ -7247,10 +7257,16 @@ Scope {
                             - Math.max(Math.min(root.footKeysWidest, keysRoom),
                                 root.keysWide(kept))
                         // The room the left has, short of the keys and the
-                        // mode's word, which keeps its room in every mode so
-                        // the facts say the same whichever it is.
+                        // mode's word, which keeps its room in every mode it
+                        // speaks in so the facts say the same as it comes and
+                        // goes. The find never says one, so its facts take
+                        // that room: held there, it sat empty while the facts
+                        // gave way to the find's own keys, and a fact may
+                        // change its form once as the mode changes (Y2YBTS,
+                        // 2026-11-05).
                         readonly property real room: keysFrom - Theme.space.rung.groups
-                            - statusLine.factsAt - modeWord.room
+                            - statusLine.factsAt
+                            - (prompt.mode === "find" ? 0 : modeWord.room)
 
                         // As the card last showed it, while it's closed.
                         property string said: ""

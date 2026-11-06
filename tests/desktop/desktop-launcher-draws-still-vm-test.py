@@ -307,6 +307,36 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["typed"] == "")
 
 
+def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
+    """See the find's facts only shorten as kitty is typed, and read whole again in a new mode.
+
+    kitty's row brings Ctrl+Y's completion and Super+Return's next time beside Ctrl+] in, more
+    than the room held from the opening, so the glance gives way. Once kitty is whole and its
+    completion goes, the room it took stays bare rather than the glance reading longer again,
+    since the foot jumping with each letter was Joel's sharpest complaint about it; that room
+    is the record of a row that needed it, and it ends with the find (VKCF3Z, 2026-11-06).
+    """
+    machine = desktop.machine
+    # The time aside, since a minute may turn.
+    opened = desktop.showing()["glance"].split("  ")[1:]
+    said = opened
+    for typed in ("kitty"[:end] for end in range(1, len("kitty") + 1)):
+        machine.send_chars(typed[-1])
+        desktop.launcher_until(lambda shown, want=typed: shown["typed"] == want)
+        now = desktop.showing()["glance"].split("  ")[1:]
+        assert len("  ".join(now)) <= len("  ".join(said)), (typed, said, now)
+        said = now
+    # It measures something: kitty's keys took room the opening's glance had.
+    assert said != opened, opened
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    desktop.normal()
+    machine.send_chars("/")
+    desktop.launcher_until(
+        lambda shown: shown["mode"] == "find" and shown["glance"].split("  ")[1:] == opened
+    )
+
+
 def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) -> None:
     """A fact in the foot that reads shorter keeps its room, so nothing after it slides."""
     machine = desktop.machine
@@ -319,6 +349,7 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: " 100%" in shown["glance"])
     holds_room_only_for_what_it_draws(desktop)
+    shortens_the_facts_only_within_a_find(desktop)
     before = laid_out(desktop)
     # From 100% to 99%: the battery reads shorter, and what follows it
     # stays where it was.

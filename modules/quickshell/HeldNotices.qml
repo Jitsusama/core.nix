@@ -31,7 +31,6 @@ import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
 import "Search.js" as Search
-import "StatusLine.js" as Line
 import "launcher/Notice.js" as Notice
 
 Floating {
@@ -1975,13 +1974,18 @@ Floating {
             // Where the facts start, as the status line says.
             readonly property real factsAt: statusLine.factsAt
 
-            // Whole, as the hints leave it its room as it says it now; it
-            // gives way only where the hints that stay leave none.
+            // Whole, as the hints leave it its room as it says it now. It
+            // gives way whole, never half, only while the hints that stay
+            // leave it none, as normal's and visual's at 2 do: the cursor's
+            // ground and number say where it stands, and in visual the count
+            // chosen is what d acts on (VKCF3Z, 2026-11-06). It hides rather than narrowing
+            // to nothing, which would lay it out again inside its own width.
             Text {
                 id: facts
                 x: foot.factsAt
                 width: Math.min(implicitWidth, foot.width - foot.factsAt
                     - Theme.space.rung.inset - Theme.space.rung.groups - hinted.wide)
+                visible: !hinted.crowded
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.facts
@@ -1990,12 +1994,17 @@ Floating {
                 font: note.font
             }
 
+            // What the facts take of the line, a group after them, or
+            // nothing while they're hidden or empty.
+            readonly property real factsTake: facts.visible && facts.width > 0
+                ? facts.width + Theme.space.rung.groups : 0
+
             Text {
                 id: modeWord
-                x: facts.x + facts.width + (facts.width > 0 ? Theme.space.rung.groups : 0)
+                x: foot.factsAt + foot.factsTake
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - foot.factsAt - Theme.space.rung.inset - facts.width
-                    - hinted.wide - 2 * Theme.space.rung.groups))
+                    - foot.factsAt - Theme.space.rung.inset - foot.factsTake
+                    - hinted.wide - Theme.space.rung.groups))
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.modeWord
@@ -2029,20 +2038,16 @@ Floating {
                     text: held.modeWord
                 }
 
-                // The hints that fit: the middle ones give way first, then
-                // the first, so Space ? and Return's at the right end stay
-                // (StatusLine.js), and the last stays alone before a hint
-                // would run into the facts, as visual's three do at 2. The
-                // dots' gap is read, so they're measured again once the
-                // theme's face arrives.
+                // The hints that fit: the one furthest from Return gives
+                // way first, and the keys list, done and Return never do
+                // (NoticeList.js). The dots' gap is read, so they're
+                // measured again once the theme's face arrives.
                 readonly property var shown: {
                     const keys = statusLine.keys;
                     const join = keys.spacing;
-                    const wide = hint => keys.advance(hint[0], hint[1]);
-                    const two = Line.fitted(held.hints.map(one => [one.key, one.word]), wide,
-                        join, fits);
-                    return two.length === 2 && wide(two[0]) + join + wide(two[1]) > fits
-                        ? two.slice(1) : two;
+                    const wide = hint => keys.advance(hint.key, hint.word);
+                    return NoticeList.footHints(held.hints, wide, join, fits)
+                        .map(one => [one.key, one.word]);
                 }
 
                 // How wide the hints that stay are, by the same advances
@@ -2052,6 +2057,11 @@ Floating {
                 readonly property real wide: shown.reduce((sum, hint, at) => sum
                     + (at > 0 ? statusLine.keys.spacing : 0)
                     + statusLine.keys.advance(hint[0], hint[1]), 0)
+
+                // Whether the hints that stay leave the facts no room, as
+                // drawn: what was just done, said in their place, takes
+                // only `fits`.
+                readonly property bool crowded: held.said === "" && wide > fits
             }
         }
     }

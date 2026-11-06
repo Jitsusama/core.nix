@@ -991,6 +991,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     assert desktop.showing()["open"], "a Space alone closed the launcher"
     machine.send_chars(" w")
     desktop.launcher_until(lambda shown: not shown["open"])
+    follows_from_the_find(desktop)
     escape_at_rest_stays(desktop)
     # A colon as the find's first letter opens the command line, where :q closes.
     desktop.as_account("qs ipc call launcher toggle")
@@ -999,6 +1000,29 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def follows_from_the_find(desktop: Desktop) -> None:
+    """See the find's foot name Ctrl+] in on a row holding parts, and Ctrl+] go in from there.
+
+    A program's commands and windows are its parts, and the find is where Joel types its name,
+    so the find goes in by the key normal does and says so (Joel, 2026-11-05: "in programs i
+    don't understand how to go to sub commands on a program").
+    """
+    desktop.answer("kitty")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "program:kitty" and shown["mode"] == "find"
+        )
+    )
+    told = desktop.showing()["selected"]["told"]
+    assert "Ctrl+] in" in told, told
+    desktop.machine.send_key("ctrl-bracket_right")
+    # A step in, the find starts empty, so kitty's commands aren't narrowed to "kitty".
+    desktop.launcher_until(
+        lambda shown: len(shown["held"]) == 1 and shown["mode"] == "find" and shown["typed"] == ""
+    )
+    desktop.close_launcher()
 
 
 def escape_at_rest_stays(desktop: Desktop) -> None:
