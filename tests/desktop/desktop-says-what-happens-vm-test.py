@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import re
 import shlex
 from datetime import timedelta
@@ -144,12 +145,14 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
     """Say whether the drawer is scrolled past a point to a whole line on the eyebrow's baseline.
 
     The eyebrow scrolls with the rest, so where it rests is where it is now and how far the
-    drawer has scrolled; the words' lines take that baseline a whole number of pitches on.
+    drawer has scrolled. The first of the words' lines at or under that baseline is on it, so
+    no bare rows are left over the first line shown.
     """
     scrolled = int(drawer["scrolled"])
     lines = drawer["lines"]
-    off = (lines["words"] - lines["eyebrow"] - drawer["scrolled"]) % PITCH
-    return scrolled > past and min(off, PITCH - off) < ROUNDING and held(drawer)
+    rest = lines["eyebrow"] + drawer["scrolled"]
+    first = lines["words"] + max(0, math.ceil((rest - ROUNDING - lines["words"]) / PITCH)) * PITCH
+    return scrolled > past and abs(first - rest) < ROUNDING and held(drawer)
 
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
@@ -402,7 +405,8 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         desktop.photograph(f"launcher-drawer-cursor-at-{named}")
         # Scrolled a line further, for a person to judge the top's inset by: the first line
         # shown on the eyebrow's baseline, its capitals the inset under the frame.
-        page.until("ctrl-e", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
+        scrolled = page.until("ctrl-e", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
+        assert a_line_on(scrolled), f"at {named} bare rows lie over the first line: {scrolled}"
         desktop.photograph(f"launcher-drawer-scrolled-at-{named}")
     page.press("3")
     desktop.launcher_until(lambda shown: shown["counted"] == "3")

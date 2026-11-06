@@ -132,7 +132,10 @@ function cut(page, top) {
 // page's phase, so the drawer's lines stay on the card's rows and each
 // scrolled to takes the head's baseline, that cuts no line (as cut
 // judges), up to the first at or past the page's end, so the last line
-// shows whole too. One pass
+// shows whole too. Past a rest above the phase, the first is the phase
+// itself, the body's first line: a top in the room between the head and
+// the body would leave the view's first rows bare, though a blank line
+// the page sets between groups is a line, as Vim's is. One pass
 // down the rows and the lines in step, carrying the furthest any line
 // begun above a row reaches: a row is cut just when that lies below it.
 // A page that brings its own, as the drawer's does, worked out once its
@@ -155,7 +158,8 @@ function tops(page) {
     const start = page.start ?? 0;
     const phase = page.phase ?? 0;
     // The first top on the pitch past the rest, from which the rest go on.
-    const past = phase + (Math.floor((start - phase) / page.pitch) + 1) * page.pitch;
+    const past = phase > start ? phase
+        : phase + (Math.floor((start - phase) / page.pitch) + 1) * page.pitch;
     const all = [];
     let next = 0;
     let reach = -Infinity;
