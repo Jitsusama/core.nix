@@ -107,7 +107,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
 
   tests = ./plymouth-restore-vm-test.py;
-  # The track's colour and the bar's, the account's theme's edge and text
+  # The track's colour and the bar's, the account's theme's muted and text
   # (modules/plymouth/nixos.nix).
   values =
     { nodes, ... }:
@@ -117,7 +117,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     pkgs.writeText "plymouth-restore-values.json" (
       builtins.toJSON {
         inherit passphrase small large;
-        track = colours.edge;
+        track = colours.muted;
         bar = colours.text;
       }
     );

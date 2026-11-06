@@ -63,18 +63,14 @@ let
   # Room round the padlock's ink as it's drawn, more than it reaches past
   # its cell; none of it shows.
   inkRoom = space.l;
-  # While a hibernation's image is read, the panel is a meter's frame
-  # holding a meter's bar (../quickshell/Meter.qml): a stroke four
-  # hairlines thick, in the edge's colour, from the padlock's cell to as
-  # far from the panel's other side, centred in its height. The kernel
-  # fills it in the text's colour as it reads the image
-  # (../kernel/hibernate-progress.patch), so it lies where the kernel puts
-  # its bar, told below. Its inset is from the panel's top.
-  track = rec {
-    width = panel.width - 2 * (border + space.rung.inset);
-    height = 4 * border;
-    inset = (panel.height - height) / 2;
-  };
+  # While a hibernation's image is read, a meter's rule
+  # (../quickshell/Meter.qml) lies under the words saying so: a stroke four
+  # hairlines thick, as wide as the words' ink and under it, the apart
+  # rung below their descenders, its empty track muted. The kernel fills
+  # it in the words' colour as it reads the image
+  # (../kernel/hibernate-progress.patch), so where it lies is measured with
+  # the pictures and told the kernel too (imageBar).
+  track.height = 4 * border;
   # How far a shadow can reach, its offset and twice its blur, past which a
   # blur's tail is too faint to see.
   farthest = lib.foldl' lib.max 0;
@@ -214,6 +210,33 @@ let
             (lib.reverseList theme.wallpaper.shadows)
         } \( -clone 0 \) -delete 0 -background none -flatten ${out}
       '';
+      # The image's track, as wide as the ink of the words saying the image
+      # is read, centred on it and the apart rung under its lowest ink, and
+      # where that is: from the middle, as the script centres the words'
+      # picture, and over the foot, as the script stacks the column up from
+      # it (lay_out): the voice's capitals, a beat, the panel, three beats,
+      # the words' baseline, and the words' picture's margin. The words are
+      # drawn as their picture is, before its shadows, so their ink lies as
+      # it does there. The script and the kernel read the same measures.
+      rule = ''
+        voice_tall=$tall
+        ${words "ink.png" serif (points "serif" "large") colours.text pad under.restoring}
+        picture=$(magick identify -format %w ink.png)
+        ink=$(magick ink.png -format %@ info:)
+        wide=''${ink%%x*}
+        rest=''${ink#*x}
+        tall=''${rest%%+*}
+        rest=''${rest#*+}
+        left=$((''${rest%%+*} - (picture + 1) / 2))
+        below=$((''${rest#*+} + tall + ${at space.rung.apart}))
+        rise=$((voice_tall + ${at (4 * space.beat + panel.height + pad)} + under_baseline - below))
+        echo 'measured["rule-left-${toString scale}"] = '$left';' >> measured
+        echo 'measured["rule-top-${toString scale}"] = '$below';' >> measured
+        echo $wide > $out/rule-width-${toString scale}
+        echo $left > $out/rule-left-${toString scale}
+        echo $rise > $out/rule-rise-${toString scale}
+        magick -size ''${wide}x${at track.height} xc:'${colours.muted}' ${file "track"}
+      '';
       # The panel and its shadows, the farthest first, on a canvas with room
       # for them, the frame's hairline drawn on its own pixels.
       framed =
@@ -247,13 +270,10 @@ let
     ''
       ${capitals "name" "${mono} ${toString (points "mono" "hero")}"}
       ${capitals "under" "${serif} ${toString (points "serif" "large")}"}
+      under_baseline=$((top + tall))
       ${capitals "said" "${serif} ${toString (points "serif" "body")}"}
       ${capitals "voice" voice}
-      # How far the image's track stands over the foot the panel's set
-      # from, as the script sets the panel: the voice's capitals, a beat and
-      # the panel over the foot, less the track's inset. The kernel takes it
-      # to put its bar on the track (imageBar).
-      echo $((tall + ${at (space.beat + panel.height - track.inset)})) > $out/rise-${toString scale}
+      ${rule}
       ${capitals "typed" "${mono} ${toString (points "mono" "large")}"}
       ${lifted (file "name") mono (points "mono" "hero") config.networking.hostName}
       ${lib.concatStrings (
@@ -267,9 +287,6 @@ let
       ${lifted (file "digits") mono (points "mono" "small") (lib.concatStrings digits)}
       ${framed (file "panel") colours.accent}
       ${framed (file "panel-urgent") colours.alert}
-      # The meter's frame, in the edge's colour, since it takes no keys.
-      ${framed (file "panel-still") colours.edge}
-      magick -size ${at track.width}x${at track.height} xc:'${colours.edge}' ${file "track"}
       # The lock's ink reaches past its cell, so it's drawn with room round
       # it and cut to the line's height; drawn without, its right side would
       # be cut away. The room is kept at its sides, so the script finds its
@@ -360,8 +377,6 @@ let
     inherit (space.rung) apart screen;
     panelWidth = panel.width;
     panelHeight = panel.height;
-    trackWidth = track.width;
-    trackInset = track.inset;
     # The padlock's cell, from the frame's outside edge.
     markAt = border + space.rung.inset;
     inherit inkRoom;
@@ -412,22 +427,28 @@ let
   waits = pkgs.callPackage ./waits/package.nix { };
 
   # Tells the kernel where the image's track is, so the bar it fills as it
-  # reads the image lies on it: the track's size, the least foot the panel
-  # is set from, the rise the pictures measured for each scale, and the
-  # text's colour, through the drm module's parameters. A kernel without
-  # ../kernel/hibernate-progress.patch has none of them and is left as it
-  # is. The width goes last, since it's what turns the bar on.
-  rises = pkgs.runCommand "plymouth-image-rises" { } ''
+  # reads the image lies on it, through the drm module's parameters: the
+  # track's width, how far its left end is from the middle and how far its
+  # top is over the foot the column is set from, each as the pictures
+  # measured them at both scales; its height; the least foot; and the
+  # words' colour. A kernel without ../kernel/hibernate-progress.patch has
+  # none of them and is left as it is. The width goes last, since it's what
+  # turns the bar on.
+  measures = pkgs.runCommand "plymouth-image-bar" { } ''
     dir=${art}/share/plymouth/themes/jitsusama
-    echo "$(cat $dir/rise-1),$(cat $dir/rise-2)" > $out
+    mkdir $out
+    for measure in width left rise; do
+      echo "$(cat $dir/rule-$measure-1),$(cat $dir/rule-$measure-2)" > $out/$measure
+    done
   '';
   imageBar = pkgs.writeShellScript "plymouth-image-bar" ''
     cd /sys/module/drm/parameters 2>/dev/null && [ -w progress_width ] || exit 0
     echo ${toString track.height} > progress_height
     echo ${toString space.rung.screen} > progress_foot
-    cat ${rises} > progress_rise
+    cat ${measures}/left > progress_left
+    cat ${measures}/rise > progress_rise
     echo 0x${lib.removePrefix "#" colours.text} > progress_color
-    echo ${toString track.width} > progress_width
+    cat ${measures}/width > progress_width
   '';
 
   # The shutdown's screens, which systemd's last stage would otherwise end

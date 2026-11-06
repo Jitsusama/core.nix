@@ -9,24 +9,26 @@ read with no sign of what was happening. Only the kernel can show it.
 drm_panic can already draw from any context into the buffer each
 screen scans out. Keep a list of the planes it registers, and add
 drm_panic_progress(), which fills a bar on each of them as a share of a
-job, drawing only once the share changes and only the pixels newly
-filled. The restore calls it where swap.c counts the image's pages.
+job, drawing only once the filled part grows by a pixel and only the
+pixels newly filled. The restore calls it where swap.c counts the
+image's pages.
 
 The bar goes where Plymouth's script splash draws its empty track, laid
-out as the splash lays out its column: centred in the rectangle every
-screen shows, a set rise over a foot a twelfth of that rectangle's
-height over its bottom, and twice the size on a rectangle 1600 pixels
-tall or more. The splash sets drm.progress_width, progress_height,
+out as the splash lays out its column: from the middle of the rectangle
+every screen shows, a set rise over a foot a twelfth of that
+rectangle's height over its bottom, with values for a rectangle 1600
+pixels tall or more, where the splash draws at twice the size. The
+splash sets drm.progress_width, progress_left, progress_height,
 progress_foot, progress_rise and progress_color as the restore starts,
 and a width of 0, the default, draws nothing. A plane showing a tiled
 framebuffer is left alone, since the panic handler would turn its
 tiling off.
 
 diff --git a/drivers/gpu/drm/drm_panic.c b/drivers/gpu/drm/drm_panic.c
-index e576c47..5088e0c 100644
+index e576c47..56be9f6 100644
 --- a/drivers/gpu/drm/drm_panic.c
 +++ b/drivers/gpu/drm/drm_panic.c
-@@ -1003,6 +1003,201 @@ static void debugfs_register_plane(struct drm_plane *plane, int index)
+@@ -1003,6 +1003,206 @@ static void debugfs_register_plane(struct drm_plane *plane, int index)
  static void debugfs_register_plane(struct drm_plane *plane, int index) {}
  #endif /* CONFIG_DRM_PANIC_DEBUG */
  
@@ -41,21 +43,26 @@ index e576c47..5088e0c 100644
 + * as large as the largest screen, each screen showing its middle, and
 + * lays its column out in the rectangle every screen shows, upwards from
 + * a foot a twelfth of that rectangle's height over its bottom, to the
-+ * nearest pixel, but never less than progress_foot. The bar is centred
-+ * across the rectangle, its top progress_rise pixels over the foot, and
-+ * on a rectangle 1600 pixels tall or more, where the splash draws its
-+ * pictures at twice the size, so are the bar and the foot, and the rise
-+ * is its second value. The splash's own pictures say how far its column
-+ * rises, so the splash sets these as it starts the restore. The screens'
-+ * sizes are those seen at the last draw.
++ * nearest pixel, but never less than progress_foot. The bar's left end is
++ * progress_left pixels from the rectangle's middle, its top progress_rise
++ * pixels over the foot, and it is progress_width wide. Each of those has a
++ * value at one to one and one at two, which a rectangle 1600 pixels tall
++ * or more takes, as the splash draws its pictures at twice the size there;
++ * the foot and the height are doubled. The splash's own pictures say
++ * where its words are, so the splash sets these as it starts the restore.
++ * The screens' sizes are those seen at the last draw.
 + *
 + * A plane showing a tiled framebuffer is left alone, since the panic
 + * handler turns its tiling off, which a screen that carries on can't
 + * have. Each pixel is drawn once, as amdgpu writes each through MMIO.
 + */
-+static unsigned int progress_width;
-+module_param_named(progress_width, progress_width, uint, 0644);
-+MODULE_PARM_DESC(progress_width, "Width of the progress bar, in pixels at one to one, or 0 for none");
++static unsigned int progress_width[2];
++module_param_array_named(progress_width, progress_width, uint, NULL, 0644);
++MODULE_PARM_DESC(progress_width, "Width of the progress bar, in pixels at one and at two, or 0 for none");
++
++static int progress_left[2];
++module_param_array_named(progress_left, progress_left, int, NULL, 0644);
++MODULE_PARM_DESC(progress_left, "How far the bar's left end is from the middle, in pixels at one and at two");
 +
 +static unsigned int progress_height = 4;
 +module_param_named(progress_height, progress_height, uint, 0644);
@@ -157,10 +164,10 @@ index e576c47..5088e0c 100644
 +	if (!canvas.width)
 +		canvas = (struct progress_canvas){ sb.width, sb.height, sb.width, sb.height };
 +	scale = canvas.down >= 1600 ? 2 : 1;
-+	width = progress_width * scale;
++	width = progress_width[scale - 1];
 +	foot = max((canvas.down + 5) / 12, (int)progress_foot * scale);
 +	drm_rect_init(&bar,
-+		      (canvas.width - canvas.across) / 2 + canvas.across / 2 - width / 2
++		      (canvas.width - canvas.across) / 2 + canvas.across / 2 + progress_left[scale - 1]
 +		      - (canvas.width - (int)sb.width) / 2,
 +		      (canvas.height - canvas.down) / 2 + canvas.down - foot
 +		      - (int)progress_rise[scale - 1] - (canvas.height - (int)sb.height) / 2,
@@ -201,7 +208,7 @@ index e576c47..5088e0c 100644
 +	struct progress_canvas canvas = { .across = INT_MAX, .down = INT_MAX };
 +	unsigned int permille, i;
 +
-+	if (!progress_width || !total)
++	if (!progress_width[0] || !total)
 +		return;
 +	permille = div_u64((u64)min(done, total) * 1000, total);
 +	if (permille == progress_shown)
@@ -228,7 +235,7 @@ index e576c47..5088e0c 100644
  /**
   * drm_panic_is_enabled
   * @dev: the drm device that may supports drm_panic
-@@ -1043,6 +1238,7 @@ void drm_panic_register(struct drm_device *dev)
+@@ -1043,6 +1243,7 @@ void drm_panic_register(struct drm_device *dev)
  		if (kmsg_dump_register(&plane->kmsg_panic))
  			drm_warn(dev, "Failed to register panic handler\n");
  		else {
@@ -236,7 +243,7 @@ index e576c47..5088e0c 100644
  			debugfs_register_plane(plane, registered_plane);
  			registered_plane++;
  		}
-@@ -1065,6 +1261,7 @@ void drm_panic_unregister(struct drm_device *dev)
+@@ -1065,6 +1266,7 @@ void drm_panic_unregister(struct drm_device *dev)
  	drm_for_each_plane(plane, dev) {
  		if (!plane->helper_private || !plane->helper_private->get_scanout_buffer)
  			continue;

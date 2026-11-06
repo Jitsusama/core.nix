@@ -49,8 +49,8 @@ HELD = 600
 CRAWL = 64 * 1024
 # The QEMU device of the larger screen, as tests/plymouth-restore.nix names it.
 LARGE = "large"
-# The least run of a colour that can be the track, in pixels: longer than anything of that
-# colour but the panel's frame and the track.
+# The least run of a colour that can be the track, in pixels: longer than a letter's stroke
+# of that colour, should a picture have one.
 TRACK_LEAST = 64
 
 
@@ -119,11 +119,7 @@ def pixel_runs(row: bytes, ink: bytes) -> list[tuple[int, int]]:
 
 
 def found_track(picture: Picture, ink: bytes) -> Track:
-    """Find the empty track: the one band of the track's colour more than a row tall.
-
-    The panel's frame is drawn in the same colour, but as a hairline, a row at its top and its
-    bottom.
-    """
+    """Find the empty track: the one band of the track's colour more than a row tall."""
     bands: dict[tuple[int, int], list[int]] = {}
     for y in range(picture.height):
         row = picture.run(y, 0, picture.width)

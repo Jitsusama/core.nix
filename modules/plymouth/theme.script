@@ -81,7 +81,6 @@ fun drawn_at_scale()
 
     global.panel.calm = drawn("panel");
     global.panel.urgent = drawn("panel-urgent");
-    global.panel.still = drawn("panel-still");
     global.track.image = drawn("track");
     global.panel.reach = @reach@ * global.scale;
     global.lock.image = drawn("lock");
@@ -181,6 +180,12 @@ fun lay_out()
                                    global.middle - global.name.image.GetWidth() / 2,
                                    global.name.top - global.pad, 10);
     says(global.under.showing);
+    # The image's track under those words, where the pictures measured it
+    # to be from their picture's place, as the kernel's bar is told
+    # (./nixos.nix).
+    global.track.sprite = sprite_at(global.track.sprite, global.track.image,
+                                    global.middle + measure("rule-left"),
+                                    global.under.top - global.pad + measure("rule-top"), 10);
 
     global.about.left = global.shared.left + @aboutLeft@ * global.scale - global.pad;
     global.about.top = global.shared.top + down - @aboutBottom@ * global.scale
@@ -200,13 +205,6 @@ fun lay_out()
     global.panel.sprite = sprite_at(global.panel.sprite, frame,
                                     global.panel.left - global.panel.reach,
                                     global.panel.top - global.panel.reach, 20);
-
-    # The image's track, centred, its top its inset under the panel's,
-    # where the kernel works its bar out to be from the foot and the rise
-    # the pictures measured (./nixos.nix).
-    global.track.sprite = sprite_at(global.track.sprite, global.track.image,
-                                    global.middle - Math.Int(@trackWidth@ * global.scale / 2),
-                                    global.panel.top + @trackInset@ * global.scale, 21);
 
     # The padlock's picture keeps room round its cell on each side.
     local.cell = global.panel.left + @markAt@ * global.scale;
@@ -238,23 +236,14 @@ fun lay_out()
     restoring_shown();
   }
 
-# While a hibernation's image is read, and nothing is asked, the panel is
-# the meter's frame round the empty track, which the kernel fills as it
+# While a hibernation's image is read, and nothing is asked, the empty
+# track shows under the words saying so, and the kernel fills it as it
 # reads, every program frozen (../kernel/hibernate-progress.patch). Plymouth
 # can't draw again until the image's own kernel has the screen, so this is
-# the frame the kernel draws on.
+# the frame the kernel draws on, and the track stays full until it goes.
 fun restoring_shown()
   {
-    local.restoring = global.under.showing == "restoring" && !global.asked;
-    global.track.sprite.SetOpacity(restoring);
-    if (restoring)
-      global.panel.sprite.SetImage(global.panel.still);
-    else if (global.panel.urging)
-      global.panel.sprite.SetImage(global.panel.urgent);
-    else
-      global.panel.sprite.SetImage(global.panel.calm);
-    if (!global.asked)
-      global.panel.sprite.SetOpacity(restoring);
+    global.track.sprite.SetOpacity(global.under.showing == "restoring" && !global.asked);
   }
 
 # What the boot is, small at the bottom left, and once the boot says which

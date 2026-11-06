@@ -95,14 +95,15 @@ address. The patch records the name first. Most access points name their
 country, but hostapd doesn't unless it's told to.
 
 The hibernation fix is for a hibernated machine that showed nothing while it
-read its image back. The kernel freezes every process before it reads the image, Plymouth
-included, so the boot screen held its last frame for the whole read, the
-longer the more memory was in use. The patch has the panic screen's drawing,
-which needs no process and writes straight into each screen's buffer, fill
-a bar as `kernel/power/swap.c` counts the image's pages. It draws nothing
-until told the bar's size and place through the `drm` module's parameters,
-which the boot screen sets as the read starts (`modules/plymouth/nixos.nix`),
-since its own pictures say where its empty track goes.
+read its image back. The kernel freezes every process before it reads the
+image, Plymouth included, so the boot screen held its last frame for the
+whole read, the longer the more memory was in use. The patch has the panic
+screen's drawing, which needs no process and writes straight into each
+screen's buffer, fill a bar as `kernel/power/swap.c` counts the image's
+pages. It draws nothing until told the bar's size and place through the
+`drm` module's parameters, which the boot screen sets as the read starts
+(`modules/plymouth/nixos.nix`), since its own pictures say where its empty
+track goes, under the words saying the machine is restoring.
 
 ### The Settings
 
