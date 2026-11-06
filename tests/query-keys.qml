@@ -1018,6 +1018,16 @@ QtObject {
         holds("the drawer's visual: the page is the drawer's", Keys.paged("page"), true);
         holds("the drawer's visual: normal isn't", Keys.paged("normal"), false);
 
+        // What the drawer's foot counts of the words it hides
+        // (DrawerPage.paragraphs): a paragraph each, a line Qt wrapped
+        // part of its own, however Qt keeps the breaks between them.
+        holds("the words hidden: a log's lines are a paragraph each",
+            Page.paragraphs("line 14\u2028line 15\u2028line 16"), 3);
+        holds("the words hidden: so are a plain text's and a styled one's",
+            Page.paragraphs("one\ntwo\u2029three"), 3);
+        holds("the words hidden: a wrapped paragraph is one, a blank line none",
+            Page.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
+
         // What visual takes (DrawerPage.chosen), from where it began to the
         // cursor, either way round, on lines ten letters long but the 3rd,
         // empty: [what, began, cursor, kind, each line's [line, from, to]],

@@ -36,6 +36,16 @@ function chosen(began, cursor, kind, lines) {
     return taken;
 }
 
+// How many paragraphs words hold, as the drawer's foot counts those it
+// hides, never their lines (VKCF3Z, 2026-11-05). Each line another program
+// broke is one, which Qt keeps in a pre-wrap block as a line separator, and
+// so is each a styled text breaks; a line Qt wraps is part of its own, and
+// a blank one is none.
+const PARAGRAPH_BREAK = /[\n\u2028\u2029]/;
+function paragraphs(text) {
+    return text.split(PARAGRAPH_BREAK).filter(paragraph => paragraph.trim() !== "").length;
+}
+
 // How far from the view's edges the cursor keeps: `off` lines, but never
 // past the view's middle, so a short view still has a place for it.
 function margin(page) {

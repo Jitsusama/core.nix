@@ -158,7 +158,8 @@ class InTheDrawer:
     """
 
     TITLE = "Deploy log"
-    LAST = "line 40 of the deploy went by"
+    LINES = 40
+    LAST = f"line {LINES} of the deploy went by"
 
     def __init__(self, desktop: Desktop) -> None:
         """Send the notice, and open the launcher on its row."""
@@ -169,7 +170,7 @@ class InTheDrawer:
         if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
             desktop.close_launcher()
         desktop.as_account("niri msg output winit scale 1")
-        body = "\n".join(f"line {at} of the deploy went by" for at in range(1, 41))
+        body = "\n".join(f"line {at} of the deploy went by" for at in range(1, self.LINES + 1))
         desktop.as_account(f"notify-send {shlex.quote(self.TITLE)} {shlex.quote(body)}")
         machine.wait_until_fails(
             desktop.in_session("niri msg layers | grep -q notifications"),
@@ -282,6 +283,11 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     # Signed as a card signs it: a program known by no other name by its own, in title case.
     assert re.fullmatch(r"Desktop \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
     assert drawer["more"], f"forty lines fit the drawer: {drawer}"
+    # Its foot counts each of the log's lines it hides as one, the drawer showing no more of
+    # them than its pitch fits in its height.
+    hidden = re.fullmatch(r"(\d+) more \u00b7 Ctrl\+W l", drawer["moreSays"])
+    assert hidden, drawer
+    assert int(hidden[1]) >= page.LINES - int(drawer["height"]) // PITCH, drawer
     assert "\u21e7" not in page.rows["selected"]["told"], page.rows["selected"]
     desktop.photograph("launcher-plate")
     title = drawer["lines"]["title"]

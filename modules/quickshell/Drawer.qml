@@ -1252,9 +1252,7 @@ Floating {
         if (from < 0 || !reader)
             return shownAndHidden.hidden;
         const at = reader.positionAt(0, reader.drop + from * bodyText.leading + 1);
-        const paragraphs = reader.getText(at, reader.length).split(/[\n\u2029]/)
-            .filter(paragraph => paragraph.trim() !== "");
-        return shownAndHidden.hidden + paragraphs.length;
+        return shownAndHidden.hidden + Page.paragraphs(reader.getText(at, reader.length));
     }
     // Whether the words are cut at the foot, so their reader is made to
     // count their paragraphs. It's handed to the words once the cut is
