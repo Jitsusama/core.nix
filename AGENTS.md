@@ -91,7 +91,7 @@ before adding a test.
 
 ```sh
 nix fmt                                # format, and lint every language strictly
-nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
+nix-offload there --here-when-idle . checks.x86_64-linux.<name>  # a check, as you go
 run-subtests vm-desktop-<area> <words> # a VM test's subtests named, in seconds
 shell-preview --type <words>           # the shell from the working copy, in a niri window
 changed-checks                         # names and builds what the change touched, VM tests aside
@@ -99,6 +99,10 @@ changed-checks --build                 # the same with the VM tests among them
 merge-net needs                        # whether the change runs VM tests before merging
 nix flake check --keep-going           # everything, only for a change every check reads
 ```
+
+A check built as you go goes to a builder, with the working tree's changes,
+and builds here only while this machine is idle; never `nix build` it here,
+where each evaluates the flake beside Joel's work.
 
 Prove a change with the cheapest check that shows it while editing, and run
 everything once, before pushing, never after each edit:

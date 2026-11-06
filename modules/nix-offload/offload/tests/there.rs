@@ -1669,7 +1669,7 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\nderivation\noutlive\n"
+        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nhere-when-idle\nprint\nderivation\noutlive\n"
     );
 }
 
@@ -2532,6 +2532,96 @@ fn with_no_builder_or_none_reached_it_builds_nothing_unless_asked_to_build_here(
     let ran = there_with(folder.path(), &offload, &["--here"]);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     assert_eq!(fs::read_to_string(&given).unwrap(), here);
+}
+
+// From 14:00 to 20:15 on 5 November, 189 checks built here while being
+// changed took 34,033 s at a CPU pressure of 46% beside them, the load
+// the person felt: asked to, `there` builds here only while this machine
+// is idle, and never a VM test.
+#[test]
+fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle() {
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/vm-tests"),
+        "checks.*.vm-*\n",
+    )
+    .unwrap();
+    let pressure = folder.path().join("cpu-pressure");
+    let given = folder.path().join("nix-was-given");
+    let commands = folder.path().join("ssh-commands");
+    let run = |attribute: &str, some: (&str, &str)| {
+        fs::write(
+            &pressure,
+            format!(
+                "some avg10={} avg60={} avg300=30.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+                some.0, some.1
+            ),
+        )
+        .unwrap();
+        let _ = fs::remove_file(&given);
+        let _ = fs::remove_file(&commands);
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args([
+                "there",
+                "--here-when-idle",
+                "-L",
+                "github:o/r/abc",
+                attribute,
+            ])
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    folder.path().display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_CPU_PRESSURE", &pressure)
+            // No VM lender has run, so a VM test goes the lent way.
+            .env("NIX_OFFLOAD_VM_DIR", folder.path().join("no-vm"))
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let sent = fs::read_to_string(&commands)
+            .unwrap_or_default()
+            .contains("nix build");
+        let built_here = fs::read_to_string(&given)
+            .unwrap_or_default()
+            .starts_with("build ");
+        (
+            built_here,
+            sent,
+            String::from_utf8_lossy(&ran.stderr).into_owned(),
+        )
+    };
+
+    let (built_here, sent, said) = run("checks.x.a", ("2.00", "4.50"));
+    assert!(built_here && !sent, "idle, it builds here: {said}");
+    assert!(
+        said.contains("this machine is idle, so this builds here"),
+        "{said}"
+    );
+
+    let (built_here, sent, said) = run("checks.x.a", ("2.00", "55.27"));
+    assert!(
+        sent && !built_here,
+        "busy this last minute, it's sent: {said}"
+    );
+
+    let (built_here, sent, said) = run("checks.x.a", ("43.38", "4.50"));
+    assert!(sent && !built_here, "busy now, it's sent: {said}");
+
+    let (built_here, _, said) = run("checks.x.vm-a", ("2.00", "4.50"));
+    assert!(!built_here, "a VM test is never built here: {said}");
 }
 
 /// A lender's folder in `folder`, named `name`, its lender this test and
