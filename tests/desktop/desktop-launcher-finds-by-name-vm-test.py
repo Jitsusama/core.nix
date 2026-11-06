@@ -1018,7 +1018,10 @@ def follows_from_the_find(desktop: Desktop) -> None:
     told = desktop.showing()["selected"]["told"]
     assert "Ctrl+] in" in told, told
     desktop.machine.send_key("ctrl-bracket_right")
-    desktop.launcher_until(lambda shown: len(shown["held"]) == 1 and shown["mode"] == "find")
+    # A step in, the find starts empty, so kitty's commands aren't narrowed to "kitty".
+    desktop.launcher_until(
+        lambda shown: len(shown["held"]) == 1 and shown["mode"] == "find" and shown["typed"] == ""
+    )
     desktop.close_launcher()
 
 
