@@ -11,5 +11,6 @@ patch's header says what it fixes and how it was found.
 | `amdgpu-vrr-reference-only-while-on.patch` | a wake with no graphics warning when a screen was off    |
 | `amd-pstate-skip-matching-auto-sel.patch`  | amd-pstate despite a fixed `_CPC` entry, from mainline   |
 | `iwlmvm-country-while-associated.patch`    | Wi-Fi's country, heard after joining at boot             |
+| `surface-events-after-restore.patch`       | a keyboard and touchpad back at once after hibernation   |
 | `surface-laptop-amd-sensors-and-fan.patch` | the controller's eight thermal sensors and its fan speed |
 | `surface-power-asks-only-awake.patch`      | a wake with no warning from the charger and battery      |
