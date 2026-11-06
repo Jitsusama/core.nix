@@ -55,15 +55,24 @@ pub fn headings(blocks: &[Block], lines: &[Line]) -> Vec<bool> {
 /// Where the page stops showing above an overlay whose top stands at
 /// `over`: the top of the first line that won't show whole above it, or of
 /// a heading it would leave standing alone, or `over` itself when no line
-/// is cut and none would stand alone. `lines` go top to bottom.
+/// is cut and none would stand alone. `lines` go top to bottom, and left
+/// to right along one baseline.
 pub fn bare_from(lines: &[Shown], over: f64) -> f64 {
-    let Some(mut hidden) = lines.iter().position(|line| line.foot > over) else {
+    let Some(first) = lines.iter().position(|line| line.foot > over) else {
         return over;
     };
+    // A taller line further along, as a larger table cell on the same
+    // baseline, starts higher than the first one cut, so the highest top
+    // of every line cut is where the page stops.
+    let cut = lines[first..]
+        .iter()
+        .filter(|line| line.foot > over)
+        .fold(over, |top, line| top.min(line.top));
+    let mut hidden = first;
     while hidden > 0 && lines[hidden - 1].heading {
         hidden -= 1;
     }
-    lines[hidden].top.min(over)
+    lines[hidden].top.min(cut)
 }
 
 #[cfg(test)]
@@ -126,6 +135,22 @@ mod tests {
     fn a_heading_with_its_next_line_whole_stays() {
         let lines = [heading(0.0), words(42.0), words(70.0)];
         assert_eq!(bare_from(&lines, 90.0), 70.0);
+    }
+
+    #[test]
+    fn a_taller_line_beside_the_one_cut_bares_from_its_own_top() {
+        // Two cells of a table row on one baseline: the one to the right
+        // comes later on the page, set larger, so its top stands higher.
+        let lines = [
+            words(0.0),
+            words(50.0),
+            Shown {
+                top: 44.0,
+                foot: 80.0,
+                heading: false,
+            },
+        ];
+        assert_eq!(bare_from(&lines, 70.0), 44.0);
     }
 
     #[test]
