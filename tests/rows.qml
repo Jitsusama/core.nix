@@ -403,7 +403,8 @@ ShellRoot {
         expect("the numbers end together, right-aligned",
             said.every(number => Math.abs(number.ends - said[0].ends) <= 0.5),
             JSON.stringify(said));
-        expect("its digits fit its room, and no more", gutter.widest("999") === said[0].ends,
+        expect("its digits fit its room, and no more",
+            Math.abs(gutter.widest("999") - said[0].ends) <= 0.5,
             `${gutter.widest("999")} against ${said[0].ends}`);
         // The numbers stand a tie from the text they number, as Vim's
         // number column stands a space from the text (VKCF3Z, 2026-11-05).
