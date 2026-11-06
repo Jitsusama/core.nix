@@ -500,9 +500,20 @@ ShellRoot {
         }
         return null;
     }
+    // A count's ink, which ends short of its advance by its last figure's
+    // bearing, read at eight times the size for its fractions.
+    TextMetrics {
+        id: countProbe
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize * 8
+        text: "12"
+    }
+
     function countBeforeChord() {
         const texts = drawn(countedChord, []).sort((a, b) => a.from - b.from);
         const count = texts.find(t => t.text === "12");
+        const inkTo = count === undefined ? NaN : count.from
+            + (countProbe.tightBoundingRect.x + countProbe.tightBoundingRect.width) / 8;
         const keys = texts.filter(t => count !== undefined && t.from > count.from
             && t.text !== "\u00b7");
         const dot = textItem(countedChord, "\u00b7");
@@ -510,9 +521,9 @@ ShellRoot {
         const dotTo = dot ? dotFrom + dot.parent.width : NaN;
         expect("a mark from the count to the dot's ink, and from it to the chord",
             count !== undefined && keys.length > 0
-                && Math.abs(dotFrom - count.to - Theme.space.rung.mark) <= 0.5
+                && Math.abs(dotFrom - inkTo - Theme.space.rung.mark) <= 0.5
                 && Math.abs(keys[0].from - dotTo - Theme.space.rung.mark) <= 0.5,
-            `${said(texts)}, the dot's ink ${dotFrom} to ${dotTo}`);
+            `${said(texts)}, the count's ink to ${inkTo}, the dot's ${dotFrom} to ${dotTo}`);
         // A key after the first stands past its + by its padding, which
         // the words drawn leave out, so the chord ends where its last
         // key's item does.

@@ -432,13 +432,27 @@ Rectangle {
             text: "\u00b7"
             font: dotText.font
         }
+        // The count's ink ends short of its advance by its last letter's
+        // bearing, measured at eight times the size and read back down,
+        // since a measure at the size drawn comes in whole pixels.
+        TextMetrics {
+            id: countInk
+            text: right.said
+            font.family: Theme.level.note.family
+            font.italic: Theme.level.note.italic
+            font.weight: Theme.level.note.weight
+            font.pointSize: Theme.level.note.pointSize * 8
+        }
+        readonly property real countBearing: right.said === "" ? 0
+            : Math.max(0, countInk.advanceWidth - countInk.tightBoundingRect.x
+                - countInk.tightBoundingRect.width) / 8
         Row {
             id: beforeKeys
             anchors.right: keys.left
             anchors.rightMargin: Theme.space.rung.mark
             anchors.baseline: keys.baseline
             baselineOffset: countFigure.baselineOffset
-            spacing: Theme.space.rung.mark
+            spacing: Theme.space.rung.mark - right.countBearing
             visible: right.counted
 
             Text {
