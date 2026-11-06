@@ -86,6 +86,9 @@ Floating {
         // would give each plate a QTextDocument a text as the rows are
         // moved through, twice a Text's time to make one.
         property bool reading: false
+        // Whether its reader is made to count what it holds past a line,
+        // as the drawer's words cut at its foot are, by paragraph.
+        property bool counting: false
         readonly property TextEdit reader: readerLoader.item
         // Its letters' colour. While the reader is made it draws every
         // letter and the Text none, so each letter is drawn once: a chosen,
@@ -123,7 +126,7 @@ Floating {
 
         Loader {
             id: readerLoader
-            active: words.reading
+            active: words.reading || words.counting
             sourceComponent: TextEdit {
                 // How far below its top Qt sets its first line's letters: a
                 // fixed line keeps its spare room above its letters, which a
@@ -256,9 +259,20 @@ Floating {
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
-    readonly property bool more: view.contentHeight > drawer.viewRoom + 1
-    // How far it's scrolled, for the launcher to report.
-    readonly property real scrolled: view.contentY
+    readonly property bool more: view.natural > drawer.viewTop + drawer.viewRoom + 1
+    // How far it's scrolled from its rest, which its keys set and the
+    // launcher reports.
+    property real scrolled: 0
+    // The content's top the view shows from, as its keys set it. What
+    // reads it takes it from here rather than the view's contentY: a
+    // Flickable whose height changes rounds a contentY off a whole pixel
+    // and sets it again, which since the field's baseline stands on a half
+    // pixel came back through what sets that height (shownAndHidden) as a
+    // binding loop at each change of scale.
+    readonly property real shownFrom: viewTop + scrolled
+    function scrollTo(top) {
+        scrolled = top - viewTop;
+    }
 
     // The drawer's line pitch: Figure's, two beats, for every line of the
     // plate, Note's runs too, so the plate keeps one grid and its lines
@@ -302,7 +316,7 @@ Floating {
     // preview and its lines' baselines. Worked out
     // only when asked, since nothing drawn depends on them.
     function baselines() {
-        const contentTop = Theme.border - view.contentY;
+        const contentTop = Theme.border + drawer.viewTop - view.contentY;
         const shown = item => item.visible ? contentTop + item.y + item.baselineOffset : null;
         const flowed = item => item.visible ? contentTop + flow.y + item.y + item.baselineOffset
             : null;
@@ -377,7 +391,7 @@ Floating {
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
     readonly property var wholeTops: Page.tops({ lines: laid, pitch: drawer.pitch,
-        end: Math.max(0, view.contentHeight - drawer.viewRoom) })
+        start: drawer.viewTop, phase: drawer.stops, end: drawer.viewEnd })
     property var cursor: ({ line: 0, letter: 0, want: 0 })
     // The search being typed in it, as the launcher's line holds it, and
     // the last one run, { pattern, forward }, which n and N go on with, as
@@ -586,7 +600,7 @@ Floating {
         began = choosing !== "" ? began : null;
         laid = lines();
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
-        const top = view.contentY;
+        const top = drawer.shownFrom;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top
             && laid[at].top + laid[at].height <= top + drawer.viewRoom);
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
@@ -597,7 +611,7 @@ Floating {
     function anew() {
         if (keys)
             Qt.callLater(() => {
-                view.contentY = 0;
+                scrolled = 0;
                 enter();
             });
     }
@@ -628,9 +642,10 @@ Floating {
             line: cursor.line,
             letter: cursor.letter,
             want: cursor.want,
-            top: view.contentY,
+            top: drawer.shownFrom,
             height: drawer.viewRoom,
-            end: Math.max(0, view.contentHeight - drawer.viewRoom),
+            start: drawer.viewTop,
+            end: drawer.viewEnd,
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -638,7 +653,7 @@ Floating {
             letterAt: (line, x) => letterAt(page[line], x)
         });
         cursor = { line: moved.line, letter: moved.letter, want: moved.want };
-        view.contentY = moved.top;
+        scrollTo(moved.top);
     }
     // A search run in it, from the cursor, the way it goes and a count on,
     // nothing sought seeking the last again, as Vim's / Return does; and n
@@ -670,7 +685,7 @@ Floating {
         if (landed === null)
             return { none: "E486", wrapped: "", pattern };
         cursor = { line: landed.line, letter: landed.letter, want: landed.want };
-        view.contentY = landed.top;
+        scrollTo(landed.top);
         return { none: "", wrapped: landed.wrapped, pattern };
     }
 
@@ -685,9 +700,10 @@ Floating {
             line: cursor.line,
             letter: cursor.letter,
             want: cursor.want,
-            top: view.contentY,
+            top: drawer.shownFrom,
             height: drawer.viewRoom,
-            end: Math.max(0, view.contentHeight - drawer.viewRoom),
+            start: drawer.viewTop,
+            end: drawer.viewEnd,
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -711,7 +727,7 @@ Floating {
     // Whether the view's top cuts one of its lines partway, for the
     // launcher to report; only lines laid while it holds the keys count.
     function topCut() {
-        return keys && Page.cut({ lines: laid, pitch: drawer.pitch }, view.contentY);
+        return keys && Page.cut({ lines: laid, pitch: drawer.pitch }, drawer.shownFrom);
     }
 
     // The cursor put at a place, wanting its letter's place across, and the
@@ -720,14 +736,15 @@ Floating {
         const line = Math.max(0, Math.min(at.line, laid.length - 1));
         const letter = Math.max(0, Math.min(at.letter, laid[line].length - 1));
         cursor = { line, letter, want: xOf(laid[line], letter) };
-        view.contentY = Page.shown(laid[line], view.contentY, {
+        scrollTo(Page.shown(laid[line], drawer.shownFrom, {
             lines: laid,
             height: drawer.viewRoom,
-            end: Math.max(0, view.contentHeight - drawer.viewRoom),
+            start: drawer.viewTop,
+            end: drawer.viewEnd,
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops
-        });
+        }));
     }
     // o: the cursor to where visual began, which becomes where it is, as
     // Vim's o goes to the selection's other end.
@@ -892,7 +909,7 @@ Floating {
     }
     // Each new thing it shows starts at its top; the same thing read anew,
     // as a row refreshes, stays where it was scrolled.
-    onTitleChanged: view.contentY = 0
+    onTitleChanged: scrolled = 0
 
     // The widest of its facts' names, which their values start beyond, so
     // the values share one edge: a name is never cut short, and a value
@@ -1116,7 +1133,7 @@ Floating {
                 <= Math.max(1, figures / 20));
     }
     // Where the last line it shows ends, down from its top.
-    readonly property real foot: Theme.border + view.height
+    readonly property real foot: Theme.border + drawer.viewTop + view.height
     // Between the names' column and the values', two columns, so the two
     // never read as one.
     readonly property real labelsGap: Theme.space.rung.groups
@@ -1138,12 +1155,6 @@ Floating {
     function unbroken(words) {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
     }
-    // Where the first line's box after the head begins, down from the
-    // content's top: the moment's first row's, or the body's, whose
-    // whole lines the view ends on.
-    readonly property real firstLine: drawer.moment
-        ? drawer.rowLine - Theme.border - drawer.pitch / 2
-        : drawer.bodyBase - Theme.border - drawer.pitch / 2 - drawer.dropped
 
     // The time, read as it turns each second while the moment shows.
     SystemClock {
@@ -1157,13 +1168,34 @@ Floating {
         font: timeText.font
     }
 
-    // How far down the view may show, from its top: to the last whole line
-    // that keeps its inset and a step from the frame below, as the text
-    // does on every other side, so nothing runs into the foot of the plate;
-    // its keys, gone into, bring up the rest (VKCF3Z, 2026-11-03).
-    readonly property real viewRoom: drawer.firstLine + Math.max(0, Math.floor((drawer.tall
-        - 2 * Theme.border - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch))
-        * drawer.pitch
+    // How far down the view may show, from its top: to the foot of a line
+    // whose baseline stands the inset above the frame's inside bottom, as
+    // the text keeps it on every other side, so the bottom is set rather
+    // than what whole lines leave. The last line shown is the last whole
+    // one there, which shares the card's foot baseline when it falls on
+    // that beat; its keys, gone into, bring up the rest (VKCF3Z,
+    // 2026-11-05).
+    readonly property real viewRoom: drawer.tall - 2 * Theme.border - Theme.space.rung.inset
+        + drawer.pitch / 2 - drawer.dropped - drawer.viewTop
+    // Where the view begins, down from the frame's inside top: a line's
+    // top over the eyebrow's baseline, so a line scrolled to the view's
+    // top takes the eyebrow's baseline, its capitals the inset under the
+    // frame as the head's are, and the lines scrolled past hide whole
+    // above it, as the bottom hides them, the frame's room the same
+    // scrolled or not (VKCF3Z, 2026-11-05). At rest it shows its content
+    // from there, the head's, which begins below it, so nothing moves as
+    // the drawer comes.
+    readonly property real viewTop: drawer.fieldBase - Theme.border - drawer.pitch / 2
+        - drawer.dropped
+    // The top of the body's first line, from which the pitch its tops
+    // scroll to past the rest is counted, so each is a line's top.
+    readonly property real stops: drawer.bodyBase - Theme.border - drawer.pitch / 2
+        - drawer.dropped
+    // The furthest its top goes: its rest where everything fits, else the
+    // first of its stops whose view reaches the last line, so scrolled to
+    // its end its lines are still the card's.
+    readonly property real viewEnd: view.natural <= viewTop + viewRoom ? viewTop
+        : stops + Math.ceil((view.natural - viewRoom - stops) / pitch - rounding) * pitch
     // The top of every line's box it lays on the pitch past its title, down
     // the content: the facts', the moment's, the preview's and the words'.
     // Each a fact takes as { top, bottom }, all its lines, a heading held
@@ -1171,9 +1203,12 @@ Floating {
     // and the words, which run on as reading does.
     function lineSpans() {
         const spans = [];
-        const run = (top, count) => {
+        // A line of the words says which it is, since they're counted by
+        // paragraph, not line.
+        const run = (top, count, words) => {
             for (let at = 0; at < count; at++)
-                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch });
+                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch,
+                    line: words ? at : -1 });
         };
         let heading = null;
         for (let at = 0; at < factRows.count; at++) {
@@ -1195,7 +1230,7 @@ Floating {
         if (previewLines.visible)
             run(flow.y + previewBox.y, previewBox.lines.length);
         if (wordsBox.visible)
-            run(flow.y + wordsBox.y, bodyText.lineCount);
+            run(flow.y + wordsBox.y, bodyText.lineCount, true);
         return spans;
     }
     // Where the view ends: at its room, or where a thing would run past it,
@@ -1204,36 +1239,109 @@ Floating {
     // cut). A list whose things wrap stands them a beat off the pitch the
     // room is counted on, so one may fall across it. A thing begun above
     // the view, taller than it shows, ends at its last whole line instead.
-    readonly property real shownTo: {
-        const top = view.contentY;
-        const end = top + viewRoom;
-        const across = lineSpans().filter(span => span.top < end - 0.5
+    // Where anything is hidden below, the last line's slot says so, as
+    // Vim marks a line cut off, so a reader needn't remember the rest is
+    // there (VKCF3Z, 2026-11-05): the lowest of the card's beats the inset
+    // above the frame's inside bottom, a thing's step below the last
+    // thing shown, which ends a step sooner for it.
+    readonly property real moreBase: rowBaseline + Math.floor((tall - Theme.border
+        - Theme.space.rung.inset - rowBaseline) / Theme.space.beat + rounding) * Theme.space.beat
+    readonly property var shownAndHidden: {
+        const spans = lineSpans();
+        const top = drawer.shownFrom;
+        const ending = end => Math.min(end, ...spans.filter(span => span.top < end - 0.5
             && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
-                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch);
-        return Math.min(end, ...across) - top;
+                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch));
+        const past = end => spans.filter(span => span.bottom > end + 0.5);
+        // Each thing past the end but the words' lines, and the first of
+        // those, from which the words' paragraphs are counted.
+        const hiddenPast = end => {
+            const hidden = past(end);
+            const words = hidden.filter(span => span.line >= 0);
+            return { shown: end - top, hidden: hidden.length - words.length,
+                wordsFrom: words.length > 0 ? words[0].line : -1 };
+        };
+        const whole = ending(top + viewRoom);
+        if (past(whole).length === 0)
+            return { shown: whole - top, hidden: 0, wordsFrom: -1 };
+        const step = drawer.pitch + drawer.apartIn(drawer.anyWraps(factRows), false);
+        // A thing's box ends half a pitch, less the drop, under its last
+        // baseline, which stands a step over the slot's.
+        const short = ending(Math.min(top + viewRoom, top + moreBase - Theme.border - viewTop
+            - step + drawer.pitch / 2 - drawer.dropped));
+        return hiddenPast(short);
+    }
+    readonly property real shownTo: shownAndHidden.shown
+    // How many things it hides below, and what its last slot says of
+    // them: in the drawer's own keys, how to go in and read them, which
+    // go once the keys are in. Each fact is one and each paragraph of its
+    // words, a heading none, never a line (VKCF3Z, 2026-11-05: "16 more"
+    // counting lines reads as wrong). The words' reader says which letters
+    // the first hidden line holds, from which the paragraphs left are
+    // counted, the one it cuts among them.
+    readonly property int hiddenBelow: {
+        const from = shownAndHidden.wordsFrom;
+        const reader = bodyText.reader;
+        if (from < 0 || !reader)
+            return shownAndHidden.hidden;
+        const at = reader.positionAt(0, reader.drop + from * bodyText.leading + 1);
+        return shownAndHidden.hidden + Page.paragraphs(reader.getText(at, reader.length));
+    }
+    // Whether the words are cut at the foot, so their reader is made to
+    // count their paragraphs. It's handed to the words once the cut is
+    // worked out, never bound: making the reader sets the words' text
+    // again, from which their lines and so the cut are worked out, which
+    // a binding reads as a loop though no letter moves.
+    readonly property bool wordsCut: shownAndHidden.wordsFrom >= 0
+    onWordsCutChanged: Qt.callLater(drawer.countWords)
+    Component.onCompleted: drawer.countWords()
+    function countWords() {
+        bodyText.counting = drawer.wordsCut;
+    }
+    readonly property string moreSays: hiddenBelow === 0 ? ""
+        : `${hiddenBelow} more` + (drawer.keys ? "" : " \u00b7 Ctrl+W l")
+
+    Text {
+        id: moreText
+        x: column.x
+        width: column.width
+        y: drawer.moreBase - Theme.border - baselineOffset
+        visible: drawer.moreSays !== ""
+        text: drawer.moreSays
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        color: Theme.muted
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
     }
 
     Flickable {
         id: view
+        y: drawer.viewTop
         width: parent.width
         height: drawer.shownTo
+        contentY: drawer.shownFrom
         clip: true
         interactive: false
         contentWidth: width
-        // Never ending between two lines, so scrolled to its end its lines
-        // are still the card's.
         readonly property real natural: drawer.moment ? momentShown.ends : flow.y + flow.height
-        contentHeight: natural <= drawer.viewRoom ? natural
-            : drawer.viewRoom + Math.ceil((natural - drawer.viewRoom) / drawer.pitch)
-                * drawer.pitch
+        // Room past every top the keys scroll to (viewEnd), however short
+        // the page, never its own height: a Flickable whose content changes
+        // pulls contentY back inside its bounds, which would leave the view
+        // resting at the page's top rather than viewTop until the next key.
+        contentHeight: drawer.viewTop + drawer.viewEnd + drawer.tall
 
         Item {
             id: column
-            // The letters an inset and a step from the frame on either side,
-            // as the card's beside it are.
-            x: Theme.inset + Theme.space.l
+            // The letters the inset from the frame's inside edge on either
+            // side, as on every frame. Its width is what the screen leaves
+            // beside the card (Launcher.qml's drawerWidth), so the card never
+            // moves as it comes and goes; a plate whose lines are short
+            // leaves that room at their right, given by the screen rather
+            // than taken by the plate.
+            x: Theme.space.rung.inset
             width: view.width - 2 * x
-            height: flow.y + flow.height + Theme.inset + Theme.space.l
+            height: flow.y + flow.height + Theme.space.rung.inset
 
             // V's bands, under the letters: the selection's ground while it
             // chooses, and the accent while y flashes them, as his Neovim's
@@ -1541,8 +1649,8 @@ Floating {
                         .slice(0, Math.floor(room / drawer.pitch))
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
-                    readonly property real room: Math.max(4 * drawer.pitch, drawer.viewRoom
-                        - flow.y - (titleBlock.visible ? titleBlock.height
+                    readonly property real room: Math.max(4 * drawer.pitch, drawer.viewTop
+                        + drawer.viewRoom - flow.y - (titleBlock.visible ? titleBlock.height
                         + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 

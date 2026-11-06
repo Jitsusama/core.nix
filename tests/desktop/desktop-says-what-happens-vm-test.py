@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import re
 import shlex
 from datetime import timedelta
@@ -130,16 +131,31 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.close_launcher()
 
 
-# The drawer's line pitch, whose multiples its view's top lies on, so what it shows stays on the
-# card's lines (vm-desktop-looks measures them). Ctrl+E and Ctrl+Y scroll it a whole line, as
-# Vim's do, so past a title a pitch and a half tall they scroll two pitches.
+# The drawer's line pitch, which its view's tops past its rest lie on, so what it shows stays on
+# the card's lines (vm-desktop-looks measures them) and a line scrolled to the top takes the
+# eyebrow's baseline, its capitals the inset under the frame as the head's are (VKCF3Z,
+# 2026-11-05). Ctrl+E and Ctrl+Y scroll it a whole line, as Vim's do, so past a title a pitch and
+# a half tall they scroll two pitches.
 PITCH = 24
+# A box's rounding, which a baseline may be off its place by and still be on it.
+ROUNDING = 0.5
+# A length the report gives to the pixel, which two ways of reaching one place may round
+# apart by where the view sits on a half pixel, as it does under a row's half capitals.
+ROUNDED = 1
 
 
 def a_line_on(drawer: Json, past: int = 0) -> bool:
-    """Say whether the drawer is scrolled past a point to a whole line on the pitch."""
+    """Say whether the drawer is scrolled past a point to a whole line on the eyebrow's baseline.
+
+    The eyebrow scrolls with the rest, so where it rests is where it is now and how far the
+    drawer has scrolled. The first of the words' lines at or under that baseline is on it, so
+    no bare rows are left over the first line shown.
+    """
     scrolled = int(drawer["scrolled"])
-    return scrolled > past and scrolled % PITCH == 0 and held(drawer)
+    lines = drawer["lines"]
+    rest = lines["eyebrow"] + drawer["scrolled"]
+    first = lines["words"] + max(0, math.ceil((rest - ROUNDING - lines["words"]) / PITCH)) * PITCH
+    return scrolled > past and abs(first - rest) < ROUNDING and held(drawer)
 
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
@@ -158,7 +174,8 @@ class InTheDrawer:
     """
 
     TITLE = "Deploy log"
-    LAST = "line 40 of the deploy went by"
+    LINES = 40
+    LAST = f"line {LINES} of the deploy went by"
 
     def __init__(self, desktop: Desktop) -> None:
         """Send the notice, and open the launcher on its row."""
@@ -169,7 +186,7 @@ class InTheDrawer:
         if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
             desktop.close_launcher()
         desktop.as_account("niri msg output winit scale 1")
-        body = "\n".join(f"line {at} of the deploy went by" for at in range(1, 41))
+        body = "\n".join(f"line {at} of the deploy went by" for at in range(1, self.LINES + 1))
         desktop.as_account(f"notify-send {shlex.quote(self.TITLE)} {shlex.quote(body)}")
         machine.wait_until_fails(
             desktop.in_session("niri msg layers | grep -q notifications"),
@@ -282,6 +299,11 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     # Signed as a card signs it: a program known by no other name by its own, in title case.
     assert re.fullmatch(r"Desktop \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
     assert drawer["more"], f"forty lines fit the drawer: {drawer}"
+    # Its foot counts each of the log's lines it hides as one, the drawer showing no more of
+    # them than its pitch fits in its height.
+    hidden = re.fullmatch(r"(\d+) more \u00b7 Ctrl\+W l", drawer["moreSays"])
+    assert hidden, drawer
+    assert int(hidden[1]) >= page.LINES - int(drawer["height"]) // PITCH, drawer
     assert "\u21e7" not in page.rows["selected"]["told"], page.rows["selected"]
     desktop.photograph("launcher-plate")
     title = drawer["lines"]["title"]
@@ -351,7 +373,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     assert told == ["Ctrl+W h back", "Space ? keys"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
-    assert rule["top"] == came["top"], came
+    assert abs(rule["top"] - came["top"]) <= ROUNDED, came
     assert rule["height"] == came["height"], came
     assert rule["x"] > 0, came
     assert rule["width"] > 0, came
@@ -384,6 +406,11 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
             ),
         )
         desktop.photograph(f"launcher-drawer-cursor-at-{named}")
+        # Scrolled a line further, for a person to judge the top's inset by: the first line
+        # shown on the eyebrow's baseline, its capitals the inset under the frame.
+        scrolled = page.until("ctrl-e", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
+        assert a_line_on(scrolled), f"at {named} bare rows lie over the first line: {scrolled}"
+        desktop.photograph(f"launcher-drawer-scrolled-at-{named}")
     page.press("3")
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
@@ -521,7 +548,9 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     last = page.until("G", lambda drawer: drawer["cursor"]["line"] == drawer["cursor"]["lines"] - 1)
     assert last["scrolled"] > 0, last
     assert held(last), last
-    assert last["cursor"]["says"] == page.LAST, last
+    # The words' last line, or its end where a narrow drawer wraps it, as at 1 here.
+    assert last["cursor"]["says"], last
+    assert page.LAST.endswith(last["cursor"]["says"]), last
     page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0 and drawer["scrolled"] == 0)
     page.until("ctrl-e", a_line_on)
     page.until("ctrl-y", lambda drawer: drawer["scrolled"] == 0)
