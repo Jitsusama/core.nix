@@ -870,8 +870,9 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Music",
     ]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
+    # What the layer holds follows its name, and how many keys stand at its right.
     desktop_row = desktop.showing()["things"][0]["reads"]
-    assert re.fullmatch(r"Desktop \u00b7 \d+ \u00b7 Windows, Columns", desktop_row), desktop_row
+    assert re.fullmatch(r"Desktop \u00b7 Windows, Columns \u00b7 \d+", desktop_row), desktop_row
     desktop.photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
     desktop.follow()
