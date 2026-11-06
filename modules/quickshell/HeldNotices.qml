@@ -128,6 +128,15 @@ Floating {
     // that replaced it.
     property var cardOf: null
     property real cardTall: 0
+    // Taken a moment after the card says it, never while the rows it
+    // shapes are being laid, and only when it changes, so a card laid
+    // again with the same height leaves them be.
+    function cardSays(of, tall) {
+        if (cardOf !== of)
+            cardOf = of;
+        if (cardTall !== tall)
+            cardTall = tall;
+    }
     readonly property real cardShown: cardOf !== null && cardOf === listed[cursor]
         && mode !== "command" ? cardTall : 0
     readonly property int shownTop: Math.max(firstShown, cursor - shownRoom + 1)
@@ -1547,10 +1556,8 @@ Floating {
                     // screen; set rather than bound, as the rows shown
                     // follow from it.
                     function told() {
-                        if (!card.visible)
-                            return;
-                        held.cardTall = card.tall;
-                        held.cardOf = line.modelData;
+                        if (card.visible)
+                            Qt.callLater(held.cardSays, line.modelData, card.tall);
                     }
                     onTallChanged: told()
                     onVisibleChanged: told()
