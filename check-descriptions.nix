@@ -6,7 +6,7 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
-  a-card-says-how-it-stands-in-one-line = ''
+  a-card-says-how-it-stands-in-one-row = ''
     a card's status line, the launcher's and held notices' alike, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
   '';
@@ -2191,7 +2191,7 @@
     with two screens of different sizes, the splash's ask shows whole on both, its bottom left
     corner on the smaller one included
   '';
-  vm-boot-says-it-restores = ''
+  vm-boot-says-it-wakes-from-hibernation = ''
     the graphical role, hibernated to a swap file on btrfs inside LUKS and started from its
     image with the passphrase typed at the theme's ask, shows the theme's words for a restore
     on the first, middle and last photographs taken while the kernel reads the image, comes
