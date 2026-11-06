@@ -150,7 +150,7 @@ def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMa
     The kernel takes back nothing under a cgroup's memory.min, whatever is reclaiming, so 300 MiB
     held under one is more than the image's cap of about 213 MiB beside the reserve: without the
     hook setting the floors aside, the hibernation rolls back short of memory. It's zeros, which
-    zram keeps in no memory at all, so what's measured is the floor, not how well zram packs.
+    swap marks rather than stores, so what's measured is the floor, not how well the pool packs.
     """
     swapping.succeed(
         "mkdir -p /run/floored",
