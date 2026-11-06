@@ -14,27 +14,33 @@
 {
   # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
   # every slice above them is protected, so a floor one of them lacks is a
-  # floor nobody has, and nothing says so. Only a hard floor counts: the
-  # kernel takes a soft one back under pressure, and the compositor reads keys
-  # late. Whether the parents' floor covers both is the VM test's to say,
-  # since one is a share of memory and the other a size.
+  # floor nobody has, and nothing says so. session.slice's and app.slice's
+  # are hard: the kernel takes a soft one back under pressure, and the
+  # compositor reads keys late. agents.slice's is soft, so idle sessions
+  # swap before work is ended, and every slice above claims both kinds.
+  # Whether the parents' floors cover them is the VM test's to say, since
+  # one is a share of memory and another a size.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
-      parents = [
-        systemd.slices.user.sliceConfig.MemoryMin or null
-        systemd.slices."user-".sliceConfig.MemoryMin or null
-        systemd.services."user@".serviceConfig.MemoryMin or null
+      above = kind: [
+        systemd.slices.user.sliceConfig.${kind} or null
+        systemd.slices."user-".sliceConfig.${kind} or null
+        systemd.services."user@".serviceConfig.${kind} or null
       ];
-      floors = parents ++ [
-        systemd.user.slices.session.sliceConfig.MemoryMin or null
-        systemd.user.slices.app.sliceConfig.MemoryMin or null
-        systemd.user.slices.agents.sliceConfig.MemoryMin or null
-      ];
+      same = floors: lib.all (floor: floor != null && floor == lib.head floors) floors;
+      agents = systemd.user.slices.agents.sliceConfig;
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice, app.slice or agents.slice lacks its hard memory floor, so they have none."
-      (lib.all (floor: floor != null) floors && lib.all (floor: floor == lib.head parents) parents);
+      "A slice above session.slice, app.slice or agents.slice lacks its memory floor, so they have none."
+      (
+        same (above "MemoryMin")
+        && same (above "MemoryLow")
+        && systemd.user.slices.session.sliceConfig ? MemoryMin
+        && systemd.user.slices.app.sliceConfig ? MemoryMin
+        && agents ? MemoryLow
+        && !(agents ? MemoryMin)
+      );
 
   # The compositor and the shell are how Joel drives the machine, so inside
   # session.slice they come first and keep hard floors of their own. A floor

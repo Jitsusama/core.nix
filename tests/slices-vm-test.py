@@ -26,11 +26,11 @@ JOBS = f"{ACCOUNT}/jobs.slice"
 TIMED = f"{JOBS}/jobs-timed.slice"
 WORK = f"{JOBS}/jobs-work.slice"
 MIB = 2**20
-# The memory shares the module keeps for apps, for agents' sessions beside them, and for
-# every slice above both.
+# The memory shares the module keeps for apps, hard, for agents' sessions beside them, soft,
+# and for every slice above both, one of each.
 APPS_SHARE = 0.10
 AGENTS_SHARE = 0.15
-ABOVE_SHARE = 0.30
+ABOVE_SHARE = 0.15
 SESSION_FLOOR = 2560 * MIB
 # The share of memory past which work in jobs is slowed.
 JOBS_HIGH = 0.5
@@ -115,6 +115,10 @@ class Account:
     def floor(self, path: str) -> int:
         """Give the memory, in bytes, the kernel keeps for the cgroup whatever else needs it."""
         return int(self.read(f"{path}/memory.min"))
+
+    def soft_floor(self, path: str) -> int:
+        """Give the memory, in bytes, the kernel keeps for the cgroup while it finds other."""
+        return int(self.read(f"{path}/memory.low"))
 
     def memory(self) -> int:
         """Give the memory the kernel reports, in bytes, which systemd turns a share into."""
@@ -209,16 +213,14 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 
 
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
-    """Apps and agents' sessions keep hard shares of memory, and every slice above more."""
+    """Apps keep a hard share of memory, agents' sessions a soft one, and every slice above both."""
     total = account.memory()
-    for path, share in [
-        (f"{ACCOUNT}/app.slice", APPS_SHARE),
-        (f"{ACCOUNT}/agents.slice", AGENTS_SHARE),
-        (ACCOUNT, ABOVE_SHARE),
-        ("/sys/fs/cgroup/user.slice/user-1000.slice", ABOVE_SHARE),
-        ("/sys/fs/cgroup/user.slice", ABOVE_SHARE),
-    ]:
+    above = [ACCOUNT, "/sys/fs/cgroup/user.slice/user-1000.slice", "/sys/fs/cgroup/user.slice"]
+    for path, share in [(f"{ACCOUNT}/app.slice", APPS_SHARE)] + [(p, ABOVE_SHARE) for p in above]:
         assert abs(account.floor(path) - total * share) <= MIB, path
+    for path in [f"{ACCOUNT}/agents.slice", *above]:
+        assert abs(account.soft_floor(path) - total * AGENTS_SHARE) <= MIB, path
+    assert account.floor(f"{ACCOUNT}/agents.slice") == 0
     assert account.floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
     assert account.floor(JOBS) == 0
 

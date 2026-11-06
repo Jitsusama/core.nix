@@ -156,16 +156,23 @@ let
   # floor and the apps were what swapped. So the sessions have a slice and a
   # floor of their own, agents.slice's 15%, 9.3 GiB, and app.slice keeps 10%,
   # 6.2 GiB, for Joel's programs alone. A floor its programs don't fill
-  # costs work only what they leave unused. Every slice above them claims a
-  # little more, to cover session.slice's 2.5 GiB beside them. What the
-  # floors below leave unused the kernel shares among the account's other
-  # slices. Work in jobs, background and containers has the rest of memory,
-  # and when that runs out, it's what swaps. The account's 30% covers
-  # app.slice's 6.2 GiB, agents.slice's 9.3 and session.slice's 2.5 on a
-  # 62 GiB machine.
+  # costs work only what they leave unused.
+  # The sessions' floor is a soft one, MemoryLow. From 4 to 6 November the
+  # kernel ended queued work more than 40 times with most of swap free,
+  # finding nothing it could take: the hard floors kept 20 GiB, 10 of it for
+  # the sessions, most of them idle and waiting on their next message. A
+  # session that waits can wait on swap; work that's ended starts again. So the kernel keeps the
+  # sessions' 15% while it finds anything else, and takes it back before it
+  # ends anything.
+  # Every slice above claims both kinds of floor, since the kernel protects a
+  # slice only as far as each slice above it is protected. Hard, 15% covers
+  # app.slice's 6.2 GiB and session.slice's 2.5 on a 62 GiB machine; soft,
+  # agents.slice's 15%. What the floors below leave unused the kernel shares
+  # among the account's other slices. Work in jobs, background and containers
+  # has the rest of memory, and when that runs out, it's what swaps.
   apps = "10%";
   agents = "15%";
-  account = "30%";
+  account = "15%";
 in
 {
   options.jitsusama.slices.disks = lib.mkOption {
@@ -240,7 +247,7 @@ in
     # their terminal names this slice, and kitty puts each window's scope
     # in its own.
     systemd.user.slices.agents.sliceConfig = {
-      MemoryMin = agents;
+      MemoryLow = agents;
     }
     // latency;
 
@@ -292,6 +299,7 @@ in
       # Every account's manager, user@<uid>.service, beside its slice.
       "user@".serviceConfig = limits // {
         MemoryMin = account;
+        MemoryLow = agents;
       };
     }
     // lib.mapAttrs' (
@@ -525,6 +533,7 @@ in
     # weight, ten times theirs.
     systemd.slices.user.sliceConfig = {
       MemoryMin = account;
+      MemoryLow = agents;
       IOWeight = 1000;
     }
     // latency;
@@ -532,7 +541,10 @@ in
     # Every account's user-<uid>.slice, which logind makes as it logs in.
     systemd.slices."user-" = {
       overrideStrategy = "asDropin";
-      sliceConfig.MemoryMin = account;
+      sliceConfig = {
+        MemoryMin = account;
+        MemoryLow = agents;
+      };
     };
 
     # What the account's own units start with, said outright rather than
