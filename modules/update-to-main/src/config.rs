@@ -72,6 +72,10 @@ pub struct Config {
     /// What the machine may be busy with, such as a call, when an update
     /// mustn't start or switch.
     pub refuse_while: Vec<Busy>,
+    /// Daemons a switch mustn't restart unless an asker has granted it,
+    /// such as the one every build on the machine goes through.
+    #[serde(default)]
+    pub holds: Option<Holds>,
     /// Where Linux says how the machine is powered.
     pub power_supplies: PathBuf,
     /// The programs it runs, by their paths in the store.
@@ -111,6 +115,22 @@ pub struct Here {
     pub cores: u32,
     /// The minute's load average at or above which they wait.
     pub below_load: f64,
+}
+
+/// Daemons whose restart waits for a hold: whoever asks puts the machine's
+/// other work on hold first, then grants one switch by making `given`.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Holds {
+    /// Their names: a systemd unit on NixOS, a launchd label on a Mac.
+    pub units: Vec<String>,
+    /// Paths in a system, such as `kernel`, whose changing waits for a
+    /// grant as a held daemon's restart does.
+    #[serde(default)]
+    pub paths: Vec<String>,
+    /// The file an asker makes to grant the next switch their restarts,
+    /// which that switch takes away.
+    pub given: PathBuf,
 }
 
 /// Something the machine may be busy with, which a command tells.

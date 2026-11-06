@@ -534,6 +534,50 @@ pub fn restarted_units(said: &str) -> Vec<String> {
     restarted
 }
 
+/// Whether a daemon's definition differs between two systems, or only one
+/// has it, so switching from `old` to `new` restarts it: a systemd unit's
+/// file and its drop-ins on NixOS, a launchd plist on a Mac.
+pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
+    match kind {
+        Kind::Nixos => {
+            let unit = |system: &Path| {
+                let units = system.join("etc/systemd/system");
+                (
+                    fs::read_to_string(units.join(name)).ok(),
+                    folder(&units.join(format!("{name}.d"))),
+                )
+            };
+            unit(old) != unit(new)
+        }
+        Kind::Darwin => {
+            let plist = |system: &Path| {
+                fs::read_to_string(system.join(format!("Library/LaunchDaemons/{name}.plist"))).ok()
+            };
+            plist(old) != plist(new)
+        }
+    }
+}
+
+/// Whether a path in a system leads somewhere else in another, or only one
+/// has it, as a NixOS system's `kernel` does when it boots another kernel.
+pub fn path_changed(old: &Path, new: &Path, path: &str) -> bool {
+    fs::canonicalize(old.join(path)).ok() != fs::canonicalize(new.join(path)).ok()
+}
+
+/// Each file in a folder by its name, with what it holds.
+fn folder(path: &Path) -> BTreeMap<String, Option<String>> {
+    let Ok(entries) = fs::read_dir(path) else {
+        return BTreeMap::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            Some((name, fs::read_to_string(e.path()).ok()))
+        })
+        .collect()
+}
+
 /// The labels of the launchd daemons whose definition differs between two
 /// nix-darwin systems, or that only the new one has: those activate
 /// restarts, such as the Linux VM when its guest changed.
