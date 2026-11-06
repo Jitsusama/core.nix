@@ -509,21 +509,16 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     assert len(kept) - len(absent) >= fewest, absent
 
 
-def waits_then_lets_go(desktop: Desktop, key: str, typed: str | None = None) -> None:
-    """Type a key that begins a pair, and wait until it's waited for its second and let go.
+def waits_then_escape_lets_go(desktop: Desktop, key: str, typed: str | None = None) -> None:
+    """Type a key that begins a pair, see it wait for its second, and let it go by Escape.
 
-    The key is as the launcher names it, typed as its own text unless told what to type. It's
-    heard from before the key, since the wait can be over before one begun after it starts.
+    The key is as the launcher names it, typed as its own text unless told what to type. It
+    waits however long, as his which-key holds a begun key, so Escape is what lets it go.
     """
-    before = desktop.mark()
     desktop.machine.send_chars(key if typed is None else typed)
-    begun: list[str] = []
-
-    def let_go(said: str) -> bool:
-        begun.append(json.loads(said)["begun"])
-        return key in begun and begun[-1] == ""
-
-    desktop.reported("showing ", let_go, before)
+    desktop.launcher_until(lambda shown: shown["begun"] == key)
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["begun"] == "")
 
 
 def arrows_move_as_letters(desktop: Desktop) -> None:
@@ -668,8 +663,8 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "")
     assert desktop.showing()["open"], "an Escape cancelling a count closed the launcher"
-    # A g waits his timeoutlen for its second, then lets go, so a j after moves.
-    waits_then_lets_go(desktop, "g")
+    # A g waits for its second, and Escape lets it go, so a j after moves.
+    waits_then_escape_lets_go(desktop, "g")
     machine.send_chars("j")
     # Half a screen moves the rows as far as the selection, so it keeps its place in view;
     # a screen goes on a list's height, eight rows.
@@ -950,9 +945,9 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     Space Tab goes to the place used last and back, as his goes to the file used last; Ctrl+O
     and Tab, which is Ctrl+I, go back and forward through the places stepped into; Space ? and
     F1 list every key in the drawer until Escape or again; Space alone waits for a second key
-    and lets go; Space w closes the launcher, and Escape at rest a step in does nothing, :q
-    closing it. Every hint the foot draws, at home and a step in, is first pressed and seen to
-    do something.
+    until Escape lets it go; Space w closes the launcher, and Escape at rest a step in does
+    nothing, :q closing it. Every hint the foot draws, at home and a step in, is first pressed
+    and seen to do something.
     """
     machine = desktop.machine
     every_hint_changes(desktop, 0)
@@ -996,7 +991,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     listed(listing=True)
     machine.send_key("f1")
     listed(listing=False)
-    waits_then_lets_go(desktop, "Space", " ")
+    waits_then_escape_lets_go(desktop, "Space", " ")
     assert desktop.showing()["open"], "a Space alone closed the launcher"
     machine.send_chars(" w")
     desktop.launcher_until(lambda shown: not shown["open"])

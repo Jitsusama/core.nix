@@ -418,15 +418,6 @@ function opensCommands(key, mode, text) {
     return key === ":" && mode === "find" && text === "";
 }
 
-// How the keys stand once a sequence begun has waited its timeoutlen for
-// the rest: its keys let go, and a count typed before them kept, since a
-// count waits for its move as long as it takes, as Vim's does.
-function waited(standing) {
-    const kept = { count: standing.count, typed: [] };
-    return standing.operator === undefined ? kept
-        : Object.assign(kept, { operator: standing.operator });
-}
-
 // The first key of an act in a mode, as the table names it, for the field
 // to say beside what it does.
 function keyOf(act, mode) {

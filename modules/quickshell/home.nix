@@ -128,6 +128,8 @@ let
     "Finding.js"
     "Confirm.js"
     "KeyHints.qml"
+    "StatusLine.qml"
+    "StatusLine.js"
     "Drawer.qml"
     "DrawerPage.js"
     "Launcher.qml"

@@ -645,27 +645,33 @@ Floating {
     // and N going on with the last, its way and the other. The cursor goes
     // to the match's first letter and the view follows it; `landing` says
     // "wrapped" where it went round an end, as Vim says it hit the bottom,
-    // and "missing" where it's found nowhere, the cursor staying.
+    // and "missing" where it's found nowhere, the cursor staying. Each
+    // gives how it went for the launcher to say, as the rows' n and N do
+    // (Finding.matchTo): `none` Vim's E35 with nothing sought before, or
+    // E486 where it's found nowhere, else "", and `wrapped` the end it went
+    // round, with what was sought.
     function seek(pattern, forward, count) {
         const sought = pattern !== "" ? { pattern, forward }
             : lastSought ? { pattern: lastSought.pattern, forward } : null;
         if (!sought)
-            return;
+            return { none: "E35", wrapped: "", pattern };
         lastSought = sought;
-        land(sought.pattern, forward, count);
+        return land(sought.pattern, forward, count);
     }
     function seekOn(act, count) {
-        if (lastSought)
-            land(lastSought.pattern, act === "seekNext" ? lastSought.forward
-                : !lastSought.forward, count);
+        if (!lastSought)
+            return { none: "E35", wrapped: "", pattern: "" };
+        return land(lastSought.pattern, act === "seekNext" ? lastSought.forward
+            : !lastSought.forward, count);
     }
     function land(pattern, forward, count) {
         const landed = Page.sought(paged(), pattern, forward, count);
-        landing = landed === null ? "missing" : landed.wrapped ? "wrapped" : "";
+        landing = landed === null ? "missing" : landed.wrapped !== "" ? "wrapped" : "";
         if (landed === null)
-            return;
+            return { none: "E486", wrapped: "", pattern };
         cursor = { line: landed.line, letter: landed.letter, want: landed.want };
         view.contentY = landed.top;
+        return { none: "", wrapped: landed.wrapped, pattern };
     }
 
     // Its lines as a search reads them, each with its letters as shown.

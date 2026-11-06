@@ -131,12 +131,6 @@ QtObject {
             { count: "", typed: [], operator: { key: "d", count: "2" } });
         holds("d and y leave the line in normal", typed(["Escape", "d", "d", "y", "j"]).mode,
             "normal");
-        holds("an operator waits past timeoutlen, as Vim's does",
-            Keys.waited({ count: "3", typed: [], operator: { key: "d", count: "" } }),
-            { count: "3", typed: [], operator: { key: "d", count: "" } });
-        holds("though a g after it lets go",
-            Keys.waited({ count: "", typed: ["g"], operator: { key: "y", count: "2" } }),
-            { count: "", typed: [], operator: { key: "y", count: "2" } });
         for (const act of ["ending", "copy"])
             holds(`${act} is once a press, so a held d never makes dd`, Keys.repeats(act), false);
         holds("the field says dd for ending", Keys.keyOf("ending", "normal"), "dd");
@@ -892,8 +886,9 @@ QtObject {
 
         // Where a search lands (DrawerPage.sought): lines of the pitch, the
         // view ten of them, and the cursor's line and letter. [what, from
-        // line, from letter, pattern, forward, count, [line, letter,
-        // wrapped]], or null where it's found nowhere.
+        // line, from letter, pattern, forward, count, [line, letter, the
+        // end it went round, as Vim's wrapscan says it hit the bottom or
+        // the top]], or null where it's found nowhere.
         const texts = ["Deploy log", "line 1 of the deploy", "line 2 of the Deploy",
             "nothing here"].concat(Array.from({ length: 16 }, (_, at) => `filler ${at}`));
         const lines = texts.map((text, at) => ({ top: at * 24, height: 24, length: text.length,
@@ -904,15 +899,16 @@ QtObject {
             letterAt: (at, x) => Math.round(x / 10)
         });
         const landings = [
-            ["the next match after the cursor", 0, 0, "deploy", true, 0, [1, 14, false]],
-            ["a count goes on that many", 0, 0, "deploy", true, 2, [2, 14, false]],
-            ["past the last, round to the first", 0, 0, "deploy", true, 3, [0, 0, true]],
-            ["a capital finds only itself", 0, 0, "Deploy", true, 0, [2, 14, false]],
-            ["on the cursor's own line, further along", 1, 0, "the", true, 0, [1, 10, false]],
-            ["never where the cursor stands", 1, 10, "the", true, 0, [2, 10, false]],
-            ["? the one before", 1, 14, "the", false, 0, [1, 10, false]],
-            ["? from the first, round to the last", 0, 0, "deploy", false, 0, [2, 14, true]],
-            ["a space is a letter like any", 0, 0, "1 of", true, 0, [1, 5, false]]
+            ["the next match after the cursor", 0, 0, "deploy", true, 0, [1, 14, ""]],
+            ["a count goes on that many", 0, 0, "deploy", true, 2, [2, 14, ""]],
+            ["past the last, round to the first", 0, 0, "deploy", true, 3, [0, 0, "bottom"]],
+            ["a capital finds only itself", 0, 0, "Deploy", true, 0, [2, 14, ""]],
+            ["on the cursor's own line, further along", 1, 0, "the", true, 0, [1, 10, ""]],
+            ["never where the cursor stands", 1, 10, "the", true, 0, [2, 10, ""]],
+            ["? the one before", 1, 14, "the", false, 0, [1, 10, ""]],
+            ["? from the first, round to the last", 0, 0, "deploy", false, 0, [2, 14, "top"]],
+            ["? a count round past the first", 2, 14, "deploy", false, 3, [2, 14, "top"]],
+            ["a space is a letter like any", 0, 0, "1 of", true, 0, [1, 5, ""]]
         ];
         const where = landed => landed === null ? null
             : [landed.line, landed.letter, landed.wrapped];
@@ -1463,8 +1459,10 @@ QtObject {
             Keys.table.filter(one => one.keys.includes("Escape")
                 && ["close", "dismiss", "quit"].includes(one.act)).map(one => one.act), []);
         holds("a letter on the find types, meaning nothing idle", typed(["n"]).idle, []);
-        holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
-            { count: "", typed: [] });
+        // A begun Space waits for its next key however long, as his
+        // which-key holds it (Prompt.qml's standing); Escape lets it go.
+        holds("Escape lets a begun Space go, so a ? after it finds upward",
+            typed(["Escape", "Space", "Escape", "?"]).acts, ["normal", "freshFindBack"]);
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in",
@@ -1617,8 +1615,6 @@ QtObject {
         // glyph's room.
         holds("every line's keys are short enough to sit whole",
             facts.filter(line => line.label.length > 14).map(line => line.label), []);
-        holds("a g waiting its timeoutlen lets go, keeping the count",
-            Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp", "matchNext", "matchBack",
             "letterAgain", "letterAgainBack"])

@@ -41,6 +41,13 @@ JOELS_SCALES = ("1.5", "2")
 # says the glyph it wears.
 CALL_GLYPH = "\U000f03f2"
 
+# What a search says going round an end, and with nothing sought before, as Vim's do
+# (modules/quickshell/launcher/words.json, field.hints).
+WRAPPED_BOTTOM = "search hit BOTTOM, continuing at TOP"
+WRAPPED_TOP = "search hit TOP, continuing at BOTTOM"
+E35 = "E35: No previous regular expression"
+E486_ZZZ = "E486: Pattern not found: zzz"
+
 
 def test_niris_settings_failing_to_load_is_said_until_they_load_again(desktop: Desktop) -> None:
     """Niri's settings failing to load is said until they load again."""
@@ -547,13 +554,40 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     chosen_and_copied_as_vim_does(desktop)
 
 
+def said_round_and_nowhere(page: InTheDrawer) -> None:
+    """In the drawer, on the title a search went round to, the foot says each end it goes round.
+
+    / came past the bottom, N goes back past the top to the title, its only capital, and what's
+    found nowhere says E486, the cursor staying, each as Vim says it, until the next key, when
+    the foot's keys come back.
+    """
+    page.desktop.launcher_until(lambda shown: shown["saying"] == [WRAPPED_BOTTOM])
+    page.pressed_until(
+        "shift-n",
+        lambda shown: shown["saying"] == [WRAPPED_TOP] and shown["drawer"]["cursor"]["line"] == 1,
+    )
+    page.pressed_until(
+        "/ z z z ret",
+        lambda shown: (
+            shown["saying"] == [E486_ZZZ]
+            and shown["drawer"]["cursor"]["line"] == 1
+            and shown["drawer"]["search"]["landing"] == "missing"
+        ),
+    )
+    page.pressed_until(
+        "j", lambda shown: shown["saying"] == [] and shown["drawer"]["cursor"]["line"] > 1
+    )
+
+
 def searched_as_vim_does(desktop: Desktop) -> None:
     """In the drawer, / and ? type what to seek, and Return puts the cursor where it's found.
 
     What's typed is washed as it's typed; Return puts the cursor on its first letter and the
     view follows; n goes on to the next, N back to the one before, and a count as many; ? with
     nothing typed seeks the last back; a capital asks for one, and the search goes round past
-    the last line to the title. Escape lets one being typed go, the keys staying in the drawer,
+    the last line to the title, and N back round the top, the foot saying each as Vim's
+    wrapscan does. With nothing sought n says E35, and what's found nowhere says E486, the
+    cursor staying. Escape lets one being typed go, the keys staying in the drawer,
     as Backspace does with nothing left; Ctrl+W takes the word before and Ctrl+C lets it go,
     as on Vim's command line. The foot counts the match it would land on, and the one the
     cursor stands on, of how many. Its pictures at both of Joel's scales show the matches
@@ -561,6 +595,7 @@ def searched_as_vim_does(desktop: Desktop) -> None:
     """
     page = InTheDrawer(desktop)
     page.into()
+    page.pressed_until("n", lambda shown: shown["saying"] == [E35])
     page.press("/ l i n e spc 3 0")
     desktop.launcher_until(lambda shown: shown["drawer"]["search"]["washing"] == "line 30")
     typed = desktop.showing()["modeSays"]
@@ -602,6 +637,7 @@ def searched_as_vim_does(desktop: Desktop) -> None:
     came = page.until("/ shift-d e p l o y ret", lambda drawer: drawer["cursor"]["line"] == 1)
     assert came["cursor"]["says"] == page.TITLE, came
     assert came["search"]["landing"] == "wrapped", came
+    said_round_and_nowhere(page)
     # A search let go moves nothing, and the keys stay: j moves from where it stood.
     page.press("/ z z")
     desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "zz")
@@ -612,9 +648,18 @@ def searched_as_vim_does(desktop: Desktop) -> None:
     page.press("/ l i n e spc z z ctrl-w")
     desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "line ")
     page.until("ctrl-c j", lambda drawer: drawer["cursor"]["line"] == line + 3)
+    searched_at_each_scale(page)
 
-    # The cursor stands on the title's own Deploy, so the first line's deploy comes next,
-    # without going round: where a narrow drawer breaks that line, it's on a line of its own.
+
+def searched_at_each_scale(page: InTheDrawer) -> None:
+    """At each scale, a search from the title lands on the first line's deploy, and zzz on none.
+
+    The cursor stands on the title's own Deploy, so the first line's deploy comes next, without
+    going round: where a narrow drawer breaks that line, it's on a line of its own. Its
+    pictures show the matches washed, and E486 said in the foot, for a person to judge.
+    """
+    desktop = page.desktop
+
     def first(title: int, drawer: Json) -> bool:
         cursor = drawer["cursor"]
         return bool(
@@ -630,7 +675,10 @@ def searched_as_vim_does(desktop: Desktop) -> None:
         # The title's line, which is the first where no eyebrow is shown.
         at = int(page.into()["line"])
         page.until("/ d e p l o y ret", functools.partial(first, at))
-        desktop.photograph(f"launcher-drawer-search-at-{scale.replace('.', '-')}")
+        named = scale.replace(".", "-")
+        desktop.photograph(f"launcher-drawer-search-at-{named}")
+        page.pressed_until("/ z z z ret", lambda shown: shown["saying"] == [E486_ZZZ])
+        desktop.photograph(f"launcher-drawer-missing-at-{named}")
     page.back("ctrl-w h")
     desktop.close_launcher()
 
@@ -739,7 +787,14 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # lists what it offers as commands under its words, and : puts them first in the menu;
     # Tab chooses it and Return does it, with a token to come forward, giving the keys back.
     desktop.listen()
-    with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
+    # Its status line reaches the frame, so its text centres between the
+    # hairline and the frame, as the launcher's does (docs/design.md: text
+    # in a band centres in it).
+    with (
+        desktop.told("keys notices"),
+        desktop.told("notice cursor Lunch"),
+        desktop.told("notice foot ends at the frame"),
+    ):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
     for key in ["tab", "backspace", "h", "l"]:

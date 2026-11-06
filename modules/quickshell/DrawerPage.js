@@ -64,9 +64,11 @@ function found(lines, pattern, line, letter) {
 // match of the `of` it found: on the next match's first
 // letter past the cursor, or with `forward` false the one before it, a
 // count going on that many, round past either end as Vim's wrapscan does,
-// matched by smartcase as Search.js matches. Each line is searched as it's
-// shown, so a match never runs across a line's end, and the view follows
-// the cursor there as a move's does.
+// `wrapped` naming the end it went round, "bottom" or "top", as the rows'
+// Finding.matchTo does, else ""; matched by smartcase as Search.js
+// matches. Each line is searched as it's shown, so a match never runs
+// across a line's end, and the view follows the cursor there as a move's
+// does.
 function sought(page, pattern, forward, count) {
     const matches = matchesIn(page.lines, pattern);
     if (matches.length === 0) {
@@ -90,7 +92,7 @@ function sought(page, pattern, forward, count) {
         });
         target = last - times;
     }
-    const wrapped = target < 0 || target >= matches.length;
+    const wrapped = target >= matches.length ? "bottom" : target < 0 ? "top" : "";
     const which = ((target % matches.length) + matches.length) % matches.length;
     const landed = matches[which];
     return {

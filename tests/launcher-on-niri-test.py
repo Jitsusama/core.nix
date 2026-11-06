@@ -189,7 +189,36 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
     shell.launcher_until(lambda shown: shown["listing"] is True)
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["open"] and shown["listing"] is False)
+    space_waits_for_its_next_key(shell)
     shell.close_launcher()
+
+
+# Twice the key language's timeoutlen (modules/keys/language.toml's wait), as long a pause as
+# Joel's between Space and the Shift its ? takes.
+PAUSE = 0.6
+
+
+def space_waits_for_its_next_key(shell: Shell) -> None:
+    """Press Space, pause past timeoutlen, then ?, from normal and from the find: the key list.
+
+    His Neovim's which-key holds a begun Space for its next key however long he pauses, so ?
+    after it lists the keys rather than opening the find upward (Joel, 2026-11-05: "space ?
+    does not work, it goes into reverse search mode").
+    """
+    for start in (shell.normal, shell.on_find):
+        start()
+        # The find types a Space, so normal is Escape away, as from Vim's / line.
+        shell.normal()
+        shell.send_chars(" ")
+        shell.launcher_until(lambda shown: shown["begun"] == "Space")
+        # The pause is what's tested, so it's slept, not waited on.
+        time.sleep(PAUSE)
+        shell.send_chars("?")
+        shell.launcher_until(lambda shown: shown["listing"] is True)
+        shown = shell.showing()
+        assert (shown["mode"], shown["begun"]) == ("normal", ""), shown
+        shell.send_key("esc")
+        shell.launcher_until(lambda shown: shown["open"] and shown["listing"] is False)
 
 
 def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell: Shell) -> None:

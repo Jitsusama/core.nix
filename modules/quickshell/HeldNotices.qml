@@ -27,6 +27,7 @@ import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
 import "Search.js" as Search
+import "StatusLine.js" as Line
 import "launcher/Notice.js" as Notice
 
 Floating {
@@ -197,6 +198,15 @@ Floating {
         reset();
         cursorId = front;
         Qt.callLater(sayOffers);
+        Qt.callLater(sayFoot);
+    }
+
+    // Whether the status line reaches the frame, so its text centres in
+    // the band the hairline and the frame close, for a test to hold.
+    function sayFoot() {
+        const short = Math.round(sheet.height - foot.y - statusLine.height);
+        Report.say(short === 0 ? "notice foot ends at the frame"
+            : `notice foot ends ${short} short of the frame`);
     }
 
     function reset() {
@@ -1553,37 +1563,43 @@ Floating {
                 text: "999 chosen"
             }
 
-            // The mode in three capitals, first, where the eye starts the
-            // line, as his Neovim's status line starts with it (Joel,
-            // 2026-11-05: "in a place where they are more obvious and not
-            // lost with other things"). It's set as a label, the theme's
-            // capitals, muted in normal and in the accent in every other
-            // mode, as his status line names a mode but normal in it. Every
-            // mark is three of the mono's capitals, so one's width is all
-            // of theirs, and nothing beside it moves as the mode changes.
-            Text {
-                id: markText
-                x: held.ink
-                anchors.verticalCenter: parent.verticalCenter
-                text: held.modeMark
-                color: held.modeMark === NoticeKeys.mark("normal") ? Theme.muted : Theme.accent
-                font.family: Theme.level.label.family
-                font.pointSize: Theme.level.label.pointSize
-                font.weight: Theme.level.label.weight
-                font.capitalization: Theme.level.label.capitalization
-                font.letterSpacing: Theme.level.label.letterSpacing
-                font.features: Theme.level.label.features
+            // The status line the launcher's foot is too (StatusLine.qml):
+            // the mode in three capitals first (Joel, 2026-11-05: "in a
+            // place where they are more obvious and not lost with other
+            // things"), then which line of how many and the mode's word,
+            // set here from where it says, then the hints at the right,
+            // joined by dots, or what was just done until the next key.
+            StatusLine {
+                id: statusLine
+
+                // Down to the frame, through the sheet's room under the
+                // foot, so its text centres in the band the hairline and
+                // the frame close (docs/design.md: text in a band centres
+                // in it), not in the foot's row above that room.
+                width: parent.width
+                height: parent.height + sheet.bottomPadding
+                inset: held.ink
+                mark: held.modeMark
+                resting: held.modeMark === NoticeKeys.mark("normal")
+                hints: hinted.shown
+                said: held.said
+                saidHue: held.saidWrong ? Theme.alert : Theme.text
+                saidRoom: hinted.fits
             }
 
-            // Where the facts start: past the mark and a step.
-            readonly property real factsAt: markText.x + markText.implicitWidth + Theme.space.l
+            // Where the facts start, as the status line says.
+            readonly property real factsAt: statusLine.factsAt
 
             Text {
                 id: facts
                 x: foot.factsAt
+                // Short of the mode's word only while one shows, so at rest
+                // the position reads whole.
                 width: Math.min(implicitWidth, foot.width - foot.factsAt - held.ink
-                    - foot.wordRoom - Theme.space.l - hinted.width)
-                anchors.verticalCenter: parent.verticalCenter
+                    - (held.modeWord !== "" ? foot.wordRoom : 0) - Theme.space.l
+                    - statusLine.keys.implicitWidth)
+                anchors.baseline: parent.top
+                anchors.baselineOffset: statusLine.base
                 text: held.facts
                 elide: Text.ElideRight
                 color: Theme.muted
@@ -1594,15 +1610,18 @@ Floating {
                 id: modeWord
                 x: facts.x + facts.width + (facts.width > 0 ? Theme.space.l : 0)
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - foot.factsAt - held.ink - facts.width - hinted.width - 2 * Theme.space.l))
-                anchors.verticalCenter: parent.verticalCenter
+                    - foot.factsAt - held.ink - facts.width - statusLine.keys.implicitWidth
+                    - 2 * Theme.space.l))
+                anchors.baseline: parent.top
+                anchors.baselineOffset: statusLine.base
                 text: held.modeWord
                 elide: Text.ElideRight
                 color: held.standing.count !== "" && !held.pending ? Theme.strong : Theme.accent
                 font: note.font
             }
 
-            Text {
+            // The hints the status line draws, as many as fit.
+            Item {
                 id: hinted
 
                 // The room the facts and the mode word leave as they stand,
@@ -1624,31 +1643,15 @@ Floating {
                 }
 
                 // The hints that fit: the middle ones give way first, then
-                // the first, so Space ? and Return's at the right end stay.
-                readonly property string all: {
-                    if (held.said !== "")
-                        return held.said;
-                    // Read, so what's measured below follows the face.
-                    const face = note.font;
-                    if (face.family === "")
-                        return "";
-                    const said = held.hints.map(one => `${one.key} ${one.word}`);
-                    let shown = said;
-                    while (shown.length > 2 && note.advanceWidth(shown.join(" \u00b7 ")) > fits) {
-                        const going = shown.length > 3 ? 1 : 0;
-                        shown = shown.slice(0, going).concat(shown.slice(going + 1));
-                    }
-                    return shown.join(" \u00b7 ");
+                // the first, so Space ? and Return's at the right end stay
+                // (StatusLine.js). The dots' gap is read, so they're
+                // measured again once the theme's face arrives.
+                readonly property var shown: {
+                    const keys = statusLine.keys;
+                    const join = keys.spacing;
+                    return Line.fitted(held.hints.map(one => [one.key, one.word]),
+                        hint => keys.advance(hint[0], hint[1]), join, fits);
                 }
-
-                anchors.right: parent.right
-                anchors.rightMargin: held.ink
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, fits)
-                text: all
-                elide: Text.ElideLeft
-                color: held.saidWrong ? Theme.alert : held.said !== "" ? Theme.text : Theme.muted
-                font: note.font
             }
         }
     }

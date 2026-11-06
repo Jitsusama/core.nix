@@ -156,6 +156,13 @@ ShellRoot {
             }
             Prompt { id: hinted; width: root.panel; hint: root.sentence }
             PromptFoot { id: footed; width: root.panel; leads: "Asked by sudo" }
+            StatusLine {
+                id: lined
+                width: root.panel
+                height: 48
+                mark: "NOR"
+                hints: [["\u21b5", "open"]]
+            }
             // Three steps in, beside a note longer than the line has room
             // for, as Machine's processors' cores say.
             Prompt {
@@ -553,6 +560,14 @@ ShellRoot {
             // baseline on the rows' rhythm and its bottom where its words
             // centre.
             centred(footed, "Asked by sudo", noteCaps, noteSmall);
+            // A card's status line is one too, its mark and its hints on
+            // the one baseline.
+            centred(lined, "NOR", noteCaps, noteSmall);
+            const lineMark = root.setting(lined, "NOR");
+            const lineHint = root.setting(lined, "open");
+            expect("a status line's hints sit on its mark's baseline", lineMark !== null
+                && lineHint !== null && Math.abs(lineMark.base - lineHint.base) <= 0.5,
+                `${JSON.stringify(lineMark)} against ${JSON.stringify(lineHint)}`);
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
