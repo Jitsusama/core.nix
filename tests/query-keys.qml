@@ -1534,6 +1534,10 @@ QtObject {
         holds("the find's next row, Ctrl+N", keyed("next row"), "Ctrl+N");
         holds("the find's caret", keyed("caret"), "\u2190  \u2192");
         holds("the find's word deleted", keyed("word"), "Ctrl+W");
+        // The find's foot names Ctrl+] on a row holding parts, so its list
+        // names it too (MVL7F9, #1979).
+        holds("the find lists Ctrl+] into a row's parts", sections.Find.includes("Ctrl+]"),
+            true);
         holds("normal's keys aren't listed on the find, where they type",
             ["j", "k", "gg", "ZZ", "Tab"].filter(key => sections.Find.includes(key)),
             []);
