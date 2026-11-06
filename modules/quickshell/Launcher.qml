@@ -1178,12 +1178,19 @@ Scope {
     // Where Joel is, as the field shows it: each step as its row named it,
     // in the rows' own case (Shortcuts, Desktop), so the path reads as the
     // rows he picked did. A step named as the one before it (the Shortcuts
-    // category's Shortcuts) is said once.
-    readonly property var path: held.reduce((steps, step) => {
-        const said = step.row.title ?? step.row.name;
-        const last = steps.length > 0 ? steps[steps.length - 1] : "";
-        return said.toLowerCase() === last.toLowerCase() ? steps : steps.concat([said]);
-    }, [])
+    // category's Shortcuts) is said once. A collection standing in a place
+    // of its own, as the file picker's lists /, says it after its title
+    // while nothing below it is held, as each folder below says its own,
+    // so the path never loses where he is (VKCF3Z, 2026-11-05).
+    readonly property var path: {
+        const steps = held.reduce((said, step) => {
+            const own = step.row.title ?? step.row.name;
+            const last = said.length > 0 ? said[said.length - 1] : "";
+            return own.toLowerCase() === last.toLowerCase() ? said : said.concat([own]);
+        }, []);
+        const place = held.length === 1 ? held[0].row.from?.collection?.place : undefined;
+        return typeof place === "string" && place !== "" ? steps.concat([place]) : steps;
+    }
 
     // Words with their first letter a capital, as a row's name starts.
     function capitalised(words) {
@@ -1996,7 +2003,7 @@ Scope {
         // "Ctrl+] in \u00b7 Space ? keys \u00b7 \u21b5 open").
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             keys.push([hintKey("follow"), hints.in ?? ""]);
-        if (held.length > 0)
+        if (canGoUp)
             keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
@@ -2570,6 +2577,27 @@ Scope {
         jumping = false;
         restart(to.here.typed);
         reselect(to.here);
+    }
+    // Goes somewhere by several steps as one jump, as Vim's :cd or :bnext
+    // is one: the place left goes on the jump list and is the place used
+    // last, never a step on the way, so Ctrl+O goes back to where Joel
+    // was; one that ends where it began, as a place made again in place
+    // does, is no jump at all. A walk that opens a collection afresh
+    // (into) lets go what was on the way back, which is kept here.
+    function oneJump(walk) {
+        const left = { held: held, here: here() };
+        const was = { back: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last: lastPlace };
+        jumping = true;
+        try {
+            walk();
+        } finally {
+            jumping = false;
+        }
+        const moved = placeOf(left.held) !== placeOf(held);
+        jumpsBack = moved ? was.back.concat([left]) : was.back;
+        jumpsAhead = moved ? [] : was.ahead;
+        tagsBack = was.tags;
+        lastPlace = moved ? left : was.last;
     }
     // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
     // that opens on Return, as a mail, a program or a session do, into the
@@ -3328,7 +3356,12 @@ Scope {
         if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
         const made = Date.now();
-        held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
+        // Going back lands on the row stepped into, as oil's - lands on the
+        // folder it came from, though it was stepped into without being
+        // selected, as the file picker holds each folder on the way to
+        // where it opens; Return steps into the selection, so it's the same.
+        held = held.concat([Object.assign(here(), { key: steadyId(row), row: row,
+            rows: into ?? [] })]);
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -3640,6 +3673,12 @@ Scope {
     function beside(by) {
         held[held.length - 1]?.row?.beside?.(by);
     }
+
+    // Whether - has a place to go up to: anywhere but home, and but a
+    // collection with nothing above it, as a dialog's (`outermost`), which
+    // - would leave for a home it never showed, its ask still waiting.
+    readonly property bool canGoUp: held.length > 1
+        || (held.length === 1 && held[0].row.from?.collection?.outermost !== true)
 
     function back() {
         if (held.length === 0)
@@ -6032,7 +6071,7 @@ Scope {
                         onBackward: {
                             root.searchNow();
                             trials.pressed("backs");
-                            if (root.held.length === 0)
+                            if (!root.canGoUp)
                                 root.say([[root.hintKey("out"),
                                     (Words.field.hints ?? {}).notHere ?? ""]]);
                             else
