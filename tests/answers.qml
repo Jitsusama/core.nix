@@ -1000,6 +1000,22 @@ QtObject {
             .stage, 0);
         machine("a way past the last is the last", Standing.fittedFrom(facts, roomy, 99)
             .told.map(one => one.said).join("  "), "17:30  B  N  V  R");
+        // In visual, the facts give way before visual's acts: past their
+        // glyphs, each whole from the glance's end, and the time never
+        // (VKCF3Z, 2026-11-06: a VIS foot without d or y fails).
+        const fitsIn = room => told => told.reduce((sum, one) => sum + one.said.length, 0)
+            + 2 * Math.max(0, told.length - 1) <= room;
+        const visualFoot = room => Standing.fittedFrom(facts, fitsIn(room), 0, true);
+        for (const [room, said] of [
+            [17, "17:30  B  N  V  R"],
+            [12, "17:30  B  N"],
+            [9, "17:30  B"],
+            [3, "17:30"]
+        ])
+            machine(`in visual, how things stand in ${room}`, visualFoot(room).told
+                .map(one => one.said).join("  "), said);
+        machine("back from visual, every glyph again", Standing.fittedFrom(facts, fitsIn(3),
+            visualFoot(3).stage).told.map(one => one.said).join("  "), "17:30  B  N  V  R");
         // The keys in the room the facts leave them, Return first as told:
         // those furthest from Return give way first, never Return nor
         // Space ? just before it, each key its letters wide here, two
