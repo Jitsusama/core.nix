@@ -523,7 +523,8 @@ def lines_what_ends(desktop: Desktop, scale: str) -> None:
 
     Locking ends what's in use, so no Return does it: the row names :lockscreen, as d carries
     none of it, and the foot's Return says the line it writes, at the right end where Return
-    always is (VKCF3Z, 2026-11-05). Escape lets the line go, back in normal.
+    always is (VKCF3Z, 2026-11-05). Typed down to lo, it lists lockscreen first, and it's
+    photographed there too. Escape lets the line go, back in normal.
     """
     machine = desktop.machine
     at = scale.replace(".", "-")
@@ -540,9 +541,42 @@ def lines_what_ends(desktop: Desktop, scale: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "lockscreen")
     desktop.photograph(f"launcher-ends-lined-at-{at}")
+    machine.send_key("ctrl-u")
+    machine.send_chars("lo")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("line") == "lo"
+            and shown["command"]["menu"][:1] == ["lockscreen Lock"]
+        )
+    )
+    desktop.photograph(f"launcher-command-lo-at-{at}")
+    takes_the_head(desktop, scale)
     machine.send_key("esc")
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
+    )
+
+
+def takes_the_head(desktop: Desktop, scale: str) -> None:
+    """Say the : line stands in the head in the find line's place, its completions below it.
+
+    The : line and the find's / line are one line, as Vim's are, so the find line goes while it's
+    open; its completions are the list, each named on the rows' names' column, so what's typed
+    stands over the name it completes rather than indented under it (Joel, 2026-11-06).
+    """
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    line, lines = laid["line"], laid["lines"]
+    mark = next((word for word in line if word["text"] == ":"), None)
+    typed = next((word for word in line if word["text"] == "lo"), None)
+    assert mark, f"at {scale} the : line has no colon: {line}"
+    assert typed, f"at {scale} the : line doesn't read lo: {line}"
+    assert laid["field"] == [], f"at {scale} the find line stays beside the : line: {laid['field']}"
+    over = [word for word in lines if word["y"] <= mark["y"]]
+    assert not over, f"at {scale} the : line isn't above its completions: {mark}, {over}"
+    names = [word for word in lines if word["text"].startswith("lo")]
+    assert names, f"at {scale} no completion is named lo: {lines}"
+    assert names[0]["starts"] == typed["starts"], (
+        f"at {scale} lockscreen is listed at {names[0]['starts']}, typed at {typed['starts']}"
     )
 
 
