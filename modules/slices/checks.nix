@@ -78,6 +78,27 @@
       "Agents' sessions have no slice beside the apps at their weight, or the sorter doesn't watch it."
       (weight slices.agents == weight slices.app && watches "app.slice" && watches "agents.slice");
 
+  # Work other sessions wait on ranks with them on the disk, at their own
+  # target, while on the processor it stays below what Joel uses and above
+  # idle jobs, and past its ceiling swaps its own memory. Without a target
+  # it waits behind every session's disk work, as jobs does.
+  shared-work-ranks-with-the-sessions =
+    let
+      inherit (graphical.config) systemd environment;
+      inherit (systemd.user) slices;
+      shared = slices.shared.sliceConfig;
+      target = slice: slice.sliceConfig.IODeviceLatencyTargetSec or null;
+    in
+    holds "shared-work-ranks-with-the-sessions"
+      "Work other sessions wait on has no slice at their disk target, outranks Joel's programs on the processor, has no ceiling, or can't be found."
+      (
+        target slices.shared != null
+        && target slices.shared == target slices.agents
+        && shared.CPUWeight < (slices.app.sliceConfig.CPUWeight or 100)
+        && shared ? MemoryHigh
+        && environment.sessionVariables.SHARED_SLICE == "shared.slice"
+      );
+
   # Work in jobs swaps its own memory past half of it, rather than pushing
   # out what an app reaches for next, and is only ever slowed there: a hard
   # limit would end an evaluation that a slow one lets finish.

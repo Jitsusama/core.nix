@@ -133,7 +133,7 @@ def account(started: None, machine: BaseMachine, values: dict[str, Any]) -> Acco
     del started
     machine.wait_for_unit("user@1000.service")
     held = Account(machine, values)
-    for name in ["app", "agents", "session", "background"]:
+    for name in ["app", "agents", "session", "background", "shared"]:
         held.hold(name)
     machine.succeed(f"systemd-run --slice=machine.slice --unit=in-machine {held.sleep} infinity")
     machine.wait_for_unit("in-machine.service")
@@ -187,6 +187,12 @@ def test_what_joel_uses_has_a_millisecond(account: Account, drive: str) -> None:
     """What Joel uses has a millisecond on the drive behind /home."""
     assert latency(account, "app") == f"{drive} target=1000"
     assert latency(account, "session") == f"{drive} target=1000"
+
+
+def test_work_sessions_wait_on_has_theirs(account: Account, drive: str) -> None:
+    """Work sessions wait on has their millisecond, so the work it starts gives way to it."""
+    assert latency(account, "agents") == f"{drive} target=1000"
+    assert latency(account, "shared") == f"{drive} target=1000"
 
 
 def test_the_work_it_starts_has_none(account: Account) -> None:
