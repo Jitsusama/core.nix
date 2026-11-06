@@ -1993,6 +1993,13 @@ Scope {
             return [];
         const hints = Words.field.hints ?? {};
         const taught = [];
+        // A row Return opens that holds parts, as a program its commands
+        // and windows, says Ctrl+] goes into them, first, furthest from
+        // Return, as normal's foot does (Joel, 2026-11-05: "in programs i
+        // don't understand how to go to sub commands on a program").
+        const stepping = stepsIn(choice) || stepsThing(choice);
+        if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
+            taught.push([hintKey("follow", "find"), hints.in ?? ""]);
         if (typed !== "" && prompt.ghost !== "")
             taught.push([prompt.completeKey, hints.complete ?? ""]);
         const shorter = enough(choice);

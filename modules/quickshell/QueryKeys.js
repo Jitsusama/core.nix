@@ -72,8 +72,11 @@ const table = [
     { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
     { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
     { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
-    // Ctrl+] goes to the row's own place, as Vim follows a tag, Ctrl+T back.
+    // Ctrl+] goes to the row's own place, as Vim follows a tag, and from the
+    // find too, where a program's name is typed (Joel, 2026-11-05); Ctrl+T
+    // comes back.
     { act: "follow", mode: "normal", keys: ["Ctrl+]"] },
+    { act: "follow", mode: "find", keys: ["Ctrl+]"] },
     { act: "tagBack", mode: "normal", keys: ["Ctrl+t"] },
     // Every key here, as Space ? lists them, and F1; Space alone waits, as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
