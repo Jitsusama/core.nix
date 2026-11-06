@@ -1411,7 +1411,9 @@ Scope {
 
     // Every command that takes something after it, its form shown, from
     // the providers this machine has: Return or Tab puts its start in the
-    // field, out at the top, so it's finished there.
+    // field, out at the top, so it's finished there. What it does is said
+    // after its form, where a row says what it is or does, never at its
+    // right, which holds a figure or a state (VKCF3Z, 2026-11-06).
     function commands() {
         return Words.commands.filter(command => sources.some(source => source.settings.name
             === command.provider)).map(command => {
@@ -1424,7 +1426,8 @@ Scope {
                 glyph: Theme.glyph.command,
                 hue: "action",
                 chord: [],
-                side: command.says ?? "",
+                side: "",
+                count: command.says ?? "",
                 plain: true
             };
             row.prepared = Fuzzy.prepare(row.name);
@@ -2535,12 +2538,13 @@ Scope {
             verb: "open",
             name: collection.title ?? collection.noun,
             plain: true,
-            count: counted ? source.counted() : "",
             note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
-            side: "",
+            // How many it holds at its right, before its chord, where a
+            // row's figure stands (VKCF3Z, 2026-11-05).
+            side: counted ? source.counted() : "",
             gap: gap,
             opens: name,
             from: source,

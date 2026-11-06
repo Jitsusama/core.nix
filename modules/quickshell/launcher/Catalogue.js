@@ -405,6 +405,9 @@ function entry(row, id, within) {
         disruptive: disruptive(row) };
     if (typeof row.side === "string" && row.side !== "") {
         out.says = row.side;
+    } else if (row.form && row.count) {
+        // A command says what it does after its form rather than at its right.
+        out.says = row.count;
     }
     if (row.given) {
         out.args = [{ name: "words", words: row.ask ?? "" }];

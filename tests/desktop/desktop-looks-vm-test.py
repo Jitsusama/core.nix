@@ -261,6 +261,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
         numbers_programs(desktop, scale)
+        counts_before_its_chord(desktop, scale)
 
 
 def numbers_programs(desktop: Desktop, scale: str) -> None:
@@ -302,6 +303,26 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
+
+
+def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
+    """Step into Desktop, whose collections each open by a chord, and photograph their counts.
+
+    A collection listed whole outside home says how many it holds at its right, a muted dot
+    from its chord, as the status line joins its facts (VKCF3Z, 2026-11-05). A find's rows
+    say no count, which would read all of each at every key.
+    """
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Desktop")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["desktop"])
+    selected = desktop.showing()["selected"]
+    assert selected["side"], f"at {scale} Desktop's first has no count: {selected}"
+    assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
+    desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
 
