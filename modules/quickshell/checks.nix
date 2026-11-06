@@ -2733,6 +2733,7 @@ onLinux {
       cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Operators.js} Operators.js
+      cp ${./Finding.js} Finding.js
       cp ${./Typing.js} Typing.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js
@@ -3185,6 +3186,7 @@ onLinux {
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Typing.js} Typing.js
       cp ${./Operators.js} Operators.js
+      cp ${./Finding.js} Finding.js
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
       cp ${./Search.js} Search.js

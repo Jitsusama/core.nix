@@ -536,6 +536,23 @@ def names_each_mode(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["modeMark"] == "NOR")
 
 
+def visual_keeps_its_keys(desktop: Desktop) -> None:
+    """See visual's foot keep d and Space ? beside Return, and Space ? list over two rows.
+
+    The foot keeps the way to every key just before Return, as normal's does, with d by the
+    cursor row's ending (VKCF3Z, 2026-11-05); Space ? lists the keys and lets them go, the
+    selection standing.
+    """
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == ["\u21b5 open 2"], told
+    assert told[-1] == "Space ? keys", told
+    assert any(hint.startswith("d ") for hint in told), told
+    desktop.machine.send_chars(" ?")
+    desktop.launcher_until(lambda shown: shown["listing"] and shown["tinted"] == [0, 1])
+    desktop.machine.send_chars(" ?")
+    desktop.launcher_until(lambda shown: not shown["listing"] and shown["tinted"] == [0, 1])
+
+
 def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     """V and j choose windows, y copies their titles, d closes them once asked, Return opens."""
     machine = desktop.machine
@@ -575,7 +592,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "2 chosen"
     )
-    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 open 2"], desktop.showing()
+    visual_keeps_its_keys(desktop)
     # y copies both titles, a line each, flashes them, and ends visual.
     since = desktop.mark()
     machine.send_chars("y")
