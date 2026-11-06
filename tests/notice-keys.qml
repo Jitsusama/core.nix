@@ -311,8 +311,10 @@ QtObject {
             ["done", "command", "keys"]);
         holds("visual's hints", said("visual", {}, { done: "forget" }),
             ["d forget", "y copy", ": commands", "Space ? keys"]);
-        holds("the find's hints", said("find", {}), ["Esc normal", "\u21b5 go to"]);
-        holds("insert ends with Return's", said("insert", {}), ["Esc normal", "\u21b5 send"]);
+        // A line's foot never names Escape, which only leaves its mode.
+        holds("the find's hints", said("find", {}), ["\u21b5 go to"]);
+        holds("insert's hints", said("insert", {}), ["\u21b5 send"]);
+        holds("the command line's hints", said("command", {}), ["\u21b5 run"]);
         holds("the key list says how to leave it", said("listing", {}),
             ["j k scroll", "Esc back"]);
         holds("keys are spelt as the launcher's foot spells them",

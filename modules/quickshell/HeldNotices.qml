@@ -1066,7 +1066,9 @@ Floating {
     // (VKCF3Z, 2026-11-05).
     readonly property string facts: actsOn !== "" && mode === "command" ? actsOn
         : `${listed.length === 0 ? 0 : cursor + 1} of ${listed.length}`
-    readonly property string foundCount: `${listed.length} of ${rows.length}`
+    // The find's count says what it found, never "of" beside the
+    // foot's position, which means something else (VKCF3Z, 2026-11-05).
+    readonly property string foundCount: `${listed.length} found`
 
     // The hints for the cursor card in this mode, from the table.
     readonly property var hints: {
@@ -1195,6 +1197,8 @@ Floating {
         font.family: Theme.level.title.family
         font.pointSize: Theme.level.title.pointSize
         font.weight: Theme.level.title.weight
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing
     }
 
     // The head's one baseline, as a place's in the launcher (VKCF3Z's
@@ -1321,7 +1325,10 @@ Floating {
                 y: held.headBase - baselineOffset
                 text: Theme.glyph.notifications
                 color: Theme.accent
-                font: note.font
+                // At Figure, as a held thing's glyph leads the launcher's
+                // place (VKCF3Z, 2026-11-05).
+                font.family: Theme.level.figure.family
+                font.pointSize: Theme.level.figure.pointSize
             }
 
             Text {
@@ -1329,14 +1336,14 @@ Floating {
                 x: placeMark.x + placeMark.implicitWidth + Theme.space.rung.mark
                 y: held.headBase - baselineOffset
                 text: "Notices"
-                color: Theme.text
-                font.family: Theme.level.title.family
-                font.pointSize: Theme.level.title.pointSize
-                font.weight: Theme.level.title.weight
+                // The Title level whole, its weight and colour as the
+                // launcher's place draws it (VKCF3Z, 2026-11-05).
+                color: Theme.level.title.colour
+                font: titleCaps.font
             }
 
             // What's sought, typed or kept once its line is left, and how
-            // many it found of how many, a mark each side of the dot, as
+            // many it found, a mark each side of the dot, as
             // the hints are joined; the count stays whole, the sought words
             // giving way before it.
             Text {

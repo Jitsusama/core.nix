@@ -106,7 +106,9 @@ const table = [
     { act: "scroll", keys: ["j k"], modes: ["listing"], hint: "scroll" },
     { act: "back", keys: ["Escape"], modes: ["listing"], hint: "back" },
 
-    // The find line: what types is the line's, these its own.
+    // The find line: what types is the line's, these its own. No line's
+    // foot names Escape, which only leaves its mode, as the drawer's
+    // find names none (VKCF3Z, 2026-11-05).
     { act: "open", keys: ["Return", "Enter"], modes: ["find"], hint: "go to",
         does: "go to its sender" },
     { act: "choose", keys: ["Down", "Tab", "Ctrl+N"], modes: ["find", "command"],
@@ -114,20 +116,17 @@ const table = [
     { act: "chooseBack", keys: ["Up", "Shift+Tab", "Ctrl+P"], modes: ["find", "command"],
         does: "the one before" },
     { act: "take", keys: ["Ctrl+Y"], modes: ["find", "command"], does: "take the chosen" },
-    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["find"], hint: "normal",
-        does: "normal, as found" },
+    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["find"], does: "normal, as found" },
     // The command line: Return runs exactly what's typed.
     { act: "run", keys: ["Return", "Enter"], modes: ["command"], hint: "run",
         does: "run what's typed" },
     { act: "away", keys: ["Ctrl+E"], modes: ["command"], does: "put the menu away" },
-    { act: "drop", keys: ["Escape", "Ctrl+C"], modes: ["command"], hint: "drop",
-        does: "drop the line" },
+    { act: "drop", keys: ["Escape", "Ctrl+C"], modes: ["command"], does: "drop the line" },
     // A reply's prompt: Return hands its words over, from insert or from
     // normal over them, where Vim's editing works.
     { act: "send", keys: ["Return", "Enter"], modes: ["insert", "prompt"], hint: "send",
         does: "send the reply" },
-    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["insert"], hint: "normal",
-        does: "normal over them" },
+    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["insert"], does: "normal over them" },
     { act: "insert", keys: ["i", "a"], modes: ["prompt"], does: "insert, or after" },
     { act: "insertEnds", keys: ["I", "A"], modes: ["prompt"], does: "insert at an end" },
     { act: "left", keys: ["h", "Left", "Backspace"], modes: ["prompt"], does: "a letter left" },
