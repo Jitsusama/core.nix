@@ -134,6 +134,7 @@ let
     "DrawerPage.js"
     "Launcher.qml"
     "Choice.qml"
+    "MarkSize.js"
     "Gutter.qml"
     "ReadsOn.qml"
     "Wash.qml"

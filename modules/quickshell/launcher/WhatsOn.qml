@@ -507,7 +507,10 @@ Provider {
             : WaitingOnYou.later.length > 0
                 ? waitingSaid("later", { count: WaitingOnYou.later.length })
                 : waitingSaid("none", {}),
-        note: first,
+        // The first thing waiting, in its words after its name, since
+        // it's what the row holds; the head no longer says it (VKCF3Z,
+        // 2026-11-06, one calm head).
+        count: first,
         nested: true,
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),
