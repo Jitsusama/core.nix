@@ -333,6 +333,70 @@ function descends(row, depth, above) {
     return !String(row.key ?? "").startsWith("shortcut-level:");
 }
 
+// Whether the walk for where rows live (lives) looks inside this one,
+// `depth` below home, inside `above`: not Now, which holds what lives
+// elsewhere, nor a long list's items or a program's or window's own, which
+// are found only from their place, so the walk stays a key's worth.
+function followsInto(row, depth, above) {
+    // A measured figure's parts are read as they're made, Machine's CPU
+    // listing the processes, so a walk on every Ctrl+] never makes them.
+    if (depth >= DEEPEST || row.opens === "on" || row.parted === true) {
+        return false;
+    }
+    if (row.opens && LONG.has(row.opens)) {
+        return false;
+    }
+    return !(above && WHOLE.has(above.opens));
+}
+
+// Where every row lives, which Ctrl+] goes to as Vim follows a tag: by
+// its steady id, the ids from one of home's `rows` down to the shallowest
+// row that is it, walked breadth first once for them all, so a press after
+// the first only looks its row up. `ways` says a row's steady id (`idOf`)
+// and the rows it holds inside the row above it (`holds`), as the launcher
+// makes them.
+function lives(rows, ways) {
+    const at = Object.create(null);
+    let level = rows.map(row => ({ row, path: [ways.idOf(row)], above: null }));
+    for (let depth = 0; level.length > 0; depth += 1) {
+        const next = [];
+        for (const one of level) {
+            const key = one.path[one.path.length - 1];
+            if (at[key] !== undefined) {
+                continue;
+            }
+            at[key] = one.path;
+            if (!followsInto(one.row, depth, one.above)) {
+                continue;
+            }
+            for (const inside of ways.holds(one.row, one.above)) {
+                next.push({
+                    row: inside,
+                    path: one.path.concat([ways.idOf(inside)]),
+                    above: one.row
+                });
+            }
+        }
+        level = next;
+    }
+    return at;
+}
+
+// Where Ctrl+] goes for a row living at `path`, by steady ids, from where
+// the launcher stands (`here`, the ids of the places held): into the
+// places above it, onto it, as a spot is gone to; or null where it lives
+// nowhere, or here, so Ctrl+] has nowhere to go.
+function followed(path, here) {
+    if (path === null) {
+        return null;
+    }
+    const trail = path.slice(0, -1);
+    if (trail.length === here.length && trail.every((step, at) => step === here[at])) {
+        return null;
+    }
+    return { trail, spot: path[path.length - 1] };
+}
+
 // One entry: its id, what it is, its words and where it sits as Joel reads
 // it, what it says now, whether only Joel's Return does it, and the words
 // it asks for, for one that takes them.

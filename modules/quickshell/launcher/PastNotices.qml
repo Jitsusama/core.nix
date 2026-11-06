@@ -112,6 +112,17 @@ Provider {
                     provider.go(notice.app);
             }
         });
+        // Where Ctrl+] goes from it, as Vim follows a tag: its sender's own
+        // row, among Programs (Applications.qml), or nowhere for a sender
+        // no program is. Looked up as it's asked, since the history's rows
+        // are made before the programs' entries are read.
+        Object.defineProperty(row, "follows", {
+            enumerable: true,
+            get: () => {
+                const entry = source(notice.app).entry;
+                return entry ? `program:${entry.id}` : "";
+            }
+        });
         return row;
     }
 

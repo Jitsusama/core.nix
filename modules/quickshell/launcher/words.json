@@ -6714,7 +6714,8 @@
       "noLetter": "no row {way} begins with {letter}",
       "below": "below",
       "above": "above",
-      "noAgain": "no f or F to go again"
+      "noAgain": "no f or F to go again",
+      "E73": "E73: Tag stack empty"
     },
     "listed": {
       "eyebrow": "Keys",
@@ -6746,7 +6747,7 @@
         "optionHere": "Set its own option",
         "openIn": "Open, or go in",
         "up": "Up a level",
-        "follow": "Into its parts",
+        "follow": "Follow and back",
         "run": "Do it",
         "jumps": "Back and forward",
         "lastPlace": "The place used last",
