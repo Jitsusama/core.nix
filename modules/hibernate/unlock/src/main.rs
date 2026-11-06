@@ -46,12 +46,14 @@
 //!
 //! Before an image is made it sets the hard memory floors aside, and puts
 //! them back after, or the kernel can't take back what they guard to make
-//! room (floors.rs). `fits` says whether the image would fit, by the
-//! kernel's sums, before anything is asked to hibernate (fits.rs), and
-//! exits 1 when it wouldn't.
+//! room (floors.rs). It switches zswap off too, and on again after, or
+//! what's swapped out for the image can stay in memory (zswap.rs). `fits`
+//! says whether the image would fit, by the kernel's sums, before anything
+//! is asked to hibernate (fits.rs), and exits 1 when it wouldn't.
 
 mod fits;
 mod floors;
+mod zswap;
 
 use serde_json::Value;
 use std::env;
@@ -74,6 +76,9 @@ const FLOORS: &str = "/run/hibernate-unlock-floors";
 
 /// Where the cgroups are, the floors in them.
 const CGROUPS: &str = "/sys/fs/cgroup";
+
+/// Kept while zswap is switched off for an image.
+const ZSWAP_OFF: &str = "/run/hibernate-unlock-zswap";
 
 /// Kept while a rolled-back hibernation is tried again, so a second
 /// rollback powers off rather than trying forever.
@@ -504,6 +509,16 @@ fn before(action: &str) {
         Ok(lifted) => eprintln!("hibernate-unlock: set {lifted} memory floors aside for the image"),
         Err(error) => eprintln!("hibernate-unlock: couldn't set the memory floors aside: {error}"),
     }
+    match zswap::set_aside(Path::new(zswap::ENABLED), Path::new(ZSWAP_OFF)) {
+        Ok(false) => {}
+        Ok(true) => eprintln!("hibernate-unlock: switched zswap off for the image"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't switch zswap off: {error}"),
+    }
+    // What the graphics drivers hold as the image is sized: they copy it
+    // out as they stop, and the reserve has to leave room for that.
+    for card in graphics_memory() {
+        eprintln!("hibernate-unlock: {card}");
+    }
     match starts() {
         Some(now) => {
             if let Err(error) = fs::write(KEPT, now.kept()) {
@@ -544,6 +559,11 @@ fn after(action: &str, disks: &[String]) {
         Ok(0) => {}
         Ok(restored) => eprintln!("hibernate-unlock: put {restored} memory floors back"),
         Err(error) => eprintln!("hibernate-unlock: couldn't put the memory floors back: {error}"),
+    }
+    match zswap::put_back(Path::new(zswap::ENABLED), Path::new(ZSWAP_OFF)) {
+        Ok(false) => {}
+        Ok(true) => eprintln!("hibernate-unlock: switched zswap on again"),
+        Err(error) => eprintln!("hibernate-unlock: couldn't switch zswap on again: {error}"),
     }
     let logged = logged_since_before();
     let _ = fs::remove_file(LOGGED);
@@ -713,19 +733,11 @@ fn fits_now() -> ExitCode {
         println!("It couldn't tell whether the image fits, so it doesn't stand in the way.");
         return ExitCode::SUCCESS;
     };
-    let mm_stats: Vec<String> = fs::read_dir("/sys/block")
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|device| device.file_name().to_string_lossy().starts_with("zram"))
-        .filter_map(|device| fs::read_to_string(device.path().join("mm_stat")).ok())
-        .collect();
     let fit = fits::Fit::of(
         memory,
         fits::Zones::parse(&zones),
         reserve,
-        &fits::swap_areas(&swaps),
-        fits::Squeeze::parse(&mm_stats),
+        fits::swap_room(&swaps),
     );
     println!("{}", fit.said());
     if fit.fits() {
@@ -733,6 +745,33 @@ fn fits_now() -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// The video memory and the system memory it maps (GTT) in use on each card
+/// whose driver says, one line apiece. amdgpu says; others, xe among them,
+/// log nothing.
+fn graphics_memory() -> Vec<String> {
+    let mut cards: Vec<String> = fs::read_dir("/sys/class/drm")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|card| {
+            let name = card.file_name().into_string().ok()?;
+            let device = card.path().join("device");
+            let read = |file: &str| fs::read_to_string(device.join(file)).ok();
+            let vram = read("mem_info_vram_used")?;
+            let gtt = read("mem_info_gtt_used")?;
+            (!name.contains('-')).then(|| {
+                format!(
+                    "{name} holds {} bytes of video memory and {} of GTT",
+                    vram.trim(),
+                    gtt.trim()
+                )
+            })
+        })
+        .collect();
+    cards.sort();
+    cards
 }
 
 fn power_off() {

@@ -6,7 +6,9 @@
 # machine on, is said with why, tried again or slept through instead
 # (unlock/src/main.rs says when). While the image is made the slices' hard
 # memory floors are set aside, or the kernel can't take back what they guard
-# to make room (unlock/src/floors.rs), and `hibernate-unlock fits` says
+# to make room (unlock/src/floors.rs), zswap is switched off, or what's
+# swapped out for it can stay in memory (unlock/src/zswap.rs), and
+# `hibernate-unlock fits` says
 # beforehand whether the image would fit, by the kernel's own sums.
 {
   config,

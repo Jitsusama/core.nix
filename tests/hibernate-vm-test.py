@@ -9,6 +9,9 @@ the reserve, which they repeat.
 
 from __future__ import annotations
 
+import datetime as dt
+import re
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -40,6 +43,19 @@ NO_SWAP_FILE = "/run/no-swap-file"
 # A slice at the top, as user.slice is, with a hard floor under what it holds, in bytes.
 FLOORED = "floored.slice"
 FLOOR = 400 * 1024 * 1024
+# Whether zswap stores what's swapped out in its pool, in memory, before the swap file.
+ZSWAP = "/sys/module/zswap/parameters/enabled"
+# How long a hibernation may take to make its image and power off. One that rolls back is
+# still on after this, and says why.
+GOES_OFF = dt.timedelta(minutes=3)
+# Pages zswap may store around a hibernation, as the machine thaws, against the tens of
+# thousands swapped out to make room for an image.
+STRAY = 2048
+
+
+def zswap_stored(machine: QemuMachine) -> int:
+    """How many pages zswap has stored in its pool since the machine started."""
+    return int(machine.succeed("awk '/^zswpout / { print $2 }' /proc/vmstat"))
 
 
 def start_through_the_disk_prompt(machine: QemuMachine) -> None:
@@ -52,7 +68,14 @@ def start_through_the_disk_prompt(machine: QemuMachine) -> None:
 def hibernate_and_come_back(machine: QemuMachine) -> None:
     """Hibernate, wait for the machine to go off, and start it from its image."""
     machine.execute("systemctl hibernate >&2 &", check_return=False)
-    machine.wait_for_shutdown()
+    try:
+        machine.wait_for_shutdown(timeout=GOES_OFF)
+    except subprocess.TimeoutExpired:
+        # The driver's shell restarts with the machine, so the console says why.
+        short = re.findall(
+            r"PM: hibernation: Image allocation is \d+ pages short", machine.get_console_log()
+        )
+        pytest.fail(f"the hibernation rolled back: {short[-1] if short else 'nothing said'}")
     start_through_the_disk_prompt(machine)
 
 
@@ -71,7 +94,7 @@ def swapping(machine: BaseMachine) -> QemuMachine:
     # Only a machine QEMU runs can be stopped and started again.
     assert isinstance(machine, QemuMachine)
     machine.wait_for_unit("default.target")
-    assert machine.succeed("cat /sys/module/zswap/parameters/enabled").strip() == "Y"
+    assert machine.succeed(f"cat {ZSWAP}").strip() == "Y"
     machine.succeed(
         "cryptsetup luksFormat --batch-mode --key-file /etc/disk.key /dev/vdc",
         "cryptsetup open --key-file /etc/disk.key /dev/vdc disk",
@@ -129,8 +152,8 @@ def test_a_loaded_machine_fits_beside_the_reserve(swapping: QemuMachine) -> None
     """With memory full of a program's pages and the disk's cache, it still comes back.
 
     The reserve holds the image to half of memory less twice it, which the load is past, so
-    the kernel drops the cache and swaps part of memory, through zswap's pool, before the
-    image fits. The program's pages are a file in tmpfs, as compressible as hex.
+    the kernel drops the cache and swaps part of memory out to the swap file before the image
+    fits. The program's pages are a file in tmpfs, as compressible as hex.
     """
     swapping.succeed(
         "head -c 32M /dev/urandom | od -An -tx1 -v > /dev/shm/held",
@@ -172,6 +195,30 @@ def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMa
     floor = int(swapping.succeed(f"cat /sys/fs/cgroup/{FLOORED}/memory.min"))
     assert floor == FLOOR, f"the floor came back as {floor} bytes"
     swapping.succeed("systemctl stop floored.service", "umount /run/floored")
+
+
+def test_what_is_swapped_out_for_the_image_goes_to_the_swap_file(swapping: QemuMachine) -> None:
+    """What's swapped out to make room for the image doesn't stay in memory.
+
+    300 MiB of random bytes is more than the image's cap of about 213 MiB beside the reserve, so
+    they have to reach the swap file. Swapped to zram, which kept them in memory, they stayed in
+    the image and it rolled back 58,596 pages short. zswap's pool keeps what it stores in memory
+    too, as it is when it doesn't compress, until its shrinker writes it out, so with zswap on
+    it rolled back 28,090 pages short in one run of three. The counter of what zswap stored comes
+    back in the image, which is made after the room for it, so it shows nothing went to the pool.
+    """
+    swapping.succeed(
+        "mkdir -p /run/unpacked",
+        "mount -t tmpfs -o size=400m tmpfs /run/unpacked",
+        "head -c 300M /dev/urandom > /run/unpacked/held",
+        "sha256sum /run/unpacked/held > /run/unpacked.sha256",
+    )
+    stored = zswap_stored(swapping)
+    hibernate_and_come_back(swapping)
+    swapping.succeed("sha256sum --check --quiet /run/unpacked.sha256")
+    assert zswap_stored(swapping) - stored < STRAY, "zswap stored what was swapped out for it"
+    assert swapping.succeed(f"cat {ZSWAP}").strip() == "Y", "zswap wasn't switched on again"
+    swapping.succeed("umount /run/unpacked")
 
 
 def test_it_says_beforehand_whether_the_image_fits(swapping: QemuMachine) -> None:
