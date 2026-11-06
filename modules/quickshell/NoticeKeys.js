@@ -215,6 +215,15 @@ function read(stood, key, mode, press) {
     return result;
 }
 
+// How the keys stand once the act a key began has done its work, `now`:
+// a visual operator's wait for the same key again runs from then, so an
+// act slow under load never spends the time the second key of V j d d
+// has, which Joel's fingers give whatever the shell is doing.
+function settled(stood, now) {
+    return stood.taken === null ? stood
+        : Object.assign({}, stood, { taken: { key: stood.taken.key, until: now + wait } });
+}
+
 function reading(stood, key, mode, now) {
     const pending = stood.operator !== "";
     const counted = stood.count !== "";
