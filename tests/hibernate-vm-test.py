@@ -29,6 +29,11 @@ PIN = "2468"
 ASKED = r"[Ee]nter .*PIN"
 # What hibernate-unlock says once it has let the lock go.
 LET_GO = "hibernate-unlock: back through the disk prompt; the lock is let go"
+# What hibernate-unlock says of how long a restore took, from the count the initrd kept.
+TOOK = (
+    r"hibernate-unlock: the image was read and the machine back \d+\.\d s after the disk "
+    r"opened, \d+\.\d s after the power button"
+)
 # The hook systemd-sleep runs, and what its rescue says with no lid shut.
 HOOK = "/etc/systemd/system-sleep/hibernate-unlock"
 SAID_SO = "hibernate-unlock: the lid is open, so it says so"
@@ -146,6 +151,11 @@ def test_a_hibernated_machine_comes_back_as_it_was(swapping: QemuMachine) -> Non
 def test_coming_back_through_the_disk_prompt_lets_the_lock_go(swapping: QemuMachine) -> None:
     """The PIN typed at the disk is the one prompt: hibernate-unlock lets the lock go."""
     swapping.wait_until_succeeds(f"journalctl --boot --grep '{LET_GO}'", timeout=30)
+
+
+def test_coming_back_says_how_long_the_restore_took(swapping: QemuMachine) -> None:
+    """The initrd kept when the restore began, so the hook says how long it took."""
+    swapping.wait_until_succeeds(f"journalctl --boot --grep '{TOOK}'", timeout=30)
 
 
 def test_a_loaded_machine_fits_beside_the_reserve(swapping: QemuMachine) -> None:

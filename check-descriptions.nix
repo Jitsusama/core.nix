@@ -2190,6 +2190,13 @@
     with two screens of different sizes, the splash's ask shows whole on both, its bottom left
     corner on the smaller one included
   '';
+  vm-boot-says-it-restores = ''
+    the graphical role, hibernated to a swap file on btrfs inside LUKS and started from its
+    image with the passphrase typed at the theme's ask, shows the theme's words for a restore
+    on the first, middle and last photographs taken while the kernel reads the image, comes
+    back with what it held in memory, and its hook says how long the restore took after the
+    disk opened
+  '';
   vm-chrome-says-its-open-tabs = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
     Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
@@ -2430,7 +2437,8 @@
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zswap in front and no resume=,
     comes back from an lz4 image through systemd's initrd as it was, once the TPM and a PIN typed
-    at its prompt open the disk, lets the lock go for that one prompt, and boots anew after; with
+    at its prompt open the disk, lets the lock go for that one prompt, says how long the restore
+    took from the count its initrd kept, and boots anew after; with
     more held under a slice's hard memory floor than the image may hold, it still comes back, the
     floor as it was; with more random bytes than the image may hold, it still comes back, what
     was swapped out for it on the disk and none in zswap's pool, zswap on again; and asked first,

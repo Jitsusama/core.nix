@@ -71,6 +71,7 @@ fun drawn_at_scale()
     global.under.images["starting"] = drawn("starting");
     global.under.images["locked"] = drawn("locked");
     global.under.images["restarting"] = drawn("restarting");
+    global.under.images["restoring"] = drawn("restoring");
     global.under.images["stopping"] = drawn("stopping");
     global.under.images["touching"] = drawn("touching");
     global.about.image = drawn("about");
@@ -307,8 +308,20 @@ fun status_shown()
       }
   }
 
+# A resume from hibernation says so as it begins, and that the machine is
+# starting again when it found no image and the boot goes on (./nixos.nix).
 fun status_callback(text)
   {
+    if (text == "hibernation:restoring")
+      {
+        says("restoring");
+        return;
+      }
+    if (text == "hibernation:none")
+      {
+        says("starting");
+        return;
+      }
     if (global.stages[text])
       global.status.stage = text;
     else if (text.SubString(0, 8) == "waiting:")
