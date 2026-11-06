@@ -1975,9 +1975,9 @@ Floating {
 
             // Whole, as the hints leave it its room as it says it now. It
             // gives way whole, never half, only while the hints that stay
-            // leave it none, as visual's at 2 do: there the count chosen is
-            // what d acts on, and the cursor's ground and number say where
-            // it stands (VKCF3Z, 2026-11-06). It hides rather than narrowing
+            // leave it none, as normal's and visual's at 2 do: the cursor's
+            // ground and number say where it stands, and in visual the count
+            // chosen is what d acts on (VKCF3Z, 2026-11-06). It hides rather than narrowing
             // to nothing, which would lay it out again inside its own width.
             Text {
                 id: facts
@@ -2038,8 +2038,8 @@ Floating {
                 }
 
                 // The hints that fit: the one furthest from Return gives
-                // way first, Return last, and the keys list and done never
-                // do (NoticeList.js). The dots' gap is read, so they're
+                // way first, and the keys list, done and Return never do
+                // (NoticeList.js). The dots' gap is read, so they're
                 // measured again once the theme's face arrives.
                 readonly property var shown: {
                     const keys = statusLine.keys;
