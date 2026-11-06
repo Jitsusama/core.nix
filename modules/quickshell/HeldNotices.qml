@@ -30,7 +30,6 @@ import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
 import "Search.js" as Search
-import "StatusLine.js" as Line
 import "launcher/Notice.js" as Notice
 
 Floating {
@@ -2028,20 +2027,16 @@ Floating {
                     text: held.modeWord
                 }
 
-                // The hints that fit: the middle ones give way first, then
-                // the first, so Space ? and Return's at the right end stay
-                // (StatusLine.js), and the last stays alone before a hint
-                // would run into the facts, as visual's three do at 2. The
-                // dots' gap is read, so they're measured again once the
-                // theme's face arrives.
+                // The hints that fit: the one furthest from Return gives
+                // way first, and the keys list, done and Return never do
+                // (NoticeList.js). The dots' gap is read, so they're
+                // measured again once the theme's face arrives.
                 readonly property var shown: {
                     const keys = statusLine.keys;
                     const join = keys.spacing;
-                    const wide = hint => keys.advance(hint[0], hint[1]);
-                    const two = Line.fitted(held.hints.map(one => [one.key, one.word]), wide,
-                        join, fits);
-                    return two.length === 2 && wide(two[0]) + join + wide(two[1]) > fits
-                        ? two.slice(1) : two;
+                    const wide = hint => keys.advance(hint.key, hint.word);
+                    return NoticeList.footHints(held.hints, wide, join, fits)
+                        .map(one => [one.key, one.word]);
                 }
 
                 // How wide the hints that stay are, by the same advances

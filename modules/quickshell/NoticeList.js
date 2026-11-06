@@ -3,8 +3,9 @@
 // the keys (NoticeKeys.js) do to them worked out apart from drawing them
 // (Notifications.qml): where a motion lands, which cards an operator or a
 // range takes, the view kept around the cursor, the gutter's numbers, the
-// changes u takes back, and the command line's menu. Apart from the shell,
-// so tests/notice-list.qml can hold it in Qt's own engine.
+// changes u takes back, the command line's menu, and the hints the foot
+// keeps. Apart from the shell, so tests/notice-list.qml can hold it in
+// Qt's own engine.
 .pragma library
 
 // How many lines show at once, and how far the view keeps from the cursor,
@@ -252,6 +253,28 @@ function wholeWords(text, lines, wide, measure) {
         }
     }
     return fits === 0 ? `${words[0] ?? ""}\u2026` : ending(fits).join(" ");
+}
+
+// The hints that never give way: the keys list's, the way to every key;
+// done's, since choosing notices to act on them is visual's point, as
+// Joel chooses some "and then dd to mark them as read"; and Return's.
+const stays = hint => hint.act === "keys" || hint.act === "done" || hint.key === "\u21b5";
+
+// The hints the foot keeps in `room`, each { act, key, word } as wide as
+// `wide` measures it and the gap between two `join`: short of room, the
+// one drawn furthest from Return gives way first, one at a time, as the
+// launcher's do, and never one that stays (VKCF3Z, 2026-11-06).
+function footHints(hints, wide, join, room) {
+    const width = some => some.reduce((sum, hint) => sum + wide(hint), 0)
+        + Math.max(0, some.length - 1) * join;
+    const gives = hint => !stays(hint);
+    let kept = hints;
+    let going = kept.findIndex(gives);
+    while (going >= 0 && width(kept) > room) {
+        kept = kept.filter((_, at) => at !== going);
+        going = kept.findIndex(gives);
+    }
+    return kept;
 }
 
 const ranged = /^(%|[.$0-9'<>,;+-]*)/;
