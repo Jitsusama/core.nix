@@ -957,6 +957,49 @@ mod tests {
         );
     }
 
+    /// How far across the page each shape it draws reaches, from its left
+    /// edge to its right, stepping into every group it's set in.
+    fn shapes_across(frame: &typst::layout::Frame, left: f64, out: &mut Vec<(f64, f64)>) {
+        for (pos, item) in frame.items() {
+            let x = left + pos.x.to_pt();
+            match item {
+                typst::layout::FrameItem::Group(group) => {
+                    shapes_across(&group.frame, x, out);
+                }
+                typst::layout::FrameItem::Shape(shape, _) => {
+                    let bounds = shape.bbox(true);
+                    out.push((x + bounds.min.x.to_pt(), x + bounds.max.x.to_pt()));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn a_narrow_pages_code_keeps_its_ground_on_the_page() {
+        // A narrow window's page is its measure alone, with no margin for a
+        // block's ground to hang into, so a short block's ground keeps to
+        // the measure rather than being cut flush with its words.
+        let dir = std::env::temp_dir().join(format!("reader-narrow-code-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        let file = dir.join("page.md");
+        std::fs::write(&file, format!("{OPENING}```\nlet code = here;\n```\n")).expect("the file");
+        let mut setter = Setter::new(file.to_str().expect("a path"));
+        setter.fit(Width::for_window(360.0));
+        let (page, _) = setter.set().expect("set");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+        let wide = page.frame.size().x.to_pt();
+        let mut shapes = Vec::new();
+        shapes_across(&page.frame, 0.0, &mut shapes);
+        assert!(!shapes.is_empty(), "the code block drew no ground");
+        for (left, right) in shapes {
+            assert!(
+                left >= -0.01 && right <= wide + 0.01,
+                "a ground runs from {left} pt to {right} pt, off the {wide} pt page"
+            );
+        }
+    }
+
     #[test]
     fn a_narrow_page_hyphenates_as_a_typesetter_would() {
         // Every narrow window from 180 to 360 pt, so the rules hold at any
