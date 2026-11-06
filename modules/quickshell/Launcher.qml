@@ -7216,27 +7216,21 @@ Scope {
                             // it leaves (VKCF3Z, 2026-11-05).
                             readonly property var waiting: root.waitingSaid === "" ? []
                                 : [{ entry: { name: "waiting" }, way: "", said: root.waitingSaid }]
-                            // In visual, on the rows or the drawer's page, the
-                            // facts give way whole before visual's acts, the
-                            // time staying (VKCF3Z, 2026-11-06).
-                            readonly property bool yielding: root.visual
-                                || QueryKeys.chosen(prompt.mode)
                             readonly property var fit: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
                                 const left = foot.room - (waiting.length === 0 ? 0
                                     : place(waiting[0]) + spacing);
                                 return Standing.fittedFrom(facts, told => wide(told) <= left,
-                                    root.footStage, yielding);
+                                    root.footStage);
                             }
                             readonly property var kept: fit.told.concat(waiting)
                             // The room they take at their least, the glyphs
-                            // and the time, or in visual the time alone, with
-                            // what waits: what the keys leave them however
-                            // many a row has.
+                            // and the time, with what waits: what the keys
+                            // leave them however many a row has.
                             readonly property real least: {
-                                const floor = Standing.fittedFrom(facts, () => false, 0, yielding)
-                                    .told.concat(waiting);
+                                const floor = Standing.fittedFrom(facts, () => false, 0).told
+                                    .concat(waiting);
                                 return floor.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, floor.length - 1) * spacing;
                             }
