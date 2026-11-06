@@ -2268,6 +2268,15 @@ Scope {
     // category's (Joel, 2026-10-25: "jumpy ... at home arrowing around").
     property real footReturnWidest: 0
     property real footKeysWidest: 0
+    // How many figures the chosen count holds room for: as many as the
+    // place has rows, three while the drawer is out, and only ever more
+    // within a place, so rows arriving with no key pressed, as a scan's,
+    // or the drawer going back in never narrow the facts (Y2YBTS,
+    // 2026-11-06: Joel's "nothing moves on its own").
+    readonly property int footFiguresNow: drawerCard.out ? 3
+        : String(Math.max(1, matches.length)).length
+    property int footFiguresWidest: 1
+    onFootFiguresNowChanged: footFiguresWidest = Math.max(footFiguresWidest, footFiguresNow)
 
     // Return's place starts as wide as the widest verb any row can say on
     // the find, whose rows change with every letter, so typing never moves
@@ -2279,6 +2288,7 @@ Scope {
         footReturnWidest = prompt.mode === "find"
             ? statusLine.keys.advance("\u21b5", footVerbRoom) : 0;
         footKeysWidest = keysWide(footKeysRoom);
+        footFiguresWidest = footFiguresNow;
     }
 
     // How wide a row's keys are, Return in its place.
@@ -3443,7 +3453,10 @@ Scope {
     // A line's acts run: one u can take back done where it stands, as d
     // does it, the launcher kept open so u can, as Vim's :g/x/d leaves the
     // buffer in view; the rest as Return does them. Where every one can be
-    // taken back, the foot says so, as after d.
+    // taken back, the foot says so, as after d. One done as d does it is
+    // a change made where the row stands rather than a thing chosen, so
+    // it teaches the find nothing and starts no act's trace, as d from
+    // the rows doesn't; Return's acts from the line still do both.
     function commandActs(acts) {
         for (const act of acts) {
             if (typeof act.undo === "function")
@@ -7511,9 +7524,8 @@ Scope {
                                 // it, so it's read whole.
                                 const widest = Math.max(root.placeSays === "" ? 0
                                     : measure.advanceWidth(root.placeSays),
-                                    measure.advanceWidth(Operators.chosenSaid("9".repeat(
-                                        drawerCard.out ? 3
-                                            : String(Math.max(1, root.matches.length)).length),
+                                    measure.advanceWidth(Operators.chosenSaid(
+                                        "9".repeat(root.footFiguresWidest),
                                         Words.field.visual ?? {})));
                                 return Theme.space.rung.groups + Math.ceil(widest);
                             }
