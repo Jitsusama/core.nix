@@ -328,6 +328,35 @@ Item {
 
     // Where the caret is, between letters in insert or on one in normal.
     readonly property int caret: input.cursorPosition
+    // Whether what's typed is scrolled, its first letter off the field's
+    // start, as it is once it's wider than the room the path leaves. Set
+    // as the field moves rather than bound, since the mark it shows takes
+    // room from the field, which moves what's typed again.
+    property bool scrolled: false
+    // Scrolled, the mark stands in the place of the first letter whole
+    // inside the field, as Vim's precedes mark takes the first cell, and
+    // the field is shown from the first letter past it: Qt draws a letter
+    // scrolled off into the field's padding, where the mark would lie
+    // over it, and a mark at the field's very start would leave a gap
+    // the width of a letter wherever the letters fall.
+    property real markFrom: 0
+    property real shownFrom: 0
+    function seeScrolled() {
+        scrolled = input.text !== "" && input.positionToRectangle(0).x < input.leftPadding - 0.5;
+        const letters = scrolled ? input.text.length : -1;
+        let at = 0;
+        while (at < letters && input.positionToRectangle(at).x < -0.5)
+            at++;
+        const mark = at <= letters ? input.positionToRectangle(at).x : 0;
+        while (at < letters && input.positionToRectangle(at).x
+            < mark + scrolledMark.implicitWidth - 0.5)
+            at++;
+        markFrom = scrolled ? mark : 0;
+        shownFrom = scrolled ? input.positionToRectangle(at).x : 0;
+    }
+    // Where the field starts in the line, after the path.
+    readonly property real fieldX: Theme.space.rung.inset + ledWidth
+        + (chips.length > 0 ? held.width + pathGap : 0)
 
     // Puts the caret at a place in what's typed, as a save's name puts it
     // before the extension.
@@ -745,7 +774,7 @@ Item {
     Text {
         id: glyphText
         x: Theme.space.rung.inset
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         text: prompt.glyph
         color: prompt.hue
         font.family: Theme.level.figure.family
@@ -755,7 +784,7 @@ Item {
     Text {
         id: leadText
         x: Theme.space.rung.inset + prompt.glyphWidth
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         visible: prompt.lead !== ""
         text: prompt.lead
         color: prompt.leadHue
@@ -767,7 +796,7 @@ Item {
         id: asideText
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.rung.inset
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
         // drawn whole, over the hint that took the room.
@@ -787,7 +816,7 @@ Item {
         id: capitalsGlyph
         anchors.right: asideText.left
         anchors.rightMargin: Theme.space.rung.mark
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         visible: prompt.capitals
         text: Theme.glyph.capitals
         color: Theme.warning
@@ -840,58 +869,106 @@ Item {
     }
 
     // What stands between two steps of the path, so they read as one place
-    // reached through the other rather than as tags side by side.
-    readonly property string between: " \u203a "
+    // reached through the other rather than as tags side by side: a rung
+    // apart from each step's ink either side, measured to its own, so a
+    // step is told from a word by its space as well as its mark (the
+    // picker audit's finding 13: a word space either side read as one).
+    readonly property string between: "\u203a"
+    readonly property real betweenWide: 2 * Theme.space.rung.apart
+        + betweenInk.tightBoundingRect.width / titleInkFine
+    // Title's ink measured at eight times its size and read back down,
+    // since a measure at the size drawn comes in whole pixels.
+    readonly property real titleInkFine: 8
+    component TitleInk: TextMetrics {
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize * prompt.titleInkFine
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing * prompt.titleInkFine
+    }
+    TitleInk {
+        id: betweenInk
+        text: prompt.between
+    }
     // How far what's typed stands after the path.
     readonly property int pathGap: Theme.space.rung.apart
 
-    // The hint's face: the voice's, since it's the shell speaking to Joel.
-    FontMetrics {
-        id: voiceFace
+    // The hint as it's drawn, in the voice's face, since it's the shell
+    // speaking to Joel: a face's metrics leave out the voice's axes, which
+    // measured it narrow.
+    Text {
+        id: hintWide
+        visible: false
+        text: prompt.hint
+        textFormat: Text.PlainText
         font.family: Theme.level.voice.family
         font.italic: Theme.level.voice.italic
         font.pointSize: Theme.level.voice.pointSize
         font.variableAxes: Theme.level.voice.variableAxes
     }
 
-    // The room kept for typing: the hint's, or a dozen characters.
-    // A question asked once is read whole, so the path gives way to it.
+    // The room kept for typing: the hint's, or what's typed at its widest
+    // since the step began, so the path gives way once as what's typed
+    // grows past the hint and never for room nothing is in. A dozen
+    // characters kept ahead folded a middle folder to a mark with room
+    // for its last name beside the hint (VKCF3Z, 2026-11-06: at rest the
+    // path says "\u2026/more", so Joel sees which folder he's in). A
+    // question asked once is read whole, so the path gives way to it.
     readonly property real typingRoom: Math.max(
-        voiceFace.advanceWidth(hint),
-        12 * figureFace.averageCharacterWidth,
+        (caretShown ? caretWidth + Theme.space.rung.mark : 0) + Math.ceil(hintWide.implicitWidth),
+        typedWidest + caretWidth,
         asking === "" ? 0 : Math.ceil(figureFace.advanceWidth(asking)) + 1)
 
     // How wide the path wants to be, whole, with the gap after it.
     readonly property real pathWanted: chips.length === 0 ? 0
         : chipsWanted.reduce((sum, wide) => sum + wide, 0)
-            + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.rung.apart
+            + betweenWide * (chips.length - 1) + pathGap - Theme.space.rung.apart
 
     // The path's steps as they're drawn, given way at whole names where
     // they don't fit (Reading.crumbs): a folder's path a folder at a time,
-    // then the middle steps folded into one mark, so no name is cut.
+    // then the middle steps folded into one mark, so no name is cut. What's
+    // typed takes room from the path only down to its least, the ask and
+    // where Joel is whole; past it, what's typed scrolls in what's left, as
+    // Vim's command line scrolls a long line (VKCF3Z, 2026-11-06).
     readonly property var crumbsShown: {
         void titleFace.font;
-        const room = Math.max(0, end - Theme.space.rung.inset - ledWidth - typingRoom - pathGap);
-        const stretch = titleStretch;
-        // A step's whole words as their Text draws them, and words given
-        // way as the face measures them, stretched as the title's axes do.
-        const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
-        return Reading.crumbs(chips.map(chip => ({ text: chip.text, yields: chip.yields === true })),
-            room, text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
-            betweenDrawn.implicitWidth);
+        const line = end - Theme.space.rung.inset - ledWidth - pathGap;
+        const width = text => crumbsWanted.get(text) ?? Math.ceil(titleFace.advanceWidth(text)) + 1;
+        const steps = crumbSteps;
+        const least = Reading.crumbsLeast(steps, width, betweenWide);
+        const room = Math.max(0, line - typingRoom, Math.min(least, line));
+        return Reading.crumbs(steps, room, width, betweenWide);
     }
-    // How much wider the title's axes draw its letters than its face's
-    // metrics say, the most of any step's whole words, so a step given
-    // way is measured as it will be drawn.
-    readonly property real titleStretch: {
-        void titleFace.font;
-        let most = 1;
-        chips.forEach((chip, at) => {
-            const measured = titleFace.advanceWidth(chip.text);
-            if (measured > 0)
-                most = Math.max(most, ((chipsWanted[at] ?? 0) - 1) / measured);
-        });
-        return most;
+    readonly property var crumbSteps: chips.map(chip =>
+        ({ text: chip.text, yields: chip.yields === true }))
+    // Every way the path's steps may be said, each as a Text draws it: a
+    // face's metrics leave out the title's axes, and a face hinted fully
+    // draws in whole pixels, so a width scaled from the face's measure
+    // came out several pixels wide and folded a folder with room for it.
+    // Until a way's Text is made, the face's measure stands.
+    readonly property var crumbsWanted: {
+        void crumbsMade;
+        const wanted = new Map();
+        for (let at = 0; at < crumbsDrawn.count; at += 1) {
+            const drawn = crumbsDrawn.itemAt(at);
+            if (drawn)
+                wanted.set(drawn.text, Math.ceil(drawn.implicitWidth) + 1);
+        }
+        return wanted;
+    }
+    property int crumbsMade: 0
+
+    Repeater {
+        id: crumbsDrawn
+        model: Reading.crumbTexts(prompt.crumbSteps)
+        onItemAdded: prompt.crumbsMade += 1
+
+        Text {
+            required property string modelData
+            visible: false
+            text: modelData
+            textFormat: Text.PlainText
+            font: titleFace.font
+        }
     }
 
     // Each step's words' width, whole, as a Text draws them: a face's
@@ -917,12 +994,6 @@ Item {
             text: modelData.text
             font: titleFace.font
         }
-    }
-    Text {
-        id: betweenDrawn
-        visible: false
-        text: prompt.between
-        font: titleFace.font
     }
     // Whether each step is said whole, for the launcher's report.
     readonly property var chipsWhole: crumbsShown.whole
@@ -959,11 +1030,39 @@ Item {
                     readonly property bool cut: stepName.truncated
                     readonly property real spare: stepName.width - stepName.implicitWidth
 
-                    Text {
+                    // Where its words' ink starts past their advance, and
+                    // where the step before's ends short of its, so the
+                    // mark stands its rung from the ink either side: by
+                    // the first and last letters, since a face's measure
+                    // of whole words leaves out the title's axes, which
+                    // widen them, while a letter's bearing barely moves.
+                    TitleInk {
+                        id: stepInk
+                        text: Array.from(step.modelData)[0] ?? ""
+                    }
+                    TitleInk {
+                        id: beforeInk
+                        text: step.index > 0
+                            ? Array.from(prompt.crumbsShown.said[step.index - 1] ?? "").pop() ?? ""
+                            : ""
+                    }
+                    readonly property real leads: stepInk.tightBoundingRect.x / prompt.titleInkFine
+                    readonly property real trailsBefore: step.index === 0 ? 0
+                        : (beforeInk.advanceWidth - beforeInk.tightBoundingRect.x
+                            - beforeInk.tightBoundingRect.width) / prompt.titleInkFine
+
+                    Item {
                         visible: step.index > 0
-                        text: prompt.between
-                        color: Theme.muted
-                        font: titleFace.font
+                        width: visible ? prompt.betweenWide - step.trailsBefore - step.leads : 0
+                        height: stepName.height
+
+                        Text {
+                            x: Theme.space.rung.apart - step.trailsBefore
+                                - betweenInk.tightBoundingRect.x / prompt.titleInkFine
+                            text: prompt.between
+                            color: Theme.muted
+                            font: titleFace.font
+                        }
                     }
 
                     // Its words as they're given way, whole, so nothing
@@ -999,9 +1098,9 @@ Item {
     // face and ink.
     Text {
         id: askedText
-        x: input.x
+        x: prompt.fieldX
         width: input.width
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         visible: prompt.asking !== ""
         text: prompt.asking
         textFormat: Text.PlainText
@@ -1010,11 +1109,53 @@ Item {
         font: input.font
     }
 
+    // Scrolled, a muted mark at the field's start says letters went off
+    // it, as Vim's precedes mark does a line scrolled sideways, its room
+    // taken from what's typed rather than the path (VKCF3Z, 2026-11-06).
+    Text {
+        id: scrolledMark
+        objectName: "precedes"
+        x: prompt.fieldX + prompt.markFrom
+        anchors.baseline: shown.baseline
+        visible: prompt.scrolled
+        textFormat: Text.PlainText
+        text: "\u2026"
+        color: Theme.muted
+        font: input.font
+    }
+
+    // The field as shown, cut where its first whole letter starts once
+    // it's scrolled. The field keeps its place in the line however much
+    // is cut, so the cut never moves what's typed.
+    Item {
+        id: shown
+        x: prompt.fieldX + prompt.shownFrom
+        width: Math.max(0, input.width - prompt.shownFrom)
+        height: prompt.height
+        baselineOffset: input.y + input.baselineOffset
+        clip: prompt.scrolled
+    }
+
     TextInput {
         id: input
-        x: Theme.space.rung.inset + prompt.ledWidth
-            + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
-        width: prompt.end - x
+        parent: shown
+        x: -prompt.shownFrom
+        width: prompt.end - prompt.fieldX
+        // Room for the caret after the last letter, so what's typed,
+        // scrolled, ends short of the field's end by it rather than the
+        // caret standing past the end.
+        rightPadding: prompt.caretWidth
+        // Scrolled, the mark's room, kept clear of the caret.
+        leftPadding: prompt.scrolled ? scrolledMark.implicitWidth : 0
+        onCursorRectangleChanged: prompt.seeScrolled()
+        onContentWidthChanged: prompt.seeScrolled()
+        onWidthChanged: prompt.seeScrolled()
+        // Qt scrolls again only as the caret or the words move, so the
+        // mark's room, once taken, would lie over the first letter shown.
+        onLeftPaddingChanged: {
+            ensureVisible(cursorPosition);
+            prompt.seeScrolled();
+        }
         y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true

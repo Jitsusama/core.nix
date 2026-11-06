@@ -130,6 +130,22 @@ QtObject {
         expect("what's whole, step by step", same(crumbs(deep, 330).whole,
             [true, false, true, true]), crumbs(deep, 330).whole);
         expect("no steps, nothing", same(said([], 100), []), said([], 100));
+        // Every text the path measures is listed before, so a surface can
+        // draw each to measure it as it's drawn.
+        const unlisted = [];
+        for (const steps of [asked, home, there, deep]) {
+            const listed = Reading.crumbTexts(steps);
+            const noting = text => {
+                if (!listed.includes(text) && !unlisted.includes(text))
+                    unlisted.push(text);
+                return width(text);
+            };
+            Reading.crumbsLeast(steps, noting, 30);
+            for (let room = 0; room <= 500; room += 5)
+                Reading.crumbs(steps, room, noting, 30);
+        }
+        expect("every text a path measures is listed", unlisted.length === 0,
+            JSON.stringify(unlisted));
         // A side of items gives way whole, the least needed first, in the
         // order they're said, the one needed most kept however little room
         // (VKCF3Z, 2026-11-04: the tree, the address, then the state).
