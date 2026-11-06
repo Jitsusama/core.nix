@@ -1075,7 +1075,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     )
     for scale in at_each_scale:
         at_scale(desktop, scale)
-        # The time copies on Return, so Ctrl+] goes into what keeps it.
+        # Ctrl+] goes into what keeps the time, as Return does.
         desktop.answer("time")
         desktop.follow()
         desktop.launcher_until(lambda shown: "Servers" in shown["rows"])

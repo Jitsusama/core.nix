@@ -116,10 +116,11 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     first = min(facts, key=lambda fact: fact[1])
     assert first[0] == "clock", facts
     assert first in now_facts, (facts, laid["foot"])
-    # The answer copies on Return and holds more, so Ctrl+] in comes first, furthest from
-    # Return, and the key list's stays just before Return.
+    # The answer holds more, so Return goes in, and y, the one way left to copy it, comes
+    # after it; the key list's stays just before Return.
     told = desktop.showing()["selected"]["told"]
-    assert told[1:2] == ["Ctrl+] in"], told
+    assert told[:2] == ["\u21b5 open", "y copy"], told
+    assert "Ctrl+] in" not in told, told
     assert told[-2:] == [": commands", "Space ? keys"], told
     assert not any("\u2192" in text for text in told), told
     assert not any(word["text"].endswith(" clear") for word in laid["field"]), laid["field"]
@@ -322,9 +323,19 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
         )
     )
     walk_the_fields_keys(desktop, charge)
-    machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # Return from the find goes into the answer, which holds the battery's parts, rather
+    # than copying it (Joel, 2026-11-06: "i type memory in the launcher, hit enter and it
+    # copies and does not go into more details"); y copies it there.
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["open"] and len(shown["held"]) == 1)
+    desktop.close_launcher()
+    desktop.answer("battery")
+    desktop.normal()
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
+    desktop.close_launcher()
     # Each answer by its one word, and an old one asks nothing.
     # "lag" answers from lag-watch's last ten seconds.
     for typed, said in [
@@ -1489,7 +1500,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         ("Clock", "Offset", "launcher-time-clock"),
         ("Servers", "time.harbour.test", "launcher-time-servers"),
     ]:
-        # The time copies on Return, so Ctrl+] goes into what keeps it.
+        # Ctrl+] goes into what keeps the time, as Return does.
         desktop.answer("time")
         desktop.follow()
         desktop.launcher_until(lambda shown: holder in shown["rows"])  # noqa: B023
