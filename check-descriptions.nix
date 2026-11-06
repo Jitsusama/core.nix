@@ -6,7 +6,7 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
-  a-card-says-how-it-stands-in-one-line = ''
+  a-card-says-how-it-stands-in-one-row = ''
     a card's status line, the launcher's and held notices' alike, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
   '';
@@ -545,8 +545,9 @@
     and puts each back as it was; switches zswap off for the image and on again after, only when
     it was on; and says whether an image fits by the kernel's sums (half of
     memory less what it keeps back and twice the reserve, against what's in use less cache,
-    slabs, the free pages waiting on each processor's list and the anonymous memory swap has room
-    for)
+    slabs, the graphics pool's freed pages, the free pages waiting on each processor's list and
+    the anonymous memory swap has room for); and keeps the processor's count when a restore
+    begins, and says from it how long the restore took, in seconds
   '';
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
@@ -2190,7 +2191,7 @@
     with two screens of different sizes, the splash's ask shows whole on both, its bottom left
     corner on the smaller one included
   '';
-  vm-boot-says-it-restores = ''
+  vm-boot-says-it-wakes-from-hibernation = ''
     the graphical role, hibernated to a swap file on btrfs inside LUKS and started from its
     image with the passphrase typed at the theme's ask, shows the theme's words for a restore
     on the first, middle and last photographs taken while the kernel reads the image, comes

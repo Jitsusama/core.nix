@@ -34,6 +34,13 @@ const SAMPLED: Duration = Duration::from_millis(20);
 
 /// The processor's time stamp counter, or none where there isn't one to
 /// read.
+#[cfg_attr(
+    target_arch = "x86_64",
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "other processors have no counter to read"
+    )
+)]
 pub fn counted() -> Option<u64> {
     #[cfg(target_arch = "x86_64")]
     {
