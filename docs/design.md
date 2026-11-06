@@ -227,8 +227,12 @@ of each kind of line it sets, and a row's pitch is its height.
   letter's overshoot, a mark drawn small in its cell), the column takes the
   optical edge, and the check says so.
 - **Baselines on the pitch, marks one height.** **Check:** every baseline
-  measured against the surface's line pitch, and every mark's ink the same
-  height, centred on one line, as the skill's "Marks one height" asks.
+  measured against the surface's line pitch, and every mark's ink one optical
+  size, centred on the capitals' middle, as the skill's "Marks one height"
+  asks. One size is equal area, not equal height, since a wide mark made as
+  tall as a narrow one turns heavy: each is scaled so the square root of its
+  ink's width by height is 15, no wider than its cell and no taller than 15,
+  measured at load from the font, with no table.
 - **Shared across neighbours.** A surface beside another (the launcher and
   its drawer, a notice and the margin) lines up with it. **Check:** the
   shared edges named and measured.
@@ -528,7 +532,9 @@ The rest follows from the ladder:
   box text is not vertically aligned within its box, it is more heavily top
   aligned"). A band's height comes from the rows' rhythm, the head's
   baseline a row above the first row's, so the head, a field and the status
-  line read alike.
+  line read alike. A head with no rows under it, a prompt's or the picker's,
+  has no rhythm to size it, so its capitals sit the inset under the frame
+  and its hairline falls where the text centres, the same room under it.
 - **A glyph's column is its cell and a mark.** A mark sits in a square cell
   one line pitch wide, its text the mark rung after it, so a list's names
   start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
