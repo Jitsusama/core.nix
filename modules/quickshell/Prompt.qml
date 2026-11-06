@@ -337,11 +337,10 @@ Item {
     }
 
     signal cancelled
-    // The right arrow past the end of what's typed, and the left arrow before
-    // its start (or anywhere, with leftClears, once what's typed is gone) or
-    // Backspace with nothing typed: into what's selected, and back out. In
-    // a modal line, normal's arrows, l and h, and Backspace.
-    signal forward
+    // The left arrow before what's typed starts (or anywhere, with
+    // leftClears, once what's typed is gone) or Backspace with nothing
+    // typed: back out; in a modal line, normal's -. Nothing steps in by an
+    // arrow, since Return goes in (the vi-paradigm spec, Normal).
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
     // the count typed before it, 0 for none: the moves Operators.moved
@@ -453,6 +452,9 @@ Item {
         // another key's, so normal's leader begins with it; insert's is
         // still the field's to type, the table giving it nothing there.
         [Qt.Key_Space]: "Space",
+        // The bracket by its mark, for Ctrl+], which types a control
+        // character rather than the mark; bare, it goes by what it typed.
+        [Qt.Key_BracketRight]: "]",
         [Qt.Key_F1]: "F1"
     })
     // A key as the table names it (KeyNames.js).
@@ -648,9 +650,6 @@ Item {
             break;
         case "run":
             prompt.returned(event);
-            break;
-        case "into":
-            prompt.forward();
             break;
         case "out":
             prompt.backward();
@@ -1155,10 +1154,6 @@ Item {
             if (restoring) {
                 input.text = prompt.cleared;
                 input.cursorPosition = input.text.length;
-                event.accepted = true;
-            } else if (event.key === Qt.Key_Right && none
-                && input.cursorPosition === input.text.length) {
-                prompt.forward();
                 event.accepted = true;
             } else if (event.key === Qt.Key_Left && plainly && prompt.leftClears
                 && input.text !== "") {

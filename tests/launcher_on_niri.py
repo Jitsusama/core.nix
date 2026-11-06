@@ -303,13 +303,11 @@ class Shell:
         self.launcher_ready()
         self.type_in(typed)
 
-    def step_in(self, key: str = "right") -> None:
+    def step_in(self, key: str = "ret") -> None:
         """Press a key that steps into the selected row, and wait until the launcher holds it.
 
-        The right arrow steps in from normal mode, which it goes into first; Return from either.
+        Return goes in, from the find or normal alike.
         """
-        if key == "right":
-            self.normal()
         before = len(self.showing()["held"])
         self.send_key(key)
         self.launcher_until(lambda shown: len(shown["held"]) > before)

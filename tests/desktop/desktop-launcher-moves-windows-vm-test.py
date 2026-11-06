@@ -246,13 +246,14 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("scratch 08", selecting="Scratch 08")
-    # In normal, where l steps in; on the find letters type, so it names none.
+    # In normal, where Ctrl+] goes in, as Return opens the window; on the
+    # find letters type, so it names none.
     desktop.normal()
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "l in" in told, told
-    desktop.step_in()
+    assert "Ctrl+] in" in told, told
+    desktop.follow()
     desktop.launcher_until(lambda shown: {"Size", "Float"} <= set(shown["rows"]))
     desktop.close_launcher()
     for title in scratch:
@@ -265,7 +266,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
 
 
-# l steps into what can be done to a window, and a verb
+# Ctrl+] goes into what can be done to a window, and a verb
 # that needs a target asks for it in the same field.
 
 
@@ -279,7 +280,7 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("tuesday", selecting="Notes for Tuesday")
-        desktop.step_in()
+        desktop.follow()
         desktop.type_in(verb)
 
     into_notes("copy")
@@ -291,9 +292,7 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
     into_notes("move")
     desktop.step_in("ret")
     desktop.photograph("launcher-target")
-    # Moving it changes how things stand, so Return from the find lands on
-    # the workspace, and a second moves it there.
-    desktop.land()
+    # The step ends in normal, where Return moves it to the workspace.
     machine.send_key("ret")
 
     def moved(_: bool) -> bool:
@@ -317,9 +316,10 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     selected = desktop.showing()["selected"]
     assert selected["side"] == "Notes for Tuesday", selected
     # Return steps in, to what can be done to it, all but going to it,
-    # since it's the one he's in. Typed, on the find, the foot says Return
-    # alone, since the find's arrows move the caret.
-    assert selected["told"] == ["\u21b5"], selected
+    # since it's the one he's in. Typed, on the find, the foot says "\u21b5 open",
+    # as normal does, since stepping in has one word wherever it's done, and
+    # no arrow, since the find's arrows move the caret.
+    assert selected["told"] == ["\u21b5 open"], selected
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
@@ -345,9 +345,10 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.type_in("this window", selecting="This Window")
     desktop.step_in("ret")
     desktop.type_in("size", selecting="Size")
-    # Its sizes are a step in, and the foot says Return steps there.
+    # Its sizes are a step in, and the foot says Return opens them, on the
+    # find as in normal.
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u21b5" in told, told
+    assert told[:1] == ["\u21b5 open"], told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
     desktop.land()
@@ -793,7 +794,7 @@ def test_a_windows_verbs_follow_it_while_theyre_shown(desktop: Desktop) -> None:
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["held"] == ["windows"])
     desktop.type_in("tuesday", selecting="Notes for Tuesday")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Float" in shown["rows"])
     desktop.as_account(f"niri msg action toggle-window-floating --id {notes['id']}")
     desktop.launcher_until(lambda shown: "Tile" in shown["rows"] and "Float" not in shown["rows"])
@@ -851,7 +852,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     assert re.fullmatch(r"Desktop \u00b7 \d+ \u00b7 Windows, Columns", desktop_row), desktop_row
     desktop.photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
-    desktop.step_in()
+    desktop.follow()
     groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
     desktop.launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     desktop.photograph("launcher-shortcut-groups")
@@ -860,17 +861,17 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # holds groups of its own, then what none of them takes.
     desktop.type_in("work", selecting="Workspaces")
     assert "Go to workspace 3" in desktop.showing()["rows"]
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
     inner = ["Focus", "The Column", "The Window", "Above and Below"]
     assert desktop.showing()["rows"][: len(inner)] == inner
     assert "Show every workspace" in desktop.showing()["rows"]
     # The field says where that is as one path, in the rows' own case.
     assert desktop.showing()["path"] == ["Shortcuts", "Desktop", "Workspaces"]
-    # Back out: to the desktop with "work" typed, then Shortcuts, each h a step,
+    # Back out: to the desktop with "work" typed, then Shortcuts, each - a step,
     # since no key clears the find from normal.
     for _step in range(2):
-        machine.send_key("h")
+        desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"] and shown["rows"] == layers)
     # At the top, what's typed finds a chord in any layer, flat.
     desktop.type_in("paste")
@@ -915,7 +916,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("shortcuts", selecting="Shortcuts")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
     # Inside it, a group named what's typed, whole, comes first, and is
     # Return's row.
@@ -936,14 +937,14 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     assert desktop.showing()["path"] == ["Shortcuts", "Terminal"]
     assert desktop.showing()["rows"][:2] == ["Tabs", "Tab Numbers"]
     desktop.photograph("launcher-shortcuts-over-kitty")
-    # l steps into a group, and h back out to the
+    # Return steps into a group, and - back out to the
     # layers, the terminal's first and selected, saying it's the window's,
     # and the desktop's next.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal", "tabs"])
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
     assert desktop.showing()["rows"][:2] == ["Terminal", "Desktop"]
     assert (desktop.showing()["selected"] or {}).get("name") == "Terminal"

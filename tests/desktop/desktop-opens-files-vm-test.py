@@ -98,17 +98,17 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
         ),
     )
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     taken = picture.rsplit("/", 1)[-1]
     desktop.launcher_until(lambda shown: shown["rows"][:1] == [taken])
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Edit in GIMP", "Copy the Path"])
     desktop.close_launcher()
     # GIMP holds the newest screenshot among its own acts.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -546,8 +546,8 @@ def name_line(desktop: Desktop, held: int) -> None:
         says("kept.md", caret, "normal")
     # The name is the line's row, above the rows, never listed among them;
     # j goes down from it into the folders and k back up to it, where h and l
-    # move its caret again. In a folder, l steps in rather than moving the
-    # name's caret, the name kept on the line.
+    # move its caret again. In a folder, Return steps in, the name kept on
+    # the line.
     rows = desktop.showing()["rows"]
     assert "kept.md" not in rows, rows
     down = "j" * (rows.index("inner") + 1)
@@ -561,7 +561,7 @@ def name_line(desktop: Desktop, held: int) -> None:
     says("kept.md", 2, "normal")
     machine.send_chars(down)
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "inner")
-    machine.send_chars("l")
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) == held + 1
@@ -604,12 +604,12 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Google Drive"
         )
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: shown["rows"][:3] == ["My Drive", "Shared with Me", "Shared Drives"]
         )
         desktop.down_to("My Drive")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
         desktop.photograph("file-chooser-drive")
         desktop.down_to("menu.pdf")
@@ -930,9 +930,9 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "tide" in shown["rows"])
     desktop.photograph("launcher-kitty-recent")
     desktop.type_in("tide", selecting="tide")

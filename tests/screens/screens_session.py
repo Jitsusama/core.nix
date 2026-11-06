@@ -333,11 +333,11 @@ class Screens:
             lambda shown: shown["typed"] == typed and (shown["selected"] or {}).get("name") == row,
             f"found {row!r} on {screen}",
         )
-        # Keep Awake is a setting, which Return does and stays to show; the
-        # l, from normal mode, then Return does it and closes; no arrow steps in.
+        # Keep Awake is a setting, which Return does and stays to show;
+        # Ctrl+], from normal mode, then Return does it and closes.
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal", f"normal on {screen}")
-        self.machine.send_chars("l")
+        self.machine.send_key("ctrl-bracket_right")
         self.launcher_until(lambda shown: len(shown["held"]) > 0, f"stepped into {row!r}")
         self.machine.send_key("ret")
         self.launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")

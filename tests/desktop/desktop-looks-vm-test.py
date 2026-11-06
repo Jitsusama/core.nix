@@ -294,14 +294,19 @@ def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
 
 
 def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
-    """Press a key with no meaning, then q, photographing what the foot says for each.
+    """Press a key with no meaning, l, h, then q, photographing what the foot says for each.
 
     Each stands in the keys' place, the mark in text and its words muted, until the next key.
+    kitty opens on Return and holds its windows, so Ctrl+] goes in, furthest from Return.
     """
     machine = desktop.machine
     at = scale.replace(".", "-")
+    told = desktop.showing()["selected"]["told"]
+    assert told[1:2] == ["Ctrl+] in"], f"at {scale} kitty's foot: {told}"
     for chars, said, shot in [
         ("z", ["z not here"], "not-here"),
+        ("l", ["l not here", "\u21b5 open"], "l-not-here"),
+        ("h", ["h not here", "- up"], "h-not-here"),
         ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
     ]:
         machine.send_chars(chars)
@@ -313,6 +318,12 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     # gg stays on the first row and lets the words go.
     machine.send_chars("gg")
     desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
+    # Inside, the foot says - goes up, and - comes back to kitty.
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "- up" in (shown["selected"] or {}).get("told", []))
+    desktop.photograph(f"launcher-inside-at-{at}")
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
@@ -912,11 +923,12 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     )
     for scale in at_each_scale:
         at_scale(desktop, scale)
+        # The time copies on Return, so Ctrl+] goes into what keeps it.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
         desktop.down_to("Servers")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
         desktop.down_to("time.harbour.test")
         desktop.launcher_until(
@@ -956,7 +968,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # stands taller than two lines and none reads a word a line; where one takes two, each
         # stands a beat further from the one before.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
         desktop.down_to("Zone")
         desktop.launcher_until(
@@ -1316,7 +1328,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.down_to("a.md")
             ran(desktop, "arga")
             desktop.down_to("more")
-            desktop.step_in()
+            desktop.follow()
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/gathering/more"])
             desktop.down_to("d.md")
             ran(desktop, "arga")
@@ -1333,7 +1345,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
-            machine.send_key("h")
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
@@ -1559,7 +1571,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("testqa", selecting="A quest of its own & whole")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
         for name, side in [
             ("Spent Today", "$14.20 in all"),

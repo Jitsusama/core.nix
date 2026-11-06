@@ -6699,8 +6699,9 @@
       "keys": "keys"
     },
     "hints": {
+      "up": "up",
+      "open": "open",
       "in": "in",
-      "out": "out",
       "commands": "commands",
       "copy": "copy",
       "keys": "keys",
@@ -6740,7 +6741,9 @@
         "row": "To that row",
         "option": "Set an option",
         "optionHere": "Set its own option",
-        "inOut": "Into it and out",
+        "openIn": "Open, or go in",
+        "up": "Up a level",
+        "follow": "Into its parts",
         "run": "Do it",
         "jumps": "Back and forward",
         "lastPlace": "The place used last",
