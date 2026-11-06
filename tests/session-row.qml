@@ -4,7 +4,7 @@
 // modules/quickshell/launcher/SessionRow.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. Each list of sessions keeps
 // one order of how they stand (needs you, working, in line, listening,
-// paused), and Agents sits each session under the one orchestrating it, a
+// paused, parked), and Agents sits each session under the one orchestrating it, a
 // step in, an orchestration standing where its most urgent row would
 // (QEST-20261026-15J7N3's agents-tree-look.md).
 import QtQuick
@@ -54,6 +54,8 @@ QtObject {
                 { busy: false, state: "waiting" }, false, false, "listening"],
             ["one paused is paused", { state: "paused", busy: false }, false, true, "paused"],
             ["one paused that wants Joel needs him", { state: "paused" }, true, false, "needs"],
+            ["one parked is parked, never listening", { state: "parked", busy: false }, false,
+                false, "parked"],
             ["none at all is off", null, false, false, "off"]
         ];
         for (const [what, presence, asks, queued, want] of states) {
@@ -62,9 +64,9 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
-        const order = ["paused", "listening", "off", "inLine", "needs", "working"]
+        const order = ["paused", "parked", "listening", "off", "inLine", "needs", "working"]
             .sort((a, b) => SessionRow.rank(a) - SessionRow.rank(b)).join(" ");
-        if (order !== "needs working inLine listening paused off")
+        if (order !== "needs working inLine listening paused parked off")
             failures.push(`the one order of states: "${order}"`);
 
         // [what, the sessions in Sessions' order, how they're laid out]
@@ -81,6 +83,8 @@ QtObject {
                 "P .O ..B ..C"],
             ["rows under one orchestrator keep the order of how they stand",
                 "O:working A:listening>O B:needs>O C:working>O", "O .B .C .A"],
+            ["one parked sits under its orchestrator, last",
+                "O:parked A:parked>O B:listening>O X:paused", "O .B .A X"],
             ["an orchestration stands where its most urgent row would",
                 "X:working O:listening A:needs>O", "O .A X"],
             ["and so does one under it, with its own",
@@ -107,13 +111,15 @@ QtObject {
             failures.push(`whom each is under: "${said}"`);
 
         // A session's acts follow how it stands: one at work or in line can
-        // be stopped, one paused resumed.
+        // be stopped, one paused resumed, one parked only woken or talked
+        // to, with no window known to go to.
         const acts = [
             ["working", true, "switch talk pause stop"],
             ["inLine", false, "talk pause stop"],
             ["listening", true, "switch talk pause"],
             ["needs", true, "switch talk pause"],
-            ["paused", true, "switch talk resume"]
+            ["paused", true, "switch talk resume"],
+            ["parked", false, "wake talk"]
         ];
         for (const [state, windowed, want] of acts) {
             const got = SessionRow.acts(state, windowed).join(" ");
