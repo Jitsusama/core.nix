@@ -6709,7 +6709,8 @@
       "quits": "closes",
       "complete": "complete",
       "nextTime": "next time",
-      "enough": "is enough"
+      "enough": "is enough",
+      "E21": "E21: Cannot make changes"
     },
     "listed": {
       "eyebrow": "Keys",

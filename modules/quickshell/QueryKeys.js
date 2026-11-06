@@ -166,14 +166,14 @@ const table = [
     // and Page Up (both modes', above); gg G and H M L as on the rows, each
     // taking a count. Ctrl+W h and w go back, the foot naming h, Space and
     // the left arrow too, and ZZ, Space w and :q, as his Neovim closes a
-    // window; a bare arrow does nothing. Escape only lets a count or a
-    // waiting key go, as it does nothing at rest in a window, and q alone
-    // does nothing, as Joel asked of every modal surface (2026-11-04).
-    // Return does the row the drawer's about.
-    { act: "next", mode: "page", keys: ["j"] },
-    { act: "previous", mode: "page", keys: ["k"] },
-    { act: "left", mode: "page", keys: ["h"] },
-    { act: "right", mode: "page", keys: ["l"] },
+    // window; a bare arrow is its letter's move, as in a buffer (Joel,
+    // 2026-11-05). Escape only lets a count or a waiting key go, as it does
+    // nothing at rest in a window, and q alone only says how to close, as
+    // Joel asked of every modal surface (2026-11-04). Return does the row.
+    { act: "next", mode: "page", keys: ["j", "Down"] },
+    { act: "previous", mode: "page", keys: ["k", "Up"] },
+    { act: "left", mode: "page", keys: ["h", "Left"] },
+    { act: "right", mode: "page", keys: ["l", "Right"] },
     { act: "scrollDown", mode: "page", keys: ["Ctrl+e"] },
     { act: "scrollUp", mode: "page", keys: ["Ctrl+y"] },
     { act: "halfDown", mode: "page", keys: ["Ctrl+d"] },
@@ -196,6 +196,16 @@ const table = [
     // search itself (seekRead).
     { act: "seekNext", mode: "page", keys: ["n"] },
     { act: "seekPrevious", mode: "page", keys: ["N"] },
+    // A page can't be changed, so each key Vim's nv_edit refuses says E21
+    // at once, i a o entering no insert, d c and r once their motion or
+    // letter comes (Operators.refused), and visual's over what's chosen;
+    // q says how to close, as on the rows.
+    { act: "cannotChange", mode: "page", keys: ["x", "p", "S", "D", "C", "X", "P", "s", "J",
+        "~", "i", "a", "I", "A", "o", "O"] },
+    { act: "cannotChange", mode: "pageVisual", keys: ["d", "x", "c", "p", "D", "C", "X",
+        "P", "s", "S", "J", "~"] },
+    { act: "quitSaid", mode: "page", keys: ["q"] },
+    { act: "quitSaid", mode: "pageVisual", keys: ["q"] },
     // Visual on the page, the language's select and select-lines: v from
     // the cursor's letter, V by whole lines, and gv the last chosen again.
     // While choosing, its rows are pageVisual's, whose two kinds share them
@@ -395,8 +405,10 @@ function read(standing, key, mode, words = false) {
     const before = mode === "normal" || mode === "visual"
         ? Operators.beforeTable(standing, key, { mode, words }, { matching, rested: rest() })
         : null;
-    if (before !== null) {
-        return before;
+    const refused = mode === "page"
+        ? Operators.refused(standing, key, { matching, rested: rest() }) : null;
+    if (before !== null || refused !== null) {
+        return before ?? refused;
     }
     // A count before a move in the drawer, choosing or not, where nothing
     // types: 0 alone is Vim's first column, which rows haven't, so it
@@ -477,7 +489,7 @@ function modeAfter(act, mode, typing = "find") {
     if (act === "selectLines") {
         return mode === "pageVisualLine" ? "page" : "pageVisualLine";
     }
-    if (["copy", "copyLines", "back"].includes(act) && chosen(mode)) {
+    if (["copy", "copyLines", "back", "cannotChange"].includes(act) && chosen(mode)) {
         return "page";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind"]

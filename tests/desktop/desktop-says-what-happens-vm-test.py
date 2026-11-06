@@ -320,7 +320,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     """Ctrl+W l takes the keys into the drawer, and Ctrl+W h gives them back, as in Vim.
 
     Ctrl+W w goes either way, ZZ and :q come back too, and his Neovim's Space and an arrow
-    overlay them; a bare arrow does nothing.
+    overlay them; a bare arrow inside is its letter's move (arrows_move_in_the_drawer).
 
     Its frame takes the accent the card's gives up, and the cursor stands on the title's first
     letter with nothing scrolled, its line marked by a rule in the margin left of the letters.
@@ -330,8 +330,9 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
     There it waits until the keys go in and then takes the card's place, its title on one line,
     rather than squeezed beside it until a word breaks (VKCF3Z, 2026-11-05: "Depl/oy/log").
-    Then Space ? lists the drawer's own keys (listed_in_the_drawer), kept in this subtest so
-    the file holds to the pyramid's twenty (docs/testing.md).
+    Then Space ? lists the drawer's own keys (listed_in_the_drawer), and d c p x and q say why
+    they change nothing (refused_in_the_drawer), kept in this subtest so the file holds to the
+    pyramid's twenty (docs/testing.md).
     """
     page = InTheDrawer(desktop)
     came = page.into()
@@ -380,12 +381,12 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "" and shown["mode"] == "page")
-    # Escape at rest and q alone leave the keys where they are, and so do the bare arrows,
-    # which do nothing in the drawer (Joel, 2026-11-05: "remove them and rely only on vi right
-    # feeling things"): j still moves the cursor, one line.
+    # Escape at rest and q alone leave the keys where they are: j still moves the cursor, one
+    # line.
     line, letter = page.drawer()["cursor"]["line"], page.drawer()["cursor"]["letter"]
-    came = page.until("esc q down left j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    came = page.until("esc q j", lambda drawer: drawer["cursor"]["line"] == line + 1)
     assert came["cursor"]["letter"] == min(letter, len(came["cursor"]["says"]) - 1), came
+    arrows_move_in_the_drawer(page)
     page.back("Z Z")
     # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way, and
     # his Neovim's Space and an arrow over them (Joel: "leader stuff can overlay default stuff").
@@ -399,6 +400,60 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         page.back(back)
     desktop.close_launcher()
     listed_in_the_drawer(desktop)
+    refused_in_the_drawer(desktop)
+
+
+def arrows_move_in_the_drawer(page: InTheDrawer) -> None:
+    """In the drawer, each arrow is its letter's move, a count before it too, as in a buffer.
+
+    Down and Up go a line as j and k do, and Right and Left a letter as l and h (Joel,
+    2026-11-05: "In normal mode, in a buffer, arrows move the cursor").
+    """
+    line = int(page.drawer()["cursor"]["line"])
+    page.until("2 down up", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    at = page.drawer()["cursor"]
+    right = min(int(at["letter"]) + 1, len(at["says"]) - 1)
+    page.until("right", lambda drawer: drawer["cursor"]["letter"] == right)
+    page.until("left", lambda drawer: drawer["cursor"]["letter"] == max(right - 1, 0))
+
+
+E21 = "E21: Cannot make changes"
+
+
+def refused_in_the_drawer(desktop: Desktop) -> None:
+    """In the drawer, d c p x say Vim's E21 and q says how to close, the keys staying there.
+
+    A page can't be changed (VKCF3Z's spec v2, the Reader): x, p and S say it at once, and every
+    other key Vim's nv_edit refuses there, i a o and their capitals entering no insert; d and c
+    once their motion comes, r once its letter does, and visual's change keys as its choice
+    ends, each where the line was and none as "not here", the cursor unmoved. q says what it
+    says on the rows. Escape, a key that says nothing, is pressed between, so each word is seen
+    to come of its own key.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+    line = page.drawer()["cursor"]["line"]
+
+    def said(shown: Json) -> bool:
+        return bool(
+            shown["commandSaid"] == E21 and shown["mode"] == "page" and shown["saying"] == []
+        )
+
+    at_once = ("x", "p", "S", "D", "C", "X", "P", "s", "J", "~", "i", "a", "I", "A", "o", "O")
+    waiting = ("d j", "c c", "r x", "r 5")
+    chosen = tuple(f"{v} {key}" for v, key in zip("vVvVvVvVvV", "dxcpDCXPsS", strict=True))
+    for keys in (*at_once, *waiting, *chosen, "v J", "V ~"):
+        page.pressed_until(keys, said)
+        assert page.drawer()["cursor"]["line"] == line, (keys, page.drawer())
+        page.pressed_until("esc", lambda shown: shown["commandSaid"] == "")
+    page.pressed_until(
+        "q",
+        lambda shown: (
+            shown["saying"] == ["q does nothing", ":q closes"] and shown["mode"] == "page"
+        ),
+    )
+    page.back("ctrl-w h")
+    desktop.close_launcher()
 
 
 def listed_in_the_drawer(desktop: Desktop) -> None:
