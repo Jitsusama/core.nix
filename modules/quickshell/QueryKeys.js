@@ -7,7 +7,7 @@
 // asks for are typed in insert, edited with the find's keys. Letters go by
 // what they type, wherever they sit on the layout.
 .pragma library
-.import "LineEditing.js" as LineEditing
+.import "Finding.js" as Finding
 .import "Operators.js" as Operators
 
 // Each act, the mode it's done in and the keys that do it. A key is named as
@@ -97,6 +97,8 @@ const table = [
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
     { act: "otherEnd", mode: "visual", keys: ["o"] },
+    // Space leads in visual too, so the key list stands over a selection.
+    { act: "keys", mode: "visual", keys: [["Space", "?"], "F1"] },
     { act: "reselect", mode: "normal", keys: [["g", "v"]] },
     // A paragraph of rows is a run of one kind or sender that a gap ends
     // (Operators.runAt): } and { go by them, ip and ap take one, as in Vim.
@@ -106,10 +108,20 @@ const table = [
     { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
     // The gutter's numbers, relative or absolute, as his u l switches them.
     { act: "numbers", mode: "normal", keys: [["Space", "u", "l"]] },
-    // Back to the find: / and ? afresh, as a find has no direction; i a I A
-    // holding the find, at the caret, after it, at the line's start and its
-    // end; or cleared first, as cc clears a line.
-    { act: "freshFind", mode: "normal", keys: ["/", "?"] },
+    // Back to the find: / afresh going down and ? going up, the way n goes
+    // on; i a I A holding the find, at the caret, after it, at the line's
+    // start and its end; or cleared first, as cc clears a line.
+    { act: "freshFind", mode: "normal", keys: ["/"] },
+    { act: "freshFindBack", mode: "normal", keys: ["?"] },
+    // n and N go on through the rows the find found, its way and back, round
+    // past an end; f and F to the next row and the one before whose name
+    // begins with the letter typed after, and ; and , again (Finding.js).
+    { act: "matchNext", mode: "normal", keys: ["n"] },
+    { act: "matchBack", mode: "normal", keys: ["N"] },
+    { act: "toLetter", mode: "normal", keys: ["f"] },
+    { act: "toLetterBack", mode: "normal", keys: ["F"] },
+    { act: "letterAgain", mode: "normal", keys: [";"] },
+    { act: "letterAgainBack", mode: "normal", keys: [","] },
     { act: "insert", mode: "normal", keys: ["i"] },
     { act: "append", mode: "normal", keys: ["a"] },
     { act: "insertStart", mode: "normal", keys: ["I"] },
@@ -232,7 +244,7 @@ const table = [
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
     "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
     "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "seekNext", "seekPrevious",
-    "paragraphOn", "paragraphBack"];
+    "paragraphOn", "paragraphBack", "matchNext", "matchBack", "letterAgain", "letterAgainBack"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -247,40 +259,11 @@ function rest() {
 }
 
 // Whether anything's begun: a count, a sequence's first keys, an operator,
-// or a search being typed.
+// a search being typed or f waiting for its letter.
 function pending(standing) {
     return standing.count !== "" || standing.typed.length > 0
-        || standing.operator !== undefined || standing.seek !== undefined;
-}
-
-// The field names a Ctrl chord by its letter as typed, and the line's
-// editing (LineEditing.js) by the letter's capital, as Vim's help writes it.
-const ctrlLetter = /^Ctrl\+[a-z]$/;
-
-// A key typed in the drawer's search, held in how the keys stand as
-// `seek`, { pattern, forward }, while it's open, as Vim types / and ? on
-// its command line: Return runs it, with the count typed before the /,
-// and says what it sought, an empty pattern seeking the last again as
-// Vim's does; Escape or Ctrl+C lets it go, as Backspace or Ctrl+H does
-// with nothing left. Every other key edits it as the find line and the
-// command line are edited (LineEditing.js): Ctrl+W takes the word before,
-// Ctrl+U all of it, and anything printable is typed, a page's keys among
-// them, as a space is.
-function seekRead(standing, key) {
-    const seek = standing.seek;
-    const open = pattern => ({ act: "", count: 0,
-        standing: { count: standing.count, typed: [], seek: { pattern, forward: seek.forward } },
-        ours: true });
-    if (key === "Return" || key === "Enter") {
-        return { act: "seek", count: standing.count === "" ? 0 : Number(standing.count),
-            sought: seek, standing: rest(), ours: true };
-    }
-    const chord = ctrlLetter.test(key) ? `Ctrl+${key.slice(-1).toUpperCase()}` : key;
-    const edited = LineEditing.edit(LineEditing.line(seek.pattern), chord, false);
-    if (key === "Escape" || chord === "Ctrl+C" || edited.act === "leave") {
-        return { act: "", count: 0, standing: rest(), ours: true };
-    }
-    return open(edited.line.text);
+        || standing.operator !== undefined || standing.seek !== undefined
+        || standing.letter !== undefined;
 }
 
 const digit = /^[0-9]$/;
@@ -311,14 +294,14 @@ function chosen(mode) {
 // Whether a row's keys are a mode's: "line" is the find's and insert's,
 // where letters type, "both" every mode's. Choosing on the page, by letters or lines, has
 // pageVisual's rows and the page's moves; visual on the rows has normal's
-// moves besides its own, since every move extends it, and its Space ?.
+// moves besides its own, since every move extends it.
 function inMode(row, mode) {
     if (chosen(mode)) {
         return row.mode === "pageVisual"
             || ((row.mode === "page" || row.mode === "both") && moves.includes(row.act));
     }
     if (mode === "visual" && row.mode === "normal") {
-        return moves.includes(row.act) || row.act === "keys";
+        return moves.includes(row.act);
     }
     if (mode === "visual" && row.mode === "object") {
         return true;
@@ -368,7 +351,12 @@ function read(standing, key, mode, words = false) {
         return { act: "", count: 0, standing, ours: false };
     }
     if (standing.seek !== undefined) {
-        return seekRead(standing, key);
+        return Finding.seekRead(standing, key, rest());
+    }
+    // f and F's wait for a letter, and the letter (Finding.js).
+    const letter = Finding.letterRead(standing, key, { mode, words }, rest());
+    if (letter !== null) {
+        return letter;
     }
     // In the drawer, / and ? at rest open its search, the way it goes,
     // keeping a count typed before them for the match it lands on.
@@ -484,8 +472,8 @@ function modeAfter(act, mode, typing = "find") {
     if (["copy", "copyLines", "back", "cannotChange"].includes(act) && chosen(mode)) {
         return "page";
     }
-    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind"]
-        .includes(act)) {
+    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind",
+        "freshFindBack"].includes(act)) {
         return typing;
     }
     return mode;

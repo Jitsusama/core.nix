@@ -255,6 +255,12 @@ Item {
     // takes; or, in the page mode, the drawer's, which DrawerPage.moved
     // takes.
     signal stepped(string act, int count)
+    // f or F's letter typed, with the count before the f, for the rows to
+    // go to the one it begins (Finding.js).
+    signal lettered(string act, int count, string letter)
+    // Whether the find goes up, as ? opened it, which n goes on with and
+    // N against, as Vim's do; / opens it going down.
+    property bool findsBack: false
     // An operator done: "ending" for d and "copy" for y, with the count
     // typed before it, 0 for none, and the motion it took, { act, count },
     // or null for dd and yy (QueryKeys.spanned takes them); in visual, d, y
@@ -286,9 +292,11 @@ Item {
 
     // Takes the keys back from whatever else in its window had them, as it
     // opens, with no change or half-pressed key left from before, and a
-    // modal line opens on the find, so typing finds at once.
+    // modal line opens on the find, so typing finds at once. That find is
+    // a fresh /, going down, whatever way the last one opened went.
     function take() {
         changes = [];
+        findsBack = false;
         standing = QueryKeys.rest();
         mode = typingMode;
         input.forceActiveFocus();
@@ -515,8 +523,10 @@ Item {
             if (words && next === "normal" && changes.length > 0
                 && changes[changes.length - 1].text === text)
                 changes = changes.slice(0, -1);
-            if (read.act === "change" || read.act === "freshFind")
+            if (read.act === "change" || read.act === "freshFind" || read.act === "freshFindBack")
                 input.text = "";
+            if (read.act === "freshFind" || read.act === "freshFindBack")
+                findsBack = read.act === "freshFindBack";
             if (read.act === "changeWord") {
                 const made = Editing.edited(read.act, text, at, read.count);
                 input.text = made.text;
@@ -592,6 +602,10 @@ Item {
             break;
         case "seek":
             prompt.sought(read.sought.pattern, read.sought.forward, read.count);
+            break;
+        case "toLetter":
+        case "toLetterBack":
+            prompt.lettered(read.act, read.count, read.letter);
             break;
         case "":
             break;

@@ -271,8 +271,9 @@ keys = ["gO"]
 kinds = ["page"]
 
 # Finding and searching, with case ignored until a capital is typed, as his
-# smartcase. On a list / and ? both open the find line fresh, since a find
-# has no direction; on a page they search down and up, and n and N go on.
+# smartcase. On a list / and ? open the find line fresh, going down and up,
+# and n and N go on through the rows it found, round past an end; on a page
+# they search down and up, and n and N go on.
 
 [acts.search-forward]
 keys = ["/"]
@@ -287,12 +288,37 @@ kinds = ["list", "page"]
 [acts.next]
 keys = ["n"]
 modes = ["normal", "visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 [acts.previous]
 keys = ["N"]
 modes = ["normal", "visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
+
+# On a list f and F go to the next row and the one before whose name begins
+# with the letter typed after, as Vim's go to a letter on the line, never
+# round past an end; ; and , go again, the same way and the other.
+[acts.to-letter]
+keys = ["f"]
+takes = "letter"
+modes = ["normal", "visual"]
+kinds = ["list"]
+
+[acts.to-letter-backward]
+keys = ["F"]
+takes = "letter"
+modes = ["normal", "visual"]
+kinds = ["list"]
+
+[acts.letter-again]
+keys = [";"]
+modes = ["normal", "visual"]
+kinds = ["list"]
+
+[acts.letter-again-backward]
+keys = [","]
+modes = ["normal", "visual"]
+kinds = ["list"]
 
 # The word here, whole, down or up, with case ignored.
 [acts.search-word-forward]

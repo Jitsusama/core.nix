@@ -8,6 +8,14 @@
 # It runs git, gh, nix and nix-offload as the account does, with the
 # account's settings, so its commits are signed as the account's are and
 # its PRs are the account's; the machine gives nix and nix-offload.
+#
+# Beside it, `changed-checks keep-main` keeps each head of main's checks
+# where nix-offload sends changed-checks runs, once the head has stood two
+# minutes, so a branch cut from it pays for its own tree alone rather than
+# the first run after each merge paying for the base too. A builder lent
+# afresh gets it again; with none lent it sends nothing, so it never asks
+# for one or holds one lent. It keeps its clone in
+# ~/.local/state/changed-checks/main, and evaluates nothing here.
 {
   config,
   lib,
@@ -38,6 +46,17 @@ in
     Unit.Description = "Runs the VM tests each merge to core's main changed, and reverts a merge that breaks one";
     Service = {
       ExecStart = "${lib.getExe net} watch";
+      Environment = [ "PATH=${path}" ];
+      Restart = "always";
+      RestartSec = 60;
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  systemd.user.services.changed-checks-keeps-main = {
+    Unit.Description = "Keeps each head of core's main's checks where changed-checks runs are sent";
+    Service = {
+      ExecStart = "${lib.getExe changed-checks} keep-main";
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;

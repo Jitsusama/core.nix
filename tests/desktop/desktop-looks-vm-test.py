@@ -294,10 +294,11 @@ def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
 
 
 def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
-    """Press a key with no meaning, l, h, then q, photographing what the foot says for each.
+    """Press a key with no meaning, l, h, q, n past the end and f to no row, shooting each.
 
     Each stands in the keys' place, the mark in text and its words muted, until the next key.
     kitty opens on Return and holds its windows, so Ctrl+] goes in, furthest from Return.
+    Vim's wrapscan words and f's miss are the longest it says, so they're seen whole too.
     """
     machine = desktop.machine
     at = scale.replace(".", "-")
@@ -308,6 +309,8 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
         ("l", ["l not here", "\u21b5 open"], "l-not-here"),
         ("h", ["h not here", "- up"], "h-not-here"),
         ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
+        ("Gn", ["search hit BOTTOM, continuing at TOP"], "n-wraps"),
+        ("fz", ["no row below begins with z"], "f-misses"),
     ]:
         machine.send_chars(chars)
         desktop.launcher_until(lambda shown: shown["saying"] == said)  # noqa: B023
@@ -1045,6 +1048,15 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
             assert things_apart(group, wrapped=False) or things_apart(group, wrapped=True), (
                 f"at {scale} a fact is off the pitch: {drawer}"
             )
+        # The status line's last ink ends on the inset, as its first starts, Return's held
+        # room to the left of its word (Joel, 2026-11-05: "a right padding for text most of
+        # the time which looks fucking janky"; VKCF3Z's rule).
+        foot = desktop_session.laid_out(desktop)["foot"]
+        ends = max(word["starts"] + word["inked"] for word in foot)
+        assert abs(ends - shown["footEnd"]) <= 1, (
+            f"at {scale} the status line ends at {ends}, not the inset at {shown['footEnd']}: "
+            f"{foot}"
+        )
         desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 

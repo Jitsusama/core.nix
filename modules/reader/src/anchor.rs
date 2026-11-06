@@ -84,6 +84,14 @@ mod tests {
     }
 
     #[test]
+    fn a_view_moved_past_a_shorter_pages_end_stops_at_it() {
+        let old = [line(20.0, "one"), line(40.0, "two"), line(60.0, "three")];
+        let new = [line(10.0, "one"), line(20.0, "two"), line(30.0, "three")];
+        // 5 pt over "three" would be 25 pt on the new page, past its most.
+        assert_eq!(carried(&old, &new, 0.0, 55.0, false, 20.0), Some(20.0));
+    }
+
+    #[test]
     fn a_view_moved_before_the_page_had_its_words_keeps_its_place() {
         let new = [line(30.0, "one")];
         assert_eq!(carried(&[], &new, 0.0, 120.0, false, 500.0), Some(120.0));

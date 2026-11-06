@@ -125,6 +125,7 @@ let
     "Bands.js"
     "Search.js"
     "Operators.js"
+    "Finding.js"
     "Confirm.js"
     "KeyHints.qml"
     "Drawer.qml"

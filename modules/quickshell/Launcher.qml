@@ -56,6 +56,7 @@ import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
+import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "Changes.js" as Changes
 import "QueryKeys.js" as QueryKeys
@@ -4067,6 +4068,47 @@ Scope {
     // Moves the selection as an arrow does, timing the key to its frame as
     // a typed one is. A key that moves nothing draws nothing, so it isn't
     // timed: its frame would be whatever came next.
+    // The last f or F, which ; and , go again (Finding.js).
+    property var lastLetter: null
+
+    // n and N: the find's next row or the one before, `forward` its way,
+    // round past an end and saying so, as Vim's wrapscan does; with nothing
+    // typed, or nothing found, Vim's E35 or E486, the rows staying put.
+    function toMatch(forward, count, key) {
+        const hints = Words.field.hints ?? {};
+        const went = Finding.matchTo({ at: current, count, forward, last: matches.length - 1,
+            typed });
+        if (went.none) {
+            say([[(hints[went.none] ?? "").replace("{typed}", typed), ""]]);
+            return;
+        }
+        arrowed(went.to, key);
+        if (went.wrapped !== "")
+            say([[went.wrapped === "bottom" ? hints.wrappedBottom : hints.wrappedTop, ""]]);
+    }
+
+    // f and F to the next row and the one before whose name begins with
+    // `letter`, and ; and , again, the same way and the other; with no such
+    // row, or no f before ;, it says so and the rows stay put.
+    function toLetter(act, count, letter) {
+        const hints = Words.field.hints ?? {};
+        const sought = Finding.again(lastLetter, act, letter);
+        if (sought === null) {
+            say([[hints.noAgain ?? "", ""]]);
+            return;
+        }
+        if (act === "toLetter" || act === "toLetterBack")
+            lastLetter = sought;
+        const to = Finding.letterTo({ at: current, count, sought,
+            names: matches.map(row => row?.name ?? "") });
+        if (to < 0) {
+            say([[(hints.noLetter ?? "").replace("{way}", sought.forward ? hints.below : hints.above)
+                .replace("{letter}", sought.letter), ""]]);
+            return;
+        }
+        arrowed(to, QueryKeys.keyOf(act, "normal"));
+    }
+
     function arrowed(to, arrow) {
         trials.pressed("arrows");
         if (to === current)
@@ -5301,6 +5343,9 @@ Scope {
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
+            // Where the status line's last ink should end: the inset in
+            // from the frame, as its first starts.
+            footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
             // The keys the foot says now, each its mark and its word.
             hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
@@ -6082,6 +6127,10 @@ Scope {
                                 root.back();
                         }
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
+                        onLettered: (act, count, letter) => {
+                            root.searchNow();
+                            root.toLetter(act, count, letter);
+                        }
                         // The ask, while it stands, takes every key, and one
                         // no keys asked is said in the line's place.
                         confirming: root.asked !== null
@@ -6188,6 +6237,16 @@ Scope {
                                 return;
                             case "openOwn":
                                 root.matches[root.current]?.openOwn?.();
+                                return;
+                            // n goes the find's way and N against it.
+                            case "matchNext":
+                            case "matchBack":
+                                root.toMatch((act === "matchNext") !== findsBack, count,
+                                    QueryKeys.keyOf(act, "normal"));
+                                return;
+                            case "letterAgain":
+                            case "letterAgainBack":
+                                root.toLetter(act, count, "");
                                 return;
                             case "otherEnd":
                             case "reselect":
@@ -7227,9 +7286,15 @@ Scope {
                             anchors.baselineOffset: root.footBase
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
+                            // Return's words end its place, on the inset, so
+                            // the room held for a wider word stands to their
+                            // left, never as a gap before the frame (Joel,
+                            // 2026-11-05: "a right padding for text most of
+                            // the time which looks fucking janky"; VKCF3Z).
                             keys: foot.shown
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
                                 ? foot.returnPlace : 0)
+                            endsRight: true
                         }
                     }
                 }

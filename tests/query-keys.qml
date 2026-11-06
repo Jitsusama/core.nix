@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, Search.js, LineEditing.js, Operators.js
-// and Confirm.js beside this file and runs
+// ListedKeys.js, DrawerPage.js, Search.js, LineEditing.js, Operators.js,
+// Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
@@ -13,6 +13,7 @@ import "QueryKeys.js" as Keys
 import "ModeMarks.js" as ModeMarks
 import "Typing.js" as Typing
 import "Operators.js" as Operators
+import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
 
@@ -511,10 +512,12 @@ QtObject {
                 "normal"],
             ["a colon opens the command line, the selection standing", ["Escape", "V", ":"],
                 ["normal", "selectLines", "command"], "visual"],
+            // Space leads in visual as in normal (the vi-paradigm spec's
+            // Leader), so the foot's Space ? there is a key that works.
+            ["and Space ? and F1 list the keys", ["Escape", "V", "Space", "?", "F1"],
+                ["normal", "selectLines", "keys", "keys"], "visual"],
             ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A"],
                 ["normal", "selectLines"], "visual"],
-            ["Space ? lists every key, as its foot says, the selection standing",
-                ["Escape", "V", "Space", "?"], ["normal", "selectLines", "keys"], "visual"],
             ["on the find, V types", ["V"], [], "find"],
             // On a list v is V, as the spec has it: rows have no letters
             // to choose among, so either begins visual line and ends it.
@@ -1311,8 +1314,28 @@ QtObject {
             ["the find's Ctrl+U still deletes to the start", ["Ctrl+u"], ["deleteToStart"]],
             ["a g with anything but g after it lets go", ["Escape", "g", "j", "g", "g"],
                 ["normal", "first"]],
-            ["/ and ? open a fresh find", ["Escape", "/", "Escape", "?"],
-                ["normal", "freshFind", "normal", "freshFind"]],
+            // / and ? open the one find afresh, going down and up, which
+            // n and N go on with as Vim's do (Joel, 2026-11-05).
+            ["/ opens a fresh find going down, ? one going up", ["Escape", "/", "Escape", "?"],
+                ["normal", "freshFind", "normal", "freshFindBack"]],
+            ["n and N go to the find's next row and the one before", ["Escape", "n", "N"],
+                ["normal", "matchNext", "matchBack"]],
+            // f and F wait for a letter, then go to the next row whose name
+            // begins with it and the one before; ; and , go again, the same
+            // way and the other, as Vim's go to a letter on the line.
+            ["f and F go to a row by its letter", ["Escape", "f", "s", "F", "S"],
+                ["normal", "toLetter", "toLetterBack"]],
+            ["f's letter is any that types, a move's among them", ["Escape", "f", "j", "F", "n"],
+                ["normal", "toLetter", "toLetterBack"]],
+            ["; and , go again, the same way and the other", ["Escape", ";", ","],
+                ["normal", "letterAgain", "letterAgainBack"]],
+            ["Escape lets f go, then does nothing", ["Escape", "f", "Escape", "j", "Escape"],
+                ["normal", "next"]],
+            ["a key that types nothing lets f go", ["Escape", "f", "Return", "j"],
+                ["normal", "next"]],
+            ["visual extends by n and f", ["Escape", "V", "n", "f", "x", ";"],
+                ["normal", "selectLines", "matchNext", "toLetter", "letterAgain"]],
+            ["on the find, n N f F ; and , type", ["n", "N", "f", "F", ";", ","], []],
             ["i a I A go back to the find",
                 ["Escape", "i", "Escape", "a", "Escape", "I", "Escape", "A"],
                 ["normal", "insert", "normal", "append", "normal", "insertStart", "normal",
@@ -1410,11 +1433,24 @@ QtObject {
             Keys.opensCommands(":", "find", ""), true);
         holds("but not after letters", Keys.opensCommands(":", "find", "sl"), false);
         holds("nor in a prompt's words", Keys.opensCommands(":", "insert", ""), false);
-        holds("n and N search nothing in normal", typed(["Escape", "n", "N"]).acts, ["normal"]);
+        holds("f waits for its letter, keeping the count before it",
+            typed(["Escape", "3", "f"]).standing,
+            { count: "3", typed: [], letter: { forward: true } });
+        holds("and goes as many rows on, as 3fx does", typed(["Escape", "3", "f", "x"]).counted,
+            ["normal", "3 toLetter"]);
+        holds("and so do n, ; and their others", typed(["Escape", "2", "n", "4", ","]).counted,
+            ["normal", "2 matchNext", "4 letterAgainBack"]);
+        holds("f's letter is said with it",
+            Keys.read({ count: "", typed: [], letter: { forward: false } }, "S", "normal").letter,
+            "S");
+        holds("a d waiting lets go at f, rows having no letters to end to",
+            typed(["Escape", "d", "f", "j"]).counted, ["normal", "next"]);
+        holds("f on a prompt's words means nothing, and says so",
+            Keys.read(Keys.rest(), "f", "normal", true).idle, true);
         // A key with no meaning here says so, never silent (the vi-paradigm
         // spec, Normal); a count or a sequence begun means something.
-        holds("n, N and p mean nothing in normal, and say so",
-            typed(["Escape", "n", "N", "p"]).idle, ["n", "N", "p"]);
+        holds("p means nothing in normal, and says so",
+            typed(["Escape", "p"]).idle, ["p"]);
         holds("a key that ends what was begun means nothing, and says so",
             typed(["Escape", "]", "x"]).idle, ["x"]);
         holds("a count, a sequence begun and a move each mean something",
@@ -1442,7 +1478,7 @@ QtObject {
             copyRow: "copy row", option: "option", optionHere: "option here", undo: "undo",
             redo: "redo", again: "again", chooseRows: "choose rows", paragraph: "paragraph",
             endChosen: "end chosen", copyChosen: "copy chosen", openChosen: "open chosen",
-            menu: "menu" };
+            menu: "menu", matches: "matches", letters: "letters" };
         const modes = { normal: "Normal", find: "Find", command: "Commands", visual: "Visual",
             insert: "Insert", page: "Drawer", pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
@@ -1457,6 +1493,8 @@ QtObject {
         holds("the list's places stepped into, back and forward", keyed("jumps"),
             "Ctrl+O  Ctrl+I");
         holds("the list's fresh find", keyed("find"), "/  ?");
+        holds("the list's next match and the one before", keyed("matches"), "n  N");
+        holds("the list's rows by a letter, and again", keyed("letters"), "f  F  ;  ,");
         holds("the list's Return, once", keyed("run"), "\u21b5");
         holds("the list's place used last", keyed("last"), "Space Tab");
         // Each chord a run of its own, which the drawer sets apart, a
@@ -1583,7 +1621,8 @@ QtObject {
         holds("a g waiting its timeoutlen lets go, keeping the count",
             Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
-            "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
+            "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp", "matchNext", "matchBack",
+            "letterAgain", "letterAgainBack"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         for (const act of ["run", "intoSaid", "outSaid", "out", "close", "quitSaid",
             "lastPlace", "follow", "jumpBack", "jumpForward", "freshFind", "keys", "numbers",
@@ -1626,6 +1665,49 @@ QtObject {
             { at: 0, highest: 0, last: -1, top: 0, bottom: 0, screen: 8 }), 0);
         holds("M in a view of three rows, the second", Operators.moved("viewMiddle", 0,
             Object.assign({}, place, { top: 0, bottom: 2, last: 2 })), 1);
+
+        // n and N over five rows the find found: [what, from, count, going
+        // down, where it goes and the end it wrapped past, as Vim's wrapscan].
+        const found = [
+            ["n", 2, 0, true, { to: 3, wrapped: "" }],
+            ["n on the last, round to the first", 4, 0, true, { to: 0, wrapped: "bottom" }],
+            ["N", 2, 0, false, { to: 1, wrapped: "" }],
+            ["N on the first, round to the last", 0, 0, false, { to: 4, wrapped: "top" }],
+            ["3n, round", 3, 3, true, { to: 1, wrapped: "bottom" }],
+            ["7N, round", 1, 7, false, { to: 4, wrapped: "top" }]
+        ];
+        for (const [what, at, count, forward, want] of found)
+            holds(`${what} goes to the match`,
+                Finding.matchTo({ at, count, forward, last: 4, typed: "s" }), want);
+        holds("n with nothing found has nowhere to go, as E35 says",
+            Finding.matchTo({ at: 0, count: 0, forward: true, last: 4, typed: "" }),
+            { to: 0, wrapped: "", none: "E35" });
+        holds("nor where the find found nothing, as E486 says",
+            Finding.matchTo({ at: -1, count: 0, forward: true, last: -1, typed: "zq" }),
+            { to: -1, wrapped: "", none: "E486" });
+        // f and F over the rows' names: [what, from, count, the letter and the
+        // way, the row it goes to, -1 where none, never wrapping, as Vim's f].
+        const rowNames = ["Slack", "Safari", "kitty", "signal", "Steam"];
+        const lettered = [
+            ["fs, either case", 0, 0, { letter: "s", forward: true }, 1],
+            ["2fs, the second", 0, 2, { letter: "s", forward: true }, 3],
+            ["fS, a capital's own case alone, as smartcase", 1, 0,
+                { letter: "S", forward: true }, 4],
+            ["Fs", 4, 0, { letter: "s", forward: false }, 3],
+            ["fk", 0, 0, { letter: "k", forward: true }, 2],
+            ["fs past the last s, nowhere", 3, 2, { letter: "s", forward: true }, -1],
+            ["fz, nowhere", 0, 0, { letter: "z", forward: true }, -1],
+            ["Fk from the first, nowhere", 0, 0, { letter: "k", forward: false }, -1]
+        ];
+        for (const [what, at, count, sought, want] of lettered)
+            holds(`${what} goes to its row`,
+                Finding.letterTo({ at, count, sought, names: rowNames }), want);
+        holds("; is the last f again, the same way", Finding.again({ letter: "x", forward: false },
+            "letterAgain"), { letter: "x", forward: false });
+        holds("and , the other way", Finding.again({ letter: "x", forward: false },
+            "letterAgainBack"), { letter: "x", forward: true });
+        holds("f and F set what ; and , go again", Finding.again(null, "toLetterBack", "q"),
+            { letter: "q", forward: false });
 
         holds("the line opens on the find", typed([]).mode, "find");
         holds("a letter on the find is the field's to type", typed(["x"]).ours, false);

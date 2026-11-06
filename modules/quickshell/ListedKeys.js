@@ -28,7 +28,9 @@ const normal = [
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
     { name: "own", acts: ["openOwn"] },
-    { name: "find", acts: ["freshFind"] },
+    { name: "find", acts: ["freshFind", "freshFindBack"] },
+    { name: "matches", acts: ["matchNext", "matchBack"] },
+    { name: "letters", acts: ["toLetter", "toLetterBack", "letterAgain", "letterAgainBack"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.

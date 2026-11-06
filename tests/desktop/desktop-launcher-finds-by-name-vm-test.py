@@ -780,12 +780,26 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
-def walk_the_rows_unsearched(desktop: Desktop) -> None:
-    """Press / ? n N on a search's rows in normal, through niri: the find afresh, or not here.
+def lettered(rows: list[str], at: int, letter: str, way: int) -> int:
+    """Give the next row from `at`, going `way`, whose name begins with `letter`, or -1.
 
-    The find line is the list's one way to find (VKCF3Z's vi-paradigm spec, The Find Line), so
-    the rows have no search of their own: / and ? go to the find, emptied, and n and N say
-    they mean nothing here, the selection and what's typed staying put.
+    A small letter finds either case, as his smartcase does, and nothing goes round an end.
+    """
+    at += way
+    while 0 <= at < len(rows):
+        if rows[at][:1].lower() == letter:
+            return at
+        at += way
+    return -1
+
+
+def walk_the_rows_finds(desktop: Desktop) -> None:
+    """Press / ? n N f F ; , on a search's rows in normal, through niri, as Vim's go.
+
+    The find line is the list's one way to find (VKCF3Z's vi-paradigm spec, The Find Line):
+    / and ? go to it, emptied, going down and up, and n and N go on through the rows it found,
+    round past an end as Vim's wrapscan says. f and F go to the next row and the one before
+    whose name begins with the letter typed after, ; and , again (Joel, 2026-11-05).
     """
     machine = desktop.machine
     for fresh in "/?":
@@ -794,23 +808,52 @@ def walk_the_rows_unsearched(desktop: Desktop) -> None:
         desktop.normal()
         machine.send_chars(fresh)
         desktop.launcher_until(lambda shown: (shown["mode"], shown["typed"]) == ("find", ""))
+        machine.send_chars("s")
+        desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+        desktop.normal()
+        # n goes the find's way: down after /, and up after ?, round from the first to the last.
+        machine.send_chars("n")
+        last = desktop.showing()["count"] - 1
+        went = (1, []) if fresh == "/" else (last, ["search hit TOP, continuing at BOTTOM"])
+        desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == went)  # noqa: B023
         desktop.close_launcher()
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
     desktop.normal()
-    machine.send_chars("j")
-    desktop.launcher_until(lambda shown: shown["current"] == 1)
-    for key in "nN":
-        machine.send_chars(key)
-        desktop.launcher_until(lambda shown: shown["saying"] == [f"{key} not here"])  # noqa: B023
-    # A move after them shows every key before it was taken, and took nothing.
-    machine.send_chars("j")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["current"], shown["mode"], shown["typed"], shown["saying"])
-            == (2, "normal", "s", [])
-        )
-    )
+    last = desktop.showing()["count"] - 1
+    for keys, went in [
+        ("2n", (2, [])),
+        ("N", (1, [])),
+        ("G", (last, [])),
+        ("n", (0, ["search hit BOTTOM, continuing at TOP"])),
+    ]:
+        machine.send_chars(keys)
+        desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == went)  # noqa: B023
+    rows: list[str] = desktop.showing()["rows"]
+    letter = rows[1][:1].lower()
+    here = lettered(rows, 0, letter, 1)
+    again = lettered(rows, here, letter, 1)
+    machine.send_chars(f"f{letter}")
+    desktop.launcher_until(lambda shown: shown["current"] == here)
+    machine.send_chars(";")
+    if again < 0:
+        said = [f"no row below begins with {letter}"]
+        desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == (here, said))
+    else:
+        desktop.launcher_until(lambda shown: shown["current"] == again)
+        machine.send_chars(",")
+        desktop.launcher_until(lambda shown: shown["current"] == here)
+    # F goes up to one, or says there's none, the selection staying put.
+    back = lettered(rows, here, letter, -1)
+    went = (back, []) if back >= 0 else (here, [f"no row above begins with {letter}"])
+    machine.send_chars(f"F{letter}")
+    desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == went)
+    desktop.close_launcher()
+    # With nothing typed n has nothing to go on with, as Vim's E35 says.
+    desktop.answer("")
+    desktop.normal()
+    machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["E35: No previous regular expression"])
     desktop.close_launcher()
 
 
@@ -1005,7 +1048,7 @@ def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Des
     """A search lists each thing once, and normal's keys move and act on it as Vim's do."""
     walk_the_rows_moves(desktop)
     walk_the_rows_acts(desktop)
-    walk_the_rows_unsearched(desktop)
+    walk_the_rows_finds(desktop)
     walk_the_rows_washed(desktop)
     walk_the_rows_keys(desktop)
     # People stands alone for everyone in it; the
