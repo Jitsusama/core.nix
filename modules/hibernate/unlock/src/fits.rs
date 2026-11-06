@@ -251,7 +251,7 @@ mod tests {
         /swap/swapfile                          file\t\t8388604\t\t2476\t\t-1\n\
         /dev/zram0                              partition\t7561212\t\t196016\t\t5\n";
 
-    /// Its zram's mm_stat then.
+    /// Its zram's `mm_stat` then.
     const MM_STAT: &str =
         "146587648 26195180 32579584        0 1898442752     1891  2317817        9    16659";
 
