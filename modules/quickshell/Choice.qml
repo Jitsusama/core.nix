@@ -406,7 +406,12 @@ Rectangle {
             : right.sided && (!right.itemised || right.squeezed)
                 ? Math.min(row.sides * noteFace.advanceWidth, right.share) : 0
 
-        width: Math.max(column, chorded ? keys.width : sided ? sideText.width : 0)
+        // Whether a figure stands before the chord, as a collection's count
+        // does, so a count is said at a row's right even where its chord
+        // is (VKCF3Z, 2026-11-05: "12 \u00b7 \u2699 + 0").
+        readonly property bool counted: chorded && said !== ""
+        width: Math.max(column, chorded ? keys.width + (counted ? beforeKeys.implicitWidth : 0)
+            : sided ? sideText.width : 0)
         height: chorded ? keys.height : sideText.height
 
         Chord {
@@ -415,6 +420,24 @@ Rectangle {
             visible: right.chorded
             keys: row.chord
             colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
+        }
+
+        // The figure before the chord, in Note, joined to it by a dot and a
+        // space that never collapses at the line's end.
+        Text {
+            id: beforeKeys
+            anchors.right: keys.left
+            anchors.baseline: keys.baseline
+            visible: right.counted
+            text: `${right.said} \u00b7\u00a0`
+            textFormat: Text.PlainText
+            color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
+            font.family: Theme.level.note.family
+            font.italic: Theme.level.note.italic
+            font.pointSize: Theme.level.note.pointSize
+            font.weight: Theme.level.note.weight
+            font.variableAxes: Theme.level.note.variableAxes
+            font.features: Theme.level.note.features
         }
 
         // What the row is, cut to its share, reads on as the name does,

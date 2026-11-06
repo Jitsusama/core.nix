@@ -246,6 +246,9 @@ ShellRoot {
                     }
                 }
             }
+            // A collection's count at its right, before its chord.
+            Choice { id: countedChord; width: root.panel; name: "Agents"; side: "12"
+                chord: [{ text: "Super" }, { text: "0" }]; glyph: "$" }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -482,6 +485,39 @@ ShellRoot {
                 Math.abs(middle - capsMiddle) <= 0.5,
                 `${shown}, middle ${middle} against ${capsMiddle}`);
         }
+    }
+
+    // A row with a chord says its count at its right before it, on the
+    // name's baseline, and nothing after its name.
+    function textItem(item, words) {
+        for (const child of item.children) {
+            if (child.visible && child.text === words)
+                return child;
+            const found = textItem(child, words);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+    function countBeforeChord() {
+        const texts = drawn(countedChord, []).sort((a, b) => a.from - b.from);
+        const count = texts.find(t => t.text.startsWith("12 \u00b7"));
+        const keys = texts.filter(t => count !== undefined && t.from > count.from);
+        // A key after the first stands past its + by its padding, which
+        // the words drawn leave out, so the chord ends where its last
+        // key's item does.
+        const last = textItem(countedChord, "0");
+        const ends = last ? last.mapToItem(null, last.width, 0).x : NaN;
+        expect("a count stands before the chord, at the row's right",
+            count !== undefined && keys.length > 0 && keys.every(t => t.from >= count.to - 0.5)
+                && Math.abs(ends - (root.panel - Theme.space.rung.inset)) <= 1,
+            `${said(texts)}, the chord ending at ${ends}`);
+        const name = setting(countedChord, "Agents");
+        const figure = setting(countedChord, count.text);
+        expect("on the name's baseline", Math.abs(name.base - figure.base) <= 0.5,
+            `${name.base} against ${figure.base}`);
+        expect("and nothing after its name",
+            texts.filter(t => t.text.includes("12")).length === 1, said(texts));
     }
 
     // The gutter, as his Neovim's number, relativenumber and
@@ -790,6 +826,7 @@ ShellRoot {
             typing.narrowed = "";
             root.gutterHolds();
             root.marksHold();
+            root.countBeforeChord();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

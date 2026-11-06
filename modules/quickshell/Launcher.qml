@@ -2535,12 +2535,13 @@ Scope {
             verb: "open",
             name: collection.title ?? collection.noun,
             plain: true,
-            count: counted ? source.counted() : "",
             note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
-            side: "",
+            // How many it holds at its right, before its chord, where a
+            // row's figure stands (VKCF3Z, 2026-11-05).
+            side: counted ? source.counted() : "",
             gap: gap,
             opens: name,
             from: source,
