@@ -30,6 +30,9 @@ READING = dt.timedelta(seconds=300)
 # How long the ask may take to show: the disk waits two minutes for its passphrase, and the
 # boot goes on without it after.
 ASKING = dt.timedelta(seconds=90)
+# The ask, as OCR reads it over the wallpaper at this screen's size: it has read it as "he
+# disk is locke", so only the words' middle is asked for.
+ASKED = "disk is lock"
 # How long a hibernation may take to make its image and power off.
 GOES_OFF = dt.timedelta(minutes=3)
 # What the kernel says once every program is frozen and it's about to read the image, as it
@@ -37,8 +40,9 @@ GOES_OFF = dt.timedelta(minutes=3)
 LOADING = re.compile(r"PM: Loading (and decompressing )?image data")
 READS = "PM: Image loading progress:"
 READ = "PM: Image loading done"
-# The theme's words for a restore, as OCR reads them.
-RESTORING = r"restoring from\s+hibernation"
+# The theme's words for a restore, as OCR reads them: either half, since over the wallpaper
+# at this screen's size it can lose a word's end, as it does the ask's.
+RESTORING = r"restoring from|from\s+hibernation"
 # What the hook says once the machine is back.
 TOOK = (
     r"hibernate-unlock: the image was read and the machine back \d+\.\d s after the disk "
@@ -291,7 +295,7 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
         pytest.fail("the machine never went off to hibernate")
     machine.start()
     try:
-        machine.wait_for_text("disk is locked", timeout=ASKING)
+        machine.wait_for_text(ASKED, timeout=ASKING)
     except Exception:
         # What the screens showed instead, while the disk still waits, for whoever reads
         # the failure.
