@@ -863,9 +863,14 @@ Item {
     // How far what's typed stands after the path.
     readonly property int pathGap: Theme.space.rung.apart
 
-    // The hint's face: the voice's, since it's the shell speaking to Joel.
-    FontMetrics {
-        id: voiceFace
+    // The hint as it's drawn, in the voice's face, since it's the shell
+    // speaking to Joel: a face's metrics leave out the voice's axes, which
+    // measured it narrow.
+    Text {
+        id: hintWide
+        visible: false
+        text: prompt.hint
+        textFormat: Text.PlainText
         font.family: Theme.level.voice.family
         font.italic: Theme.level.voice.italic
         font.pointSize: Theme.level.voice.pointSize
@@ -880,8 +885,8 @@ Item {
     // path says "\u2026/more", so Joel sees which folder he's in). A
     // question asked once is read whole, so the path gives way to it.
     readonly property real typingRoom: Math.max(
-        voiceFace.advanceWidth(hint),
-        typedWidest,
+        (caretShown ? caretWidth + Theme.space.rung.mark : 0) + Math.ceil(hintWide.implicitWidth),
+        typedWidest + caretWidth,
         asking === "" ? 0 : Math.ceil(figureFace.advanceWidth(asking)) + 1)
 
     // How wide the path wants to be, whole, with the gap after it.
@@ -1065,6 +1070,10 @@ Item {
         x: Theme.space.rung.inset + prompt.ledWidth
             + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
         width: prompt.end - x
+        // Room for the caret after the last letter, so what's typed,
+        // scrolled, ends short of the field's end by it rather than the
+        // caret standing past the end.
+        rightPadding: prompt.caretWidth
         y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
