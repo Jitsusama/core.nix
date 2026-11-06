@@ -2030,8 +2030,11 @@ Scope {
         const keyOf = act => Object.keys(Operators.operators)
             .find(key => Operators.operators[key] === act) ?? "";
         const keys = [];
+        // d says what it ends by, as the pending operator's room does
+        // (pendingSaid): a window's close, a notice's read or forget, never
+        // the verb a row's own action may lack.
         if (ending !== null && ending !== choice)
-            keys.push([keyOf("ending"), verbOf(ending)]);
+            keys.push([keyOf("ending"), ending.ends || verbOf(ending)]);
         if (copy && copy !== choice)
             keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
         return keys;
