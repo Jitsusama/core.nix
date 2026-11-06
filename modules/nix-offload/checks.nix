@@ -68,21 +68,23 @@ onLinux {
         && unit.Service.RestartForceExitStatus == "100"
         && unit.Service.SuccessExitStatus == "100";
     in
-    holds "nix-offload-lenders-outlive-a-switch" (
-      "a switch restarts a lender, cutting every build its builder runs, "
-      + "or a lender that ends superseded isn't started again, "
-      + "or a VM lender runs past those vmTests.extra names, "
-      + "or a lender other than a VM one warms, or one doesn't, "
-      + "or what warms a VM builder names a check core doesn't have."
-    ) (
-      lib.all reloads lenders
-      && !(home.systemd.user.services ? nix-offload-vm-4)
-      && warm != [ ]
-      && named
-      && lib.all warms (lib.sublist 1 3 lenders)
-      && !lib.any warms [
-        (lib.head lenders)
-        (lib.last lenders)
-      ]
-    );
+    holds "nix-offload-lenders-outlive-a-switch"
+      (
+        "a switch restarts a lender, cutting every build its builder runs, "
+        + "or a lender that ends superseded isn't started again, "
+        + "or a VM lender runs past those vmTests.extra names, "
+        + "or a lender other than a VM one warms, or one doesn't, "
+        + "or what warms a VM builder names a check core doesn't have."
+      )
+      (
+        lib.all reloads lenders
+        && !(home.systemd.user.services ? nix-offload-vm-4)
+        && warm != [ ]
+        && named
+        && lib.all warms (lib.sublist 1 3 lenders)
+        && !lib.any warms [
+          (lib.head lenders)
+          (lib.last lenders)
+        ]
+      );
 }
