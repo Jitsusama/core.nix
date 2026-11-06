@@ -504,6 +504,11 @@ fn before(action: &str) {
         Ok(lifted) => eprintln!("hibernate-unlock: set {lifted} memory floors aside for the image"),
         Err(error) => eprintln!("hibernate-unlock: couldn't set the memory floors aside: {error}"),
     }
+    // What the graphics drivers hold as the image is sized: they copy it
+    // out as they stop, and the reserve has to leave room for that.
+    for card in graphics_memory() {
+        eprintln!("hibernate-unlock: {card}");
+    }
     match starts() {
         Some(now) => {
             if let Err(error) = fs::write(KEPT, now.kept()) {
@@ -713,19 +718,11 @@ fn fits_now() -> ExitCode {
         println!("It couldn't tell whether the image fits, so it doesn't stand in the way.");
         return ExitCode::SUCCESS;
     };
-    let mm_stats: Vec<String> = fs::read_dir("/sys/block")
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|device| device.file_name().to_string_lossy().starts_with("zram"))
-        .filter_map(|device| fs::read_to_string(device.path().join("mm_stat")).ok())
-        .collect();
     let fit = fits::Fit::of(
         memory,
         fits::Zones::parse(&zones),
         reserve,
-        &fits::swap_areas(&swaps),
-        fits::Squeeze::parse(&mm_stats),
+        fits::swap_room(&swaps),
     );
     println!("{}", fit.said());
     if fit.fits() {
@@ -733,6 +730,32 @@ fn fits_now() -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Each graphics card's video memory and the system memory it maps (GTT)
+/// in use, as its driver says, one line apiece.
+fn graphics_memory() -> Vec<String> {
+    let mut cards: Vec<String> = fs::read_dir("/sys/class/drm")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|card| {
+            let name = card.file_name().into_string().ok()?;
+            let device = card.path().join("device");
+            let read = |file: &str| fs::read_to_string(device.join(file)).ok();
+            let vram = read("mem_info_vram_used")?;
+            let gtt = read("mem_info_gtt_used")?;
+            (!name.contains('-')).then(|| {
+                format!(
+                    "{name} holds {} bytes of video memory and {} of GTT",
+                    vram.trim(),
+                    gtt.trim()
+                )
+            })
+        })
+        .collect();
+    cards.sort();
+    cards
 }
 
 fn power_off() {

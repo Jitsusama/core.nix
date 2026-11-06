@@ -10,9 +10,10 @@
 //! the image's own bitmaps. What it can't leave out is what's in use less
 //! what reclaim can take back: the page cache, the kernel's reclaimable
 //! slabs and the anonymous pages, which `minimum_image_size` counts, as far
-//! as swap has room for those. What goes to zram stays in memory, compressed,
-//! so only what compression saves is freed. Free pages waiting on each processor's own
-//! list count as in use there, since only the free lists mark a page free,
+//! as swap has room for those. zswap's pool passes what reclaim swaps out
+//! on to the disk as memory runs short, so it all counts as freed, and what
+//! the pool already holds is in use. Free pages waiting on each processor's
+//! own list count as in use there, since only the free lists mark a page free,
 //! but they're the first the image's own allocation takes, so here they're
 //! free: on a 1 GiB machine they were a ninth of memory.
 //! The floors count as nothing, since the hook sets them aside first
@@ -104,17 +105,8 @@ impl Zones {
     }
 }
 
-/// A swap area `/proc/swaps` lists: the room left in it, in bytes, its
-/// priority, and whether it's zram, which keeps what it takes in memory,
-/// compressed, so that goes into the image too.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Area {
-    pub room: u64,
-    pub priority: i64,
-    pub in_memory: bool,
-}
-
-pub fn swap_areas(swaps: &str) -> Vec<Area> {
+/// The room left in every swap area `/proc/swaps` lists, in bytes.
+pub fn swap_room(swaps: &str) -> u64 {
     swaps
         .lines()
         .skip(1)
@@ -122,50 +114,9 @@ pub fn swap_areas(swaps: &str) -> Vec<Area> {
             let fields: Vec<&str> = line.split_whitespace().collect();
             let size: u64 = fields.get(2)?.parse().ok()?;
             let used: u64 = fields.get(3)?.parse().ok()?;
-            Some(Area {
-                room: size.saturating_sub(used) * 1024,
-                priority: fields.get(4)?.parse().ok()?,
-                in_memory: fields.first()?.starts_with("/dev/zram"),
-            })
+            Some(size.saturating_sub(used) * 1024)
         })
-        .collect()
-}
-
-/// What zram holds and the memory it takes to hold it, in bytes, summed
-/// over every device's `mm_stat` (its first and third numbers).
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
-pub struct Squeeze {
-    pub holds: u64,
-    pub takes: u64,
-}
-
-impl Squeeze {
-    pub fn parse(mm_stats: &[String]) -> Self {
-        mm_stats.iter().fold(Self::default(), |sum, stat| {
-            let numbers: Vec<u64> = stat
-                .split_whitespace()
-                .filter_map(|number| number.parse().ok())
-                .collect();
-            match (numbers.first(), numbers.get(2)) {
-                (Some(holds), Some(takes)) => Self {
-                    holds: sum.holds + holds,
-                    takes: sum.takes + takes,
-                },
-                _ => sum,
-            }
-        })
-    }
-
-    /// What `bytes` swapped out to zram still take of memory, at the share
-    /// it takes of what it holds now, never more than they took before.
-    /// Holding nothing yet, it counts on half.
-    fn cost(self, bytes: u64) -> u64 {
-        if self.holds == 0 {
-            return bytes / 2;
-        }
-        let cost = u128::from(bytes) * u128::from(self.takes) / u128::from(self.holds);
-        u64::try_from(cost).unwrap_or(bytes).min(bytes)
-    }
+        .sum()
 }
 
 /// What the image may hold and what it can't leave out, in bytes.
@@ -176,7 +127,7 @@ pub struct Fit {
 }
 
 impl Fit {
-    pub fn of(memory: Memory, zones: Zones, reserve: u64, swap: &[Area], squeeze: Squeeze) -> Self {
+    pub fn of(memory: Memory, zones: Zones, reserve: u64, swap_room: u64) -> Self {
         let pages = memory.total.saturating_sub(zones.kept_back) / PAGE;
         let most = (pages.saturating_sub(PAGES_FOR_IO) / 2)
             .saturating_sub(2 * reserve.div_ceil(PAGE))
@@ -185,22 +136,7 @@ impl Fit {
             .total
             .saturating_sub(memory.free)
             .saturating_sub(zones.parked);
-        // Anonymous pages go to the swap areas in their order, the highest
-        // priority first, as the kernel fills them.
-        let mut areas = swap.to_vec();
-        areas.sort_by_key(|area| std::cmp::Reverse(area.priority));
-        let mut left = memory.anon;
-        let mut freed = 0;
-        for area in areas {
-            let took = left.min(area.room);
-            left -= took;
-            freed += if area.in_memory {
-                took - squeeze.cost(took)
-            } else {
-                took
-            };
-        }
-        let taken_back = memory.file + memory.slab + freed;
+        let taken_back = memory.file + memory.slab + memory.anon.min(swap_room);
         Self {
             most,
             least: used.saturating_sub(taken_back),
@@ -246,14 +182,16 @@ mod tests {
         Active(file):     458652 kB\nInactive(file):  1547624 kB\n\
         SReclaimable:     107788 kB\n";
 
-    /// Its /proc/swaps then.
+    /// Its /proc/swaps then, as it is once zram is gone.
     const SWAPS: &str = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n\
-        /swap/swapfile                          file\t\t8388604\t\t2476\t\t-1\n\
-        /dev/zram0                              partition\t7561212\t\t196016\t\t5\n";
+        /swap/swapfile                          file\t\t8388604\t\t2476\t\t-1\n";
 
-    /// Its zram's `mm_stat` then.
-    const MM_STAT: &str =
-        "146587648 26195180 32579584        0 1898442752     1891  2317817        9    16659";
+    /// The laptop's /proc/meminfo with a desktop open just after a restart,
+    /// when `fits` refused, saying 1.9 GB couldn't be freed.
+    const DESKTOP: &str = "MemTotal:        7562128 kB\nMemFree:         2039200 kB\n\
+        Active(anon):     794620 kB\nInactive(anon):        0 kB\n\
+        Active(file):          0 kB\nInactive(file):  3215884 kB\n\
+        SReclaimable:     406536 kB\n";
 
     /// Its /proc/zoneinfo's zones then, with only the lines the sums read,
     /// each zone's twelve processors' counts summed into one.
@@ -268,40 +206,10 @@ mod tests {
 
     const GIB: u64 = 1024 * 1024 * 1024;
 
-    fn squeeze() -> Squeeze {
-        Squeeze::parse(&[MM_STAT.to_owned()])
-    }
-
     fn laptop(reserve: u64) -> Fit {
         let memory = Memory::parse(LAPTOP).unwrap();
-        Fit::of(
-            memory,
-            Zones::parse(ZONES),
-            reserve,
-            &swap_areas(SWAPS),
-            squeeze(),
-        )
+        Fit::of(memory, Zones::parse(ZONES), reserve, swap_room(SWAPS))
     }
-
-    /// The laptop's anonymous pages swapped out to a single area.
-    fn into(area: Area, squeeze: Squeeze) -> Fit {
-        let memory = Memory::parse(LAPTOP).unwrap();
-        Fit::of(memory, Zones::parse(ZONES), GIB, &[area], squeeze)
-    }
-
-    const ZRAM: Area = Area {
-        room: 8 * GIB,
-        priority: 5,
-        in_memory: true,
-    };
-
-    const FILE: Area = Area {
-        room: 8 * GIB,
-        priority: -1,
-        in_memory: false,
-    };
-
-    const QUARTER: Squeeze = Squeeze { holds: 4, takes: 1 };
 
     #[test]
     fn what_the_kernel_keeps_back_is_each_zones_reserve_and_high_mark_at_most_its_own() {
@@ -334,7 +242,7 @@ mod tests {
             parked: zones.parked + 100 * PAGE,
             ..zones
         };
-        let fit = |zones| Fit::of(memory, zones, GIB, &swap_areas(SWAPS), squeeze());
+        let fit = |zones| Fit::of(memory, zones, GIB, swap_room(SWAPS));
         assert_eq!(fit(zones).least - fit(more).least, 100 * PAGE);
         assert_eq!(fit(zones).most, fit(more).most);
     }
@@ -354,62 +262,33 @@ mod tests {
     }
 
     #[test]
-    fn every_swap_area_is_read_with_its_room_its_priority_and_whether_its_zram() {
+    fn the_room_is_what_every_swap_area_has_left() {
+        let swaps = "Filename Type Size Used Priority\n\
+                     /swap/swapfile file 8388604 2476 -1\n/swap/other file 100 40 -2\n";
+        assert_eq!(swap_room(swaps), (8_388_604 - 2476 + 60) * 1024);
+        assert_eq!(swap_room("Filename Type Size Used Priority\n"), 0);
+    }
+
+    #[test]
+    fn the_desktop_that_was_refused_fits_with_its_anonymous_memory_on_the_disk() {
+        let memory = Memory::parse(DESKTOP).unwrap();
+        let fit = Fit::of(memory, Zones::parse(ZONES), GIB, swap_room(SWAPS));
+        // In use 5,522,928 KiB, less 15,369 pages waiting on the
+        // processors' lists (an hour before; they weren't read then),
+        // 3,215,884 KiB of cache, 406,536 of slabs and 794,620 anonymous.
+        assert_eq!(fit.least, 1_069_477_888);
         assert_eq!(
-            swap_areas(SWAPS),
-            [
-                Area {
-                    room: (8_388_604 - 2476) * 1024,
-                    priority: -1,
-                    in_memory: false,
-                },
-                Area {
-                    room: (7_561_212 - 196_016) * 1024,
-                    priority: 5,
-                    in_memory: true,
-                },
-            ]
+            fit.said(),
+            "It fits: at least 1.1 GB of memory has to be saved, and there's room for 1.6 GB."
         );
     }
 
     #[test]
-    fn zram_is_read_as_what_it_holds_and_the_memory_that_takes() {
-        assert_eq!(
-            squeeze(),
-            Squeeze {
-                holds: 146_587_648,
-                takes: 32_579_584,
-            }
-        );
-    }
-
-    #[test]
-    fn anonymous_memory_zram_takes_is_freed_only_by_what_compression_saves() {
-        let anon = Memory::parse(LAPTOP).unwrap().anon;
-        assert_eq!(
-            into(ZRAM, QUARTER).least - into(FILE, QUARTER).least,
-            anon / 4
-        );
-    }
-
-    #[test]
-    fn an_empty_zram_counts_on_half() {
-        let anon = Memory::parse(LAPTOP).unwrap().anon;
-        assert_eq!(
-            into(ZRAM, Squeeze::default()).least - into(FILE, QUARTER).least,
-            anon / 2
-        );
-    }
-
-    #[test]
-    fn a_full_zram_spills_to_the_swap_file_behind_it() {
+    fn anonymous_memory_past_the_swaps_room_stays() {
         let memory = Memory::parse(LAPTOP).unwrap();
-        let small = Area {
-            room: 100 * PAGE,
-            ..ZRAM
-        };
-        let both = Fit::of(memory, Zones::parse(ZONES), GIB, &[FILE, small], QUARTER);
-        assert_eq!(both.least - into(FILE, QUARTER).least, 25 * PAGE);
+        let zones = Zones::parse(ZONES);
+        let room = |room| Fit::of(memory, zones, GIB, room).least;
+        assert_eq!(room(100 * PAGE) - room(8 * GIB), memory.anon - 100 * PAGE);
     }
 
     #[test]
@@ -423,13 +302,13 @@ mod tests {
     fn the_laptop_after_the_rollback_fits_once_the_floors_are_set_aside() {
         let fit = laptop(GIB);
         // In use 4,054,080 KiB, less 15,369 pages waiting on the processors'
-        // lists, 2,006,276 KiB of cache and 107,788 of slabs, and of 717,008
-        // anonymous what zram frees of it, less the 22% it takes.
-        assert_eq!(fit.least, 1_352_590_717);
+        // lists, 2,006,276 KiB of cache, 107,788 of slabs and 717,008
+        // anonymous.
+        assert_eq!(fit.least, 1_189_408_768);
         assert!(fit.fits(), "{fit:?}");
         assert_eq!(
             fit.said(),
-            "It fits: at least 1.4 GB of memory has to be saved, and there's room for 1.6 GB."
+            "It fits: at least 1.2 GB of memory has to be saved, and there's room for 1.6 GB."
         );
     }
 
@@ -440,7 +319,7 @@ mod tests {
         assert!(!fit.fits());
         assert_eq!(
             fit.said(),
-            "Not enough memory to hibernate: 1.4 GB of memory can't be freed, and there's room \
+            "Not enough memory to hibernate: 1.2 GB of memory can't be freed, and there's room \
              for only 0.0 GB once drivers have theirs. Nothing was changed. Close something you \
              don't need, then hibernate again."
         );
@@ -449,7 +328,7 @@ mod tests {
     #[test]
     fn anonymous_memory_swap_has_no_room_for_stays() {
         let memory = Memory::parse(LAPTOP).unwrap();
-        let without = Fit::of(memory, Zones::parse(ZONES), GIB, &[], squeeze());
-        assert_eq!(without.least - laptop(GIB).least, 571_034_243);
+        let without = Fit::of(memory, Zones::parse(ZONES), GIB, 0);
+        assert_eq!(without.least - laptop(GIB).least, 734_216_192);
     }
 }
