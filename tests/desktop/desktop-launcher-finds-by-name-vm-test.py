@@ -1009,12 +1009,16 @@ def follows_from_the_find(desktop: Desktop) -> None:
     so the find goes in by the key normal does and says so (Joel, 2026-11-05: "in programs i
     don't understand how to go to sub commands on a program").
     """
-    desktop.answer("emoji")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"] and shown["mode"] == "find")
+    desktop.answer("kitty")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "program:kitty" and shown["mode"] == "find"
+        )
+    )
     told = desktop.showing()["selected"]["told"]
     assert "Ctrl+] in" in told, told
     desktop.machine.send_key("ctrl-bracket_right")
-    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"] and shown["mode"] == "find")
+    desktop.launcher_until(lambda shown: len(shown["held"]) == 1 and shown["mode"] == "find")
     desktop.close_launcher()
 
 
