@@ -71,20 +71,45 @@ const FOLDED = "\u2026";
 // as one mark, all but its last folder as one, and the mark alone, but
 // for the place Joel is in, which keeps its last folder's name.
 function pathWays(path, width, here) {
-    const parts = path.split("/").filter((part, at) => part !== "" || at === 0);
-    const last = parts[parts.length - 1];
-    const ways = [path];
-    const candidates = parts.length > 2 ? [`${parts[0]}/${FOLDED}/${last}`] : [];
-    candidates.push(`${FOLDED}/${last}`);
-    if (!here) {
-        candidates.push(FOLDED);
-    }
+    const [whole, ...candidates] = pathTries(path, here);
+    const ways = [whole];
     for (const way of candidates) {
         if (width(way) < width(ways[ways.length - 1])) {
             ways.push(way);
         }
     }
     return ways;
+}
+
+// Every way a folder's path may be said, whole first, before any is
+// measured: down to its root and last folder, its last folder, and, where
+// it isn't `here`, the mark alone.
+function pathTries(path, here) {
+    const parts = path.split("/").filter((part, at) => part !== "" || at === 0);
+    const last = parts[parts.length - 1];
+    const tries = [path];
+    if (parts.length > 2) {
+        tries.push(`${parts[0]}/${FOLDED}/${last}`);
+    }
+    tries.push(`${FOLDED}/${last}`);
+    if (!here) {
+        tries.push(FOLDED);
+    }
+    return tries;
+}
+
+// Every text crumbs and crumbsLeast may measure for `steps`, so each can
+// be measured as it's drawn: each step's ways of giving way, the mark, and
+// the first step in fewer words.
+function crumbTexts(steps) {
+    const texts = [FOLDED];
+    for (const [at, step] of steps.entries()) {
+        texts.push(...step.yields ? pathTries(step.text, at === steps.length - 1) : [step.text]);
+    }
+    if (steps.length > 1) {
+        texts.push(...wordCuts(steps[0].text));
+    }
+    return Array.from(new Set(texts));
 }
 
 // The field's path, its steps given way at whole names so it fits `room`
@@ -173,12 +198,21 @@ function wholeWords(words, room, width) {
     if (width(words) <= room) {
         return words;
     }
-    const parts = words.split(" ");
-    for (let count = parts.length - 1; count > 0; count -= 1) {
-        const cut = `${parts.slice(0, count).join(" ").replace(DANGLING, "")}\u2026`;
+    for (const cut of wordCuts(words)) {
         if (width(cut) <= room) {
             return cut;
         }
     }
     return "";
+}
+
+// Words cut at each whole word but the last, longest first, an ellipsis
+// after each.
+function wordCuts(words) {
+    const parts = words.split(" ");
+    const cuts = [];
+    for (let count = parts.length - 1; count > 0; count -= 1) {
+        cuts.push(`${parts.slice(0, count).join(" ").replace(DANGLING, "")}\u2026`);
+    }
+    return cuts;
 }

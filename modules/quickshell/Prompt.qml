@@ -932,28 +932,43 @@ Item {
     readonly property var crumbsShown: {
         void titleFace.font;
         const line = end - Theme.space.rung.inset - ledWidth - pathGap;
-        const stretch = titleStretch;
-        // A step's whole words as their Text draws them, and words given
-        // way as the face measures them, stretched as the title's axes do.
-        const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
-        const width = text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1;
-        const steps = chips.map(chip => ({ text: chip.text, yields: chip.yields === true }));
+        const width = text => crumbsWanted.get(text) ?? Math.ceil(titleFace.advanceWidth(text)) + 1;
+        const steps = crumbSteps;
         const least = Reading.crumbsLeast(steps, width, betweenWide);
         const room = Math.max(0, line - typingRoom, Math.min(least, line));
         return Reading.crumbs(steps, room, width, betweenWide);
     }
-    // How much wider the title's axes draw its letters than its face's
-    // metrics say, the most of any step's whole words, so a step given
-    // way is measured as it will be drawn.
-    readonly property real titleStretch: {
-        void titleFace.font;
-        let most = 1;
-        chips.forEach((chip, at) => {
-            const measured = titleFace.advanceWidth(chip.text);
-            if (measured > 0)
-                most = Math.max(most, ((chipsWanted[at] ?? 0) - 1) / measured);
-        });
-        return most;
+    readonly property var crumbSteps: chips.map(chip =>
+        ({ text: chip.text, yields: chip.yields === true }))
+    // Every way the path's steps may be said, each as a Text draws it: a
+    // face's metrics leave out the title's axes, and a face hinted fully
+    // draws in whole pixels, so a width scaled from the face's measure
+    // came out several pixels wide and folded a folder with room for it.
+    // Until a way's Text is made, the face's measure stands.
+    readonly property var crumbsWanted: {
+        void crumbsMade;
+        const wanted = new Map();
+        for (let at = 0; at < crumbsDrawn.count; at += 1) {
+            const drawn = crumbsDrawn.itemAt(at);
+            if (drawn)
+                wanted.set(drawn.text, Math.ceil(drawn.implicitWidth) + 1);
+        }
+        return wanted;
+    }
+    property int crumbsMade: 0
+
+    Repeater {
+        id: crumbsDrawn
+        model: Reading.crumbTexts(prompt.crumbSteps)
+        onItemAdded: prompt.crumbsMade += 1
+
+        Text {
+            required property string modelData
+            visible: false
+            text: modelData
+            textFormat: Text.PlainText
+            font: titleFace.font
+        }
     }
 
     // Each step's words' width, whole, as a Text draws them: a face's
