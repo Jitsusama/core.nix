@@ -2729,6 +2729,7 @@ onLinux {
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
+      cp ${./Bands.js} Bands.js
       cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Operators.js} Operators.js
@@ -2736,6 +2737,8 @@ onLinux {
       cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
+      cp ${./PromptFoot.qml} PromptFoot.qml
+      cp ${./Hairline.qml} Hairline.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
