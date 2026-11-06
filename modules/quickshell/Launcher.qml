@@ -2759,8 +2759,8 @@ Scope {
     // from home, keeps where it lives; a notice lives as its sender, its
     // program's row; any other is walked for from home (Catalogue.js's
     // lives). The place left goes on the tags' way back, as Vim's tag
-    // stack keeps it, and once on the jump list, as a tag is one jump in
-    // Vim, not one a step. A row with none says so.
+    // stack keeps it, and goTo puts it once on the jump list, as a tag is
+    // one jump in Vim, not one a step (oneJump). A row with none says so.
     function follow(row) {
         const live = row && !row.gone ? row : null;
         const came = { held: held, here: here() };
@@ -2782,16 +2782,8 @@ Scope {
             say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
             return;
         }
-        jumping = true;
-        try {
-            goTo(spot);
-        } finally {
-            jumping = false;
-        }
+        goTo(spot);
         tagsBack = tagsBack.concat([came]);
-        jumpsBack = jumpsBack.concat([came]);
-        jumpsAhead = [];
-        lastPlace = came;
     }
 
     // Where Ctrl+] goes from a row, by steady ids, or null where it lives
