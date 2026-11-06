@@ -356,13 +356,14 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     # opening a talk its session follows.
     desktop.type_in("talk", selecting="Talk")
     desktop.step_in("ret")
-    # Its words are typed in insert, the one line the foot names a mode on,
-    # and the word is whole, since it alone says where his keys go.
+    # Its words are typed in insert, which the foot names by its mark, INS, in
+    # three capitals as every mode's since #1985, and the mark is whole, since
+    # it says where his keys go.
     desktop.launcher_until(lambda shown: shown["mode"] == "insert")
     foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-    mode = [word for word in foot if word["text"] == "insert"]
+    mode = [word for word in foot if word["text"] == "INS"]
     assert mode, f"the foot names no mode for Talk's words: {foot}"
-    assert not mode[0]["cut"], f"insert's word is cut: {mode[0]}"
+    assert not mode[0]["cut"], f"insert's mark is cut: {mode[0]}"
     machine.send_chars("keep the lamp lit")
     machine.send_key("ret")
     machine.wait_until_succeeds(
