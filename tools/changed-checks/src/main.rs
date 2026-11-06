@@ -15,9 +15,11 @@
 //! With `--keep-base` it only evaluates the base
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
+//! `changed-checks keep-main` does that for each head of origin's main, once
+//! it has stood two minutes, where runs are sent (`keep.rs` says why).
 //!
 //! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--name-only]
-//! [--keep-base] [--here]`
+//! [--keep-base] [--here]`, or `changed-checks keep-main`
 //!
 //! The working tree is read as Nix reads a git checkout, so a new file
 //! counts only once git knows it (`git add -N`). A change that only some
@@ -63,6 +65,7 @@
 //! (`runs.rs` says what it holds).
 
 mod checks;
+mod keep;
 mod pressure;
 mod quarantine;
 mod runs;
@@ -82,7 +85,11 @@ use there::Sent;
 const USAGE: u8 = 64;
 
 const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
-                    [--name-only] [--keep-base] [--here]";
+                    [--name-only] [--keep-base] [--here]\n       changed-checks keep-main";
+
+/// Where `keep-main` follows main unless `CHANGED_CHECKS_REPOSITORY` names
+/// another.
+const REPOSITORY: &str = "https://github.com/Jitsusama/core.nix";
 
 /// The base a run compares with unless told otherwise.
 const ORIGIN_MAIN: &str = "refs/remotes/origin/main";
@@ -168,6 +175,12 @@ fn main() -> ExitCode {
         println!("{USED}");
         return ExitCode::SUCCESS;
     }
+    if let Some(("keep-main", rest)) = arguments
+        .split_first()
+        .map(|(first, rest)| (first.as_str(), rest))
+    {
+        return keep_main(rest);
+    }
     let options = match Options::parse(arguments.into_iter()) {
         Ok(options) => options,
         Err(why) => {
@@ -217,6 +230,60 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
     compared
+}
+
+/// Follow origin's main, keeping each head once it has stood, until stopped.
+fn keep_main(rest: &[String]) -> ExitCode {
+    if !rest.is_empty() {
+        eprintln!("changed-checks: keep-main takes nothing more\n{USED}");
+        return ExitCode::from(USAGE);
+    }
+    let url = env::var("CHANGED_CHECKS_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned());
+    let clone = state().join("changed-checks/main");
+    let mut keeper = keep::Keeper::default();
+    eprintln!(
+        "changed-checks: keeping each head of {url}'s main once it has stood {} s",
+        keep::STOOD.as_secs()
+    );
+    loop {
+        match keep::head(&url) {
+            Ok(head) => {
+                if let Some(head) = keeper.due(&head, Instant::now()) {
+                    let short = head.get(..12).unwrap_or(&head);
+                    match keep_head(&url, &clone, &head) {
+                        Ok(true) => keeper.kept(&head),
+                        Ok(false) => {
+                            eprintln!("changed-checks: nothing took {short}, so it waits");
+                            keeper.failed(&head, Instant::now());
+                        }
+                        Err(why) => {
+                            eprintln!("changed-checks: couldn't keep {short}: {why}");
+                            keeper.failed(&head, Instant::now());
+                        }
+                    }
+                }
+            }
+            Err(why) => eprintln!("changed-checks: couldn't read main's head: {why}"),
+        }
+        std::thread::sleep(keep::LOOK_EVERY);
+    }
+}
+
+/// Keep `head`'s checks where runs are sent, from the keeper's own clone,
+/// as a run on a branch cut from it would send them. Nothing that took it
+/// says false, since it's never kept on this machine.
+fn keep_head(url: &str, clone: &Path, head: &str) -> Result<bool, String> {
+    keep::check_out(url, clone, head)?;
+    env::set_current_dir(clone)
+        .map_err(|error| format!("going to {}: {error}", clone.display()))?;
+    let root = clone.to_string_lossy().into_owned();
+    let system = busiest_system(&format!("git+file://{root}"))?;
+    let options = Options::parse(std::iter::once("--keep-base".to_owned()))?;
+    Ok(match elsewhere(&options, &root, head, &system)? {
+        Some(code) if code == ExitCode::SUCCESS => true,
+        Some(_) => return Err("the far side's run failed".to_owned()),
+        None => false,
+    })
 }
 
 /// The system whose checks are the most, `checks::busiest` says why. Only
