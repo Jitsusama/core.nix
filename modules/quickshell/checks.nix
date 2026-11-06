@@ -3153,11 +3153,11 @@ onLinux {
   # A card says how it stands in one status line, the launcher's and held
   # notices' alike, as tests/status-line.qml holds StatusLine.js to: which
   # hints give way as room runs short, the keys list's and Return's staying.
-  a-card-says-how-it-stands-in-one-line =
+  a-card-says-how-it-stands-in-one-row =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "a-card-says-how-it-stands-in-one-line" { } ''
+    pkgs.runCommandLocal "a-card-says-how-it-stands-in-one-row" { } ''
       cp ${../../tests/status-line.qml} status-line.qml
       cp ${./StatusLine.js} StatusLine.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

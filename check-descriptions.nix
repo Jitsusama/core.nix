@@ -6,7 +6,7 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
-  a-card-says-how-it-stands-in-one-line = ''
+  a-card-says-how-it-stands-in-one-row = ''
     a card's status line, the launcher's and held notices' alike, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
   '';
