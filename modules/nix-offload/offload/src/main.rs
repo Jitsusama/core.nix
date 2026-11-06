@@ -835,7 +835,14 @@ fn built_idle(asked: &there::Asked, journal: &Path) -> Option<ExitCode> {
     let began = now();
     let ran = there::here_when_idle(asked, &pressure, &vm_patterns(), "nix")?;
     let ended = now();
-    there::note(journal, ended, ended.saturating_sub(began), asked, &ran);
+    there::note(
+        journal,
+        ended,
+        ended.saturating_sub(began),
+        None,
+        asked,
+        &ran,
+    );
     Some(ExitCode::from(u8::try_from(ran.status).unwrap_or(1)))
 }
 
