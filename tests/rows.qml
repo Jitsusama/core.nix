@@ -5,9 +5,9 @@
 // doesn't fit ends in an ellipsis. A row's name and what it is both keep
 // within the row and apart, however long either is, and a field's ghost or
 // hint stops at the field's end. A middle folder in a path says its last
-// name beside the hint, giving way only to what's typed past it. A field's
-// path keeps its steps whole
-// beside a long note, and a short note keeps to the field's right end
+// name beside the hint, giving way only to what's typed past it, and past
+// the path's least what's typed scrolls, the ask and the last step whole.
+// A field's path keeps its steps whole beside a long note, and a short note keeps to the field's right end
 // however wide a room it holds. The launcher's note, with nothing typed,
 // ends where a row's value ends and says all it has room for; typed, it
 // stands before the field's keys. Words that fit are left whole. Selected,
@@ -191,9 +191,10 @@ ShellRoot {
                 chips: [{ text: "Save the Notes" }, { text: "~/saving" }]
                 text: "a.md"
             }
-            // The file picker three steps in, a folder in the middle whose
-            // whole path the line has no room for, at rest and then typed
-            // in past its hint.
+            // Three steps in, a folder in the middle whose whole path the
+            // line has no room for, at rest; then the file picker's own
+            // line, its file mark leading the path, typed in far past its
+            // hint.
             Prompt {
                 id: foldered
                 width: root.panel
@@ -206,6 +207,8 @@ ShellRoot {
                 id: folderTyped
                 width: root.panel
                 steady: true
+                glyph: "/"
+                lead: Theme.glyph.category
                 chips: foldered.chips
                 hint: foldered.hint
                 text: "abcdefghijklmno"
@@ -341,12 +344,12 @@ ShellRoot {
         return null;
     }
 
-    // The visible item under another that draws the words, typed or not.
-    function textItem(item, words) {
+    // The field a line types in.
+    function inputOf(item) {
         for (const child of item.children) {
-            if (child.visible && child.text === words && child.contentWidth !== undefined)
+            if (child.cursorRectangle !== undefined)
                 return child;
-            const found = textItem(child, words);
+            const found = inputOf(child);
             if (found !== null)
                 return found;
         }
@@ -716,21 +719,22 @@ ShellRoot {
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
             // A middle folder gives way only as far as it must: at rest, the
             // room kept to type is the hint's, so it says its last folder;
-            // typed past the hint, it gives way to what's typed, the last
-            // step whole either way (VKCF3Z, 2026-11-06).
+            // typed past the hint, it gives way to what's typed, and past
+            // its least what's typed scrolls, the ask and the last step
+            // whole, its caret in sight (VKCF3Z, 2026-11-06).
             texts = drawn(foldered, []);
             expect("a middle folder says its last name beside the hint at rest",
                 ["Open the Notes", "\u2026/more", "Gathered", "what to do?"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
             texts = drawn(folderTyped, []);
-            const typedIn = root.textItem(folderTyped, folderTyped.text);
-            const typedTo = typedIn === null ? Infinity
-                : typedIn.mapToItem(null, typedIn.contentWidth, 0).x;
-            expect("a middle folder gives way to what's typed past the hint",
+            const typedIn = root.inputOf(folderTyped);
+            const caret = typedIn === null ? -1 : typedIn.cursorRectangle.x;
+            expect("what's typed scrolls past the path's least, the ask whole",
                 ["Open the Notes", "\u2026", "Gathered"].every(step =>
                     texts.some(t => t.text === step && !t.truncated))
-                    && typedTo <= folderTyped.mapToItem(null, folderTyped.end, 0).x,
-                `${said(texts)}, typed to ${typedTo}`);
+                    && typedIn !== null && typedIn.cursorPosition === folderTyped.text.length
+                    && caret >= 0 && caret <= typedIn.width,
+                `${said(texts)}, caret at ${caret} of ${typedIn ? typedIn.width : 0}`);
             // A path's mark stands a rung apart from the ink either side, to
             // its own, so a step reads further off than a word does (the
             // picker audit's finding 13).

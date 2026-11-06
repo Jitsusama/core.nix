@@ -144,6 +144,26 @@ function crumbs(steps, room, width, between) {
     return read(least, steps.length - 2, fewer === "" ? FOLDED : fewer);
 }
 
+// How wide the path is at the least it says before its first step gives
+// way: every step at its least, and the steps between the first and the
+// last folded into one mark. The ask and where Joel is stay whole down to
+// this, and what's typed scrolls in what's left (VKCF3Z, 2026-11-06).
+function crumbsLeast(steps, width, between) {
+    if (steps.length === 0) {
+        return 0;
+    }
+    const least = (step, at) => (step.yields
+        ? pathWays(step.text, width, at === steps.length - 1).pop() : step.text);
+    const said = [least(steps[0], 0)];
+    if (steps.length > 2) {
+        said.push(FOLDED);
+    }
+    if (steps.length > 1) {
+        said.push(least(steps[steps.length - 1], steps.length - 1));
+    }
+    return said.reduce((sum, text) => sum + width(text), 0) + (said.length - 1) * between;
+}
+
 // Words too long for their room, given way at the last whole word that
 // fits, an ellipsis after it, so what's said is never cut mid-word
 // (docs/design.md, Collapsing; VKCF3Z, 2026-11-02: "Open-Meteo didn't

@@ -891,17 +891,22 @@ Item {
 
     // The path's steps as they're drawn, given way at whole names where
     // they don't fit (Reading.crumbs): a folder's path a folder at a time,
-    // then the middle steps folded into one mark, so no name is cut.
+    // then the middle steps folded into one mark, so no name is cut. What's
+    // typed takes room from the path only down to its least, the ask and
+    // where Joel is whole; past it, what's typed scrolls in what's left, as
+    // Vim's command line scrolls a long line (VKCF3Z, 2026-11-06).
     readonly property var crumbsShown: {
         void titleFace.font;
-        const room = Math.max(0, end - Theme.space.rung.inset - ledWidth - typingRoom - pathGap);
+        const line = end - Theme.space.rung.inset - ledWidth - pathGap;
         const stretch = titleStretch;
         // A step's whole words as their Text draws them, and words given
         // way as the face measures them, stretched as the title's axes do.
         const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
-        return Reading.crumbs(chips.map(chip => ({ text: chip.text, yields: chip.yields === true })),
-            room, text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
-            betweenWide);
+        const width = text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1;
+        const steps = chips.map(chip => ({ text: chip.text, yields: chip.yields === true }));
+        const least = Reading.crumbsLeast(steps, width, betweenWide);
+        const room = Math.max(0, line - typingRoom, Math.min(least, line));
+        return Reading.crumbs(steps, room, width, betweenWide);
     }
     // How much wider the title's axes draw its letters than its face's
     // metrics say, the most of any step's whole words, so a step given
