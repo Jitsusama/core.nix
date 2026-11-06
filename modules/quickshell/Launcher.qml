@@ -815,7 +815,13 @@ Scope {
     // typed and selected before it, so - climbs back out
     // through every step and onto the search it came from, as any way in
     // does (Joel, 2026-10-26: every way in climbs back out the same way).
+    // The steps are one jump, as Vim's :tag is, so Ctrl+O goes straight
+    // back to the search.
     function goTo(spot) {
+        oneJump(() => walkTo(spot));
+    }
+
+    function walkTo(spot) {
         const came = here();
         held = [];
         restart("");
