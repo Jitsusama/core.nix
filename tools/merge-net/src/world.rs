@@ -289,6 +289,19 @@ pub fn unbuilt(log: &str) -> Vec<String> {
     names
 }
 
+/// What the net asks `nix-offload there` for one check: as bulk when the
+/// binary's `--takes` lists it, so a session's VM tests waiting for a VM
+/// builder go ahead of the net's dozens, and without it otherwise, since
+/// an older binary refuses a word it doesn't know.
+pub fn there_args(flake: &str, attribute: &str, takes: &str) -> Vec<String> {
+    let mut args = vec!["there".to_owned()];
+    if takes.lines().any(|word| word.trim() == "bulk") {
+        args.push("--bulk".to_owned());
+    }
+    args.extend(["-L".to_owned(), flake.to_owned(), attribute.to_owned()]);
+    args
+}
+
 /// Add a line to a log, as the net's own word among a command's.
 fn append_line(log: &Path, line: &str) {
     if let Ok(mut file) = fs::OpenOptions::new().append(true).open(log) {
@@ -389,8 +402,9 @@ impl World for Real {
         let attribute = format!("checks.{}.{check}", self.system);
         let output = file(log).ok()?;
         let mut clock = Clock::new(log, Instant::now());
+        let takes = run(Command::new("nix-offload").args(["there", "--takes"])).unwrap_or_default();
         let mut child = Command::new("nix-offload")
-            .args(["there", "-L", &self.flake(commit), &attribute])
+            .args(there_args(&self.flake(commit), &attribute, &takes))
             .stdin(Stdio::null())
             .stdout(output.try_clone().ok()?)
             .stderr(output)
@@ -690,6 +704,26 @@ mod tests {
                 "nothing-names-its-own-look".to_owned(),
                 "vm-clock-keeps-time".to_owned()
             ]
+        );
+    }
+
+    #[test]
+    fn a_run_is_bulk_only_where_nix_offload_takes_it() {
+        let flake = "git+file:///net/core?rev=abc";
+        let attribute = "checks.x86_64-linux.vm-a";
+        assert_eq!(
+            there_args(flake, attribute, "tree\napply\noutlive\nbulk\n"),
+            ["there", "--bulk", "-L", flake, attribute]
+        );
+        assert_eq!(
+            there_args(flake, attribute, "tree\napply\noutlive\n"),
+            ["there", "-L", flake, attribute],
+            "an older binary would refuse it"
+        );
+        assert_eq!(
+            there_args(flake, attribute, ""),
+            ["there", "-L", flake, attribute],
+            "none could be read"
         );
     }
 
