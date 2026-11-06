@@ -5807,6 +5807,15 @@ Scope {
     // and can hold no surface, so it's never one.
     readonly property var focusedScreen: {
         Niri.revision;
+        void Quickshell.screens;
+        return screenFocused();
+    }
+
+    // The focused screen as the screens stand now, for a handler that runs
+    // as they change, before focusedScreen's binding may have heard: read
+    // from the binding there, a screen just unplugged came back as the one
+    // to make the surface on, and the launcher showed on none.
+    function screenFocused() {
         const workspace = Niri.workspace();
         const real = Quickshell.screens.filter(screen => screen.name !== "");
         return real.find(screen => workspace && screen.name === workspace.output)
@@ -5836,8 +5845,17 @@ Scope {
     Connections {
         target: Quickshell
 
+        // A screen still listed is remade from once the change settles. The
+        // one the surface is on, gone, is let go at once: until then every
+        // binding that reads its size (the card's width, height and place)
+        // reads a screen Qt has freed, and Quickshell warns it's dangling
+        // whenever one runs first, as a displays refresh did (the net's
+        // quarantine of vm-screens-keep-the-launcher, 2026-11-05).
         function onScreensChanged() {
-            Qt.callLater(root.remake);
+            if (root.screenHere !== null && !Quickshell.screens.includes(root.screenHere))
+                root.remake();
+            else
+                Qt.callLater(root.remake);
         }
     }
 
@@ -5851,7 +5869,7 @@ Scope {
         if (kept)
             return;
         open = false;
-        screenHere = focusedScreen;
+        screenHere = screenFocused();
         surface.visible = false;
         surface.visible = screenHere !== null;
     }
