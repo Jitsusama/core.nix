@@ -272,33 +272,33 @@ QtObject {
         // pitches and the line under it a pitch and a beat, so it never
         // runs past the rows it stands in for (at 2 on a 768 screen it
         // ran 36 past them, and its frame off the screen).
-        const line = { heading: "" };
-        const group = { heading: "A group" };
-        const short = [group, line, line, group, line, line];
-        holds("each line's step", [1, 2, 3, 4, 5].map(at => Keys.stepTo(short, at, 24, 12)),
+        const steps = { pitch: 24, beat: 12 };
+        const keyed = { heading: "" };
+        const grouped = { heading: "A group" };
+        const short = [grouped, keyed, keyed, grouped, keyed, keyed];
+        holds("each line's step", [1, 2, 3, 4, 5].map(at => Keys.stepTo(short, at, steps)),
             [36, 24, 48, 36, 24]);
-        holds("as many as fit the room", Keys.shownFrom(short, 0, 144, 24, 12), 5);
-        holds("and fewer in less", Keys.shownFrom(short, 0, 60, 24, 12), 3);
-        holds("one at least", Keys.shownFrom(short, 0, 0, 24, 12), 1);
-        holds("and none past the end", Keys.shownFrom(short, 6, 144, 24, 12), 0);
-        holds("it scrolls till its last line shows", Keys.lastTop(short, 144, 24, 12), 1);
-        holds("and not at all when it fits", Keys.lastTop(short, 500, 24, 12), 0);
+        holds("as many as fit the room", Keys.shownFrom(short, 0, 144, steps), 5);
+        holds("and fewer in less", Keys.shownFrom(short, 0, 60, steps), 3);
+        holds("one at least", Keys.shownFrom(short, 0, 0, steps), 1);
+        holds("and none past the end", Keys.shownFrom(short, 6, 144, steps), 0);
+        holds("it scrolls till its last line shows", Keys.lastTop(short, 144, steps), 1);
+        holds("and not at all when it fits", Keys.lastTop(short, 500, steps), 0);
         const tall = (top, spare) => {
             let used = 0;
-            for (let at = top + 1; at < top + Keys.shownFrom(listed, top, spare, 24, 12); at++)
-                used += Keys.stepTo(listed, at, 24, 12);
+            for (let at = top + 1; at < top + Keys.shownFrom(listed, top, spare, steps); at++)
+                used += Keys.stepTo(listed, at, steps);
             return used;
         };
         for (const spare of [144, 192]) {
+            const last = Keys.lastTop(listed, spare, steps);
             const views = [];
-            for (let top = 0; top <= Keys.lastTop(listed, spare, 24, 12); top++)
+            for (let top = 0; top <= last; top++)
                 views.push(top);
             holds(`every view of the keys fits ${spare}`,
                 views.filter(top => tall(top, spare) > spare), []);
             holds(`and the last ends on the last key at ${spare}`,
-                Keys.lastTop(listed, spare, 24, 12)
-                + Keys.shownFrom(listed, Keys.lastTop(listed, spare, 24, 12), spare, 24, 12),
-                listed.length);
+                last + Keys.shownFrom(listed, last, spare, steps), listed.length);
         }
 
         // As the launcher's foot: Return at the right end, Space ? just before it.

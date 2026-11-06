@@ -406,23 +406,23 @@ function keyList() {
 }
 
 // How far a line of Space ?'s list stands under the one shown before it,
-// as the drawer's key list sets them: a heading an empty line under it,
-// two pitches; the line under a heading a pitch and a beat; the rest a
-// pitch.
-function stepTo(list, at, pitch, beat) {
-    return list[at].heading !== "" ? 2 * pitch
-        : list[at - 1].heading !== "" ? pitch + beat : pitch;
+// as the drawer's key list sets them, by the `steps` its surface gives,
+// `{ pitch, beat }`: a heading an empty line under it, two pitches; the
+// line under a heading a pitch and a beat; the rest a pitch.
+function stepTo(list, at, steps) {
+    return list[at].heading !== "" ? 2 * steps.pitch
+        : list[at - 1].heading !== "" ? steps.pitch + steps.beat : steps.pitch;
 }
 
 // How many of the list's lines show from `top` when the first's baseline
 // and the last's may stand `spare` apart: as many as fit, one at least.
 // A heading takes more than a line, so a count of lines alone would run
 // the list past the rows it stands in for.
-function shownFrom(list, top, spare, pitch, beat) {
+function shownFrom(list, top, spare, steps) {
     let used = 0;
     let at = top + 1;
-    while (at < list.length && used + stepTo(list, at, pitch, beat) <= spare) {
-        used += stepTo(list, at, pitch, beat);
+    while (at < list.length && used + stepTo(list, at, steps) <= spare) {
+        used += stepTo(list, at, steps);
         at += 1;
     }
     return Math.max(Math.min(at, list.length) - top, 0);
@@ -430,9 +430,9 @@ function shownFrom(list, top, spare, pitch, beat) {
 
 // The furthest the list scrolls: the first top from which every line to
 // its end shows, so its last line is never scrolled past.
-function lastTop(list, spare, pitch, beat) {
+function lastTop(list, spare, steps) {
     let top = Math.max(list.length - 1, 0);
-    while (top > 0 && shownFrom(list, top - 1, spare, pitch, beat) === list.length - top + 1) {
+    while (top > 0 && shownFrom(list, top - 1, spare, steps) === list.length - top + 1) {
         top -= 1;
     }
     return top;

@@ -1099,11 +1099,10 @@ Floating {
     // the first on the first row's baseline and the last a row's leaves
     // over where the last row's box would end.
     readonly property real listSpare: (room - 1) * rowHeight
-    readonly property int listRoom: NoticeKeys.shownFrom(keyList, listTop, listSpare, keyPitch,
-        Theme.space.beat)
+    readonly property var listSteps: ({ pitch: keyPitch, beat: Theme.space.beat })
+    readonly property int listRoom: NoticeKeys.shownFrom(keyList, listTop, listSpare, listSteps)
     // The furthest it scrolls, its last line shown.
-    readonly property int listLast: NoticeKeys.lastTop(keyList, listSpare, keyPitch,
-        Theme.space.beat)
+    readonly property int listLast: NoticeKeys.lastTop(keyList, listSpare, listSteps)
 
     // The faces, measured by TextMetrics where a binding reads what's
     // measured, since a FontMetrics call in a binding is asked once, before
@@ -1680,7 +1679,7 @@ Floating {
                 const out = [];
                 held.listShown.forEach((one, at) => {
                     out.push(at === 0 ? held.rowBase : out[at - 1]
-                        + NoticeKeys.stepTo(held.listShown, at, held.keyPitch, Theme.space.beat));
+                        + NoticeKeys.stepTo(held.listShown, at, held.listSteps));
                 });
                 return out;
             }
