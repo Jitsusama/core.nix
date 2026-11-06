@@ -249,6 +249,10 @@ fun restoring_shown()
     global.track.sprite.SetOpacity(restoring);
     if (restoring)
       global.panel.sprite.SetImage(global.panel.still);
+    else if (global.panel.urging)
+      global.panel.sprite.SetImage(global.panel.urgent);
+    else
+      global.panel.sprite.SetImage(global.panel.calm);
     if (!global.asked)
       global.panel.sprite.SetOpacity(restoring);
   }
