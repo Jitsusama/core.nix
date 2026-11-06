@@ -166,16 +166,41 @@ Rectangle {
             : "transparent"
     }
 
+    // The glyph's ink as the face draws it at Figure, measured as it loads,
+    // to size it by.
+    TextMetrics {
+        id: markInk
+        text: row.glyph
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+    }
+    // Every mark at one optical size beside the type, whatever its shape,
+    // so a wide one such as the keyboard doesn't read smaller than the
+    // rest down the column (the launcher audit's finding 10): scaled so its
+    // ink's area is the em's square, never taller than the em, so a narrow
+    // mark doesn't outgrow the type, and never wider than its cell, so it
+    // keeps its column (VKCF3Z, 2026-11-05). The em is the face's size in
+    // pixels, its points at 96 to the inch.
+    readonly property real markEm: Theme.level.figure.pointSize * 4 / 3
+    readonly property real markScale: {
+        const ink = markInk.tightBoundingRect;
+        return ink.width <= 0 || ink.height <= 0 ? 1
+            : Math.min(markEm / Math.sqrt(ink.width * ink.height), markEm / ink.height,
+                Theme.level.name.pitch / ink.width);
+    }
+
     Text {
         x: Theme.space.rung.inset + row.indent
-        anchors.verticalCenter: parent.verticalCenter
+        // Its ink's middle on the capitals', which stand in the row's.
+        y: row.height / 2 - (markInk.tightBoundingRect.y
+            + markInk.tightBoundingRect.height / 2) * row.markScale - baselineOffset
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph
         color: row.flashed && !row.swatch ? row.flashInk
             : row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
         font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.pointSize: Theme.level.figure.pointSize * row.markScale
     }
 
     // Selected, a name too long for its room reads on (ReadsOn.qml), and
