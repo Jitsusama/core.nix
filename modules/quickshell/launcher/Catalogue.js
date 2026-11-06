@@ -333,7 +333,7 @@ function descends(row, depth, above) {
     return !String(row.key ?? "").startsWith("shortcut-level:");
 }
 
-// Whether the walk for where a row lives (livesAt) looks inside this one,
+// Whether the walk for where rows live (lives) looks inside this one,
 // `depth` below home, inside `above`: not Now, which holds what lives
 // elsewhere, nor a long list's items or a program's or window's own, which
 // are found only from their place, so the walk stays a key's worth.
@@ -349,32 +349,37 @@ function followsInto(row, depth, above) {
     return !(above && WHOLE.has(above.opens));
 }
 
-// Where a row lives, which Ctrl+] goes to as Vim follows a tag: the rows
-// from one of home's `rows` down to the shallowest whose id is `id`,
-// walked breadth first, or null where none is. `ways` says a row's steady
-// id (`idOf`) and the rows it holds inside the row above it (`holds`), as
-// the launcher makes them.
-function livesAt(rows, id, ways) {
-    const seen = new Set();
-    let level = rows.map(row => ({ row, path: [row], above: null }));
+// Where every row lives, which Ctrl+] goes to as Vim follows a tag: by
+// its steady id, the ids from one of home's `rows` down to the shallowest
+// row that is it, walked breadth first once for them all, so a press after
+// the first only looks its row up. `ways` says a row's steady id (`idOf`)
+// and the rows it holds inside the row above it (`holds`), as the launcher
+// makes them.
+function lives(rows, ways) {
+    const at = Object.create(null);
+    let level = rows.map(row => ({ row, path: [ways.idOf(row)], above: null }));
     for (let depth = 0; level.length > 0; depth += 1) {
         const next = [];
         for (const one of level) {
-            const key = ways.idOf(one.row);
-            if (key === id) {
-                return one.path;
-            }
-            if (seen.has(key) || !followsInto(one.row, depth, one.above)) {
+            const key = one.path[one.path.length - 1];
+            if (at[key] !== undefined) {
                 continue;
             }
-            seen.add(key);
+            at[key] = one.path;
+            if (!followsInto(one.row, depth, one.above)) {
+                continue;
+            }
             for (const inside of ways.holds(one.row, one.above)) {
-                next.push({ row: inside, path: one.path.concat([inside]), above: one.row });
+                next.push({
+                    row: inside,
+                    path: one.path.concat([ways.idOf(inside)]),
+                    above: one.row
+                });
             }
         }
         level = next;
     }
-    return null;
+    return at;
 }
 
 // Where Ctrl+] goes for a row living at `path`, by steady ids, from where

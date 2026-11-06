@@ -2687,7 +2687,6 @@ Scope {
         }
         return enter(row);
     }
-
     function toLastPlace() {
         if (lastPlace === null)
             return;
@@ -2702,6 +2701,23 @@ Scope {
     // through. Let go as the launcher opens, with the jumps.
     property var tagsBack: []
 
+    // Where every row lives, by its steady id, walked from home by the
+    // first Ctrl+] in an open that asks, so the presses after it only look
+    // their row up: a walk on every press took 20 to 85 ms in the VM,
+    // against a key's 4 ms (Y2YBTS, 2026-11-05). Let go as the launcher
+    // opens, so a row made since is found at the next.
+    property var followIndex: null
+
+    function livesFor(id) {
+        if (followIndex === null)
+            followIndex = Catalogue.lives(home(), {
+                idOf: one => steadyId(one),
+                holds: (one, above) => catalogueHolds(one,
+                    above === null || collects({ row: above }))
+            });
+        return followIndex[id] ?? null;
+    }
+
     // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
     // 2026-11-05): first wherever followed() takes it, as the old step in
     // by l did, so a row that holds more goes into its parts, as the
@@ -2711,23 +2727,26 @@ Scope {
     // there. A row Return takes elsewhere, a spot or a program's act found
     // from home, keeps where it lives; a notice lives as its sender, its
     // program's row; any other is walked for from home (Catalogue.js's
-    // livesAt). The place left goes on the tags' way back, as Vim's tag
+    // lives). The place left goes on the tags' way back, as Vim's tag
     // stack keeps it, and once on the jump list, as a tag is one jump in
     // Vim, not one a step. A row with none says so.
     function follow(row) {
         const live = row && !row.gone ? row : null;
         const came = { held: held, here: here() };
         if (live && followed(live)) {
+            traces.began("follow", { from: came.held.length, into: true });
             tagsBack = tagsBack.concat([came]);
             return;
         }
-        // The walk's own time goes in the trace, found or not, since it
-        // runs on the key and makes the places' rows on its way.
+        // The look's own time goes in the trace, found or not, since it
+        // runs on the key, and whether it made the walk, which the first
+        // an open does.
         const walking = Date.now();
+        const unwalked = followIndex === null;
         const spot = live ? followedTo(live) : null;
         if (live)
             traces.began("follow", { from: held.length, to: spot ? spot.trail.length : null,
-                walked: Date.now() - walking });
+                walked: Date.now() - walking, indexed: unwalked && followIndex !== null });
         if (spot === null) {
             say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
             return;
@@ -2749,11 +2768,7 @@ Scope {
     function followedTo(row) {
         const own = row.trail !== undefined ? { trail: row.trail, spot: row.spot } : row.inside;
         const path = own ? own.trail.concat([own.spot])
-            : Catalogue.livesAt(home(), row.follows || steadyId(row), {
-                idOf: one => steadyId(one),
-                holds: (one, above) => catalogueHolds(one,
-                    above === null || collects({ row: above }))
-            })?.map(one => steadyId(one)) ?? null;
+            : livesFor(row.follows || steadyId(row));
         return Catalogue.followed(path, held.map(step => steadyId(step.row)));
     }
 
@@ -2761,7 +2776,8 @@ Scope {
     // pops its tag stack; with none, Vim's E73, the rows staying put.
     function tagBack() {
         if (tagsBack.length === 0) {
-            say([[(Words.field.hints ?? {}).E73 ?? "", ""]]);
+            // Where the command line is, as E492 and E21 are.
+            commandSay((Words.field.hints ?? {}).E73 ?? "", true);
             return;
         }
         const to = tagsBack[tagsBack.length - 1];
@@ -5660,6 +5676,7 @@ Scope {
         jumpsBack = [];
         jumpsAhead = [];
         tagsBack = [];
+        followIndex = null;
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -5700,6 +5717,7 @@ Scope {
             jumpsBack = [];
             jumpsAhead = [];
             tagsBack = [];
+            followIndex = null;
             listing = false;
             listedInDrawer = false;
             prompt.forget();
