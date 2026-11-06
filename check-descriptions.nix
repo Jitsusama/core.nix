@@ -2197,8 +2197,9 @@
     on the first, middle and last photographs taken while the kernel reads the image; on each
     of two screens of different sizes, shows the theme's empty track once every program is
     frozen, then core's kernel filling it as it reads, its bar exactly on the track, partly
-    filled in some photograph and never going back; comes back with what it held in memory,
-    and its hook says how long the restore took after the disk opened
+    filled in some photograph, never going back and full once the image is read; comes back
+    with what it held in memory, and its hook says how long the restore took after the disk
+    opened
   '';
   vm-chrome-says-its-open-tabs = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the

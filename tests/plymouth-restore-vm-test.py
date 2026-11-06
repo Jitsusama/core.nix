@@ -171,6 +171,9 @@ class Restore:
     # Both screens as the kernel began to read the image, once every program was frozen.
     before: Shot
     shots: list[Shot]
+    # Both screens the moment the kernel said it had read the image, before the image's own
+    # kernel took them.
+    after: Shot
 
     def while_reading(self) -> list[Shot]:
         """Give the photographs taken while the kernel read the image."""
@@ -293,8 +296,9 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     before = photographed(machine, burst, "before")
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 0 0 0 0 0")
     shots = photographs_until(machine, burst, READ)
+    after = photographed(machine, burst, "after")
     machine.wait_for_unit("default.target")
-    return Restore(machine, before, shots)
+    return Restore(machine, before, shots, after)
 
 
 def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) -> None:
@@ -344,6 +348,18 @@ def test_the_kernel_fills_each_track_as_it_reads(restored: Restore, values: dict
             getattr(partly[len(partly) // 2], screen),
             "restoring-bar" if screen == "path" else "restoring-bar-large",
         )
+
+
+def test_each_track_is_full_once_the_image_is_read(
+    restored: Restore, values: dict[str, Any]
+) -> None:
+    """Once the kernel has read the image, each screen's track stays full until it goes."""
+    ink, bar = colour(values["track"]), colour(values["bar"])
+    for screen in ("path", "large"):
+        track = found_track(Picture.read(getattr(restored.before, screen)), ink)
+        reached = filled(Picture.read(getattr(restored.after, screen)), track, bar, ink)
+        assert reached == track.width, f"{screen}: the bar reached {reached} of {track.width}"
+    kept(restored.machine, restored.after.path, "restoring-full")
 
 
 def test_the_machine_is_back_as_it_was(restored: Restore) -> None:
