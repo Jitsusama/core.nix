@@ -2719,8 +2719,8 @@ Scope {
     onHeldChanged: {
         const left = placeHeld;
         placeHeld = held;
-        // A place's gutter is as wide as its own rows need, home's three.
-        gutterDigits = held.length === 0 ? 3 : 1;
+        // Every place's gutter starts as wide as home's.
+        gutterDigits = leastDigits;
         if (open && placeOf(left) !== placeOf(held)) {
             // A place opening redraws every row, so its foot's room is
             // weighed afresh then, as its rows come.
@@ -2958,11 +2958,17 @@ Scope {
         && (commanding !== null ? commandRows.count > 0 : matches.length > 0)
     readonly property bool numbersCounted: numbersRelative && commanding === null
         && (prompt.mode === "normal" || prompt.mode === "visual")
-    // How many digits the gutter holds: the most this place's find can
-    // list, so neither its first letter nor its narrowing widens it. Home's
-    // find reaches every thing, hundreds, so it holds three; a place holds
-    // its own rows' as they come (VKCF3Z, 2026-11-05).
-    property int gutterDigits: 3
+    // How many digits the gutter holds: three in every place, as Joel's
+    // Neovim's number column holds three in every buffer (Vim's numberwidth
+    // of four, a space with them), and more only once a list numbers past
+    // 999. Home's find reaches hundreds, so it needs three; a place that
+    // held only its own rows' digits stood its glyphs and names a digit
+    // left of home's, and stepping in moved every column (Joel, 2026-11-06:
+    // "padding is different when on the home launcher screen and a
+    // secondary screen"). Neither a find's first letter nor its narrowing
+    // widens it.
+    readonly property int leastDigits: 3
+    property int gutterDigits: leastDigits
 
     function noteDigits() {
         const digits = String(Math.max(1, matches.length)).length;
@@ -6011,8 +6017,8 @@ Scope {
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
-            // The gutter as wide as where it opens can number.
-            gutterDigits = held.length === 0 ? 3 : 1;
+            // The gutter as wide as every place's.
+            gutterDigits = leastDigits;
             noteDigits();
             // Weighed once an opening, not on every mode change, which
             // walks every thing's verbs.
