@@ -1909,10 +1909,16 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        // In visual, Return opens the selection's rows it can, by count.
-        if (visual)
+        // In visual, Return opens the selection's rows it can, by count,
+        // and the rest is as normal's foot: d by the cursor row's ending, y,
+        // : and Space ?, so the way to every key stays (VKCF3Z, 2026-11-05).
+        if (visual) {
+            const hints = Words.field.hints ?? {};
             return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
-                commandNamed(row))).length, Words.field.visual ?? {})]];
+                commandNamed(row))).length, Words.field.visual ?? {})]]
+                .concat(operatorKeys(choice), [[":", hints.commands ?? ""],
+                    [hintKey("keys", "visual"), hints.keys ?? ""]]);
+        }
         // The row landed on says the act a second Return does, in the
         // accent, since it's the one key that changes something now; the
         // rest is normal's foot, as a landing is normal, so its shape never

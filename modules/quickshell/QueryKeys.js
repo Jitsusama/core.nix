@@ -311,14 +311,14 @@ function chosen(mode) {
 // Whether a row's keys are a mode's: "line" is the find's and insert's,
 // where letters type, "both" every mode's. Choosing on the page, by letters or lines, has
 // pageVisual's rows and the page's moves; visual on the rows has normal's
-// moves besides its own, since every move extends it.
+// moves besides its own, since every move extends it, and its Space ?.
 function inMode(row, mode) {
     if (chosen(mode)) {
         return row.mode === "pageVisual"
             || ((row.mode === "page" || row.mode === "both") && moves.includes(row.act));
     }
     if (mode === "visual" && row.mode === "normal") {
-        return moves.includes(row.act);
+        return moves.includes(row.act) || row.act === "keys";
     }
     if (mode === "visual" && row.mode === "object") {
         return true;

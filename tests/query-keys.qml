@@ -470,6 +470,8 @@ QtObject {
                 ["normal", "selectLines", "command"], "visual"],
             ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A"],
                 ["normal", "selectLines"], "visual"],
+            ["Space ? lists every key, as its foot says, the selection standing",
+                ["Escape", "V", "Space", "?"], ["normal", "selectLines", "keys"], "visual"],
             ["on the find, V types", ["V"], [], "find"],
             // On a list v is V, as the spec has it: rows have no letters
             // to choose among, so either begins visual line and ends it.
