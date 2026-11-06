@@ -1,9 +1,16 @@
 [
   {
-    "test": "vm-desktop-keeps-pace",
-    "reason": "failed under the lent builder's load at bf29334d and passed on main four times the same day",
-    "owner_pr": 1337,
+    "at": 1793903630,
     "commit": "bf29334dc6c400f5bb4b5bd344202a083b37b5e4",
-    "at": 1793903630
+    "owner_pr": 1337,
+    "reason": "failed under the lent builder's load at bf29334d and passed on main four times the same day",
+    "test": "vm-desktop-keeps-pace"
+  },
+  {
+    "at": 1793939501,
+    "commit": "b74ab91b4979c78eb50df27b28008a1edca05b6b",
+    "owner_pr": 1875,
+    "reason": "failed, then passed, at b74ab91b4979",
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
