@@ -5204,6 +5204,9 @@ Scope {
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
+            // Where the status line's last ink should end: the inset in
+            // from the frame, as its first starts.
+            footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
             // The keys the foot says now, each its mark and its word.
             hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.

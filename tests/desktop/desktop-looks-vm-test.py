@@ -1045,6 +1045,15 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
             assert things_apart(group, wrapped=False) or things_apart(group, wrapped=True), (
                 f"at {scale} a fact is off the pitch: {drawer}"
             )
+        # The status line's last ink ends on the inset, as its first starts, Return's held
+        # room to the left of its word (Joel, 2026-11-05: "a right padding for text most of
+        # the time which looks fucking janky"; VKCF3Z's rule).
+        foot = desktop_session.laid_out(desktop)["foot"]
+        ends = max(word["starts"] + word["inked"] for word in foot)
+        assert abs(ends - shown["footEnd"]) <= 1, (
+            f"at {scale} the status line ends at {ends}, not the inset at {shown['footEnd']}: "
+            f"{foot}"
+        )
         desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
