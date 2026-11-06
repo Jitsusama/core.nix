@@ -2216,6 +2216,7 @@ Scope {
         rowsMade += 1;
         noteKeys();
         noteFigures();
+        noteDigits();
     }
     onAskingChanged: noteKeys()
     Connections {
@@ -2540,6 +2541,8 @@ Scope {
     onHeldChanged: {
         const left = placeHeld;
         placeHeld = held;
+        // A place's gutter is as wide as its own rows need, home's three.
+        gutterDigits = held.length === 0 ? 3 : 1;
         if (open && placeOf(left) !== placeOf(held)) {
             lastPlace = { held: left, here: here() };
             // A place stepped to afresh goes on the way back, and leaves
@@ -2666,10 +2669,25 @@ Scope {
     // Whether the gutter counts from the cursor row or numbers each row
     // as it is, which Space u l switches, as his u l does.
     property bool numbersRelative: true
-    // Whether the gutter numbers the rows: in normal, on a list, never on
-    // the find or the command line (the vi-paradigm spec, Normal).
-    readonly property bool numbered: prompt.modal && prompt.mode === "normal"
-        && commanding === null && matches.length > 0
+    // Whether the gutter numbers the rows: wherever a list shows, in every
+    // mode (VKCF3Z, 2026-11-05), counting from the cursor in normal and
+    // visual and as each row is on the find and the command line, as his
+    // numbertoggle does (Joel, 2026-11-05: "it needs to show in find as
+    // well as normal mode, showing real numbers in find mode").
+    readonly property bool numbered: prompt.modal && matches.length > 0 && over === null
+    readonly property bool numbersCounted: numbersRelative && commanding === null
+        && (prompt.mode === "normal" || prompt.mode === "visual")
+    // How many digits the gutter holds: the most this place's find can
+    // list, so neither its first letter nor its narrowing widens it. Home's
+    // find reaches every thing, hundreds, so it holds three; a place holds
+    // its own rows' as they come (VKCF3Z, 2026-11-05).
+    property int gutterDigits: 3
+
+    function noteDigits() {
+        const digits = String(Math.max(1, matches.length)).length;
+        if (digits > gutterDigits)
+            gutterDigits = digits;
+    }
     onNumberedChanged: placeNumbers()
     onRowsDrawnChanged: Qt.callLater(placeNumbers)
 
@@ -5218,7 +5236,7 @@ Scope {
             // Normal's gutter: whether it shows, its numbers top to bottom,
             // the cursor row's, how many it made and how wide its room is.
             gutter: {
-                shown: rowsGutter.shown, relative: root.numbersRelative,
+                shown: rowsGutter.shown, relative: rowsGutter.relative,
                 numbers: rowsGutter.said().map(number => number.text),
                 cursor: (rowsGutter.said().find(number => number.ink === "text") ?? {}).text
                     ?? "",
@@ -5578,6 +5596,9 @@ Scope {
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
+            // The gutter as wide as where it opens can number.
+            gutterDigits = held.length === 0 ? 3 : 1;
+            noteDigits();
             Report.say(`stands ${standing.said}`);
         } else {
             // An ask closing with it says no, as Escape would, and is
@@ -6362,9 +6383,9 @@ Scope {
                             }
                         }
 
-                        // Normal's numbers beside the rows (Gutter.qml), in a
-                        // room kept in every mode, so no row moves on a mode
-                        // change; empty on the find and the command line.
+                        // The rows' numbers (Gutter.qml), in every mode, in
+                        // the room the place's list can number, so no row
+                        // moves on a mode change or a letter.
                         Gutter {
                             id: rowsGutter
                             x: Theme.space.rung.inset
@@ -6374,7 +6395,8 @@ Scope {
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
                             current: root.current
-                            relative: root.numbersRelative
+                            relative: root.numbersCounted
+                            digits: root.gutterDigits
                             shown: root.numbered
                         }
 
