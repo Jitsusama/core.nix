@@ -11,7 +11,7 @@
 //
 // Typing a window's title finds it on any workspace, since niri takes a
 // window's picture wherever it is. A region is picked by the keys
-// (Picker.qml), and Escape there comes back here. The camera's rows open its
+// (Picker.qml), and - there comes back here. The camera's rows open its
 // viewfinder (modules/camera), and are left out where there's no camera.
 // Each waits for the launcher to be gone, so it's never in the picture.
 // Whether a camera is open, and each camera's parts, are the cameras' own
@@ -84,7 +84,7 @@ Provider {
         return entry ? entry.name : "";
     }
 
-    // Comes back here from the picker, as Escape there says.
+    // Comes back here from the picker, as - there goes up a level.
     function back() {
         provider.launcher.into(provider.settings.name);
     }
