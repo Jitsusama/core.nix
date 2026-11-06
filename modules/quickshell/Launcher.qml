@@ -2150,8 +2150,8 @@ Scope {
     // which never gives way; - up is said only once a step is held, and
     // Ctrl+] in only on a row holding parts, whose rows grow the room as
     // any row does.
-    readonly property var footNormalRoom: [["\u21b5", footVerbRoom],
-        [":", "commands"], ["Space ?", "keys"]]
+    readonly property var footNormalRoom: [["\u21b5", ""], [":", "commands"],
+        ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -2160,8 +2160,15 @@ Scope {
     property real footReturnWidest: 0
     property real footKeysWidest: 0
 
+    // Return's place starts as wide as the widest verb any row can say on
+    // the find, whose rows change with every letter, so typing never moves
+    // it. In normal and visual it starts from nothing and grows from the
+    // place's own rows, weighed again as the place changes, since room for
+    // a verb no row there can say ranks nothing, and over two windows in
+    // visual it cost the foot its y (VKCF3Z, 2026-11-06).
     function footReset() {
-        footReturnWidest = statusLine.keys.advance("\u21b5", footVerbRoom);
+        footReturnWidest = prompt.mode === "insert"
+            ? statusLine.keys.advance("\u21b5", footVerbRoom) : 0;
         footKeysWidest = keysWide(footKeysRoom);
     }
 
@@ -2601,6 +2608,9 @@ Scope {
         // A place's gutter is as wide as its own rows need, home's three.
         gutterDigits = held.length === 0 ? 3 : 1;
         if (open && placeOf(left) !== placeOf(held)) {
+            // A place opening redraws every row, so its foot's room is
+            // weighed afresh then, as its rows come.
+            footReset();
             lastPlace = { held: left, here: here() };
             // A place stepped to afresh goes on the way back, and leaves
             // nothing ahead, as Vim's jump list does.
@@ -5476,7 +5486,10 @@ Scope {
             // may say included, which the facts are fitted short of.
             keysFrom: Math.round(foot.keysFrom),
             // The room held for the widest keys since opening, and what the
-            // keys said now take, so a test can tell which held it.
+            // keys said now take, so a test can tell which held it; and the
+            // room the facts at their least and the mode's word leave them,
+            // with what every key told would take, so a key given way can
+            // be told short by how much.
             keysRoom: { held: Math.round(Math.min(root.footKeysWidest, foot.keysRoom)),
                 said: Math.round(root.keysWide(foot.kept)), left: Math.round(foot.keysRoom),
                 told: Math.round(root.keysWide(foot.told)),
