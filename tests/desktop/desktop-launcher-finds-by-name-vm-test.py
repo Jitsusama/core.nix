@@ -945,9 +945,9 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     Space Tab goes to the place used last and back, as his goes to the file used last; Ctrl+O
     and Tab, which is Ctrl+I, go back and forward through the places stepped into; Space ? and
     F1 list every key in the drawer until Escape or again; Space alone waits for a second key
-    until Escape lets it go; Space w closes the launcher, and Escape at rest a step in does nothing, :q
-    closing it. Every hint the foot draws, at home and a step in, is first pressed and seen to
-    do something.
+    until Escape lets it go; Space w closes the launcher, and Escape at rest a step in does
+    nothing, :q closing it. Every hint the foot draws, at home and a step in, is first pressed
+    and seen to do something.
     """
     machine = desktop.machine
     every_hint_changes(desktop, 0)
