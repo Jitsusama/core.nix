@@ -50,6 +50,7 @@ import KeyTimes
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
+import "Bands.js" as Bands
 import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
@@ -4899,9 +4900,9 @@ Scope {
     readonly property real drawerGap: Theme.space.rung.frames
     readonly property real drawerMargin: Theme.space.rung.screen
     // The card's lines the drawer's are set on, down from its top: the
-    // field's centre, the prompt an inset inside the frame, and the first
-    // row's, below the field, its hairline and the list's inset.
-    readonly property real fieldLine: Theme.border + headTop + prompt.height / 2
+    // field's centre, the field filling the head's band, and the first
+    // row's, below the field and its hairline.
+    readonly property real fieldLine: Theme.border + prompt.height / 2
     readonly property real fieldBase: headBase
     readonly property real rowLine: Theme.border + headTall + Theme.border + rowTall / 2
     // How tall a row is, four beats; its middle is a centre, half of it,
@@ -4923,16 +4924,16 @@ Scope {
     // less a mark before the gutter's end.
     readonly property real textAreaAt: rowsGutter.x + rowsGutter.width
         - (Theme.space.rung.inset - Theme.space.rung.mark)
-    // The head's line, set so its capitals stand an inset under the frame.
-    readonly property real headTop: Theme.space.rung.inset
-        - (prompt.baselineOffset - headCaps.tightBoundingRect.height)
-    // Where the field's baseline stands, down from the card's top.
-    readonly property real headBase: Theme.border + headTop + prompt.baselineOffset
-    // How tall the head is above its hairline: so the first row's baseline
-    // lies a row under the field's, and the plate's beat counts on from
-    // it (VKCF3Z, 2026-11-05).
-    readonly property real headTall: headBase + rowTall - 2 * Theme.border
-        - (rowTall + rowCaps) / 2
+    // Where the field's baseline stands, down from the card's top: centred
+    // by eye in the head's band, the frame's inside to its hairline, which
+    // the field fills (docs/design.md: text in a band centres in it).
+    readonly property real headBase: Theme.border + prompt.baselineOffset
+    // How tall the head is above its hairline: so the field's line at rest
+    // stands centred in it and a row over the first row's, and the plate's
+    // beat counts on from it (VKCF3Z, 2026-11-05). A place's name, larger,
+    // centres on its own, settling a few pixels lower in the same band.
+    readonly property real headTall: Bands.above(rowTall, rowCaps, prompt.restingLift,
+        Theme.border)
     // How tall a row's capitals stand, which its ground is set round.
     readonly property real rowCaps: nameCaps.tightBoundingRect.height
     // Where the foot's baseline stands under its hairline: its capitals
@@ -5725,19 +5726,11 @@ Scope {
             Column {
                 width: parent.width
 
-                // The faces whose capitals set the head's, the rows' and the
-                // foot's lines (root.headTop, root.rowCaps, root.footBase):
-                // TextMetrics rather than a FontMetrics' call, which a
-                // binding asks once, before the face has loaded, and reads
-                // small ever after (HVD6O3, 2026-11-05).
-                TextMetrics {
-                    id: headCaps
-                    text: "H"
-                    font.family: Theme.level.figure.family
-                    font.pointSize: Theme.level.figure.pointSize
-                    font.weight: Theme.level.figure.weight
-                }
-
+                // The faces whose capitals set the rows' and the foot's
+                // lines (root.rowCaps, root.footBase): TextMetrics rather
+                // than a FontMetrics' call, which a binding asks once,
+                // before the face has loaded, and reads small ever after
+                // (HVD6O3, 2026-11-05).
                 TextMetrics {
                     id: nameCaps
                     text: "H"
@@ -5752,9 +5745,8 @@ Scope {
                     font.pointSize: Theme.level.note.pointSize
                 }
 
-                // What's typed, its capitals an inset inside the frame, its
-                // hairline drawn over its last pixel so the rows meet the
-                // line with what a row leaves.
+                // What's typed, in the band from the frame's inside to its
+                // hairline, its line centred there by eye.
                 Item {
                     width: parent.width
                     height: root.headTall
@@ -5794,8 +5786,10 @@ Scope {
                         // lines start at column 0, left of its number column:
                         // the line is the screen's, the gutter the buffer's,
                         // and a long ask keeps its room (VKCF3Z, 2026-11-05).
-                        y: root.headTop
+                        // It fills the head's band, so its own centring is
+                        // the band's.
                         width: parent.width
+                        height: parent.height
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
@@ -6051,7 +6045,6 @@ Scope {
                     // : is open, made only then.
                     Loader {
                         id: commandLoader
-                        y: root.headTop
                         width: parent.width
                         height: prompt.height
                         active: root.commanding !== null
@@ -6077,7 +6070,6 @@ Scope {
                     // column, and for what went wrong the failed mark in
                     // the alert.
                     Item {
-                        y: root.headTop
                         width: parent.width
                         height: prompt.height
                         visible: root.commandSays
@@ -6096,7 +6088,9 @@ Scope {
                             id: commandSaidText
                             x: Theme.space.rung.inset + root.glyphColumn
                             width: parent.width - x - Theme.space.rung.inset
-                            anchors.verticalCenter: parent.verticalCenter
+                            // On the field's line at rest, centred by eye.
+                            anchors.baseline: parent.top
+                            anchors.baselineOffset: parent.height / 2 + prompt.restingLift
                             text: root.commandSaid
                             textFormat: Text.PlainText
                             elide: Text.ElideRight

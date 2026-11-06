@@ -122,6 +122,7 @@ let
     "CommandBinding.js"
     "ListedKeys.js"
     "Typing.js"
+    "Bands.js"
     "Search.js"
     "Operators.js"
     "Confirm.js"
