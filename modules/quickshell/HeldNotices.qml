@@ -887,7 +887,7 @@ Floating {
     // Keys while the key list shows: the moves scroll it, and Escape, q
     // and Space ? put it away.
     function scrollsKeys(read) {
-        const last = Math.max(keyList.length - listRoom, 0);
+        const last = listLast;
         const by = Math.max(read.count, 1);
         const half = Math.floor(listRoom / 2);
         const scrolls = {
@@ -1095,8 +1095,15 @@ Floating {
     readonly property real nameAt: markAt + Theme.level.name.pitch + Theme.space.rung.mark
     // Space ?'s pitch, the drawer's key list's: Figure's, at Note.
     readonly property real keyPitch: Theme.level.figure.pitch
-    // How many of its lines show: as tall as the rows' room, about.
-    readonly property int listRoom: Math.floor(room * rowHeight / keyPitch)
+    // How many of its lines show: as many as stand within the rows' room,
+    // the first on the first row's baseline and the last a row's leaves
+    // over where the last row's box would end.
+    readonly property real listSpare: (room - 1) * rowHeight
+    readonly property int listRoom: NoticeKeys.shownFrom(keyList, listTop, listSpare, keyPitch,
+        Theme.space.beat)
+    // The furthest it scrolls, its last line shown.
+    readonly property int listLast: NoticeKeys.lastTop(keyList, listSpare, keyPitch,
+        Theme.space.beat)
 
     // The faces, measured by TextMetrics where a binding reads what's
     // measured, since a FontMetrics call in a binding is asked once, before
@@ -1238,7 +1245,7 @@ Floating {
                     return;
                 if (held.listing) {
                     held.listTop = Math.max(0, Math.min(held.listTop + 3 * notches,
-                        Math.max(held.keyList.length - held.listRoom, 0)));
+                        held.listLast));
                     return;
                 }
                 held.scroll(notches > 0 ? "lineDown" : "lineUp", 3 * Math.abs(notches));
@@ -1672,13 +1679,8 @@ Floating {
             readonly property var bases: {
                 const out = [];
                 held.listShown.forEach((one, at) => {
-                    const heading = one.heading !== "";
-                    const before = out[at - 1];
-                    out.push(at === 0 ? held.rowBase
-                        : heading ? before + 2 * held.keyPitch
-                        : held.listShown[at - 1].heading !== ""
-                            ? before + held.keyPitch + Theme.space.beat
-                        : before + held.keyPitch);
+                    out.push(at === 0 ? held.rowBase : out[at - 1]
+                        + NoticeKeys.stepTo(held.listShown, at, held.keyPitch, Theme.space.beat));
                 });
                 return out;
             }
