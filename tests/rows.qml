@@ -26,8 +26,9 @@
 // view, relative to the cursor row's absolute one in text, or all absolute,
 // right-aligned on each row's baseline, from a handful of numbers however
 // many rows there are, and none at all off normal. A row's mark, whatever
-// its shape, stands at one optical size, its ink on the capitals' middle. It
-// exits 0 once every case holds, and otherwise 1, saying which didn't.
+// its shape, stands at one optical size, its ink on the capitals' middle. A
+// status line's dot before Return goes with Return, the room held for a
+// wider word before it. It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import QtQuick.Shapes
@@ -309,6 +310,15 @@ ShellRoot {
                 id: footHints
                 keys: [[":", "commands"], ["Space ?", "keys"], ["\u21b5", "open"]]
                 widths: [0, 0, 200]
+            }
+            // A status line's keys, dotted and set against the right edge,
+            // Return's place held wider than what it says.
+            KeyHints {
+                id: heldHints
+                dotted: true
+                endsRight: true
+                keys: [["Tab", "choose"], ["\u21b5", "start"]]
+                widths: [0, 300]
             }
         }
     }
@@ -937,6 +947,18 @@ ShellRoot {
             for (const [from, to, rung] of rungs)
                 expect(`the keys' ${from} and ${to} stand ${rung} apart`,
                     Math.abs(gap(from, to) - rung) < 1, said(hints));
+            // The dot before Return goes with Return, its held room before
+            // the dot rather than after it, since a dot with bare room on
+            // one side only reads as belonging to nothing (VKCF3Z,
+            // 2026-11-06).
+            const held = drawn(heldHints, []).sort((a, b) => a.from - b.from);
+            const heldAt = text => held.find(t => t.text === text);
+            expect("the dot before Return stands a mark from it",
+                Math.abs(heldAt("\u21b5")?.from - heldAt("\u00b7")?.to
+                    - Theme.space.rung.mark) < 1, said(held));
+            expect("and Return's held room stands before the dot",
+                heldAt("\u00b7")?.from - heldAt("choose")?.to > 2 * Theme.space.rung.mark,
+                said(held));
             expect("a key and its word are measured as they're drawn",
                 Math.abs(footHints.advance("Space ?", "keys")
                     - (hints.find(t => t.text === "keys").to
