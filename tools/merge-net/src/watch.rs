@@ -41,6 +41,14 @@ const STALLS: usize = 2;
 /// How many VM tests run at once on the VM builder.
 pub const AT_ONCE: usize = 2;
 
+/// How many merges a bisect tries at once, spread evenly over what's left,
+/// so each step leaves a quarter of it rather than a half. A step waits on
+/// its slowest merge, and one that fails runs twice in a row, so halving a
+/// hundred merges took seven steps of up to two VM runs each, hours in
+/// which main stayed broken; by quarters it takes four. Its runs go as
+/// bulk, so they take no room another session's run is waiting for.
+const SPLITS: usize = 3;
+
 /// What changed-checks named between two heads.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Changed {
@@ -279,30 +287,63 @@ pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) 
     // of the first known to fail.
     let (mut good, mut bad) = known(state, merges, check)?;
     while good < bad {
-        let middle = good + (bad - good) / 2;
-        let commit = &merges[middle];
-        let passes = match world.has_check(commit, check) {
-            Ok(false) => true,
-            Ok(true) => match attempt(world, state, commit, check) {
-                Outcome::Passed | Outcome::Flaky => true,
-                Outcome::Failed => false,
-                Outcome::Unsent | Outcome::Stalled => return None,
-            },
-            Err(why) => {
-                state.say(&format!(
-                    "couldn't tell whether {} has {check}: {why}",
-                    short(commit)
-                ));
-                return None;
-            }
-        };
-        if passes {
-            good = middle + 1;
-        } else {
-            bad = middle;
+        let tried = spread(good, bad, SPLITS);
+        let passed = std::thread::scope(|scope| {
+            let runs: Vec<_> = tried
+                .iter()
+                .map(|&index| scope.spawn(move || passes(world, state, &merges[index], check)))
+                .collect();
+            runs.into_iter()
+                .map(|run| run.join().ok().flatten())
+                .collect::<Option<Vec<bool>>>()
+        })?;
+        // The first merge tried that fails is where it may have broken, and
+        // the last before it to pass is past where it can have. A pass after
+        // a failure tells nothing, since the failure already bounds it.
+        if let Some(first) = tried.iter().zip(&passed).position(|(_, &ok)| !ok) {
+            bad = tried[first];
+        }
+        if let Some(&last) = tried
+            .iter()
+            .zip(&passed)
+            .rev()
+            .find(|&(&index, &ok)| ok && index < bad)
+            .map(|(index, _)| index)
+        {
+            good = last + 1;
         }
     }
     merges.get(bad).cloned()
+}
+
+/// Up to `splits` indices between `good` and `bad`, spread evenly and each
+/// one different: one is the middle, as a bisect's halving takes it.
+fn spread(good: usize, bad: usize, splits: usize) -> Vec<usize> {
+    let left = bad - good;
+    let tried = splits.min(left);
+    (1..=tried)
+        .map(|nth| good + left * nth / (tried + 1))
+        .collect()
+}
+
+/// Whether `check` passes at `commit` for a bisect, a commit without it
+/// passing; None when a run wasn't taken or it couldn't be told.
+fn passes(world: &dyn World, state: &State, commit: &str, check: &str) -> Option<bool> {
+    match world.has_check(commit, check) {
+        Ok(false) => Some(true),
+        Ok(true) => match attempt(world, state, commit, check) {
+            Outcome::Passed | Outcome::Flaky => Some(true),
+            Outcome::Failed => Some(false),
+            Outcome::Unsent | Outcome::Stalled => None,
+        },
+        Err(why) => {
+            state.say(&format!(
+                "couldn't tell whether {} has {check}: {why}",
+                short(commit)
+            ));
+            None
+        }
+    }
 }
 
 /// Where a bisect over `merges` starts: just after the last merge where
@@ -1183,6 +1224,45 @@ mod tests {
         assert!(
             world.built().contains(&("m1".into(), "vm-a".into())),
             "m1, before m2, passes"
+        );
+    }
+
+    #[test]
+    fn a_bisect_step_tries_merges_spread_over_what_is_left() {
+        assert_eq!(spread(0, 14, 3), vec![3, 7, 10]);
+        assert_eq!(spread(8, 10, 3), vec![8, 9], "each merge left once");
+        assert_eq!(spread(4, 5, 3), vec![4]);
+        assert_eq!(spread(2, 9, 1), vec![5], "one is the middle");
+    }
+
+    #[test]
+    fn a_bisect_over_many_merges_narrows_by_quarters() {
+        let state = state("quarters");
+        let mut world = Stand {
+            head: "m15".into(),
+            merges: names("m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15"),
+            changed: changed("vm-a"),
+            missing: vec![("s".into(), "vm-a".into())],
+            ..Stand::default()
+        };
+        for broken in 11..=15 {
+            world = world.exits(&format!("m{broken}"), "vm-a", &[1]);
+        }
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m15".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("m11"));
+        let built = world.built();
+        for tried in ["m4", "m8", "m9", "m10", "m11"] {
+            assert!(
+                built.contains(&(tried.into(), "vm-a".into())),
+                "{tried} is tried: {built:?}"
+            );
+        }
+        assert!(
+            !built.contains(&("m12".into(), "vm-a".into())),
+            "a halving's second step, m12, is never needed: {built:?}"
         );
     }
 
