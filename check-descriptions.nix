@@ -545,8 +545,9 @@
     and puts each back as it was; switches zswap off for the image and on again after, only when
     it was on; and says whether an image fits by the kernel's sums (half of
     memory less what it keeps back and twice the reserve, against what's in use less cache,
-    slabs, the free pages waiting on each processor's list and the anonymous memory swap has room
-    for)
+    slabs, the graphics pool's freed pages, the free pages waiting on each processor's list and
+    the anonymous memory swap has room for); and keeps the processor's count when a restore
+    begins, and says from it how long the restore took, in seconds
   '';
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
