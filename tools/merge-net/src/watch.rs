@@ -38,8 +38,12 @@ const FAILURES: usize = 2;
 /// there: a builder that hangs on it would hang again.
 const STALLS: usize = 2;
 
-/// How many VM tests run at once on the VM builder.
-pub const AT_ONCE: usize = 2;
+/// How many VM tests run at once: the room a VM builder has for them,
+/// nix-offload's `VM_ROOM`. The net's runs go as bulk, which every other
+/// run goes before, so taking the whole room costs a session's run nothing,
+/// while on 6 November a round of 33 tests at two at a time held main for
+/// two hours after its fix forward had passed.
+pub const AT_ONCE: usize = 4;
 
 /// How many merges a bisect tries at once, spread evenly over what's left,
 /// so each step leaves a quarter of it rather than a half. A step waits on
@@ -557,7 +561,6 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         _ => world.head()?,
     };
     clear_if_reverted(world, state)?;
-    let hold = state.hold();
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
         return Ok(Round::Idle);
@@ -565,6 +568,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     state.begin(&head)?;
     state.say(&format!("comparing {} with {}", short(&base), short(&head)));
     let changed = world.changed(&base, &head)?;
+    let hold = clear_if_fixed_forward(world, state, &changed, &head)?;
     find_broken(world, state, &changed, &base, &head)?;
     // A test held for a revert not yet merged is left until it is; one held
     // with no revert, as when the revert wouldn't apply, runs again, since
@@ -657,6 +661,40 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     state.set_heads(&head, &head)?;
     state.say(&format!("{} passed every VM test it changed", short(&head)));
     Ok(Round::Passed(head))
+}
+
+/// Run a test held with no revert at the new head before anything else, and
+/// clear the hold the moment it passes. Every merge waits off the machine
+/// while main is held, and on 6 November a fix forward merged two minutes
+/// after a hold sat behind 18 minutes of older failures' checks and a whole
+/// round in name order. The loop after reuses this run, as it's recorded.
+/// Answers the hold as it stands afterwards.
+fn clear_if_fixed_forward(
+    world: &dyn World,
+    state: &State,
+    changed: &Changed,
+    head: &str,
+) -> Result<Option<Value>, String> {
+    let hold = state.hold();
+    let Some(test) = hold
+        .as_ref()
+        .filter(|hold| !hold["revert_commit"].is_string())
+        .and_then(|hold| hold["test"].as_str().map(str::to_owned))
+    else {
+        return Ok(hold);
+    };
+    if !changed.vm_tests().contains(&test) {
+        return Ok(hold);
+    }
+    if !matches!(attempt(world, state, head, &test), Outcome::Passed) {
+        return Ok(hold);
+    }
+    state.clear_hold()?;
+    state.say(&format!(
+        "{test} passes again at {}, so the hold is cleared",
+        short(head)
+    ));
+    Ok(None)
 }
 
 /// Tell the owner of `head` that `test` stalled there twice.
@@ -1411,6 +1449,28 @@ mod tests {
             round(&world, &state, "s").unwrap(),
             Round::Passed("h".into())
         );
+        assert!(state.hold().is_none());
+    }
+
+    #[test]
+    fn a_held_test_runs_first_and_its_pass_clears_the_hold_at_once() {
+        let state = state("first");
+        state
+            .set_hold(&json!({ "test": "vm-z", "bad": "b", "revert_pr": null }))
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("b h"),
+            changed: changed("vm-a vm-b vm-z"),
+            ..Stand::default()
+        };
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        let built = world.built();
+        assert_eq!(built[0], ("h".into(), "vm-z".into()), "{built:?}");
+        assert_eq!(built.len(), 3, "the held test's run is reused: {built:?}");
         assert!(state.hold().is_none());
     }
 
