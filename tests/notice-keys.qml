@@ -98,7 +98,9 @@ QtObject {
             [": is the command line", [":"], ["command"]],
             ["ZZ and Space w let go", ["Z", "Z", "Space", "w"], ["close", "close"]],
             ["q does nothing, and says so", ["q"], ["quiet"]],
-            ["Escape at rest lets go", ["Escape"], ["back"]],
+            // Escape never closes anything of ours (Joel, 2026-11-05: "fuck
+            // escape quitting"): at rest it does nothing, as Vim's.
+            ["Escape at rest does nothing", ["Escape"], []],
             ["Escape cancels a count first", ["4", "Escape", "j"], ["down"]],
             ["Escape cancels a key waiting for its second", ["g", "Escape", "g"], []],
             ["Space ? and F1 list the keys", ["Space", "?", "F1"], ["keys", "keys"]],

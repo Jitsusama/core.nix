@@ -6,9 +6,9 @@
  				}
 -				else if (is_in(key, "escape", "m")) {
 +				//? Escape backs out a step: out of a process's details, off the
-+				//? process chosen, then out of btop; m alone opens the menu.
++				//? process chosen, and then does nothing; m alone opens the menu.
 +				else if (key == "escape" and not (Proc::shown and (Config::getI("proc_selected") > 0 or Config::getB("show_detailed")))) {
-+					clean_quit(0);
++					return;
 +				}
 +				else if (key == "m") {
  					Menu::show(Menu::Menus::Main);
@@ -41,7 +41,7 @@
  		{"Mouse scroll", "Scrolls any scrollable list/text under cursor."},
 -		{"Esc, m", "Toggles main menu."},
 +		{"m", "Toggles main menu."},
-+		{"Esc", "Backs out a step, then quits."},
++		{"Esc", "Backs out a step."},
  		{"p", "Cycle view presets forwards."},
  		{"shift + p", "Cycle view presets backwards."},
  		{"1", "Toggle CPU box."},

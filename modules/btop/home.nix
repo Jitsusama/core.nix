@@ -14,8 +14,9 @@
 # when the window grows (gives-way.patch).
 #
 # Escape backs out a step, as it does everywhere else: out of a process's
-# details, off the process chosen, then out of btop, and m alone opens the
-# menu Escape used to (escape-backs-out.patch). Left and Right choose what
+# details, off the process chosen, and then does nothing, never ending
+# btop, which q does; m alone opens the menu Escape used to
+# (escape-backs-out.patch). Left and Right choose what
 # the processes are sorted by, that way along their columns.
 #
 # While it runs, btop names the terminal's window btop, keeping the title

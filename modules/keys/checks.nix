@@ -123,6 +123,16 @@ let
       ];
       says = "zathura: Shift+Down gives an arrow its own act, where an arrow is only its letter's motion";
     }
+    # Escape never closes or quits anything of ours (Joel, 2026-11-05).
+    {
+      layers = keyMap "escape-closes" [
+        {
+          name = "inlyne";
+          binds = [ (bind "Escape" "escape" "" // { does = "Close the reader"; }) ];
+        }
+      ];
+      says = ''inlyne: Escape does "Close the reader", where Escape never closes or quits'';
+    }
   ];
 
   # Each way the language itself can stray, as acts added to it, with what
@@ -293,6 +303,16 @@ let
       says = "stray takes ctrl+down in normal mode, where an arrow is only its letter's motion";
     }
     {
+      name = "escape-given-away";
+      adds = ''
+        [acts.stray]
+        keys = ["<Esc>"]
+        modes = ["visual"]
+        kinds = ["page"]
+      '';
+      says = "stray takes escape, where Escape only steps back, as Vim's does";
+    }
+    {
       name = "a-mode-unnamed";
       adds = ''
         [acts.stray]
@@ -366,7 +386,9 @@ in
   # name to, read once as a file of its own. In normal and visual mode an
   # arrow is its letter's motion and nothing else, alone, on every layer of
   # ours, his Neovim's too; an arrow after the leader overlays Vim's keys
-  # (Joel, 2026-11-05). So the check can't pass by
+  # (Joel, 2026-11-05). Escape only steps back, as Vim's, and no layer of
+  # ours closes or quits by it (Joel, 2026-11-05: "fuck escape quitting");
+  # his Neovim keeps its own. So the check can't pass by
   # seeing nothing, each way of straying is shown to fail first, as is a
   # language that gives one key to two acts and the reader leaving out a
   # key it takes only while selecting.
