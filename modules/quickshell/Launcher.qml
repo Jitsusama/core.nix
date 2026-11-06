@@ -5478,7 +5478,9 @@ Scope {
             // The room held for the widest keys since opening, and what the
             // keys said now take, so a test can tell which held it.
             keysRoom: { held: Math.round(Math.min(root.footKeysWidest, foot.keysRoom)),
-                said: Math.round(root.keysWide(foot.kept)) },
+                said: Math.round(root.keysWide(foot.kept)), left: Math.round(foot.keysRoom),
+                told: Math.round(root.keysWide(foot.told)),
+                mode: Math.round(modeWord.room), least: Math.round(standing.least) },
             // The keys the foot says now, each its mark and its word.
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
@@ -7235,14 +7237,16 @@ Scope {
                             // The widest it says often and its gap, held
                             // whatever shows: visual's count in as many figures
                             // as the place has rows, which hold still while it
-                            // chooses, or three while the drawer shows a page,
-                            // which counts letters too, so a count or an
+                            // chooses, or three while the drawer is out, its
+                            // page counting letters too, so a count or an
                             // operator's words never move the facts beside it.
                             // Three figures always held "999 chosen" beside two
-                            // rows, and cost visual its y (VKCF3Z, 2026-11-06). A binding doesn't see what a
-                            // call reads, so it reads the face itself, to be
-                            // measured again in the theme's face once that
-                            // arrives.
+                            // rows, and cost visual its y (VKCF3Z, 2026-11-06).
+                            // The drawer's out, not what it shows, since it
+                            // holds a row's page while it's in. A binding
+                            // doesn't see what a call reads, so it reads the
+                            // face itself, to be measured again in the theme's
+                            // face once that arrives.
                             readonly property real room: {
                                 void measure.font;
                                 // What the place says widens it while it says
@@ -7250,7 +7254,7 @@ Scope {
                                 const widest = Math.max(root.placeSays === "" ? 0
                                     : measure.advanceWidth(root.placeSays),
                                     measure.advanceWidth(Operators.chosenSaid("9".repeat(
-                                        drawerCard.shown ? 3
+                                        drawerCard.out ? 3
                                             : String(Math.max(1, root.matches.length)).length),
                                         Words.field.visual ?? {})));
                                 return Theme.space.rung.groups + Math.ceil(widest);
