@@ -1250,7 +1250,8 @@
     boot
   '';
   session-memory-is-protected = ''
-    every slice above session.slice carries a hard memory floor
+    session.slice and app.slice carry hard memory floors and agents.slice only a soft one, and every
+    slice above them carries one hard and one soft floor, the same at each
   '';
   sessions-sit-beside-the-programs = ''
     agents' sessions have a slice beside Joel's programs at their weight, and the sorter watches both
@@ -2137,8 +2138,9 @@
     none); with one named, io.cost holds its model and qos, no slice holds a target, one left from
     before is cleared as io.cost turns on, and stopping its `disk-order-<disk>` unit turns io.cost
     off; every slice's io.weight follows its CPU weight;
-    app.slice holds a hard 13% of memory, session.slice 1.5 GiB and every slice above them 16%, and
-    jobs is slowed past half; timed work sits at 10000 inside idle jobs, and work in jobs can move
+    app.slice holds a hard 10% of memory and session.slice a hard 2.5 GiB, agents.slice a soft 15%
+    and no hard floor, every slice above them a hard 15% and a soft 15%, and jobs is slowed past
+    half; timed work sits at 10000 inside idle jobs, and work in jobs can move
     itself there; a scope work in jobs starts goes back to the scope of the work that started it,
     and one with a memory ceiling stays; each command written into jobs.service gets a scope of its
     own in jobs-work.slice, at weight 100, with its own swap, and the holder stays; one naming a
