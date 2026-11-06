@@ -1956,13 +1956,9 @@ Floating {
         }
     }
 
-    // How many menu lines show: ten at most, and no more than the screen
-    // has rows for besides the head, the lines, the command line and the
-    // foot, so the line being typed never falls off it; three at least.
-    // The list stands the screen rung from the screen's edges, as every
-    // floating frame does.
-    readonly property int screenRows: Math.floor((screenHeight
-        - 2 * Theme.space.rung.screen) / rowHeight)
+    // How many menu lines show: ten at most, and no more than the height
+    // the lines leave while the command line is up, so the line being
+    // typed never falls off the screen; one at least.
     readonly property int menuRoom: Math.max(1, Math.min(10,
         Math.floor((commandTall - inView.length * rowHeight) / commandMenu.pitch) - 1))
     // How tall the lines and the menu may be while the command line is up:
