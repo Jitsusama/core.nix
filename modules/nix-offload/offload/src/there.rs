@@ -2281,8 +2281,12 @@ pub fn admitted<'a>(
         // Let go before the other's is taken, so two runs waiting on each
         // other's builders never hold one lock each and wait on the other.
         drop(lock);
+        // Waiting on a warm builder, never one that's cold, though one
+        // warming now may be warm by the next look.
+        let here_warm = warm(dir);
         if let Some((other, claimed)) = others
             .iter()
+            .filter(|other| !here_warm || warm(other))
             .find_map(|other| Some((*other, free(other, wants, room, bulk)?)))
         {
             eprintln!(
@@ -2507,6 +2511,79 @@ pub fn featured(asked: &Asked, nix: &str) -> BTreeSet<String> {
 /// Whether a lender runs for `dir`, as its `lender` file says.
 pub fn lends(dir: &Path) -> bool {
     pid_in(&dir.join("lender")).is_some_and(runs)
+}
+
+/// The file a VM lender keeps in its folder while the builder it has just
+/// stood builds what warms it, holding the lender's pid and the builder's
+/// name, so one a lender left as it stopped says nothing.
+pub const WARMING: &str = "warming";
+
+/// Whether `dir`'s builder stands and is warm: a lender that stood it
+/// has finished warming it, or never did. On 6 November each fresh VM
+/// builder's first tests took 65 to 80 minutes building the desktop for
+/// themselves, against 2 to 12 once warm, so VM tests go to a warm one
+/// while any stands.
+pub fn warm(dir: &Path) -> bool {
+    let stands = fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty());
+    let warming = fs::read_to_string(dir.join(WARMING)).is_ok_and(|held| {
+        held.split_whitespace()
+            .next()
+            .and_then(|pid| pid.parse().ok())
+            .is_some_and(runs)
+    });
+    stands && !warming
+}
+
+/// Whether `dir`'s lender is making its builder ready or warming it, so
+/// it will have room for VM tests without being asked.
+pub fn coming(dir: &Path) -> bool {
+    let said =
+        |name: &str| fs::read_to_string(dir.join(name)).is_ok_and(|text| !text.trim().is_empty());
+    said("lending") || said("store")
+}
+
+/// Asks `dir`'s lender for a builder while this run lives, as a build
+/// waiting for one does, without sending it anything: the VM tests go to
+/// the warm builders, and this one warms for those after.
+pub fn want(dir: &Path) {
+    let wanted = dir.join("wanted");
+    if fs::create_dir_all(&wanted).is_ok() {
+        let _ = fs::write(wanted.join(std::process::id().to_string()), "");
+    }
+}
+
+/// How many cold VM builders to ask for, besides those `coming`, so that
+/// `count` VM tests past the room of the warm builders, which have `busy`
+/// sent to them and run `builds` at once each, find room once those warm.
+pub fn to_warm(count: usize, busy: &[usize], builds: usize, coming: usize) -> usize {
+    let past = (busy.iter().sum::<usize>() + count).saturating_sub(busy.len() * builds);
+    past.div_ceil(builds.max(1)).saturating_sub(coming)
+}
+
+/// Has the lent builder build `installables` for itself, so the VM tests
+/// sent there after find most of what they need already built; whether
+/// it built them all.
+pub fn warmed(lent: &Builder, installables: &[String], scratch: &Path, ssh: &str) -> bool {
+    let Ok((mut warming, known, said)) = reach(lent, scratch, ssh) else {
+        return false;
+    };
+    let command = ["nix", "build", "--no-link", "--keep-going"]
+        .into_iter()
+        .map(str::to_owned)
+        .chain(installables.iter().map(|installable| quoted(installable)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let built = warming
+        .arg(&lent.host)
+        .arg(command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    for file in [&known, &said] {
+        let _ = fs::remove_file(file);
+    }
+    built
 }
 
 /// The patterns of VM tests' attributes in a file of them, a line each;
@@ -3709,6 +3786,65 @@ mod tests {
         assert!(
             !to_second(None, &Second::Unlent),
             "a first that can't be read keeps it"
+        );
+    }
+
+    #[test]
+    fn cold_vm_builders_are_asked_for_as_the_warm_ones_room_runs_out() {
+        assert_eq!(to_warm(6, &[0], 6, 0), 0, "all fit the warm one");
+        assert_eq!(to_warm(7, &[0], 6, 0), 1, "one past it");
+        assert_eq!(to_warm(3, &[5, 6], 6, 0), 1, "two past both");
+        assert_eq!(to_warm(13, &[0], 6, 1), 1, "seven past, one on its way");
+        assert_eq!(to_warm(7, &[0], 6, 2), 0, "more on their way than needed");
+    }
+
+    #[test]
+    fn a_vm_builder_is_warm_once_it_stands_and_isnt_warming() {
+        let folder = tempfile::tempdir().unwrap();
+        let dir = folder.path();
+        assert!(!warm(dir), "none stands");
+        fs::write(dir.join("store"), "ssh-ng://b\n").unwrap();
+        assert!(warm(dir));
+        fs::write(dir.join(WARMING), format!("{} b-1\n", std::process::id())).unwrap();
+        assert!(!warm(dir), "its lender warms it");
+        fs::write(dir.join(WARMING), "999999999 b-1\n").unwrap();
+        assert!(warm(dir), "a lender that stopped warms nothing");
+    }
+
+    #[test]
+    fn a_builder_warms_by_building_what_its_lender_names() {
+        let folder = tempfile::tempdir().unwrap();
+        // Written elsewhere and copied, so no writer holds it as it runs.
+        let draft = folder.path().join("draft");
+        let ssh = folder.path().join("ssh");
+        fs::write(
+            &draft,
+            "#!/bin/sh\nhere=$(dirname \"$0\")\nfor word; do last=$word; done\n\
+             printf '%s\\n' \"$last\" > \"$here/told\"\n[ ! -f \"$here/fails\" ]\n",
+        )
+        .unwrap();
+        assert!(
+            Command::new("cp")
+                .arg(&draft)
+                .arg(&ssh)
+                .status()
+                .unwrap()
+                .success()
+        );
+        fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let lent = builder("ssh-ng://b").unwrap();
+        let installables = ["github:o/r#checks.x.vm-a.driver".to_owned()];
+        let scratch = folder.path().join("scratch");
+        let ssh = ssh.to_str().unwrap();
+        assert!(warmed(&lent, &installables, &scratch, ssh));
+        assert_eq!(
+            fs::read_to_string(folder.path().join("told")).unwrap(),
+            "nix build --no-link --keep-going 'github:o/r#checks.x.vm-a.driver'\n"
+        );
+        fs::write(folder.path().join("fails"), "").unwrap();
+        assert!(
+            !warmed(&lent, &installables, &scratch, ssh),
+            "one it couldn't build"
         );
     }
 

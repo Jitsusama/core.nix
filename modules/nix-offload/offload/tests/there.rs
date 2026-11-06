@@ -3151,6 +3151,48 @@ fn vm_tests_past_two_vm_builders_room_go_to_a_third_at_once() {
     );
 }
 
+// On 6 November each fresh VM builder's first tests took 65 to 80 minutes
+// building the desktop for themselves, against 2 to 12 once warm, so while
+// a warm VM builder stands, none goes to one that's cold: one warming, or
+// one not yet asked, which is asked for once the warm ones' room runs out.
+#[test]
+fn vm_tests_go_to_a_warm_vm_builder_while_one_stands() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let warming = rig.more.join("warming");
+    fs::write(&warming, format!("{} vm-more-1\n", std::process::id())).unwrap();
+    // A third whose lender runs with no builder yet.
+    fs::create_dir(&rig.third).unwrap();
+    fs::write(rig.third.join("lender"), std::process::id().to_string()).unwrap();
+
+    let (built, said) = rig.sent(8);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 8, "{built:?} {said}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 0, "{built:?}");
+    assert!(said.contains("so VM tests go to the warm one"), "{said}");
+    assert!(
+        !rig.third.join("wanted").exists(),
+        "the warming one is room enough to come: {said}"
+    );
+
+    let (built, said) = rig.sent(14);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 14, "{built:?} {said}");
+    assert!(said.contains("and 1 more is asked for"), "{said}");
+    assert_eq!(
+        fs::read_dir(rig.third.join("wanted")).unwrap().count(),
+        1,
+        "the third is asked for while the run waits: {said}"
+    );
+
+    fs::remove_file(&warming).unwrap();
+    let (built, said) = rig.sent(8);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 6, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        2,
+        "warm now: {built:?}"
+    );
+}
+
 // A run sent where others wait for room goes only after them, so those
 // waiting count as the builder's too: on 4 November ten runs waited 51
 // minutes on the first VM builder, with 2 of its 4 claimed, while the

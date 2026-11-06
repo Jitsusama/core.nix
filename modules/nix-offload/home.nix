@@ -38,6 +38,17 @@ let
     "--deadline ${cfg.deadline}"
   ]
   ++ lib.optional (cfg.longest != null) "--longest ${cfg.longest}";
+  # What warms a VM builder for core's own VM tests: the driver of a desktop
+  # one, whose machine nearly every VM run since 6 November shares,
+  # run-subtests' included, built from core's main as the builder stands.
+  warmOfCore = [
+    "github:Jitsusama/core.nix#checks.x86_64-linux.vm-desktop-launcher-finds-by-name.driver"
+  ];
+  # What a VM lender has each builder it stands build before it takes VM
+  # tests, so none waits an hour on a cold one.
+  warming = lib.optional (
+    cfg.vmTests != null && cfg.vmTests.warm != [ ]
+  ) "--warm ${lib.escapeShellArg (lib.concatStringsSep " " cfg.vmTests.warm)}";
   # Named here, since glibc without it reads a zone it can't find as UTC,
   # and says nothing.
   zoned = [
@@ -101,6 +112,7 @@ let
             "--prefix ${lender.prefix}"
             "--dir /run/nix-offload-vm-${toString number} --only-there"
           ]
+          ++ warming
         );
         Environment = vmEnvironment lender.environment;
       }
@@ -203,6 +215,18 @@ in
               description = ''
                 What the helper is told for this builder, such as the port its
                 way to it takes, so it holds one beside the first builder's.
+              '';
+            };
+            warm = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = warmOfCore;
+              description = ''
+                What each VM builder builds for itself as it stands, before it
+                takes VM tests, as installables its Nix is given. While a warm
+                one stands, `there` sends VM tests only to warm ones: on 6
+                November a fresh one's first tests took 65 to 80 minutes
+                building the desktop, against 2 to 12 once warm. Empty, each
+                takes VM tests cold.
               '';
             };
             builds = lib.mkOption {
@@ -519,6 +543,7 @@ in
             "--prefix ${cfg.vmTests.prefix}"
             "--dir /run/nix-offload-vm --only-there"
           ]
+          ++ warming
         );
         Environment = vmEnvironment cfg.vmTests.environment;
       }
@@ -540,6 +565,7 @@ in
                 "--prefix ${cfg.vmTests.more.prefix}"
                 "--dir /run/nix-offload-vm-more --only-there"
               ]
+              ++ warming
             );
             Environment = vmEnvironment cfg.vmTests.more.environment;
           }

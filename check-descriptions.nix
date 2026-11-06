@@ -914,7 +914,8 @@
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender
-    that ends superseded is started again from the new unit
+    that ends superseded is started again from the new unit; every VM lender, and no other,
+    warms each builder it stands, by default with a check core still has
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
