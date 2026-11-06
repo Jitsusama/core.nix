@@ -6575,91 +6575,91 @@
       "provider": "networks",
       "start": "ip ",
       "form": "⟨address or network⟩",
-      "says": "an address's range and who holds it"
+      "says": "An address's range and who holds it"
     },
     {
       "id": "command:mac",
       "provider": "vendors",
       "start": "mac ",
       "form": "⟨hardware address⟩",
-      "says": "who made it"
+      "says": "Who made it"
     },
     {
       "id": "command:sum",
       "provider": "calculator",
       "start": "",
       "form": "⟨sum⟩",
-      "says": "worked out as it's typed"
+      "says": "Worked out as it's typed"
     },
     {
       "id": "command:within",
       "provider": "networks",
       "start": "is ",
       "form": "⟨address⟩ in ⟨network⟩",
-      "says": "whether a network holds an address"
+      "says": "Whether a network holds an address"
     },
     {
       "id": "command:split",
       "provider": "networks",
       "start": "",
       "form": "⟨network⟩ in /⟨prefix⟩s",
-      "says": "a network split into smaller ones"
+      "says": "A network split into smaller ones"
     },
     {
       "id": "command:char",
       "provider": "characters",
       "start": "char ",
       "form": "⟨number or character⟩",
-      "says": "a character and its codes"
+      "says": "A character and its codes"
     },
     {
       "id": "command:utf8",
       "provider": "characters",
       "start": "utf8 ",
       "form": "⟨text⟩",
-      "says": "text as UTF-8's bytes"
+      "says": "Text as UTF-8's bytes"
     },
     {
       "id": "command:units",
       "provider": "units",
       "start": "",
       "form": "⟨amount⟩ ⟨unit⟩ in ⟨unit⟩",
-      "says": "a measure in another unit"
+      "says": "A measure in another unit"
     },
     {
       "id": "command:money",
       "provider": "currency",
       "start": "",
       "form": "⟨amount⟩ ⟨currency⟩ in ⟨currency⟩",
-      "says": "money at today's rate"
+      "says": "Money at today's rate"
     },
     {
       "id": "command:time",
       "provider": "time",
       "start": "time in ",
       "form": "⟨place⟩",
-      "says": "the time somewhere"
+      "says": "The time somewhere"
     },
     {
       "id": "command:weather",
       "provider": "weather",
       "start": "weather in ",
       "form": "⟨place⟩",
-      "says": "the weather somewhere"
+      "says": "The weather somewhere"
     },
     {
       "id": "command:colour",
       "provider": "colours",
       "start": "colour ",
       "form": "⟨colour⟩",
-      "says": "a colour in its other forms"
+      "says": "A colour in its other forms"
     },
     {
       "id": "command:volume",
       "provider": "sound",
       "start": "volume ",
       "form": "⟨percent⟩",
-      "says": "sets how loud",
+      "says": "Sets how loud",
       "verb": "set"
     },
     {
@@ -6667,7 +6667,7 @@
       "provider": "displays",
       "start": "brightness ",
       "form": "⟨percent⟩",
-      "says": "sets the screen's brightness",
+      "says": "Sets the screen's brightness",
       "verb": "set"
     },
     {
@@ -6675,7 +6675,7 @@
       "provider": "light",
       "start": "desk light ",
       "form": "⟨percent, warmth, on or off⟩",
-      "says": "sets the desk light",
+      "says": "Sets the desk light",
       "verb": "set"
     },
     {
@@ -6683,7 +6683,7 @@
       "provider": "time",
       "start": "epoch",
       "form": "",
-      "says": "seconds since 1970, and the clock's other figures"
+      "says": "Seconds since 1970, and the clock's other figures"
     }
   ],
   "field": {
