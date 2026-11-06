@@ -135,12 +135,21 @@ in
   # disko makes the swap file only when it installs, so a machine whose
   # swapSize grew since grows its file as it next starts, before anything
   # swaps to it (swap-file-grows.sh says when it won't). Never on a switch,
-  # since the file is in use then.
+  # since the file is in use then. Swap starts before local-fs.target, so
+  # this does too, without the default dependencies that would order it
+  # after basic.target and make a loop systemd breaks by dropping jobs.
   config.systemd.services.swap-file-grows = {
     description = "Grow the swap file to ${cfg.swapSize}";
     wantedBy = [ "swap-swapfile.swap" ];
-    before = [ "swap-swapfile.swap" ];
-    unitConfig.RequiresMountsFor = "/swap";
+    before = [
+      "swap-swapfile.swap"
+      "shutdown.target"
+    ];
+    unitConfig = {
+      DefaultDependencies = false;
+      RequiresMountsFor = "/swap";
+    };
+    conflicts = [ "shutdown.target" ];
     restartIfChanged = false;
     serviceConfig = {
       Type = "oneshot";

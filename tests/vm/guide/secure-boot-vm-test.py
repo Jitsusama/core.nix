@@ -209,6 +209,16 @@ def test_real_system_installs_with_measured_boot(real: QemuMachine) -> None:
     assert blessed > up, "the boot was blessed before its services were up"
 
 
+def test_real_system_boots_without_an_ordering_cycle(real: QemuMachine) -> None:
+    """The real system boots without an ordering cycle.
+
+    Its disk and swap file are the installed machine's, whose units the desktop's VMs don't
+    have, and systemd breaks a loop by dropping a job it picks, such as the measured-boot
+    policy.
+    """
+    real.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+
 def test_measured_boot_policy_covers_pcrs_0_4_and_7(real: QemuMachine) -> None:
     """The measured-boot policy covers PCRs 0, 4 and 7."""
     real.wait_for_unit("systemd-pcrlock-make-policy.service")
