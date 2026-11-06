@@ -1377,8 +1377,9 @@ Scope {
             glyph: Words.glyph(id),
             hue: "voice",
             chord: [],
-            side: "",
-            count: String(things.length),
+            // How many at its right, where a row's figure stands (VKCF3Z,
+            // 2026-11-05: one place for each kind of fact).
+            side: String(things.length),
             chip: entry.name.toLowerCase(),
             title: entry.name,
             nested: true,
