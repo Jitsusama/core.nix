@@ -882,6 +882,7 @@ Floating {
             return;
         }
         act(read);
+        standing = NoticeKeys.settled(standing, Date.now());
     }
 
     // Keys while the key list shows: the moves scroll it, and Escape, q
