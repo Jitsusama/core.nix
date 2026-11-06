@@ -36,7 +36,27 @@ const BUSY_EVERY: Duration = Duration::from_millis(100);
 
 /// Runs one update, telling `tell` each step as it starts, and gives its
 /// ending.
+///
+/// A grant made before it starts is its own, and no grant outlives it,
+/// however it ends: one left by an ask refused as busy, or by a build that
+/// held nothing, would otherwise let a later switch restart a held daemon
+/// after the work it was held for went on.
 pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
+    let granted = take_grant(config);
+    let ending = run(config, granted, tell);
+    take_grant(config);
+    ending
+}
+
+/// Takes away the grant for held changes, saying whether there was one.
+fn take_grant(config: &Config) -> bool {
+    config
+        .holds
+        .as_ref()
+        .is_some_and(|holds| fs::remove_file(&holds.given).is_ok())
+}
+
+fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     let last = last(config);
     if let Some(why) = too_low(config).or_else(|| busy(config)) {
         return Line::Refused { commit: last, why };
@@ -102,8 +122,22 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
         Err(failure) => return failed(last, failure),
     };
     // What was built stays in the store, so the next ask switches at once.
-    if let Some(why) = busy(config).or_else(|| held(config, &built)) {
+    if let Some(why) = busy(config).or_else(|| held(config, &built, granted)) {
         return Line::Refused { commit: last, why };
+    }
+    // Heads that moved without moving the system, such as a merge of
+    // another machine's files, switch nothing, and so restart nothing a
+    // switch would.
+    if system::current(config).is_some() && system::current(config) == fs::canonicalize(&built).ok()
+    {
+        if let Err(e) = remember(config, &head).and_then(|()| follows::remember(config, &followed))
+        {
+            return failed(Some(head), e);
+        }
+        return Line::Unchanged {
+            commit: head,
+            followed,
+        };
     }
 
     tell(&Line::Switching {
@@ -190,9 +224,8 @@ fn too_low(config: &Config) -> Option<String> {
 }
 
 /// Why switching to `built` waits for a hold, when it would restart a held
-/// daemon or change a held path and no asker has granted it. A grant is taken by the switch it
-/// lets through, so the next one needs its own.
-fn held(config: &Config, built: &std::path::Path) -> Option<String> {
+/// daemon or change a held path and the update wasn't `granted` it.
+fn held(config: &Config, built: &std::path::Path, granted: bool) -> Option<String> {
     let holds = config.holds.as_ref()?;
     let current = system::current(config)?;
     let units = holds
@@ -204,7 +237,7 @@ fn held(config: &Config, built: &std::path::Path) -> Option<String> {
         .iter()
         .filter(|p| system::path_changed(&current, built, p));
     let changes: Vec<&str> = units.chain(paths).map(String::as_str).collect();
-    if changes.is_empty() || fs::remove_file(&holds.given).is_ok() {
+    if changes.is_empty() || granted {
         return None;
     }
     Some(format!(

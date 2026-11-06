@@ -100,12 +100,15 @@ impl World {
         // go to their own builders, failing while no-kept-builder is there.
         // Either may be built here, small, which writes them in here. A system's
         // build starts a call while call-starts is there. Each input
-        // overridden is written down.
+        // overridden is written down, and a system made for a commit with
+        // its input at a rev, as COMMIT+REV, is what they build.
+        // Otherwise the system is the commit's own.
         write_program(
             &stand_ins.join("nix"),
             &format!(
-                "{head}\nprev=\nbefore=\nfor a; do\n\
-                 [ \"$before\" = --override-input ] && echo \"$prev $a\" >> {overridden}\n\
+                "{head}\nprev=\nbefore=\ninput=\nfor a; do\n\
+                 [ \"$before\" = --override-input ] && echo \"$prev $a\" >> {overridden} \
+                 && input=${{a##*rev=}} && input=${{input%%&*}}\n\
                  before=$prev; prev=$a; last=$a; done\n\
                  case \" $* \" in\n\
                  *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
@@ -139,6 +142,7 @@ impl World {
                  echo \"$rev\" >> {log}\n\
                  if [ -e {call_starts} ]; then touch {call}; fi\n\
                  if [ -e {systems}/$rev.fails ]; then echo 'error: builder failed' >&2; exit 1; fi\n\
+                 if [ -n \"$input\" ] && [ -e {systems}/$rev+$input ]; then rev=$rev+$input; fi\n\
                  echo {systems}/$rev\n",
                 log = root.join("builds").display(),
                 fetched = root.join("fetched").display(),
@@ -1331,6 +1335,7 @@ fn main_where_it_was_with_its_input_moved_on_is_built_again() {
         }
     );
     let newer = world.core_commit("newer", true);
+    world.system(&format!("{head}+{newer}"));
     assert_eq!(world.update().1, following_done(&head, &newer));
     assert_eq!(world.builds(), 2);
 }
@@ -1737,6 +1742,56 @@ fn a_switch_leaving_held_daemons_as_they_are_needs_no_hold() {
     let head = world.signed("one");
     daemon_unit(&world.system(&head), "same");
     assert_eq!(world.update().1, done(&head));
+}
+
+#[test]
+fn a_grant_ends_with_the_ask_it_was_made_for_even_when_refused_as_busy() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    refuse_during_calls(&mut world);
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "new");
+    fs::write(world.root.join("given"), "").unwrap();
+    fs::write(world.root.join("call"), "").unwrap();
+    assert!(matches!(world.update().1, Line::Refused { .. }));
+    assert!(!world.root.join("given").exists());
+    // Once the call is over, the next ask needs a grant of its own.
+    fs::remove_file(world.root.join("call")).unwrap();
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+}
+
+#[test]
+fn a_grant_ends_with_an_ask_that_held_nothing() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let head = world.signed("one");
+    daemon_unit(&world.system(&head), "same");
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(world.update().1, done(&head));
+    assert!(!world.root.join("given").exists());
+}
+
+#[test]
+fn heads_that_build_the_running_system_switch_nothing() {
+    let world = World::new();
+    let head = world.signed("one");
+    let first = world.system("first");
+    std::os::unix::fs::symlink(&first, world.root.join("systems").join(&head)).unwrap();
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: head.clone(),
+            followed: BTreeMap::new(),
+        }
+    );
+    assert_eq!(world.builds(), 1);
+    // Remembered, so the next ask at the same heads builds nothing.
+    assert!(matches!(world.update().1, Line::Unchanged { .. }));
+    assert_eq!(world.builds(), 1);
 }
 
 #[test]
