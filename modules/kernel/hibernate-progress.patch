@@ -1,0 +1,273 @@
+drm/panic, PM: hibernate: Fill a bar as the image is read
+
+A hibernation's restore freezes every process before it reads the image
+(software_resume() calls freeze_processes(), then
+load_image_and_restore()), so a boot splash can't say how far the read
+has come, and on an 8 GiB laptop the screen held still for the whole
+read with no sign of what was happening. Only the kernel can show it.
+
+drm_panic can already draw from any context into the buffer each
+screen scans out. Keep a list of the planes it registers, and add
+drm_panic_progress(), which fills a bar on each of them as a share of a
+job, drawing only once the share changes and only the pixels newly
+filled. The restore calls it where swap.c counts the image's pages.
+
+The bar goes where Plymouth's script splash can draw its empty track:
+centred in the rectangle every screen shows, a set height above a
+twelfth of that rectangle's height from its bottom, doubled on a
+rectangle 1600 pixels tall or more. Its width, height, rise and colour
+are drm.progress_width, drm.progress_height, drm.progress_rise and
+drm.progress_color, and a width of 0, the default, draws nothing. A
+plane showing a tiled framebuffer is left alone, since the panic
+handler would turn its tiling off.
+
+diff --git a/drivers/gpu/drm/drm_panic.c b/drivers/gpu/drm/drm_panic.c
+index e576c47..b4bb98a 100644
+--- a/drivers/gpu/drm/drm_panic.c
++++ b/drivers/gpu/drm/drm_panic.c
+@@ -1003,6 +1003,185 @@ static void debugfs_register_plane(struct drm_plane *plane, int index)
+ static void debugfs_register_plane(struct drm_plane *plane, int index) {}
+ #endif /* CONFIG_DRM_PANIC_DEBUG */
+ 
++/*
++ * A bar filled as a job no process can show goes, drawn where the panic
++ * screen would draw. A hibernation's restore freezes every process before
++ * it reads the image, so a boot splash can't say how much is read; the
++ * restore calls drm_panic_progress() as it reads, and the bar fills.
++ *
++ * The splash draws the empty track the bar fills, so the bar goes where
++ * the splash lays itself out. Plymouth's script splash draws one canvas
++ * as large as the largest screen, each screen showing its middle, and
++ * lays its column out in the rectangle every screen shows: the bar is
++ * centred across that rectangle, its top progress_rise pixels above a
++ * twelfth of the rectangle's height from its bottom, and every size is
++ * doubled on a rectangle 1600 pixels tall or more, as the splash doubles
++ * its pictures. The screens' sizes are those seen at the last draw.
++ *
++ * A plane showing a tiled framebuffer is left alone, since the panic
++ * handler turns its tiling off, which a screen that carries on can't
++ * have. Each pixel is drawn once, as amdgpu writes each through MMIO.
++ */
++static unsigned int progress_width;
++module_param_named(progress_width, progress_width, uint, 0644);
++MODULE_PARM_DESC(progress_width, "Width of the progress bar, in pixels at one to one, or 0 for none");
++
++static unsigned int progress_height = 4;
++module_param_named(progress_height, progress_height, uint, 0644);
++MODULE_PARM_DESC(progress_height, "Height of the progress bar, in pixels at one to one");
++
++static unsigned int progress_rise;
++module_param_named(progress_rise, progress_rise, uint, 0644);
++MODULE_PARM_DESC(progress_rise, "How far the bar's top is above a twelfth of the height from the bottom");
++
++static unsigned int progress_color = CONFIG_DRM_PANIC_FOREGROUND_COLOR;
++module_param_named(progress_color, progress_color, uint, 0644);
++MODULE_PARM_DESC(progress_color, "Colour of the progress bar, as 0xRRGGBB");
++
++#define PROGRESS_PLANES 16
++
++struct progress_plane {
++	struct drm_plane *plane;
++	unsigned int width;
++	unsigned int height;
++	struct drm_rect bar;
++	int filled;
++};
++
++static DEFINE_MUTEX(progress_lock);
++static struct progress_plane progress_planes[PROGRESS_PLANES];
++static unsigned int progress_shown = UINT_MAX;
++
++static void progress_add(struct drm_plane *plane)
++{
++	unsigned int i;
++
++	mutex_lock(&progress_lock);
++	for (i = 0; i < PROGRESS_PLANES; i++) {
++		if (!progress_planes[i].plane) {
++			progress_planes[i] = (struct progress_plane){ .plane = plane };
++			break;
++		}
++	}
++	mutex_unlock(&progress_lock);
++}
++
++static void progress_remove(struct drm_plane *plane)
++{
++	unsigned int i;
++
++	mutex_lock(&progress_lock);
++	for (i = 0; i < PROGRESS_PLANES; i++)
++		if (progress_planes[i].plane == plane)
++			progress_planes[i] = (struct progress_plane){ };
++	mutex_unlock(&progress_lock);
++}
++
++/* The canvas, as wide and tall as the largest screen, and the rectangle every screen shows. */
++struct progress_canvas {
++	int width;
++	int height;
++	int across;
++	int down;
++};
++
++static void progress_bar(struct progress_plane *slot, const struct progress_canvas *seen,
++			 unsigned int permille)
++{
++	struct drm_plane *plane = slot->plane;
++	struct drm_scanout_buffer sb = { };
++	struct progress_canvas canvas = *seen;
++	struct drm_rect bar, fill, screen;
++	unsigned long flags;
++	int scale, width, filled;
++
++	slot->width = 0;
++	slot->height = 0;
++	if (!drm_panic_trylock(plane->dev, flags))
++		return;
++
++	if (plane->state && plane->state->fb &&
++	    plane->state->fb->modifier != DRM_FORMAT_MOD_LINEAR)
++		goto unlock;
++	if (plane->helper_private->get_scanout_buffer(plane, &sb) ||
++	    !drm_panic_is_format_supported(sb.format))
++		goto unlock;
++	if (!sb.set_pixel && !sb.pages && iosys_map_is_null(&sb.map[0]))
++		goto unlock;
++	slot->width = sb.width;
++	slot->height = sb.height;
++
++	/* Before a draw has seen every screen, this one is the canvas. */
++	if (!canvas.width)
++		canvas = (struct progress_canvas){ sb.width, sb.height, sb.width, sb.height };
++	scale = canvas.down >= 1600 ? 2 : 1;
++	width = progress_width * scale;
++	drm_rect_init(&bar,
++		      (canvas.width - canvas.across) / 2 + canvas.across / 2 - width / 2
++		      - (canvas.width - (int)sb.width) / 2,
++		      (canvas.height - canvas.down) / 2 + canvas.down - canvas.down / 12
++		      - (int)progress_rise * scale - (canvas.height - (int)sb.height) / 2,
++		      width, progress_height * scale);
++	if (!drm_rect_equals(&bar, &slot->bar)) {
++		slot->bar = bar;
++		slot->filled = 0;
++	}
++
++	/* Only what's newly filled, from where the last draw stopped. */
++	filled = width * permille / 1000;
++	fill = bar;
++	fill.x1 = bar.x1 + slot->filled;
++	fill.x2 = bar.x1 + filled;
++	slot->filled = filled;
++	screen = DRM_RECT_INIT(0, 0, sb.width, sb.height);
++	if (drm_rect_intersect(&fill, &screen))
++		drm_panic_fill(&sb, &fill,
++			       drm_draw_color_from_xrgb8888(progress_color, sb.format->format));
++	if (plane->helper_private->panic_flush)
++		plane->helper_private->panic_flush(plane);
++
++unlock:
++	drm_panic_unlock(plane->dev, flags);
++}
++
++/**
++ * drm_panic_progress() - fill the progress bar on every screen
++ * @done: how much of the job is done
++ * @total: how much there is
++ *
++ * Draws on each screen drm_panic can draw on, so it's for a job no process
++ * can show, such as a hibernation's restore while every process is frozen.
++ * It draws only once the bar's share changes, so it can be called often.
++ */
++void drm_panic_progress(unsigned int done, unsigned int total)
++{
++	struct progress_canvas canvas = { .across = INT_MAX, .down = INT_MAX };
++	unsigned int permille, i;
++
++	if (!progress_width || !total)
++		return;
++	permille = div_u64((u64)min(done, total) * 1000, total);
++	if (permille == progress_shown)
++		return;
++	progress_shown = permille;
++
++	mutex_lock(&progress_lock);
++	for (i = 0; i < PROGRESS_PLANES; i++) {
++		if (!progress_planes[i].width)
++			continue;
++		canvas.width = max(canvas.width, (int)progress_planes[i].width);
++		canvas.height = max(canvas.height, (int)progress_planes[i].height);
++		canvas.across = min(canvas.across, (int)progress_planes[i].width);
++		canvas.down = min(canvas.down, (int)progress_planes[i].height);
++	}
++	if (!canvas.width)
++		canvas = (struct progress_canvas){ };
++	for (i = 0; i < PROGRESS_PLANES; i++)
++		if (progress_planes[i].plane)
++			progress_bar(&progress_planes[i], &canvas, permille);
++	mutex_unlock(&progress_lock);
++}
++
+ /**
+  * drm_panic_is_enabled
+  * @dev: the drm device that may supports drm_panic
+@@ -1043,6 +1222,7 @@ void drm_panic_register(struct drm_device *dev)
+ 		if (kmsg_dump_register(&plane->kmsg_panic))
+ 			drm_warn(dev, "Failed to register panic handler\n");
+ 		else {
++			progress_add(plane);
+ 			debugfs_register_plane(plane, registered_plane);
+ 			registered_plane++;
+ 		}
+@@ -1065,6 +1245,7 @@ void drm_panic_unregister(struct drm_device *dev)
+ 	drm_for_each_plane(plane, dev) {
+ 		if (!plane->helper_private || !plane->helper_private->get_scanout_buffer)
+ 			continue;
++		progress_remove(plane);
+ 		kmsg_dump_unregister(&plane->kmsg_panic);
+ 	}
+ }
+diff --git a/include/drm/drm_panic.h b/include/drm/drm_panic.h
+index ac0e46b..60d2fa7 100644
+--- a/include/drm/drm_panic.h
++++ b/include/drm/drm_panic.h
+@@ -186,4 +186,11 @@ u8 drm_panic_qr_generate(const char *url, u8 *data, size_t data_len, size_t data
+ 			 u8 *tmp, size_t tmp_size);
+ #endif
+ 
++/* Called from the core kernel, so only while DRM is built in. */
++#if defined(CONFIG_DRM_PANIC) && IS_BUILTIN(CONFIG_DRM)
++void drm_panic_progress(unsigned int done, unsigned int total);
++#else
++static inline void drm_panic_progress(unsigned int done, unsigned int total) {}
++#endif
++
+ #endif /* __DRM_PANIC_H__ */
+diff --git a/kernel/power/swap.c b/kernel/power/swap.c
+index c78f159..563d47f 100644
+--- a/kernel/power/swap.c
++++ b/kernel/power/swap.c
+@@ -30,6 +30,7 @@
+ #include <linux/kthread.h>
+ #include <linux/crc32.h>
+ #include <linux/ktime.h>
++#include <drm/drm_panic.h>
+ 
+ #include "power.h"
+ 
+@@ -1124,6 +1125,7 @@ static int load_image(struct swap_map_handle *handle,
+ 			pr_info("Image loading progress: %3d%%\n",
+ 				nr_pages / m * 10);
+ 		nr_pages++;
++		drm_panic_progress(nr_pages, nr_to_read);
+ 	}
+ 	err2 = hib_wait_io(&hb);
+ 	hib_finish_batch(&hb);
+@@ -1461,6 +1463,7 @@ static int load_compressed_image(struct swap_map_handle *handle,
+ 					pr_info("Image loading progress: %3d%%\n",
+ 						nr_pages / m * 10);
+ 				nr_pages++;
++				drm_panic_progress(nr_pages, nr_to_read);
+ 
+ 				ret = snapshot_write_next(snapshot);
+ 				if (ret <= 0) {

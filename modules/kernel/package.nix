@@ -112,5 +112,12 @@ linux_7_2.override {
       name = "cfg80211-ssid-without-country";
       patch = ./cfg80211-ssid-without-country.patch;
     }
+    {
+      # Fills a bar on every screen as a hibernation's image is read, while
+      # every process is frozen and the boot screen can't draw. Written here;
+      # docs/kernel.md has the cause.
+      name = "hibernate-progress";
+      patch = ./hibernate-progress.patch;
+    }
   ];
 }
