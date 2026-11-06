@@ -3356,7 +3356,12 @@ Scope {
         if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
         const made = Date.now();
-        held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
+        // Going back lands on the row stepped into, as oil's - lands on the
+        // folder it came from, though it was stepped into without being
+        // selected, as the file picker holds each folder on the way to
+        // where it opens; Return steps into the selection, so it's the same.
+        held = held.concat([Object.assign(here(), { key: steadyId(row), row: row,
+            rows: into ?? [] })]);
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
