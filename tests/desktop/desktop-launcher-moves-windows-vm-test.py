@@ -575,7 +575,12 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "2 chosen"
     )
-    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 open 2"], desktop.showing()
+    # Return's count first, the foot drawing it last; then visual's own letters, d by the
+    # cursor row's ending, and the command line and the way to every key, as normal's foot.
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == ["\u21b5 open 2"], told
+    assert told[-2:] == [": commands", "Space ? keys"], told
+    assert [key for key in told if key.startswith(("d ", "y "))] == ["d close", "y copy"], told
     # y copies both titles, a line each, flashes them, and ends visual.
     since = desktop.mark()
     machine.send_chars("y")
