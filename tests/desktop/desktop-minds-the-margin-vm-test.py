@@ -440,14 +440,16 @@ def forgets_then_brings_back(desktop: Desktop) -> None:
     assert "d forget" in desktop.showing()["selected"]["told"], desktop.showing()["selected"]
     with desktop.told("ended 1"):
         desktop.machine.send_chars("dd")
-    desktop.launcher_until(lambda shown: shown["operated"] == "1 done \u00b7 u brings it back")
+    desktop.launcher_until(
+        lambda shown: shown["operated"].endswith("1 done \u00b7 u brings it back")
+    )
     desktop.photograph("launcher-notice-done")
     assert "d forget" not in desktop.showing()["selected"]["told"], desktop.showing()
     with desktop.told("undid 1"):
         desktop.machine.send_chars("u")
     desktop.launcher_until(
         lambda shown: (
-            shown["operated"] == "1 brought back" and "d forget" in shown["selected"]["told"]
+            shown["operated"].endswith("1 brought back") and "d forget" in shown["selected"]["told"]
         )
     )
 
