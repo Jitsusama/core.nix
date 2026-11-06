@@ -204,8 +204,9 @@ function redo(history, count) {
 
 // How many lines words take `wide` across, broken at their spaces as
 // Qt's wrap breaks them, `measure` giving a run's width; a word too wide
-// alone takes the lines it is broken over.
-function laid(words, wide, measure) {
+// alone takes the lines it is broken over. Laying stops once past `most`
+// lines, so a long mail costs only what a card can show.
+function laid(words, wide, measure, most = Number.POSITIVE_INFINITY) {
     const linesOf = part => (part === "" ? 0 : Math.max(Math.ceil(measure(part) / wide), 1));
     let lines = 0;
     let line = "";
@@ -216,6 +217,9 @@ function laid(words, wide, measure) {
         } else {
             lines += linesOf(line);
             line = word;
+            if (lines > most) {
+                return lines;
+            }
         }
     }
     return lines + linesOf(line);
@@ -229,17 +233,25 @@ const spaces = /\s+/;
 // (VKCF3Z, 2026-11-05).
 function wholeWords(text, lines, wide, measure) {
     const words = text.split(spaces).filter(word => word !== "");
-    if (laid(words, wide, measure) <= lines) {
+    if (laid(words, wide, measure, lines) <= lines) {
         return null;
     }
-    for (let kept = words.length - 1; kept > 0; kept -= 1) {
-        const shown = words.slice(0, kept);
-        shown[kept - 1] += "\u2026";
-        if (laid(shown, wide, measure) <= lines) {
-            return shown.join(" ");
+    const ending = kept => words.slice(0, kept - 1).concat(`${words[kept - 1]}\u2026`);
+    // The most words kept, found by halving, since keeping more never
+    // takes fewer lines; each try lays at most what the lines hold, so the
+    // cursor card measures by its room, not by the mail's length (MVL7F9,
+    // Y2YBTS, 2026-11-06).
+    let fits = 0;
+    let over = words.length;
+    while (over - fits > 1) {
+        const kept = Math.floor((fits + over) / 2);
+        if (laid(ending(kept), wide, measure, lines) <= lines) {
+            fits = kept;
+        } else {
+            over = kept;
         }
     }
-    return `${words[0] ?? ""}\u2026`;
+    return fits === 0 ? `${words[0] ?? ""}\u2026` : ending(fits).join(" ");
 }
 
 const ranged = /^(%|[.$0-9'<>,;+-]*)/;

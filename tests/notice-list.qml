@@ -145,6 +145,20 @@ QtObject {
             "alpha beta gamma delta\u2026");
         holds("and a first word too wide is kept for Qt to cut",
             List.wholeWords("abcdefghijklmno pq", 1, 10, measure), "abcdefghijklmno\u2026");
+        // A long mail is measured by what the card shows, never by its
+        // length: the cut that tried each shorter ending asked 203,262
+        // times at 600 words, each a font's in the card's binding (MVL7F9).
+        // Halving asks 633.
+        let measured = 0;
+        const counted = run => {
+            measured += 1;
+            return run.length;
+        };
+        const long = Array.from({ length: 600 }, (_, at) => `word${at}`).join(" ");
+        const cut = List.wholeWords(long, 6, 60, counted);
+        holds("a long mail keeps the lines it has", List.laid(cut.split(" "), 60, measure), 6);
+        holds("ending at a whole word", cut.endsWith("word49\u2026"), true);
+        holds("measured by its room, not its length", measured < 1000, true);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
