@@ -1035,6 +1035,119 @@ def escape_at_rest_stays(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def walk_the_rows_follows(desktop: Desktop) -> None:
+    """Press Ctrl+] on a row found from home, and Ctrl+T, Ctrl+O and Tab over it, through niri.
+
+    Lock holds no parts: no verbs, and its Return closes the launcher, where Keep Awake's keeps
+    it and so holds its own act. So Ctrl+] goes to the place it lives, the cursor on it there,
+    as Vim follows a tag, and Ctrl+T comes back, as Vim's pops its tag stack, saying Vim's E73
+    with nothing to pop. The place it went to is on the jump list too. In the row's own place
+    Ctrl+] means nothing. Return is never pressed, so the screen never locks.
+    """
+    machine = desktop.machine
+    desktop.answer("lock")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "session:Lock")
+    desktop.normal()
+    # A row whose foot says Ctrl+] in holds parts, and Ctrl+] would go into them instead.
+    desktop.launcher_until(
+        lambda shown: (
+            ": commands" in shown["selected"]["told"]
+            and "Ctrl+] in" not in shown["selected"]["told"]
+        )
+    )
+    # Where every row lives is walked once the launcher is quiet, off every key, and kept
+    # until a provider's rows change: its time is said here for the reviewer to read.
+    desktop.launcher_until(lambda shown: shown["livesWalked"] is not None)
+    print(f"Where every row lives was walked in {desktop.showing()['livesWalked']} ms")
+    # Where it lives is read from the first follow and held to after, so the walk says the
+    # place is the same each time without naming the catalogue's crumbs.
+    lives: list[object] = []
+
+    def followed() -> None:
+        def there(shown: Json) -> bool:
+            """Say whether the launcher holds Lock's own place, onto it, nothing typed."""
+            onto = (shown["selected"] or {}).get("is") == "session:Lock"
+            held = shown["held"]
+            if not (onto and shown["typed"] == "" and held != []):
+                return False
+            if not lives:
+                lives.append(held)
+            return bool(held == lives[0])
+
+        desktop.launcher_until(there)
+
+    def came_back() -> None:
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["held"], shown["typed"], (shown["selected"] or {}).get("is"))
+                == ([], "lock", "session:Lock")
+            )
+        )
+
+    machine.send_key("ctrl-bracket_right")
+    followed()
+    # A follow is one jump, as Vim's tag is, however many steps down its place lies.
+    jumps = desktop.showing()["jumps"]
+    assert bool(jumps == {"back": 1, "ahead": 0}), f"a follow made jumps {jumps}"
+    for key, then in [
+        ("ctrl-t", came_back),
+        ("ctrl-bracket_right", followed),
+        ("ctrl-o", came_back),
+        ("tab", followed),
+    ]:
+        machine.send_key(key)
+        then()
+    machine.send_key("ctrl-bracket_right")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["Ctrl+] not here"])
+    machine.send_key("ctrl-t")
+    came_back()
+    machine.send_key("ctrl-t")
+    # Vim's errors read where the command line is, as E492 does.
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "E73: Tag stack empty"
+    )
+    desktop.close_launcher()
+    # Each Ctrl+] with no parts to go into looks for the row's own place, or none, in where
+    # every row lives, walked before any press: the trace holds how long each look took,
+    # said here for the reviewer to read, and that none made the walk on its key.
+    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+    opening = [span for span in spans if span["name"] == "open"][-1]
+    looks = [
+        span["about"]
+        for span in spans
+        if span["trace"] == opening["trace"]
+        and span["name"] == "follow"
+        and "walked" in span["about"]
+    ]
+    walks = [look["walked"] for look in looks]
+    print(f"Ctrl+] looked for its place in {walks} ms")
+    assert all(isinstance(walked, int) for walked in walks), walks
+    made = [look["indexed"] for look in looks]
+    assert made == [False, False, False], f"a look made the walk on its key: {made}"
+
+
+def walk_a_found_program_follows(desktop: Desktop) -> None:
+    """Press Ctrl+] on kitty found from home, and Ctrl+T, through niri.
+
+    A row that holds more goes into its parts, as the foot's Ctrl+] in says, before where it
+    lives, and Ctrl+T comes back from there to what was typed, as from any place followed.
+    """
+    machine = desktop.machine
+    desktop.answer("kitty")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+    desktop.normal()
+    machine.send_key("ctrl-bracket_right")
+    desktop.launcher_until(lambda shown: shown["held"][-1:] == ["kitty"])
+    machine.send_key("ctrl-t")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["held"], shown["typed"], (shown["selected"] or {}).get("is"))
+            == ([], "kitty", "program:kitty")
+        )
+    )
+    desktop.close_launcher()
+
+
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
     """A search lists each thing once, and normal's keys move and act on it as Vim's do."""
     walk_the_rows_moves(desktop)
@@ -1042,6 +1155,8 @@ def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Des
     walk_the_rows_finds(desktop)
     walk_the_rows_washed(desktop)
     walk_the_rows_keys(desktop)
+    walk_the_rows_follows(desktop)
+    walk_a_found_program_follows(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;

@@ -199,10 +199,11 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
-                    | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] \
+                    | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
+                    [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
+                    [--bulk] \
                     (FLAKE ATTR... | DRV...) \
-                    | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
+                    | nix-offload there [--never-ask] --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -416,11 +417,11 @@ fn there(arguments: &[String]) -> ExitCode {
         println!("{}", there::TAKES.join("\n"));
         return ExitCode::SUCCESS;
     }
-    if let Some(("--changed", rest)) = arguments
-        .split_first()
-        .map(|(first, rest)| (first.as_str(), rest))
+    let (waiting, arguments) = waiting_for(arguments);
+    if let [first, rest @ ..] = arguments
+        && first == "--changed"
     {
-        return changed_there(rest);
+        return changed_there(rest, waiting);
     }
     let Some(asked) = there::asked(arguments) else {
         eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
@@ -495,7 +496,7 @@ fn there(arguments: &[String]) -> ExitCode {
         .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
         .collect();
     let vm_dirs: Vec<&PathBuf> = vm_dirs.iter().collect();
-    let ran = at_once(&parts, &vm_dirs, vm_room(), &fallbacks, &scratch);
+    let ran = at_once(&parts, &vm_dirs, vm_room(), &fallbacks, &scratch, waiting);
     for (part, began, ended, waited, ran) in &ran {
         there::note(
             &journal,
@@ -516,6 +517,22 @@ fn there(arguments: &[String]) -> ExitCode {
         kept.keep(&asked);
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
+}
+
+/// How a `there` run waits for a builder, and the arguments left: a run
+/// worth only a builder that already stands says so first, with
+/// `--never-ask`, so it never has the lender make one for it.
+fn waiting_for(arguments: &[String]) -> (there::Waiting, &[String]) {
+    match arguments.split_first() {
+        Some((first, rest)) if first == "--never-ask" => (
+            there::Waiting {
+                asks: false,
+                ..there::WAITING
+            },
+            rest,
+        ),
+        _ => (there::WAITING, arguments),
+    }
 }
 
 /// `left` with its VM tests taken apart, split between the VM builders,
@@ -620,13 +637,15 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
 /// Those sent to one of `vm_dirs` go once it has room for them, as many
 /// as `room`, and are claimed there while they go. Says how each ran,
 /// with when it began and ended and the seconds it waited for room and
-/// for its builder to stand, in the order given.
+/// for its builder to stand, in the order given. Each waits for its
+/// builder as `waiting` says.
 fn at_once<'a>(
     parts: &'a [(&PathBuf, Option<there::Asked>)],
     vm_dirs: &[&PathBuf],
     room: usize,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
+    waiting: there::Waiting,
 ) -> Vec<(&'a there::Asked, u64, u64, u64, there::Ran)> {
     thread::scope(|scope| {
         let sending: Vec<_> = parts
@@ -652,7 +671,7 @@ fn at_once<'a>(
                         (dir.as_path(), None)
                     };
                     let roomed = now().saturating_sub(began);
-                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch);
+                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waiting);
                     (part, began, now(), roomed + stood, ran)
                 })
             })
@@ -668,17 +687,19 @@ fn at_once<'a>(
 /// on rather than built here while a lender runs: a builder stands about
 /// 70 s after it's asked for. One asked for beside another, as `fallbacks`
 /// pairs them, that doesn't come leaves the build to the other. VM tests,
-/// as `vm` says these are, wait through their lender's restart. Says how
-/// it ran, and the seconds it waited for its builder to stand.
+/// as `vm` says these are, wait through their lender's restart. It waits
+/// as `waiting` says. Says how it ran, and the seconds it waited for its
+/// builder to stand.
 fn sent(
     part: &there::Asked,
     dir: &Path,
     vm: bool,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
+    waiting: there::Waiting,
 ) -> (there::Ran, u64) {
     let asked = std::time::Instant::now();
-    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, there::WAITING)) {
+    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, waiting)) {
         None => match fallbacks.iter().find(|(beside, _)| beside.as_path() == dir) {
             Some((_, other)) => (other.as_path(), standing(other)),
             None => (dir, None),
@@ -690,7 +711,7 @@ fn sent(
     // ones timed out beside kernel builds.
     let store = match store {
         None if vm && !there::lends(dir) => {
-            there::stood_again(dir, there::WAITING, std::time::Instant::now())
+            there::stood_again(dir, waiting, std::time::Instant::now())
         }
         store => store,
     };
@@ -704,12 +725,12 @@ fn sent(
         );
     }
     let stood = asked.elapsed().as_secs();
-    let again = |since| there::stood_again(dir, there::WAITING, since);
+    let again = |since| there::stood_again(dir, waiting, since);
     let ran = there::run(
         part,
         store.as_deref(),
         &again,
-        there::WAITING,
+        waiting,
         scratch,
         ["ssh", "nix"],
     );
@@ -888,9 +909,9 @@ fn standing(dir: &Path) -> Option<String> {
 
 /// `there --changed`: changed-checks run for the tree here on the lent
 /// builder, else an evaluator with its builds sent on, else a builder
-/// waited for (`changed.rs` says why). It exits with the run's status, or
-/// `NOT_TAKEN` when nowhere else took it.
-fn changed_there(arguments: &[String]) -> ExitCode {
+/// waited for as `waiting` says (`changed.rs` says why). It exits with the
+/// run's status, or `NOT_TAKEN` when nowhere else took it.
+fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let scratch = env::var_os("XDG_RUNTIME_DIR")
         .map_or_else(env::temp_dir, PathBuf::from)
@@ -961,6 +982,7 @@ fn changed_there(arguments: &[String]) -> ExitCode {
         told: &told,
         folder: &folder,
         scratch: &scratch,
+        waiting,
     };
     let finished = sent.somewhere(arguments, &dir, vm_apart);
     forget();
@@ -995,12 +1017,14 @@ impl Finished {
 
 /// What a `there --changed` run sends wherever it goes: the tree's
 /// source, the checks `told` passed at its commit already, the tree's
-/// folder here, and the scratch folder its files go in meanwhile.
+/// folder here, the scratch folder its files go in meanwhile, and how it
+/// waits for a builder when none stands.
 struct Sent<'a> {
     source: &'a there::Source,
     told: &'a [String],
     folder: &'a Path,
     scratch: &'a Path,
+    waiting: there::Waiting,
 }
 
 impl Sent<'_> {
@@ -1113,7 +1137,7 @@ impl Sent<'_> {
             return Some(Finished::of(status, Some(printed)));
         }
         // Asked for and waited on, as any `there` waits, while a lender runs.
-        on_builder(there::waited(dir, there::WAITING))
+        on_builder(there::waited(dir, self.waiting))
     }
 }
 
@@ -2003,6 +2027,19 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn never_ask_given_first_waits_for_no_builder_and_leaves_the_rest() {
+        let words = |text: &str| text.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        let given = words("--never-ask --changed --keep-base");
+        let (waiting, rest) = waiting_for(&given);
+        assert!(!waiting.asks);
+        assert_eq!(rest, words("--changed --keep-base"));
+        let given = words("--changed --never-ask");
+        let (waiting, rest) = waiting_for(&given);
+        assert!(waiting.asks, "only first, as usage says");
+        assert_eq!(rest, given);
     }
 
     #[test]

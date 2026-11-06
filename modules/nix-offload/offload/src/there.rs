@@ -35,6 +35,10 @@
 //! asks, and the lender holds that builder meanwhile, though no ssh here
 //! reaches it. The same build sent again while it runs attaches to what it
 //! builds through Nix's lock on each derivation, as any run sent again does.
+//! `--never-ask`, given first, has it use only a builder that already
+//! stands, and never ask the lender for one, for a run not worth a
+//! builder of its own, as keeping main's checks ahead isn't: asked at
+//! 00:11 on 6 November, through a tunnel gone dead, it asked for one.
 //! `there --takes` says which of these it takes, a word a line.
 //!
 //! Derivations, given by their paths in place of a flake and its
@@ -68,7 +72,7 @@
 //! commit (`passed.rs`), and a check kept is journalled `already`, built
 //! nowhere.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -757,11 +761,13 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     if planned.is_empty() {
         return;
     }
-    let derivations = held::derivations(&json_of(
+    let shown = json_of(
         Command::new(nix)
             .args(["derivation", "show"])
             .args(&planned),
-    ));
+    );
+    let derivations = held::derivations(&shown);
+    let fixed = held::fixed(&shown);
     let outputs = derivations
         .values()
         .flat_map(|derivation| derivation.outputs.values());
@@ -786,15 +792,16 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
             .args(["path-info", "--recursive", "--json"])
             .args(&sending),
     ));
+    let fetching = held::fetched(&fixed, &closure);
     let fetched = fetched_first(
-        &held::fetched(&planned, &closure),
-        &closure,
+        &fetching,
+        held::fetched_size(&fixed, &closure, &fetching),
         lent,
         scratch,
         ssh,
     );
     let own: u64 = sending.iter().filter_map(|path| holds.get(path)).sum();
-    let size = held::sent_up(&planned, &closure, &fetched).max(own);
+    let size = held::sent_up(&planned, &fixed, &closure, &fetched).max(own);
     let (outputs, them) = match sending.len() {
         1 => ("1 output".to_owned(), "it"),
         count => (format!("{count} outputs"), "them"),
@@ -822,15 +829,18 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
 }
 
 /// What the builder is asked, with fixed derivations on its standard
-/// input: to fetch their outputs from their own sources.
-const FETCHES: &str = "xargs -r nix-store --realise > /dev/null";
+/// input: to fetch their outputs from their own sources, several at once,
+/// printing each it fetched. One it can't fetch, such as a file only this
+/// machine was given, leaves the rest fetched there still, so the copy
+/// after skips them and only what's printed is counted as fetched.
+const FETCHES: &str = "xargs -r -P 8 -I{} sh -c 'nix-store --realise \"$1\" > /dev/null && echo \"$1\"' fetch {}; true";
 
 /// Has the builder fetch `fetching` for itself, saying so, and answers
 /// them once it has, or none when it couldn't, so they go up from here
 /// as before.
 fn fetched_first(
     fetching: &[String],
-    closure: &BTreeMap<String, held::Stored>,
+    size: u64,
     lent: &Builder,
     scratch: &Path,
     ssh: &str,
@@ -838,17 +848,6 @@ fn fetched_first(
     if fetching.is_empty() {
         return Vec::new();
     }
-    let size = closure
-        .values()
-        .filter(|stored| {
-            stored.fixed
-                && stored
-                    .deriver
-                    .as_ref()
-                    .is_some_and(|deriver| fetching.contains(deriver))
-        })
-        .map(|stored| stored.size)
-        .sum();
     let downloads = match fetching.len() {
         1 => "1 download".to_owned(),
         count => format!("{count} downloads"),
@@ -858,11 +857,26 @@ fn fetched_first(
          than have this machine send them",
         sized(size)
     );
-    if answered(lent, FETCHES, fetching, scratch, ssh).is_some() {
-        return fetching.to_vec();
+    let said = answered(lent, FETCHES, fetching, scratch, ssh).unwrap_or_default();
+    let fetched = fetched_of(&said, fetching);
+    if fetched.len() < fetching.len() {
+        eprintln!(
+            "nix-offload: the builder fetched {} of {}, so what it lacks goes up from here",
+            fetched.len(),
+            fetching.len()
+        );
     }
-    eprintln!("nix-offload: the builder couldn't fetch them, so they go up from here");
-    Vec::new()
+    fetched
+}
+
+/// Of `fetching`, those the builder said it fetched, a line each.
+fn fetched_of(said: &str, fetching: &[String]) -> Vec<String> {
+    let printed: std::collections::BTreeSet<&str> = said.lines().map(str::trim).collect();
+    fetching
+        .iter()
+        .filter(|derivation| printed.contains(derivation.as_str()))
+        .cloned()
+        .collect()
 }
 
 /// What `command` printed as JSON, or null when it printed none.
@@ -1174,10 +1188,11 @@ impl Source {
 /// folder no commit names, `--changed`, changed-checks run elsewhere,
 /// `--here`, a build no builder took made here, `--here-when-idle`, one
 /// made here while this machine is idle, `--print-out-paths`,
-/// what was built brought into this store, derivations' paths, and
-/// `--outlive`, a build that goes on once its caller is gone, and
-/// `--bulk`, one whose VM tests let others' go first.
-pub const TAKES: [&str; 12] = [
+/// what was built brought into this store, derivations' paths,
+/// `--outlive`, a build that goes on once its caller is gone, `--bulk`,
+/// one whose VM tests let others' go first, and `--never-ask`, a run
+/// that asks the lender for no builder.
+pub const TAKES: [&str; 13] = [
     "tree",
     "apply",
     "out",
@@ -1190,6 +1205,7 @@ pub const TAKES: [&str; 12] = [
     "derivation",
     "outlive",
     "bulk",
+    "never-ask",
 ];
 
 /// A ref for one bundle to carry its commit under, here only while it's
@@ -1765,9 +1781,11 @@ fn brought_from(
 /// has to start making one, since it reads what's wanted every 20 s, how
 /// long a lender that stopped may take to start again, and how long one
 /// may take to stand, about 70 s on 29 October, and how long a build sent
-/// again must have run for its loss to start a wait of its own.
+/// again must have run for its loss to start a wait of its own. A run
+/// given `--never-ask` doesn't ask at all, so it waits for nothing.
 #[derive(Clone, Copy)]
 pub struct Waiting {
+    pub asks: bool,
     pub answered: std::time::Duration,
     pub restarting: std::time::Duration,
     pub longest: std::time::Duration,
@@ -1775,6 +1793,7 @@ pub struct Waiting {
 }
 
 pub const WAITING: Waiting = Waiting {
+    asks: true,
     answered: std::time::Duration::from_secs(30),
     // A switch stops the lender and starts it again once it's done the
     // rest: 1 s apart at 20:15 on 2 November, and 35 s apart at 21:14.
@@ -1857,6 +1876,10 @@ fn pid_in(path: &Path) -> Option<i32> {
 /// ends just as a build that would have used its builder asks. It gives
 /// the store's text once one stands.
 pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
+    if !waiting.asks {
+        eprintln!("nix-offload: no builder stands, and --never-ask leaves the lender unasked");
+        return None;
+    }
     if !lender_runs(dir, waiting) {
         return None;
     }
@@ -2933,6 +2956,20 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn only_what_the_builder_says_it_fetched_counts_as_fetched() {
+        // One of three couldn't be fetched, so it alone goes up, and an
+        // answer naming something not asked for counts for nothing.
+        let fetching =
+            ["/nix/store/a.drv", "/nix/store/b.drv", "/nix/store/c.drv"].map(str::to_owned);
+        let said = "/nix/store/c.drv\n/nix/store/a.drv\n/nix/store/z.drv\n";
+        assert_eq!(
+            fetched_of(said, &fetching),
+            ["/nix/store/a.drv", "/nix/store/c.drv"].map(str::to_owned)
+        );
+        assert!(fetched_of("", &fetching).is_empty());
+    }
+
+    #[test]
     fn a_run_ends_with_all_it_started_once_its_caller_is_gone() {
         // The caller stands in for an ssh session. It starts the run in a
         // process group of its own, as sshd does, and ends once told. The
@@ -3211,6 +3248,7 @@ mod tests {
     }
 
     const QUICK: Waiting = Waiting {
+        asks: true,
         answered: std::time::Duration::from_millis(300),
         restarting: std::time::Duration::from_secs(1),
         longest: std::time::Duration::from_secs(5),
@@ -3281,6 +3319,53 @@ mod tests {
         });
         assert_eq!(waited(dir.path(), QUICK).as_deref(), Some("ssh-ng://far\n"));
         restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_run_that_never_asks_asks_for_no_builder_though_a_lender_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let never = Waiting {
+            asks: false,
+            ..QUICK
+        };
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), never), None);
+        assert!(began.elapsed() < QUICK.answered, "it waits for nothing");
+        assert!(
+            !dir.path().join("wanted").exists(),
+            "the lender is never told one is wanted"
+        );
+    }
+
+    #[test]
+    fn a_run_that_never_asks_asks_for_none_again_once_its_stale_builder_went() {
+        // At 00:11 on 6 November the keeper's store named a builder that
+        // had gone: ssh failed, and the run waited for one to stand again,
+        // which asked the lender for one. The lender has since emptied it.
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        fs::write(dir.path().join("store"), "").unwrap();
+        let never = Waiting {
+            asks: false,
+            ..QUICK
+        };
+        assert_eq!(
+            stood_again(dir.path(), never, std::time::Instant::now()),
+            None
+        );
+        assert!(
+            !dir.path().join("wanted").exists(),
+            "the lender is never told one is wanted"
+        );
     }
 
     #[test]

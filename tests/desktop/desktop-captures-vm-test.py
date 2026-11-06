@@ -322,28 +322,27 @@ def test_capture_records_the_window_and_says_why_when_niri_cant_share_it(
     desktop.close(pool)
 
 
-def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
-    desktop: Desktop,
-) -> None:
-    """A region is picked by the keys, and Escape goes back to Capture."""
+def open_picker(desktop: Desktop) -> None:
+    """Open Capture's region picker, ready for the keys."""
+    desktop.capture()
+    desktop.type_in("region", selecting="A Region")
+    with desktop.told("keys picker"):
+        desktop.machine.send_key("ret")
+
+
+def test_a_region_is_picked_by_a_vim_users_keys(desktop: Desktop) -> None:
+    """A region is picked by a Vim user's keys: moves, sizes and cells, then Return."""
     machine = desktop.machine
     # The picker covers the screen niri gives it, whatever cage leaves.
     logical = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]
     wide, high = logical["width"], logical["height"]
-    # It opens on the middle quarter; an arrow moves it a step, and
-    # Shift and an arrow size it from its bottom right corner.
+    # It opens on the middle quarter; h j k l move it a step, and H J K L size it from its
+    # bottom right corner, an arrow moving as its letter and Shift with one sizing.
     width, height = round(wide / 2), round(high / 2)
     x, y = round((wide - width) / 2), round((high - height) / 2)
     pictures = desktop.pictures
     # Run alone, nothing has been taken yet, so there may be no pictures to count.
     pictures_before = int(machine.succeed(f"(ls {pictures}/*.png 2>/dev/null || true) | wc -l"))
-
-    def picker() -> None:
-        """Open Capture's region picker, ready for the keys."""
-        desktop.capture()
-        desktop.type_in("region", selecting="A Region")
-        with desktop.told("keys picker"):
-            machine.send_key("ret")
 
     def pictures_taken(count: int) -> None:
         """Wait until there are so many more pictures than there were."""
@@ -354,42 +353,65 @@ def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
 
     # Return at once takes the box it opened on, which has to be there
     # from its first frame, though the window learns its size later.
-    picker()
+    open_picker(desktop)
     with desktop.told(f"picked {x},{y} {width}x{height}"):
         machine.send_key("ret")
     pictures_taken(1)
     assert desktop.newest_size() == (width, height)
 
-    picker()
-    for key in ("left", "up", "shift-right", "shift-right"):
-        machine.send_key(key)
+    # A count before a move takes as many steps.
+    open_picker(desktop)
+    machine.send_chars("2h")
+    machine.send_key("up")
+    machine.send_chars("L")
+    machine.send_key("shift-right")
     # The pictures before leave their notices, which go on their own.
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.photograph("picker")
-    with desktop.told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
+    with desktop.told(f"picked {x - 32},{y - 16} {width + 32}x{height}"):
         machine.send_key("ret")
     pictures_taken(2)
     assert desktop.newest_size() == (width + 32, height)
 
-    # One cell's letters and another's make the box between them.
-    picker()
-    with desktop.told("picker typed b"):
-        machine.send_chars("aab")
+    # f and one cell's letters, then f and another's, make the box between them.
+    open_picker(desktop)
+    with desktop.told("picker typed f b"):
+        machine.send_chars("faafb")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.photograph("picker-cells")
     rows = round(16 * high / wide)
     with desktop.told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
         machine.send_chars("b\n")
 
-    # Escape leaves insert first, with the letters typed, then goes back
-    # to Capture, taking nothing.
-    picker()
-    machine.send_chars("c")
+
+def test_minus_goes_back_from_the_picker_to_capture_and_q_closes_it(
+    desktop: Desktop,
+) -> None:
+    """- goes back from the region picker to Capture, Space ? lists its keys, :q closes."""
+    machine = desktop.machine
+    # Escape cancels a waiting f, and at rest does nothing, so - is what goes back to Capture,
+    # taking nothing.
+    open_picker(desktop)
+    with desktop.told("picker typed f c"):
+        machine.send_chars("fc")
     machine.send_key("esc")
-    with desktop.told("gone picker"):
+    machine.send_key("esc")
+    # Space ? lists its keys, and an Escape with nothing begun puts them away.
+    with desktop.told("picker lists keys"):
+        machine.send_chars(" ?")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.photograph("picker-keys")
+    with desktop.told("picker hides keys"):
         machine.send_key("esc")
+    with desktop.told("gone picker"):
+        machine.send_chars("-")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["captures"])
     desktop.close_launcher()
+    # :q closes it, going nowhere.
+    open_picker(desktop)
+    with desktop.told("gone picker"):
+        machine.send_chars(":q\n")
+    assert not desktop.showing()["open"], "the picker's :q opened the launcher"
 
 
 class Camera:

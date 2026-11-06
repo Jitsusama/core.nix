@@ -1,9 +1,1 @@
-[
-  {
-    "at": 1793939501,
-    "commit": "b74ab91b4979c78eb50df27b28008a1edca05b6b",
-    "owner_pr": 1875,
-    "reason": "failed, then passed, at b74ab91b4979",
-    "test": "vm-screens-keep-the-launcher"
-  }
-]
+[]

@@ -2,14 +2,17 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 // Picking part of the screen by the keys, for a screenshot or a recording
 // (Recorder.qml), once the Capture collection is asked for a region
-// (launcher/Capture.qml). Its keys work as they do on text. Letters pick
-// cells of a lettered grid, shown from the start, row then column,
-// alphabetically from the top left: one cell's two letters, then another's,
-// make the box from one to the other. The arrows move the box a step, and
-// Shift and an arrow size it from its bottom right corner, as Shift extends
-// a selection. It opens on the middle of the screen, so the first key moves
-// something already there. Return takes the box; Escape clears the letters
-// typed, or goes back to the Capture collection. The pointer has no part.
+// (launcher/Capture.qml). Its keys are a Vim user's (VKCF3Z, 2026-11-06).
+// It opens in normal on the middle of the screen, so the first key moves
+// something already there. h j k l move the box a step, a count before
+// them as many, and H J K L size it from its bottom right corner. f shows
+// a lettered grid and waits for a cell's two letters, row then column,
+// alphabetically from the top left, making the box that cell; a second f
+// and cell make it from one to the other. Return takes the box, - goes
+// back to the Capture collection, :q closes and Space ? lists the keys,
+// staying up as they're used. Escape cancels what's
+// begun and otherwise does nothing; the arrows move as h j k l and Shift
+// with one sizes, though no hint names them. The pointer has no part.
 //
 // What the keys do to the box is Picking.js's, tested on its own
 // (tests/picking.qml). The box is drawn clear and the rest of the screen
@@ -28,16 +31,26 @@ Singleton {
 
     // What's being picked for, while it is: { title, glyph, done, back },
     // where done is given the box as wf-recorder and grim take it, and back
-    // is called when Escape leaves.
+    // is called when - goes back.
     property var asked: null
     property var box: ({ x: 0, y: 0, width: 0, height: 0 })
-    // The letters typed toward a cell, and the first cell, once picked.
-    property string typed: ""
-    property var first: null
-    // Said for the desktop test, which waits on the letters it typed
-    // before photographing them.
+    // How the keys stand (Picking.rested): a count, an f waiting with the
+    // letters typed toward a cell, the first cell once picked, and the
+    // command line.
+    property var stood: Picking.rested()
+    // What's begun, as the head says it, and what the last key said.
+    readonly property string typed: Picking.typed(stood)
+    readonly property var first: stood.first
+    property string said: ""
+    // Said for the desktop test, which waits on the keys it typed before
+    // photographing them.
     onTypedChanged: Report.say(`picker typed ${typed}`)
-    readonly property bool lettered: typed !== "" || first !== null
+    readonly property bool listing: stood.listing
+    onListingChanged: Report.say(listing ? "picker lists keys" : "picker hides keys")
+    onSaidChanged: {
+        if (said !== "")
+            Report.say(`picker says ${said}`);
+    }
     // Set once the box is taken, so the next frame is drawn empty.
     property bool leaving: false
     // How far an arrow moves the box, in logical pixels. It's a move, not
@@ -45,8 +58,8 @@ Singleton {
     readonly property int step: 16
 
     function pick(title: string, glyph: string, done: var, back: var): void {
-        typed = "";
-        first = null;
+        stood = Picking.rested();
+        said = "";
         leaving = false;
         asked = { title, glyph, done, back };
     }
@@ -56,22 +69,18 @@ Singleton {
         box = Picking.start(screen);
     }
 
-    function letter(text: string, cells: var): void {
-        const next = typed + text;
-        if (!Picking.fits(cells, next))
-            return;
-        if (next.length < 2) {
-            typed = next;
-            return;
-        }
-        const cell = Picking.cell(cells, next);
-        typed = "";
-        if (first === null) {
-            first = cell;
-        } else {
-            box = Picking.spanned(first, cell);
-            first = null;
-        }
+    // A key, by its name as Picking.pressed reads it, on a screen.
+    function press(key: string, cells: var, bounds: var): void {
+        const read = Picking.pressed(stood, key, { box, cells, screen: bounds, step });
+        stood = read.stood;
+        box = read.box;
+        said = read.said;
+        if (read.act === "take")
+            take();
+        else if (read.act === "back")
+            back();
+        else if (read.act === "close")
+            asked = null;
     }
 
     // A screen coming or going (a dock, the lid, a monitor) leaves the box
@@ -87,14 +96,8 @@ Singleton {
         }
     }
 
-    // Escape clears the letters first, so nothing is lost by pressing it
-    // once.
+    // - goes back to the Capture collection it came from.
     function back(): void {
-        if (lettered) {
-            typed = "";
-            first = null;
-            return;
-        }
         const back = asked.back;
         asked = null;
         if (back)
@@ -102,10 +105,7 @@ Singleton {
     }
 
     function take(): void {
-        if (first !== null)
-            box = first;
-        typed = "";
-        first = null;
+        stood = Picking.rested();
         leaving = true;
     }
 
@@ -132,8 +132,8 @@ Singleton {
                 height: height
             })
         readonly property var cells: Picking.grid(bounds)
-        // The box drawn: the first cell while the second is being typed.
-        readonly property var shown: root.first ?? root.box
+        // The box drawn, which is the first cell while the second is typed.
+        readonly property var shown: root.box
 
         // The box it opens on comes from the screen's size, which the window
         // learns only once niri has configured it, a moment after it shows.
@@ -179,37 +179,30 @@ Singleton {
             visible: !root.leaving
             focus: true
 
+            // Each key by the name Picking.pressed reads: an arrow, with
+            // Shift when held, Return, Escape, Backspace and Space by name, and
+            // any other by the text it types. Ctrl and Alt chords are
+            // niri's or nobody's, so they pass.
             Keys.onPressed: event => {
-                const side = {
-                    [Qt.Key_Left]: "left",
-                    [Qt.Key_Right]: "right",
-                    [Qt.Key_Up]: "up",
-                    [Qt.Key_Down]: "down"
+                const named = {
+                    [Qt.Key_Left]: "Left",
+                    [Qt.Key_Right]: "Right",
+                    [Qt.Key_Up]: "Up",
+                    [Qt.Key_Down]: "Down",
+                    [Qt.Key_Return]: "Return",
+                    [Qt.Key_Enter]: "Return",
+                    [Qt.Key_Escape]: "Escape",
+                    [Qt.Key_Backspace]: "Backspace",
+                    [Qt.Key_Space]: "Space"
                 }[event.key];
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
-                if (side !== undefined && !ctrl) {
-                    // A cell picked and an arrow pressed carries on from it.
-                    if (root.first !== null)
-                        root.box = root.first;
-                    root.typed = "";
-                    root.first = null;
-                    root.box = shift ? Picking.sized(root.box, side, root.step, window.bounds)
-                        : Picking.moved(root.box, side, root.step, window.bounds);
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    root.take();
-                } else if (event.key === Qt.Key_Escape) {
-                    root.back();
-                } else if (event.key === Qt.Key_Backspace) {
-                    if (root.typed !== "")
-                        root.typed = root.typed.slice(0, -1);
-                    else
-                        root.first = null;
-                } else if (/^[a-z]$/i.test(event.text) && !ctrl) {
-                    root.letter(event.text.toLowerCase(), window.cells);
-                } else {
+                const chord = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier)) !== 0;
+                const arrow = ["Left", "Right", "Up", "Down"].includes(named);
+                const key = named === undefined ? event.text
+                    : arrow && shift ? `Shift+${named}` : named;
+                if (chord || key === "")
                     return;
-                }
+                root.press(key, window.cells, window.bounds);
                 event.accepted = true;
             }
 
@@ -260,9 +253,11 @@ Singleton {
                 }
             }
 
-            // The grid's letters, each at its cell's middle, always there so
-            // nothing has to be known to use them: quiet until typing begins,
-            // then the ones what's typed still leads to in the strong colour.
+            // The grid's letters, each at its cell's middle, shown while an
+            // f waits for two, as a jump plugin's labels show only once
+            // asked for: quiet until typing begins, then the ones what's
+            // typed still leads to in the strong colour. Made once, so f
+            // only shows them.
             Repeater {
                 model: window.cells.rows * window.cells.columns
 
@@ -272,8 +267,10 @@ Singleton {
                     readonly property int row: Math.floor(index / window.cells.columns)
                     readonly property int column: index % window.cells.columns
                     readonly property string label: Picking.letter(row) + Picking.letter(column)
-                    readonly property bool leads: root.typed !== ""
-                        && label.startsWith(root.typed)
+                    readonly property bool leads: root.stood.typed !== ""
+                        && label.startsWith(root.stood.typed)
+
+                    visible: root.stood.finding
 
                     x: Math.round((column + 0.5) * window.cells.width - width / 2)
                     y: Math.round((row + 0.5) * window.cells.height - height / 2)
@@ -283,7 +280,7 @@ Singleton {
                     height: labelText.implicitHeight + 2 * Theme.space.rung.tie
                     radius: Theme.inner
                     color: Qt.alpha(Theme.raised, Theme.floating.opacity)
-                    opacity: leads ? 1 : root.typed === "" ? 0.7 : 0.3
+                    opacity: leads ? 1 : root.stood.typed === "" ? 0.7 : 0.3
 
                     Text {
                         id: labelText
@@ -377,8 +374,7 @@ Singleton {
                             // Apart from the title, as a title's hint stands.
                             x: title.x + title.width + Theme.space.rung.apart
                             anchors.baseline: title.baseline
-                            readonly property string corner: root.first === null ? "" : "\u2192 "
-                            text: `${corner}${root.typed}`
+                            text: root.typed
                             textFormat: Text.PlainText
                             color: Theme.strong
                             font.family: Theme.level.figure.family
@@ -390,9 +386,15 @@ Singleton {
                         Text {
                             x: letters.x + letters.width
                             anchors.baseline: title.baseline
-                            visible: root.typed === ""
-                            text: root.first === null ? "a cell's letters" : "the other's"
-                            color: Theme.level.voice.colour
+                            // A space after what's typed, as a hint stands
+                            // from its word; what the last key said, or
+                            // while f waits, which corner its letters pick.
+                            leftPadding: root.typed === "" ? 0 : Theme.space.rung.mark
+                            text: root.said !== "" ? root.said
+                                : !root.stood.finding ? ""
+                                : root.first === null ? "a corner" : "the other corner"
+                            color: root.said.startsWith("E") ? Theme.alert
+                                : Theme.level.voice.colour
                             font.family: Theme.level.voice.family
                             font.pointSize: Theme.level.voice.pointSize
                             font.weight: Theme.level.voice.weight
@@ -421,16 +423,102 @@ Singleton {
                         width: parent.width
                     }
 
+                    // Space ?: every key, under its mode's heading, the
+                    // keys in the text colour and what they do muted, as
+                    // the launcher lists its own. A beat above and below,
+                    // each line a Note pitch, and a beat more before the
+                    // next heading.
+                    Column {
+                        id: listed
+                        visible: root.stood.listing
+                        width: parent.width
+                        topPadding: Theme.space.beat
+                        bottomPadding: Theme.space.beat
+
+                        // The keys' column: the widest keys and a group's
+                        // room, so every saying starts on one edge.
+                        TextMetrics {
+                            id: widestKeys
+                            text: "Space ?"
+                            font.family: Theme.level.note.family
+                            font.pointSize: Theme.level.note.pointSize
+                            font.weight: Theme.level.note.weight
+                        }
+
+                        Repeater {
+                            model: root.stood.listing ? Picking.keyList() : []
+
+                            Item {
+                                id: keyLine
+
+                                required property var modelData
+                                required property int index
+
+                                readonly property bool heading: modelData.heading !== ""
+
+                                width: listed.width
+                                height: Theme.level.note.pitch
+                                    + (heading && index > 0 ? Theme.space.beat : 0)
+
+                                Text {
+                                    x: panel.inset
+                                    anchors.bottom: parent.bottom
+                                    height: Theme.level.note.pitch
+                                    verticalAlignment: Text.AlignVCenter
+                                    visible: keyLine.heading
+                                    text: keyLine.modelData.heading
+                                    color: Theme.level.label.colour
+                                    font.family: Theme.level.label.family
+                                    font.pointSize: Theme.level.label.pointSize
+                                    font.weight: Theme.level.label.weight
+                                    font.capitalization: Theme.level.label.capitalization
+                                    font.letterSpacing: Theme.level.label.letterSpacing
+                                    font.features: Theme.level.label.features
+                                }
+
+                                Text {
+                                    id: lineKeys
+                                    x: panel.inset
+                                    anchors.bottom: parent.bottom
+                                    height: Theme.level.note.pitch
+                                    verticalAlignment: Text.AlignVCenter
+                                    visible: !keyLine.heading
+                                    text: keyLine.modelData.keys
+                                    color: Theme.text
+                                    font: widestKeys.font
+                                }
+
+                                Text {
+                                    x: panel.inset + widestKeys.advanceWidth
+                                        + Theme.space.rung.groups
+                                    anchors.baseline: lineKeys.baseline
+                                    visible: !keyLine.heading
+                                    text: keyLine.modelData.does
+                                    color: Theme.level.note.colour
+                                    font: widestKeys.font
+                                }
+                            }
+                        }
+                    }
+
+                    Hairline {
+                        visible: root.stood.listing
+                        width: parent.width
+                    }
+
                     // What the keys do here, as a prompt's foot says it.
                     PromptFoot {
                         id: foot
                         width: parent.width
-                        keys: root.lettered
-                            ? [["\u21b5", "take"], ["a\u2013z", "row, then column"],
-                                ["\u232b", "undo"], ["Esc", "clear"]]
-                            : [["\u21b5", "take"], ["a\u2013z", "cells"],
-                                ["\u2190 \u2192 \u2191 \u2193", "move"],
-                                ["\u21e7", "size"], ["Esc", "back"]]
+                        dotted: true
+                        // Return last, as the status line has it, and
+                        // Space ? before it for the rest; an f waiting
+                        // names the letters it waits for. The arrows move
+                        // unnamed, and Escape is never said.
+                        keys: root.stood.finding
+                            ? [["a\u2013z", "row, then column"], ["\u21b5", "take"]]
+                            : [["f", "cells"], ["h j k l", "move"], ["H J K L", "size"],
+                                ["Space ?", "keys"], ["\u21b5", "take"]]
                     }
                 }
             }

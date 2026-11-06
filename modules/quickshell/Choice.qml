@@ -25,6 +25,7 @@
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Shapes
 import "Reading.js" as Reading
 
 Rectangle {
@@ -166,16 +167,79 @@ Rectangle {
             : "transparent"
     }
 
+    // The glyph's ink and the name's capitals as the faces draw them,
+    // measured as they load at many times their size and read back down,
+    // since a measure at the size drawn comes in whole pixels, a twelfth of
+    // a mark's height.
+    readonly property real fine: 8
+    TextMetrics {
+        id: markInk
+        text: row.glyph
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize * row.fine
+    }
+    // Qt's tight measure of a glyph runs down to the baseline, so a mark
+    // standing above it, as the keyboard and people do, measures taller
+    // than its ink and centres high (VKCF3Z, 2026-11-05: a pixel at 1.5).
+    // Its top is true; its outline gives its height. Measuring the outline
+    // rather than Qt's box fixes that cause, where a size or offset tuned
+    // per glyph would only hide it until the next mark.
+    Shape {
+        id: markOutline
+        visible: false
+        ShapePath {
+            PathText {
+                text: row.glyph
+                font.family: Theme.level.figure.family
+                font.pointSize: Theme.level.figure.pointSize * row.fine
+            }
+        }
+    }
+    // The ink's height, its top and its middle, at the fine size.
+    readonly property real inkTall: markOutline.boundingRect.height > 0
+        ? Math.min(markOutline.boundingRect.height, markInk.tightBoundingRect.height)
+        : markInk.tightBoundingRect.height
+    readonly property real inkMiddle: markInk.tightBoundingRect.y + inkTall / 2
+    // Every mark at one optical size beside the type, whatever its shape,
+    // so a wide one such as the keyboard doesn't read smaller than the
+    // rest down the column (the launcher audit's finding 10): scaled so its
+    // ink's area is the size's square, never taller than it, so a narrow
+    // mark doesn't outgrow the type, and never wider than its cell, so it
+    // keeps its column. The size is fifteen sixteenths of the em, the
+    // face's size in pixels at 96 points to the inch: 15 at Figure, a step
+    // lighter than the em beside the names (VKCF3Z, 2026-11-05).
+    readonly property real markSize: Theme.level.figure.pointSize * 4 / 3 * 15 / 16
+    readonly property real markScale: {
+        const wide = markInk.tightBoundingRect.width / fine;
+        const tall = inkTall / fine;
+        return wide <= 0 || tall <= 0 ? 1
+            : Math.min(markSize / Math.sqrt(wide * tall), markSize / tall,
+                Theme.level.name.pitch / wide);
+    }
+    // Where the mark's ink centres, down from the row's top: on the name's
+    // capitals' middle, its baseline less half their height as drawn on
+    // this screen, whose pixels round them: measured at its own scale.
+    readonly property real markOn: (height + capitals) / 2
+        - capitalsDrawn.tightBoundingRect.height / ratio / 2
+    readonly property real ratio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    TextMetrics {
+        id: capitalsDrawn
+        text: "H"
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize * row.ratio
+    }
+
     Text {
         x: Theme.space.rung.inset + row.indent
-        anchors.verticalCenter: parent.verticalCenter
+        // Its ink's middle on the capitals'.
+        y: row.markOn - row.inkMiddle / row.fine * row.markScale - baselineOffset
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph
         color: row.flashed && !row.swatch ? row.flashInk
             : row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
         font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.pointSize: Theme.level.figure.pointSize * row.markScale
     }
 
     // Selected, a name too long for its room reads on (ReadsOn.qml), and

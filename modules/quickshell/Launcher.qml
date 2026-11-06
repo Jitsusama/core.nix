@@ -366,6 +366,10 @@ Scope {
             is: "answer",
             answered: true,
             nested: parted(said),
+            // One whose parts are read only as they're looked at, as
+            // Machine's CPU lists the processes, which the walk for where a
+            // row lives never makes (Catalogue.js's followsInto).
+            parted: said.parted === true,
             // Named by what it says, not by what was typed, so nothing in
             // it is marked as matched.
             plain: true,
@@ -607,6 +611,7 @@ Scope {
     property int choicesJoined: 0
     function stale() {
         choicesStale = true;
+        forgetLives();
         if (open)
             Qt.callLater(freshen);
     }
@@ -2669,26 +2674,11 @@ Scope {
         tagsBack = was.tags;
         lastPlace = moved ? left : was.last;
     }
-    // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
-    // that opens on Return, as a mail, a program or a session do, into the
-    // place listing its parts, which nothing else reaches (VKCF3Z,
-    // 2026-11-05). The place left goes on the tags' way back, as Vim's tag
-    // stack keeps it, and on the jump list, as any place left does; Ctrl+T
-    // reads it back (#1905). A row holding nothing says so.
-    property var tagsBack: []
     // Whether Ctrl+] goes into a row's own parts. A notice's acts are
     // commands under its card's words, not parts (VKCF3Z, 2026-11-05), so
     // Ctrl+] leaves it to where it lives instead.
     function holdsParts(row) {
         return holdsMore(row) && kindOf(row) !== "notice";
-    }
-    function follow(row) {
-        const left = { held: held, here: here() };
-        if (row && !row.gone && followed(row)) {
-            tagsBack = tagsBack.concat([left]);
-            return;
-        }
-        say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
     }
     // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
     // lost (Joel's rule): a found act into its program, a row into its
@@ -2721,6 +2711,119 @@ Scope {
             return;
         const to = lastPlace;
         traces.began("lastPlace", { from: held.length, to: to.held.length });
+        held = to.held;
+        restart(to.here.typed);
+        reselect(to.here);
+    }
+
+    // The places Ctrl+] left, as Vim's tag stack, which Ctrl+T comes back
+    // through. Let go as the launcher opens, with the jumps.
+    property var tagsBack: []
+
+    function forgetFollows() {
+        tagsBack = [];
+    }
+
+    // Where every row lives, by its steady id, so Ctrl+] only looks its
+    // row up: the walk took 20 to 85 ms in the VM, against a key's 4 ms
+    // (Y2YBTS, 2026-11-05). It's walked while the launcher is open, once
+    // the list has been quiet a moment, so neither a key nor the opening
+    // pays it, and kept until a provider's rows change. A press before
+    // then walks on its key, which its trace says (`indexed`).
+    property var followIndex: null
+    // How long the last walk took, in ms, or null while it's to be made.
+    property var livesWalked: null
+
+    function livesFor(id) {
+        if (followIndex === null)
+            walkLives();
+        return followIndex[id] ?? null;
+    }
+
+    function walkLives() {
+        const walking = Date.now();
+        followIndex = Catalogue.lives(home(), {
+            idOf: one => steadyId(one),
+            holds: (one, above) => catalogueHolds(one,
+                above === null || collects({ row: above }))
+        });
+        livesWalked = Date.now() - walking;
+    }
+
+    function forgetLives() {
+        followIndex = null;
+        livesWalked = null;
+        if (open)
+            livesLater.restart();
+    }
+
+    Timer {
+        id: livesLater
+
+        interval: 300
+        onTriggered: {
+            if (root.open && root.followIndex === null)
+                root.walkLives();
+        }
+    }
+
+    // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
+    // 2026-11-05): first wherever followed() takes it, as the old step in
+    // by l did, so a row that holds more goes into its parts, as the
+    // foot's Ctrl+] in says. A row with no parts living in another place,
+    // as a Now row, one found from home or a notice, whose acts are
+    // commands, not parts (VKCF3Z, 13:07), goes to that place, onto it
+    // there. A row Return takes elsewhere, a spot or a program's act found
+    // from home, keeps where it lives; a notice lives as its sender, its
+    // program's row; any other is walked for from home (Catalogue.js's
+    // lives). The place left goes on the tags' way back, as Vim's tag
+    // stack keeps it, and goTo puts it once on the jump list, as a tag is
+    // one jump in Vim, not one a step (oneJump). A row with none says so.
+    function follow(row) {
+        const live = row && !row.gone ? row : null;
+        const came = { held: held, here: here() };
+        if (live && followed(live)) {
+            traces.began("follow", { from: came.held.length, into: true });
+            tagsBack = tagsBack.concat([came]);
+            return;
+        }
+        // The look's own time goes in the trace, found or not, since it
+        // runs on the key, and whether it made the walk, which the first
+        // an open does.
+        const walking = Date.now();
+        const unwalked = followIndex === null;
+        const spot = live ? followedTo(live) : null;
+        if (live)
+            traces.began("follow", { from: held.length, to: spot ? spot.trail.length : null,
+                walked: Date.now() - walking, indexed: unwalked && followIndex !== null });
+        if (spot === null) {
+            say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
+            return;
+        }
+        goTo(spot);
+        tagsBack = tagsBack.concat([came]);
+    }
+
+    // Where Ctrl+] goes from a row, by steady ids, or null where it lives
+    // nowhere but here.
+    function followedTo(row) {
+        const own = row.trail !== undefined ? { trail: row.trail, spot: row.spot } : row.inside;
+        const path = own ? own.trail.concat([own.spot])
+            : livesFor(row.follows || steadyId(row));
+        return Catalogue.followed(path, held.map(step => steadyId(step.row)));
+    }
+
+    // Ctrl+T: back to the place Ctrl+] left last, as it was left, as Vim's
+    // pops its tag stack; with none, Vim's E73, the rows staying put.
+    function tagBack() {
+        if (tagsBack.length === 0) {
+            // Where the command line is, as E492 and E21 are.
+            commandSay((Words.field.hints ?? {}).E73 ?? "", true);
+            return;
+        }
+        const to = tagsBack[tagsBack.length - 1];
+        tagsBack = tagsBack.slice(0, -1);
+        traces.began("tagBack", { from: held.length, to: to.held.length });
         held = to.held;
         restart(to.here.typed);
         reselect(to.here);
@@ -3870,6 +3973,8 @@ Scope {
     // The list has settled: the spans waiting on it end, with how it's laid.
     function settledNow() {
         traces.settled(laidNow());
+        if (open && followIndex === null)
+            livesLater.restart();
     }
 
     // Where the list lays its rows now, for the spans waiting on it to
@@ -5347,6 +5452,10 @@ Scope {
                 .map(key => root.saidKey(key)) : [],
             // The places Ctrl+O and Ctrl+I go back and forward through.
             jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
+            // And those Ctrl+] left, which Ctrl+T comes back through.
+            tags: root.tagsBack.length,
+            // How long where every row lives took to walk, or null.
+            livesWalked: root.livesWalked,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
@@ -5714,7 +5823,7 @@ Scope {
         lastPlace = null;
         jumpsBack = [];
         jumpsAhead = [];
-        tagsBack = [];
+        forgetFollows();
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -5756,7 +5865,7 @@ Scope {
             lastPlace = null;
             jumpsBack = [];
             jumpsAhead = [];
-            tagsBack = [];
+            forgetFollows();
             listing = false;
             listedInDrawer = false;
             prompt.forget();
@@ -5936,6 +6045,15 @@ Scope {
     // and can hold no surface, so it's never one.
     readonly property var focusedScreen: {
         Niri.revision;
+        void Quickshell.screens;
+        return screenFocused();
+    }
+
+    // The focused screen as the screens stand now, for a handler that runs
+    // as they change, before focusedScreen's binding may have heard: read
+    // from the binding there, a screen just unplugged came back as the one
+    // to make the surface on, and the launcher showed on none.
+    function screenFocused() {
         const workspace = Niri.workspace();
         const real = Quickshell.screens.filter(screen => screen.name !== "");
         return real.find(screen => workspace && screen.name === workspace.output)
@@ -5965,8 +6083,17 @@ Scope {
     Connections {
         target: Quickshell
 
+        // A screen still listed is remade from once the change settles. The
+        // one the surface is on, gone, is let go at once: until then every
+        // binding that reads its size (the card's width, height and place)
+        // reads a screen Qt has freed, and Quickshell warns it's dangling
+        // whenever one runs first, as a displays refresh did (the net's
+        // quarantine of vm-screens-keep-the-launcher, 2026-11-05).
         function onScreensChanged() {
-            Qt.callLater(root.remake);
+            if (root.screenHere !== null && !Quickshell.screens.includes(root.screenHere))
+                root.remake();
+            else
+                Qt.callLater(root.remake);
         }
     }
 
@@ -5980,7 +6107,7 @@ Scope {
         if (kept)
             return;
         open = false;
-        screenHere = focusedScreen;
+        screenHere = screenFocused();
         surface.visible = false;
         surface.visible = screenHere !== null;
     }
@@ -6381,6 +6508,9 @@ Scope {
                                 return;
                             case "follow":
                                 root.follow(root.matches[root.current] ?? null);
+                                return;
+                            case "tagBack":
+                                root.tagBack();
                                 return;
                             // h and l on a row say Vim's way out and in,
                             // and Backspace as h, read as the one beside

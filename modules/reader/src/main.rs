@@ -41,6 +41,7 @@ mod visual;
 mod walk;
 mod watch;
 mod web;
+mod whole;
 mod worker;
 mod world;
 
@@ -436,6 +437,11 @@ struct App {
     aim: Option<f64>,
     /// The rule's swatch, in the accent.
     rule: Option<gl::Texture>,
+    /// The ground's swatch, laid over a line an overlay would cut.
+    bare: Option<gl::Texture>,
+    /// Which of the page's lines are a heading's, for the page's version
+    /// they were read for, so a heading hides with its first line.
+    heading_lines: Option<(u32, Vec<bool>)>,
     /// Whether the key being done put where it left from on the jump list,
     /// so a move longer than a screen that didn't is put there after.
     leapt: bool,
@@ -3103,11 +3109,13 @@ impl App {
     )]
     fn draw_over(&mut self, screen: f32) {
         let Some(gl) = self.gl.as_ref() else { return };
+        let mut over = None;
         if self.prompt_shown
             && let Some(canvas) = painted(gl, &mut self.prompt_canvas, self.prompt_set.take())
         {
             let (width, height) = (canvas.width as f32, canvas.height as f32);
             gl.draw(canvas, 0.0, screen - height, width, height);
+            over = Some(screen - height);
         }
         // gO's outline stands on the prompt's row while that shows, as his
         // location list stands on his command line.
@@ -3126,7 +3134,45 @@ impl App {
         if let Some(top) = list_top {
             self.draw_reading(top);
         }
+        if let Some(top) = list_top.or(over) {
+            self.bare_above(top);
+        }
         self.draw_keys();
+    }
+
+    /// Lays the ground over the page from the top of the first line an
+    /// overlay whose top stands at `over` would cut, so no line shows cut by
+    /// it and no heading stands alone over it (whole.rs).
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "pixels as f32, as GL takes them, within a screen's few thousand"
+    )]
+    fn bare_above(&mut self, over: f32) {
+        let version = self.painter.version;
+        let count = self.words.as_ref().map_or(0, Vec::len);
+        if self
+            .heading_lines
+            .as_ref()
+            .is_none_or(|(read, heads)| *read != version || heads.len() != count)
+            && let Some(lines) = self.words.as_deref()
+        {
+            let blocks = place::blocks(&self.painter.page().frame);
+            self.heading_lines = Some((version, whole::headings(&blocks, lines)));
+        }
+        let (Some(gl), Some(ground), Some(lines), Some((_, heads))) = (
+            self.gl.as_ref(),
+            self.bare.as_ref(),
+            self.words.as_deref(),
+            self.heading_lines.as_ref(),
+        ) else {
+            return;
+        };
+        let shown = whole::shown(lines, heads, self.px_per_pt(), self.offset);
+        let from = whole::bare_from(&shown, f64::from(over)).max(0.0).round() as f32;
+        if from < over {
+            gl.draw(ground, 0.0, from, gl.width as f32, over - from);
+        }
     }
 
     /// Starts the chosen row's words reading on, when they run past their
@@ -4259,6 +4305,7 @@ impl WindowHandler for App {
                         .zip(gl.chosen(selection_marks(), cursor_marks()).ok())
                         .map(|(a, b)| [a, b]);
                     self.rule = gl.swatch(theme::get().accent.gl()).ok();
+                    self.bare = gl.swatch(self::ground()).ok();
                     self.gl = Some(gl);
                 }
                 Err(error) => {
@@ -4844,6 +4891,8 @@ impl App {
             flash: None,
             chosen: None,
             rule: None,
+            bare: None,
+            heading_lines: None,
             aim: None,
             leapt: false,
             commanding: None,

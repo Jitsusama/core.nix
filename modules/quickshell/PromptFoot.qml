@@ -13,8 +13,11 @@ import "Bands.js" as Bands
 Item {
     id: foot
 
-    // What the keys do, as KeyHints takes them.
+    // What the keys do, as KeyHints takes them, joined by dots where the
+    // owner speaks the status line's way (StatusLine.qml), as the region
+    // picker does.
     property var keys: []
+    property bool dotted: false
     // Where they lead, as styled text at Note, and the letter it opens on;
     // none when it's empty.
     property string leads
@@ -79,5 +82,6 @@ Item {
         x: foot.width - foot.inset - width
         y: foot.words - baselineOffset
         keys: foot.keys
+        dotted: foot.dotted
     }
 }
