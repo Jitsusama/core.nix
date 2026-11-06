@@ -104,8 +104,8 @@ QtObject {
                 ["normal", "3 copy", "3 copy"]],
             ["y takes the motions d does", ["Escape", "y", "2", "k", "y", "G", "y", "g", "g"],
                 ["normal", "copy 2 previous", "copy last", "copy first"]],
-            ["Escape lets d go, then closes", ["Escape", "d", "Escape", "j", "Escape"],
-                ["normal", "next", "dismiss"]],
+            ["Escape lets d go, then does nothing", ["Escape", "d", "Escape", "j", "Escape"],
+                ["normal", "next"]],
             ["and a count with it, at once, as Vim's does",
                 ["Escape", "3", "d", "Escape", "j"], ["normal", "next"]],
             ["and a count after it", ["Escape", "d", "3", "Escape", "j"], ["normal", "next"]],
@@ -1179,11 +1179,11 @@ QtObject {
             ["Return does the row on the find, and in normal", ["Return", "Escape", "Return"],
                 ["run", "normal", "run"]],
             ["Ctrl+C leaves the find for normal", ["Ctrl+c"], ["normal"]],
-            // Escape at rest closes the launcher, a popup, as his Neovim
-            // closes its floats, and never steps out (the vi-paradigm spec,
-            // Normal).
-            ["Escape gives normal, and then closes", ["Escape", "Escape"],
-                ["normal", "dismiss"]],
+            // Escape at rest does nothing, as Vim's does in normal: it
+            // never closes or quits anything (Joel, 2026-11-05 15:3x:
+            // "fuck escape quitting"), which :q, ZZ and Space w do.
+            ["Escape gives normal, and then does nothing", ["Escape", "Escape", "Escape"],
+                ["normal"]],
             // Return goes in and - up, as oil's; h and l move along a line,
             // which a row hasn't, so they only say Vim's way in and out, and
             // Backspace is h (the vi-paradigm spec, Normal).
@@ -1222,8 +1222,8 @@ QtObject {
                 ["normal", "numbers"]],
             ["Space alone begins, and a key it doesn't lead lets it go",
                 ["Escape", "Space", "j", "j"], ["normal", "next"]],
-            ["Escape cancels a Space waiting, then closes",
-                ["Escape", "Space", "Escape", "Escape"], ["normal", "dismiss"]],
+            ["Escape cancels a Space waiting, then does nothing",
+                ["Escape", "Space", "Escape", "Escape", "j"], ["normal", "next"]],
             ["normal's j and k go down and up", ["Escape", "j", "k"],
                 ["normal", "next", "previous"]],
             ["gg and G go to the first and the last", ["Escape", "g", "g", "G"],
@@ -1305,10 +1305,10 @@ QtObject {
             ["0 alone is no count, and does nothing", ["Escape", "0", "j"], ["normal", "next"]],
             ["a count goes with its move, not the next", ["Escape", "3", "j", "j"],
                 ["normal", "3 next", "next"]],
-            ["Escape only cancels a count, then closes", ["Escape", "5", "Escape", "j", "Escape"],
-                ["normal", "next", "dismiss"]],
-            ["Escape only cancels a g waiting, then closes", ["Escape", "g", "Escape", "Escape"],
-                ["normal", "dismiss"]],
+            ["Escape only cancels a count, then does nothing",
+                ["Escape", "5", "Escape", "j", "Escape"], ["normal", "next"]],
+            ["Escape only cancels a g waiting, then does nothing",
+                ["Escape", "g", "Escape", "Escape", "j"], ["normal", "next"]],
             ["a key that ends nothing lets the count go", ["Escape", "3", "x", "j"],
                 ["normal", "next"]],
             ["a count before a colon goes with it", ["Escape", "3", ":"],
@@ -1345,6 +1345,14 @@ QtObject {
             typed(["Escape", "]", "x"]).idle, ["x"]);
         holds("a count, a sequence begun and a move each mean something",
             typed(["Escape", "3", "g", "g", "Space", "?"]).idle, []);
+        // Escape at rest is Vim's, which says nothing in his Neovim, its
+        // bell off: pressed out of habit to be sure of normal, it's never
+        // told "not here".
+        holds("Escape at rest in normal does nothing, and says nothing",
+            typed(["Escape", "Escape", "Escape"]), typed(["Escape"]));
+        holds("no key in any mode closes the launcher by Escape",
+            Keys.table.filter(one => one.keys.includes("Escape")
+                && ["close", "dismiss", "quit"].includes(one.act)).map(one => one.act), []);
         holds("a letter on the find types, meaning nothing idle", typed(["n"]).idle, []);
         holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
             { count: "", typed: [] });
@@ -1493,10 +1501,9 @@ QtObject {
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
-        for (const act of ["run", "intoSaid", "outSaid", "out", "dismiss", "close", "quitSaid",
+        for (const act of ["run", "intoSaid", "outSaid", "out", "close", "quitSaid",
             "lastPlace", "follow", "jumpBack", "jumpForward", "freshFind", "keys", "numbers",
-            "insert", "change", ""])
-            holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
+            "insert", "change", ""])            holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
         // the 7th selected: [what, the act, the count, where it goes].

@@ -23,8 +23,9 @@
 // Return goes into a place or a thing with acts, and opens a program, a
 // window or a file; a row's other acts are its verbs as commands, on the
 // : line. What's held shows as chips in the field; - goes up, onto the
-// row come from, with its find. Each Escape takes one step back, and at
-// the level the launcher opened on closes it.
+// row come from, with its find. Escape leaves a line or cancels what's
+// begun, as Vim's does, and at rest does nothing; :q, ZZ or Space w close
+// it.
 //
 // What everything is called is the vocabulary's (Words.qml): its names,
 // the words that find it, its parts, and the categories it's in. A
@@ -5426,8 +5427,8 @@ Scope {
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
-    // straight into, where normal's Escape at rest closes it, as it does at
-    // home, rather than stepping out to a home it never showed.
+    // straight into, where :q closes it, as it does at home, rather than
+    // stepping out to a home it never showed.
     property int homeDepth: 0
 
     onOpenChanged: {
@@ -5958,6 +5959,15 @@ Scope {
                                 root.back();
                             else
                                 root.open = false;
+                        }
+                        // Escape at rest lets the key list go, and words
+                        // asked for, as it leaves what's begun, and closes
+                        // nothing (Joel, 2026-11-05: "fuck escape quitting").
+                        onRested: {
+                            if (root.listing)
+                                root.listing = false;
+                            else if (root.asking)
+                                root.back();
                         }
                         // A key with no meaning here says so, until the next.
                         onIdled: key => root.say([[ListedKeys.face(key),

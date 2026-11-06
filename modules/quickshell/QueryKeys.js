@@ -126,9 +126,6 @@ const table = [
     // Vim's Ctrl+W l and w go into the drawer, and his Neovim's Space and the
     // right arrow over them (Joel, 2026-11-05: "leader stuff can overlay").
     { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
-    // Escape at rest closes the launcher from any depth, as his Neovim closes
-    // its floats, never stepping out (the spec's Normal); read cancels first.
-    { act: "dismiss", mode: "normal", keys: ["Escape"] },
 
     // A prompt's words in normal, as Vim edits a line: w, b and e to the
     // next word's start, back to a word's start and on to its end, 0 and $
@@ -369,8 +366,8 @@ function matching(typed, mode, words) {
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and closes on the next press; one meaning nothing in normal is
-// `idle`, said "not here". Words says the line holds a prompt's words
+// does, and at rest in normal does nothing, saying nothing; one meaning
+// nothing else in normal is `idle`, said "not here". Words says the line holds a prompt's words
 // rather than a find, which normal edits.
 function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
@@ -397,7 +394,10 @@ function read(standing, key, mode, words = false) {
         const count = mode === "normal" && standing.count !== "" ? Number(standing.count) : 0;
         return { act: "command", count, standing: rest(), ours: true };
     }
-    if (key === "Escape" && pending(standing)) {
+    // At rest in normal too, closing nothing (Joel, 2026-11-05: "fuck escape
+    // quitting"), and never told "not here": his Neovim's bell is off, and
+    // he presses it out of habit to be sure of normal.
+    if (key === "Escape" && (pending(standing) || mode === "normal")) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
     // Normal's and visual's counts and operators, which keep an operator's

@@ -557,17 +557,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_ready()
 
     def close_launcher(self) -> None:
-        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+        """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
-        From the find the first gives normal, and the next closes it from any depth, after
-        letting the key list go if it's shown. A key sent before this that the launcher hears late
-        moves it on too, so each Escape waits only for something to change. Escape does nothing
-        in the drawer, as in any window, so with the keys there, on its page or choosing on it,
-        :q brings them back to the rows first, a line typed that no wait can come apart.
+        Escape gives normal from the find, lets the key list go if it's shown, and cancels a
+        count, a key begun or an operator, but never closes (Joel, 2026-11-05: "fuck escape
+        quitting"), so :q does, from any depth. A key sent before this that the launcher hears
+        late moves it on too, so each Escape waits only for something to change. Escape does
+        nothing in the drawer, as in any window, so with the keys there, on its page or choosing
+        on it, :q brings them back to the rows first, a line typed that no wait can come apart.
         """
 
-        # A pending operator counts, since the first Escape cancels it and
-        # changes nothing else, as Vim's does.
+        # A pending count, key or operator counts, since an Escape cancels
+        # it and changes nothing else, as Vim's does.
         def where(shown: Json) -> tuple[object, ...]:
             return (
                 shown["open"],
@@ -576,6 +577,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 len(shown["held"]),
                 shown.get("listing"),
                 shown.get("command") is not None,
+                shown["counted"],
+                shown["begun"],
             )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
@@ -585,11 +588,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             was = where(self.showing())
             if not was[0]:
                 return
-            if str(was[2]).startswith("page"):
+            _, operator, mode, _, listing, commanding, counted, begun = was
+            resting = mode == "normal" and not (operator or listing or commanding)
+            if str(mode).startswith("page") or (resting and not (counted or begun)):
                 self.machine.send_chars(":q\n")
-                self.launcher_until(functools.partial(moved, was))
-                continue
-            self.machine.send_key("esc")
+            else:
+                self.machine.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"

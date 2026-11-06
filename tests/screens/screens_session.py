@@ -255,8 +255,8 @@ class Screens:
     # The launcher is how Joel reaches everything, so it must work on whichever
     # screen he's on after any of these: Super+Space opens it there and gives
     # it the keys, typing finds a row, Return runs it and the launcher closes,
-    # and Escape closes it too: the first gives normal mode, and the next one,
-    # at home, closes it. The row is Keep Awake, whose unit says it ran; each
+    # and :q closes it too, from the normal mode Escape gives, as Escape never
+    # closes. The row is Keep Awake, whose unit says it ran; each
     # run turns it the other way, so it's typed by the name it has now.
 
     def launcher_shows(self) -> dict[str, Any]:
@@ -280,17 +280,24 @@ class Screens:
         return shown
 
     def close_launcher(self, on: str = "") -> None:
-        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+        """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
-        From insert the first gives normal, each after it steps back out a level, and the one
-        at the level it opened on closes it. A key sent before this that the launcher hears late
-        moves it on too, so each Escape waits only for something to change. Where it's closed,
-        such as on which screen, goes into what a wait that runs out says.
+        Escape gives normal from the find, lets the key list go, and cancels a count or a key
+        begun, but never closes (Joel, 2026-11-05: "fuck escape quitting"), so :q does, from
+        any depth. A key sent before this that the launcher hears late moves it on too, so each
+        step waits only for something to change. Where it's closed, such as on which screen,
+        goes into what a wait that runs out says.
         """
         said = f" {on}" if on else ""
 
         def where(shown: dict[str, Any]) -> tuple[object, ...]:
-            return (shown["open"], shown["mode"], len(shown["held"]))
+            return (
+                shown["open"],
+                shown["mode"],
+                len(shown["held"]),
+                bool(shown.get("listing") or shown.get("command") or shown.get("operator")),
+                bool(shown.get("counted") or shown.get("begun")),
+            )
 
         def moved(was: tuple[object, ...], shown: dict[str, Any]) -> bool:
             return where(shown) != was
@@ -299,8 +306,12 @@ class Screens:
             was = where(self.launcher_shows())
             if not was[0]:
                 return
-            self.machine.send_key("esc")
-            self.launcher_until(functools.partial(moved, was), f"moved on at Escape{said}")
+            _, mode, _, over, begun = was
+            if mode == "normal" and not (over or begun):
+                self.machine.send_chars(":q\n")
+            else:
+                self.machine.send_key("esc")
+            self.launcher_until(functools.partial(moved, was), f"moved on toward :q{said}")
         pytest.fail(f"the launcher was still open after 12 Escapes{said}: {self.launcher_shows()}")
 
     def awake(self) -> bool:
@@ -625,7 +636,7 @@ def slept_open(second_back: Screens) -> Screens:
     )
     second_back.unlock()
     # Whether it's still open after is the shell's to say, but it must hold
-    # the keys if it is, and close at its Escapes.
+    # the keys if it is, and close at its :q.
     second_back.launcher_until(lambda shown: not shown["open"] or shown["keys"], "held the keys")
     second_back.close_launcher("after the wake")
     return second_back

@@ -662,7 +662,7 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     for keys, row in [("1 2 k", 0), ("5 G", 4), ("2 g g", 1)]:
         press(keys)
         at(row)
-    # Escape with a count begun only lets it go, as Vim's does, and the next closes.
+    # Escape with a count begun only lets it go, as Vim's does; it never closes.
     machine.send_chars("5")
     desktop.launcher_until(lambda shown: shown["counted"] == "5")
     machine.send_key("esc")
@@ -907,8 +907,9 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     Space Tab goes to the place used last and back, as his goes to the file used last; Ctrl+O
     and Tab, which is Ctrl+I, go back and forward through the places stepped into; Space ? and
     F1 list every key in the drawer until Escape or again; Space alone waits for a second key
-    and lets go; Space w closes the launcher, and Escape closes it from a step in. Every hint
-    the foot draws, at home and a step in, is first pressed and seen to do something.
+    and lets go; Space w closes the launcher, and Escape at rest a step in does nothing, :q
+    closing it. Every hint the foot draws, at home and a step in, is first pressed and seen to
+    do something.
     """
     machine = desktop.machine
     every_hint_changes(desktop, 0)
@@ -956,7 +957,23 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     assert desktop.showing()["open"], "a Space alone closed the launcher"
     machine.send_chars(" w")
     desktop.launcher_until(lambda shown: not shown["open"])
-    # Escape at rest closes it from a step in, never stepping out.
+    escape_at_rest_stays(desktop)
+    # A colon as the find's first letter opens the command line, where :q closes.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars(":q")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def escape_at_rest_stays(desktop: Desktop) -> None:
+    """Press Escape at rest a step in, which does nothing, and close by :q.
+
+    As Vim's in normal, it neither closes nor steps out, and says nothing (Joel, 2026-11-05:
+    "fuck escape quitting").
+    """
+    machine = desktop.machine
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.follow()
@@ -968,14 +985,19 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
             and shown["gutter"]["numbers"][:3] == ["1", "1", "2"]
         )
     )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
-    # A colon as the find's first letter opens the command line, where :q closes.
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    machine.send_chars(":q")
-    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
-    machine.send_key("ret")
+    for _ in range(2):
+        machine.send_key("esc")
+    # A key after the two shows they were heard, and did nothing.
+    machine.send_chars("j")
+    desktop.launcher_until(lambda shown: shown["current"] == 1)
+    shown = desktop.showing()
+    assert (shown["open"], shown["held"], shown["mode"], shown["saying"]) == (
+        True,
+        ["emoji"],
+        "normal",
+        [],
+    ), shown
+    machine.send_chars(":q\n")
     desktop.launcher_until(lambda shown: not shown["open"])
 
 

@@ -133,7 +133,7 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
 # more than one app could, and the launcher asks rather than GNOME's
 # dialog, holding the apps the portal offers. Return opens the picture
 # with the one taken, and the portal says it opened; asked again,
-# Escape until the launcher closes, the first giving normal mode, opens
+# closed by :q from normal, which Escape gives, the launcher opens
 # nothing, and the portal says it was refused; and each ask's socket
 # goes once it's answered. Each time the apps offered change
 # while it waits, as the portal says when apps are installed, so a
