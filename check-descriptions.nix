@@ -2218,8 +2218,8 @@
     quest's build is said with its quest, and a stopped build leaves no process nor cgroup
   '';
   vm-clock-keeps-time = ''
-    chrony is told a network's own time server and sets the clock from the machine's servers past
-    it when it's silent
+    chrony is told a network's own time server, still listening after a burst of link states, and
+    sets the clock from the machine's servers past it when it's silent
   '';
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for

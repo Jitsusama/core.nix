@@ -56,6 +56,11 @@ in
     description = "Tells chrony the time servers the networks name";
     wantedBy = [ "multi-user.target" ];
     after = [ "chronyd.service" ];
+    # networkd writes link states in bursts as a machine starts, six in
+    # under three seconds on a laptop, past systemd's five starts in ten;
+    # stopped there, it never heard the networks' servers until a restart.
+    # Each run is a read and at most a reload, so it has no limit.
+    startLimitIntervalSec = 0;
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${told}/bin/chrony-network-servers";
