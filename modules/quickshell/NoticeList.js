@@ -206,30 +206,33 @@ function redo(history, count) {
 // Qt's wrap breaks them, `measure` giving a run's width; a word too wide
 // alone takes the lines it is broken over.
 function laid(words, wide, measure) {
+    const linesOf = part => (part === "" ? 0 : Math.max(Math.ceil(measure(part) / wide), 1));
     let lines = 0;
-    let run = "";
+    let line = "";
     for (const word of words) {
-        const longer = run === "" ? word : `${run} ${word}`;
-        if (run !== "" && measure(longer) <= wide) {
-            run = longer;
-            continue;
+        const longer = line === "" ? word : `${line} ${word}`;
+        if (line !== "" && measure(longer) <= wide) {
+            line = longer;
+        } else {
+            lines += linesOf(line);
+            line = word;
         }
-        lines += run === "" ? 0 : Math.max(Math.ceil(measure(run) / wide), 1);
-        run = word;
     }
-    return lines + (run === "" ? 0 : Math.max(Math.ceil(measure(run) / wide), 1));
+    return lines + linesOf(line);
 }
+
+const spaces = /\s+/;
 
 // What a card's words show in `lines` lines `wide` across: null when they
 // all fit, kept as they are; else the whole words that fit, the last one
 // ending in an ellipsis, never cut mid-word nor a line cut in half
 // (VKCF3Z, 2026-11-05).
 function wholeWords(text, lines, wide, measure) {
-    const words = text.split(/\s+/).filter(word => word !== "");
+    const words = text.split(spaces).filter(word => word !== "");
     if (laid(words, wide, measure) <= lines) {
         return null;
     }
-    for (let kept = words.length - 1; kept > 0; kept--) {
+    for (let kept = words.length - 1; kept > 0; kept -= 1) {
         const shown = words.slice(0, kept);
         shown[kept - 1] += "\u2026";
         if (laid(shown, wide, measure) <= lines) {
