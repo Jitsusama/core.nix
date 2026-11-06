@@ -84,8 +84,8 @@ Scope {
     // How many results show at once; the rest are a scroll away. Eight,
     // or as many as keep the card inside a small screen, a screen margin
     // above and below it, three at least (VKCF3Z, 2026-11-05: panels
-    // never run off the screen). Home's gap is allowed for whether it shows
-    // or not, so what's found never changes how many.
+    // never run off the screen). A page's gap is allowed for whether it
+    // shows or not, so what's found never changes how many.
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
         (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
             / rowTall)))
@@ -1378,8 +1378,9 @@ Scope {
             glyph: Words.glyph(id),
             hue: "voice",
             chord: [],
-            side: "",
-            count: String(things.length),
+            // How many at its right, where a row's figure stands (VKCF3Z,
+            // 2026-11-05: one place for each kind of fact).
+            side: String(things.length),
             chip: entry.name.toLowerCase(),
             title: entry.name,
             nested: true,
@@ -1687,7 +1688,7 @@ Scope {
     }
 
     // How tall the list is while the launcher's open: always its rows, and
-    // home's gap when it has one.
+    // the gap of a page that opens with one.
     // Set as it opens, from the rows the screen gives.
     property int tall: 8 * rowTall
 
@@ -2374,10 +2375,10 @@ Scope {
 
     function home() {
         const room = rowRoom();
+        // Now is home's first row, not a group of its own, so the rows sit
+        // a row apart from the head's hairline to the foot's (VKCF3Z,
+        // 2026-11-05).
         const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
-        // Now stands apart from the rest by a gap, as what's this moment.
-        if (rows.length > 1)
-            rows[1] = Object.assign({}, rows[1], { gap: true });
         // Now's plate sets its lines on home's rows (look 3): what needs
         // Joel on Agents', the day's facts from Programs' and the clock's
         // from Desktop's, each by where that row is today, or -1 where
@@ -5073,13 +5074,13 @@ Scope {
     // centred in a row's height, as a row's are, and an inset above the
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
-    // The gap that sets the collections apart at home, above a row that
-    // has one; the card's height, the list and the rows' lines all read
+    // The gap that sets a page's groups apart, above a row that has one,
+    // as Network's does; home has none; the card's height, the list and the rows' lines all read
     // it, so the plate's lines can't drift from the list's.
     readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
     // The middle of each row the card shows, down from its top: the first
-    // row's, then a row further for each, and home's gap above a row that
-    // has one, so Now's plate can set a line on any of them. Worked out
+    // row's, then a row further for each, and a gap above a row that has
+    // one, so Now's plate can set a line on any of them. Worked out
     // from the rows shown rather than read from the list, so it holds
     // while the list is still drawing them.
     readonly property var rowLines: {
@@ -5561,9 +5562,9 @@ Scope {
             // when the first row has details.
             drawerResting.stop();
             drawerSettled();
-            // Always the same height, eight rows and home's gap, kept until
-            // it closes, so the card is the same shape however much home
-            // holds.
+            // Always the same height, eight rows, kept until it closes, so
+            // the card is the same shape however much home holds and its
+            // rows fill it to the foot, none held under the last.
             tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.

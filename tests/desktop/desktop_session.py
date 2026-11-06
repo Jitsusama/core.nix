@@ -66,6 +66,8 @@ class Values(TypedDict):
     action: str
     sunken: str
     mono_family: str
+    # What a floating frame leaves of the screen across, in logical pixels.
+    floating_room: int
     # Whether this is the gallery, which keeps pictures for a person to look at.
     photographs: bool
 

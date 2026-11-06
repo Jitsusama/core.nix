@@ -7,7 +7,8 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--outlive] (FLAKE ATTR... | DRV...)` to build a flake, or
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] (FLAKE ATTR... | DRV...)` to
+//! build a flake, or
 //! derivations, on the builder, or on a machine nearby for systems this
 //! one can't build, as src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
@@ -199,7 +200,8 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--print-out-paths] [--here] [--outlive] (FLAKE ATTR... | DRV...) \
+                    [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
+                    (FLAKE ATTR... | DRV...) \
                     | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
@@ -428,6 +430,9 @@ fn there(arguments: &[String]) -> ExitCode {
     let Some(asked) = kept.unpassed(asked, &journal) else {
         return ExitCode::SUCCESS;
     };
+    if let Some(code) = built_idle(&asked, &journal) {
+        return code;
+    }
     // A test names its own folder, as changed-checks lets one.
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let vm_dir =
@@ -818,6 +823,27 @@ fn vm_room() -> usize {
         .and_then(|text| text.trim().parse::<usize>().ok())
         .filter(|builds| *builds > 0)
         .unwrap_or(there::VM_ROOM)
+}
+
+/// `asked` built here and journalled, when it asks to be while this
+/// machine is idle and is, by `NIX_OFFLOAD_CPU_PRESSURE`'s file, else
+/// /proc/pressure/cpu, with how it exits; none otherwise.
+fn built_idle(asked: &there::Asked, journal: &Path) -> Option<ExitCode> {
+    let pressure = env::var_os("NIX_OFFLOAD_CPU_PRESSURE")
+        .map_or_else(|| PathBuf::from("/proc/pressure/cpu"), PathBuf::from);
+    let pressure = fs::read_to_string(pressure).unwrap_or_default();
+    let began = now();
+    let ran = there::here_when_idle(asked, &pressure, &vm_patterns(), "nix")?;
+    let ended = now();
+    there::note(
+        journal,
+        ended,
+        ended.saturating_sub(began),
+        None,
+        asked,
+        &ran,
+    );
+    Some(ExitCode::from(u8::try_from(ran.status).unwrap_or(1)))
 }
 
 /// The patterns of VM tests' attributes, from XDG's config folder; none

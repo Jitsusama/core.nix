@@ -51,7 +51,7 @@ Provider {
     })
 
     // How many letters of a level's first groups its row names, whole
-    // names only, so they never run out of the room its right edge has.
+    // names only, so they never run out of the room after its name.
     readonly property int room: 24
 
     // A chord as words: its keys joined by +, those pressed one after
@@ -152,14 +152,17 @@ Provider {
             nested: true,
             glyph: Words.glyph(id) || glyph,
             hue: "voice",
-            count: String(held.length),
-            side: first,
+            // What it holds after its name, as home's rows say theirs, and
+            // how many keys at its right, where a row's figure stands
+            // (VKCF3Z, 2026-11-05: one place for each kind of fact).
+            count: first,
+            side: held.length > 0 ? String(held.length) : "",
             chip: name.toLowerCase(),
             ask: provider.collection?.ask ?? "which shortcut?",
             from: level(rows, below, held),
             verbs: () => rows
         });
-        const said = groups.map(group => Object.assign({}, group.row, { side: name }));
+        const said = groups.map(group => Object.assign({}, group.row, { count: name }));
         return { row: row, below: below, deeper: said.concat(deeper), chords: held };
     }
 

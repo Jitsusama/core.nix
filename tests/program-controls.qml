@@ -116,8 +116,8 @@ ShellRoot {
             return app !== "quiet" ? null : {
                 key: "shortcut-level:shortcuts:quiet",
                 name: "Quiet",
-                count: "4",
-                side: "Volume",
+                count: "Volume",
+                side: "4",
                 verbs: () => []
             };
         }
@@ -236,7 +236,7 @@ ShellRoot {
             return;
         try {
             const recent = program("quiet").verbs()[2];
-            same("Recent follows its file, nine at most", `${recent.count} ${names(recent.targets())}`,
+            same("Recent follows its file, nine at most", `${recent.side} ${names(recent.targets())}`,
                 "9 folder 1, folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9");
             same("each in the folder it's in", recent.targets()[0].side, "~");
             // Read once every handler of the change has run.
@@ -592,7 +592,7 @@ ShellRoot {
             same("mute mutes them again", `${first.audio.muted} ${second.audio.muted}`,
                 "true true");
 
-            same("Notices counts its own", `${told.count} ${told.side}`, "2 1 unread");
+            same("Notices counts its own, at its right", told.side, "2 \u00b7 1 unread");
             same("and holds more", told.nested, true);
             const sent = told.targets();
             same("its notices, newest first", names(sent), "Newest, Oldest \u00b7 said");
@@ -605,11 +605,11 @@ ShellRoot {
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
                 names(quiet), "New Window, New Window Below, Recent, Shortcuts");
-            same("its Shortcuts counts its keys", quiet[3].count, "4");
+            same("its Shortcuts counts its keys", quiet[3].side, "4");
 
             const recent = quiet[2];
             same("Recent holds more, counting what it had open",
-                `${recent.verb} ${recent.count} ${recent.nested}`, "more 2 true");
+                `${recent.verb} ${recent.side} ${recent.nested}`, "more 2 true");
             const lately = recent.targets();
             same("each by its name, in the order it keeps them", names(lately), "core.nix, etc");
             same("beside the folder it's in", lately.map(row => row.side).join(" "), "~/src /");

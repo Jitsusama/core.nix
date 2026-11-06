@@ -71,8 +71,9 @@ ShellRoot {
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
             const binds = KeyGroups.merged("desktop", Shortcuts.layers[0].binds).length;
-            expect("the desktop's count and first groups", desktop.count === String(binds)
-                && desktop.side === "Windows, Columns", `${desktop.count} ${desktop.side}`);
+            // Its first groups after its name, its count at its right.
+            expect("the desktop's count and first groups", desktop.side === String(binds)
+                && desktop.count === "Windows, Columns", `${desktop.count} ${desktop.side}`);
             // The touchscreen's swipes are the desktop's: one doing what a
             // chord does is that chord's row, the swipe in words in its note,
             // and found by "swipe".
@@ -117,8 +118,8 @@ ShellRoot {
                 names(work.slice(0, 3)).join(", "));
             const tabs = map.search("tabs").rows.filter(one => one.name === "Tabs");
             expect("a group from the top says what holds it",
-                tabs.map(one => one.side).join(", ") === "Terminal, Files, Browser",
-                tabs.map(one => one.side).join(", "));
+                tabs.map(one => one.count).join(", ") === "Terminal, Files, Browser",
+                tabs.map(one => one.count).join(", "));
             expect("a chord at the top, flat", map.search("open a terminal").rows[0].name
                 === "Open a terminal", map.search("open a terminal").rows[0].name);
 
@@ -146,12 +147,12 @@ ShellRoot {
             const neovim = top[2];
             const code = row(neovim.verbs(), "Code");
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
-                && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
+                && Number(one.side) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
                 === "Definitions and Calls, Hints and Fixes", names(code.verbs()).join(", "));
             // Windows, Columns, Workspaces and Screens each have Focus, so
             // each found from above says what holds it.
             const holders = rows => rows.filter(one => one.name === "Focus")
-                .map(one => one.side).sort().join(", ");
+                .map(one => one.count).sort().join(", ");
             const focus = "Columns, Screens, Windows, Workspaces";
             expect("a group found from the top says what holds it",
                 holders(map.search("focus").rows) === focus, holders(map.search("focus").rows));
@@ -167,8 +168,8 @@ ShellRoot {
                 reacting.map(one => one.note).join(" | "));
             const own = row(neovim.from.search("code").rows, "Code");
             expect("a level's own group found inside it says its first groups",
-                own !== null && own.side === code.side && code.side.startsWith("Definitions"),
-                own ? own.side : "not found");
+                own !== null && own.count === code.count && code.count.startsWith("Definitions"),
+                own ? own.count : "not found");
             const github = row(neovim.verbs(), "GitHub");
             expect("a group holding groups", names(github.verbs()).slice(0, 4).join(", ")
                 === "Issues, People and Labels, Comments, Reactions",

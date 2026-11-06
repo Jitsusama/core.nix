@@ -1,7 +1,9 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--outlive] FLAKE ATTR...`, or `DRV...` in place of the flake and
-//! its attributes: builds a flake's attributes on the lent builder by
-//! sending it a command, or here with `--here` when none takes it.
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] FLAKE ATTR...`, or `DRV...` in
+//! place of the flake and its attributes: builds a flake's attributes on
+//! the lent builder by sending it a command, or here with `--here` when
+//! none takes it, or with `--here-when-idle` while this machine is idle
+//! and they hold no VM test.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -90,9 +92,8 @@ pub struct Asked {
     /// Whether what's built is brought into this machine's store and its
     /// paths printed, as `--print-out-paths` asks.
     print: bool,
-    /// Whether it may build here when no builder takes it, as `--here`
-    /// says.
-    here: bool,
+    /// When it may build here rather than be sent.
+    here: Here,
     /// What the build does there once this caller is gone.
     pub alone: Alone,
     /// Whether the attributes are derivations' paths, with no flake.
@@ -112,6 +113,16 @@ struct Pinned {
     commit: String,
     tree: String,
     at: Option<passed::At>,
+}
+
+/// When a build may be made here rather than sent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Here {
+    /// When no builder takes it, as `--here` says.
+    unsent: bool,
+    /// While this machine is idle, as `--here-when-idle` says, sparing
+    /// the trip there.
+    idle: bool,
 }
 
 /// What a build sent far does once its caller is gone.
@@ -150,7 +161,7 @@ impl Alone {
 pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
-    let (mut apply, mut out, mut print, mut here) = (None, None, false, false);
+    let (mut apply, mut out, mut print, mut here) = (None, None, false, Here::default());
     let mut alone = Alone::Ends;
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
@@ -163,7 +174,8 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             "--apply" => apply = Some(arguments.next()?.clone()),
             "--out" => out = Some(PathBuf::from(arguments.next()?)),
             "--print-out-paths" => print = true,
-            "--here" => here = true,
+            "--here" => here.unsent = true,
+            "--here-when-idle" => here.idle = true,
             "--outlive" => alone = Alone::GoesOn,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
@@ -579,7 +591,7 @@ pub const STAYS: i32 = 64;
 /// A build no builder can take, `why`: built here only when asked to with
 /// `--here`, and otherwise refused with the ways it could go.
 fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
-    if asked.here {
+    if asked.here.unsent {
         eprintln!("nix-offload: {why}, so this builds here");
         return here(asked, nix);
     }
@@ -867,7 +879,7 @@ pub const UNSENT: i32 = 75;
 /// was already waited on for as long as a builder takes, and an agent's
 /// loop that did asked 40 times in 12 minutes on 3 November.
 fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
-    if asked.here {
+    if asked.here.unsent {
         eprintln!("nix-offload: {why}, so this builds here");
         return here(asked, nix);
     }
@@ -880,6 +892,48 @@ fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
         status: UNSENT,
         sent: None,
     }
+}
+
+/// The CPU pressure, as /proc/pressure/cpu's "some" line gives it for
+/// the last 10 and 60 seconds, below which this machine is idle: from
+/// 14:00 to 20:15 on 5 November it stood at 46% on average beside the
+/// checks built here, and at 43 to 55% at a load of 53.
+const IDLE: f64 = 10.0;
+
+/// Whether `pressure`, /proc/pressure/cpu as read, says this machine is
+/// idle, both of its last 10 and 60 seconds below [`IDLE`]; one that
+/// can't be read is taken as busy.
+pub fn idle(pressure: &str) -> bool {
+    let Some(some) = pressure.lines().find_map(|line| line.strip_prefix("some ")) else {
+        return false;
+    };
+    let average = |name: &str| {
+        some.split_whitespace()
+            .find_map(|field| field.strip_prefix(name)?.parse::<f64>().ok())
+    };
+    ["avg10=", "avg60="]
+        .iter()
+        .all(|name| average(name).is_some_and(|value| value < IDLE))
+}
+
+/// `asked` built here, when it asks to be while this machine is idle,
+/// as `pressure` says it is, and it holds no VM test by `patterns`: a VM
+/// test here holds the person's machine for minutes. None otherwise, nor
+/// for derivations, which name no attribute to judge.
+pub fn here_when_idle(
+    asked: &Asked,
+    pressure: &str,
+    patterns: &[String],
+    nix: &str,
+) -> Option<Ran> {
+    if !asked.here.idle || asked.derivations || !idle(pressure) {
+        return None;
+    }
+    if vm_tests(asked, patterns, &BTreeSet::new()).0.is_some() {
+        return None;
+    }
+    eprintln!("nix-offload: this machine is idle, so this builds here");
+    Some(here(asked, nix))
 }
 
 fn here(asked: &Asked, nix: &str) -> Ran {
@@ -1110,10 +1164,11 @@ impl Source {
 /// What `there --takes` says it takes: a flake that's a git tree here,
 /// `--apply`, `--out`, waiting for a builder it asks for, a flake that's a
 /// folder no commit names, `--changed`, changed-checks run elsewhere,
-/// `--here`, a build no builder took made here, `--print-out-paths`,
+/// `--here`, a build no builder took made here, `--here-when-idle`, one
+/// made here while this machine is idle, `--print-out-paths`,
 /// what was built brought into this store, derivations' paths, and
 /// `--outlive`, a build that goes on once its caller is gone.
-pub const TAKES: [&str; 10] = [
+pub const TAKES: [&str; 11] = [
     "tree",
     "apply",
     "out",
@@ -1121,6 +1176,7 @@ pub const TAKES: [&str; 10] = [
     "folder",
     "changed",
     "here",
+    "here-when-idle",
     "print",
     "derivation",
     "outlive",
@@ -3025,7 +3081,7 @@ mod tests {
                 apply: None,
                 out: None,
                 print: false,
-                here: false,
+                here: Here::default(),
                 alone: Alone::Ends,
                 derivations: false,
                 pinned: None,
@@ -3033,6 +3089,21 @@ mod tests {
         );
         let outliving = super::asked(&words("--outlive github:o/r/abc checks.x.a"));
         assert!(outliving.is_some_and(|asked| asked.alone == Alone::GoesOn));
+    }
+
+    #[test]
+    fn this_machine_is_idle_only_while_its_cpu_pressure_has_stayed_low() {
+        let pressure = |ten: &str, sixty: &str| {
+            format!(
+                "some avg10={ten} avg60={sixty} avg300=40.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+            )
+        };
+        assert!(idle(&pressure("2.00", "9.99")));
+        assert!(!idle(&pressure("2.00", "10.00")), "busy this last minute");
+        assert!(!idle(&pressure("43.38", "4.50")), "busy now");
+        assert!(!idle(""), "unread, it's taken as busy");
+        assert!(!idle("some avg10=1.00\n"), "half a line is taken as busy");
     }
 
     #[test]
