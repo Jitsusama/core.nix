@@ -1019,6 +1019,21 @@ QtObject {
                 .map(key => key[0]).join(" "), kept);
         machine("Return alone stays", Standing.keysFitted([["\u21b5", "open"]], keysWide, 0)
             .length, 1);
+        // On the find they give way by need instead, the words named first
+        // going first, in their order, wherever they're drawn: the
+        // completion, whose ghost the line shows, then next time, and
+        // Ctrl+] in never, though it's drawn furthest from Return so nothing
+        // slides as it comes and goes (VKCF3Z, 2026-11-06).
+        const findKeys = [["\u21b5", "start"], ["Ctrl+]", "in"], ["Ctrl+Y", "complete"],
+            ["Super+\u21b5", "next time"]];
+        for (const [room, kept] of [
+            [54, "\u21b5 Ctrl+] Ctrl+Y Super+\u21b5"],
+            [40, "\u21b5 Ctrl+] Super+\u21b5"],
+            [30, "\u21b5 Ctrl+]"],
+            [5, "\u21b5 Ctrl+]"]
+        ])
+            machine(`the find's keys in ${room}`, Standing.keysFitted(findKeys, keysWide, room,
+                ["complete", "next time"]).map(key => key[0]).join(" "), kept);
 
         // The network's figures, from /proc/net/dev and the shaper's file.
         const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"

@@ -267,9 +267,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         assert not arrowed, f"at {scale} normal's foot names an arrow: {arrowed}"
         told = desktop.showing()["selected"]["told"]
         assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
-        desktop.on_find()
-        desktop.type_in("kitty")
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+        finds_kitty(desktop, scale)
         card = desktop.showing()["drawer"]["cardLines"]
         assert words_on_their_names(card, scale, serif) > 0, (
             f"at {scale} kitty's row says nothing: {card}"
@@ -373,6 +371,22 @@ def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
     assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
     desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def finds_kitty(desktop: Desktop, scale: str) -> None:
+    """Find kitty from its first letter, photographing the foot at k.
+
+    The first letter tells the foot more keys than it holds, so the completion, whose ghost the
+    field shows, gives way, and Ctrl+] in stays, furthest from Return (VKCF3Z, 2026-11-06).
+    """
+    desktop.on_find()
+    desktop.type_in("k")
+    desktop.launcher_until(lambda shown: shown["typed"] == "k")
+    overlaps = desktop_session.foot_overlaps(desktop)
+    assert not overlaps, f"at {scale} on k: {overlaps}"
+    desktop.photograph(f"launcher-finds-k-at-{scale.replace('.', '-')}")
+    desktop.type_in("itty")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
 
 
 def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
