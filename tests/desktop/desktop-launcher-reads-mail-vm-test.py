@@ -955,8 +955,9 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, line: str, beca
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == act)
     told = desktop.showing()["selected"]["told"]
     assert told[:1] == [f"\u21b5 :{line}"], told
-    # It ends what wants Joel, so Return writes its line, and a fresh Return asks first.
-    desktop.line_answered(line)
+    # It ends what wants Joel, so Return writes its line, and a fresh Return asks first,
+    # in the act's own words, as "Archive Quarterly Numbers?", never the line's :delete.
+    desktop.line_answered(line, f"{act} {subject}? (y/n)")
     # The launcher stays where it was, its foot saying what became of it
     # once the program no longer holds it as wanting Joel.
     desktop.launcher_until(
