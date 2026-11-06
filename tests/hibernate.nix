@@ -1,6 +1,6 @@
 # Hibernates a machine laid out as the laptops are: systemd in the
 # initrd, booted through UEFI, its swap file on btrfs in a subvolume of its
-# own inside LUKS, zram in front of it, and no resume= on the kernel's
+# own inside LUKS, zswap in front of it, and no resume= on the kernel's
 # command line. systemd-hibernate writes where the image went into the EFI
 # variable HibernateLocation, and the initrd resumes from it once LUKS is
 # open, so nothing about the disk's layout is kept in Nix. The disk opens as

@@ -2,8 +2,8 @@
 
 tests/full-swap.nix installs this as grow for tests/full-swap-vm-test.py. It takes another
 16 MiB every half second. Each page is half random and half zeros, so it compresses about two
-to one, as a program's memory does: data that doesn't compress costs zram a page of memory for
-each page it takes, and memory runs out with swap half used, before oomd may act.
+to one, as a program's memory does: data that doesn't compress costs the pool a page of memory
+for each page it takes, and memory runs out with swap half used, before oomd may act.
 """
 
 import os

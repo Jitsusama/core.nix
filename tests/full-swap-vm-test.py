@@ -24,11 +24,20 @@ ENDING = timedelta(seconds=30)
 
 @pytest.fixture(scope="module")
 def watched(machine: BaseMachine) -> BaseMachine:
-    """Give the machine with systemd-oomd watching both of its swaps."""
+    """Give the machine with systemd-oomd watching its swap."""
     machine.wait_for_unit("systemd-oomd.service")
-    machine.wait_for_unit("dev-zram0.swap")
     machine.wait_for_unit("var-swapfile.swap")
     return machine
+
+
+def test_swap_goes_through_a_compressed_pool_held_to_a_fifth(watched: BaseMachine) -> None:
+    """Swap goes through zswap's zstd pool, held to a fifth of memory, in front of the file."""
+    settings = watched.succeed(
+        "cd /sys/module/zswap/parameters"
+        " && cat enabled compressor max_pool_percent shrinker_enabled"
+    ).split()
+    assert settings == ["Y", "zstd", "20", "Y"]
+    assert "zram" not in watched.succeed("cat /proc/swaps")
 
 
 @pytest.fixture(scope="module")

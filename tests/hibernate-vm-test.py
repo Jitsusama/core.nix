@@ -71,7 +71,7 @@ def swapping(machine: BaseMachine) -> QemuMachine:
     # Only a machine QEMU runs can be stopped and started again.
     assert isinstance(machine, QemuMachine)
     machine.wait_for_unit("default.target")
-    machine.wait_for_unit("dev-zram0.swap")
+    assert machine.succeed("cat /sys/module/zswap/parameters/enabled").strip() == "Y"
     machine.succeed(
         "cryptsetup luksFormat --batch-mode --key-file /etc/disk.key /dev/vdc",
         "cryptsetup open --key-file /etc/disk.key /dev/vdc disk",
@@ -129,8 +129,8 @@ def test_a_loaded_machine_fits_beside_the_reserve(swapping: QemuMachine) -> None
     """With memory full of a program's pages and the disk's cache, it still comes back.
 
     The reserve holds the image to half of memory less twice it, which the load is past, so
-    the kernel drops the cache and swaps part of memory, to zram first, before the image
-    fits. The program's pages are a file in tmpfs, as compressible as hex.
+    the kernel drops the cache and swaps part of memory, through zswap's pool, before the
+    image fits. The program's pages are a file in tmpfs, as compressible as hex.
     """
     swapping.succeed(
         "head -c 32M /dev/urandom | od -An -tx1 -v > /dev/shm/held",
@@ -150,7 +150,7 @@ def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMa
     The kernel takes back nothing under a cgroup's memory.min, whatever is reclaiming, so 300 MiB
     held under one is more than the image's cap of about 213 MiB beside the reserve: without the
     hook setting the floors aside, the hibernation rolls back short of memory. It's zeros, which
-    zram keeps in no memory at all, so what's measured is the floor, not how well zram packs.
+    swap marks rather than stores, so what's measured is the floor, not how well the pool packs.
     """
     swapping.succeed(
         "mkdir -p /run/floored",

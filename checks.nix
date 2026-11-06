@@ -450,7 +450,6 @@ let
     vm-loopback-says-who-holds-it = import ./tests/loopback-holders.nix { inherit self pkgs; };
     # Whether the swap comes down while udev probes its device shows only with
     # the device there and held open.
-    vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
     # Whether systemd-oomd ends the work that filled swap before the kernel's
     # OOM killer picks a program shows only with swap filling for real.
     vm-full-swap-ends-what-filled-it = import ./tests/full-swap.nix { inherit self pkgs; };
