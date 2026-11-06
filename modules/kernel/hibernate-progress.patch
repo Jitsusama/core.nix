@@ -23,10 +23,10 @@ framebuffer is left alone, since the panic handler would turn its
 tiling off.
 
 diff --git a/drivers/gpu/drm/drm_panic.c b/drivers/gpu/drm/drm_panic.c
-index e576c47..a1a4af3 100644
+index e576c47..5088e0c 100644
 --- a/drivers/gpu/drm/drm_panic.c
 +++ b/drivers/gpu/drm/drm_panic.c
-@@ -1003,6 +1003,194 @@ static void debugfs_register_plane(struct drm_plane *plane, int index)
+@@ -1003,6 +1003,201 @@ static void debugfs_register_plane(struct drm_plane *plane, int index)
  static void debugfs_register_plane(struct drm_plane *plane, int index) {}
  #endif /* CONFIG_DRM_PANIC_DEBUG */
  
@@ -130,6 +130,13 @@ index e576c47..a1a4af3 100644
 +	unsigned long flags;
 +	int scale, width, foot, filled;
 +
++	/*
++	 * Nothing more to draw until the filled part grows by a pixel, as a
++	 * flush can copy the whole screen, virtio-gpu's does.
++	 */
++	if (slot->width && (int)(drm_rect_width(&slot->bar) * permille / 1000) == slot->filled)
++		return;
++
 +	slot->width = 0;
 +	slot->height = 0;
 +	if (!drm_panic_trylock(plane->dev, flags))
@@ -221,7 +228,7 @@ index e576c47..a1a4af3 100644
  /**
   * drm_panic_is_enabled
   * @dev: the drm device that may supports drm_panic
-@@ -1043,6 +1231,7 @@ void drm_panic_register(struct drm_device *dev)
+@@ -1043,6 +1238,7 @@ void drm_panic_register(struct drm_device *dev)
  		if (kmsg_dump_register(&plane->kmsg_panic))
  			drm_warn(dev, "Failed to register panic handler\n");
  		else {
@@ -229,7 +236,7 @@ index e576c47..a1a4af3 100644
  			debugfs_register_plane(plane, registered_plane);
  			registered_plane++;
  		}
-@@ -1065,6 +1254,7 @@ void drm_panic_unregister(struct drm_device *dev)
+@@ -1065,6 +1261,7 @@ void drm_panic_unregister(struct drm_device *dev)
  	drm_for_each_plane(plane, dev) {
  		if (!plane->helper_private || !plane->helper_private->get_scanout_buffer)
  			continue;
