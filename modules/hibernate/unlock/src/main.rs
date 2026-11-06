@@ -732,8 +732,9 @@ fn fits_now() -> ExitCode {
     }
 }
 
-/// Each graphics card's video memory and the system memory it maps (GTT)
-/// in use, as its driver says, one line apiece.
+/// The video memory and the system memory it maps (GTT) in use on each card
+/// whose driver says, one line apiece. amdgpu says; others, xe among them,
+/// log nothing.
 fn graphics_memory() -> Vec<String> {
     let mut cards: Vec<String> = fs::read_dir("/sys/class/drm")
         .into_iter()

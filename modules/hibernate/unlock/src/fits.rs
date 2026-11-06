@@ -10,12 +10,14 @@
 //! the image's own bitmaps. What it can't leave out is what's in use less
 //! what reclaim can take back: the page cache, the kernel's reclaimable
 //! slabs and the anonymous pages, which `minimum_image_size` counts, as far
-//! as swap has room for those. zswap's pool passes what reclaim swaps out
-//! on to the disk as memory runs short, so it all counts as freed, and what
-//! the pool already holds is in use. Free pages waiting on each processor's
-//! own list count as in use there, since only the free lists mark a page free,
-//! but they're the first the image's own allocation takes, so here they're
-//! free: on a 1 GiB machine they were a ninth of memory.
+//! as swap has room for those. What the pool of zswap already holds is in
+//! use. What reclaim swaps out counts as freed, though the pool can keep it
+//! in memory, compressed, until it reaches its cap or its shrinker writes it
+//! to the disk: up to a fifth of memory, which the margin has to cover.
+//! Free pages waiting on each processor's own list count as in use there,
+//! since only the free lists mark a page free, but they're the first the
+//! image's own allocation takes, so here they're free: on a 1 GiB machine
+//! they were a ninth of memory.
 //! The floors count as nothing, since the hook sets them aside first
 //! (floors.rs says why).
 
