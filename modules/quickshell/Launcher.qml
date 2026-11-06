@@ -1912,14 +1912,17 @@ Scope {
         if (!choice || choice.gone)
             return [];
         // In visual, Return opens the selection's rows it can, by count,
-        // and the rest is as normal's foot: d by the cursor row's ending, y,
-        // : and Space ?, so the way to every key stays (VKCF3Z, 2026-11-05).
+        // and the rest is as normal's foot: :, d by the cursor row's ending,
+        // y and Space ?, so the way to every key stays (VKCF3Z, 2026-11-05).
+        // The colon is drawn furthest from Return, so it gives way first
+        // where room is short: Space ? lists it, and d and y are what
+        // visual is for.
         if (visual) {
             const hints = Words.field.hints ?? {};
-            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
-                commandNamed(row))).length, Words.field.visual ?? {})]]
-                .concat(operatorKeys(choice), [[":", hints.commands ?? ""],
-                    [hintKey("keys", "visual"), hints.keys ?? ""]]);
+            const opens = visualRows().filter(row => Catalogue.opens(row, commandNamed(row)));
+            return [["\u21b5", Operators.opensSaid(opens.length, Words.field.visual ?? {})],
+                [":", hints.commands ?? ""]]
+                .concat(operatorKeys(choice), [[hintKey("keys", "visual"), hints.keys ?? ""]]);
         }
         // The row landed on says the act a second Return does, in the
         // accent, since it's the one key that changes something now; the
@@ -5358,7 +5361,7 @@ Scope {
             // from the frame, as its first starts.
             footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
             // The keys the foot says now, each its mark and its word.
-            hints: foot.told.map(key => `${key[0]} ${key[1]}`),
+            hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
@@ -6953,8 +6956,17 @@ Scope {
                         // word, at the frame's side, so the gap before it is
                         // a hint's like every other (VKCF3Z, 2026-11-05:
                         // held room at the far end, never before Return).
-                        readonly property var shown: told.length === 0 ? []
-                            : told.slice(1).concat([told[0]])
+                        readonly property var shown: kept.length === 0 ? []
+                            : kept.slice(1).concat([kept[0]])
+                        // The keys in the room the facts at their least,
+                        // what waits and the mode's word leave them, those
+                        // furthest from Return giving way first: drawn
+                        // whatever their room, they ran over "1 new" and
+                        // "2 chosen" in visual over a full list at 2.
+                        readonly property real keysRoom: width - Theme.space.rung.inset - standing.x
+                            - standing.least - Theme.space.rung.groups - modeWord.room
+                        readonly property var kept: Standing.keysFitted(told,
+                            told => root.keysWide(told), keysRoom)
                         readonly property real returnPlace: told.length === 0 ? 0
                             : root.returnPlace(told[0])
                         // Where Return's place starts, which holds still.
@@ -6963,7 +6975,7 @@ Scope {
                         // widest of them has needed since the launcher
                         // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.rung.inset
-                            - Math.max(root.footKeysWidest, keys.implicitWidth)
+                            - Math.max(Math.min(root.footKeysWidest, keysRoom), keys.implicitWidth)
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.
@@ -7203,6 +7215,15 @@ Scope {
                                     root.footStage);
                             }
                             readonly property var kept: fit.told.concat(waiting)
+                            // The room they take at their least, the glyphs
+                            // and the time, with what waits: what the keys
+                            // leave them however many a row has.
+                            readonly property real least: {
+                                const floor = Standing.fittedFrom(facts, () => false, 0).told
+                                    .concat(waiting);
+                                return floor.reduce((sum, fact) => sum + place(fact), 0)
+                                    + Math.max(0, floor.length - 1) * spacing;
+                            }
 
                             // Noted once the binding has settled, since `fit`
                             // reads what this writes.
