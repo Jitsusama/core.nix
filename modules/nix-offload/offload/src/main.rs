@@ -7,10 +7,10 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] (FLAKE ATTR... | DRV...)` to
-//! build a flake, or
-//! derivations, on the builder, or on a machine nearby for systems this
-//! one can't build, as src/there.rs says. A build waiting for a builder
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk]
+//! (FLAKE ATTR... | DRV...)` to build a flake, or derivations, on the
+//! builder, or on a machine nearby for systems this one can't build, as
+//! src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
 //!
 //! `nix-offload relay --listen ADDRESS --to ADDRESS` passes connections on
@@ -200,7 +200,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
+                    [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] \
                     (FLAKE ATTR... | DRV...) \
                     | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
@@ -639,7 +639,8 @@ fn at_once<'a>(
                 scope.spawn(move || {
                     let began = now();
                     let (dir, _claim) = if vm {
-                        there::admitted(dir, &others, there::count(part), room)
+                        let bulk = there::bulk(part);
+                        there::admitted(dir, &others, there::count(part), room, bulk)
                     } else {
                         (dir.as_path(), None)
                     };

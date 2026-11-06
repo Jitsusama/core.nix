@@ -1,9 +1,10 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] FLAKE ATTR...`, or `DRV...` in
-//! place of the flake and its attributes: builds a flake's attributes on
-//! the lent builder by sending it a command, or here with `--here` when
-//! none takes it, or with `--here-when-idle` while this machine is idle
-//! and they hold no VM test.
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] FLAKE ATTR...`, or
+//! `DRV...` in place of the flake and its attributes: builds a flake's
+//! attributes on the lent builder by sending it a command, or here with
+//! `--here` when none takes it, or with `--here-when-idle` while this
+//! machine is idle and they hold no VM test. With `--bulk`, its VM tests
+//! waiting for room let any run's that isn't go first.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -96,6 +97,9 @@ pub struct Asked {
     here: Here,
     /// What the build does there once this caller is gone.
     pub alone: Alone,
+    /// Whether it's one of many sent at once, as `--bulk` says, whose VM
+    /// tests waiting for room let any run's that isn't go first.
+    bulk: bool,
     /// Whether the attributes are derivations' paths, with no flake.
     derivations: bool,
     /// The commit a git tree's flake was at when this was asked, which is
@@ -162,7 +166,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
     let (mut apply, mut out, mut print, mut here) = (None, None, false, Here::default());
-    let mut alone = Alone::Ends;
+    let (mut alone, mut bulk) = (Alone::Ends, false);
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -177,6 +181,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             "--here" => here.unsent = true,
             "--here-when-idle" => here.idle = true,
             "--outlive" => alone = Alone::GoesOn,
+            "--bulk" => bulk = true,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
         }
@@ -192,6 +197,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             print,
             here,
             alone,
+            bulk,
             derivations: true,
             pinned: None,
         });
@@ -208,6 +214,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         print,
         here,
         alone,
+        bulk,
         derivations: false,
         pinned: None,
     })
@@ -302,6 +309,7 @@ impl Asked {
             print: self.print,
             here: self.here,
             alone: self.alone,
+            bulk: self.bulk,
             derivations: self.derivations,
             pinned: self.pinned.clone().filter(|_| flake == self.flake),
         }
@@ -1167,8 +1175,9 @@ impl Source {
 /// `--here`, a build no builder took made here, `--here-when-idle`, one
 /// made here while this machine is idle, `--print-out-paths`,
 /// what was built brought into this store, derivations' paths, and
-/// `--outlive`, a build that goes on once its caller is gone.
-pub const TAKES: [&str; 11] = [
+/// `--outlive`, a build that goes on once its caller is gone, and
+/// `--bulk`, one whose VM tests let others' go first.
+pub const TAKES: [&str; 12] = [
     "tree",
     "apply",
     "out",
@@ -1180,6 +1189,7 @@ pub const TAKES: [&str; 11] = [
     "print",
     "derivation",
     "outlive",
+    "bulk",
 ];
 
 /// A ref for one bundle to carry its commit under, here only while it's
@@ -2154,6 +2164,11 @@ pub fn count(asked: &Asked) -> usize {
     asked.attributes.len()
 }
 
+/// Whether a part is bulk, as `--bulk` asks.
+pub fn bulk(asked: &Asked) -> bool {
+    asked.bulk
+}
+
 /// The VM tests a run has sent a VM builder, counted while it goes on: a
 /// file in its lender's folder's `sending`, named for the run's pid, that
 /// holds how many, and goes once it's dropped.
@@ -2204,11 +2219,17 @@ pub const VM_ROOM: usize = 4;
 /// builders, that has room and nothing waiting, and says which it went to:
 /// a run's split is decided as it starts, so on 4 November ten runs waited
 /// 51 minutes on the first while the second sat idle.
+///
+/// A `bulk` run lets every run that isn't go before it, those waiting
+/// and those coming while it waits, and they wait for no bulk run: the
+/// after-merge net sends dozens of VM tests a round, and on 5 November a
+/// session's few waited behind the whole round.
 pub fn admitted<'a>(
     dir: &'a Path,
     others: &[&'a Path],
     count: usize,
     room: usize,
+    bulk: bool,
 ) -> (&'a Path, Option<Claim>) {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
@@ -2223,7 +2244,7 @@ pub fn admitted<'a>(
             return (dir, claim(dir, wants));
         }
         let busy = claimed(dir);
-        let before = ahead(dir, place.as_ref());
+        let before = ahead(dir, place.as_ref(), bulk);
         if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
@@ -2232,14 +2253,14 @@ pub fn admitted<'a>(
             return (dir, claimed);
         }
         if place.is_none() {
-            place = queued(dir, wants);
+            place = queued(dir, wants, bulk);
         }
         // Let go before the other's is taken, so two runs waiting on each
         // other's builders never hold one lock each and wait on the other.
         drop(lock);
         if let Some((other, claimed)) = others
             .iter()
-            .find_map(|other| Some((*other, free(other, wants, room)?)))
+            .find_map(|other| Some((*other, free(other, wants, room, bulk)?)))
         {
             eprintln!(
                 "nix-offload: another VM builder has room now and nothing waiting, so this goes \
@@ -2258,6 +2279,9 @@ pub fn admitted<'a>(
                 "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
                  {room}{queue}, so this waits for room"
             );
+            if bulk {
+                eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
+            }
             said = true;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -2265,9 +2289,10 @@ pub fn admitted<'a>(
 }
 
 /// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
-/// under its lock only while no run waits there and it has room for them
-/// as [`admitted`] counts it; none otherwise.
-fn free(dir: &Path, wants: usize, room: usize) -> Option<Claim> {
+/// under its lock only while no run waits there ahead of a run that's
+/// `bulk` or not and it has room for them as [`admitted`] counts it; none
+/// otherwise.
+fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
     use std::os::fd::AsRawFd;
     let lock = fs::File::create(dir.join("sending.lock")).ok()?;
     // SAFETY: flock only locks the file it's given, open until dropped.
@@ -2275,7 +2300,7 @@ fn free(dir: &Path, wants: usize, room: usize) -> Option<Claim> {
         return None;
     }
     let busy = claimed(dir);
-    if ahead(dir, None) == 0 && (busy == 0 || busy + wants <= room) {
+    if ahead(dir, None, bulk) == 0 && (busy == 0 || busy + wants <= room) {
         claim(dir, wants)
     } else {
         None
@@ -2284,9 +2309,10 @@ fn free(dir: &Path, wants: usize, room: usize) -> Option<Claim> {
 
 /// A place among the runs waiting for room in `dir`, after every run
 /// already there: named by when it was taken, then this run's pid, so
-/// they sort in the order they came and one whose run ended is seen. It
-/// holds how many VM tests the run `wants`, which [`waiting`] counts.
-fn queued(dir: &Path, wants: usize) -> Option<Claim> {
+/// they sort in the order they came and one whose run ended is seen, and
+/// a [`BULK`] run's marked so. It holds how many VM tests the run `wants`,
+/// which [`waiting`] counts.
+fn queued(dir: &Path, wants: usize, bulk: bool) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let waiting = dir.join("waiting");
@@ -2296,9 +2322,10 @@ fn queued(dir: &Path, wants: usize) -> Option<Claim> {
         .ok()?
         .as_nanos();
     let path = waiting.join(format!(
-        "{came:020}.{}.{}",
+        "{came:020}.{}.{}{}",
         std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
+        NEXT.fetch_add(1, Ordering::Relaxed),
+        if bulk { BULK } else { "" }
     ));
     fs::write(&path, format!("{wants}\n")).ok()?;
     Some(Claim(path))
@@ -2325,10 +2352,15 @@ pub fn waiting(dir: &Path) -> usize {
         .sum()
 }
 
+/// What ends a bulk run's place among those waiting.
+const BULK: &str = ".bulk";
+
 /// How many runs still going wait for room in `dir` ahead of the one at
-/// `place`, or at all for one with no place yet. A place whose run ended
-/// without giving it up is taken away here.
-fn ahead(dir: &Path, place: Option<&Claim>) -> usize {
+/// `place`, or at all for one with no place yet: for a `bulk` run, every
+/// run that isn't and bulk ones that came before it, and for one that
+/// isn't, only those that aren't bulk and came before it. A place whose
+/// run ended without giving it up is taken away here.
+fn ahead(dir: &Path, place: Option<&Claim>, bulk: bool) -> usize {
     let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
         return 0;
     };
@@ -2339,9 +2371,15 @@ fn ahead(dir: &Path, place: Option<&Claim>) -> usize {
         let pid = name
             .to_str()
             .and_then(|name| name.split('.').nth(1)?.parse().ok());
+        let came_before = mine.as_ref().is_none_or(|mine| name < *mine);
+        let theirs_bulk = name.to_str().is_some_and(|name| name.ends_with(BULK));
         if !pid.is_some_and(runs) {
             let _ = fs::remove_file(entry.path());
-        } else if mine.as_ref().is_none_or(|mine| name < *mine) {
+        } else if if bulk {
+            !theirs_bulk || came_before
+        } else {
+            !theirs_bulk && came_before
+        } {
             before += 1;
         }
     }
@@ -3083,6 +3121,7 @@ mod tests {
                 print: false,
                 here: Here::default(),
                 alone: Alone::Ends,
+                bulk: false,
                 derivations: false,
                 pinned: None,
             })

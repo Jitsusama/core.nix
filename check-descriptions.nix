@@ -893,7 +893,8 @@
     while and for a lender restarting, saying how long, or, when none stands or none answers,
     builds nothing and exits 75, saying so, unless --here asks it to build here; with
     --here-when-idle it builds here only while this machine's CPU pressure has stayed under
-    10% and never a VM test, else sends it as ever; a tree's
+    10% and never a VM test, else sends it as ever; with --bulk, its VM tests waiting for a VM
+    builder's room let any run's that isn't bulk go first, waiting or coming; a tree's
     uncommitted changes go as a commit of what its index holds, files staged or added with -N
     included and untracked ones left, with the branch and index untouched; with
     --print-out-paths, what was built is copied into this store from the builder and only then
