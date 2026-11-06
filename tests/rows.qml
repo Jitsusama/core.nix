@@ -765,7 +765,8 @@ ShellRoot {
                 `${said(texts)}, caret ends at ${caret} of ${folderTyped.end}`);
             // Scrolled, a muted mark at the field's start says letters went
             // off it, in room taken from what's typed; at rest there's none.
-            // Every letter shown is shown whole, after the mark.
+            // Every letter shown is shown whole, after the mark, and the
+            // first beside it, as Vim's precedes mark takes a letter's cell.
             const precedes = root.byName(folderTyped, "precedes");
             const markEnd = precedes === null ? Infinity
                 : precedes.mapToItem(folderTyped, precedes.contentWidth, 0).x;
@@ -780,7 +781,7 @@ ShellRoot {
                     && !(foldered.children.some(child => child.objectName === "precedes"
                         && child.visible))
                     && precedes.visible && Qt.colorEqual(precedes.color, Theme.muted)
-                    && lettersCut.length === 0,
+                    && lettersCut.length === 0 && clipFrom <= markEnd + 0.5,
                 precedes === null ? "no mark"
                     : `mark ends at ${markEnd}, shown from ${clipFrom}, `
                         + `letters cut: ${JSON.stringify(lettersCut)}`);

@@ -333,19 +333,26 @@ Item {
     // as the field moves rather than bound, since the mark it shows takes
     // room from the field, which moves what's typed again.
     property bool scrolled: false
-    // Where the field is shown from, past its start: scrolled, the first
-    // letter wholly past the mark, since Qt draws a letter scrolled off
-    // into the field's padding, where the mark would lie over it.
+    // Scrolled, the mark stands in the place of the first letter whole
+    // inside the field, as Vim's precedes mark takes the first cell, and
+    // the field is shown from the first letter past it: Qt draws a letter
+    // scrolled off into the field's padding, where the mark would lie
+    // over it, and a mark at the field's very start would leave a gap
+    // the width of a letter wherever the letters fall.
+    property real markFrom: 0
     property real shownFrom: 0
     function seeScrolled() {
         scrolled = input.text !== "" && input.positionToRectangle(0).x < input.leftPadding - 0.5;
-        let from = 0;
-        for (let at = 0; scrolled && at <= input.text.length; at++) {
-            from = input.positionToRectangle(at).x;
-            if (from >= input.leftPadding - 0.5)
-                break;
-        }
-        shownFrom = from;
+        const letters = scrolled ? input.text.length : -1;
+        let at = 0;
+        while (at < letters && input.positionToRectangle(at).x < -0.5)
+            at++;
+        const mark = at <= letters ? input.positionToRectangle(at).x : 0;
+        while (at < letters && input.positionToRectangle(at).x
+            < mark + scrolledMark.implicitWidth - 0.5)
+            at++;
+        markFrom = scrolled ? mark : 0;
+        shownFrom = scrolled ? input.positionToRectangle(at).x : 0;
     }
     // Where the field starts in the line, after the path.
     readonly property real fieldX: Theme.space.rung.inset + ledWidth
@@ -1093,7 +1100,7 @@ Item {
     Text {
         id: scrolledMark
         objectName: "precedes"
-        x: prompt.fieldX
+        x: prompt.fieldX + prompt.markFrom
         anchors.baseline: shown.baseline
         visible: prompt.scrolled
         textFormat: Text.PlainText
