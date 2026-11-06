@@ -95,6 +95,9 @@ Item {
         y: Theme.border + menu.room
         width: parent.width
         height: menu.showing * menu.pitch
+        // Only the lines it has room for, never part of the next: a menu
+        // held to `most` lines still makes the rest.
+        clip: true
         model: menu.lines.length
         interactive: false
         boundsBehavior: Flickable.StopAtBounds
