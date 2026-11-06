@@ -1977,13 +1977,14 @@ Floating {
             // gives way whole, never half, only while the hints that stay
             // leave it none, as visual's at 2 do: there the count chosen is
             // what d acts on, and the cursor's ground and number say where
-            // it stands (VKCF3Z, 2026-11-06).
+            // it stands (VKCF3Z, 2026-11-06). It hides rather than narrowing
+            // to nothing, which would lay it out again inside its own width.
             Text {
                 id: facts
                 x: foot.factsAt
-                width: hinted.crowded ? 0 : Math.min(implicitWidth, foot.width - foot.factsAt
+                width: Math.min(implicitWidth, foot.width - foot.factsAt
                     - Theme.space.rung.inset - Theme.space.rung.groups - hinted.wide)
-                visible: width > 0
+                visible: !hinted.crowded
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.facts
@@ -1992,12 +1993,17 @@ Floating {
                 font: note.font
             }
 
+            // What the facts take of the line, a group after them, or
+            // nothing while they're hidden or empty.
+            readonly property real factsTake: facts.visible && facts.width > 0
+                ? facts.width + Theme.space.rung.groups : 0
+
             Text {
                 id: modeWord
-                x: facts.x + facts.width + (facts.width > 0 ? Theme.space.rung.groups : 0)
+                x: foot.factsAt + foot.factsTake
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - foot.factsAt - Theme.space.rung.inset - facts.width
-                    - hinted.wide - 2 * Theme.space.rung.groups))
+                    - foot.factsAt - Theme.space.rung.inset - foot.factsTake
+                    - hinted.wide - Theme.space.rung.groups))
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
                 text: held.modeWord
