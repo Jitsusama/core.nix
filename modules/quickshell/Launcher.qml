@@ -2096,7 +2096,10 @@ Scope {
     // as rows came, Return moved in as soon as Joel typed, since home's
     // rows say less than what a letter finds. The keys before it hold no
     // room until a row says them.
-    readonly property string footVerbRoom: widestVerb(Words.all.things ?? [])
+    // Chosen afresh as each opening's room is set (footReset), since a
+    // binding would weigh the verbs once, maybe before the foot's face had
+    // loaded and measured them all alike (Y2YBTS, 2026-11-05).
+    property string footVerbRoom: "connect"
 
     // The widest verb the words file names, in any of its states, as the
     // foot draws it after Return (VKCF3Z, 2026-11-05: "Hold room at the
@@ -2110,7 +2113,8 @@ Scope {
             const states = Object.values(entry.states ?? {});
             for (const verb of [entry.verb].concat(states.map(state => state.verb))) {
                 if (typeof verb === "string"
-                    && keys.advance("\u21b5", verb) > keys.advance("\u21b5", widest))
+                    && statusLine.keys.advance("\u21b5", verb)
+                        > statusLine.keys.advance("\u21b5", widest))
                     widest = verb;
             }
         }
@@ -5640,6 +5644,9 @@ Scope {
             // The gutter as wide as where it opens can number.
             gutterDigits = held.length === 0 ? 3 : 1;
             noteDigits();
+            // Weighed once an opening, not on every mode change, which
+            // walks every thing's verbs.
+            footVerbRoom = widestVerb(Words.all.things ?? []);
             // The foot's room once the line is back on the find: set
             // before, the rows noted their keys while it was still in
             // the normal it closed in, and the find opened with normal's
