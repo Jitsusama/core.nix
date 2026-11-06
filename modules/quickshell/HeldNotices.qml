@@ -226,9 +226,31 @@ Floating {
     // nothing, so what it offers is said once the cursor has settled.
     function take(front) {
         reset();
+        gutterDigits = 1;
+        noteDigits();
         cursorId = front;
         Qt.callLater(sayOffers);
         Qt.callLater(sayFoot);
+        Qt.callLater(sayColumns);
+    }
+
+    // Whether the cursor's row starts where the rule has it, read from
+    // where its parts are drawn, for a test to hold: its number on the
+    // head's inset, its Name and its card's lines a tie and a mark past
+    // the gutter's figures, which are only as wide as the most it numbers.
+    function sayColumns() {
+        const row = lines.itemAt(cursor - shownTop) as Line;
+        if (!row)
+            return;
+        const past = row.nameX - (row.gutterX + row.gutterWide);
+        const card = row.cardX - row.nameX;
+        const near = (a, b) => Math.abs(a - b) < 0.01;
+        const ok = near(row.gutterX, slash.x)
+            && near(past, Theme.space.rung.tie + Theme.space.rung.mark) && near(card, 0)
+            && near(row.gutterWide, noteWide("9".repeat(String(rows.length).length)));
+        Report.say(ok ? "notice rows start on the inset"
+            : `notice rows start ${Math.round(row.gutterX)}, `
+                + `${Math.round(past)} past the gutter, card ${Math.round(card)}`);
     }
 
     // Whether the status line reaches the frame, so its text centres in
@@ -1118,15 +1140,16 @@ Floating {
     // ascent as the baseline, as it is for styled text; placed by that, a
     // washed card's Words dropped 3 device pixels at 2 under a find.
     readonly property real richBase: Theme.level.words.pitch * 4 / 5
-    // The columns, the launcher's (VKCF3Z's family mocks, 2026-11-05): the
-    // gutter's figures right-aligned in the room of three, the ground a
-    // mark on and the mark's cell a mark inside it, and the Name a glyph's
-    // column after the mark's start, so names align whatever a mark's
-    // width.
+    // The columns, a held row being the toast's notice in a list (VKCF3Z,
+    // 2026-11-06): the gutter's figures from the inset, only as wide as the
+    // most it numbers, the ground a tie after them, and every line of the
+    // row, its Name, words, sender and acts, the ground's mark inside it.
+    // A glyph's column before the Name, and the room of three figures,
+    // stepped the rows in three times past the head and the foot (Joel,
+    // 2026-11-06: "I don't like the indent when I'm in list view").
     readonly property real groundAt: Theme.space.rung.inset + gutterFigures.advanceWidth
-        + Theme.space.rung.mark
-    readonly property real markAt: groundAt + Theme.space.rung.mark
-    readonly property real nameAt: markAt + Theme.level.name.pitch + Theme.space.rung.mark
+        + Theme.space.rung.tie
+    readonly property real nameAt: groundAt + Theme.space.rung.mark
     // Space ?'s pitch, the drawer's key list's: Figure's, at Note.
     readonly property real keyPitch: Theme.level.figure.pitch
     // How many of its lines show: as many as stand within the rows' room,
@@ -1157,11 +1180,27 @@ Floating {
         font.weight: Theme.level.name.weight
     }
 
-    // The gutter's width, by the widest it holds.
+    // A line in view, saying where its parts are drawn so sayColumns can
+    // read them by type.
+    component Line: Column {
+        property real gutterX
+        property real gutterWide
+        property real nameX
+        property real cardX
+    }
+
+    // The gutter's width, by the widest it holds: as many figures as the
+    // most cards held since the keys were taken, so a card arriving or
+    // going never moves the rows, and ten widen it only once.
+    property int gutterDigits: 1
+    onRowsChanged: noteDigits()
+    function noteDigits() {
+        gutterDigits = Math.max(gutterDigits, String(Math.max(1, rows.length)).length);
+    }
     TextMetrics {
         id: gutterFigures
         font: note.font
-        text: "999"
+        text: "9".repeat(held.gutterDigits)
     }
 
     // How wide a run of Note's is, asked again as the face loads.
@@ -1429,10 +1468,16 @@ Floating {
 
         // The lines in view, or Space ?'s list in their place.
         Repeater {
+            id: lines
             model: held.listing ? [] : held.inView
 
-            Column {
+            Line {
                 id: line
+
+                gutterX: gutter.x
+                gutterWide: gutter.width
+                nameX: who.x
+                cardX: card.x
 
                 required property var modelData
                 required property int index
@@ -1483,15 +1528,6 @@ Floating {
                         horizontalAlignment: Text.AlignRight
                         text: NoticeList.number(line.at, held.cursor, held.relative)
                         color: line.atCursor ? Theme.text : Theme.muted
-                        font: note.font
-                    }
-
-                    Text {
-                        id: mark
-                        x: held.markAt
-                        anchors.baseline: who.baseline
-                        text: line.from ? String.fromCodePoint(line.from.glyph) : ""
-                        color: line.from ? Theme[line.from.hue] : Theme.muted
                         font: note.font
                     }
 
@@ -1651,13 +1687,14 @@ Floating {
                         font.variableAxes: Theme.level.words.variableAxes
                     }
 
-                    Text {
-                        y: card.senderBase - baselineOffset
+                    // Who sent it, its mark before its name, as the toast
+                    // signs it; its bottom is the line's baseline.
+                    Signature {
+                        y: card.senderBase - implicitHeight
                         width: parent.width
-                        text: line.from ? line.from.name : ""
-                        elide: Text.ElideRight
-                        color: Theme.level.note.colour
-                        font: note.font
+                        mark: line.from ? String.fromCodePoint(line.from.glyph) : ""
+                        hue: line.from ? Theme[line.from.hue] : Theme.muted
+                        name: line.from ? line.from.name : ""
                     }
 
                     // Its own acts as the commands that do them, ":reply" and
