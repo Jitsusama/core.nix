@@ -2447,19 +2447,6 @@ Scope {
         // a row apart from the head's hairline to the foot's (VKCF3Z,
         // 2026-11-05).
         const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
-        // Now's plate sets its lines on home's rows (look 3): what needs
-        // Joel on Agents', the day's facts from Programs' and the clock's
-        // from Desktop's, each by where that row is today, or -1 where
-        // it's missing, when the plate sets it below the line before.
-        const plated = rows.findIndex(row => row.plated === true);
-        if (plated >= 0) {
-            const at = id => rows.findIndex(row => row.key === `collection:${id}`
-                || row.category?.id === id);
-            const lines = { say: at("agents"), groups: [at("applications"), at("desktop")] };
-            const made = rows[plated].drawer;
-            rows[plated] = Object.assign({}, rows[plated],
-                { drawer: () => Object.assign(made(), { lines: lines }) });
-        }
         return rows;
     }
 
@@ -5266,19 +5253,6 @@ Scope {
     // as Network's does; home has none; the card's height, the list and the rows' lines all read
     // it, so the plate's lines can't drift from the list's.
     readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
-    // The middle of each row the card shows, down from its top: the first
-    // row's, then a row further for each, and a gap above a row that has
-    // one, so Now's plate can set a line on any of them. Worked out
-    // from the rows shown rather than read from the list, so it holds
-    // while the list is still drawing them.
-    readonly property var rowLines: {
-        let line = rowLine;
-        return matches.slice(0, rows).map((row, at) => {
-            if (at > 0)
-                line += rowTall + (row.gap ? apart : 0);
-            return line;
-        });
-    }
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
@@ -5531,10 +5505,6 @@ Scope {
                     time: drawerCard.momentTime,
                     seconds: drawerCard.momentSeconds,
                     say: drawerCard.shown?.say ?? "",
-                    // The rows its words and each group are set on, -1
-                    // for one missing.
-                    sayOn: drawerCard.momentLines.say ?? -1,
-                    groupsOn: drawerCard.groups.map(group => group.line),
                     groups: drawerCard.groups.map(group => group.facts.map(fact =>
                         [fact.label, fact.value, fact.qualifier ?? ""]))
                 } : null,
@@ -5548,10 +5518,7 @@ Scope {
                     rows: root.matches.slice(0, 20)
                         .map((_, at) => root.hundredths(list.baselineOf(at))),
                     // Each of the same rows' words, where they sit.
-                    words: root.matches.slice(0, 20).map((_, at) => list.wordsOf(at)),
-                    // The middle of each row shown, which the moment's time
-                    // centres its capitals on.
-                    middles: root.rowLines.map(line => root.hundredths(line))
+                    words: root.matches.slice(0, 20).map((_, at) => list.wordsOf(at))
                 },
                 // The facts it draws, by name, whether each name is on one
                 // line whole, and where its last line's box may end.
@@ -7472,7 +7439,6 @@ Scope {
             squareFoot: root.drawerOver
             fieldBase: root.fieldBase
             rowLine: root.rowLine
-            rowLines: root.rowLines
             rowDrop: root.rowCaps / 2
             out: root.drawerOut && (!root.drawerOver || root.drawerHolds)
             waits: root.drawerOut && root.drawerOver && !root.drawerHolds
