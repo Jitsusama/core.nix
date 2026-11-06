@@ -2017,8 +2017,8 @@
     after at the same timeout, touching nothing when it isn't running
   '';
   the-viewfinder-keeps-its-own-keys = ''
-    Escape closes the camera's viewfinder even where a script in mpv's own folder binds Escape,
-    as the player's vi keys do, since the viewfinder loads none of them
+    ZZ closes the camera's viewfinder, and Escape and q leave it open, even where a script in
+    mpv's own folder binds Z, as the player's vi keys do, since the viewfinder loads none of them
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

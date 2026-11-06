@@ -36,8 +36,9 @@ onLinux {
 
   # The viewfinder as camera.sh starts it, playing a test picture in place
   # of the camera and drawing nothing, beside a player script in mpv's own
-  # folder that takes Escape (stand-in-player.lua), as the player's
-  # vi-keys.lua does: Escape closes it all the same (keeps-its-keys.py).
+  # folder that takes Z (stand-in-player.lua), as the player's vi-keys.lua
+  # does: Escape and q leave it open, and ZZ closes it all the same
+  # (keeps-its-keys.py).
   the-viewfinder-keeps-its-own-keys =
     pkgs.runCommandLocal "the-viewfinder-keeps-its-own-keys"
       {

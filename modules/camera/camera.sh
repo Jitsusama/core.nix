@@ -40,9 +40,9 @@ done
 # which mpv waits for before it plays, and before the camera wakes: made
 # sooner, a key pressed as it appeared on a busy machine met no binding
 # and was lost. None of the player's own scripts in mpv's folder is loaded
-# (modules/mpv): its Vim keys bind Escape and Space as camera.lua does, and
-# of two scripts binding a key, the one that loads last takes it, so
-# Escape closed the viewfinder only some of the time.
+# (modules/mpv): its Vim keys bind Z, Escape and Space as camera.lua does,
+# and of two scripts binding a key, the one that loads last takes it, so
+# the viewfinder's keys were its own only some of the time.
 exec mpv "av://v4l2:$device" --load-scripts=no \
   --vo=gpu-next,wlshm --gpu-context=wayland \
   --title=Camera --wayland-app-id=camera --force-window=yes \
