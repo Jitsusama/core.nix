@@ -2091,11 +2091,11 @@ Scope {
     // whitespacing ... is all fucked up"), and took room from how things
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
-    // under the selection. They open as wide as most rows need, Return's
-    // place as wide as the widest Return word and the keys as wide as a
-    // setting's with more behind it, so the first letter typed doesn't move
-    // them: grown only as rows came, Return moved in as soon as Joel typed,
-    // since home's rows say less than what a letter finds.
+    // under the selection. Return's place opens as wide as the widest
+    // Return word, so the first letter typed doesn't move it: grown only
+    // as rows came, Return moved in as soon as Joel typed, since home's
+    // rows say less than what a letter finds. The keys before it hold no
+    // room until a row says them.
     readonly property string footVerbRoom: widestVerb(Words.all.things ?? [])
 
     // The widest verb the words file names, in any of its states, as the
@@ -2116,10 +2116,12 @@ Scope {
         }
         return widest;
     }
-    // Return, then the widest key a row adds beside it on the find, where
-    // the launcher opens: as wide as Shift+Return's "below" beside a mark.
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
+    // Return and its widest word alone on the find, where the launcher
+    // opens, since room is held only for what a mode draws (VKCF3Z,
+    // 2026-11-05): held for Shift+Return's "below" and the right arrow too,
+    // which no foot on the find draws, it cut the date at 1.5 beside an
+    // empty stretch. A row's own keys grow it as they come (noteKeys).
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom]]
     // What normal says beside Return at home: the commands and the keys,
     // kept while normal is taken rather than from the opening. Kept from
     // the start, it cut the battery's charge from the glance on the find,
