@@ -181,7 +181,9 @@ Rectangle {
     // Qt's tight measure of a glyph runs down to the baseline, so a mark
     // standing above it, as the keyboard and people do, measures taller
     // than its ink and centres high (VKCF3Z, 2026-11-05: a pixel at 1.5).
-    // Its top is true; its outline gives its height.
+    // Its top is true; its outline gives its height. Measuring the outline
+    // rather than Qt's box fixes that cause, where a size or offset tuned
+    // per glyph would only hide it until the next mark.
     Shape {
         id: markOutline
         visible: false
