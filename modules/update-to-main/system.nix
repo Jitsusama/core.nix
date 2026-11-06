@@ -198,6 +198,18 @@ in
         ask is refused, and what was built stays for the next one.
       '';
     };
+    holdRestarts = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "nix-daemon.service" ];
+      description = ''
+        Daemons a switch mustn't restart until an asker grants it, having
+        held the machine's other work first: systemd units on NixOS. A
+        switch that would restart one is refused, what was built stays for
+        the next ask, and an asker grants the next switch by making
+        `/run/update-to-main-hold/given`, which that switch takes away.
+      '';
+    };
     hosted = mkOption {
       type = types.nullOr (
         types.submodule (
@@ -338,6 +350,10 @@ in
         message = "jitsusama.update-to-main.kept needs elsewhere, or kept pieces build here.";
       }
       {
+        assertion = cfg.holdRestarts == [ ] || cfg.system ? hold_given;
+        message = "jitsusama.update-to-main.holdRestarts is for NixOS, where an asker can grant one.";
+      }
+      {
         assertion = (cfg.builders == null && cfg.here == null) || cfg.elsewhere;
         message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
       }
@@ -388,6 +404,14 @@ in
                   below_load = cfg.here.belowLoad;
                 };
             refuse_while = cfg.refuseWhile;
+            holds =
+              if cfg.holdRestarts == [ ] then
+                null
+              else
+                {
+                  units = cfg.holdRestarts;
+                  given = cfg.system.hold_given;
+                };
             # The running system's path, so once it has switched the newest
             # update-to-main serves.
             program = "/run/current-system/sw/bin/update-to-main";
@@ -399,7 +423,10 @@ in
             }
             // cfg.system.tools;
           }
-          // removeAttrs cfg.system [ "tools" ]
+          // removeAttrs cfg.system [
+            "tools"
+            "hold_given"
+          ]
         )
       );
     };

@@ -41,7 +41,10 @@ in
   # whole after it go back, a new kernel's userland runs at once and goes
   # back if it isn't whole while the kernel waits for the next boot, a low
   # battery starts nothing, asks during an update join it, anything but the
-  # one ask is refused, and the socket is only its group's to write.
+  # one ask is refused, the socket is only its group's to write, a switch
+  # that would restart a held daemon waits for an asker's grant, and the
+  # follower asks when a head moves, soon again after a busy refusal, not
+  # again at heads that failed, and never past a held daemon's refusal.
   update-to-main-updates-to-signed-main = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in update-to-main, its tests included.
   update-to-main-passes-clippy = passesClippy "update-to-main-passes-clippy" (

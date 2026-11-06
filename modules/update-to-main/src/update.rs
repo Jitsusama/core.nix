@@ -5,7 +5,9 @@
 //! each input that follows its own main, build it, switch, check the
 //! machine is whole, and go back to the system it left if anything after
 //! the switch's start fails. Busy is asked again before the switch, since a
-//! call may start while the build runs. Each step is told as it starts.
+//! call may start while the build runs. A switch that would restart a
+//! daemon the config holds is refused unless an asker granted it. Each step
+//! is told as it starts.
 
 use crate::config::{Busy, Config, Kind};
 use crate::follows;
@@ -19,6 +21,10 @@ use std::fs;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// How a refusal for a held daemon's restart begins, so an asker that
+/// follows main can tell it from being busy and stop until a person acts.
+pub const NEEDS_HOLD: &str = "switching would restart";
 
 /// How long a busy command has to answer before it counts as busy.
 const BUSY_WITHIN: Duration = Duration::from_secs(30);
@@ -94,7 +100,7 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
         Err(failure) => return failed(last, failure),
     };
     // What was built stays in the store, so the next ask switches at once.
-    if let Some(why) = busy(config) {
+    if let Some(why) = busy(config).or_else(|| held(config, &built)) {
         return Line::Refused { commit: last, why };
     }
 
@@ -179,6 +185,29 @@ fn too_low(config: &Config) -> Option<String> {
         )),
         _ => None,
     }
+}
+
+/// Why switching to `built` waits for a hold, when it would restart a held
+/// daemon and no asker has granted it. A grant is taken by the switch it
+/// lets through, so the next one needs its own.
+fn held(config: &Config, built: &std::path::Path) -> Option<String> {
+    let holds = config.holds.as_ref()?;
+    let current = system::current(config)?;
+    let restarts: Vec<&str> = holds
+        .units
+        .iter()
+        .filter(|u| system::daemon_changed(config.kind, &current, built, u))
+        .map(String::as_str)
+        .collect();
+    if restarts.is_empty() || fs::remove_file(&holds.given).is_ok() {
+        return None;
+    }
+    Some(format!(
+        "{NEEDS_HOLD} {}, which waits for a hold: once the machine's work is held, make {} \
+         and ask again",
+        restarts.join(", "),
+        holds.given.display()
+    ))
 }
 
 /// What the machine is busy with, when any of its busy commands says so.

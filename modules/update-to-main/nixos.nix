@@ -8,6 +8,9 @@
 # starts itself again once the switch is done. It never starts or switches
 # while a call is on, as calls counts one, since a switch restarts the
 # sound server under it.
+#
+# A follower, when one is named, is that account's service asking whenever
+# main moves, so a merge needn't wait for someone to ask (src/follow.rs).
 {
   config,
   lib,
@@ -20,9 +23,30 @@ in
 {
   imports = [ ./system.nix ];
 
+  options.jitsusama.update-to-main.follower = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "someone";
+    description = ''
+      The account, one of the askers, whose service asks for an update
+      whenever main or a followed input moves, and at least every ten
+      minutes; none to ask only when someone does.
+    '';
+  };
+
   config = {
+    assertions = [
+      {
+        assertion = cfg.follower == null || lib.elem cfg.follower cfg.askers;
+        message = "jitsusama.update-to-main.follower has to be one of its askers.";
+      }
+    ];
+
     jitsusama.update-to-main.system = {
       kind = "nixos";
+      # Where an asker grants a switch a held daemon's restart, in a
+      # folder only root and the askers write.
+      hold_given = "/run/update-to-main-hold/given";
       state = "/var/lib/update-to-main";
       socket = "/run/update-to-main/ask.sock";
       ended = "/run/update-to-main/last.json";
@@ -44,6 +68,20 @@ in
     ];
 
     users.groups.update-ask.members = cfg.askers;
+    systemd.tmpfiles.rules = [ "d /run/update-to-main-hold 0770 root update-ask -" ];
+
+    systemd.user.services.update-to-main-follows = lib.mkIf (cfg.follower != null) {
+      description = "Asks for an update whenever main moves";
+      wantedBy = [ "default.target" ];
+      unitConfig.ConditionUser = cfg.follower;
+      serviceConfig = {
+        # It ends once the system's path holds another update-to-main, so
+        # coming back starts the newest.
+        ExecStart = "/run/current-system/sw/bin/update-to-main follow";
+        Restart = "always";
+        RestartSec = 30;
+      };
+    };
 
     systemd.services.update-to-main = {
       description = "Updates the machine to its repository's main when asked";
