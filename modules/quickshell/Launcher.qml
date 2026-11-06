@@ -2116,12 +2116,16 @@ Scope {
         }
         return widest;
     }
-    // Return and its widest word alone on the find, where the launcher
-    // opens, since room is held only for what a mode draws (VKCF3Z,
-    // 2026-11-05): held for Shift+Return's "below" and the right arrow too,
-    // which no foot on the find draws, it cut the date at 1.5 beside an
-    // empty stretch. A row's own keys grow it as they come (noteKeys).
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom]]
+    // Return and its widest word on the find, where the launcher opens,
+    // and the completion key the first letter brings, since room is held
+    // only for what a mode draws (VKCF3Z, 2026-11-05): held for
+    // Shift+Return's "below" and the right arrow too, which no foot on the
+    // find draws, it cut the date at 1.5 beside an empty stretch; held for
+    // Return alone, "Ctrl+Y complete" on the first letter cut it then and
+    // slid every fact after it. A row's own keys grow it as they come
+    // (noteKeys).
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
+        [prompt.completeKey, (Words.field.hints ?? {}).complete ?? ""]]
     // What normal says beside Return at home: the commands and the keys,
     // kept while normal is taken rather than from the opening. Kept from
     // the start, it cut the battery's charge from the glance on the find,
