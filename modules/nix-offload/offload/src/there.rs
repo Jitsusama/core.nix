@@ -72,7 +72,7 @@
 //! commit (`passed.rs`), and a check kept is journalled `already`, built
 //! nowhere.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -761,11 +761,13 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     if planned.is_empty() {
         return;
     }
-    let derivations = held::derivations(&json_of(
+    let shown = json_of(
         Command::new(nix)
             .args(["derivation", "show"])
             .args(&planned),
-    ));
+    );
+    let derivations = held::derivations(&shown);
+    let fixed = held::fixed(&shown);
     let outputs = derivations
         .values()
         .flat_map(|derivation| derivation.outputs.values());
@@ -790,15 +792,16 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
             .args(["path-info", "--recursive", "--json"])
             .args(&sending),
     ));
+    let fetching = held::fetched(&fixed, &closure);
     let fetched = fetched_first(
-        &held::fetched(&planned, &closure),
-        &closure,
+        &fetching,
+        held::fetched_size(&fixed, &closure, &fetching),
         lent,
         scratch,
         ssh,
     );
     let own: u64 = sending.iter().filter_map(|path| holds.get(path)).sum();
-    let size = held::sent_up(&planned, &closure, &fetched).max(own);
+    let size = held::sent_up(&planned, &fixed, &closure, &fetched).max(own);
     let (outputs, them) = match sending.len() {
         1 => ("1 output".to_owned(), "it"),
         count => (format!("{count} outputs"), "them"),
@@ -826,15 +829,18 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
 }
 
 /// What the builder is asked, with fixed derivations on its standard
-/// input: to fetch their outputs from their own sources.
-const FETCHES: &str = "xargs -r nix-store --realise > /dev/null";
+/// input: to fetch their outputs from their own sources, several at once,
+/// printing each it fetched. One it can't fetch, such as a file only this
+/// machine was given, leaves the rest fetched there still, so the copy
+/// after skips them and only what's printed is counted as fetched.
+const FETCHES: &str = "xargs -r -P 8 -I{} sh -c 'nix-store --realise \"$1\" > /dev/null && echo \"$1\"' fetch {}; true";
 
 /// Has the builder fetch `fetching` for itself, saying so, and answers
 /// them once it has, or none when it couldn't, so they go up from here
 /// as before.
 fn fetched_first(
     fetching: &[String],
-    closure: &BTreeMap<String, held::Stored>,
+    size: u64,
     lent: &Builder,
     scratch: &Path,
     ssh: &str,
@@ -842,17 +848,6 @@ fn fetched_first(
     if fetching.is_empty() {
         return Vec::new();
     }
-    let size = closure
-        .values()
-        .filter(|stored| {
-            stored.fixed
-                && stored
-                    .deriver
-                    .as_ref()
-                    .is_some_and(|deriver| fetching.contains(deriver))
-        })
-        .map(|stored| stored.size)
-        .sum();
     let downloads = match fetching.len() {
         1 => "1 download".to_owned(),
         count => format!("{count} downloads"),
@@ -862,11 +857,26 @@ fn fetched_first(
          than have this machine send them",
         sized(size)
     );
-    if answered(lent, FETCHES, fetching, scratch, ssh).is_some() {
-        return fetching.to_vec();
+    let said = answered(lent, FETCHES, fetching, scratch, ssh).unwrap_or_default();
+    let fetched = fetched_of(&said, fetching);
+    if fetched.len() < fetching.len() {
+        eprintln!(
+            "nix-offload: the builder fetched {} of {}, so what it lacks goes up from here",
+            fetched.len(),
+            fetching.len()
+        );
     }
-    eprintln!("nix-offload: the builder couldn't fetch them, so they go up from here");
-    Vec::new()
+    fetched
+}
+
+/// Of `fetching`, those the builder said it fetched, a line each.
+fn fetched_of(said: &str, fetching: &[String]) -> Vec<String> {
+    let printed: std::collections::BTreeSet<&str> = said.lines().map(str::trim).collect();
+    fetching
+        .iter()
+        .filter(|derivation| printed.contains(derivation.as_str()))
+        .cloned()
+        .collect()
 }
 
 /// What `command` printed as JSON, or null when it printed none.
@@ -2944,6 +2954,20 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn only_what_the_builder_says_it_fetched_counts_as_fetched() {
+        // One of three couldn't be fetched, so it alone goes up, and an
+        // answer naming something not asked for counts for nothing.
+        let fetching =
+            ["/nix/store/a.drv", "/nix/store/b.drv", "/nix/store/c.drv"].map(str::to_owned);
+        let said = "/nix/store/c.drv\n/nix/store/a.drv\n/nix/store/z.drv\n";
+        assert_eq!(
+            fetched_of(said, &fetching),
+            ["/nix/store/a.drv", "/nix/store/c.drv"].map(str::to_owned)
+        );
+        assert!(fetched_of("", &fetching).is_empty());
+    }
 
     #[test]
     fn a_run_ends_with_all_it_started_once_its_caller_is_gone() {
