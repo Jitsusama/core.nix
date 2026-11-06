@@ -2091,18 +2091,47 @@ Scope {
     // whitespacing ... is all fucked up"), and took room from how things
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
-    // under the selection. They open as wide as most rows need, Return's
-    // place as wide as "connect" and the keys as wide as a setting's with
-    // more behind it, so the first letter typed doesn't move them: grown only as
-    // rows came, Return moved in as soon as Joel typed, since home's rows
-    // say less than what a letter finds.
-    readonly property string footVerbRoom: "connect"
-    // Return, then the widest key a row adds beside it on the find, where
-    // the launcher opens: as wide as Shift+Return's "below" beside a mark.
+    // under the selection. Return's place opens as wide as the widest
+    // Return word, so the first letter typed doesn't move it: grown only
+    // as rows came, Return moved in as soon as Joel typed, since home's
+    // rows say less than what a letter finds. The keys before it hold no
+    // room until a row says them.
+    // Chosen afresh as each opening's room is set (footReset), since a
+    // binding would weigh the verbs once, maybe before the foot's face had
+    // loaded and measured them all alike (Y2YBTS, 2026-11-05).
+    property string footVerbRoom: "connect"
+
+    // The widest verb the words file names, in any of its states, as the
+    // foot draws it after Return (VKCF3Z, 2026-11-05: "Hold room at the
+    // far end for the widest Return word the words file names"). A room
+    // kept for "connect" alone let "\u21b5 brighten" move Return on the
+    // first letter; "connect", which a network's source says, stays the
+    // least. A source's own wider verb may still move it once.
+    function widestVerb(things) {
+        let widest = "connect";
+        for (const entry of things) {
+            const states = Object.values(entry.states ?? {});
+            for (const verb of [entry.verb].concat(states.map(state => state.verb))) {
+                if (typeof verb === "string"
+                    && statusLine.keys.advance("\u21b5", verb)
+                        > statusLine.keys.advance("\u21b5", widest))
+                    widest = verb;
+            }
+        }
+        return widest;
+    }
+    // Return and its widest word on the find, where the launcher opens,
+    // and the completion key the first letter brings, since room is held
+    // only for what a mode draws (VKCF3Z, 2026-11-05): held for
+    // Shift+Return's "below" and the right arrow too, which no foot on the
+    // find draws, it cut the date at 1.5 beside an empty stretch; held for
+    // Return alone, "Ctrl+Y complete" on the first letter cut it then and
+    // slid every fact after it. A row's own keys grow it as they come
+    // (noteKeys).
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
+        [prompt.completeKey, (Words.field.hints ?? {}).complete ?? ""]]
     // What normal says beside Return at home: the commands and the keys,
-    // kept once normal is taken rather than from the opening. Kept from
+    // kept while normal is taken rather than from the opening. Kept from
     // the start, it cut the battery's charge from the glance on the find,
     // which never gives way; - up is said only once a step is held, and
     // Ctrl+] in only on a row holding parts, whose rows grow the room as
@@ -2146,8 +2175,14 @@ Scope {
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
             ...said.map(told => statusLine.keys.advance(told[0][0], told[0][1])));
-        if (place > footReturnWidest)
+        // Said as it grows, so a test sees which row's Return took the
+        // room, though the foot shows only the selection's.
+        if (place > footReturnWidest) {
+            const widest = said.find(told =>
+                statusLine.keys.advance(told[0][0], told[0][1]) === place);
+            Report.say(`foot room for ${widest[0].join(" ")}`);
             footReturnWidest = place;
+        }
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
         if (wide > footKeysWidest)
             footKeysWidest = wide;
@@ -2223,6 +2258,14 @@ Scope {
         target: prompt
         function onModeChanged() {
             root.readSelectedActions();
+            // The foot's room starts again for each mode, which changes
+            // what it draws, so the glance never gives way to keys a mode
+            // no longer shows, as normal's once back on the find (QIFT5D);
+            // and its facts' forms with it, which within one mode only
+            // shorten, or a form normal forced would outlive it (Y2YBTS).
+            root.footReset();
+            root.footStage = 0;
+            root.factsWidest = {};
             root.noteKeys();
         }
     }
@@ -5317,6 +5360,13 @@ Scope {
             // Where the status line's last ink should end: the inset in
             // from the frame, as its first starts.
             footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
+            // How far in the keys may reach, room held for keys a row
+            // may say included, which the facts are fitted short of.
+            keysFrom: Math.round(foot.keysFrom),
+            // The room held for the widest keys since opening, and what the
+            // keys said now take, so a test can tell which held it.
+            keysRoom: { held: Math.round(root.footKeysWidest),
+                said: Math.round(root.keysWide(foot.told)) },
             // The keys the foot says now, each its mark and its word.
             hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
@@ -5569,7 +5619,6 @@ Scope {
             fading = false;
             parting = "";
             footCatchUp();
-            footReset();
             footStage = 0;
             factsWidest = {};
             figuresStep = "";
@@ -5599,6 +5648,15 @@ Scope {
             // The gutter as wide as where it opens can number.
             gutterDigits = held.length === 0 ? 3 : 1;
             noteDigits();
+            // Weighed once an opening, not on every mode change, which
+            // walks every thing's verbs.
+            footVerbRoom = widestVerb(Words.all.things ?? []);
+            // The foot's room once the line is back on the find: set
+            // before, the rows noted their keys while it was still in
+            // the normal it closed in, and the find opened with normal's
+            // room, cutting the glance's date and charge.
+            footReset();
+            noteKeys();
             Report.say(`stands ${standing.said}`);
         } else {
             // An ask closing with it says no, as Escape would, and is
@@ -6918,9 +6976,14 @@ Scope {
                         readonly property real returnAt: width - Theme.space.rung.inset - returnPlace
                         // How far in the keys may reach: as far as the
                         // widest of them has needed since the launcher
-                        // opened, so the left's room holds still too.
+                        // opened, so the left's room holds still too. The
+                        // keys are measured by their advances, as noteKeys
+                        // measures them, not by the row's laid-out width,
+                        // which lags to its next layout pass: opening from
+                        // normal, it still held normal's keys as the facts
+                        // were fitted, and the glance opened cut for good.
                         readonly property real keysFrom: width - Theme.space.rung.inset
-                            - Math.max(root.footKeysWidest, statusLine.keys.implicitWidth)
+                            - Math.max(root.footKeysWidest, root.keysWide(told))
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.
