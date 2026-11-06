@@ -613,7 +613,8 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
     """V j counts two in the mode word, and a window arriving waits as "1 new" in the foot.
 
     It's shown in Super+Tab's windows, which is all of them, since a typed search said again
-    finds only what it found.
+    finds only what it found. The foot still names d and y, which are what visual chooses rows
+    for: holding "999 chosen" beside two rows, it gave both way (VKCF3Z, 2026-11-06).
     """
     machine = desktop.machine
     desktop.notes_window()
@@ -633,6 +634,8 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
         )
+        hints = desktop.showing()["hints"]
+        assert {"d close", "y copy"} <= set(hints), f"at {scale} the foot drew {hints}"
         desktop.photograph(f"launcher-visual-waits-at-{named}")
         machine.send_key("esc")
         desktop.launcher_until(
