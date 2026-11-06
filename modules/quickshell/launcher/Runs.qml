@@ -147,6 +147,10 @@ Provider {
             thing: true,
             key: `run:${run.id}`,
             verb: session ? "go" : "copy",
+            // With no session to go to, it copies its id for want of one, as
+            // a job's row does, so Return goes into its parts instead
+            // (Launcher.qml's copiesOnly) and y copies.
+            figure: session ? undefined : false,
             name: named(run),
             live: live,
             glyph: Theme.glyph[mark(states)],

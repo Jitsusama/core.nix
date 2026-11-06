@@ -1763,18 +1763,20 @@ Scope {
             && !copiesOnly(choice);
     }
 
-    // Whether a row's only act is copying the figure it shows while it
-    // holds more, as a disk's Space does, or an answer listed in its
-    // place by name, as Power's Battery is: Return steps in, as the right
-    // arrow does, and the copy is listed inside after what can be done
-    // (Catalogue.js's leading), so Return never copies and closes where
-    // the right arrow would open (Joel, 2026-10-28: "hitting enter on the
-    // battery closes the window when right opens it"). An answer to what
-    // was typed, a sum or a lookup, still copies on Return, since what was
-    // asked is the answer itself; its copy inside comes after its acts too.
+    // Whether a row's only act is copying what it shows while it holds
+    // more: a figure, as a disk's Space and Power's Battery are; an answer
+    // to what was typed, as Memory is, wherever it's asked; or a row that
+    // copies its name for want of a window to go to, as a job or a council
+    // with no session does (`figure: false`). Return steps in, and y
+    // copies, with the copy listed inside after what can be done
+    // (Catalogue.js's leading). Return is the one way in now that l steps
+    // nowhere, so a copy on it hid the parts (Joel, 2026-11-06: "i type
+    // memory in the launcher, hit enter and it copies and does not go into
+    // more details"). A sum holds nothing, so its Return still copies, and
+    // a thing Return pastes, as an emoji or a copy kept, keeps its Return.
     function copiesOnly(choice) {
-        return !!choice && (choice.figure === true || (choice.answered === true
-            && (choice.placed ?? "") !== "")) && verbOf(choice) === "copy" && holdsMore(choice);
+        return !!choice && (choice.figure !== undefined || choice.answered === true)
+            && verbOf(choice) === "copy" && holdsMore(choice);
     }
 
     // Whether a row holds a thing's insides (its verbs, Return's act first,
@@ -2158,7 +2160,10 @@ Scope {
         // the verb a row's own action may lack.
         if (ending !== null && ending !== choice)
             keys.push([keyOf("ending"), ending.ends || verbOf(ending)]);
-        if (copy && copy !== choice)
+        // A row whose own act is the copy says y only where Return goes in
+        // instead, as an answer holding parts does, since there y is the one
+        // way to copy it.
+        if (copy && (copy !== choice || copiesOnly(choice)))
             keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
         return keys;
     }
