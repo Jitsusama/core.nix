@@ -128,6 +128,24 @@ QtObject {
         holds("and the rest narrows", names("'<,'>d"), ["delete"]);
         holds("% too", List.menu(entries, "%y").prefix, "%");
 
+        // A card's words on a short screen: the whole lines that fit, ending
+        // at a whole word with an ellipsis (VKCF3Z, 2026-11-05), a run's
+        // width here its length.
+        const measure = run => run.length;
+        holds("words broken at their spaces", List.laid(["alpha", "beta", "gamma", "delta"],
+            12, measure), 2);
+        holds("a word too wide alone takes its lines", List.laid(["abcdefghijklmnopqrstuvwxy"],
+            10, measure), 3);
+        holds("words that fit stay as they are", List.wholeWords("alpha beta", 1, 12, measure),
+            null);
+        holds("else they end at a whole word",
+            List.wholeWords("alpha beta gamma delta", 1, 12, measure), "alpha beta\u2026");
+        holds("over the lines they have",
+            List.wholeWords("alpha beta gamma delta epsilon", 2, 12, measure),
+            "alpha beta gamma delta\u2026");
+        holds("and a first word too wide is kept for Qt to cut",
+            List.wholeWords("abcdefghijklmno pq", 1, 10, measure), "abcdefghijklmno\u2026");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

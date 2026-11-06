@@ -131,7 +131,7 @@ Floating {
     // Taken a moment after the card says it, never while the rows it
     // shapes are being laid, and only when it changes, so a card laid
     // again with the same height leaves them be.
-    function cardSays(of, tall) {
+    function cardTold(of, tall) {
         if (cardOf !== of)
             cardOf = of;
         if (cardTall !== tall)
@@ -1538,6 +1538,31 @@ Floating {
                         + Theme.space.beat
                     readonly property real lastBase: says.visible
                         ? senderBase + Theme.level.note.pitch : senderBase
+                    // How far the card runs on under its last line of words,
+                    // the same however many it has.
+                    readonly property real afterWords: Theme.level.note.pitch + Theme.space.beat
+                        + (says.visible ? Theme.level.note.pitch : 0)
+                        + (field.visible ? 2 * Theme.space.beat + held.rowHeight : held.rowLeaves)
+                    // How many lines of words it has room for: six, or on a
+                    // short screen those that leave its row and the rest of
+                    // it whole inside the screen's rung (VKCF3Z, 2026-11-05).
+                    readonly property int wordsFit: Math.max(1, Math.min(6, 1 + Math.floor(
+                        (held.listTall - held.rowHeight - wordsBase - afterWords)
+                        / Theme.level.words.pitch)))
+                    // Its words as plain text, and where they're too many,
+                    // the whole words that fit.
+                    readonly property string plainWords: line.one && line.atCursor
+                        ? held.stack.plain(line.one.body) : ""
+                    readonly property var shortened: plainWords === "" ? null
+                        : NoticeList.wholeWords(plainWords, wordsFit, width, run => {
+                            wordsRun.text = run;
+                            return wordsRun.advanceWidth;
+                        })
+
+                    TextMetrics {
+                        id: wordsRun
+                        font: body.font
+                    }
 
                     // Folded while the command line's menu is up, which
                     // takes its room.
@@ -1557,7 +1582,7 @@ Floating {
                     // follow from it.
                     function told() {
                         if (card.visible)
-                            Qt.callLater(held.cardSays, line.modelData, card.tall);
+                            Qt.callLater(held.cardTold, line.modelData, card.tall);
                     }
                     onTallChanged: told()
                     onVisibleChanged: told()
@@ -1569,12 +1594,15 @@ Floating {
                         width: parent.width
                         visible: text !== ""
                         text: !line.one || !line.atCursor ? "" : line.washed
-                            ? Search.washed(held.stack.plain(line.one.body), held.pattern,
+                            ? Search.washed(card.shortened ?? card.plainWords, held.pattern,
                                 held.wash(line.chosenLine && held.mode === "visual"))
-                            : line.one.body
-                        textFormat: line.washed ? Text.RichText : Text.StyledText
+                            : card.shortened ?? line.one.body
+                        textFormat: line.washed ? Text.RichText
+                            : card.shortened !== null ? Text.PlainText : Text.StyledText
                         wrapMode: Text.Wrap
-                        maximumLineCount: 6
+                        // Qt's own cut stays behind the whole words', for a
+                        // word too wide for a line alone.
+                        maximumLineCount: card.wordsFit
                         elide: Text.ElideRight
                         lineHeight: Theme.level.words.pitch
                         lineHeightMode: Text.FixedHeight
@@ -1601,7 +1629,9 @@ Floating {
                         id: says
                         y: card.senderBase + Theme.level.note.pitch - baselineOffset
                         width: parent.width
-                        visible: text !== ""
+                        // Not while a reply is typed: :reply is already
+                        // done, and a short screen needs its line.
+                        visible: text !== "" && !field.visible
                         text: held.cardSays
                         textFormat: Text.PlainText
                         elide: Text.ElideRight

@@ -202,6 +202,43 @@ function redo(history, count) {
     };
 }
 
+// How many lines words take `wide` across, broken at their spaces as
+// Qt's wrap breaks them, `measure` giving a run's width; a word too wide
+// alone takes the lines it is broken over.
+function laid(words, wide, measure) {
+    let lines = 0;
+    let run = "";
+    for (const word of words) {
+        const longer = run === "" ? word : `${run} ${word}`;
+        if (run !== "" && measure(longer) <= wide) {
+            run = longer;
+            continue;
+        }
+        lines += run === "" ? 0 : Math.max(Math.ceil(measure(run) / wide), 1);
+        run = word;
+    }
+    return lines + (run === "" ? 0 : Math.max(Math.ceil(measure(run) / wide), 1));
+}
+
+// What a card's words show in `lines` lines `wide` across: null when they
+// all fit, kept as they are; else the whole words that fit, the last one
+// ending in an ellipsis, never cut mid-word nor a line cut in half
+// (VKCF3Z, 2026-11-05).
+function wholeWords(text, lines, wide, measure) {
+    const words = text.split(/\s+/).filter(word => word !== "");
+    if (laid(words, wide, measure) <= lines) {
+        return null;
+    }
+    for (let kept = words.length - 1; kept > 0; kept--) {
+        const shown = words.slice(0, kept);
+        shown[kept - 1] += "\u2026";
+        if (laid(shown, wide, measure) <= lines) {
+            return shown.join(" ");
+        }
+    }
+    return `${words[0] ?? ""}\u2026`;
+}
+
 const ranged = /^(%|[.$0-9'<>,;+-]*)/;
 
 // The menu for what's typed on the command line: a range typed first is
