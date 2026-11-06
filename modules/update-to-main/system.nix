@@ -198,6 +198,16 @@ in
         ask is refused, and what was built stays for the next one.
       '';
     };
+    holdChanges = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "kernel" ];
+      description = ''
+        Paths in the system whose changing waits for an asker's grant, as
+        holdRestarts' daemons do, such as `kernel` on NixOS for a machine
+        whose kernel should change only with someone there.
+      '';
+    };
     holdRestarts = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -350,8 +360,8 @@ in
         message = "jitsusama.update-to-main.kept needs elsewhere, or kept pieces build here.";
       }
       {
-        assertion = cfg.holdRestarts == [ ] || cfg.system ? hold_given;
-        message = "jitsusama.update-to-main.holdRestarts is for NixOS, where an asker can grant one.";
+        assertion = cfg.holdRestarts ++ cfg.holdChanges == [ ] || cfg.system ? hold_given;
+        message = "jitsusama.update-to-main's holds are for NixOS, where an asker can grant one.";
       }
       {
         assertion = (cfg.builders == null && cfg.here == null) || cfg.elsewhere;
@@ -405,11 +415,12 @@ in
                 };
             refuse_while = cfg.refuseWhile;
             holds =
-              if cfg.holdRestarts == [ ] then
+              if cfg.holdRestarts ++ cfg.holdChanges == [ ] then
                 null
               else
                 {
                   units = cfg.holdRestarts;
+                  paths = cfg.holdChanges;
                   given = cfg.system.hold_given;
                 };
             # The running system's path, so once it has switched the newest

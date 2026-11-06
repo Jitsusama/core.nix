@@ -1685,6 +1685,7 @@ fn a_machine_not_busy_updates() {
 fn hold_the_daemon(world: &mut World, first: &str) {
     world.config.holds = Some(Holds {
         units: vec!["nix-daemon.service".to_owned()],
+        paths: vec!["kernel".to_owned()],
         given: world.root.join("given"),
     });
     daemon_unit(&world.system("first"), first);
@@ -1736,4 +1737,19 @@ fn a_switch_leaving_held_daemons_as_they_are_needs_no_hold() {
     let head = world.signed("one");
     daemon_unit(&world.system(&head), "same");
     assert_eq!(world.update().1, done(&head));
+}
+
+#[test]
+fn a_new_kernel_waits_for_a_hold_when_the_kernel_is_held() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let head = world.signed("one");
+    let system = a_new_kernel(&world, &head);
+    daemon_unit(&system, "same");
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    assert!(why.contains("kernel"), "{why}");
+    assert_ne!(world.running(), system);
 }

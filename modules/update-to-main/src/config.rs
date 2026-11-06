@@ -124,6 +124,10 @@ pub struct Here {
 pub struct Holds {
     /// Their names: a systemd unit on NixOS, a launchd label on a Mac.
     pub units: Vec<String>,
+    /// Paths in a system, such as `kernel`, whose changing waits for a
+    /// grant as a held daemon's restart does.
+    #[serde(default)]
+    pub paths: Vec<String>,
     /// The file an asker makes to grant the next switch their restarts,
     /// which that switch takes away.
     pub given: PathBuf,

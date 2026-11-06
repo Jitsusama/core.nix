@@ -6,7 +6,8 @@
 //! machine is whole, and go back to the system it left if anything after
 //! the switch's start fails. Busy is asked again before the switch, since a
 //! call may start while the build runs. A switch that would restart a
-//! daemon the config holds is refused unless an asker granted it. Each step
+//! daemon the config holds, or change a path it holds such as the kernel,
+//! is refused unless an asker granted it. Each step
 //! is told as it starts.
 
 use crate::config::{Busy, Config, Kind};
@@ -22,9 +23,10 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How a refusal for a held daemon's restart begins, so an asker that
-/// follows main can tell it from being busy and stop until a person acts.
-pub const NEEDS_HOLD: &str = "switching would restart";
+/// How a refusal for a held daemon's restart or a held path's change
+/// begins, so an asker that follows main can tell it from being busy and
+/// stop until a person acts.
+pub const NEEDS_HOLD: &str = "switching would change";
 
 /// How long a busy command has to answer before it counts as busy.
 const BUSY_WITHIN: Duration = Duration::from_secs(30);
@@ -188,24 +190,27 @@ fn too_low(config: &Config) -> Option<String> {
 }
 
 /// Why switching to `built` waits for a hold, when it would restart a held
-/// daemon and no asker has granted it. A grant is taken by the switch it
+/// daemon or change a held path and no asker has granted it. A grant is taken by the switch it
 /// lets through, so the next one needs its own.
 fn held(config: &Config, built: &std::path::Path) -> Option<String> {
     let holds = config.holds.as_ref()?;
     let current = system::current(config)?;
-    let restarts: Vec<&str> = holds
+    let units = holds
         .units
         .iter()
-        .filter(|u| system::daemon_changed(config.kind, &current, built, u))
-        .map(String::as_str)
-        .collect();
-    if restarts.is_empty() || fs::remove_file(&holds.given).is_ok() {
+        .filter(|u| system::daemon_changed(config.kind, &current, built, u));
+    let paths = holds
+        .paths
+        .iter()
+        .filter(|p| system::path_changed(&current, built, p));
+    let changes: Vec<&str> = units.chain(paths).map(String::as_str).collect();
+    if changes.is_empty() || fs::remove_file(&holds.given).is_ok() {
         return None;
     }
     Some(format!(
         "{NEEDS_HOLD} {}, which waits for a hold: once the machine's work is held, make {} \
          and ask again",
-        restarts.join(", "),
+        changes.join(", "),
         holds.given.display()
     ))
 }

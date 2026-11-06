@@ -558,6 +558,12 @@ pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
     }
 }
 
+/// Whether a path in a system leads somewhere else in another, or only one
+/// has it, as a NixOS system's `kernel` does when it boots another kernel.
+pub fn path_changed(old: &Path, new: &Path, path: &str) -> bool {
+    fs::canonicalize(old.join(path)).ok() != fs::canonicalize(new.join(path)).ok()
+}
+
 /// Each file in a folder by its name, with what it holds.
 fn folder(path: &Path) -> BTreeMap<String, Option<String>> {
     let Ok(entries) = fs::read_dir(path) else {
