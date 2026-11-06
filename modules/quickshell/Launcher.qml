@@ -4058,15 +4058,21 @@ Scope {
     // round past an end and saying so, as Vim's wrapscan does; with nothing
     // typed, or nothing found, Vim's E35 or E486, the rows staying put.
     function toMatch(forward, count, key) {
-        const hints = Words.field.hints ?? {};
         const went = Finding.matchTo({ at: current, count, forward, last: matches.length - 1,
             typed });
-        if (went.none) {
-            say([[(hints[went.none] ?? "").replace("{typed}", typed), ""]]);
-            return;
-        }
-        arrowed(went.to, key);
-        if (went.wrapped !== "")
+        if (!went.none)
+            arrowed(went.to, key);
+        saySought(went, typed);
+    }
+
+    // What a search says in the foot until the next key, the rows' n and N
+    // and the drawer's search alike: E35 or E486 where it went nowhere,
+    // `sought` named in E486, or the end it went round, as Vim's do.
+    function saySought(went, sought) {
+        const hints = Words.field.hints ?? {};
+        if (went.none)
+            say([[(hints[went.none] ?? "").replace("{typed}", sought), ""]]);
+        else if (went.wrapped !== "")
             say([[went.wrapped === "bottom" ? hints.wrappedBottom : hints.wrappedTop, ""]]);
     }
 
@@ -6048,8 +6054,10 @@ Scope {
                         reselectable: root.lastVisual !== null
                         // A search run in the drawer puts its cursor on
                         // the match.
-                        onSought: (pattern, forward, count) =>
-                            drawerCard.seek(pattern, forward, count)
+                        onSought: (pattern, forward, count) => {
+                            const went = drawerCard.seek(pattern, forward, count);
+                            root.saySought(went, went.pattern);
+                        }
                         // The highest the selection goes: an answer's headline,
                         // or the row a step's line holds, sits above the rows,
                         // at -1.
@@ -6068,8 +6076,10 @@ Scope {
                         onStepped: (act, count) => {
                             root.searchNow();
                             if (QueryKeys.paged(mode)) {
-                                if (act === "seekNext" || act === "seekPrevious")
-                                    drawerCard.seekOn(act, count);
+                                if (act === "seekNext" || act === "seekPrevious") {
+                                    const went = drawerCard.seekOn(act, count);
+                                    root.saySought(went, went.pattern);
+                                }
                                 else if (act === "otherEnd")
                                     drawerCard.otherEnd();
                                 else if (act === "reselect")
