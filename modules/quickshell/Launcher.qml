@@ -7128,10 +7128,16 @@ Scope {
                         readonly property real keysFrom: width - Theme.space.rung.inset
                             - Math.max(root.footKeysWidest, root.keysWide(told))
                         // The room the left has, short of the keys and the
-                        // mode's word, which keeps its room in every mode so
-                        // the facts say the same whichever it is.
+                        // mode's word, which keeps its room in every mode it
+                        // speaks in so the facts say the same as it comes and
+                        // goes. The find never says one, so its facts take
+                        // that room: held there, it sat empty while the facts
+                        // gave way to the find's own keys, and a fact may
+                        // change its form once as the mode changes (Y2YBTS,
+                        // 2026-11-05).
                         readonly property real room: keysFrom - Theme.space.rung.groups
-                            - statusLine.factsAt - modeWord.room
+                            - statusLine.factsAt
+                            - (prompt.mode === "find" ? 0 : modeWord.room)
 
                         // As the card last showed it, while it's closed.
                         property string said: ""
