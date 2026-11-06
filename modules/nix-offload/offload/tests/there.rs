@@ -1669,7 +1669,10 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nhere-when-idle\nprint\nderivation\noutlive\n"
+        concat!(
+            "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
+            "here-when-idle\nprint\nderivation\noutlive\n"
+        )
     );
 }
 
