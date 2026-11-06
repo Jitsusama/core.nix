@@ -317,8 +317,9 @@ QtObject {
 
     // The key list in the launcher's own words (words.json): each section
     // named by its purpose, as the vi-paradigm spec names them, and each
-    // line whole on one at 2, a saying at most 17 letters and a chord at
-    // most 14 (Y2YBTS, 2026-11-05).
+    // chord at most 14, for the keys' column. A saying is as long as it
+    // needs to be clear, wrapping at a word where it must, since the list
+    // is for someone who forgets (VKCF3Z, 2026-11-06).
     function listedWords(holds) {
         const request = new XMLHttpRequest();
         request.open("GET", Qt.resolvedUrl("words.json"), false);
@@ -332,8 +333,6 @@ QtObject {
         const lines = list.filter(line => line.heading === undefined);
         holds("every line says what it does", lines.filter(line => line.value === "")
             .map(line => line.label), []);
-        holds("in at most 17 letters", lines.filter(line => line.value.split(" ").join("")
-            .length > 17).map(line => line.value), []);
         holds("and each chord in at most 14", [].concat(...lines.map(line => line.chords))
             .filter(chord => chord.length > 14), []);
     }
