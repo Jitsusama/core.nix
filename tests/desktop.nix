@@ -826,7 +826,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   values =
     { nodes, ... }:
     let
-      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colours font;
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme)
+        colours
+        font
+        shape
+        space
+        ;
 
       # A silent track with a title, an artist and a cover, for a player to
       # play through no sound card at all.
@@ -881,6 +886,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           stress_ng = pkgs.stress-ng;
           inherit (colours) accent action sunken;
           mono_family = font.mono.family;
+          # What a floating frame leaves of the screen across: the screen
+          # rung and its border on either side.
+          floating_room = 2 * (space.rung.screen + shape.border);
           photographs = gallery;
         }
       );

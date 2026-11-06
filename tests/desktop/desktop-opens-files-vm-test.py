@@ -689,33 +689,40 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
     looked = f"/home/{desktop.account}/snowflake.png"
     desktop.as_account(f"cp {desktop.values['picture']} {looked}")
     desktop.opens_in(looked, "image/png", "swayimg")
-    swayimg = desktop.window_titled("Swayimg: snowflake.png")
-    assert swayimg["is_floating"], swayimg
-    # Four fifths of the screen, centred, at the size niri gave it,
-    # less the gaps and border niri takes out of it. Without swayimg's
-    # size given again, it's twice that, off the screen.
-    left, _, width, _ = drawn_at(swayimg)
-    wide = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]["width"]
-    assert abs(width - wide * 0.8) <= wide * 0.02, swayimg
-    assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
-    # The steps before leave notices, which go on their own.
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
-    desktop.photograph("swayimg")
-    machine.send_key("e")
-    machine.wait_until_succeeds(
-        f"pgrep -u {desktop.account} -f '[g]imp.*{looked}'", timeout=STARTING
-    )
-    machine.wait_until_fails(
-        f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
-    )
-    # As in the screenshot's subtest: GIMP goes before it draws.
-    machine.succeed(f"pkill -KILL -u {desktop.account} -f '[g]imp'")
-    machine.wait_until_fails(
-        f"pgrep -u {desktop.account} -f '[g]imp'", timeout=timedelta(seconds=30)
-    )
-    machine.succeed(f"rm {looked}")
+    try:
+        swayimg = desktop.window_titled("Swayimg: snowflake.png")
+        assert swayimg["is_floating"], swayimg
+        # The screen less the screen rung and its border on each side,
+        # centred, as every floating frame stands. Without swayimg's size
+        # given, it's its own 1280 across, off a laptop's screen.
+        left, _, width, _ = drawn_at(swayimg)
+        output = json.loads(desktop.as_account("niri msg --json focused-output"))
+        wide = output["logical"]["width"]
+        assert abs(width - (wide - desktop.values["floating_room"])) <= wide * 0.02, swayimg
+        assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
+        # The steps before leave notices, which go on their own.
+        machine.wait_until_fails(
+            desktop.in_session("niri msg layers | grep -q notifications"),
+            timeout=timedelta(seconds=30),
+        )
+        desktop.photograph("swayimg")
+        machine.send_key("e")
+        machine.wait_until_succeeds(
+            f"pgrep -u {desktop.account} -f '[g]imp.*{looked}'", timeout=STARTING
+        )
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
+        )
+    finally:
+        # A swayimg left open would be the next subtest's, and GIMP goes
+        # before it draws, as in the screenshot's subtest.
+        machine.succeed(f"pkill -KILL -u {desktop.account} -x swayimg || true")
+        machine.succeed(f"pkill -KILL -u {desktop.account} -f '[g]imp' || true")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x swayimg || pgrep -u {desktop.account} -f '[g]imp'",
+            timeout=timedelta(seconds=30),
+        )
+        machine.succeed(f"rm -f {looked}")
 
 
 def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desktop) -> None:
