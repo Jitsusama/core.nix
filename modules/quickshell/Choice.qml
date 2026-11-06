@@ -410,7 +410,8 @@ Rectangle {
         // does, so a count is said at a row's right even where its chord
         // is (VKCF3Z, 2026-11-05: "12 \u00b7 \u2699 + 0").
         readonly property bool counted: chorded && said !== ""
-        width: Math.max(column, chorded ? keys.width + (counted ? beforeKeys.implicitWidth : 0)
+        width: Math.max(column, chorded ? keys.width
+                + (counted ? beforeKeys.implicitWidth + Theme.space.rung.mark : 0)
             : sided ? sideText.width : 0)
         height: chorded ? keys.height : sideText.height
 
@@ -422,22 +423,48 @@ Rectangle {
             colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         }
 
-        // The figure before the chord, in Note, joined to it by a dot and a
-        // space that never collapses at the line's end.
-        Text {
+        // The figure before the chord, in Note, joined to it as the status
+        // line joins its facts: a muted dot a mark from each, measured to
+        // the dot's ink, so a dot means one thing across the card (VKCF3Z,
+        // 2026-11-05).
+        TextMetrics {
+            id: dotInk
+            text: "\u00b7"
+            font: dotText.font
+        }
+        Row {
             id: beforeKeys
             anchors.right: keys.left
+            anchors.rightMargin: Theme.space.rung.mark
             anchors.baseline: keys.baseline
+            baselineOffset: countFigure.baselineOffset
+            spacing: Theme.space.rung.mark
             visible: right.counted
-            text: `${right.said} \u00b7\u00a0`
-            textFormat: Text.PlainText
-            color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
-            font.family: Theme.level.note.family
-            font.italic: Theme.level.note.italic
-            font.pointSize: Theme.level.note.pointSize
-            font.weight: Theme.level.note.weight
-            font.variableAxes: Theme.level.note.variableAxes
-            font.features: Theme.level.note.features
+
+            Text {
+                id: countFigure
+                text: right.said
+                textFormat: Text.PlainText
+                color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
+                font.family: Theme.level.note.family
+                font.italic: Theme.level.note.italic
+                font.pointSize: Theme.level.note.pointSize
+                font.weight: Theme.level.note.weight
+                font.variableAxes: Theme.level.note.variableAxes
+                font.features: Theme.level.note.features
+            }
+            Item {
+                width: dotInk.tightBoundingRect.width
+                height: dotText.height
+
+                Text {
+                    id: dotText
+                    x: -dotInk.tightBoundingRect.x
+                    text: "\u00b7"
+                    color: row.flashed ? row.flashInk : Theme.muted
+                    font: countFigure.font
+                }
+            }
         }
 
         // What the row is, cut to its share, reads on as the name does,

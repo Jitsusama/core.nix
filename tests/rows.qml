@@ -487,7 +487,8 @@ ShellRoot {
         }
     }
 
-    // A row with a chord says its count at its right before it, on the
+    // A row with a chord says its count at its right before it, joined as
+    // the status line joins its facts, a muted dot a mark from each, on the
     // name's baseline, and nothing after its name.
     function textItem(item, words) {
         for (const child of item.children) {
@@ -501,8 +502,17 @@ ShellRoot {
     }
     function countBeforeChord() {
         const texts = drawn(countedChord, []).sort((a, b) => a.from - b.from);
-        const count = texts.find(t => t.text.startsWith("12 \u00b7"));
-        const keys = texts.filter(t => count !== undefined && t.from > count.from);
+        const count = texts.find(t => t.text === "12");
+        const keys = texts.filter(t => count !== undefined && t.from > count.from
+            && t.text !== "\u00b7");
+        const dot = textItem(countedChord, "\u00b7");
+        const dotFrom = dot ? dot.parent.mapToItem(null, 0, 0).x : NaN;
+        const dotTo = dot ? dotFrom + dot.parent.width : NaN;
+        expect("a mark from the count to the dot's ink, and from it to the chord",
+            count !== undefined && keys.length > 0
+                && Math.abs(dotFrom - count.to - Theme.space.rung.mark) <= 0.5
+                && Math.abs(keys[0].from - dotTo - Theme.space.rung.mark) <= 0.5,
+            `${said(texts)}, the dot's ink ${dotFrom} to ${dotTo}`);
         // A key after the first stands past its + by its padding, which
         // the words drawn leave out, so the chord ends where its last
         // key's item does.
