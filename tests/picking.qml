@@ -182,7 +182,9 @@ QtObject {
         asked++;
         const listed = typeof Picking.keyList === "function" ? Picking.keyList() : [];
         const named = listed.map(line => line.keys);
-        for (const key of ["f", "h j k l", "H J K L", "\u21b5", "-", ":q", "Space ?"]) {
+        // A count is its own line, as the launcher's list says one
+        // (VKCF3Z, 2026-11-06).
+        for (const key of ["f", "h j k l", "3l", "H J K L", "\u21b5", "-", ":q", "Space ?"]) {
             if (!named.includes(key))
                 failures.push(`the key list leaves out ${key}`);
         }
