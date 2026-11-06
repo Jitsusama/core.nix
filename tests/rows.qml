@@ -27,6 +27,7 @@
 // exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
+import QtQuick.Shapes
 import "Bands.js" as Bands
 
 ShellRoot {
@@ -229,6 +230,22 @@ ShellRoot {
                 Choice { width: 160; name: "Bluetooth"; glyph: Theme.glyph.bluetooth }
                 Choice { width: 160; name: "Things"; glyph: Theme.glyph.category }
             }
+            // Each mark's outline, which a Column passes over unseen.
+            Repeater {
+                id: outlines
+                model: Array.from(marks.children).map(row => row.glyph)
+                Shape {
+                    required property string modelData
+                    visible: false
+                    ShapePath {
+                        PathText {
+                            text: modelData
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize * 8
+                        }
+                    }
+                }
+            }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -423,7 +440,9 @@ ShellRoot {
             throw new Error(`${what}: ${shown}`);
     }
 
-    // A mark's ink as drawn, to hold a row's marks to one size.
+    // A mark's ink as drawn, to hold a row's marks to one size: its top as
+    // Qt measures it, and its height from its outline, since Qt's measure
+    // runs down to the baseline from a mark standing above it.
     TextMetrics {
         id: inkProbe
     }
@@ -442,13 +461,16 @@ ShellRoot {
         inkProbe.font.pointSize = Theme.level.name.pointSize * fine;
         inkProbe.text = "H";
         const caps = inkProbe.tightBoundingRect.height / fine;
-        for (const row of marks.children) {
+        for (const [at, row] of Array.from(marks.children).entries()) {
             const mark = row.children.find(child => child.text === row.glyph);
             inkProbe.font.family = mark.font.family;
             inkProbe.font.pointSize = mark.font.pointSize * fine;
             inkProbe.text = mark.text;
             const box = inkProbe.tightBoundingRect;
-            const ink = { width: box.width / fine, height: box.height / fine, y: box.y / fine };
+            const drawnAt = mark.font.pointSize / Theme.level.figure.pointSize;
+            const tall = outlines.itemAt(at).boundingRect.height / fine * drawnAt;
+            const ink = { width: box.width / fine, height: Math.min(tall, box.height / fine),
+                y: box.y / fine };
             const shown = `${row.name}: ${ink.width}x${ink.height} at ${ink.y}, size ${size}`;
             const sized = Math.abs(Math.sqrt(ink.width * ink.height) - size) <= 0.5
                 || Math.abs(ink.height - size) <= 0.5 || Math.abs(ink.width - cell) <= 0.5;
