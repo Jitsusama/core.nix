@@ -54,7 +54,10 @@ or launchd, and [`home.nix`][2] the account's.
   running process holds, unless a quest at work lists it (a quest parked
   on the bench or for someday isn't: its builds are a cache), and a temp
   entry nothing has changed since the last boot, whatever its name, since
-  whatever made it ended with that boot.
+  whatever made it ended with that boot. A browser profile in the `tmp/`
+  of a quest still at work goes once nothing has changed in it for an
+  hour: a browser run for one job makes a fresh one and leaves it, and a
+  browser still running it keeps it in use.
   `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process

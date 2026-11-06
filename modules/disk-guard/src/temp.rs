@@ -177,6 +177,60 @@ pub fn leftovers(entries: Vec<Entry>, uid: u32, tmpdirs: &[PathBuf], boot: f64) 
     entries.into_iter().filter(offered).collect()
 }
 
+/// How long a browser's profile rests before its run counts as over: a
+/// browser writes to its profile as it runs, and nothing built in the last
+/// hour is collected.
+const PROFILE_REST: f64 = 3_600.0;
+
+/// The file a Chromium browser keeps at the top of every profile it makes.
+const PROFILE_MARK: &str = "Local State";
+
+/// The browser profiles at the top of `tmp` this user owns that nothing
+/// has changed for an hour by `now`, in wall seconds. A browser run for one
+/// job, as a headless screenshot is, makes a fresh profile and leaves it,
+/// so a profile at rest is its run's leftover, even inside a quest still
+/// at work. Only a folder holding the profile's mark is walked.
+pub fn profiles(tmp: &Path, uid: u32, now: f64) -> Vec<Entry> {
+    let tmp = fs::canonicalize(tmp).unwrap_or_else(|_| tmp.to_owned());
+    let Ok(top) = fs::read_dir(&tmp) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for item in top.filter_map(Result::ok) {
+        let Ok(meta) = fs::symlink_metadata(item.path()) else {
+            continue;
+        };
+        if meta.uid() != uid || !meta.is_dir() || !item.path().join(PROFILE_MARK).is_file() {
+            continue;
+        }
+        let mut entry = Entry {
+            path: item.path(),
+            uid,
+            newest: changed(&meta),
+            size: 0,
+            socket: false,
+            checkout: false,
+        };
+        if !walk(&item.path(), meta.dev(), &mut entry, &mut 0) {
+            continue;
+        }
+        if entry.newest <= now - PROFILE_REST && !entry.socket && !entry.checkout {
+            found.push(entry);
+        }
+    }
+    found
+}
+
+/// The candidate a browser profile at rest makes: spent, since the run it
+/// was made for is over. A browser still holding it keeps it, as the use
+/// judged before it goes says.
+pub fn profile_candidate(entry: &Entry, awake: &Awake, now: f64) -> Candidate {
+    Candidate {
+        spent: true,
+        ..candidate(entry, awake, now, f64::NEG_INFINITY)
+    }
+}
+
 /// The candidate a leftover makes, spent when nothing has changed in it
 /// since `boot`: its maker ended with the boot before.
 pub fn candidate(entry: &Entry, awake: &Awake, now: f64, boot: f64) -> Candidate {

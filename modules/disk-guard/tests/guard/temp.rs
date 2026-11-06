@@ -1,6 +1,6 @@
 use disk_guard::clock::Awake;
 use disk_guard::plan::{Class, Group, windows};
-use disk_guard::temp::{Entry, candidate, leftovers, survey};
+use disk_guard::temp::{Entry, candidate, leftovers, profile_candidate, profiles, survey};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -292,4 +292,39 @@ fn a_leftover_from_before_this_boot_goes_at_once_in_any_band() {
     };
     let made = candidate(&since, &Awake::default(), 4_600.0, boot);
     assert!(!made.spent, "one made since may be its maker's still");
+}
+
+/// A browser's profile, as Chrome makes one for each headless run.
+fn profile(dir: &Path) -> PathBuf {
+    fs::create_dir_all(dir.join("Default/Cache")).unwrap();
+    fs::write(dir.join("Local State"), "{}").unwrap();
+    fs::write(dir.join("Default/Cache/data_0"), vec![0u8; 8_192]).unwrap();
+    dir.to_owned()
+}
+
+#[test]
+fn a_browser_profile_at_rest_for_an_hour_is_spent() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = profile(&temp.path().join("fc-chrome-V2kUKp"));
+    fs::create_dir_all(temp.path().join("livewide3")).unwrap();
+    fs::write(temp.path().join("livewide3/Local State.txt"), "x").unwrap();
+    let me = unsafe { libc::geteuid() };
+    let later = now() + 3_601.0;
+    let found = profiles(temp.path(), me, later);
+    let paths: Vec<_> = found.iter().map(|entry| entry.path.clone()).collect();
+    assert_eq!(paths, [fs::canonicalize(&profile).unwrap()]);
+    assert!(found[0].size >= 8_192, "{}", found[0].size);
+    let spent = profile_candidate(&found[0], &Awake::default(), later);
+    assert_eq!(spent.class, Class::Temp);
+    assert_eq!(windows(&spent), (Group::Waste, [Some(0.0); 4]));
+}
+
+// Nothing built in the last hour is collected, and a browser still running
+// writes to its profile, so the hour starts again with each write.
+#[test]
+fn a_browser_profile_changed_in_the_last_hour_stays() {
+    let temp = tempfile::tempdir().unwrap();
+    profile(&temp.path().join("fc-chrome-Qix72E"));
+    let me = unsafe { libc::geteuid() };
+    assert_eq!(profiles(temp.path(), me, now() + 3_000.0), []);
 }

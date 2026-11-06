@@ -53,7 +53,20 @@ fn offers_using(
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
 ) -> Vec<Offer> {
-    surveyed(config, processes, finished, ran, uses).0
+    surveyed(config, processes, finished, ran, uses, now()).0
+}
+
+/// What a survey offers at `at`, in wall seconds.
+fn offers_at(config: &Config, at: f64) -> Vec<Offer> {
+    surveyed(
+        config,
+        &[],
+        &|_| false,
+        &BTreeMap::new(),
+        &Uses::default(),
+        at,
+    )
+    .0
 }
 
 /// What a survey offers, and how many times it walked a root for targets
@@ -64,6 +77,7 @@ fn surveyed(
     finished: &dyn Fn(&Path) -> bool,
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
+    at: f64,
 ) -> (Vec<Offer>, usize) {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
@@ -74,7 +88,7 @@ fn surveyed(
         uid: unsafe { libc::geteuid() },
         boot: BOOT,
         awake: &awake,
-        now: now(),
+        now: at,
         finished: &mut finished,
         ran,
         said: &said,
@@ -228,7 +242,14 @@ fn a_root_targets_and_installs_share_is_walked_once() {
            "installs": {{ "kind": "installs", "roots": ["{0}"] }}"#,
         roots.display()
     ));
-    let (found, walked) = surveyed(&config, &[], &|_| true, &BTreeMap::new(), &Uses::default());
+    let (found, walked) = surveyed(
+        &config,
+        &[],
+        &|_| true,
+        &BTreeMap::new(),
+        &Uses::default(),
+        now(),
+    );
     assert_eq!(walked, 1);
     assert_eq!(find(&found, &target).candidate.class, Class::Target);
     assert_eq!(find(&found, &modules).candidate.class, Class::Install);
@@ -561,6 +582,38 @@ fn orphaned_snapshots_and_finished_workspaces_are_offered() {
             root: workspaces.clone()
         }
     );
+}
+
+// A quest at work keeps its scratch, but a browser's profile in its tmp/
+// belongs to the browser, which made it for one run: once an hour passes
+// with nothing written to it, that run is over. Its other entries stay.
+#[test]
+fn a_browser_profile_in_a_quest_at_works_scratch_is_spent_once_at_rest() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    file(
+        &quests.join("QEST-20200101-ABCDEF/README.md"),
+        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
+    );
+    let workspaces = dir(&home.join("workspaces"));
+    let tmp = dir(&workspaces.join("QEST-20200101-ABCDEF/tmp"));
+    let profile = dir(&tmp.join("fc-chrome-V2kUKp/Default"));
+    let profile = profile.parent().unwrap().to_owned();
+    file(&profile.join("Local State"), "{}");
+    file(&tmp.join("livewide3/notes"), "x");
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
+        workspaces.display(),
+        quests.display()
+    ));
+    assert_eq!(offers_at(&config, now()), [], "written to just now");
+    let found = offers_at(&config, now() + 3_601.0);
+    assert_eq!(found.len(), 1, "{found:?}");
+    let spent = find(&found, &profile);
+    assert_eq!(spent.candidate.class, Class::Temp);
+    assert!(spent.candidate.spent);
+    assert_eq!(spent.action, Action::Entry { root: tmp.clone() });
 }
 
 #[test]
