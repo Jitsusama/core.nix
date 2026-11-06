@@ -523,19 +523,34 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
 # A word that moves without changing tells him nothing and costs him a
 # look, so after every key each word on the card that reads as it did must
 # be drawn where it was: in the field, in the foot, and in each row that
-# is still the same thing saying the same.
+# is still the same thing saying the same. In the foot a hint's key and
+# its word read as one, so the last hint's key, which stands left of its
+# word to end it on the inset (VKCF3Z, 2026-11-05), moves only as its
+# word changes. A key's word stands a mark after it (KeyHints), nearer
+# than any two facts stand.
+A_KEYS_WORD = 10
 
 
 def moved(before: Json, after: Json) -> list[str]:
     """Say each word drawn in both that reads the same and isn't where it was."""
     shifts = []
 
-    def compare(where: str, old: list[Json], new: list[Json]) -> None:
+    def compare(where: str, old: list[Json], new: list[Json], *, paired: bool = False) -> None:
+        def reads(words: list[Json], at: int) -> str:
+            word, later = words[at], words[at + 1] if at + 1 < len(words) else None
+            beside = (
+                paired
+                and later is not None
+                and later["y"] == word["y"]
+                and 0 <= later["starts"] - word["starts"] - word["inked"] <= A_KEYS_WORD
+            )
+            return f"{word['text']}\0{later['text'] if beside and later else ''}"
+
         unmatched: dict[str, list[Json]] = {}
-        for word in old:
-            unmatched.setdefault(word["text"], []).append(word)
-        for word in new:
-            same = unmatched.get(word["text"])
+        for at, word in enumerate(old):
+            unmatched.setdefault(reads(old, at), []).append(word)
+        for at, word in enumerate(new):
+            same = unmatched.get(reads(new, at))
             if not same:
                 continue
             was = same.pop(0)
@@ -546,7 +561,7 @@ def moved(before: Json, after: Json) -> list[str]:
                 )
 
     compare("the field", before["field"], after["field"])
-    compare("the foot", before["foot"], after["foot"])
+    compare("the foot", before["foot"], after["foot"], paired=True)
     rows = {row["at"]: row for row in before["rows"]}
     for row in after["rows"]:
         was = rows.get(row["at"])
