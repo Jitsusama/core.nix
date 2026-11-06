@@ -1094,20 +1094,28 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
     machine.send_key("ctrl-t")
     came_back()
     machine.send_key("ctrl-t")
-    desktop.launcher_until(lambda shown: shown["saying"] == ["E73: Tag stack empty"])
+    # Vim's errors read where the command line is, as E492 does.
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "E73: Tag stack empty"
+    )
     desktop.close_launcher()
-    # Each Ctrl+] with no parts to go into walks home's places for the row, its own place or
-    # none: the trace holds how long each walk took, said here for the reviewer to read.
+    # Each Ctrl+] with no parts to go into looks for the row's own place, or none, in where
+    # every row lives, walked from home once an open by the first: the trace holds how long
+    # each look took, said here for the reviewer to read, and which made the walk.
     spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
     opening = [span for span in spans if span["name"] == "open"][-1]
-    walks = [
-        span["about"]["walked"]
+    looks = [
+        span["about"]
         for span in spans
-        if span["trace"] == opening["trace"] and span["name"] == "follow"
+        if span["trace"] == opening["trace"]
+        and span["name"] == "follow"
+        and "walked" in span["about"]
     ]
-    print(f"Ctrl+] walked for its place in {walks} ms")
-    assert len(walks) == len(["there", "there again", "not here"]), walks
+    walks = [look["walked"] for look in looks]
+    print(f"Ctrl+] looked for its place in {walks} ms")
     assert all(isinstance(walked, int) for walked in walks), walks
+    made = [look["indexed"] for look in looks]
+    assert made == [True, False, False], f"each look made the walk: {made}"
 
 
 def walk_a_found_program_follows(desktop: Desktop) -> None:

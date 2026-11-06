@@ -353,10 +353,11 @@ QtObject {
             asked.push(one.key);
             return inside[one.key] ?? [];
         } };
-        const at = key => {
-            const path = Catalogue.livesAt(home, key, ways);
-            return path === null ? null : path.map(one => one.key);
-        };
+        // Walked once, for every row, so each Ctrl+] after the first in an
+        // open only looks its row up, within a key's 4 ms.
+        const lived = Catalogue.lives(home, ways);
+        const at = key => lived[key] ?? null;
+        expect("one walk asks each place once", asked.length, new Set(asked).size);
         expect("a thing lives in the place holding it, Now passed over", at("session:quiet"),
             ["category:desktop", "session:quiet"]);
         expect("a place inside a place, as deep as it is", at("session:Lock"),
