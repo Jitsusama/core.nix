@@ -1506,6 +1506,50 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
     );
 }
 
+// Worktrees share their repository's refs, and on 5 November a builder
+// fetched a bundle another worktree's run had pointed the one bundle ref at,
+// so the commit it was asked to build wasn't there.
+#[test]
+fn a_run_bundles_under_a_ref_of_its_own_and_leaves_anothers_alone() {
+    let unpushed = Unpushed::new();
+    let Unpushed {
+        bin, pushed, head, ..
+    } = &unpushed;
+    let git = |arguments: &[&str]| unpushed.git(arguments);
+    // Another run's ref, pointed at its own commit while it bundles.
+    git(&["update-ref", "refs/nix-offload/there", pushed]);
+    let command = unpushed.there();
+    assert_eq!(
+        git(&["rev-parse", "refs/nix-offload/there"]),
+        *pushed,
+        "the other run's ref is where it put it"
+    );
+    let tip = command
+        .split("git fetch -q there.bundle ")
+        .nth(1)
+        .and_then(|rest| rest.split(':').next())
+        .unwrap();
+    assert_ne!(tip, "refs/nix-offload/there", "{command}");
+    let heads = Command::new("git")
+        .args(["bundle", "list-heads"])
+        .arg(bin.join("received"))
+        .current_dir(&unpushed.tree)
+        .output()
+        .unwrap();
+    let rev = rev_in(&command);
+    assert_ne!(&rev, head);
+    assert_eq!(
+        String::from_utf8_lossy(&heads.stdout).trim(),
+        format!("{rev} {tip}"),
+        "the bundle carries its commit under the ref the builder fetches"
+    );
+    assert_eq!(
+        git(&["for-each-ref", "--format=%(refname)", "refs/nix-offload"]),
+        "refs/nix-offload/there",
+        "its own ref is gone"
+    );
+}
+
 // A run-subtests waited 50 minutes for a builder on 5 November while its
 // branch moved on, built the new commit, and was kept as passed at the
 // one it began at, which a later run there then took as done.
