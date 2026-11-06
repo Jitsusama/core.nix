@@ -77,10 +77,12 @@ Row {
             width: Math.max(said.implicitWidth, hints.widths[index] ?? 0)
             height: said.implicitHeight
 
-            // The dot before every hint but the first, in the gap before
-            // it, a mark from each side.
+            // The dot before every hint but the first, a mark before what
+            // it says, so it goes with that hint: a place held wider than
+            // what it says keeps its room before the dot, never between
+            // the dot and its key (VKCF3Z, 2026-11-06).
             Text {
-                x: -Theme.space.rung.mark - implicitWidth
+                x: said.x - Theme.space.rung.mark - implicitWidth
                 visible: hints.dotted && hint.index > 0
                 text: hints.dot
                 textFormat: Text.PlainText
