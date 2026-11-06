@@ -4,7 +4,8 @@
 //!
 //! A test fails for real when it fails twice at the same commit, which is
 //! the same input. One that fails and then passes is flaky: it goes on the
-//! quarantine list with the merge's PR as its owner, and nothing is
+//! quarantine list with the PR of the newest merge that moved it as its
+//! owner, and nothing is
 //! reverted for it, nor for a quarantined test that fails. A run the
 //! builder never took (`nix-offload` exits 75) is tried again later, and is
 //! no failure, and so is one stopped before it ended, for running too long
@@ -498,6 +499,25 @@ fn fixed_forward(
     Ok(true)
 }
 
+/// The PR that owns `test` in a round from `base` to `head`: the newest
+/// merge in it that moved the test's derivation, or added the test, since
+/// that is what the round ran it for. The round's head may have touched
+/// nothing of it, as when the net's own quarantine PR was the head. None
+/// when no merge since `base` moved it. Each merge asks for two
+/// derivations, so it's read only for an outcome that names an owner.
+fn owner_of(world: &dyn World, base: &str, head: &str, test: &str) -> Option<u64> {
+    let merges = world.merges(base, head).ok()?;
+    merges.iter().rev().find_map(|merge| {
+        let before = world.parent(merge).ok()?;
+        let moved = match (world.drv(merge, test), world.drv(&before, test)) {
+            (Ok(now), Ok(was)) => now != was,
+            (Ok(_), Err(_)) => true,
+            (Err(_), _) => false,
+        };
+        moved.then(|| pr_of(&world.subject(merge))).flatten()
+    })
+}
+
 /// The PR a merge commit's subject names, as GitHub writes it.
 pub fn pr_of(subject: &str) -> Option<u64> {
     let rest = subject.strip_prefix("Merge pull request #")?;
@@ -584,7 +604,6 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         .collect();
     let outcomes = attempt_all(world, state, &head, &tests);
     let quarantined = world.quarantined(&head);
-    let owner = pr_of(&world.subject(&head));
     let mut failed = false;
     let mut unfinished = false;
     for (test, outcome) in tests.iter().zip(outcomes) {
@@ -604,6 +623,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
                 let reason = format!("failed, then passed, at {}", short(&head));
+                let owner = owner_of(world, &base, &head, test);
                 let made = world.quarantine(test, owner, &head, &reason);
                 state.find(&json!({
                     "kind": "flaky",
@@ -622,7 +642,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                     "kind": "failed-in-quarantine",
                     "test": test,
                     "commit": head,
-                    "owner_pr": owner,
+                    "owner_pr": owner_of(world, &base, &head, test),
                     "log": state.log(&head, test, 2).display().to_string(),
                     "at": now(),
                 }))?;
@@ -643,7 +663,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             // but no merge is blamed for it.
             Outcome::Stalled => {
                 failed = true;
-                stalled(state, &head, test, owner)?;
+                stalled(state, &head, test, owner_of(world, &base, &head, test))?;
             }
         }
     }
@@ -697,7 +717,7 @@ fn clear_if_fixed_forward(
     Ok(None)
 }
 
-/// Tell the owner of `head` that `test` stalled there twice.
+/// Tell `test`'s owner that it stalled twice at `head`.
 fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<(), String> {
     state.find(&json!({
         "kind": "stalled",
@@ -1189,6 +1209,27 @@ mod tests {
         .exits("n", "vm-a", &[1, 1]);
         round(&world, &state, "s").unwrap();
         assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+    }
+
+    #[test]
+    fn a_flaky_test_is_owned_by_the_newest_merge_that_moved_it() {
+        let state = state("flaky-owner");
+        // The stand-in's PR is a merge's name's length: bb is #2, ccc #3.
+        let world = Stand {
+            head: "ccc".into(),
+            merges: names("a bb ccc"),
+            changed: changed("vm-a"),
+            same: names("ccc"),
+            ..Stand::default()
+        }
+        .exits("ccc", "vm-a", &[1, 0]);
+        round(&world, &state, "s").unwrap();
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "flaky");
+        assert_eq!(
+            found[0]["owner_pr"], 2,
+            "not the head's #3, which moved nothing"
+        );
     }
 
     #[test]
