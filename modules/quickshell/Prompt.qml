@@ -872,11 +872,16 @@ Item {
         font.variableAxes: Theme.level.voice.variableAxes
     }
 
-    // The room kept for typing: the hint's, or a dozen characters.
-    // A question asked once is read whole, so the path gives way to it.
+    // The room kept for typing: the hint's, or what's typed at its widest
+    // since the step began, so the path gives way once as what's typed
+    // grows past the hint and never for room nothing is in. A dozen
+    // characters kept ahead folded a middle folder to a mark with room
+    // for its last name beside the hint (VKCF3Z, 2026-11-06: at rest the
+    // path says "\u2026/more", so Joel sees which folder he's in). A
+    // question asked once is read whole, so the path gives way to it.
     readonly property real typingRoom: Math.max(
         voiceFace.advanceWidth(hint),
-        12 * figureFace.averageCharacterWidth,
+        typedWidest,
         asking === "" ? 0 : Math.ceil(figureFace.advanceWidth(asking)) + 1)
 
     // How wide the path wants to be, whole, with the gap after it.

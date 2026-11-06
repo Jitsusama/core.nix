@@ -4,7 +4,9 @@
 // every surface: nothing wraps, overlaps or runs past its edge, and what
 // doesn't fit ends in an ellipsis. A row's name and what it is both keep
 // within the row and apart, however long either is, and a field's ghost or
-// hint stops at the field's end. A field's path keeps its steps whole
+// hint stops at the field's end. A middle folder in a path says its last
+// name beside the hint, giving way only to what's typed past it. A field's
+// path keeps its steps whole
 // beside a long note, and a short note keeps to the field's right end
 // however wide a room it holds. The launcher's note, with nothing typed,
 // ends where a row's value ends and says all it has room for; typed, it
@@ -189,6 +191,25 @@ ShellRoot {
                 chips: [{ text: "Save the Notes" }, { text: "~/saving" }]
                 text: "a.md"
             }
+            // The file picker three steps in, a folder in the middle whose
+            // whole path the line has no room for, at rest and then typed
+            // in past its hint.
+            Prompt {
+                id: foldered
+                width: root.panel
+                steady: true
+                chips: [{ text: "Open the Notes" },
+                    { text: "~/gathering/more", yields: true }, { text: "Gathered" }]
+                hint: "what to do?"
+            }
+            Prompt {
+                id: folderTyped
+                width: root.panel
+                steady: true
+                chips: foldered.chips
+                hint: foldered.hint
+                text: "abcdefghijklmno"
+            }
             // Three steps in with a long hint, which leaves a note no room:
             // the note gives way rather than lying over the hint.
             Prompt {
@@ -314,6 +335,18 @@ ShellRoot {
                 return { base: child.mapToItem(top, 0, child.baselineOffset).y,
                     wide: child.contentWidth };
             const found = setting(child, words, top);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    // The visible item under another that draws the words, typed or not.
+    function textItem(item, words) {
+        for (const child of item.children) {
+            if (child.visible && child.text === words && child.contentWidth !== undefined)
+                return child;
+            const found = textItem(child, words);
             if (found !== null)
                 return found;
         }
@@ -681,6 +714,23 @@ ShellRoot {
             expect("a field's path keeps its steps whole beside a long note",
                 ["Machine", "Processor", "Cores"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
+            // A middle folder gives way only as far as it must: at rest, the
+            // room kept to type is the hint's, so it says its last folder;
+            // typed past the hint, it gives way to what's typed, the last
+            // step whole either way (VKCF3Z, 2026-11-06).
+            texts = drawn(foldered, []);
+            expect("a middle folder says its last name beside the hint at rest",
+                ["Open the Notes", "\u2026/more", "Gathered", "what to do?"].every(step =>
+                    texts.some(t => t.text === step && !t.truncated)), said(texts));
+            texts = drawn(folderTyped, []);
+            const typedIn = root.textItem(folderTyped, folderTyped.text);
+            const typedTo = typedIn === null ? Infinity
+                : typedIn.mapToItem(null, typedIn.contentWidth, 0).x;
+            expect("a middle folder gives way to what's typed past the hint",
+                ["Open the Notes", "\u2026", "Gathered"].every(step =>
+                    texts.some(t => t.text === step && !t.truncated))
+                    && typedTo <= folderTyped.mapToItem(null, folderTyped.end, 0).x,
+                `${said(texts)}, typed to ${typedTo}`);
             // A path's mark stands a rung apart from the ink either side, to
             // its own, so a step reads further off than a word does (the
             // picker audit's finding 13).
