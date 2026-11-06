@@ -1430,6 +1430,10 @@
     what was typed; Return runs exactly what's typed, a short form or more, saying E492, E477 or
     E488 otherwise, each key's work under 2 ms over 400 commands
   '';
+  the-command-line-sits-centred-in-its-band = ''
+    the launcher's : line and each line of its menu, drawn in the theme's faces, set their letters
+    optically centred, the middles of an H's and an x's ink balanced within a pixel of the band's
+  '';
   the-console-greets-the-account = ''
     a console greets the account by its description's first word, or its name, with the keys back to
     the desktop, and keeps NixOS's banner with no account

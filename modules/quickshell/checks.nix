@@ -3118,6 +3118,29 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's command line and its menu set their letters optically
+  # centred in their bands (docs/design.md, Bands), as tests/command-line-
+  # bands.qml reads their ink back from what Quickshell draws in the
+  # theme's own faces.
+  the-command-line-sits-centred-in-its-band =
+    let
+      machine = graphical.config;
+    in
+    pkgs.runCommandLocal "the-command-line-sits-centred-in-its-band" { } ''
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./CommandLine.qml} CommandLine.qml
+      cp ${./CommandMenu.qml} CommandMenu.qml
+      cp ${./Commands.js} Commands.js
+      cp ${./Ex.js} Ex.js
+      cp ${../../tests/command-line-bands.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's command line lists every command it can take, the cursor
   # row's acts first, narrows as it's typed, chooses as his cmp does and
   # runs exactly what's typed, with Vim's ranges and :g, and reads :set as
