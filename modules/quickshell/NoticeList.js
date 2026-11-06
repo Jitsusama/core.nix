@@ -260,17 +260,17 @@ function wholeWords(text, lines, wide, measure) {
 // Joel chooses some "and then dd to mark them as read"; and Return's.
 const stays = hint => hint.act === "keys" || hint.act === "done" || hint.key === "\u21b5";
 
-// The hints the foot keeps in `room`, each { act, key, word } as wide as
+// The hints the foot keeps in `fits`, each { act, key, word } as wide as
 // `wide` measures it and the gap between two `join`: short of room, the
 // one drawn furthest from Return gives way first, one at a time, as the
 // launcher's do, and never one that stays (VKCF3Z, 2026-11-06).
-function footHints(hints, wide, join, room) {
+function footHints(hints, wide, join, fits) {
     const width = some => some.reduce((sum, hint) => sum + wide(hint), 0)
         + Math.max(0, some.length - 1) * join;
     const gives = hint => !stays(hint);
     let kept = hints;
     let going = kept.findIndex(gives);
-    while (going >= 0 && width(kept) > room) {
+    while (going >= 0 && width(kept) > fits) {
         kept = kept.filter((_, at) => at !== going);
         going = kept.findIndex(gives);
     }
