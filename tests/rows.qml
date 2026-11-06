@@ -22,11 +22,12 @@
 // only before its ellipsis. A list's gutter in normal numbers the rows in
 // view, relative to the cursor row's absolute one in text, or all absolute,
 // right-aligned on each row's baseline, from a handful of numbers however
-// many rows there are, and none at all off normal. It exits 0 once every
-// case holds,
-// and otherwise 1, saying which didn't.
+// many rows there are, and none at all off normal. A row's mark, whatever
+// its shape, stands at one optical size, its ink on the capitals' middle. It
+// exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
+import QtQuick.Shapes
 import "Bands.js" as Bands
 
 ShellRoot {
@@ -220,6 +221,31 @@ ShellRoot {
                 hint: "which?"
             }
             Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
+            // Marks of every shape down one column: wide, square-ish, tall and
+            // narrow, and one already the em's size.
+            Row {
+                id: marks
+                Choice { width: 160; name: "Keyboard"; glyph: Theme.glyph.keyboard }
+                Choice { width: 160; name: "People"; glyph: Theme.glyph.people }
+                Choice { width: 160; name: "Bluetooth"; glyph: Theme.glyph.bluetooth }
+                Choice { width: 160; name: "Things"; glyph: Theme.glyph.category }
+            }
+            // Each mark's outline, which a Column passes over unseen.
+            Repeater {
+                id: outlines
+                model: Array.from(marks.children).map(row => row.glyph)
+                Shape {
+                    required property string modelData
+                    visible: false
+                    ShapePath {
+                        PathText {
+                            text: modelData
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize * 8
+                        }
+                    }
+                }
+            }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -412,6 +438,50 @@ ShellRoot {
     function expect(what, holds, shown) {
         if (!holds)
             throw new Error(`${what}: ${shown}`);
+    }
+
+    // A mark's ink as drawn, to hold a row's marks to one size: its top as
+    // Qt measures it, and its height from its outline, since Qt's measure
+    // runs down to the baseline from a mark standing above it.
+    TextMetrics {
+        id: inkProbe
+    }
+
+    // Every mark stands at one optical size beside the type: its ink's area
+    // the square of fifteen sixteenths of the em unless that would make it
+    // taller than that or wider than its cell, and its middle on the
+    // name's capitals'.
+    function marksHold() {
+        // Measured at eight times the size and read back down, since a
+        // measure at the size drawn comes in whole pixels.
+        const fine = 8;
+        const size = Theme.level.figure.pointSize * 4 / 3 * 15 / 16;
+        const cell = Theme.level.name.pitch;
+        inkProbe.font.family = Theme.level.name.family;
+        inkProbe.font.pointSize = Theme.level.name.pointSize * fine;
+        inkProbe.text = "H";
+        const caps = inkProbe.tightBoundingRect.height / fine;
+        for (const [at, row] of Array.from(marks.children).entries()) {
+            const mark = row.children.find(child => child.text === row.glyph);
+            inkProbe.font.family = mark.font.family;
+            inkProbe.font.pointSize = mark.font.pointSize * fine;
+            inkProbe.text = mark.text;
+            const box = inkProbe.tightBoundingRect;
+            const drawnAt = mark.font.pointSize / Theme.level.figure.pointSize;
+            const tall = outlines.itemAt(at).boundingRect.height / fine * drawnAt;
+            const ink = { width: box.width / fine, height: Math.min(tall, box.height / fine),
+                y: box.y / fine };
+            const shown = `${row.name}: ${ink.width}x${ink.height} at ${ink.y}, size ${size}`;
+            const sized = Math.abs(Math.sqrt(ink.width * ink.height) - size) <= 0.5
+                || Math.abs(ink.height - size) <= 0.5 || Math.abs(ink.width - cell) <= 0.5;
+            expect("a mark is the size's area, or as tall as the size or as wide as its cell",
+                sized && ink.height <= size + 0.5 && ink.width <= cell + 0.5, shown);
+            const middle = mark.y + mark.baselineOffset + ink.y + ink.height / 2;
+            const capsMiddle = (row.height + row.capitals) / 2 - caps / 2;
+            expect("a mark's ink stands on the capitals' middle",
+                Math.abs(middle - capsMiddle) <= 0.5,
+                `${shown}, middle ${middle} against ${capsMiddle}`);
+        }
     }
 
     // The gutter, as his Neovim's number, relativenumber and
@@ -719,6 +789,7 @@ ShellRoot {
                 !texts.some(t => t.text.includes("3 of 12")), said(texts));
             typing.narrowed = "";
             root.gutterHolds();
+            root.marksHold();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
