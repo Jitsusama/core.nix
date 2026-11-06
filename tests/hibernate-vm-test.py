@@ -40,6 +40,8 @@ NO_SWAP_FILE = "/run/no-swap-file"
 # A slice at the top, as user.slice is, with a hard floor under what it holds, in bytes.
 FLOORED = "floored.slice"
 FLOOR = 400 * 1024 * 1024
+# Whether zswap stores what's swapped out in its pool, in memory, before the swap file.
+ZSWAP = "/sys/module/zswap/parameters/enabled"
 
 
 def start_through_the_disk_prompt(machine: QemuMachine) -> None:
@@ -71,7 +73,7 @@ def swapping(machine: BaseMachine) -> QemuMachine:
     # Only a machine QEMU runs can be stopped and started again.
     assert isinstance(machine, QemuMachine)
     machine.wait_for_unit("default.target")
-    assert machine.succeed("cat /sys/module/zswap/parameters/enabled").strip() == "Y"
+    assert machine.succeed(f"cat {ZSWAP}").strip() == "Y"
     machine.succeed(
         "cryptsetup luksFormat --batch-mode --key-file /etc/disk.key /dev/vdc",
         "cryptsetup open --key-file /etc/disk.key /dev/vdc disk",
@@ -129,8 +131,8 @@ def test_a_loaded_machine_fits_beside_the_reserve(swapping: QemuMachine) -> None
     """With memory full of a program's pages and the disk's cache, it still comes back.
 
     The reserve holds the image to half of memory less twice it, which the load is past, so
-    the kernel drops the cache and swaps part of memory, through zswap's pool, before the
-    image fits. The program's pages are a file in tmpfs, as compressible as hex.
+    the kernel drops the cache and swaps part of memory out to the swap file before the image
+    fits. The program's pages are a file in tmpfs, as compressible as hex.
     """
     swapping.succeed(
         "head -c 32M /dev/urandom | od -An -tx1 -v > /dev/shm/held",
@@ -172,6 +174,28 @@ def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMa
     floor = int(swapping.succeed(f"cat /sys/fs/cgroup/{FLOORED}/memory.min"))
     assert floor == FLOOR, f"the floor came back as {floor} bytes"
     swapping.succeed("systemctl stop floored.service", "umount /run/floored")
+
+
+def test_what_is_swapped_out_for_the_image_goes_to_the_swap_file(swapping: QemuMachine) -> None:
+    """What's swapped out for the image goes to the swap file, and zswap stores again after.
+
+    zswap keeps what it's given in memory, up to a fifth of it, and random bytes it keeps as they
+    are, so what the kernel swaps out to make room for the image, stored in the pool, is still in
+    the image. 300 MiB of them is more than the image's cap of about 213 MiB beside the reserve:
+    without the hook switching zswap off, the hibernation rolls back short of memory.
+    """
+    swapping.succeed(
+        "mkdir -p /run/unpacked",
+        "mount -t tmpfs -o size=400m tmpfs /run/unpacked",
+        "head -c 300M /dev/urandom > /run/unpacked/held",
+        "sha256sum /run/unpacked/held > /run/unpacked.sha256",
+    )
+    hibernate_and_come_back(swapping)
+    swapping.succeed("sha256sum --check --quiet /run/unpacked.sha256")
+    # Once the hook is done after the resume, zswap stores again.
+    swapping.wait_until_succeeds(f"journalctl --boot --grep '{LET_GO}'", timeout=30)
+    assert swapping.succeed(f"cat {ZSWAP}").strip() == "Y"
+    swapping.succeed("umount /run/unpacked")
 
 
 def test_it_says_beforehand_whether_the_image_fits(swapping: QemuMachine) -> None:
