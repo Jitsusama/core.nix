@@ -109,6 +109,9 @@ pub trait World: Sync {
     fn changed(&self, base: &str, head: &str) -> Result<Changed, String>;
     /// Whether `commit` has the check at all.
     fn has_check(&self, commit: &str, check: &str) -> Result<bool, String>;
+    /// The derivation a check builds at a commit, which names everything
+    /// it runs.
+    fn drv(&self, commit: &str, check: &str) -> Result<String, String>;
     /// Build a check at a commit, its log written to `log`, and give its
     /// exit, none when it was stopped.
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32>;
@@ -354,12 +357,10 @@ fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result
     if !world.has_check(&parent, check)? {
         return Ok(Before::Absent);
     }
-    if !world
-        .changed(&parent, commit)?
-        .moved
-        .iter()
-        .any(|moved| moved == check)
-    {
+    // Only the one test is compared: changed-checks would evaluate every
+    // check at both commits, which on 5 November took the laptop over an
+    // hour while the round waited.
+    if world.drv(&parent, check)? == world.drv(commit, check)? {
         return Ok(Before::Unchanged);
     }
     Ok(match attempt(world, state, &parent, check) {
@@ -781,16 +782,20 @@ mod tests {
                 .and_then(|at| at.checked_sub(1))
                 .map_or_else(|| "s".to_owned(), |before| self.merges[before].clone()))
         }
-        fn changed(&self, _: &str, head: &str) -> Result<Changed, String> {
-            if self.same.iter().any(|same| same == head) {
-                return Ok(Changed::default());
-            }
+        fn changed(&self, _: &str, _: &str) -> Result<Changed, String> {
             Ok(self.changed.clone())
         }
         fn has_check(&self, commit: &str, check: &str) -> Result<bool, String> {
             Ok(!self
                 .missing
                 .contains(&(commit.to_owned(), check.to_owned())))
+        }
+        /// A merge in `same` builds what the merge before it built.
+        fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
+            if self.same.iter().any(|same| same == commit) {
+                return self.drv(&self.parent(commit)?, check);
+            }
+            Ok(format!("{commit}-{check}"))
         }
         fn build(&self, commit: &str, check: &str, _: &Path) -> Option<i32> {
             self.built

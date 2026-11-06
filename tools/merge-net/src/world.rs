@@ -376,6 +376,15 @@ impl World for Real {
         Ok(said == "true")
     }
 
+    fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
+        let attribute = format!(
+            "git+file://{}?rev={commit}#checks.{}.{check}.drvPath",
+            self.checkout().display(),
+            self.system
+        );
+        run(Command::new("nix").args(["eval", "--raw", &attribute]))
+    }
+
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
         let attribute = format!("checks.{}.{check}", self.system);
         let output = file(log).ok()?;
