@@ -840,8 +840,26 @@ Item {
     }
 
     // What stands between two steps of the path, so they read as one place
-    // reached through the other rather than as tags side by side.
-    readonly property string between: " \u203a "
+    // reached through the other rather than as tags side by side: a rung
+    // apart from each step's ink either side, measured to its own, so a
+    // step is told from a word by its space as well as its mark (the
+    // picker audit's finding 13: a word space either side read as one).
+    readonly property string between: "\u203a"
+    readonly property real betweenWide: 2 * Theme.space.rung.apart
+        + betweenInk.tightBoundingRect.width / titleInkFine
+    // Title's ink measured at eight times its size and read back down,
+    // since a measure at the size drawn comes in whole pixels.
+    readonly property real titleInkFine: 8
+    component TitleInk: TextMetrics {
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize * prompt.titleInkFine
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing * prompt.titleInkFine
+    }
+    TitleInk {
+        id: betweenInk
+        text: prompt.between
+    }
     // How far what's typed stands after the path.
     readonly property int pathGap: Theme.space.rung.apart
 
@@ -864,7 +882,7 @@ Item {
     // How wide the path wants to be, whole, with the gap after it.
     readonly property real pathWanted: chips.length === 0 ? 0
         : chipsWanted.reduce((sum, wide) => sum + wide, 0)
-            + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.rung.apart
+            + betweenWide * (chips.length - 1) + pathGap - Theme.space.rung.apart
 
     // The path's steps as they're drawn, given way at whole names where
     // they don't fit (Reading.crumbs): a folder's path a folder at a time,
@@ -878,7 +896,7 @@ Item {
         const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
         return Reading.crumbs(chips.map(chip => ({ text: chip.text, yields: chip.yields === true })),
             room, text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
-            betweenDrawn.implicitWidth);
+            betweenWide);
     }
     // How much wider the title's axes draw its letters than its face's
     // metrics say, the most of any step's whole words, so a step given
@@ -918,12 +936,6 @@ Item {
             font: titleFace.font
         }
     }
-    Text {
-        id: betweenDrawn
-        visible: false
-        text: prompt.between
-        font: titleFace.font
-    }
     // Whether each step is said whole, for the launcher's report.
     readonly property var chipsWhole: crumbsShown.whole
 
@@ -959,11 +971,39 @@ Item {
                     readonly property bool cut: stepName.truncated
                     readonly property real spare: stepName.width - stepName.implicitWidth
 
-                    Text {
+                    // Where its words' ink starts past their advance, and
+                    // where the step before's ends short of its, so the
+                    // mark stands its rung from the ink either side: by
+                    // the first and last letters, since a face's measure
+                    // of whole words leaves out the title's axes, which
+                    // widen them, while a letter's bearing barely moves.
+                    TitleInk {
+                        id: stepInk
+                        text: Array.from(step.modelData)[0] ?? ""
+                    }
+                    TitleInk {
+                        id: beforeInk
+                        text: step.index > 0
+                            ? Array.from(prompt.crumbsShown.said[step.index - 1] ?? "").pop() ?? ""
+                            : ""
+                    }
+                    readonly property real leads: stepInk.tightBoundingRect.x / prompt.titleInkFine
+                    readonly property real trailsBefore: step.index === 0 ? 0
+                        : (beforeInk.advanceWidth - beforeInk.tightBoundingRect.x
+                            - beforeInk.tightBoundingRect.width) / prompt.titleInkFine
+
+                    Item {
                         visible: step.index > 0
-                        text: prompt.between
-                        color: Theme.muted
-                        font: titleFace.font
+                        width: visible ? prompt.betweenWide - step.trailsBefore - step.leads : 0
+                        height: stepName.height
+
+                        Text {
+                            x: Theme.space.rung.apart - step.trailsBefore
+                                - betweenInk.tightBoundingRect.x / prompt.titleInkFine
+                            text: prompt.between
+                            color: Theme.muted
+                            font: titleFace.font
+                        }
                     }
 
                     // Its words as they're given way, whole, so nothing

@@ -364,6 +364,14 @@ ShellRoot {
 
     // A head's face, the Title, and what's typed, the Figure: their
     // capitals and small letters, which centre a field's line.
+    // Title's ink, read at eight times its size for its fractions.
+    TextMetrics {
+        id: titleInk
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize * 8
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing * 8
+    }
     TextMetrics {
         id: titleCaps
         text: "H"
@@ -673,6 +681,30 @@ ShellRoot {
             expect("a field's path keeps its steps whole beside a long note",
                 ["Machine", "Processor", "Cores"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
+            // A path's mark stands a rung apart from the ink either side, to
+            // its own, so a step reads further off than a word does (the
+            // picker audit's finding 13).
+            // Its ink by its first and last letters' bearings inside the
+            // words as drawn, since a face's measure of whole words leaves
+            // out the title's axes.
+            const inkOf = text => {
+                const letters = Array.from(text.text);
+                titleInk.text = letters[0];
+                const leads = titleInk.tightBoundingRect.x / 8;
+                titleInk.text = letters[letters.length - 1];
+                const box = titleInk.tightBoundingRect;
+                const trails = (titleInk.advanceWidth - box.x - box.width) / 8;
+                return { from: text.from + leads, to: text.to - trails };
+            };
+            texts = drawn(named, []).sort((a, b) => a.from - b.from);
+            const steps = ["Save the Notes", "\u203a", "~/saving"]
+                .map(words => texts.find(t => t.text === words));
+            const inks = steps.every(step => step !== undefined) ? steps.map(inkOf) : [];
+            expect("a path's mark stands a rung apart from the steps' ink either side",
+                inks.length === 3
+                    && Math.abs(inks[1].from - inks[0].to - Theme.space.rung.apart) <= 0.5
+                    && Math.abs(inks[2].from - inks[1].to - Theme.space.rung.apart) <= 0.5,
+                `${said(texts)}, inks ${JSON.stringify(inks)}`);
             // A note beside a head sits on the head's baseline, as his line
             // reads (Joel, 2026-11-05: "which? &etc. need to be baselined
             // with the text to their left"): the hint beside the place's
