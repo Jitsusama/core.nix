@@ -701,10 +701,11 @@
   '';
   merge-net-catches-a-broken-merge = ''
     merge-net runs each VM test a head of main changed since the last it passed, two at once,
-    sends again only what no builder took, never runs one again where it passed, reverts the
-    merge it finds broke a test that failed twice and holds switching until the revert is on
-    main, quarantines one that failed then passed, reverts nothing for one quarantined, starts
-    nothing while the machine is held, and says which changes run their VM tests before merging
+    as bulk where nix-offload there takes it, sends again only what no builder took, never runs
+    one again where it passed, reverts the merge it finds broke a test that failed twice and
+    holds switching until the revert is on main, quarantines one that failed then passed,
+    reverts nothing for one quarantined, starts nothing while the machine is held, and says
+    which changes run their VM tests before merging
   '';
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests

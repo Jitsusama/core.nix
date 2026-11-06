@@ -4,7 +4,8 @@
 //! `merge-net watch` follows origin's main from its own checkout. For each
 //! new head it asks changed-checks which checks moved since the last head
 //! whose VM tests all passed, and runs each VM test among them through
-//! `nix-offload there`, which sends it to the VM builder, two at once. A
+//! `nix-offload there`, which sends it to the VM builder, two at once, as
+//! bulk where nix-offload takes it, so sessions' VM tests go first. A
 //! test that fails twice at a commit fails for real: the net finds which
 //! merge broke it, holds switching on it (`hold.json`), reverts it through
 //! a PR merged on its own checks, and writes a finding for its owner. One
