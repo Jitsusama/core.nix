@@ -113,6 +113,12 @@
 //! and each journals in `waited` how long it waited for room and for its
 //! builder to stand.
 //!
+//! A VM lender given `--warm` has each builder it stands build those
+//! installables for itself first, saying so in its folder's `warming`,
+//! since a fresh builder's first VM tests build the desktop for an hour.
+//! While a warm VM builder stands, a run's VM tests go only to warm ones,
+//! and a cold one not on its way is asked for once their room runs out.
+//!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
 //! answer, so Nix never waits on one that's away. Those in the file
@@ -267,6 +273,9 @@ struct Settings {
     /// Whether it lends only while a `there` build waits for its builder,
     /// as `--only-there` says.
     only_there: bool,
+    /// What each builder it stands builds for itself before taking VM
+    /// tests, as `--warm` names them, space-separated.
+    warm: Vec<String>,
 }
 
 /// A builder lent to the machine.
@@ -607,10 +616,10 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
         return parts;
     }
     let builds = vm_room();
-    let busy: Vec<usize> = lending
-        .iter()
-        .map(|index| there::claimed(&vm_dirs[*index]) + there::waiting(&vm_dirs[*index]))
-        .collect();
+    let busy_in =
+        |index: &usize| there::claimed(&vm_dirs[*index]) + there::waiting(&vm_dirs[*index]);
+    let lending = warm_of(&part, lending, vm_dirs, builds, busy_in);
+    let busy: Vec<usize> = lending.iter().map(busy_in).collect();
     let split = there::overflow(&part, &busy, builds);
     let onward: usize = split.iter().skip(1).flatten().map(there::count).sum();
     if onward > 0 {
@@ -629,6 +638,53 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
         parts[index] = piece;
     }
     parts
+}
+
+/// Of the VM builders `lending`, by index into `vm_dirs`, those `part`'s
+/// VM tests may go to: the warm ones while any stands, else all of them,
+/// since a cold one's first tests build for an hour what a warm one holds.
+/// Where the warm ones' room runs out, cold ones that aren't on their way
+/// are asked for, to warm for the runs after.
+fn warm_of(
+    part: &there::Asked,
+    lending: Vec<usize>,
+    vm_dirs: &[PathBuf],
+    builds: usize,
+    busy_in: impl Fn(&usize) -> usize,
+) -> Vec<usize> {
+    let (warm, cold): (Vec<usize>, Vec<usize>) = lending
+        .iter()
+        .partition(|index| there::warm(&vm_dirs[**index]));
+    if warm.is_empty() || cold.is_empty() {
+        return lending;
+    }
+    let busy: Vec<usize> = warm.iter().map(&busy_in).collect();
+    let (coming, unasked): (Vec<usize>, Vec<usize>) = cold
+        .iter()
+        .partition(|index| there::coming(&vm_dirs[**index]));
+    let asking = there::to_warm(there::count(part), &busy, builds, coming.len()).min(unasked.len());
+    for index in &unasked[..asking] {
+        there::want(&vm_dirs[*index]);
+    }
+    if coming.is_empty() && asking == 0 {
+        return warm;
+    }
+    let cold_said = match coming.len() {
+        0 => String::new(),
+        1 => "1 VM builder is still standing or warming, so ".to_owned(),
+        count => format!("{count} VM builders are still standing or warming, so "),
+    };
+    let warm_said = match warm.len() {
+        1 => "the warm one".to_owned(),
+        count => format!("the {count} warm ones"),
+    };
+    let asked_said = match asking {
+        0 => String::new(),
+        1 => ", and 1 more is asked for, to warm for the runs after".to_owned(),
+        asking => format!(", and {asking} more are asked for, to warm for the runs after"),
+    };
+    eprintln!("nix-offload: {cold_said}VM tests go to {warm_said}{asked_said}");
+    warm
 }
 
 /// Sends each of `parts` to its builder at once, on a thread of its own
@@ -1324,6 +1380,9 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 journal,
                 dir,
                 only_there: arguments.iter().any(|argument| argument == "--only-there"),
+                warm: given("--warm")
+                    .map(|warm| warm.split_whitespace().map(str::to_owned).collect())
+                    .unwrap_or_default(),
             });
             if restarts {
                 ExitCode::from(RESTARTS)
@@ -1685,6 +1744,10 @@ fn ask(
     let line = line.trim();
     match host_of(line) {
         Some(host) if helper.try_wait().ok().flatten().is_none() => {
+            // Said warming before Nix and `there` can see it.
+            if let Some(store) = &store {
+                warm(settings, &name, store);
+            }
             machines.show(Some(machines::Lending {
                 line,
                 store: store.as_deref(),
@@ -1737,6 +1800,46 @@ fn ask(
             None
         }
     }
+}
+
+/// Has the builder `name`, just stood, build what `settings.warm` names
+/// for itself, on a thread of its own, saying so in its folder's
+/// `warming` until it's done, so `there` sends VM tests to a warm builder
+/// while one stands. Its ssh holds the builder in use as it warms.
+fn warm(settings: &Settings, name: &str, store: &str) {
+    let Some(builder) = there::builder(store) else {
+        return;
+    };
+    if settings.warm.is_empty() {
+        return;
+    }
+    let warming = settings.dir.join(there::WARMING);
+    let held = format!("{} {name}\n", std::process::id());
+    if let Err(error) = fs::write(&warming, &held) {
+        eprintln!("nix-offload: couldn't say {name} warms: {error}, so it takes VM tests cold");
+        return;
+    }
+    let installables = settings.warm.clone();
+    let scratch = settings.dir.join("warming.d");
+    let name = name.to_owned();
+    eprintln!("nix-offload: {name} builds what warms it before it takes VM tests");
+    thread::spawn(move || {
+        let began = Instant::now();
+        let warmed = there::warmed(&builder, &installables, &scratch, "ssh");
+        // Only its own: a builder stood after this one went has its own.
+        if fs::read_to_string(&warming).is_ok_and(|now| now == held) {
+            let _ = fs::remove_file(&warming);
+        }
+        let minutes = began.elapsed().as_secs() / 60;
+        if warmed {
+            eprintln!("nix-offload: {name} is warm after {minutes} minutes, so it takes VM tests");
+        } else {
+            eprintln!(
+                "nix-offload: {name} couldn't build all that warms it in {minutes} minutes, so \
+                 it takes VM tests as it is"
+            );
+        }
+    });
 }
 
 /// Run the helper with `arguments`, and hear what it says until its
@@ -1819,6 +1922,10 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
 /// Take the builder from Nix, then give it back, noting how long it ran.
 fn give_back(settings: &Settings, machines: &mut Machines, builder: Lent, event: Event) {
     machines.show(None);
+    let warming = settings.dir.join(there::WARMING);
+    if fs::read_to_string(&warming).is_ok_and(|held| held.trim_end().ends_with(&builder.name)) {
+        let _ = fs::remove_file(&warming);
+    }
     returned(settings, builder, event);
 }
 
@@ -2182,6 +2289,7 @@ exit 1
             journal: folder.join("journal.jsonl"),
             dir: folder.to_path_buf(),
             only_there: false,
+            warm: Vec::new(),
         };
         let file = |name: &str| folder.join(name);
         let machines = Machines::new(
