@@ -55,11 +55,9 @@ const table = [
     { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
-    // Return goes into the row ("run", below) and - up, onto the row come
-    // from, with its find, as his oil's do. h and l move along a line,
-    // which a row hasn't, so they only say Vim's way in and out, as q says
-    // how to close, and Backspace is h, as Vim's is (Joel, 2026-11-05:
-    // "where in vi does that step into shit?"). No arrow does anything.
+    // Return goes in ("run", below) and - up, as his oil's do; h and l, and
+    // Backspace as h, only say so, as q says how to close, and no arrow
+    // does either (Joel, 2026-11-05: "where in vi does that step into shit?").
     { act: "out", mode: "normal", keys: ["-"] },
     { act: "intoSaid", mode: "normal", keys: ["l"] },
     { act: "outSaid", mode: "normal", keys: ["h", "Backspace"] },
@@ -74,8 +72,7 @@ const table = [
     { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
     { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
     { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
-    // Ctrl+] goes to the place the row lives, as Vim follows a tag, and
-    // Ctrl+T back through those followed, as Vim's pops its tag stack.
+    // Ctrl+] goes to the row's own place, as Vim follows a tag.
     { act: "follow", mode: "normal", keys: ["Ctrl+]"] },
     // Every key here, as his leader's Space ? lists them, and F1 as help.
     // Space alone begins these and does nothing, waiting as gg's g does.
@@ -140,8 +137,7 @@ const table = [
     // They're read in normal only while the line holds a prompt's words
     // rather than a find (Prompt.qml, `words`), and before normal's own,
     // so u there undoes rather than bringing a find back.
-    // h and l move the caret a letter, as Vim's do, and so do \u2190 and
-    // \u2192, each its letter in normal, and Backspace as h; - still goes up.
+    // h and l move the caret a letter, as Vim's do, as do \u2190, \u2192 and Backspace.
     { act: "letterBack", mode: "words", keys: ["h", "Left", "Backspace"] },
     { act: "letterNext", mode: "words", keys: ["l", "Right"] },
     { act: "wordNext", mode: "words", keys: ["w"] },
