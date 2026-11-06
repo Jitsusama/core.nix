@@ -15,6 +15,8 @@
 //! With `--keep-base` it only evaluates the base
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
+//! It goes only to a builder already standing, and evaluates on this
+//! machine only with `--here`.
 //! `changed-checks keep-main` does that for each head of origin's main, once
 //! it has stood two minutes, where runs are sent (`keep.rs` says why).
 //!
@@ -84,6 +86,10 @@ use there::Sent;
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
+
+/// What a run exits with when it kept nothing since nowhere took it:
+/// sysexits.h's temporary failure, as `nix-offload there` gives.
+const UNSENT: u8 = 75;
 
 const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
                     [--name-only] [--keep-base] [--here]\n       changed-checks keep-main";
@@ -222,6 +228,15 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     }
     if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
+    }
+    // A base kept ahead of time is never worth evaluating beside the
+    // person's work, at about 20 GB, unless asked to.
+    if options.keep_base && !options.here && env::var_os(HERE).is_none() {
+        eprintln!(
+            "changed-checks: no standing builder took the base to keep, so it's left unkept; \
+             --here keeps it on this machine"
+        );
+        return Ok(ExitCode::from(UNSENT));
     }
     // The far side's runs share a builder made for them; this machine's
     // take turns (`turn.rs` says why).

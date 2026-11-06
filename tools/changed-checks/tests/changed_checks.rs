@@ -688,7 +688,7 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
     // The working tree has no checks to give, so evaluating it would fail.
     stand_in.checks("base", BASE);
 
-    let ran = stand_in.run(&["--system", "x86_64-linux", "--keep-base"]);
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--keep-base", "--here"]);
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(text(&ran.stdout), "");
@@ -706,7 +706,7 @@ fn a_run_evaluating_here_waits_its_turn_while_another_holds_it() {
     let held = fs::File::create(&lock).expect("the lock");
     held.lock().expect("held");
 
-    let mut running = stand_in.started(&["--system", "x86_64-linux", "--keep-base"], &[]);
+    let mut running = stand_in.started(&["--system", "x86_64-linux", "--keep-base", "--here"], &[]);
     let mut said = std::io::BufReader::new(running.stderr.take().expect("its stderr"));
     let mut line = String::new();
     while !line.contains("another run evaluates on this machine, so this waits its turn") {
@@ -733,10 +733,14 @@ fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
     fs::write(stand_in.path("clean"), "").expect("written");
     let keeping = ["--system", "x86_64-linux", "--keep-base"];
 
-    // A nix-offload that can't be told never to ask isn't sent the keep.
+    // A nix-offload that can't be told never to ask isn't sent the keep,
+    // and it isn't evaluated here instead.
     let ran = stand_in.run(&keeping);
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(ran.status.code(), Some(75), "{}", text(&ran.stderr));
+    assert!(text(&ran.stderr).contains("so it's left unkept; --here keeps it on this machine"));
     assert!(!stand_in.path("changed").exists(), "it wasn't sent");
+    let kept = stand_in.path("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
+    assert!(!kept.exists(), "nor kept here");
 
     fs::write(stand_in.path("takes-never-ask"), "").expect("written");
     let ran = stand_in.run(&keeping);

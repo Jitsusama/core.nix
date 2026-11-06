@@ -3319,6 +3319,32 @@ mod tests {
     }
 
     #[test]
+    fn a_run_that_never_asks_asks_for_none_again_once_its_stale_builder_went() {
+        // At 00:11 on 6 November the keeper's store named a builder that
+        // had gone: ssh failed, and the run waited for one to stand again,
+        // which asked the lender for one. The lender has since emptied it.
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        fs::write(dir.path().join("store"), "").unwrap();
+        let never = Waiting {
+            asks: false,
+            ..QUICK
+        };
+        assert_eq!(
+            stood_again(dir.path(), never, std::time::Instant::now()),
+            None
+        );
+        assert!(
+            !dir.path().join("wanted").exists(),
+            "the lender is never told one is wanted"
+        );
+    }
+
+    #[test]
     fn with_no_lender_running_nothing_is_waited_for() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(waited(dir.path(), QUICK), None);
