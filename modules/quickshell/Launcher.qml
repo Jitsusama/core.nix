@@ -1907,15 +1907,17 @@ Scope {
     }
 
     // The keys the foot names while the drawer holds them, where the row's
-    // Return and arrows do nothing: the way back to the rows (or, while
-    // choosing, back to the page), and the key list where it's bound there,
-    // each as the table first names it (VKCF3Z, 2026-11-05: a lone Return
-    // in the drawer named a key that did nothing).
+    // Return and arrows do nothing: the way back to the rows and the key
+    // list where it's bound there, each as the table first names it
+    // (VKCF3Z, 2026-11-05: a lone Return in the drawer named a key that did
+    // nothing). Choosing names no way back, since only Escape leaves it,
+    // and nothing names Escape, which only ever leaves a mode; VIS and the
+    // count already say where you are (VKCF3Z, 2026-11-05).
     function drawerKeys(mode) {
         const words = Words.field.drawer ?? {};
         const named = act => QueryKeys.table.find(one => one.act === act
             && QueryKeys.inMode(one, mode));
-        const back = named(QueryKeys.chosen(mode) ? "back" : "rows");
+        const back = QueryKeys.chosen(mode) ? null : named("rows");
         const list = named("keys");
         return [back ? [ListedKeys.sequenceFace(back.keys[0]), words.back ?? ""] : null,
             list ? [ListedKeys.sequenceFace(list.keys[0]), words.keys ?? ""] : null]

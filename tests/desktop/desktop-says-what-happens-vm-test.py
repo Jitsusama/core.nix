@@ -735,9 +735,10 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     assert came["chosen"]["taken"] == [[title, 0, 1]], came
     # Letters are grounded as they're chosen, with no band.
     assert came["chosen"]["bands"] == [], came
-    # Choosing, the foot names Escape, which lets the choice go and leaves the keys in.
+    # Choosing, the foot names no key: nothing names Escape, which only leaves a mode, and
+    # VIS and the count say where you are (VKCF3Z, 2026-11-05).
     told = desktop.showing()["selected"]["told"]
-    assert told == ["Esc back"], f"in visual the foot says {told}"
+    assert told == [], f"in visual the foot says {told}"
     page.until("l l l l l", chose("letters", len("Deploy")))
     page.pressed_until(
         "y",
