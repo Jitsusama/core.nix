@@ -291,10 +291,14 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     shown = desktop.showing()
     foot = laid_out(desktop)["foot"]
     completion = next(word for word in foot if word["text"].endswith("complete"))
+    enter = next(word for word in foot if word["text"].startswith("\u21b5"))
     assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
-    assert abs(completion["starts"] - opened["keysFrom"]) <= 1, (
-        f"the keys held {completion['starts'] - opened['keysFrom']} px before the completion"
-        f" at {completion['starts']}, from {opened['keysFrom']}: {shown['hints']}"
+    # Measured from Return, as the foot's words are laid out in the card and keysFrom and
+    # keysAt in the foot, so only their gaps compare.
+    held = shown["keysAt"] - shown["keysFrom"]
+    drawn = enter["starts"] - completion["starts"]
+    assert abs(held - drawn) <= 1, (
+        f"the keys held {held} px before Return and drew {drawn}: {shown['hints']}"
     )
     machine.send_key("ctrl-u")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
