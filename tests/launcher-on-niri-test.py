@@ -135,8 +135,8 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
     shell.send_key("ret")
     shell.launcher_closed()
     assert shell.copied() in [before, now("+%A %-d %B %Y")]
-    # The power actions answer to their names, and only those; Escape,
-    # never Return, since Return would do them.
+    # The power actions answer to their names, and only those; closed by
+    # :q, never Return, since Return would do them.
     for typed, action, verb in [
         ("power off", "Power Off", "Power Off"),
         ("reboot", "Reboot", "Reboot"),
@@ -183,12 +183,18 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
             and shown["kind"] == "shortcut"
         )
     )
+    # Escape at rest lets the key list go, as it lets go what's begun, and closes nothing.
+    shell.normal()
+    shell.send_chars(" ?")
+    shell.launcher_until(lambda shown: shown["listing"] is True)
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["open"] and shown["listing"] is False)
     shell.close_launcher()
 
 
 def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell: Shell) -> None:
     """The power acts are found by their names, and by the names they had."""
-    # Short names, each found by the start Joel types; Escape, never
+    # Short names, each found by the start Joel types; closed by :q, never
     # Return, since Return would do them.
     for typed, name, verb in [
         ("sle", "Sleep", "sleep"),

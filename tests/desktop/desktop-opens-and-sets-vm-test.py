@@ -49,11 +49,10 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
-        # Return steps in, as on every device, its use first; from the find
-        # Return lands on it, and a second plays sound through it.
+        # Return steps in, as on every device, its use first, and in normal,
+        # where the step ends, Return plays sound through it.
         desktop.step_in("ret")
         desktop.launcher_until(sound_selected("Play Sound Through It"))
-        desktop.land()
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
@@ -116,11 +115,11 @@ def sound_selected(name: str) -> Callable[[Json], bool]:
 
 
 def sound_device(desktop: Desktop, typed: str, named: str) -> None:
-    """Open the launcher's Sound, and step into a device's parts by l."""
+    """Open the launcher's Sound, and step into a device's parts by Return."""
     desktop.as_account("qs ipc call launcher collection sound")
     desktop.launcher_ready()
     desktop.type_in(typed, selecting=named)
-    desktop.step_in()
+    desktop.follow()
 
 
 def sound_nodes(desktop: Desktop) -> list[Json]:
@@ -252,8 +251,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     for _down in range(desktop.showing()["rows"].index("Recording")):
         desktop.next_row()
     desktop.launcher_until(sound_selected("Recording"))
-    desktop.step_in()
-    desktop.step_in()
+    desktop.follow()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Muted", "Louder", "Quieter"])
     desktop.photograph("launcher-sound-recording")
     desktop.launcher_until(sound_selected("Muted"))
@@ -359,11 +358,11 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("mpv", selecting="mpv Media Player")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: {"Media", "Sound"} <= set(shown["rows"]))
         if part:
             desktop.type_in(part.lower(), selecting=part)
-            desktop.step_in()
+            desktop.follow()
 
     def press(name: str, then: str = "", becomes: str = "", *, lands: bool = True) -> None:
         """Press Return on a row by its name: it stays, saying so or becoming its opposite.
@@ -396,7 +395,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("Media", "playing"))
     desktop.launcher_until(reads("Sound", "100%"))
     desktop.type_in("media", selecting="Media")
-    desktop.step_in()
+    desktop.follow()
     desktop.photograph("launcher-program-media")
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["Pause", "Next", "Previous", "First tone"]
@@ -452,7 +451,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     controls()
     desktop.launcher_until(reads("Sound", "muted"))
     desktop.type_in("sound", selecting="Sound")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Muted")
     desktop.launcher_until(reads("Muted", "yes"))
     desktop.launcher_until(reads("Volume", "muted"))
@@ -536,8 +535,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     machine = desktop.machine
     # By its name, power saver last, where what follows starts from. Setting
     # it changes something, so Return keeps the launcher, the row saying
-    # it's chosen, and l then Return sets it and closes, with
-    # no chord with Ctrl said anywhere.
+    # it's chosen, and Ctrl+] then Return sets it and closes, with
+    # no other chord with Ctrl said anywhere.
     for typed, profile, name, stepping in [
         ("balanced power", "balanced", "Balanced Power", False),
         ("power saver", "power-saver", "Power Saver", True),
@@ -545,14 +544,16 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
-        # In normal, where l steps in; on the find letters type, so it names none.
+        # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
         desktop.normal()
-        desktop.launcher_until(lambda shown: "l in" in (shown["selected"] or {}).get("told", []))
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("told", [])[1:2] == ["Ctrl+] in"]
+        )
         told = desktop.showing()["selected"]["told"]
-        assert not any(key.startswith("Ctrl") for key in told), told
+        assert not any(key.startswith("Ctrl") for key in told[2:]), told
         if stepping:
             # Its own act leads the step, selected.
-            desktop.step_in()
+            desktop.follow()
             desktop.launcher_until(
                 lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][0]
             )
@@ -580,18 +581,21 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     )
     desktop.close_launcher()
     # And as the setting it is: one part saying which is chosen, its
-    # choices a step in by Return or l, each named there as
+    # choices a step in by Return or Ctrl+], each named there as
     # the part reads it.
-    for key, profile, name, was in [
-        ("ret", "balanced", "Balanced", "Power Saver"),
-        ("l", "power-saver", "Power Saver", "Balanced"),
+    for follows, profile, name, was in [
+        (False, "balanced", "Balanced", "Power Saver"),
+        (True, "power-saver", "Power Saver", "Balanced"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("power profile", selecting="Power Profile")
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == was)  # noqa: B023
-        desktop.step_in(key)
+        if follows:
+            desktop.follow()
+        else:
+            desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
         desktop.type_in(name.split()[0][:3].lower(), selecting=name)
         desktop.land()
@@ -603,7 +607,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.close_launcher()
 
 
-# l on one of a collection's members offers its own
+# Ctrl+] on one of a collection's members goes into its own
 # actions, as on anything at the top.
 
 
@@ -704,7 +708,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         else:
             desktop.as_account("qs ipc call launcher collection displays")
         desktop.launcher_ready()
-        desktop.step_in()
+        desktop.follow()
         # Its settings lead, each saying how it's set, their choices a step
         # in, there by Return on the setting, or found from here by what's
         # typed. The backlight lights the one screen there is, so its
@@ -1062,7 +1066,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to It", "Disconnect It"])
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -1172,26 +1176,27 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
     desktop.close_launcher()
-    # Found from the root, l goes straight inside the Office,
-    # the networks' crumb above it saying where it lives, and the left
-    # arrow comes back to the search with what was typed (VKCF3Z,
+    # Found from the root, Return goes straight inside the Office,
+    # the networks' crumb above it saying where it lives, and -
+    # comes back to the search with what was typed (VKCF3Z,
     # 2026-10-29: "\u2190 is where you came from; the crumbs are where it
     # lives").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
     # Joined, its Return typed on the find steps in too, rather than
-    # disconnecting it, so the foot says Return alone: the find's arrows
-    # move the caret, so no arrow is named there.
+    # disconnecting it, so the foot says "\u21b5 open", as stepping in does
+    # wherever it's done; the find's arrows move the caret, so no arrow is
+    # named there.
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5"], told
-    desktop.step_in()
+    assert told[:1] == ["\u21b5 open"], told
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) > 1 and shown["path"][-1:] == ["Office"] and shown["typed"] == ""
         )
     )
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "office")
     desktop.close_launcher()
     # Stepped into, a network says after what can be done to it what's
@@ -1201,7 +1206,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
-    desktop.step_in()
+    desktop.follow()
     office = len(desktop.showing()["held"])
     # The Signal says its dBm, always read, and how far over the noise
     # below; Return opens it, where iw, read while the network shows,
@@ -1209,22 +1214,22 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("signal", selecting="Signal")
     desktop.launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
-    # h steps out with the word put back, and cc takes the word, onto the
+    # - steps out with the word put back, and cc takes the word, onto the
     # find.
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == office and shown["typed"] == "signal"
     )
     machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     desktop.photograph("launcher-wifi-detail")
-    # The Speed holds each way and the retries, l into it.
+    # The Speed holds each way and the retries, Return into it.
     desktop.type_in("speed", selecting="Speed")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
     machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
@@ -1232,7 +1237,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # holding its own parts, its hardware address among them; the figure's
     # own Copy last (docs/design.md, "Copy ... is always the last").
     desktop.type_in("access", selecting="Access Points")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1", "Copy"])
     desktop.photograph("launcher-wifi-points")
     desktop.step_in("ret")
@@ -1247,7 +1252,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["held"] == ["network"] and "Wi-Fi" in shown["rows"])
     assert "Wi-Fi Off" not in desktop.showing()["rows"], desktop.showing()["rows"]
     desktop.type_in("wi-fi", selecting="Wi-Fi")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             len(shown["rows"]) > 1
@@ -1296,7 +1301,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
         "ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=timedelta(seconds=90)
     )
     desktop.answer("address")
-    desktop.step_in()
+    desktop.follow()
     addresses = len(desktop.showing()["held"])
     # Each is named by what it is, never by the kernel's name for it.
     desktop.launcher_until(lambda shown: {"Wi-Fi", "VPN"} <= set(shown["rows"]))
@@ -1312,8 +1317,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     side = desktop.showing()["selected"]["side"]
     assert re.fullmatch(r"[\d,]+ bytes", side), side
     desktop.photograph("launcher-addresses-wifi")
-    desktop.normal()
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi"
     )
@@ -1327,7 +1331,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
     desktop.type_in("vpn", selecting="VPN")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("address", selecting="Address")
     assert desktop.showing()["selected"]["side"] == "100.100.1.2/32"
     assert "Hardware Address" not in desktop.showing()["rows"], desktop.showing()

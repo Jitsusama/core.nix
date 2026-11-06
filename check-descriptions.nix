@@ -6,6 +6,10 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
+  a-card-says-how-it-stands-in-one-line = ''
+    a card's status line, the launcher's and held notices' alike, gives its middle hints way first
+    as room runs short, the keys list's and Return's staying
+  '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
   '';
@@ -891,7 +895,9 @@
     `there` sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, waiting afresh for each loss after the build sent again ran a
     while and for a lender restarting, saying how long, or, when none stands or none answers,
-    builds nothing and exits 75, saying so, unless --here asks it to build here; a tree's
+    builds nothing and exits 75, saying so, unless --here asks it to build here; with
+    --here-when-idle it builds here only while this machine's CPU pressure has stayed under
+    10% and never a VM test, else sends it as ever; a tree's
     uncommitted changes go as a commit of what its index holds, files staged or added with -N
     included and untracked ones left, with the branch and index untouched; with
     --print-out-paths, what was built is copied into this store from the builder and only then

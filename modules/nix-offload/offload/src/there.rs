@@ -1,7 +1,9 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--outlive] FLAKE ATTR...`, or `DRV...` in place of the flake and
-//! its attributes: builds a flake's attributes on the lent builder by
-//! sending it a command, or here with `--here` when none takes it.
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] FLAKE ATTR...`, or `DRV...` in
+//! place of the flake and its attributes: builds a flake's attributes on
+//! the lent builder by sending it a command, or here with `--here` when
+//! none takes it, or with `--here-when-idle` while this machine is idle
+//! and they hold no VM test.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -90,9 +92,8 @@ pub struct Asked {
     /// Whether what's built is brought into this machine's store and its
     /// paths printed, as `--print-out-paths` asks.
     print: bool,
-    /// Whether it may build here when no builder takes it, as `--here`
-    /// says.
-    here: bool,
+    /// When it may build here rather than be sent.
+    here: Here,
     /// What the build does there once this caller is gone.
     pub alone: Alone,
     /// Whether the attributes are derivations' paths, with no flake.
@@ -112,6 +113,16 @@ struct Pinned {
     commit: String,
     tree: String,
     at: Option<passed::At>,
+}
+
+/// When a build may be made here rather than sent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Here {
+    /// When no builder takes it, as `--here` says.
+    unsent: bool,
+    /// While this machine is idle, as `--here-when-idle` says, sparing
+    /// the trip there.
+    idle: bool,
 }
 
 /// What a build sent far does once its caller is gone.
@@ -150,7 +161,7 @@ impl Alone {
 pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
-    let (mut apply, mut out, mut print, mut here) = (None, None, false, false);
+    let (mut apply, mut out, mut print, mut here) = (None, None, false, Here::default());
     let mut alone = Alone::Ends;
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
@@ -163,7 +174,8 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             "--apply" => apply = Some(arguments.next()?.clone()),
             "--out" => out = Some(PathBuf::from(arguments.next()?)),
             "--print-out-paths" => print = true,
-            "--here" => here = true,
+            "--here" => here.unsent = true,
+            "--here-when-idle" => here.idle = true,
             "--outlive" => alone = Alone::GoesOn,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
@@ -579,7 +591,7 @@ pub const STAYS: i32 = 64;
 /// A build no builder can take, `why`: built here only when asked to with
 /// `--here`, and otherwise refused with the ways it could go.
 fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
-    if asked.here {
+    if asked.here.unsent {
         eprintln!("nix-offload: {why}, so this builds here");
         return here(asked, nix);
     }
@@ -867,7 +879,7 @@ pub const UNSENT: i32 = 75;
 /// was already waited on for as long as a builder takes, and an agent's
 /// loop that did asked 40 times in 12 minutes on 3 November.
 fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
-    if asked.here {
+    if asked.here.unsent {
         eprintln!("nix-offload: {why}, so this builds here");
         return here(asked, nix);
     }
@@ -880,6 +892,48 @@ fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
         status: UNSENT,
         sent: None,
     }
+}
+
+/// The CPU pressure, as /proc/pressure/cpu's "some" line gives it for
+/// the last 10 and 60 seconds, below which this machine is idle: from
+/// 14:00 to 20:15 on 5 November it stood at 46% on average beside the
+/// checks built here, and at 43 to 55% at a load of 53.
+const IDLE: f64 = 10.0;
+
+/// Whether `pressure`, /proc/pressure/cpu as read, says this machine is
+/// idle, both of its last 10 and 60 seconds below [`IDLE`]; one that
+/// can't be read is taken as busy.
+pub fn idle(pressure: &str) -> bool {
+    let Some(some) = pressure.lines().find_map(|line| line.strip_prefix("some ")) else {
+        return false;
+    };
+    let average = |name: &str| {
+        some.split_whitespace()
+            .find_map(|field| field.strip_prefix(name)?.parse::<f64>().ok())
+    };
+    ["avg10=", "avg60="]
+        .iter()
+        .all(|name| average(name).is_some_and(|value| value < IDLE))
+}
+
+/// `asked` built here, when it asks to be while this machine is idle,
+/// as `pressure` says it is, and it holds no VM test by `patterns`: a VM
+/// test here holds the person's machine for minutes. None otherwise, nor
+/// for derivations, which name no attribute to judge.
+pub fn here_when_idle(
+    asked: &Asked,
+    pressure: &str,
+    patterns: &[String],
+    nix: &str,
+) -> Option<Ran> {
+    if !asked.here.idle || asked.derivations || !idle(pressure) {
+        return None;
+    }
+    if vm_tests(asked, patterns, &BTreeSet::new()).0.is_some() {
+        return None;
+    }
+    eprintln!("nix-offload: this machine is idle, so this builds here");
+    Some(here(asked, nix))
 }
 
 fn here(asked: &Asked, nix: &str) -> Ran {
@@ -1110,10 +1164,11 @@ impl Source {
 /// What `there --takes` says it takes: a flake that's a git tree here,
 /// `--apply`, `--out`, waiting for a builder it asks for, a flake that's a
 /// folder no commit names, `--changed`, changed-checks run elsewhere,
-/// `--here`, a build no builder took made here, `--print-out-paths`,
+/// `--here`, a build no builder took made here, `--here-when-idle`, one
+/// made here while this machine is idle, `--print-out-paths`,
 /// what was built brought into this store, derivations' paths, and
 /// `--outlive`, a build that goes on once its caller is gone.
-pub const TAKES: [&str; 10] = [
+pub const TAKES: [&str; 11] = [
     "tree",
     "apply",
     "out",
@@ -1121,6 +1176,7 @@ pub const TAKES: [&str; 10] = [
     "folder",
     "changed",
     "here",
+    "here-when-idle",
     "print",
     "derivation",
     "outlive",
@@ -2054,35 +2110,43 @@ pub fn vm_tests(
     (part(vm), part(rest))
 }
 
-/// How many of `count` VM tests go to the first of two VM builders, each
+/// How many of `count` VM tests go to each VM builder, in order, each
 /// running `builds` at once, with `busy` already sent to each by runs
-/// still going: each goes to the first while it has room, then to the
-/// second while it has, then to the less busy, the first when they're
-/// even. On 3 November a third of VM tests failed with 7 to 12 runs
-/// overlapping, those past the builder's room waiting their turn there.
-pub fn spread(count: usize, busy: [usize; 2], builds: usize) -> usize {
-    let [mut first, mut second] = busy;
-    let mut to_first = 0;
+/// still going: each goes to the first with room, and once none has, to
+/// the least busy, the earliest when they're even. On 3 November a third
+/// of VM tests failed with 7 to 12 runs overlapping, those past the
+/// builder's room waiting their turn there.
+pub fn spread(count: usize, busy: &[usize], builds: usize) -> Vec<usize> {
+    let mut busy = busy.to_vec();
+    let mut sent = vec![0; busy.len()];
     for _ in 0..count {
-        if first < builds || (second >= builds && first <= second) {
-            first += 1;
-            to_first += 1;
-        } else {
-            second += 1;
-        }
+        let roomy = busy.iter().position(|tests| *tests < builds);
+        let least = busy
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, tests)| **tests)
+            .map(|(index, _)| index);
+        let Some(to) = roomy.or(least) else {
+            break;
+        };
+        busy[to] += 1;
+        sent[to] += 1;
     }
-    to_first
+    sent
 }
 
-/// VM tests asked for, split between two VM builders as `spread` says,
-/// in the order they were asked.
-pub fn overflow(asked: &Asked, busy: [usize; 2], builds: usize) -> (Option<Asked>, Option<Asked>) {
-    let to_first = spread(asked.attributes.len(), busy, builds);
-    let (first, second) = asked.attributes.split_at(to_first);
-    let part = |attributes: &[String]| {
-        (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes.to_vec()))
-    };
-    (part(first), part(second))
+/// VM tests asked for, split between VM builders as `spread` says, in the
+/// order they were asked: a part for each, none where it's sent none.
+pub fn overflow(asked: &Asked, busy: &[usize], builds: usize) -> Vec<Option<Asked>> {
+    let mut left = asked.attributes.as_slice();
+    spread(left.len(), busy, builds)
+        .into_iter()
+        .map(|tests| {
+            let (these, rest) = left.split_at(tests);
+            left = rest;
+            (!these.is_empty()).then(|| asked.with(&asked.flake, these.to_vec()))
+        })
+        .collect()
 }
 
 /// How many attributes a part asks for.
@@ -2136,13 +2200,13 @@ pub const VM_ROOM: usize = 4;
 /// `waiting`, since one past the room goes only once nothing else is
 /// sent, and smaller runs coming after it kept finding room first.
 ///
-/// While it waits, a run goes to `other`, a second VM builder, once that
-/// one has room and nothing waits there, and says which it went to: a
-/// run's split is decided as it starts, so on 4 November ten runs waited
+/// While it waits, a run goes to the first of `others`, the other VM
+/// builders, that has room and nothing waiting, and says which it went to:
+/// a run's split is decided as it starts, so on 4 November ten runs waited
 /// 51 minutes on the first while the second sat idle.
 pub fn admitted<'a>(
     dir: &'a Path,
-    other: Option<&'a Path>,
+    others: &[&'a Path],
     count: usize,
     room: usize,
 ) -> (&'a Path, Option<Claim>) {
@@ -2173,8 +2237,9 @@ pub fn admitted<'a>(
         // Let go before the other's is taken, so two runs waiting on each
         // other's builders never hold one lock each and wait on the other.
         drop(lock);
-        if let Some(other) = other
-            && let Some(claimed) = free(other, wants, room)
+        if let Some((other, claimed)) = others
+            .iter()
+            .find_map(|other| Some((*other, free(other, wants, room)?)))
         {
             eprintln!(
                 "nix-offload: another VM builder has room now and nothing waiting, so this goes \
@@ -2687,9 +2752,11 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
 }
 
 /// Adds a line for a build to `journal`: when it ended, how long it took,
-/// what it built, where, its status and what it sent.
-pub fn note(journal: &Path, at: u64, seconds: u64, asked: &Asked, ran: &Ran) {
-    let line = serde_json::json!({
+/// what it built, where, its status and what it sent, and, where known,
+/// `waited`, the seconds of that it waited for room on its builder and for
+/// the builder to stand, so a queue shows before it's felt.
+pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &Asked, ran: &Ran) {
+    let mut line = serde_json::json!({
         "at": at,
         "seconds": seconds,
         "flake": asked.flake,
@@ -2698,6 +2765,9 @@ pub fn note(journal: &Path, at: u64, seconds: u64, asked: &Asked, ran: &Ran) {
         "status": ran.status,
         "sent": ran.sent,
     });
+    if let Some(waited) = waited {
+        line["waited"] = waited.into();
+    }
     let written = journal
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
@@ -3011,7 +3081,7 @@ mod tests {
                 apply: None,
                 out: None,
                 print: false,
-                here: false,
+                here: Here::default(),
                 alone: Alone::Ends,
                 derivations: false,
                 pinned: None,
@@ -3019,6 +3089,21 @@ mod tests {
         );
         let outliving = super::asked(&words("--outlive github:o/r/abc checks.x.a"));
         assert!(outliving.is_some_and(|asked| asked.alone == Alone::GoesOn));
+    }
+
+    #[test]
+    fn this_machine_is_idle_only_while_its_cpu_pressure_has_stayed_low() {
+        let pressure = |ten: &str, sixty: &str| {
+            format!(
+                "some avg10={ten} avg60={sixty} avg300=40.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+            )
+        };
+        assert!(idle(&pressure("2.00", "9.99")));
+        assert!(!idle(&pressure("2.00", "10.00")), "busy this last minute");
+        assert!(!idle(&pressure("43.38", "4.50")), "busy now");
+        assert!(!idle(""), "unread, it's taken as busy");
+        assert!(!idle("some avg10=1.00\n"), "half a line is taken as busy");
     }
 
     #[test]
@@ -3505,13 +3590,34 @@ mod tests {
 
     #[test]
     fn vm_tests_fill_the_first_vm_builder_then_the_second_then_the_less_busy() {
-        assert_eq!(spread(8, [0, 0], 6), 6, "the first's room, the rest on");
-        assert_eq!(spread(3, [0, 0], 6), 3, "all fit the first");
-        assert_eq!(spread(3, [5, 0], 6), 1, "another run's five there");
-        assert_eq!(spread(2, [6, 0], 6), 0, "the first full");
-        assert_eq!(spread(4, [6, 6], 6), 2, "both full, shared evenly");
-        assert_eq!(spread(3, [9, 7], 6), 1, "the less busy first");
-        assert_eq!(spread(0, [0, 0], 6), 0);
+        assert_eq!(
+            spread(8, &[0, 0], 6),
+            [6, 2],
+            "the first's room, the rest on"
+        );
+        assert_eq!(spread(3, &[0, 0], 6), [3, 0], "all fit the first");
+        assert_eq!(spread(3, &[5, 0], 6), [1, 2], "another run's five there");
+        assert_eq!(spread(2, &[6, 0], 6), [0, 2], "the first full");
+        assert_eq!(spread(4, &[6, 6], 6), [2, 2], "both full, shared evenly");
+        assert_eq!(spread(3, &[9, 7], 6), [1, 2], "the less busy first");
+        assert_eq!(spread(0, &[0, 0], 6), [0, 0]);
+        assert_eq!(spread(3, &[3], 4), [3], "one alone takes them all");
+    }
+
+    #[test]
+    fn vm_tests_past_every_vm_builders_room_go_to_the_next_then_the_least_busy() {
+        assert_eq!(spread(9, &[0, 0, 0], 4), [4, 4, 1], "each's room in turn");
+        assert_eq!(
+            spread(3, &[4, 4, 0, 0], 4),
+            [0, 0, 3, 0],
+            "the first with room"
+        );
+        assert_eq!(
+            spread(3, &[4, 2, 4], 4),
+            [1, 2, 0],
+            "the second's room, then the least busy"
+        );
+        assert_eq!(spread(4, &[5, 6, 5], 4), [2, 1, 1], "none has room");
     }
 
     #[test]
@@ -3520,16 +3626,25 @@ mod tests {
             "-L path:/z checks.x.vm-a checks.x.vm-b checks.x.vm-c",
         ))
         .unwrap();
-        let (first, second) = overflow(&asked, [4, 0], 6);
+        let parts = overflow(&asked, &[4, 0], 6);
         assert_eq!(
-            first.map(|first| first.attributes),
+            parts[0].as_ref().map(|first| first.attributes.clone()),
             Some(words("checks.x.vm-a checks.x.vm-b"))
         );
-        let second = second.unwrap();
+        let second = parts[1].as_ref().unwrap();
         assert_eq!(second.attributes, words("checks.x.vm-c"));
         assert_eq!(second.flags, words("-L"));
-        assert_eq!(overflow(&asked, [0, 0], 6).1, None, "all fit the first");
-        assert_eq!(overflow(&asked, [6, 0], 6).0, None, "none fit the first");
+        assert_eq!(overflow(&asked, &[0, 0], 6)[1], None, "all fit the first");
+        assert_eq!(overflow(&asked, &[6, 0], 6)[0], None, "none fit the first");
+        let parts = overflow(&asked, &[6, 5, 0], 6);
+        assert_eq!(
+            parts
+                .iter()
+                .map(|part| part.as_ref().map(count))
+                .collect::<Vec<_>>(),
+            [None, Some(1), Some(2)],
+            "on to a third"
+        );
     }
 
     #[test]

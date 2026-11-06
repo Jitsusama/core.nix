@@ -32,6 +32,7 @@ import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
+import "Bands.js" as Bands
 
 Item {
     id: prompt
@@ -85,20 +86,6 @@ Item {
     }
     // What's being acted on, each drawn as a chip: { text }.
     property var chips: []
-    // Whether the left arrow takes what's typed away whole before it goes
-    // back out, as the launcher's levels want: what's typed there is a few
-    // letters narrowing a list, never text worth walking through, so the
-    // arrow is the one key for "not that", and a second press goes up.
-    // Only the plain arrow does, the field saying so at its right edge, as
-    // it says Tab's, and the right arrow just after puts it back (Joel,
-    // 2026-10-26: the left arrow clears only where it says so, and the right
-    // arrow right after brings the text back). With Ctrl or Alt it moves the
-    // caret, as in any field.
-    property bool leftClears: false
-    // What the left arrow just took away, which the right arrow puts back
-    // until any other key is pressed or anything else is typed; in a modal
-    // line it's normal's u that puts it back, as vi's undo does.
-    property string cleared: ""
 
     // Whether the line has vi's modes, as the launcher's does; the lock's
     // and a password's prompts are only typed in.
@@ -176,9 +163,6 @@ Item {
     }
     // Whether the caret blinks: while the line is on screen and modal.
     property bool awake: true
-    // The field's keys' words, by what each does (launcher/words.json),
-    // for a line that says them.
-    property var keyWords: ({})
     // Says how far an aside may run, so a long one never crowds what's typed
     // or where Joel is: the path's steps and room to type come first, and
     // the aside has all they leave. With the aside first, a step into a
@@ -190,7 +174,7 @@ Item {
     // "weather tokyo" keeps "= no forecast" whole and the aside says less.
     property real asideMost: Math.max(0, width - 2 * Theme.space.rung.inset
         - ledWidth - Theme.space.rung.apart - pathWanted - Math.max(typingRoom, typedWidest)
-        - Theme.space.rung.groups - keysRoom)
+        - Theme.space.rung.groups)
     // The widest what's typed has been with its completion since forget(),
     // so the aside gives way once as it grows, not back and forth with
     // each letter.
@@ -218,101 +202,23 @@ Item {
 
     // Lets the aside's room go, as a new step starts, keeping what it says now.
     function forget() {
-        crowded = false;
         typedWidest = typedWanted;
         asideWidest = Math.min(asideWhole, asideMost);
     }
 
     // Where what's typed has to end: before the aside's room, and before
-    // caps lock's glyph when it shows, and before the field's keys.
-    readonly property real end: asideRoom === 0 ? width - Theme.space.rung.inset - keysRoom
+    // caps lock's glyph when it shows.
+    readonly property real end: asideRoom === 0 ? width - Theme.space.rung.inset
         : asideText.x - Theme.space.rung.groups
             - (capitals ? Theme.space.rung.mark + capitalsGlyph.implicitWidth : 0)
 
-    // The field's keys, said at its right edge (Joel, 2026-10-28: hints
-    // "flush against the text feels wrong and they are not super obvious
-    // what they mean"): what completes while a completion shows, and what
-    // clears what's typed (keysSaid says which). Each has a place as wide
-    // as the widest it can say, kept whether it says anything or not, so
-    // nothing in the field moves as they come and go with each letter.
-    // They're set at the right edge, past the aside, so neither moves as
-    // the aside changes. A modal line says none: it holds only the find and
-    // how far it narrows, its hints the foot's, by key and lowercase word
-    // (VKCF3Z, 2026-11-05).
-    readonly property bool keyed: leftClears && !modal
-    // Whether their place is kept: only while one of them could be said,
-    // something typed or something the left arrow took to put back. With
-    // neither, no key shows until a letter is typed, so the aside ends at
-    // the line's end, where the rows' sides end, rather than short of an
-    // empty place (Joel, 2026-11-04: "the text in being inset left from the
-    // right edge of the launcher, it looks like shit"). The first letter
-    // changes what the aside says anyway, so it moves over then, once.
-    // A question asked once takes no key of the field's, so none is said.
-    // Nor do a prompt's words, which nothing clears or brings back. Where
-    // even the keys alone would cut the path, they give way, since a key
-    // Joel learns once never costs him where he is.
-    readonly property bool keysHeld: keyed && asking === "" && !words && keysFit && (typed
-        || (input.text === "" && cleared !== ""))
-    readonly property real keysBare: keySlots.reduce((sum, slot) => sum + slotWidth(slot, false),
-        0) + (keySlots.length - 1) * fieldKeys.spacing
-    readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.rung.inset
-        - ledWidth - Theme.space.rung.apart - pathWanted - Math.max(typingRoom, typedWanted)
-        - Theme.space.rung.groups >= keysBare + Theme.space.rung.groups
-    // Their words take a third of the launcher's field, so they're said only
-    // where everything else the field says leaves room for them: the path,
-    // what's typed with its completion, and the aside, each whole. Where
-    // they don't fit, the keys are said alone, since words for keys Joel
-    // learns once never cost him the path or the answer to what he typed.
-    // Once a step has run out of room they stay away until the step ends,
-    // so they go at most once rather than coming and going with letters.
-    // Each place's keys and words: in a modal line one place, the find's
-    // completing; otherwise Tab's place, then the left arrow's and the
-    // right's.
+    // The key that takes the completion, as the foot's hints say it: the
+    // find's, from the key table, in a modal line, and Tab otherwise. The
+    // field itself says no keys: a modal line's hints are the foot's, by
+    // key and lowercase word (VKCF3Z, 2026-11-05), and the lock's and a
+    // password's prompts are only typed in.
     readonly property string completeKey: modal
         ? prompt.drawn(QueryKeys.keyOf("complete", "find")) : "\u21e5"
-    readonly property string clearKey: "\u2190"
-    readonly property var keySlots: [[[completeKey, keyWords.complete ?? ""]],
-        [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
-    function slotWidth(slot, worded) {
-        return Math.max(...slot.map(([key, word]) =>
-            fieldKeys.advance(key, worded ? word : "")));
-    }
-    readonly property var keysWorded: keySlots.map(slot => slotWidth(slot, true))
-    readonly property real keysWordedWidth: keysWorded.reduce((sum, wide) => sum + wide, 0)
-        + (keysWorded.length - 1) * fieldKeys.spacing
-    readonly property real asideWanted: asideWhole
-    readonly property bool wordsFit: width - 2 * Theme.space.rung.inset - ledWidth
-        - Theme.space.rung.apart - pathWanted - Math.max(typingRoom, typedWanted)
-        - Theme.space.rung.groups
-        - (asideWanted > 0 ? asideWanted + Theme.space.rung.groups : 0)
-        >= keysWordedWidth + Theme.space.rung.groups
-    // Set as the words stop fitting, and let go by forget(), as a step ends.
-    property bool crowded: false
-    onWordsFitChanged: {
-        if (!wordsFit && keysHeld)
-            crowded = true;
-    }
-    readonly property bool worded: wordsFit && !crowded
-    readonly property var keyPlaces: !keysHeld ? [] : worded ? keysWorded
-        : keySlots.map(slot => slotWidth(slot, false))
-    readonly property real keysRoom: keysHeld
-        ? keyPlaces.reduce((sum, wide) => sum + wide, 0)
-            + (keyPlaces.length - 1) * fieldKeys.spacing + Theme.space.rung.groups : 0
-    readonly property bool typed: input.text !== "" && !secret
-
-    // A key's word, where there's room for the words.
-    function keyWord(word: string): string {
-        return worded ? word ?? "" : "";
-    }
-
-    // What the field says for its keys now: Tab while a completion shows,
-    // then the left arrow while it clears what's typed or the right while it
-    // puts back what the left took.
-    readonly property var keysSaid: [
-        typed && ghost !== "" ? [completeKey, keyWord(keyWords.complete)] : ["", ""],
-        typed ? [clearKey, keyWord(keyWords.clear)]
-        : input.text === "" && cleared !== "" ? ["\u2192", keyWord(keyWords.restore)]
-        : ["", ""]]
 
     // A key as the field draws it, from the table's name for it: an arrow
     // by its mark, and a letter with Ctrl as a chord is spelled.
@@ -337,17 +243,24 @@ Item {
     }
 
     signal cancelled
-    // The right arrow past the end of what's typed, and the left arrow before
-    // its start (or anywhere, with leftClears, once what's typed is gone) or
-    // Backspace with nothing typed: into what's selected, and back out. In
-    // a modal line, normal's arrows, l and h, and Backspace.
-    signal forward
+    // Escape at rest in normal, which closes nothing but lets go what
+    // the launcher shows over the rows, as the key list (Launcher.qml).
+    signal rested
+    // Normal's -: up to what holds this place. In a text line the arrows
+    // only move the caret, and nothing steps in or out by one, since
+    // Return goes in (the vi-paradigm spec, Normal).
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
     // the count typed before it, 0 for none: the moves Operators.moved
     // takes; or, in the page mode, the drawer's, which DrawerPage.moved
     // takes.
     signal stepped(string act, int count)
+    // f or F's letter typed, with the count before the f, for the rows to
+    // go to the one it begins (Finding.js).
+    signal lettered(string act, int count, string letter)
+    // Whether the find goes up, as ? opened it, which n goes on with and
+    // N against, as Vim's do; / opens it going down.
+    property bool findsBack: false
     // An operator done: "ending" for d and "copy" for y, with the count
     // typed before it, 0 for none, and the motion it took, { act, count },
     // or null for dd and yy (QueryKeys.spanned takes them); in visual, d, y
@@ -374,16 +287,16 @@ Item {
     onAskingChanged: askedAt = Date.now()
 
     function clear() {
-        cleared = "";
         input.text = "";
     }
 
     // Takes the keys back from whatever else in its window had them, as it
-    // opens, so nothing cleared before is offered back, and a modal line
-    // opens on the find, so typing finds at once.
+    // opens, with no change or half-pressed key left from before, and a
+    // modal line opens on the find, so typing finds at once. That find is
+    // a fresh /, going down, whatever way the last one opened went.
     function take() {
-        cleared = "";
         changes = [];
+        findsBack = false;
         standing = QueryKeys.rest();
         mode = typingMode;
         input.forceActiveFocus();
@@ -453,6 +366,9 @@ Item {
         // another key's, so normal's leader begins with it; insert's is
         // still the field's to type, the table giving it nothing there.
         [Qt.Key_Space]: "Space",
+        // The bracket by its mark, for Ctrl+], which types a control
+        // character rather than the mark; bare, it goes by what it typed.
+        [Qt.Key_BracketRight]: "]",
         [Qt.Key_F1]: "F1"
     })
     // A key as the table names it (KeyNames.js).
@@ -538,6 +454,7 @@ Item {
             prompt.commanded("");
             return;
         }
+        const rested = key === "Escape" && mode === "normal" && !QueryKeys.pending(standing);
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -556,11 +473,13 @@ Item {
             return;
         }
         standing = read.standing;
-        if (key !== "")
-            cleared = "";
         if (!read.ours)
             return;
         event.accepted = true;
+        if (rested) {
+            prompt.rested();
+            return;
+        }
         if (read.idle) {
             prompt.idled(key);
             return;
@@ -604,8 +523,10 @@ Item {
             if (words && next === "normal" && changes.length > 0
                 && changes[changes.length - 1].text === text)
                 changes = changes.slice(0, -1);
-            if (read.act === "change" || read.act === "freshFind")
+            if (read.act === "change" || read.act === "freshFind" || read.act === "freshFindBack")
                 input.text = "";
+            if (read.act === "freshFind" || read.act === "freshFindBack")
+                findsBack = read.act === "freshFindBack";
             if (read.act === "changeWord") {
                 const made = Editing.edited(read.act, text, at, read.count);
                 input.text = made.text;
@@ -649,14 +570,8 @@ Item {
         case "run":
             prompt.returned(event);
             break;
-        case "into":
-            prompt.forward();
-            break;
         case "out":
             prompt.backward();
-            break;
-        case "dismiss":
-            prompt.cancelled();
             break;
         case "ending":
         case "copy":
@@ -687,6 +602,10 @@ Item {
             break;
         case "seek":
             prompt.sought(read.sought.pattern, read.sought.forward, read.count);
+            break;
+        case "toLetter":
+        case "toLetterBack":
+            prompt.lettered(read.act, read.count, read.letter);
             break;
         case "":
             break;
@@ -809,13 +728,24 @@ Item {
     implicitHeight: 4 * Theme.space.beat
     // The line's baseline, which the typed letters, the hint, the aside,
     // the glyph and a place's name all sit on, and the launcher's drawer
-    // sets its eyebrow on. It's the largest level's, the place's name at
-    // Title, set by centring its capitals on the field (docs/design.md, One
-    // Baseline a Line), and it's there out of a place too, where no name
-    // shows, so nothing on the line moves as one opens (Joel, 2026-11-05:
-    // "which? &etc. need to be baselined with the text to their left").
-    readonly property real lineBaseline: (height + titleCapitals) / 2
+    // sets its eyebrow on (Joel, 2026-11-05: "which? &etc. need to be
+    // baselined with the text to their left"). It's the largest level's,
+    // centred by eye in the field, the band a surface sizes it to: a
+    // place's name at Title in a place, and what's typed out of one, so
+    // each reads centred, the line settling as a place opens and its name
+    // arrives (docs/design.md: one baseline a line).
+    readonly property real lineBaseline: chips.length > 0
+        ? Bands.baseline(height, titleCaps.tightBoundingRect.height,
+            titleSmall.tightBoundingRect.height)
+        : Bands.baseline(height, figureCaps.tightBoundingRect.height,
+            figureSmall.tightBoundingRect.height)
     baselineOffset: lineBaseline
+    // How far the line stands below the field's middle out of a place,
+    // what's typed at the Figure: the line at rest, which a surface sizes
+    // the field's band by, so the band holds still as a place opens and
+    // only the line settles (docs/design.md: one baseline a line).
+    readonly property real restingLift: Bands.lift(figureCaps.tightBoundingRect.height,
+        figureSmall.tightBoundingRect.height)
 
     // Its glyph an inset from its left and its keys an inset from its right,
     // as a frame holds its text (docs/design.md, The Ladder), so a surface
@@ -841,21 +771,10 @@ Item {
         font.pointSize: Theme.level.figure.pointSize
     }
 
-    KeyHints {
-        id: fieldKeys
-        anchors.right: parent.right
-        anchors.rightMargin: Theme.space.rung.inset
-        anchors.baseline: input.baseline
-        visible: prompt.keysHeld
-        widths: prompt.keyPlaces
-        endsRight: true
-        keys: prompt.keysSaid
-    }
-
     Text {
         id: asideText
-        anchors.right: prompt.keysHeld ? fieldKeys.left : parent.right
-        anchors.rightMargin: prompt.keysHeld ? Theme.space.rung.groups : Theme.space.rung.inset
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.space.rung.inset
         anchors.baseline: input.baseline
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
@@ -903,15 +822,29 @@ Item {
         font.variableAxes: Theme.level.title.variableAxes
         font.letterSpacing: Theme.level.title.letterSpacing
     }
-    // How tall the title's capitals stand, which are centred on the field:
-    // TextMetrics, which measures again once the face has loaded, where a
-    // FontMetrics' call in a binding is asked once, before it has, and
+    // How tall the Title's and the Figure's capitals and small letters
+    // stand, which centre the line: TextMetrics rather than a FontMetrics'
+    // call, which a binding asks once, before the face has loaded, and
     // reads small ever after (HVD6O3, 2026-11-05).
-    readonly property real titleCapitals: titleCaps.tightBoundingRect.height
     TextMetrics {
         id: titleCaps
         text: "H"
         font: titleFace.font
+    }
+    TextMetrics {
+        id: titleSmall
+        text: "x"
+        font: titleFace.font
+    }
+    TextMetrics {
+        id: figureCaps
+        text: "H"
+        font: figureFace.font
+    }
+    TextMetrics {
+        id: figureSmall
+        text: "x"
+        font: figureFace.font
     }
 
     // What stands between two steps of the path, so they read as one place
@@ -1113,17 +1046,14 @@ Item {
         // each repeat would do it again, a setting turned on and off.
         // Qt calls these before Keys.onPressed, so a modal line hands them
         // to its table here, or Escape would close the launcher from
-        // insert and Tab would complete rather than move.
+        // insert, where it only leaves for normal, and Tab would complete
+        // rather than move.
         Keys.onReturnPressed: event => prompt.modal ? prompt.tabled(event)
             : prompt.returned(event)
         Keys.onEnterPressed: event => prompt.modal ? prompt.tabled(event)
             : prompt.returned(event)
         Keys.onTabPressed: event => prompt.modal ? prompt.tabled(event) : prompt.completed()
         Keys.onEscapePressed: event => prompt.modal ? prompt.tabled(event) : prompt.cancelled()
-        onTextChanged: {
-            if (text !== "")
-                prompt.cleared = "";
-        }
         onCursorPositionChanged: prompt.rest()
         Keys.onPressed: event => {
             // A key whose release comes late, past the repeat delay, while
@@ -1142,35 +1072,10 @@ Item {
                 prompt.modalKey(event);
                 return;
             }
-            if (prompt.secret) {
+            // Every other key is the field's, so the arrows only move the
+            // caret: no key of a plain line's steps anywhere.
+            if (prompt.secret)
                 prompt.secretKey(event);
-                return;
-            }
-            const none = input.selectionStart === input.selectionEnd;
-            const plainly = (event.modifiers & ~Qt.KeypadModifier) === Qt.NoModifier;
-            const restoring = event.key === Qt.Key_Right && plainly && input.text === ""
-                && prompt.cleared !== "";
-            if (!restoring)
-                prompt.cleared = "";
-            if (restoring) {
-                input.text = prompt.cleared;
-                input.cursorPosition = input.text.length;
-                event.accepted = true;
-            } else if (event.key === Qt.Key_Right && none
-                && input.cursorPosition === input.text.length) {
-                prompt.forward();
-                event.accepted = true;
-            } else if (event.key === Qt.Key_Left && plainly && prompt.leftClears
-                && input.text !== "") {
-                const was = input.text;
-                input.text = "";
-                prompt.cleared = was;
-                event.accepted = true;
-            } else if ((event.key === Qt.Key_Left && none && input.cursorPosition === 0)
-                || (event.key === Qt.Key_Backspace && input.text === "")) {
-                prompt.backward();
-                event.accepted = true;
-            }
         }
 
         // The caret in the accent, since it's where the keys go. It takes
@@ -1191,12 +1096,9 @@ Item {
         // (the launcher audit's finding 35, Joel's yes on 2026-10-26: it
         // stood a step right of it). A ghost runs on from what's typed as
         // one word, and ends in an ellipsis where the field does.
-        // Once the left arrow has cleared what's typed, what it took stands
-        // in its place as the ghost, which the right arrow puts back. The
-        // keys that take them are said at the field's right edge.
         // The hint is the shell's voice, in every field, sized by capitals
         // and sat on the typed letters' baseline, since the two faces' line
-        // boxes differ; the cleared words and the ghost are letters typed,
+        // boxes differ; the ghost is letters typed,
         // in the field's own face (look 3's piece 1).
         // y over an answer copies what the ghost says, so the ghost flashes
         // as a row y copies does (Choice.qml's flashed): the accent's ground
@@ -1230,7 +1132,7 @@ Item {
 
         Text {
             id: hintText
-            readonly property bool voiced: input.text === "" && prompt.cleared === ""
+            readonly property bool voiced: input.text === ""
             readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
             // With nothing typed, past the caret where one is drawn, a mark
             // after it, so the caret never covers the hint's first letter
@@ -1241,8 +1143,7 @@ Item {
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
             textFormat: Text.PlainText
-            text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
-                : prompt.ghost
+            text: input.text === "" ? prompt.hint : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
                 && !(input.text !== "" && prompt.narrowSaid)
             color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted

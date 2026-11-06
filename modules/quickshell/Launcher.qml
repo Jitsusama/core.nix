@@ -20,11 +20,12 @@
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
 // into Providers.qml), so a kind of thing is added or removed in one line.
 //
-// In normal, the right arrow steps into the selected row: what can be done
-// to it, its verbs, searched the same way, and for a verb that needs one,
-// its target. What's held shows as chips in the field; the left arrow, or
-// Backspace, steps back out. Each Escape takes one step back, and at the
-// level the launcher opened on closes it.
+// Return goes into a place or a thing with acts, and opens a program, a
+// window or a file; a row's other acts are its verbs as commands, on the
+// : line. What's held shows as chips in the field; - goes up, onto the
+// row come from, with its find. Escape leaves a line or cancels what's
+// begun, as Vim's does, and at rest does nothing; :q, ZZ or Space w close
+// it.
 //
 // What everything is called is the vocabulary's (Words.qml): its names,
 // the words that find it, its parts, and the categories it's in. A
@@ -50,10 +51,12 @@ import KeyTimes
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
+import "Bands.js" as Bands
 import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
+import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
 import "ModeMarks.js" as ModeMarks
@@ -81,8 +84,8 @@ Scope {
     // How many results show at once; the rest are a scroll away. Eight,
     // or as many as keep the card inside a small screen, a screen margin
     // above and below it, three at least (VKCF3Z, 2026-11-05: panels
-    // never run off the screen). Home's gap is allowed for whether it shows
-    // or not, so what's found never changes how many.
+    // never run off the screen). A page's gap is allowed for whether it
+    // shows or not, so what's found never changes how many.
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
         (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
             / rowTall)))
@@ -809,7 +812,7 @@ Scope {
     // by what it is, then onto the spot itself. A step gone since, such as a
     // headset turned off, stops it where it got to. Each step's row is
     // selected before it's stepped into, and the first step keeps what was
-    // typed and selected before it, so the left arrow climbs back out
+    // typed and selected before it, so - climbs back out
     // through every step and onto the search it came from, as any way in
     // does (Joel, 2026-10-26: every way in climbs back out the same way).
     function goTo(spot) {
@@ -1375,8 +1378,9 @@ Scope {
             glyph: Words.glyph(id),
             hue: "voice",
             chord: [],
-            side: "",
-            count: String(things.length),
+            // How many at its right, where a row's figure stands (VKCF3Z,
+            // 2026-11-05: one place for each kind of fact).
+            side: String(things.length),
             chip: entry.name.toLowerCase(),
             title: entry.name,
             nested: true,
@@ -1534,7 +1538,7 @@ Scope {
 
     // Steps into a category from a word and a space, or from the top,
     // through the places it sits in, so the path says where it lives and
-    // the left arrow climbs out through them; what was typed is put back on
+    // - climbs out through them; what was typed is put back on
     // the way out.
     function intoCategory(category, word) {
         const chain = placesAbove(category).concat([category]);
@@ -1577,7 +1581,7 @@ Scope {
 
     // A row for each collection that has matches: its best, with what's been
     // picked for this query before put first, and a count of the rest. Its
-    // verbs are the matches, which the right arrow steps into with what was
+    // verbs are the matches, which Return steps into with what was
     // typed kept. One letter finds too much of a collection to be worth a
     // row.
     property var gathered: []
@@ -1650,10 +1654,9 @@ Scope {
                     lands: true,
                     run: () => root.landInside(gathered, best)
                 });
-            // The right arrow on any found thing that holds more goes
-            // straight inside it, whatever its Return does (VKCF3Z,
-            // 2026-10-29: "← is where you came from; the crumbs are
-            // where it lives").
+            // Ctrl+] on any found thing that holds more goes straight to
+            // where it lives, whatever its Return does (VKCF3Z, 2026-10-29:
+            // "the crumbs are where it lives").
             else if (best.verbs || best.targets)
                 gathered.landsIn = best;
             rows.push(gathered);
@@ -1665,7 +1668,7 @@ Scope {
 
     // Steps into a collection's part, through the collection, and searches
     // it for what was typed, as Return on Recent's matches gathered at the
-    // top does: the left arrow climbs back out to the search.
+    // top does: - climbs back out to the search.
     function searchIn(source, part, letters) {
         into(source.settings.name);
         const at = matches.findIndex(one => steadyId(one) === steadyId(part));
@@ -1680,30 +1683,12 @@ Scope {
     function landInside(gathered, best) {
         if (enter(gathered) && selected && steadyId(selected) === steadyId(best)
             && enter(selected))
-            // The left arrow comes back past the collection to the search.
+            // - comes back past the collection to the search.
             held[held.length - 1].through = true;
     }
 
-    // The right arrow: into the selected row, or, for a match that lands
-    // inside what it found on Return, there as well, and for a row whose
-    // Return goes elsewhere in the launcher, there too. A program's act
-    // found from the top goes into its program, onto the act, so the path
-    // says where it lives (Applications.qml's foundAct).
-    function inward(row) {
-        if (row && row.lands)
-            row.run();
-        else if (row && row.landsIn)
-            landInside(row, row.landsIn);
-        else if (row && row.inside && held.length === 0)
-            goTo(row.inside);
-        else if (leadsElsewhere(row))
-            run(row, false);
-        else
-            enter(row);
-    }
-
     // How tall the list is while the launcher's open: always its rows, and
-    // home's gap when it has one.
+    // the gap of a page that opens with one.
     // Set as it opens, from the rows the screen gives.
     property int tall: 8 * rowTall
 
@@ -1780,7 +1765,7 @@ Scope {
         return among || (!row.targets && !!row.verbs);
     }
 
-    // Whether the right arrow steps into a row, as `enter` would: a thing's
+    // Whether a row holds more to step into, as `enter` would find: a thing's
     // insides, a verb's targets in a step, a place found from the top, or an
     // ask.
     function holdsMore(choice) {
@@ -1801,20 +1786,17 @@ Scope {
 
     // Whether a row with nothing inside it goes somewhere else in the
     // launcher on Return: a spot to where it is, a command into the field
-    // to be finished, one that opens a collection into it. The right arrow
-    // goes there as well (Joel, 2026-10-26: where Return goes somewhere in
-    // the launcher, the right arrow does the same).
+    // to be finished, one that opens a collection into it.
     function leadsElsewhere(choice) {
         return !!choice && !choice.gone && !holdsMore(choice)
             && (choice.trail !== undefined || choice.start !== undefined || !!choice.opens);
     }
 
-    // Whether Return steps into a row where the right arrow would, as `run`
-    // decides: a place or a holder, a verb wanting a target, one that can't
-    // be taken back, or one with nothing to do of its own. Such a row says
-    // both keys as one, with the right arrow's word, so stepping in has one
-    // word wherever it's done (Joel, 2026-10-26), where it was open, choose,
-    // go, see or the act asked about, and never says it twice.
+    // Whether Return steps into a row, as `run` decides: a place or a
+    // holder, a verb wanting a target, one that can't be taken back, or one
+    // with nothing to do of its own. Such a row says open, so stepping in
+    // has one word wherever it's done (Joel, 2026-10-26), where it was
+    // choose, go, see or the act asked about.
     function stepsIn(choice) {
         if (leadsElsewhere(choice) || copiesOnly(choice))
             return true;
@@ -1928,10 +1910,15 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        // In visual, Return opens the selection's rows it can, by count.
+        // In visual, Return opens the selection's rows it can, by count;
+        // d and y say what they do to the cursor row, and Space ? stands
+        // just before Return, the way to every key, as in normal (VKCF3Z,
+        // 2026-11-05).
         if (visual)
             return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
-                commandNamed(row))).length, Words.field.visual ?? {})]];
+                commandNamed(row))).length, Words.field.visual ?? {})],
+                ...operatorKeys(choice),
+                [hintKey("keys", "visual"), (Words.field.hints ?? {}).keys ?? ""]];
         // The row landed on says the act a second Return does, in the
         // accent, since it's the one key that changes something now; the
         // rest is normal's foot, as a landing is normal, so its shape never
@@ -1946,17 +1933,16 @@ Scope {
         // find's arrows move the caret.
         if (lands(choice))
             return [["\u21b5", ""]];
-        // The arrows are said by their marks alone, which Joel knows: the
-        // right arrow steps in and the left one steps back wherever they
-        // work, so their words only took room from the marks beside them
-        // (Joel, 2026-10-28: "i want icons to be able to be there as much
-        // as possible"). Going elsewhere keeps Return's own word, where it
-        // takes him.
-        const more = leadsElsewhere(choice) ? verbOf(choice) : "";
+        // Going elsewhere keeps Return's own word, where it takes him.
+        // Return going in says open, on the find and in normal alike, as
+        // oil's Return opens a folder, it being the one way in: stepping in
+        // has one word wherever it's done (1JQ9TO, 2026-11-05).
+        const more = leadsElsewhere(choice) ? verbOf(choice)
+            : ((Words.field.hints ?? {}).open ?? "");
         const stepping = stepsIn(choice) || stepsThing(choice);
         // Normal names its keys by letter and lowercase verb, from the
-        // table that does them (the vi-paradigm spec's foot): l in, h out,
-        // : commands and Space ?, the way to every key, always.
+        // table that does them (the vi-paradigm spec's foot): - up, :
+        // commands and Space ?, the way to every key, always.
         if (prompt.modal && prompt.mode === "normal")
             return normalKeys(choice, stepping, more);
         // No arrow is named: where a line is typed they move its caret, and
@@ -1999,15 +1985,19 @@ Scope {
         return taught;
     }
 
-    // Normal's keys for a row: Return's act, l where it steps in, h where
-    // there's a place to step out to, then : and Space ?.
+    // Normal's keys for a row: Return's act, which goes in where it steps
+    // in, - where there's a place to go up to, then : and Space ?.
     function normalKeys(choice, stepping, more) {
         const hints = Words.field.hints ?? {};
         const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
-        if (stepping || holdsMore(choice))
-            keys.push([hintKey("into"), hints.in ?? ""]);
+        // A row that opens on Return but holds parts says Ctrl+] goes into
+        // them, drawn first, furthest from Return, so it is the first to give
+        // way, and Space ? stays just before Return (VKCF3Z, 2026-11-05:
+        // "Ctrl+] in \u00b7 Space ? keys \u00b7 \u21b5 open").
+        if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
+            keys.push([hintKey("follow"), hints.in ?? ""]);
         if (held.length > 0)
-            keys.push([hintKey("out"), hints.out ?? ""]);
+            keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
@@ -2064,6 +2054,18 @@ Scope {
         say([[":q", hints.quits ?? ""], ["q", hints.quit ?? ""]]);
     }
 
+    // What h or l says on a row, which has no line to move along: that it
+    // means nothing here, and Vim's way in or out beside it, at the right
+    // end where Return stands, so it reads "l not here \u00b7 \u21b5 open" and
+    // "h not here \u00b7 - up" (the vi-paradigm spec, Normal). Each key is
+    // the table's, so neither names one that does nothing; Backspace is h.
+    function sayTheWay(act) {
+        const hints = Words.field.hints ?? {};
+        const way = act === "intoSaid" ? [hintKey("run"), hints.open ?? ""]
+            : [hintKey("out"), hints.up ?? ""];
+        say([way, [hintKey(act), hints.notHere ?? ""]]);
+    }
+
     // A key as the foot says it: its mark, then its word where it has one.
     function saidKey(key) {
         return key[1] === "" ? key[0] : `${key[0]} ${key[1]}`;
@@ -2092,12 +2094,13 @@ Scope {
     // the launcher opens: as wide as Shift+Return's "below" beside a mark.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
         ["\u21e7\u21b5", "below"], ["\u2192", ""]]
-    // What normal says beside Return at home: in, the commands and the
-    // keys, kept once normal is taken rather than from the opening. Kept
-    // from the start, it cut the battery's charge from the glance on the
-    // find, which never gives way; out is said only once a step is held,
-    // whose rows grow the room as any row does.
-    readonly property var footNormalRoom: [["\u21b5", footVerbRoom], ["l", "in"],
+    // What normal says beside Return at home: the commands and the keys,
+    // kept once normal is taken rather than from the opening. Kept from
+    // the start, it cut the battery's charge from the glance on the find,
+    // which never gives way; - up is said only once a step is held, and
+    // Ctrl+] in only on a row holding parts, whose rows grow the room as
+    // any row does.
+    readonly property var footNormalRoom: [["\u21b5", footVerbRoom],
         [":", "commands"], ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
@@ -2108,7 +2111,7 @@ Scope {
     property real footKeysWidest: 0
 
     function footReset() {
-        footReturnWidest = keys.advance("\u21b5", footVerbRoom);
+        footReturnWidest = statusLine.keys.advance("\u21b5", footVerbRoom);
         footKeysWidest = keysWide(footKeysRoom);
     }
 
@@ -2116,13 +2119,13 @@ Scope {
     function keysWide(told) {
         if (told.length === 0)
             return 0;
-        return told.slice(1).reduce((sum, key) => sum + keys.spacing
-            + keys.advance(key[0], key[1]), returnPlace(told[0]));
+        return told.slice(1).reduce((sum, key) => sum + statusLine.keys.spacing
+            + statusLine.keys.advance(key[0], key[1]), returnPlace(told[0]));
     }
 
     // How wide Return's place is beside what it says now.
     function returnPlace(key) {
-        return Math.max(keys.advance(key[0], key[1]), footReturnWidest);
+        return Math.max(statusLine.keys.advance(key[0], key[1]), footReturnWidest);
     }
 
     function noteKeys() {
@@ -2135,7 +2138,7 @@ Scope {
         if (prompt.mode === "normal")
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
-            ...said.map(told => keys.advance(told[0][0], told[0][1])));
+            ...said.map(told => statusLine.keys.advance(told[0][0], told[0][1])));
         if (place > footReturnWidest)
             footReturnWidest = place;
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
@@ -2371,10 +2374,10 @@ Scope {
 
     function home() {
         const room = rowRoom();
+        // Now is home's first row, not a group of its own, so the rows sit
+        // a row apart from the head's hairline to the foot's (VKCF3Z,
+        // 2026-11-05).
         const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
-        // Now stands apart from the rest by a gap, as what's this moment.
-        if (rows.length > 1)
-            rows[1] = Object.assign({}, rows[1], { gap: true });
         // Now's plate sets its lines on home's rows (look 3): what needs
         // Joel on Agents', the day's facts from Programs' and the clock's
         // from Desktop's, each by where that row is today, or -1 where
@@ -2567,6 +2570,53 @@ Scope {
         jumping = false;
         restart(to.here.typed);
         reselect(to.here);
+    }
+    // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
+    // that opens on Return, as a mail, a program or a session do, into the
+    // place listing its parts, which nothing else reaches (VKCF3Z,
+    // 2026-11-05). The place left goes on the tags' way back, as Vim's tag
+    // stack keeps it, and on the jump list, as any place left does; Ctrl+T
+    // reads it back (#1905). A row holding nothing says so.
+    property var tagsBack: []
+    // Whether Ctrl+] goes into a row's own parts. A notice's acts are
+    // commands under its card's words, not parts (VKCF3Z, 2026-11-05), so
+    // Ctrl+] leaves it to where it lives instead.
+    function holdsParts(row) {
+        return holdsMore(row) && kindOf(row) !== "notice";
+    }
+    function follow(row) {
+        const left = { held: held, here: here() };
+        if (row && !row.gone && followed(row)) {
+            tagsBack = tagsBack.concat([left]);
+            return;
+        }
+        say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
+    }
+    // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
+    // lost (Joel's rule): a found act into its program, a row into its
+    // parts, a found place to where it sits, and a spot or a collection
+    // that opens to where it leads. A command, which only fills the line,
+    // has no place, nor a notice, whose acts are commands.
+    function followed(row) {
+        if (row.lands) {
+            row.run();
+            return true;
+        }
+        if (row.landsIn) {
+            landInside(row, row.landsIn);
+            return true;
+        }
+        if (kindOf(row) === "notice")
+            return false;
+        if (row.inside && held.length === 0) {
+            goTo(row.inside);
+            return true;
+        }
+        if (leadsElsewhere(row) && row.start === undefined) {
+            run(row, false);
+            return true;
+        }
+        return enter(row);
     }
     function toLastPlace() {
         if (lastPlace === null)
@@ -4001,6 +4051,47 @@ Scope {
     // Moves the selection as an arrow does, timing the key to its frame as
     // a typed one is. A key that moves nothing draws nothing, so it isn't
     // timed: its frame would be whatever came next.
+    // The last f or F, which ; and , go again (Finding.js).
+    property var lastLetter: null
+
+    // n and N: the find's next row or the one before, `forward` its way,
+    // round past an end and saying so, as Vim's wrapscan does; with nothing
+    // typed, or nothing found, Vim's E35 or E486, the rows staying put.
+    function toMatch(forward, count, key) {
+        const hints = Words.field.hints ?? {};
+        const went = Finding.matchTo({ at: current, count, forward, last: matches.length - 1,
+            typed });
+        if (went.none) {
+            say([[(hints[went.none] ?? "").replace("{typed}", typed), ""]]);
+            return;
+        }
+        arrowed(went.to, key);
+        if (went.wrapped !== "")
+            say([[went.wrapped === "bottom" ? hints.wrappedBottom : hints.wrappedTop, ""]]);
+    }
+
+    // f and F to the next row and the one before whose name begins with
+    // `letter`, and ; and , again, the same way and the other; with no such
+    // row, or no f before ;, it says so and the rows stay put.
+    function toLetter(act, count, letter) {
+        const hints = Words.field.hints ?? {};
+        const sought = Finding.again(lastLetter, act, letter);
+        if (sought === null) {
+            say([[hints.noAgain ?? "", ""]]);
+            return;
+        }
+        if (act === "toLetter" || act === "toLetterBack")
+            lastLetter = sought;
+        const to = Finding.letterTo({ at: current, count, sought,
+            names: matches.map(row => row?.name ?? "") });
+        if (to < 0) {
+            say([[(hints.noLetter ?? "").replace("{way}", sought.forward ? hints.below : hints.above)
+                .replace("{letter}", sought.letter), ""]]);
+            return;
+        }
+        arrowed(to, QueryKeys.keyOf(act, "normal"));
+    }
+
     function arrowed(to, arrow) {
         trials.pressed("arrows");
         if (to === current)
@@ -4906,9 +4997,9 @@ Scope {
     readonly property real drawerGap: Theme.space.rung.frames
     readonly property real drawerMargin: Theme.space.rung.screen
     // The card's lines the drawer's are set on, down from its top: the
-    // field's centre, the prompt an inset inside the frame, and the first
-    // row's, below the field, its hairline and the list's inset.
-    readonly property real fieldLine: Theme.border + headTop + prompt.height / 2
+    // field's centre, the field filling the head's band, and the first
+    // row's, below the field and its hairline.
+    readonly property real fieldLine: Theme.border + prompt.height / 2
     readonly property real fieldBase: headBase
     readonly property real rowLine: Theme.border + headTall + Theme.border + rowTall / 2
     // How tall a row is, four beats; its middle is a centre, half of it,
@@ -4930,29 +5021,29 @@ Scope {
     // less a mark before the gutter's end.
     readonly property real textAreaAt: rowsGutter.x + rowsGutter.width
         - (Theme.space.rung.inset - Theme.space.rung.mark)
-    // The head's line, set so its capitals stand an inset under the frame.
-    readonly property real headTop: Theme.space.rung.inset
-        - (prompt.baselineOffset - headCaps.tightBoundingRect.height)
-    // Where the field's baseline stands, down from the card's top.
-    readonly property real headBase: Theme.border + headTop + prompt.baselineOffset
-    // How tall the head is above its hairline: so the first row's baseline
-    // lies a row under the field's, and the plate's beat counts on from
-    // it (VKCF3Z, 2026-11-05).
-    readonly property real headTall: headBase + rowTall - 2 * Theme.border
-        - (rowTall + rowCaps) / 2
+    // Where the field's baseline stands, down from the card's top: centred
+    // by eye in the head's band, the frame's inside to its hairline, which
+    // the field fills (docs/design.md: text in a band centres in it).
+    readonly property real headBase: Theme.border + prompt.baselineOffset
+    // How tall the head is above its hairline: so the field's line at rest
+    // stands centred in it and a row over the first row's, and the plate's
+    // beat counts on from it (VKCF3Z, 2026-11-05). A place's name, larger,
+    // centres on its own, settling a few pixels lower in the same band.
+    readonly property real headTall: Bands.above(rowTall, rowCaps, prompt.restingLift,
+        Theme.border)
     // How tall a row's capitals stand, which its ground is set round.
     readonly property real rowCaps: nameCaps.tightBoundingRect.height
     // Where the foot's baseline stands under its hairline: its capitals
     // centred in a row's height, as a row's are, and an inset above the
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
-    // The gap that sets the collections apart at home, above a row that
-    // has one; the card's height, the list and the rows' lines all read
+    // The gap that sets a page's groups apart, above a row that has one,
+    // as Network's does; home has none; the card's height, the list and the rows' lines all read
     // it, so the plate's lines can't drift from the list's.
     readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
     // The middle of each row the card shows, down from its top: the first
-    // row's, then a row further for each, and home's gap above a row that
-    // has one, so Now's plate can set a line on any of them. Worked out
+    // row's, then a row further for each, and a gap above a row that has
+    // one, so Now's plate can set a line on any of them. Worked out
     // from the rows shown rather than read from the list, so it holds
     // while the list is still drawing them.
     readonly property var rowLines: {
@@ -5038,7 +5129,7 @@ Scope {
             // What the mode word's room says: a count, a search, what's
             // chosen; and the foot's start, the mode in three capitals.
             modeSays: modeWord.visible ? modeWord.said : "",
-            modeMark: markText.visible ? markText.text : "",
+            modeMark: statusLine.marked ? statusLine.mark : "",
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -5160,6 +5251,9 @@ Scope {
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
+            // Where the status line's last ink should end: the inset in
+            // from the frame, as its first starts.
+            footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
             // The keys the foot says now, each its mark and its word.
             hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
@@ -5339,7 +5433,7 @@ Scope {
     }
 
     // Opens straight into a collection, all of it shown until something's
-    // typed; the left arrow steps out to the search. A name no collection
+    // typed; - steps out to the search. A name no collection
     // has opens the search.
     function into(name) {
         open = true;
@@ -5380,11 +5474,12 @@ Scope {
         lastPlace = null;
         jumpsBack = [];
         jumpsAhead = [];
+        tagsBack = [];
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
-    // straight into, where normal's Escape at rest closes it, as it does at
-    // home, rather than stepping out to a home it never showed.
+    // straight into, where :q closes it, as it does at home, rather than
+    // stepping out to a home it never showed.
     property int homeDepth: 0
 
     onOpenChanged: {
@@ -5420,6 +5515,7 @@ Scope {
             lastPlace = null;
             jumpsBack = [];
             jumpsAhead = [];
+            tagsBack = [];
             listing = false;
             listedInDrawer = false;
             prompt.forget();
@@ -5430,9 +5526,9 @@ Scope {
             // when the first row has details.
             drawerResting.stop();
             drawerSettled();
-            // Always the same height, eight rows and home's gap, kept until
-            // it closes, so the card is the same shape however much home
-            // holds.
+            // Always the same height, eight rows, kept until it closes, so
+            // the card is the same shape however much home holds and its
+            // rows fill it to the foot, none held under the last.
             tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
@@ -5732,19 +5828,11 @@ Scope {
             Column {
                 width: parent.width
 
-                // The faces whose capitals set the head's, the rows' and the
-                // foot's lines (root.headTop, root.rowCaps, root.footBase):
-                // TextMetrics rather than a FontMetrics' call, which a
-                // binding asks once, before the face has loaded, and reads
-                // small ever after (HVD6O3, 2026-11-05).
-                TextMetrics {
-                    id: headCaps
-                    text: "H"
-                    font.family: Theme.level.figure.family
-                    font.pointSize: Theme.level.figure.pointSize
-                    font.weight: Theme.level.figure.weight
-                }
-
+                // The faces whose capitals set the rows' and the foot's
+                // lines (root.rowCaps, root.footBase): TextMetrics rather
+                // than a FontMetrics' call, which a binding asks once,
+                // before the face has loaded, and reads small ever after
+                // (HVD6O3, 2026-11-05).
                 TextMetrics {
                     id: nameCaps
                     text: "H"
@@ -5759,9 +5847,8 @@ Scope {
                     font.pointSize: Theme.level.note.pointSize
                 }
 
-                // What's typed, its capitals an inset inside the frame, its
-                // hairline drawn over its last pixel so the rows meet the
-                // line with what a row leaves.
+                // What's typed, in the band from the frame's inside to its
+                // hairline, its line centred there by eye.
                 Item {
                     width: parent.width
                     height: root.headTall
@@ -5769,10 +5856,8 @@ Scope {
 
                     Prompt {
                         id: prompt
-                        // The command line takes its place while it's
-                        // open, and what it said went wrong for a key
-                        // after; hidden by its light, so its focus stays.
-                        opacity: root.commanding === null && !root.commandSays ? 1 : 0
+                        // It stays while the command line is open at the
+                        // bottom, as Vim's buffer stays above its : line.
                         // From the drawer, :{n} and :$ go to its lines,
                         // as they do in his Neovim's window; from visual,
                         // the line takes the rows chosen.
@@ -5795,14 +5880,15 @@ Scope {
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
-                        keyWords: Words.field.keys ?? {}
                         // From the frame, its own inset inside, at the card's
                         // inset over the gutter's numbers, as Vim's / and :
                         // lines start at column 0, left of its number column:
                         // the line is the screen's, the gutter the buffer's,
                         // and a long ask keeps its room (VKCF3Z, 2026-11-05).
-                        y: root.headTop
+                        // It fills the head's band, so its own centring is
+                        // the band's.
                         width: parent.width
+                        height: parent.height
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
@@ -5844,9 +5930,6 @@ Scope {
                         narrowed: root.typed !== "" && root.current >= 0
                             && root.matches.length > 0
                             ? `${root.current + 1} of ${root.matches.length}` : ""
-                        // What's typed narrows a list, so the left arrow
-                        // takes it away whole before it steps back out.
-                        leftClears: true
                         onTextChanged: {
                             const due = root.keysDue;
                             trials.retyped(due.length > 0 ? due[due.length - 1].text
@@ -5926,20 +6009,34 @@ Scope {
                             else
                                 root.open = false;
                         }
+                        // Escape at rest lets the key list go, and words
+                        // asked for, as it leaves what's begun, and closes
+                        // nothing (Joel, 2026-11-05: "fuck escape quitting").
+                        onRested: {
+                            if (root.listing)
+                                root.listing = false;
+                            else if (root.asking)
+                                root.back();
+                        }
                         // A key with no meaning here says so, until the next.
                         onIdled: key => root.say([[ListedKeys.face(key),
                             (Words.field.hints ?? {}).notHere ?? ""]])
-                        onForward: {
-                            root.searchNow();
-                            trials.pressed("steps");
-                            root.inward(root.matches[root.current]);
-                        }
+                        // - goes up, as his oil's; at home, with nothing
+                        // above, it says so, as any key meaning nothing does.
                         onBackward: {
                             root.searchNow();
                             trials.pressed("backs");
-                            root.back();
+                            if (root.held.length === 0)
+                                root.say([[root.hintKey("out"),
+                                    (Words.field.hints ?? {}).notHere ?? ""]]);
+                            else
+                                root.back();
                         }
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
+                        onLettered: (act, count, letter) => {
+                            root.searchNow();
+                            root.toLetter(act, count, letter);
+                        }
                         // The ask, while it stands, takes every key, and one
                         // no keys asked is said in the line's place.
                         confirming: root.asked !== null
@@ -6016,6 +6113,16 @@ Scope {
                             case "jumpForward":
                                 root.jump(1);
                                 return;
+                            case "follow":
+                                root.follow(root.matches[root.current] ?? null);
+                                return;
+                            // h and l on a row say Vim's way out and in,
+                            // and Backspace as h, read as the one beside
+                            // :q is: "l not here \u00b7 \u21b5 open".
+                            case "intoSaid":
+                            case "outSaid":
+                                root.sayTheWay(act);
+                                return;
                             case "quitSaid":
                                 root.sayQuit();
                                 return;
@@ -6027,6 +6134,16 @@ Scope {
                                 return;
                             case "openOwn":
                                 root.matches[root.current]?.openOwn?.();
+                                return;
+                            // n goes the find's way and N against it.
+                            case "matchNext":
+                            case "matchBack":
+                                root.toMatch((act === "matchNext") !== findsBack, count,
+                                    QueryKeys.keyOf(act, "normal"));
+                                return;
+                            case "letterAgain":
+                            case "letterAgainBack":
+                                root.toLetter(act, count, "");
                                 return;
                             case "otherEnd":
                             case "reselect":
@@ -6056,66 +6173,6 @@ Scope {
                         }
                     }
 
-                    // The command line, in the find line's place while
-                    // : is open, made only then.
-                    Loader {
-                        id: commandLoader
-                        y: root.headTop
-                        width: parent.width
-                        height: prompt.height
-                        active: root.commanding !== null
-                        onLoaded: item.take(root.commanding?.range ?? "")
-
-                        sourceComponent: CommandLine {
-                            menu: root.commanding?.menu ?? []
-                            argued: (entry, arg) => root.commandArguments(entry, arg)
-                            onRan: read => root.commandRan(read)
-                            // Let go from the drawer, the keys go back onto
-                            // its page however it was let go, choosing
-                            // nothing, as Vim's visual ends at its : line.
-                            onLetGo: how => root.commandLeft(
-                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
-                                : how === "dropped" ? root.commanding?.from ?? "normal"
-                                : "normal")
-                        }
-                    }
-
-                    // What Return on the command line said, in its place
-                    // for the next key alone, as Vim's command line says
-                    // E492 or volume=40: its words in text on the names'
-                    // column, and for what went wrong the failed mark in
-                    // the alert.
-                    Item {
-                        y: root.headTop
-                        width: parent.width
-                        height: prompt.height
-                        visible: root.commandSays
-
-                        Text {
-                            x: Theme.space.rung.inset
-                            anchors.baseline: commandSaidText.baseline
-                            visible: root.commandFailed
-                            text: Theme.glyph.failed
-                            color: Theme.alert
-                            font.family: Theme.level.figure.family
-                            font.pointSize: Theme.level.figure.pointSize
-                        }
-
-                        Text {
-                            id: commandSaidText
-                            x: Theme.space.rung.inset + root.glyphColumn
-                            width: parent.width - x - Theme.space.rung.inset
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.commandSaid
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            color: Theme.text
-                            font.family: Theme.level.figure.family
-                            font.pointSize: Theme.level.figure.pointSize
-                            font.weight: Theme.level.figure.weight
-                            font.features: Theme.level.figure.features
-                        }
-                    }
                 }
 
                 // What it reaches, split from what's typed by a hairline,
@@ -6141,16 +6198,103 @@ Scope {
                     Item {
                         id: listBox
                         width: parent.width
-                        // Over a viewer only the line's menu, as tall as it.
-                        height: root.over !== null ? commandMenu.height : root.tall
+                        // Over a viewer only the line and its menu, as tall
+                        // as they are.
+                        height: root.over !== null
+                            ? commandMenu.height + commandBand.height : root.tall
                         opacity: root.wordsShown
 
-                        // The command line's menu rises over the rows'
-                        // bottom, so the cursor row stays in view above
+                        // The command line, at the rows' bottom while : is
+                        // open, above the foot, as Vim's sits under its
+                        // buffer, and what Return on it said for the next
+                        // key after: a row tall, its capitals centred as a
+                        // row's, so it meets the foot as a row does.
+                        Item {
+                            id: commandBand
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: root.commanding !== null || root.commandSays
+                                ? root.rowTall : 0
+                            visible: height > 0
+                            z: 1
+                            // The rows end above it, so the cursor row is
+                            // kept in view as it comes and goes.
+                            onHeightChanged: {
+                                if (root.current >= 0)
+                                    Qt.callLater(() => list.positionViewAtIndex(root.current,
+                                        ListView.Contain));
+                            }
+
+                            Loader {
+                                id: commandLoader
+                                anchors.fill: parent
+                                active: root.commanding !== null
+                                onLoaded: item.take(root.commanding?.range ?? "")
+
+                                sourceComponent: CommandLine {
+                                    menu: root.commanding?.menu ?? []
+                                    argued: (entry, arg) => root.commandArguments(entry, arg)
+                                    onRan: read => root.commandRan(read)
+                                    // Let go from the drawer, the keys go back
+                                    // onto its page however it was let go,
+                                    // choosing nothing, as Vim's visual ends
+                                    // at its : line.
+                                    onLetGo: how => root.commandLeft(
+                                        QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                        : how === "dropped" ? root.commanding?.from ?? "normal"
+                                        : "normal")
+                                }
+                            }
+
+                            // What Return on the command line said, in its
+                            // place for the next key alone, as Vim's command
+                            // line says E492 or volume=40: its words in text
+                            // where what's typed stood, and for what went
+                            // wrong the failed mark in the alert.
+                            Item {
+                                anchors.fill: parent
+                                visible: root.commandSays
+
+                                Text {
+                                    x: Theme.space.rung.inset
+                                    anchors.baseline: commandSaidText.baseline
+                                    visible: root.commandFailed
+                                    text: Theme.glyph.failed
+                                    color: Theme.alert
+                                    font.family: Theme.level.figure.family
+                                    font.pointSize: Theme.level.figure.pointSize
+                                }
+
+                                Text {
+                                    id: commandSaidText
+                                    x: Theme.space.rung.inset + root.glyphColumn
+                                    width: parent.width - x - Theme.space.rung.inset
+                                    y: (parent.height + saidCaps.tightBoundingRect.height) / 2
+                                        - baselineOffset
+                                    text: root.commandSaid
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    color: Theme.text
+                                    font.family: Theme.level.figure.family
+                                    font.pointSize: Theme.level.figure.pointSize
+                                    font.weight: Theme.level.figure.weight
+                                    font.features: Theme.level.figure.features
+                                }
+
+                                TextMetrics {
+                                    id: saidCaps
+                                    text: "H"
+                                    font: commandSaidText.font
+                                }
+                            }
+                        }
+
+                        // The command line's menu rises from the line over
+                        // the rows, so the cursor row stays in view above
                         // it, made only while : is open.
                         Loader {
                             id: commandMenu
-                            anchors.bottom: parent.bottom
+                            anchors.bottom: commandBand.top
                             width: parent.width
                             height: item ? item.implicitHeight : 0
                             active: root.commanding !== null
@@ -6175,7 +6319,9 @@ Scope {
                         Gutter {
                             id: rowsGutter
                             x: Theme.space.rung.inset
-                            height: parent.height
+                            // As tall as the rows, so no number stands
+                            // beside the command line or its menu.
+                            height: parent.height - commandMenu.height - commandBand.height
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
                             current: root.current
@@ -6203,7 +6349,7 @@ Scope {
                             width: parent.width - x
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
-                            anchors.bottomMargin: commandMenu.height
+                            anchors.bottomMargin: commandMenu.height + commandBand.height
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
                             // says it, so their graphs stand in one column that
@@ -6703,12 +6849,12 @@ Scope {
                         // widest of them has needed since the launcher
                         // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.rung.inset
-                            - Math.max(root.footKeysWidest, keys.implicitWidth)
+                            - Math.max(root.footKeysWidest, statusLine.keys.implicitWidth)
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.
-                        readonly property real room: keysFrom - Theme.space.rung.groups - standing.x
-                            - modeWord.room
+                        readonly property real room: keysFrom - Theme.space.rung.groups
+                            - statusLine.factsAt - modeWord.room
 
                         // As the card last showed it, while it's closed.
                         property string said: ""
@@ -6731,9 +6877,10 @@ Scope {
                         }
 
                         width: parent.width
-                        // Down to its baseline and an inset under it, so the
-                        // last baseline stands an inset above the frame.
-                        height: root.footBase + Theme.space.rung.inset
+                        // Its baseline on the rows' rhythm, and the frame's
+                        // bottom where the line's text centres under its
+                        // hairline (docs/design.md: a frame's bottom is set).
+                        height: statusLine.tall
 
                         // How things stand, the quietest thing here: the
                         // facts the margin's pieces hold that are always
@@ -6840,7 +6987,7 @@ Scope {
                                 ? foot.width - Theme.space.rung.inset - x
                                 : room - Theme.space.rung.groups)
                             anchors.baseline: parent.top
-                            anchors.baselineOffset: root.footBase
+                            anchors.baselineOffset: statusLine.base
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
@@ -6853,36 +7000,28 @@ Scope {
                             font: measure.font
                         }
 
-                        // The mode in three capitals at the foot's start, as
-                        // held notices' foot names it (Joel, 2026-11-05: "the
-                        // mode should be 3 letters, in caps, and in a place
-                        // where they are more obvious and not lost with other
-                        // things"): set as a label, muted in normal and in the
-                        // accent in every other mode, as his status line
-                        // names a mode. Every mark is three of the mono's
-                        // capitals, so the facts after it never move, and a
-                        // line with no modes, as a secret's, keeps its room
-                        // with none shown.
-                        Text {
-                            id: markText
+                        // The status line held notices' foot is too (StatusLine.qml):
+                        // the mode in three capitals first (Joel, 2026-11-05: "the
+                        // mode should be 3 letters, in caps, and in a place where
+                        // they are more obvious and not lost with other things"),
+                        // then the facts and the mode's word, set here from where
+                        // it says, then the selected row's keys at the right,
+                        // joined by dots, Return last in its place
+                        // (footReturnWidest), the rest close by. A line with no
+                        // modes, as a secret's, keeps the mark's room with none
+                        // shown.
+                        StatusLine {
+                            id: statusLine
 
-                            readonly property string mark: ModeMarks.mark(prompt.mode,
-                                root.commanding !== null)
-
-                            x: Theme.space.rung.inset
-                            anchors.baseline: parent.top
-                            anchors.baselineOffset: root.footBase
-                            visible: prompt.modal
-                            text: mark
-                            textFormat: Text.PlainText
-                            color: mark === ModeMarks.mark("normal", false) ? Theme.muted
-                                : Theme.accent
-                            font.family: Theme.level.label.family
-                            font.pointSize: Theme.level.label.pointSize
-                            font.weight: Theme.level.label.weight
-                            font.capitalization: Theme.level.label.capitalization
-                            font.letterSpacing: Theme.level.label.letterSpacing
-                            font.features: Theme.level.label.features
+                            anchors.fill: parent
+                            // On the rows' rhythm, as #1954 set the foot's.
+                            base: root.footBase
+                            mark: ModeMarks.mark(prompt.mode, root.commanding !== null)
+                            resting: mark === ModeMarks.mark("normal", false)
+                            marked: prompt.modal
+                            hints: foot.shown
+                            widths: foot.shown.map((key, at) => at === foot.shown.length - 1
+                                ? foot.returnPlace : 0)
                         }
 
                         Row {
@@ -6982,15 +7121,12 @@ Scope {
                                 (sum, fact) => sum + place(fact), 0)
                                 + Math.max(0, kept.length - 1) * spacing)
 
-                            // Past the mark, a group apart, as the facts are a
-                            // group of their own on the line. The label's
-                            // tracking follows its last capital too, so it's
-                            // taken off, leaving the rung from ink to ink:
-                            // with it the gap measured 24 where the rung is 20.
-                            x: markText.x + markText.implicitWidth - markText.font.letterSpacing
-                                + Theme.space.rung.groups
-                            // Its facts' baselines on the foot's.
-                            y: root.footBase - measure.ascent
+                            // Where the status line says the facts start, a
+                            // group past the mark.
+                            x: statusLine.factsAt
+                            // On the status line's baseline, as its letters
+                            // are, its facts all in the one face.
+                            y: statusLine.base - measure.ascent
                             spacing: Theme.space.rung.items
 
                             // The foot's face: Note, a step under the rows,
@@ -7017,6 +7153,11 @@ Scope {
                                 Text {
                                     required property var modelData
 
+                                    // The room it has needed since the launcher
+                                    // opened, so one reading shorter moves
+                                    // nothing after it; the gap to the next
+                                    // counts from that room (VKCF3Z, 2026-11-05).
+                                    width: standing.place(modelData)
                                     text: modelData.said
                                     textFormat: Text.PlainText
                                     // Its figures in text, small enough at Note
@@ -7030,17 +7171,6 @@ Scope {
                             }
                         }
 
-                        KeyHints {
-                            id: keys
-                            x: foot.width - Theme.space.rung.inset - implicitWidth
-                            anchors.baseline: parent.top
-                            anchors.baselineOffset: root.footBase
-                            // The selected row's keys, Return last in its
-                            // place (footReturnWidest), the rest close by.
-                            keys: foot.shown
-                            widths: foot.shown.map((key, at) => at === foot.shown.length - 1
-                                ? foot.returnPlace : 0)
-                        }
                     }
                 }
             }

@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use update_to_main::config::{
-    Busy, Config, Follow, Here, Hosted, Kept, Kind, Session, Signers, Tools,
+    Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
 };
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, serve, update};
@@ -100,12 +100,15 @@ impl World {
         // go to their own builders, failing while no-kept-builder is there.
         // Either may be built here, small, which writes them in here. A system's
         // build starts a call while call-starts is there. Each input
-        // overridden is written down.
+        // overridden is written down, and a system made for a commit with
+        // its input at a rev, as COMMIT+REV, is what they build.
+        // Otherwise the system is the commit's own.
         write_program(
             &stand_ins.join("nix"),
             &format!(
-                "{head}\nprev=\nbefore=\nfor a; do\n\
-                 [ \"$before\" = --override-input ] && echo \"$prev $a\" >> {overridden}\n\
+                "{head}\nprev=\nbefore=\ninput=\nfor a; do\n\
+                 [ \"$before\" = --override-input ] && echo \"$prev $a\" >> {overridden} \
+                 && input=${{a##*rev=}} && input=${{input%%&*}}\n\
                  before=$prev; prev=$a; last=$a; done\n\
                  case \" $* \" in\n\
                  *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
@@ -139,6 +142,7 @@ impl World {
                  echo \"$rev\" >> {log}\n\
                  if [ -e {call_starts} ]; then touch {call}; fi\n\
                  if [ -e {systems}/$rev.fails ]; then echo 'error: builder failed' >&2; exit 1; fi\n\
+                 if [ -n \"$input\" ] && [ -e {systems}/$rev+$input ]; then rev=$rev+$input; fi\n\
                  echo {systems}/$rev\n",
                 log = root.join("builds").display(),
                 fetched = root.join("fetched").display(),
@@ -188,6 +192,7 @@ impl World {
             health_within: 1,
             battery_floor: 20,
             refuse_while: Vec::new(),
+            holds: None,
             power_supplies: root.join("power"),
             tools: Tools {
                 git: program("git"),
@@ -1330,6 +1335,7 @@ fn main_where_it_was_with_its_input_moved_on_is_built_again() {
         }
     );
     let newer = world.core_commit("newer", true);
+    world.system(&format!("{head}+{newer}"));
     assert_eq!(world.update().1, following_done(&head, &newer));
     assert_eq!(world.builds(), 2);
 }
@@ -1677,4 +1683,128 @@ fn a_machine_not_busy_updates() {
     let head = world.signed("one");
     world.system(&head);
     assert_eq!(world.update().1, done(&head));
+}
+
+/// Holds the Nix daemon, granted by the world's `given` file, and gives
+/// each system the daemon's unit with what it says.
+fn hold_the_daemon(world: &mut World, first: &str) {
+    world.config.holds = Some(Holds {
+        units: vec!["nix-daemon.service".to_owned()],
+        paths: vec!["kernel".to_owned()],
+        given: world.root.join("given"),
+    });
+    daemon_unit(&world.system("first"), first);
+}
+
+fn daemon_unit(system: &Path, says: &str) {
+    let units = system.join("etc/systemd/system");
+    fs::create_dir_all(&units).unwrap();
+    fs::write(units.join("nix-daemon.service"), says).unwrap();
+}
+
+#[test]
+fn a_switch_that_would_restart_a_held_daemon_waits_for_a_hold() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "new");
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    assert!(why.contains("nix-daemon.service"), "{why}");
+    assert_ne!(world.running(), system);
+    // Granted, the next ask switches, and takes the grant with it.
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.running(), system);
+    assert!(!world.root.join("given").exists());
+}
+
+#[test]
+fn a_held_daemons_drop_in_changing_waits_for_a_hold_too() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "same");
+    let drop_ins = system.join("etc/systemd/system/nix-daemon.service.d");
+    fs::create_dir_all(&drop_ins).unwrap();
+    fs::write(drop_ins.join("overrides.conf"), "[Service]\n").unwrap();
+    assert!(matches!(world.update().1, Line::Refused { .. }));
+}
+
+#[test]
+fn a_switch_leaving_held_daemons_as_they_are_needs_no_hold() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let head = world.signed("one");
+    daemon_unit(&world.system(&head), "same");
+    assert_eq!(world.update().1, done(&head));
+}
+
+#[test]
+fn a_grant_ends_with_the_ask_it_was_made_for_even_when_refused_as_busy() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    refuse_during_calls(&mut world);
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "new");
+    fs::write(world.root.join("given"), "").unwrap();
+    fs::write(world.root.join("call"), "").unwrap();
+    assert!(matches!(world.update().1, Line::Refused { .. }));
+    assert!(!world.root.join("given").exists());
+    // Once the call is over, the next ask needs a grant of its own.
+    fs::remove_file(world.root.join("call")).unwrap();
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+}
+
+#[test]
+fn a_grant_ends_with_an_ask_that_held_nothing() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let head = world.signed("one");
+    daemon_unit(&world.system(&head), "same");
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(world.update().1, done(&head));
+    assert!(!world.root.join("given").exists());
+}
+
+#[test]
+fn heads_that_build_the_running_system_switch_nothing() {
+    let world = World::new();
+    let head = world.signed("one");
+    let first = world.system("first");
+    std::os::unix::fs::symlink(&first, world.root.join("systems").join(&head)).unwrap();
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: head.clone(),
+            followed: BTreeMap::new(),
+        }
+    );
+    assert_eq!(world.builds(), 1);
+    // Remembered, so the next ask at the same heads builds nothing.
+    assert!(matches!(world.update().1, Line::Unchanged { .. }));
+    assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn a_new_kernel_waits_for_a_hold_when_the_kernel_is_held() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let head = world.signed("one");
+    let system = a_new_kernel(&world, &head);
+    daemon_unit(&system, "same");
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    assert!(why.contains("kernel"), "{why}");
+    assert_ne!(world.running(), system);
 }

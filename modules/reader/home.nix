@@ -126,10 +126,15 @@ let
   # pitch of 24, as a page's rhythm wants (Bringhurst), and nothing sits
   # beside it whose lines it must meet on the theme's beat. Every space
   # down it, its margins too, is a whole number of its beat, half a line.
+  # Its outer column, either side of the words, is the glyph column, a
+  # name's cell and a mark: a spread table or code ends on it, a list's
+  # numbers hang within it, and the cursor's rule stands an items rung
+  # past it.
   space = rec {
     inherit (config.jitsusama.theme.space) rung;
     pitch = 28;
     beat = pitch / 2;
+    outer = type.levels.name.pitch + rung.mark;
   };
 
   # A level of the theme's type as the page sets it, each value worked out:

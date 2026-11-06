@@ -66,6 +66,8 @@ class Values(TypedDict):
     action: str
     sunken: str
     mono_family: str
+    # What a floating frame leaves of the screen across, in logical pixels.
+    floating_room: int
     # Whether this is the gallery, which keeps pictures for a person to look at.
     photographs: bool
 
@@ -126,7 +128,7 @@ PI_WINDOW = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
 # The margin is there only while something's on, each thing its glyph
 # alone, and what each is, in words, is the launcher's What's on: Super+O
 # or a click on a glyph opens it, Return does a thing's first action and
-# the right arrow steps into the rest.
+# Ctrl+] goes into the rest.
 MARGIN = "niri msg layers | grep -q margin"
 # The margin's cells: the theme's gap, open or shut, since nothing grows.
 CELL = 12
@@ -557,17 +559,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_ready()
 
     def close_launcher(self) -> None:
-        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+        """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
-        From the find the first gives normal, and the next closes it from any depth, after
-        letting the key list go if it's shown. A key sent before this that the launcher hears late
-        moves it on too, so each Escape waits only for something to change. Escape does nothing
-        in the drawer, as in any window, so with the keys there, on its page or choosing on it,
-        :q brings them back to the rows first, a line typed that no wait can come apart.
+        Escape gives normal from the find, lets the key list go if it's shown, and cancels a
+        count, a key begun or an operator, but never closes (Joel, 2026-11-05: "fuck escape
+        quitting"), so :q does, from any depth. A key sent before this that the launcher hears
+        late moves it on too, so each Escape waits only for something to change. Escape does
+        nothing in the drawer, as in any window, so with the keys there, on its page or choosing
+        on it, :q brings them back to the rows first, a line typed that no wait can come apart.
         """
 
-        # A pending operator counts, since the first Escape cancels it and
-        # changes nothing else, as Vim's does.
+        # A pending count, key or operator counts, since an Escape cancels
+        # it and changes nothing else, as Vim's does.
         def where(shown: Json) -> tuple[object, ...]:
             return (
                 shown["open"],
@@ -576,6 +579,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 len(shown["held"]),
                 shown.get("listing"),
                 shown.get("command") is not None,
+                shown["counted"],
+                shown["begun"],
             )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
@@ -585,11 +590,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             was = where(self.showing())
             if not was[0]:
                 return
-            if str(was[2]).startswith("page"):
+            _, operator, mode, _, listing, commanding, counted, begun = was
+            resting = mode == "normal" and not (operator or listing or commanding)
+            if str(mode).startswith("page") or (resting and not (counted or begun)):
                 self.machine.send_chars(":q\n")
-                self.launcher_until(functools.partial(moved, was))
-                continue
-            self.machine.send_key("esc")
+            else:
+                self.machine.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
@@ -625,17 +631,42 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_ready()
         self.type_in(typed)
 
-    def step_in(self, key: str = "l") -> None:
+    def step_in(self, key: str = "ret") -> None:
         """Press a key that steps into the selected row, and wait until the launcher holds it.
 
-        That's l into a thing's verbs, from normal mode, which it goes into first, or Return
-        into what a verb asks, from either.
+        That's Return, from the find or normal alike, into a place or a thing with acts, or
+        into what a verb asks; - goes back up. A program, a window or a file opens on Return
+        instead, so its parts are reached by `follow`, and its acts by : and their commands.
+        Return from the find keeps the find, where the next Return on a row that changes
+        something only lands, so it ends in normal, as `follow` and `step_out` do. A step into
+        what asks, as a password, stays on its line, which Escape would give up.
         """
-        if key == "l":
-            self.normal()
         before = len(self.showing()["held"])
         self.machine.send_key(key)
+        self.launcher_until(lambda shown: len(shown["held"]) > before or bool(shown["asking"]))
+        if not self.showing()["asking"]:
+            self.normal()
+
+    def follow(self) -> None:
+        """Go into the selected row's parts by Ctrl+] from normal, and wait until it's there.
+
+        That's how a row whose Return opens it is gone into, as a mail's sender or a
+        program's windows, and how a found row goes to where it lives; - comes back.
+        """
+        before = len(self.showing()["held"])
+        self.normal()
+        self.machine.send_key("ctrl-bracket_right")
         self.launcher_until(lambda shown: len(shown["held"]) > before)
+
+    def step_out(self) -> None:
+        """Go up a level by - from normal, and wait until the launcher holds less.
+
+        On the find - is a letter, so normal comes first, as it does for h in Vim.
+        """
+        before = len(self.showing()["held"])
+        self.normal()
+        self.machine.send_key("minus")
+        self.launcher_until(lambda shown: len(shown["held"]) < before)
 
     def down_to(self, name: str) -> None:
         """Move the selection to the row named, and wait until it's there.

@@ -1669,7 +1669,10 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\nderivation\noutlive\n"
+        concat!(
+            "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
+            "here-when-idle\nprint\nderivation\noutlive\n"
+        )
     );
 }
 
@@ -2534,6 +2537,96 @@ fn with_no_builder_or_none_reached_it_builds_nothing_unless_asked_to_build_here(
     assert_eq!(fs::read_to_string(&given).unwrap(), here);
 }
 
+// From 14:00 to 20:15 on 5 November, 189 checks built here while being
+// changed took 34,033 s at a CPU pressure of 46% beside them, the load
+// the person felt: asked to, `there` builds here only while this machine
+// is idle, and never a VM test.
+#[test]
+fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle() {
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/vm-tests"),
+        "checks.*.vm-*\n",
+    )
+    .unwrap();
+    let pressure = folder.path().join("cpu-pressure");
+    let given = folder.path().join("nix-was-given");
+    let commands = folder.path().join("ssh-commands");
+    let run = |attribute: &str, some: (&str, &str)| {
+        fs::write(
+            &pressure,
+            format!(
+                "some avg10={} avg60={} avg300=30.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+                some.0, some.1
+            ),
+        )
+        .unwrap();
+        let _ = fs::remove_file(&given);
+        let _ = fs::remove_file(&commands);
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args([
+                "there",
+                "--here-when-idle",
+                "-L",
+                "github:o/r/abc",
+                attribute,
+            ])
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    folder.path().display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_CPU_PRESSURE", &pressure)
+            // No VM lender has run, so a VM test goes the lent way.
+            .env("NIX_OFFLOAD_VM_DIR", folder.path().join("no-vm"))
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let sent = fs::read_to_string(&commands)
+            .unwrap_or_default()
+            .contains("nix build");
+        let built_here = fs::read_to_string(&given)
+            .unwrap_or_default()
+            .starts_with("build ");
+        (
+            built_here,
+            sent,
+            String::from_utf8_lossy(&ran.stderr).into_owned(),
+        )
+    };
+
+    let (built_here, sent, said) = run("checks.x.a", ("2.00", "4.50"));
+    assert!(built_here && !sent, "idle, it builds here: {said}");
+    assert!(
+        said.contains("this machine is idle, so this builds here"),
+        "{said}"
+    );
+
+    let (built_here, sent, said) = run("checks.x.a", ("2.00", "55.27"));
+    assert!(
+        sent && !built_here,
+        "busy this last minute, it's sent: {said}"
+    );
+
+    let (built_here, sent, said) = run("checks.x.a", ("43.38", "4.50"));
+    assert!(sent && !built_here, "busy now, it's sent: {said}");
+
+    let (built_here, _, said) = run("checks.x.vm-a", ("2.00", "4.50"));
+    assert!(!built_here, "a VM test is never built here: {said}");
+}
+
 /// A lender's folder in `folder`, named `name`, its lender this test and
 /// its builder `host`.
 fn lending(folder: &Path, name: &str, host: &str) -> PathBuf {
@@ -2778,6 +2871,8 @@ struct TwoVm {
     offload: PathBuf,
     vm: PathBuf,
     more: PathBuf,
+    /// A third VM lender's folder, lending once `lend_third` is called.
+    third: PathBuf,
 }
 
 impl TwoVm {
@@ -2789,6 +2884,7 @@ impl TwoVm {
         let offload = lending(folder.path(), "offload", "nix-offload");
         let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
         let more = folder.path().join("offload-vm-more");
+        let third = folder.path().join("offload-vm-3");
         fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
         fs::write(
             folder.path().join("nix-offload/vm-tests"),
@@ -2802,7 +2898,18 @@ impl TwoVm {
             offload,
             vm,
             more,
+            third,
         }
+    }
+
+    fn lend_third(&self) {
+        fs::create_dir(&self.third).unwrap();
+        fs::write(self.third.join("lender"), std::process::id().to_string()).unwrap();
+        fs::write(
+            self.third.join("store"),
+            STORE.replace("nix-offload", "nix-offload-vm-3"),
+        )
+        .unwrap();
     }
 
     fn lend_second(&self) {
@@ -2837,6 +2944,7 @@ impl TwoVm {
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &self.vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", &self.more)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &self.third)
             .env("XDG_RUNTIME_DIR", self.folder.path())
             .env("XDG_STATE_HOME", self.folder.path())
             .env("XDG_CONFIG_HOME", self.folder.path())
@@ -2952,6 +3060,36 @@ fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
     );
     let claims = fs::read_dir(rig.vm.join("sending")).unwrap().count();
     assert_eq!(claims, 1, "each run takes its own away as it ends");
+}
+
+// On 5 November 168 VM runs in four hours waited a median of 23 to 27
+// minutes on two VM builders, mostly for room, so a third and more take
+// what's past the first two's room, at once, and each run says how long
+// it waited for its builder.
+#[test]
+fn vm_tests_past_two_vm_builders_room_go_to_a_third_at_once() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    rig.lend_third();
+    for dir in [&rig.vm, &rig.more] {
+        fs::create_dir_all(dir.join("sending")).unwrap();
+        fs::write(dir.join(format!("sending/{}.0", std::process::id())), "6\n").unwrap();
+    }
+    let (built, said) = rig.sent(3);
+    assert_eq!(tests_on(&built, "nix-offload-vm-3"), 3, "{built:?} {said}");
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 0, "{built:?}");
+    let journal = fs::read_to_string(rig.folder.path().join("nix-offload/there.jsonl")).unwrap();
+    let lines: Vec<serde_json::Value> = journal
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(
+        lines
+            .iter()
+            .all(|line| line["waited"].as_u64().is_some_and(|waited| waited < 30)),
+        "each part says how long it waited for its builder: {journal}"
+    );
 }
 
 // A run sent where others wait for room goes only after them, so those

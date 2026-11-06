@@ -7,7 +7,7 @@
 // asks for are typed in insert, edited with the find's keys. Letters go by
 // what they type, wherever they sit on the layout.
 .pragma library
-.import "LineEditing.js" as LineEditing
+.import "Finding.js" as Finding
 .import "Operators.js" as Operators
 
 // Each act, the mode it's done in and the keys that do it. A key is named as
@@ -55,12 +55,12 @@ const table = [
     { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
-    // l steps into the row, h out onto the row stepped in from, with its
-    // find, - and Backspace as his oil's do. No arrow does either, nor
-    // moves the rows: Joel keeps to Vim's keys where nothing types ("rely
-    // only on vi right feeling things", 2026-11-05).
-    { act: "into", mode: "normal", keys: ["l"] },
-    { act: "out", mode: "normal", keys: ["h", "-", "Backspace"] },
+    // Return goes in ("run", below) and - up, as his oil's do; h and l, and
+    // Backspace as h, only say so, as q says how to close, and no arrow
+    // does either (Joel, 2026-11-05: "where in vi does that step into shit?").
+    { act: "out", mode: "normal", keys: ["-"] },
+    { act: "intoSaid", mode: "normal", keys: ["l"] },
+    { act: "outSaid", mode: "normal", keys: ["h", "Backspace"] },
     // ZZ closes, as his Neovim closes a buffer, Space w as his leader closes a
     // split, and :q (CommandLine.qml); q closes nothing, there being no
     // macros, and says so until the next key (the vi-paradigm spec, Normal).
@@ -72,6 +72,8 @@ const table = [
     { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
     { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
     { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
+    // Ctrl+] goes to the row's own place, as Vim follows a tag.
+    { act: "follow", mode: "normal", keys: ["Ctrl+]"] },
     // Every key here, as his leader's Space ? lists them, and F1 as help.
     // Space alone begins these and does nothing, waiting as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
@@ -91,6 +93,8 @@ const table = [
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
     { act: "otherEnd", mode: "visual", keys: ["o"] },
+    // Space leads in visual too, so the key list stands over a selection.
+    { act: "keys", mode: "visual", keys: [["Space", "?"], "F1"] },
     { act: "reselect", mode: "normal", keys: [["g", "v"]] },
     // A paragraph of rows is a run of one kind or sender that a gap ends
     // (Operators.runAt): } and { go by them, ip and ap take one, as in Vim.
@@ -100,10 +104,20 @@ const table = [
     { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
     // The gutter's numbers, relative or absolute, as his u l switches them.
     { act: "numbers", mode: "normal", keys: [["Space", "u", "l"]] },
-    // Back to the find: / and ? afresh, as a find has no direction; i a I A
-    // holding the find, at the caret, after it, at the line's start and its
-    // end; or cleared first, as cc clears a line.
-    { act: "freshFind", mode: "normal", keys: ["/", "?"] },
+    // Back to the find: / afresh going down and ? going up, the way n goes
+    // on; i a I A holding the find, at the caret, after it, at the line's
+    // start and its end; or cleared first, as cc clears a line.
+    { act: "freshFind", mode: "normal", keys: ["/"] },
+    { act: "freshFindBack", mode: "normal", keys: ["?"] },
+    // n and N go on through the rows the find found, its way and back, round
+    // past an end; f and F to the next row and the one before whose name
+    // begins with the letter typed after, and ; and , again (Finding.js).
+    { act: "matchNext", mode: "normal", keys: ["n"] },
+    { act: "matchBack", mode: "normal", keys: ["N"] },
+    { act: "toLetter", mode: "normal", keys: ["f"] },
+    { act: "toLetterBack", mode: "normal", keys: ["F"] },
+    { act: "letterAgain", mode: "normal", keys: [";"] },
+    { act: "letterAgainBack", mode: "normal", keys: [","] },
     { act: "insert", mode: "normal", keys: ["i"] },
     { act: "append", mode: "normal", keys: ["a"] },
     { act: "insertStart", mode: "normal", keys: ["I"] },
@@ -124,9 +138,6 @@ const table = [
     // Vim's Ctrl+W l and w go into the drawer, and his Neovim's Space and the
     // right arrow over them (Joel, 2026-11-05: "leader stuff can overlay").
     { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
-    // Escape at rest closes the launcher from any depth, as his Neovim closes
-    // its floats, never stepping out (the spec's Normal); read cancels first.
-    { act: "dismiss", mode: "normal", keys: ["Escape"] },
 
     // A prompt's words in normal, as Vim edits a line: w, b and e to the
     // next word's start, back to a word's start and on to its end, 0 and $
@@ -135,10 +146,8 @@ const table = [
     // They're read in normal only while the line holds a prompt's words
     // rather than a find (Prompt.qml, `words`), and before normal's own,
     // so u there undoes rather than bringing a find back.
-    // h and l move the caret a letter, as Vim's do, rather than stepping
-    // out of the place and into the row, and so do \u2190 and \u2192, each its
-    // letter in normal; - and Backspace still step out.
-    { act: "letterBack", mode: "words", keys: ["h", "Left"] },
+    // h and l move the caret a letter, as Vim's do, as do \u2190, \u2192 and Backspace.
+    { act: "letterBack", mode: "words", keys: ["h", "Left", "Backspace"] },
     { act: "letterNext", mode: "words", keys: ["l", "Right"] },
     { act: "wordNext", mode: "words", keys: ["w"] },
     { act: "wordBack", mode: "words", keys: ["b"] },
@@ -231,7 +240,7 @@ const table = [
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
     "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
     "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "seekNext", "seekPrevious",
-    "paragraphOn", "paragraphBack"];
+    "paragraphOn", "paragraphBack", "matchNext", "matchBack", "letterAgain", "letterAgainBack"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -246,10 +255,11 @@ function rest() {
 }
 
 // Whether anything's begun: a count, a sequence's first keys, an operator,
-// or a search being typed.
+// a search being typed or f waiting for its letter.
 function pending(standing) {
     return standing.count !== "" || standing.typed.length > 0
-        || standing.operator !== undefined || standing.seek !== undefined;
+        || standing.operator !== undefined || standing.seek !== undefined
+        || standing.letter !== undefined;
 }
 
 // The range a count before a colon gives the command line, as Vim's 3:
@@ -262,36 +272,6 @@ function counted(count) {
 // as Vim's '<,'>, whatever was counted, or the count's in normal.
 function rangeFor(count, mode) {
     return mode === "visual" ? "'<,'>" : counted(count);
-}
-
-// The field names a Ctrl chord by its letter as typed, and the line's
-// editing (LineEditing.js) by the letter's capital, as Vim's help writes it.
-const ctrlLetter = /^Ctrl\+[a-z]$/;
-
-// A key typed in the drawer's search, held in how the keys stand as
-// `seek`, { pattern, forward }, while it's open, as Vim types / and ? on
-// its command line: Return runs it, with the count typed before the /,
-// and says what it sought, an empty pattern seeking the last again as
-// Vim's does; Escape or Ctrl+C lets it go, as Backspace or Ctrl+H does
-// with nothing left. Every other key edits it as the find line and the
-// command line are edited (LineEditing.js): Ctrl+W takes the word before,
-// Ctrl+U all of it, and anything printable is typed, a page's keys among
-// them, as a space is.
-function seekRead(standing, key) {
-    const seek = standing.seek;
-    const open = pattern => ({ act: "", count: 0,
-        standing: { count: standing.count, typed: [], seek: { pattern, forward: seek.forward } },
-        ours: true });
-    if (key === "Return" || key === "Enter") {
-        return { act: "seek", count: standing.count === "" ? 0 : Number(standing.count),
-            sought: seek, standing: rest(), ours: true };
-    }
-    const chord = ctrlLetter.test(key) ? `Ctrl+${key.slice(-1).toUpperCase()}` : key;
-    const edited = LineEditing.edit(LineEditing.line(seek.pattern), chord, false);
-    if (key === "Escape" || chord === "Ctrl+C" || edited.act === "leave") {
-        return { act: "", count: 0, standing: rest(), ours: true };
-    }
-    return open(edited.line.text);
 }
 
 const digit = /^[0-9]$/;
@@ -369,8 +349,8 @@ function matching(typed, mode, words) {
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and closes on the next press; one meaning nothing in normal is
-// `idle`, said "not here". Words says the line holds a prompt's words
+// does, and at rest in normal does nothing, saying nothing; one meaning
+// nothing else in normal is `idle`, said "not here". Words says the line holds a prompt's words
 // rather than a find, which normal edits.
 function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
@@ -379,7 +359,12 @@ function read(standing, key, mode, words = false) {
         return { act: "", count: 0, standing, ours: false };
     }
     if (standing.seek !== undefined) {
-        return seekRead(standing, key);
+        return Finding.seekRead(standing, key, rest());
+    }
+    // f and F's wait for a letter, and the letter (Finding.js).
+    const letter = Finding.letterRead(standing, key, { mode, words }, rest());
+    if (letter !== null) {
+        return letter;
     }
     // In the drawer, / and ? at rest open its search, the way it goes,
     // keeping a count typed before them for the match it lands on.
@@ -397,7 +382,10 @@ function read(standing, key, mode, words = false) {
         const count = mode === "normal" && standing.count !== "" ? Number(standing.count) : 0;
         return { act: "command", count, standing: rest(), ours: true };
     }
-    if (key === "Escape" && pending(standing)) {
+    // At rest in normal too, closing nothing (Joel, 2026-11-05: "fuck escape
+    // quitting"), and never told "not here": his Neovim's bell is off, and
+    // he presses it out of habit to be sure of normal.
+    if (key === "Escape" && (pending(standing) || mode === "normal")) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
     // Normal's and visual's counts and operators, which keep an operator's
@@ -492,8 +480,8 @@ function modeAfter(act, mode, typing = "find") {
     if (["copy", "copyLines", "back", "cannotChange"].includes(act) && chosen(mode)) {
         return "page";
     }
-    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind"]
-        .includes(act)) {
+    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind",
+        "freshFindBack"].includes(act)) {
         return typing;
     }
     return mode;

@@ -84,7 +84,7 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # keys are on the rows, no word for the mode with the rest of the foot
     # where it was, normal's own keys named by letter beside Return, the
     # command line's and the key list's always, and no key in the field's
-    # place, since h steps out rather than clearing. It's read before the
+    # place, since - steps out rather than clearing. It's read before the
     # walk's edits, since a wider aside they bring crowds the keys' words out
     # until the step ends; A goes back.
     machine.send_key("esc")
@@ -98,7 +98,10 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # The status facts hold their places; the keys are normal's own, drawn with their marks.
     facts = {(text, x) for text, x in rest if "<font" not in text}
     assert facts <= held, (facts, laid["foot"])
+    # The answer copies on Return and holds more, so Ctrl+] in comes first, furthest from
+    # Return, and the key list's stays just before Return.
     told = desktop.showing()["selected"]["told"]
+    assert told[1:2] == ["Ctrl+] in"], told
     assert told[-2:] == [": commands", "Space ? keys"], told
     assert not any("\u2192" in text for text in told), told
     assert not any(word["text"].endswith(" clear") for word in laid["field"]), laid["field"]
@@ -401,7 +404,7 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     desktop.launcher_ready()
     desktop.type_in("tada", selecting="Party popper")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Paste", "Copy"])
     with desktop.told("pastes into kitty"):
         machine.send_key("ret")
@@ -440,9 +443,8 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.photograph("launcher-category")
     desktop.type_in("add", selecting="Address")
-    # In normal, h steps out at once, the word put back.
-    desktop.normal()
-    machine.send_key("h")
+    # In normal, - steps out at once, the word put back.
+    desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "network")
     desktop.close_launcher()
     # A question that starts with a category's word is still a question.
@@ -660,7 +662,7 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     for keys, row in [("1 2 k", 0), ("5 G", 4), ("2 g g", 1)]:
         press(keys)
         at(row)
-    # Escape with a count begun only lets it go, as Vim's does, and the next closes.
+    # Escape with a count begun only lets it go, as Vim's does; it never closes.
     machine.send_chars("5")
     desktop.launcher_until(lambda shown: shown["counted"] == "5")
     machine.send_key("esc")
@@ -709,23 +711,49 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
 def walk_the_rows_acts(desktop: Desktop) -> None:
     """Press every act normal takes on a search's rows besides its moves, through niri.
 
-    l steps into a row, and h, - and Backspace out of it, as his oil's do; :12 goes to the
-    12th row, on the command line in the find line's place, its menu saying where it goes,
-    until its Return; and ZZ and :q each close the launcher.
+    Return steps into a row and - out of it, as his oil's do, while h, l and Backspace, which
+    move along a line a row hasn't, go nowhere and say Vim's way instead, and - at the top says
+    it has nowhere to go; :12 goes to the 12th row, on the command line in the find line's
+    place, its menu saying where it goes, until its Return; and ZZ and :q each close the
+    launcher.
     """
     machine = desktop.machine
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.normal()
-    for letters, named in [("h", []), ("-", []), ("", ["backspace"])]:
-        machine.send_chars("l")
-        desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
-        machine.send_chars(letters)
-        for key in named:
+    said = {"l": ["l not here", "\u21b5 open"], "h": ["h not here", "- up"]}
+    # Each saying waited on differs from the one before it, so none is read stale. A step in
+    # starts its own find, and - comes back to the one it left, as oil's does.
+    for held, typed, chars, key, saying in [
+        ([], "emoji", "l", "", said["l"]),
+        ([], "emoji", "h", "", said["h"]),
+        ([], "emoji", "-", "", ["- not here"]),
+        (["emoji"], "", "", "ret", []),
+        (["emoji"], "", "h", "", said["h"]),
+        (["emoji"], "", "l", "", said["l"]),
+        (["emoji"], "", "", "backspace", said["h"]),
+        ([], "emoji", "-", "", []),
+    ]:
+        machine.send_chars(chars)
+        if key:
             machine.send_key(key)
-        desktop.launcher_until(
-            lambda shown: (shown["held"], shown["typed"], shown["mode"]) == ([], "emoji", "normal")
-        )
+        wanted = (held, typed, "normal", saying)
+
+        def stands(shown: Json, wanted: tuple[object, ...] = wanted) -> bool:
+            """Say whether the launcher holds, finds, waits and says what this press wants."""
+            return (shown["held"], shown["typed"], shown["mode"], shown["saying"]) == wanted
+
+        desktop.launcher_until(stands)
+    # Ctrl+] goes into an emoji's acts, which hold nothing more, so there
+    # it says so and stays.
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+    desktop.follow()
+    desktop.launcher_until(lambda shown: len(shown["held"]) == 2)  # noqa: PLR2004
+    machine.send_key("ctrl-bracket_right")
+    desktop.launcher_until(
+        lambda shown: shown["saying"] == ["Ctrl+] not here"] and len(shown["held"]) == 2  # noqa: PLR2004
+    )
     desktop.close_launcher()
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
@@ -752,12 +780,26 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
-def walk_the_rows_unsearched(desktop: Desktop) -> None:
-    """Press / ? n N on a search's rows in normal, through niri: the find afresh, or not here.
+def lettered(rows: list[str], at: int, letter: str, way: int) -> int:
+    """Give the next row from `at`, going `way`, whose name begins with `letter`, or -1.
 
-    The find line is the list's one way to find (VKCF3Z's vi-paradigm spec, The Find Line), so
-    the rows have no search of their own: / and ? go to the find, emptied, and n and N say
-    they mean nothing here, the selection and what's typed staying put.
+    A small letter finds either case, as his smartcase does, and nothing goes round an end.
+    """
+    at += way
+    while 0 <= at < len(rows):
+        if rows[at][:1].lower() == letter:
+            return at
+        at += way
+    return -1
+
+
+def walk_the_rows_finds(desktop: Desktop) -> None:
+    """Press / ? n N f F ; , on a search's rows in normal, through niri, as Vim's go.
+
+    The find line is the list's one way to find (VKCF3Z's vi-paradigm spec, The Find Line):
+    / and ? go to it, emptied, going down and up, and n and N go on through the rows it found,
+    round past an end as Vim's wrapscan says. f and F go to the next row and the one before
+    whose name begins with the letter typed after, ; and , again (Joel, 2026-11-05).
     """
     machine = desktop.machine
     for fresh in "/?":
@@ -766,23 +808,52 @@ def walk_the_rows_unsearched(desktop: Desktop) -> None:
         desktop.normal()
         machine.send_chars(fresh)
         desktop.launcher_until(lambda shown: (shown["mode"], shown["typed"]) == ("find", ""))
+        machine.send_chars("s")
+        desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+        desktop.normal()
+        # n goes the find's way: down after /, and up after ?, round from the first to the last.
+        machine.send_chars("n")
+        last = desktop.showing()["count"] - 1
+        went = (1, []) if fresh == "/" else (last, ["search hit TOP, continuing at BOTTOM"])
+        desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == went)  # noqa: B023
         desktop.close_launcher()
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
     desktop.normal()
-    machine.send_chars("j")
-    desktop.launcher_until(lambda shown: shown["current"] == 1)
-    for key in "nN":
-        machine.send_chars(key)
-        desktop.launcher_until(lambda shown: shown["saying"] == [f"{key} not here"])  # noqa: B023
-    # A move after them shows every key before it was taken, and took nothing.
-    machine.send_chars("j")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["current"], shown["mode"], shown["typed"], shown["saying"])
-            == (2, "normal", "s", [])
-        )
-    )
+    last = desktop.showing()["count"] - 1
+    for keys, went in [
+        ("2n", (2, [])),
+        ("N", (1, [])),
+        ("G", (last, [])),
+        ("n", (0, ["search hit BOTTOM, continuing at TOP"])),
+    ]:
+        machine.send_chars(keys)
+        desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == went)  # noqa: B023
+    rows: list[str] = desktop.showing()["rows"]
+    letter = rows[1][:1].lower()
+    here = lettered(rows, 0, letter, 1)
+    again = lettered(rows, here, letter, 1)
+    machine.send_chars(f"f{letter}")
+    desktop.launcher_until(lambda shown: shown["current"] == here)
+    machine.send_chars(";")
+    if again < 0:
+        said = [f"no row below begins with {letter}"]
+        desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == (here, said))
+    else:
+        desktop.launcher_until(lambda shown: shown["current"] == again)
+        machine.send_chars(",")
+        desktop.launcher_until(lambda shown: shown["current"] == here)
+    # F goes up to one, or says there's none, the selection staying put.
+    back = lettered(rows, here, letter, -1)
+    went = (back, []) if back >= 0 else (here, [f"no row above begins with {letter}"])
+    machine.send_chars(f"F{letter}")
+    desktop.launcher_until(lambda shown: (shown["current"], shown["saying"]) == went)
+    desktop.close_launcher()
+    # With nothing typed n has nothing to go on with, as Vim's E35 says.
+    desktop.answer("")
+    desktop.normal()
+    machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["E35: No previous regular expression"])
     desktop.close_launcher()
 
 
@@ -820,6 +891,7 @@ def walk_the_rows_washed(desktop: Desktop) -> None:
 HINT_PRESSES = {
     "\u21b5": (["ret"], ""),
     "Space ?": ([], " ?"),
+    "Ctrl+]": (["ctrl-bracket_right"], ""),
 }
 
 
@@ -850,12 +922,14 @@ def every_hint_changes(desktop: Desktop, depth: int) -> None:
         desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
         desktop.normal()
         for _ in range(depth):
-            desktop.machine.send_chars("l")
+            desktop.machine.send_key("ret")
         desktop.launcher_until(lambda shown: len(shown["held"]) == depth)
         return cast("list[str]", desktop.showing()["selected"]["told"])
 
     told = opened()
     assert told[0].startswith("\u21b5"), told
+    # Ctrl+] in comes first after Return, on a row Return opens that holds parts, as an emoji.
+    assert ("Ctrl+] in" in told[1:2]) == bool(depth), told
     assert told[-1] == "Space ? keys", told
     for at, hint in enumerate(told):
         mark = hint.rsplit(" ", 1)[0]
@@ -876,8 +950,9 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     Space Tab goes to the place used last and back, as his goes to the file used last; Ctrl+O
     and Tab, which is Ctrl+I, go back and forward through the places stepped into; Space ? and
     F1 list every key in the drawer until Escape or again; Space alone waits for a second key
-    and lets go; Space w closes the launcher, and Escape closes it from a step in. Every hint
-    the foot draws, at home and a step in, is first pressed and seen to do something.
+    and lets go; Space w closes the launcher, and Escape at rest a step in does nothing, :q
+    closing it. Every hint the foot draws, at home and a step in, is first pressed and seen to
+    do something.
     """
     machine = desktop.machine
     every_hint_changes(desktop, 0)
@@ -885,7 +960,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.normal()
-    machine.send_chars("l")
+    machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
     machine.send_chars("-")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
@@ -925,20 +1000,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     assert desktop.showing()["open"], "a Space alone closed the launcher"
     machine.send_chars(" w")
     desktop.launcher_until(lambda shown: not shown["open"])
-    # Escape at rest closes it from a step in, never stepping out.
-    desktop.answer("emoji")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
-    desktop.step_in()
-    # A held place's rows are numbered as the search's are (87ED6K, for the picker's folders).
-    desktop.launcher_until(
-        lambda shown: (
-            shown["held"] == ["emoji"]
-            and shown["gutter"]["shown"]
-            and shown["gutter"]["numbers"][:3] == ["1", "1", "2"]
-        )
-    )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    escape_at_rest_stays(desktop)
     # A colon as the find's first letter opens the command line, where :q closes.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -948,11 +1010,45 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def escape_at_rest_stays(desktop: Desktop) -> None:
+    """Press Escape at rest a step in, which does nothing, and close by :q.
+
+    As Vim's in normal, it neither closes nor steps out, and says nothing (Joel, 2026-11-05:
+    "fuck escape quitting").
+    """
+    machine = desktop.machine
+    desktop.answer("emoji")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    desktop.follow()
+    # A held place's rows are numbered as the search's are (87ED6K, for the picker's folders).
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["emoji"]
+            and shown["gutter"]["shown"]
+            and shown["gutter"]["numbers"][:3] == ["1", "1", "2"]
+        )
+    )
+    for _ in range(2):
+        machine.send_key("esc")
+    # A key after the two shows they were heard, and did nothing.
+    machine.send_chars("j")
+    desktop.launcher_until(lambda shown: shown["current"] == 1)
+    shown = desktop.showing()
+    assert (shown["open"], shown["held"], shown["mode"], shown["saying"]) == (
+        True,
+        ["emoji"],
+        "normal",
+        [],
+    ), shown
+    machine.send_chars(":q\n")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
     """A search lists each thing once, and normal's keys move and act on it as Vim's do."""
     walk_the_rows_moves(desktop)
     walk_the_rows_acts(desktop)
-    walk_the_rows_unsearched(desktop)
+    walk_the_rows_finds(desktop)
     walk_the_rows_washed(desktop)
     walk_the_rows_keys(desktop)
     # People stands alone for everyone in it; the
@@ -1023,15 +1119,15 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
         " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
     )
     desktop.answer("address")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "VPN" in shown["rows"])
     desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
-    # In normal l steps into it.
-    desktop.step_in()
+    # Return steps into it.
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
-    # Stepping back out, by h, lands on the row it came from, with its find.
-    machine.send_key("h")
+    # Stepping back out, by -, lands on the row it came from, with its find.
+    desktop.step_out()
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) == 1
@@ -1066,12 +1162,12 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "answer:machine:cpu"
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Processor"] and "Cores" in shown["rows"]
     )
     desktop.down_to("Cores")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["path"] == ["Machine", "Processor", "Cores"])
     cores = desktop.showing()["rows"]
     if len(cores) > 1:
@@ -1100,7 +1196,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     )
     machine.succeed("systemctl stop busy-cores")
     # Back out, it's on the row it came from.
-    machine.send_key("h")
+    desktop.step_out()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     desktop.close_launcher()
 
@@ -1187,10 +1283,10 @@ def photograph_a_calendar(
         )
 
     desktop.answer("date")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
     desktop.down_to("Calendars")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: calendar in shown["rows"])
     desktop.down_to(calendar)
     desktop.launcher_until(drawn)
@@ -1229,7 +1325,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         ("date", "ISO Date", "launcher-date-inside"),
     ]:
         desktop.answer(typed)
-        desktop.step_in()
+        desktop.follow()
         # Each wait ends before the loop moves on, so it reads this pass's part.
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
         desktop.photograph(picture)
@@ -1245,11 +1341,12 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         ("Clock", "Offset", "launcher-time-clock"),
         ("Servers", "time.harbour.test", "launcher-time-servers"),
     ]:
+        # The time copies on Return, so Ctrl+] goes into what keeps it.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: holder in shown["rows"])  # noqa: B023
         desktop.down_to(holder)
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
         desktop.down_to(first)
         if holder == "Servers":
@@ -1270,7 +1367,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
     # The time here counts each second while it's shown, and a tick never moves the
     # selection or changes the card's size: UTC stays selected, among as many rows.
     desktop.answer("time")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "UTC" in shown["rows"])
     desktop.down_to("UTC")
     before = desktop.showing()

@@ -227,8 +227,12 @@ of each kind of line it sets, and a row's pitch is its height.
   letter's overshoot, a mark drawn small in its cell), the column takes the
   optical edge, and the check says so.
 - **Baselines on the pitch, marks one height.** **Check:** every baseline
-  measured against the surface's line pitch, and every mark's ink the same
-  height, centred on one line, as the skill's "Marks one height" asks.
+  measured against the surface's line pitch, and every mark's ink one optical
+  size, centred on the capitals' middle, as the skill's "Marks one height"
+  asks. One size is equal area, not equal height, since a wide mark made as
+  tall as a narrow one turns heavy: each is scaled so the square root of its
+  ink's width by height is 15, no wider than its cell and no taller than 15,
+  measured at load from the font, with no table.
 - **Shared across neighbours.** A surface beside another (the launcher and
   its drawer, a notice and the margin) lines up with it. **Check:** the
   shared edges named and measured.
@@ -528,7 +532,9 @@ The rest follows from the ladder:
   box text is not vertically aligned within its box, it is more heavily top
   aligned"). A band's height comes from the rows' rhythm, the head's
   baseline a row above the first row's, so the head, a field and the status
-  line read alike.
+  line read alike. A head with no rows under it, a prompt's or the picker's,
+  has no rhythm to size it, so its capitals sit the inset under the frame
+  and its hairline falls where the text centres, the same room under it.
 - **A glyph's column is its cell and a mark.** A mark sits in a square cell
   one line pitch wide, its text the mark rung after it, so a list's names
   start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
@@ -1252,26 +1258,14 @@ works the same way everywhere.
 - **Ctrl+Y only completes.** It takes the grey completion the field shows,
   as his Neovim's completion menu takes its selection, and does nothing
   while none shows; Tab moves through the rows, as that menu's does. The
-  field says so at its right edge, "Ctrl+Y complete", only then and only
-  in insert, and in normal "← clear" in the same place while something's
-  typed, rather than the foot, where its coming and
-  going with each letter moved the other keys or took room from how things
-  stand. Its place there is kept while anything is typed, though nothing
-  shows in it, so nothing in the field moves as it comes and goes with
-  each letter. With nothing typed and nothing to restore no key can show,
-  so no place is kept, and the aside ends at the field's end, where the
+  field says no keys of its own: it holds only the find and how far it
+  narrows, and its hints are the foot's, by key and lowercase word
+  (VKCF3Z, 2026-11-05). So the aside ends at the field's end, where the
   rows' sides end (Joel, 2026-11-04: "the text in being inset left from
-  the right edge of the launcher"); the first letter moves it over once,
-  as it changes what the aside says. The aside has all the room the path,
-  what's typed and the keys leave it before it gives way. Flush after the
-  completion, a bare ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
-  text feels wrong and they are not super obvious what they mean"). The
-  keys' words take a third of the field, so they're said only while the
-  path, what's typed with its completion and the aside all fit whole
-  beside them; otherwise the keys stand alone, and once a step runs out of
-  room they stay alone until it ends, rather than coming and going. What's
-  typed and its completion come before the aside, which says less as they
-  grow.
+  the right edge of the launcher"). Nor does an arrow clear what's typed
+  or step anywhere: the arrows move the caret, Return goes in and - goes
+  up. The aside has all the room the path and what's typed with its
+  completion leave it, and says less as they grow.
 - **Every row is a thing with verbs.** Return goes into a thing that holds
   more, as oil's Return opens a folder, so a few letters and Return reach
   inside a thing from anywhere: what can be done to it,

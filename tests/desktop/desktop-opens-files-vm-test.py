@@ -98,17 +98,17 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
         ),
     )
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     taken = picture.rsplit("/", 1)[-1]
     desktop.launcher_until(lambda shown: shown["rows"][:1] == [taken])
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Edit in GIMP", "Copy the Path"])
     desktop.close_launcher()
     # GIMP holds the newest screenshot among its own acts.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -133,7 +133,7 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
 # more than one app could, and the launcher asks rather than GNOME's
 # dialog, holding the apps the portal offers. Return opens the picture
 # with the one taken, and the portal says it opened; asked again,
-# Escape until the launcher closes, the first giving normal mode, opens
+# closed by :q from normal, which Escape gives, the launcher opens
 # nothing, and the portal says it was refused; and each ask's socket
 # goes once it's answered. Each time the apps offered change
 # while it waits, as the portal says when apps are installed, so a
@@ -546,8 +546,8 @@ def name_line(desktop: Desktop, held: int) -> None:
         says("kept.md", caret, "normal")
     # The name is the line's row, above the rows, never listed among them;
     # j goes down from it into the folders and k back up to it, where h and l
-    # move its caret again. In a folder, l steps in rather than moving the
-    # name's caret, the name kept on the line.
+    # move its caret again. In a folder, Return steps in, the name kept on
+    # the line.
     rows = desktop.showing()["rows"]
     assert "kept.md" not in rows, rows
     down = "j" * (rows.index("inner") + 1)
@@ -561,7 +561,7 @@ def name_line(desktop: Desktop, held: int) -> None:
     says("kept.md", 2, "normal")
     machine.send_chars(down)
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "inner")
-    machine.send_chars("l")
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
             len(shown["held"]) == held + 1
@@ -604,12 +604,12 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Google Drive"
         )
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: shown["rows"][:3] == ["My Drive", "Shared with Me", "Shared Drives"]
         )
         desktop.down_to("My Drive")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
         desktop.photograph("file-chooser-drive")
         desktop.down_to("menu.pdf")
@@ -689,33 +689,40 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
     looked = f"/home/{desktop.account}/snowflake.png"
     desktop.as_account(f"cp {desktop.values['picture']} {looked}")
     desktop.opens_in(looked, "image/png", "swayimg")
-    swayimg = desktop.window_titled("Swayimg: snowflake.png")
-    assert swayimg["is_floating"], swayimg
-    # Four fifths of the screen, centred, at the size niri gave it,
-    # less the gaps and border niri takes out of it. Without swayimg's
-    # size given again, it's twice that, off the screen.
-    left, _, width, _ = drawn_at(swayimg)
-    wide = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]["width"]
-    assert abs(width - wide * 0.8) <= wide * 0.02, swayimg
-    assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
-    # The steps before leave notices, which go on their own.
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
-    desktop.photograph("swayimg")
-    machine.send_key("e")
-    machine.wait_until_succeeds(
-        f"pgrep -u {desktop.account} -f '[g]imp.*{looked}'", timeout=STARTING
-    )
-    machine.wait_until_fails(
-        f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
-    )
-    # As in the screenshot's subtest: GIMP goes before it draws.
-    machine.succeed(f"pkill -KILL -u {desktop.account} -f '[g]imp'")
-    machine.wait_until_fails(
-        f"pgrep -u {desktop.account} -f '[g]imp'", timeout=timedelta(seconds=30)
-    )
-    machine.succeed(f"rm {looked}")
+    try:
+        swayimg = desktop.window_titled("Swayimg: snowflake.png")
+        assert swayimg["is_floating"], swayimg
+        # The screen less the screen rung and its border on each side,
+        # centred, as every floating frame stands. Without swayimg's size
+        # given, it's its own 1280 across, off a laptop's screen.
+        left, _, width, _ = drawn_at(swayimg)
+        output = json.loads(desktop.as_account("niri msg --json focused-output"))
+        wide = output["logical"]["width"]
+        assert abs(width - (wide - desktop.values["floating_room"])) <= wide * 0.02, swayimg
+        assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
+        # The steps before leave notices, which go on their own.
+        machine.wait_until_fails(
+            desktop.in_session("niri msg layers | grep -q notifications"),
+            timeout=timedelta(seconds=30),
+        )
+        desktop.photograph("swayimg")
+        machine.send_key("e")
+        machine.wait_until_succeeds(
+            f"pgrep -u {desktop.account} -f '[g]imp.*{looked}'", timeout=STARTING
+        )
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
+        )
+    finally:
+        # A swayimg left open would be the next subtest's, and GIMP goes
+        # before it draws, as in the screenshot's subtest.
+        machine.succeed(f"pkill -KILL -u {desktop.account} -x swayimg || true")
+        machine.succeed(f"pkill -KILL -u {desktop.account} -f '[g]imp' || true")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x swayimg || pgrep -u {desktop.account} -f '[g]imp'",
+            timeout=timedelta(seconds=30),
+        )
+        machine.succeed(f"rm -f {looked}")
 
 
 def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desktop) -> None:
@@ -930,9 +937,9 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "tide" in shown["rows"])
     desktop.photograph("launcher-kitty-recent")
     desktop.type_in("tide", selecting="tide")

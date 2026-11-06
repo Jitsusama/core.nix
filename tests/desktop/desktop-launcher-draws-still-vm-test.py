@@ -383,20 +383,20 @@ def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
         top = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["firstAt"]
         for _ in range(WALKS):
             desktop.down_to("Machine")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
             # Down to its last place, below the fold, and straight into it.
             desktop.down_to("Firmware")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
-            machine.send_key("h")
-            machine.send_key("h")
+            desktop.step_out()
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
             # And from home's last place straight into it.
             desktop.down_to("Keyboard")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
-            machine.send_key("h")
+            desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
             desktop.previous_row()
         assert not unlike, f"the first row stood below the top ({top}): {unlike}"
@@ -428,20 +428,20 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     fewest = 4
     desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
     home = marks_in(desktop.showing()["glance"])
-    # A step's row with the most keys: Return, l and the
-    # left, and no chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
+    # A step's row with the most keys: Return, - and Ctrl+] in, and
+    # no other chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
     # "i want icons to be able to be there as much as possible").
     machine.send_chars("desktop ")
     desktop.launcher_until(
         lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
     )
     desktop.down_to("Do Not Disturb")
-    # In normal, where l steps in; on the find letters type, so it names none.
+    # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert "l in" in told, shown["selected"]
-    assert not any(key.startswith("Ctrl") for key in told), shown["selected"]
+    assert told[1:2] == ["Ctrl+] in"], shown["selected"]
+    assert not any(key.startswith("Ctrl") for key in told[2:]), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()
     # A switch restarts the shell: the first foot it draws has every mark,
@@ -523,19 +523,34 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
 # A word that moves without changing tells him nothing and costs him a
 # look, so after every key each word on the card that reads as it did must
 # be drawn where it was: in the field, in the foot, and in each row that
-# is still the same thing saying the same.
+# is still the same thing saying the same. In the foot a hint's key and
+# its word read as one, so the last hint's key, which stands left of its
+# word to end it on the inset (VKCF3Z, 2026-11-05), moves only as its
+# word changes. A key's word stands a mark after it (KeyHints), nearer
+# than any two facts stand.
+A_KEYS_WORD = 10
 
 
 def moved(before: Json, after: Json) -> list[str]:
     """Say each word drawn in both that reads the same and isn't where it was."""
     shifts = []
 
-    def compare(where: str, old: list[Json], new: list[Json]) -> None:
+    def compare(where: str, old: list[Json], new: list[Json], *, paired: bool = False) -> None:
+        def reads(words: list[Json], at: int) -> str:
+            word, later = words[at], words[at + 1] if at + 1 < len(words) else None
+            beside = (
+                paired
+                and later is not None
+                and later["y"] == word["y"]
+                and 0 <= later["starts"] - word["starts"] - word["inked"] <= A_KEYS_WORD
+            )
+            return f"{word['text']}\0{later['text'] if beside and later else ''}"
+
         unmatched: dict[str, list[Json]] = {}
-        for word in old:
-            unmatched.setdefault(word["text"], []).append(word)
-        for word in new:
-            same = unmatched.get(word["text"])
+        for at, word in enumerate(old):
+            unmatched.setdefault(reads(old, at), []).append(word)
+        for at, word in enumerate(new):
+            same = unmatched.get(reads(new, at))
             if not same:
                 continue
             was = same.pop(0)
@@ -546,7 +561,7 @@ def moved(before: Json, after: Json) -> list[str]:
                 )
 
     compare("the field", before["field"], after["field"])
-    compare("the foot", before["foot"], after["foot"])
+    compare("the foot", before["foot"], after["foot"], paired=True)
     rows = {row["at"]: row for row in before["rows"]}
     for row in after["rows"]:
         was = rows.get(row["at"])

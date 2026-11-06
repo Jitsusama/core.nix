@@ -16,6 +16,7 @@
 //! compositor's presentation feedback, and holds the worst 1% of intervals
 //! against one refresh interval.
 
+mod anchor;
 mod ex;
 mod gl;
 mod keys;
@@ -167,6 +168,9 @@ struct Incoming {
     /// Where the view will be on it, in device pixels: the same words at
     /// the top as on the page before.
     offset: f64,
+    /// Where the view was going on the page before when this was set, in
+    /// points, so a key that moves it before this shows is known.
+    set_at_pt: f64,
     lines: Vec<text::Line>,
     textures: HashMap<Key, gl::Texture>,
     asked: HashSet<Key>,
@@ -219,37 +223,6 @@ type Reset = (
     String,
     Result<(typst_layout::Page, f64, Vec<text::Line>), String>,
 );
-
-/// Where the view's top line is on a new page: the same words, the same
-/// how-many-th time they come, at the same height in the view; the end of
-/// the page if the view was at the end, as while writing there. Points.
-fn anchored(
-    old: &[text::Line],
-    new: &[text::Line],
-    top_pt: f64,
-    at_end: bool,
-    new_most_pt: f64,
-) -> f64 {
-    if at_end {
-        return new_most_pt;
-    }
-    let Some((index, line)) = old
-        .iter()
-        .enumerate()
-        .find(|(_, line)| line.baseline_pt >= top_pt)
-    else {
-        return top_pt.min(new_most_pt);
-    };
-    let nth = old[..index]
-        .iter()
-        .filter(|other| other.text == line.text)
-        .count();
-    let same: Vec<&text::Line> = new.iter().filter(|other| other.text == line.text).collect();
-    match same.get(nth).or(same.last()) {
-        Some(found) => (found.baseline_pt - (line.baseline_pt - top_pt)).clamp(0.0, new_most_pt),
-        None => top_pt.min(new_most_pt),
-    }
-}
 
 /// What the loader is told of a band, to know it again when its texture
 /// is made: its key, the page it was drawn from, and how long it took.
@@ -3420,9 +3393,9 @@ impl App {
             self.landing(&file, &page, &lines, new_most_pt)
         } else {
             let at_end = self.at_end();
-            let top_pt = self.offset / px_per_pt;
+            let top_pt = self.heading() / px_per_pt;
             match &self.words {
-                Some(old) => anchored(old, &lines, top_pt, at_end, new_most_pt),
+                Some(old) => anchor::anchored(old, &lines, top_pt, at_end, new_most_pt),
                 None => top_pt.min(new_most_pt),
             }
         };
@@ -3432,6 +3405,7 @@ impl App {
             version,
             page: std::sync::Arc::new(page),
             offset: offset_pt * px_per_pt,
+            set_at_pt: self.heading() / px_per_pt,
             lines,
             textures: HashMap::new(),
             asked: HashSet::new(),
@@ -3529,6 +3503,23 @@ impl App {
         let Some(incoming) = self.incoming.take() else {
             return;
         };
+        // A key that moved the view while this page was set, as G pressed
+        // while a first open sets it again at the window's width, still
+        // takes the view where it sent it once this page shows.
+        let carried = if incoming.opens.is_none() {
+            let px_per_pt = self.px_per_pt();
+            let screen_pt = self.screen_px() / px_per_pt;
+            anchor::carried(
+                self.words.as_deref().unwrap_or(&[]),
+                &incoming.lines,
+                incoming.set_at_pt,
+                self.heading() / px_per_pt,
+                self.at_end(),
+                (incoming.page.frame.size().y.to_pt() - screen_pt).max(0.0),
+            )
+        } else {
+            None
+        };
         // Another file's page: where the view was on this one is kept for
         // the next time it's shown, from its own page, before it goes.
         if incoming.opens.is_some() && !self.measuring {
@@ -3566,12 +3557,15 @@ impl App {
         }
         self.offset = incoming.offset;
         self.clamp();
+        if let Some(pt) = carried {
+            self.jump_to(pt * self.px_per_pt());
+        }
         if keys_logged() && incoming.opens.is_none() {
             eprintln!(
                 "saved: set {:.0} ms, shown {:.0} ms after, heading {:.1} pt",
                 incoming.set_ms,
                 incoming.since.elapsed().as_secs_f64() * 1000.0,
-                self.offset / self.px_per_pt()
+                self.heading() / self.px_per_pt()
             );
         }
         self.words = Some(incoming.lines);
@@ -3685,7 +3679,7 @@ impl App {
             return;
         }
         self.held_pt = Some(self.painter.height_pt());
-        self.settled_pt = self.painter.height_pt() - page::BOTTOM_PT - 1.0;
+        self.settled_pt = self.painter.height_pt() - page::bottom_pt() - 1.0;
         self.painter.replace(page);
         let settled = self.settled_pt;
         let below: Vec<Key> = self
@@ -4428,9 +4422,9 @@ fn start_at(place: &place::Place, starts: &[(usize, f64)]) -> Option<f64> {
 
 fn first_width(measuring: bool) -> page::Width {
     if measuring {
-        page::Width::WHOLE
+        page::Width::whole()
     } else {
-        place::window_pt().map_or(page::Width::WHOLE, page::Width::for_window)
+        place::window_pt().map_or_else(page::Width::whole, page::Width::for_window)
     }
 }
 

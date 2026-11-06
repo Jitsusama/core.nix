@@ -59,9 +59,14 @@ evaluation cache, on a 16-core laptop busy with other builds, and one run
 held 24.5 GB. `changed-checks` keeps the base's derivations by commit, so
 once a base is kept a comparison pays for one evaluation, the working
 tree's: 461 s on 2026-10-26, against 1,373 s and more for one that had to
-evaluate a base that had just merged. `changed-checks --keep-base`, run in a
-checkout of main as each merge lands, keeps that commit ahead of time, so a
-branch rebased onto it pays for its own tree alone. It evaluates a chunk
+evaluate a base that had just merged. `changed-checks --keep-base` keeps a
+commit ahead of time, so a branch rebased onto it pays for its own tree
+alone, and `changed-checks keep-main`, a service beside the net, does it
+for each head of main once it has stood two minutes, and again on each
+builder lent afresh, which starts with nothing kept: on 2026-11-05, before
+it ran, 42 of the lent builder's 105 runs evaluated their base first, a
+median of 444 s, and a replay of that day's heads had it sparing 29 of
+them. It evaluates a chunk
 of checks for every 4 cores and 6 GiB free, from 2 to 8 at once, since one
 kept under 2 of 16 cores busy: on 2026-10-26 a working tree took 324 s one
 chunk at a time, peaking at 5.8 GB, and one a few commits later took
@@ -147,7 +152,9 @@ would keep another in place. A test that failed before that merge too, or
 that didn't exist before it, as when a split moves a failing case under a
 new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
-code broke it. One that
+code broke it. So is one that passes at main's newest head, since a fix
+forward has landed: the net asks before it searches, and skips the search,
+and again before it reverts. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.

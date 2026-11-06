@@ -27,6 +27,7 @@
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
+import "Bands.js" as Bands
 
 ShellRoot {
     id: root
@@ -39,7 +40,6 @@ ShellRoot {
         + " of $15,000, which resets on Monday at midnight"
     readonly property string asked: "Say which issue sources to read"
     readonly property string day: "Wednesday 4 November 2026"
-    readonly property var keyWords: ({ complete: "complete", clear: "clear" })
 
     FloatingWindow {
         visible: true
@@ -139,6 +139,15 @@ ShellRoot {
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
             Prompt { id: voicedField; width: root.panel; hint: root.voice }
+            // The launcher's head: its field the band from the frame to the
+            // hairline over the rows, as tall as the rows' rhythm sets it.
+            Prompt {
+                id: headed
+                width: root.panel
+                height: Bands.above(4 * Theme.space.beat, nameCaps.tightBoundingRect.height,
+                    headed.restingLift, Theme.border)
+                text: root.voice
+            }
             Prompt {
                 id: ghosted
                 width: root.panel
@@ -146,6 +155,14 @@ ShellRoot {
                 ghost: " = Today: $484 · usual, ends near $1,457 ($800 to $2,216), billed"
             }
             Prompt { id: hinted; width: root.panel; hint: root.sentence }
+            PromptFoot { id: footed; width: root.panel; leads: "Asked by sudo" }
+            StatusLine {
+                id: lined
+                width: root.panel
+                height: 48
+                mark: "NOR"
+                hints: [["\u21b5", "open"]]
+            }
             // Three steps in, beside a note longer than the line has room
             // for, as Machine's processors' cores say.
             Prompt {
@@ -190,15 +207,12 @@ ShellRoot {
                 id: opened
                 width: root.panel
                 steady: true
-                leftClears: true
                 modal: true
-                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
             }
             Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
-            // The same with letters typed, so the field says its keys.
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -218,13 +232,12 @@ ShellRoot {
                 current: 1
                 shown: true
             }
+            // The launcher's field as it opens, with letters typed.
             Prompt {
                 id: typing
                 width: root.panel
                 steady: true
-                leftClears: true
                 modal: true
-                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
@@ -313,13 +326,50 @@ ShellRoot {
         font.pointSize: Theme.level.name.pointSize
     }
 
-    // A head's face, the Title, whose capitals set the field's line.
-    FontMetrics {
-        id: titleFace
+    // A head's face, the Title, and what's typed, the Figure: their
+    // capitals and small letters, which centre a field's line.
+    TextMetrics {
+        id: titleCaps
+        text: "H"
         font.family: Theme.level.title.family
         font.pointSize: Theme.level.title.pointSize
         font.variableAxes: Theme.level.title.variableAxes
-        font.letterSpacing: Theme.level.title.letterSpacing
+    }
+    TextMetrics {
+        id: titleSmall
+        text: "x"
+        font: titleCaps.font
+    }
+    TextMetrics {
+        id: figureCaps
+        text: "H"
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.weight: Theme.level.figure.weight
+    }
+    TextMetrics {
+        id: figureSmall
+        text: "x"
+        font: figureCaps.font
+    }
+    // A row's name, whose capitals are centred in the row.
+    TextMetrics {
+        id: nameCaps
+        text: "H"
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+    }
+    TextMetrics {
+        id: noteCaps
+        text: "H"
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+        font.weight: Theme.level.note.weight
+    }
+    TextMetrics {
+        id: noteSmall
+        text: "x"
+        font: noteCaps.font
     }
 
     // What a row says at its right, in the face it's drawn in.
@@ -477,21 +527,47 @@ ShellRoot {
             onTheHead(opened, "Now", ["which?"]);
             onTheHead(pathed, "Cores", ["what to do?"]);
             onTheHead(named, "~/saving", ["a.md"]);
-            // The line keeps that baseline out of a place, where no head shows,
-            // so nothing on it moves as one opens.
-            const home = root.setting(typedField, root.voice);
-            const placed = root.setting(opened, "Now");
-            expect("the field's line keeps one baseline in a place and out of it",
-                home !== null && placed !== null && Math.abs(home.base - placed.base) <= 0.5,
-                `${JSON.stringify(home)} against ${JSON.stringify(placed)}`);
-            // The baseline is the largest level's, the head's, set by
-            // centring its capitals on the field (docs/design.md, One
-            // Baseline a Line), since a big name off centre shows more than
-            // small letters under it.
-            const capitals = titleFace.tightBoundingRect("H").height;
-            expect("the head's capitals are centred on the field", placed !== null
-                && Math.abs(placed.base - capitals / 2 - opened.height / 2) <= 0.5,
-                `${JSON.stringify(placed)}, capitals ${capitals}, field ${opened.height}`);
+            // Each line is centred by eye in its field, its largest level's
+            // capitals and small letters averaged on the field's middle
+            // (docs/design.md: text in a band centres in it; Joel, 2026-11-05:
+            // "the launcher find box text is not vertically aligned within its
+            // box, it is more heavily top aligned"): what's typed out of a place, and the
+            // place's name in one, each measured where it's drawn.
+            const centred = (field, words, caps, small) => {
+                const set = root.setting(field, words);
+                const middle = set === null ? NaN
+                    : set.base - (caps.tightBoundingRect.height
+                        + small.tightBoundingRect.height) / 4;
+                expect(`${words}'s line is centred by eye in its band`,
+                    Math.abs(middle - field.height / 2) <= 0.5,
+                    `ink's middle ${middle} in a band ${field.height} tall: ${JSON.stringify(set)}`);
+            };
+            centred(typedField, root.voice, figureCaps, figureSmall);
+            centred(opened, "Now", titleCaps, titleSmall);
+            centred(named, "~/saving", titleCaps, titleSmall);
+            // The launcher's head is centred so, and its baseline stands a
+            // row over the first row's, whose capitals the row centres,
+            // under the hairline (docs/design.md: a band's height comes
+            // from the rows' rhythm).
+            centred(headed, root.voice, figureCaps, figureSmall);
+            const headSet = root.setting(headed, root.voice);
+            const firstRow = headed.height + Theme.border + (4 * Theme.space.beat
+                + nameCaps.tightBoundingRect.height) / 2;
+            expect("the head's baseline stands a row over the first row's",
+                headSet !== null && Math.abs(firstRow - headSet.base - 4 * Theme.space.beat) <= 0.5,
+                `head ${JSON.stringify(headSet)}, first row ${firstRow}, band ${headed.height}`);
+            // A prompt's foot is a band, its hairline to the frame, its
+            // baseline on the rows' rhythm and its bottom where its words
+            // centre.
+            centred(footed, "Asked by sudo", noteCaps, noteSmall);
+            // A card's status line is one too, its mark and its hints on
+            // the one baseline.
+            centred(lined, "NOR", noteCaps, noteSmall);
+            const lineMark = root.setting(lined, "NOR");
+            const lineHint = root.setting(lined, "open");
+            expect("a status line's hints sit on its mark's baseline", lineMark !== null
+                && lineHint !== null && Math.abs(lineMark.base - lineHint.base) <= 0.5,
+                `${JSON.stringify(lineMark)} against ${JSON.stringify(lineHint)}`);
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));

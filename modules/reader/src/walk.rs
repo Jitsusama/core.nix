@@ -1084,7 +1084,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
-            crate::page::Width::WHOLE,
+            crate::page::Width::whole(),
             &mut costs,
         );
         assert!(typst.contains("#broken(\"x^2\")"), "{typst}");
@@ -1101,7 +1101,7 @@ mod tests {
                 None,
                 &Pieces::new(),
                 &world,
-                crate::page::Width::WHOLE,
+                crate::page::Width::whole(),
                 &mut Costs::default(),
             )
         };
@@ -1141,7 +1141,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
-            crate::page::Width::WHOLE,
+            crate::page::Width::whole(),
             &mut Costs::default(),
         );
         assert!(
@@ -1181,7 +1181,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
-            crate::page::Width::WHOLE,
+            crate::page::Width::whole(),
             &mut Costs::default(),
         );
         assert!(typst.contains("#list(marker: no-mark, "), "{typst}");
@@ -1198,7 +1198,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
-            crate::page::Width::WHOLE,
+            crate::page::Width::whole(),
             &mut Costs::default(),
         );
         assert!(
@@ -1225,7 +1225,7 @@ mod tests {
                 None,
                 &Pieces::new(),
                 &world,
-                crate::page::Width::WHOLE,
+                crate::page::Width::whole(),
                 &mut Costs::default(),
             )
         };
@@ -1249,7 +1249,7 @@ mod tests {
                 None,
                 &Pieces::new(),
                 &world,
-                crate::page::Width::WHOLE,
+                crate::page::Width::whole(),
                 &mut Costs::default(),
             )
         };

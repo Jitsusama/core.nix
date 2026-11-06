@@ -21,14 +21,20 @@ const normal = [
     // :setlocal is the buffer's.
     { name: "option", acts: [], also: [":set dnd"] },
     { name: "optionHere", acts: [], also: [":setl mute"] },
-    { name: "inOut", acts: ["into", "out"] },
-    { name: "run", acts: ["run"], firsts: true },
+    // Return opens a row or goes into it and - goes up, as his oil's; h
+    // and l aren't listed, since on a row they only say so.
+    { name: "openIn", acts: ["run"], firsts: true },
+    { name: "up", acts: ["out"] },
+    // Ctrl+] into what Return opens, as a mail's sender (VKCF3Z).
+    { name: "follow", acts: ["follow"] },
     // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.
     { name: "jumps", acts: ["jumpBack", "jumpForward"], without: ["Tab"] },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
     { name: "own", acts: ["openOwn"] },
-    { name: "find", acts: ["freshFind"] },
+    { name: "find", acts: ["freshFind", "freshFindBack"] },
+    { name: "matches", acts: ["matchNext", "matchBack"] },
+    { name: "letters", acts: ["toLetter", "toLetterBack", "letterAgain", "letterAgainBack"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.

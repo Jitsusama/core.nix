@@ -547,8 +547,9 @@ Provider {
         const unread = sent.filter(row => row.unread).length;
         return [said("program:notices", "", {
             hue: "program",
-            count: String(sent.length),
-            side: unread > 0 ? `${unread} unread` : "",
+            // Its figures at its right, where a row's stand (VKCF3Z,
+            // 2026-11-05: one place for each kind of fact).
+            side: unread > 0 ? `${sent.length} \u00b7 ${unread} unread` : String(sent.length),
             ask: "which?",
             nested: true,
             targets: () => past.sentBy(same)
@@ -666,7 +667,7 @@ Provider {
             return [];
         return [said("program:recent", "", {
             hue: "program",
-            count: String(count),
+            side: String(count),
             ask: "which?",
             nested: true,
             targets: listed

@@ -739,7 +739,14 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # lists what it offers as commands under its words, and : puts them first in the menu;
     # Tab chooses it and Return does it, with a token to come forward, giving the keys back.
     desktop.listen()
-    with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
+    # Its status line reaches the frame, so its text centres between the
+    # hairline and the frame, as the launcher's does (docs/design.md: text
+    # in a band centres in it).
+    with (
+        desktop.told("keys notices"),
+        desktop.told("notice cursor Lunch"),
+        desktop.told("notice foot ends at the frame"),
+    ):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
     for key in ["tab", "backspace", "h", "l"]:
@@ -1057,14 +1064,16 @@ def test_a_notices_commands_are_what_its_launcher_row_holds(
     with desktop.told("notice mode normal"):
         machine.send_key("esc")
     # :e Notices hands on to the history, which opens on its first row,
-    # the newest notice, as every place opens on its first; its acts there
-    # hold the same.
+    # the newest notice, as every place opens on its first. Its acts are
+    # commands, not parts (VKCF3Z, 2026-11-05), so the foot offers no
+    # Ctrl+] into them, and Return opens it as its card's does.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
     )
-    desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
+    desktop.normal()
+    told = desktop.showing()["selected"]["told"]
+    assert "Ctrl+] in" not in told, f"a notice offers Ctrl+] into its acts: {told}"
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
 
@@ -1133,9 +1142,9 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
             and (shown["drawer"]["title"], shown["drawer"]["body"]) == ("Quarry take", "z.mp4")
         )
     )
-    # With nothing to open or go to, what it offers leads; copying what it
-    # said is last.
-    desktop.step_in()
+    # With nothing to open or go to, Return steps in, and what it offers
+    # leads; copying what it said is last.
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["Play it"] and shown["rows"][-1:] == ["Copy What It Said"]
