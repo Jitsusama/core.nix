@@ -70,6 +70,7 @@ mod pressure;
 mod quarantine;
 mod runs;
 mod there;
+mod turn;
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -222,6 +223,18 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
     }
+    // The far side's runs share a builder made for them; this machine's
+    // take turns (`turn.rs` says why).
+    let _turn = if env::var_os(HERE).is_none() {
+        let lock = cache().join("changed-checks/evaluating-here.lock");
+        Some(turn::taken(&lock, || {
+            eprintln!(
+                "changed-checks: another run evaluates on this machine, so this waits its turn"
+            );
+        })?)
+    } else {
+        None
+    };
     let held = quarantine::on_main(&root, ORIGIN_MAIN);
     let mut noted = Run::new(&base, &system);
     let compared = compare(options, &flake, &base, &system, &held, &mut noted);
