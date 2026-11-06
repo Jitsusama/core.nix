@@ -700,10 +700,11 @@
     bytes the firmware lists, leaves out an empty slot, and reads LPDDR5 past 6400 MT/s as LPDDR5X
   '';
   merge-net-catches-a-broken-merge = ''
-    merge-net runs each VM test a head of main changed since the last it passed, two at once,
+    merge-net runs each VM test a head of main changed since the last it passed, four at once,
     as bulk where nix-offload there takes it, sends again only what no builder took, never runs
     one again where it passed, reverts the merge it finds broke a test that failed twice and
-    holds switching until the revert is on main, quarantines one that failed then passed,
+    holds switching until the revert is on main, runs a held test first at a new head and lifts
+    the hold the moment it passes, quarantines one that failed then passed,
     reverts nothing for one quarantined, starts nothing while the machine is held, and says
     which changes run their VM tests before merging
   '';
