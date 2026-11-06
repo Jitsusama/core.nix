@@ -39,7 +39,6 @@ ShellRoot {
         + " of $15,000, which resets on Monday at midnight"
     readonly property string asked: "Say which issue sources to read"
     readonly property string day: "Wednesday 4 November 2026"
-    readonly property var keyWords: ({ complete: "complete", clear: "clear" })
 
     FloatingWindow {
         visible: true
@@ -190,15 +189,12 @@ ShellRoot {
                 id: opened
                 width: root.panel
                 steady: true
-                leftClears: true
                 modal: true
-                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
             }
             Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
-            // The same with letters typed, so the field says its keys.
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -218,13 +214,12 @@ ShellRoot {
                 current: 1
                 shown: true
             }
+            // The launcher's field as it opens, with letters typed.
             Prompt {
                 id: typing
                 width: root.panel
                 steady: true
-                leftClears: true
                 modal: true
-                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"

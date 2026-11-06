@@ -5838,7 +5838,6 @@ Scope {
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
-                        keyWords: Words.field.keys ?? {}
                         // From the frame, its own inset inside, at the card's
                         // inset over the gutter's numbers, as Vim's / and :
                         // lines start at column 0, left of its number column:
@@ -5887,9 +5886,6 @@ Scope {
                         narrowed: root.typed !== "" && root.current >= 0
                             && root.matches.length > 0
                             ? `${root.current + 1} of ${root.matches.length}` : ""
-                        // What's typed narrows a list, so the left arrow
-                        // takes it away whole before it steps back out.
-                        leftClears: true
                         onTextChanged: {
                             const due = root.keysDue;
                             trials.retyped(due.length > 0 ? due[due.length - 1].text
