@@ -101,10 +101,10 @@ const table = [
         does: "these keys" },
     { act: "numbers", keys: [["Space", "u", "l"]], does: "relative numbers" },
     { act: "back", keys: ["Escape"], modes: ["visual"], does: "stop choosing" },
-    // While Space ? lists these, the foot says how to move through them
-    // and how to leave; the moves are normal's, so these only hint.
+    // While Space ? lists these, its foot hints normal's moves through them,
+    // never Escape, which leaves every mode (VKCF3Z, 2026-11-06).
     { act: "scroll", keys: ["j k"], modes: ["listing"], hint: "scroll" },
-    { act: "back", keys: ["Escape"], modes: ["listing"], hint: "back" },
+    { act: "back", keys: ["Escape"], modes: ["listing"] },
 
     // The find line: what types is the line's, these its own. No foot
     // names Escape, which only leaves a mode (VKCF3Z, 2026-11-05).

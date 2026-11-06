@@ -324,8 +324,8 @@ QtObject {
         holds("the find's hints", said("find", {}), ["\u21b5 go to"]);
         holds("insert's hints", said("insert", {}), ["\u21b5 send"]);
         holds("the command line's hints", said("command", {}), ["\u21b5 run"]);
-        holds("the key list says how to leave it", said("listing", {}),
-            ["j k scroll", "Esc back"]);
+        holds("the key list says how to move through it", said("listing", {}),
+            ["j k scroll"]);
         holds("keys are spelt as the launcher's foot spells them",
             [Keys.spoken(["Space", "?"]), Keys.spoken("Escape"), Keys.spoken("Ctrl+R")],
             ["Space ?", "Esc", "Ctrl+R"]);

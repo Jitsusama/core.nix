@@ -160,6 +160,27 @@ QtObject {
         holds("ending at a whole word", cut.endsWith("word49\u2026"), true);
         holds("measured by its room, not its length", measured < 1000, true);
 
+        // The foot's hints give way furthest from Return first, one at a
+        // time, and never the keys list, done or Return. Each is as wide as
+        // its letters here, two apart.
+        const hinted = (key, act, word) => ({ act, key, word });
+        const footWide = hint => hint.key.length + hint.word.length;
+        const acts = hints => hints.map(hint => hint.act);
+        const visualHints = [hinted("d", "done", "done"), hinted("y", "copy", "copy"),
+            hinted(":", "command", "commands"), hinted("Space ?", "keys", "keys")];
+        holds("with room, every hint shows", acts(List.footHints(visualHints, footWide, 2, 36)),
+            ["done", "copy", "command", "keys"]);
+        holds("the first that may go goes first",
+            acts(List.footHints(visualHints, footWide, 2, 30)), ["done", "command", "keys"]);
+        holds("then the next", acts(List.footHints(visualHints, footWide, 2, 20)),
+            ["done", "keys"]);
+        holds("done and the keys list never go", acts(List.footHints(visualHints, footWide, 2, 5)),
+            ["done", "keys"]);
+        const normalHints = [hinted("d", "done", "done"), hinted(":", "command", "commands"),
+            hinted("Space ?", "keys", "keys"), hinted("\u21b5", "open", "go to")];
+        holds("nor Return", acts(List.footHints(normalHints, footWide, 2, 20)),
+            ["done", "keys", "open"]);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
