@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
 # The camera's window, which the viewfinder is.
 CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
+# The keys that close the viewfinder, as they close Joel's other programs.
+ZZ = ("shift-z", "shift-z")
 # Where the shell keeps the notices it holds.
 KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
@@ -448,14 +450,15 @@ class Camera:
         assert not last or status == 0, f"video {count} never grew"
         return status == 0
 
-    def saved(self, key: str) -> None:
-        """Press a key that stops the recording, and wait for the notice that it's saved.
+    def saved(self, *keys: str) -> None:
+        """Press the keys that stop the recording, and wait for the notice that it's saved.
 
         A run has gone a minute without it, so what the recording was doing then is printed.
         """
         try:
             with self.desktop.told("shows card Video saved", timeout=WAKING):
-                self.machine.send_key(key)
+                for key in keys:
+                    self.machine.send_key(key)
         except AssertionError:
             self.said()
             raise
@@ -502,14 +505,14 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     desktop.photograph("camera")
     camera.saved("ret")
     camera.gone()
-    # Escape while recording saves the video, then closes. The arrows choose that way, so Right
+    # ZZ while recording saves the video, then closes. The arrows choose that way, so Right
     # after Left is still a video.
     camera.viewfinder("video from the camera")
     machine.send_key("left")
     machine.send_key("right")
     machine.send_key("ret")
     retry(lambda last: camera.recording(2, last), timeout=WAKING)
-    camera.saved("esc")
+    camera.saved(*ZZ)
     camera.gone()
 
     streams = camera.probe("stream=codec_name", f"{camera.videos}/*.mp4")
@@ -522,10 +525,14 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
         machine.send_key("ret")
     camera.gone()
 
-    # q closes, as Escape does and as Joel's Neovim closes help, keeping nothing.
+    # Escape and q close nothing, as in all of Joel's programs; ZZ closes, keeping nothing.
     kept = machine.succeed(f"ls {camera.pictures} {camera.videos}")
     camera.viewfinder("picture from the camera")
+    machine.send_key("esc")
     machine.send_key("q")
+    machine.succeed(desktop.in_session(CAMERA))
+    for key in ZZ:
+        machine.send_key(key)
     camera.gone()
     assert machine.succeed(f"ls {camera.pictures} {camera.videos}") == kept
 
@@ -572,7 +579,8 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     # And the mark goes once the recording's file does.
     desktop.reported("sets margin ", lambda rest: not marked(rest), since)
     machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
-    machine.send_key("esc")
+    for key in ZZ:
+        machine.send_key(key)
     camera.gone()
     # One killed outright leaves its file behind, and its process gone says it isn't recording.
     desktop.as_account(
@@ -673,7 +681,8 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     machine.send_key("ret")
     machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
-    machine.send_key("esc")
+    for key in ZZ:
+        machine.send_key(key)
     machine.wait_until_fails(desktop.in_session(CAMERA), timeout=timedelta(seconds=30))
     machine.succeed(f"rm {holders}")
     # Its notice goes before anything after looks at the screen.
