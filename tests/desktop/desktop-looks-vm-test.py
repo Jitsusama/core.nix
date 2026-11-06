@@ -267,6 +267,8 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         assert not arrowed, f"at {scale} normal's foot names an arrow: {arrowed}"
         told = desktop.showing()["selected"]["told"]
         assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
+        # Home's head in normal: no / and no question, the column kept (Joel, 2026-11-06).
+        desktop.photograph(f"launcher-home-normal-at-{scale.replace('.', '-')}")
         finds_kitty(desktop, scale)
         card = desktop.showing()["drawer"]["cardLines"]
         assert words_on_their_names(card, scale, serif) > 0, (
@@ -307,6 +309,21 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         washes_what_it_finds(desktop, scale)
         numbers_programs(desktop, scale)
         counts_before_its_chord(desktop, scale)
+        says_on_its_row(desktop, scale)
+
+
+def says_on_its_row(desktop: Desktop, scale: str) -> None:
+    """Photograph an answer whose cursor row says how it stands, at its far end, in normal.
+
+    What the selection says is a fact about the row, so it's said on the row, before its value,
+    rather than in the head (VKCF3Z, 2026-11-06). Location says it here, since GeoClue never
+    finds a guest.
+    """
+    desktop.answer("location")
+    desktop.normal()
+    desktop.launcher_until(lambda shown: shown["footer"] != "")
+    desktop.photograph(f"launcher-row-says-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
 
 
 def numbers_programs(desktop: Desktop, scale: str) -> None:

@@ -36,6 +36,10 @@ Singleton {
     // The query line's own words: each mode's name, as the foot says it
     // while the mode isn't normal, and what each of its keys does.
     readonly property var field: all.field ?? {}
+    // What a place asks that asks nothing in particular, which the
+    // launcher's head leaves unsaid, since its mark and caret already say
+    // "type" (VKCF3Z, 2026-11-06, one calm head).
+    readonly property string anyAsk: "which?"
     readonly property var things: {
         const out = {};
         for (const entry of all.things ?? [])
@@ -127,7 +131,7 @@ Singleton {
             noun: entry.noun ?? entry.name.toLowerCase(),
             title: entry.name,
             glyph: glyph(id),
-            ask: entry.ask ?? "which?",
+            ask: entry.ask ?? words.anyAsk,
             empty: entry.empty ?? `No ${entry.noun ?? entry.name.toLowerCase()} yet.`
         }, extra ?? {});
     }

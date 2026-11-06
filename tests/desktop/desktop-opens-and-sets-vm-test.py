@@ -1184,8 +1184,10 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["open"] and "Disconnect It" in shown["rows"])
     first = desktop.showing()["selected"]["name"]
     assert first not in ("Disconnect It", "Forget It"), desktop.showing()["rows"]
-    # The network's glyph follows the find's /, leading the path.
-    assert (desktop.showing()["sigil"], desktop.showing()["lead"] != "") == ("/", True)
+    # The network's glyph leads the path, after the find's / where the line finds.
+    shown = desktop.showing()
+    mark = "/" if shown["mode"] == "find" else ""
+    assert (shown["sigil"], shown["lead"] != "") == (mark, True), shown
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # Disconnect It found never disconnects on Return, from the find or from normal: Return

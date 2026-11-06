@@ -6687,8 +6687,9 @@
     }
   ],
   "field": {
-    "found": "{at} of {all}",
+    "found": "{count} found",
     "waiting": "{count} new",
+    "home": "Home",
     "drawer": {
       "back": "back",
       "keys": "keys"

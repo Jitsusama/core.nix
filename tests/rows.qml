@@ -41,6 +41,8 @@ ShellRoot {
     readonly property int panel: 677
     readonly property string long: "Heavy turns in Walgit Push Policy: Protect the Main Branch"
     readonly property string voice: "Nothing needs you."
+    // Home's house, nf-md-home, as the theme names it.
+    readonly property string house: String.fromCodePoint(0xf02dc)
     readonly property string sentence: "$4,199 billed in the last 7 days against an allowance"
         + " of $15,000, which resets on Monday at midnight"
     readonly property string asked: "Say which issue sources to read"
@@ -275,6 +277,28 @@ ShellRoot {
             // A collection's count at its right, before its chord.
             Choice { id: countedChord; width: root.panel; name: "Agents"; side: "12"
                 chord: [{ text: "Super" }, { text: "0" }]; glyph: "$" }
+            // The cursor row saying how it stands, before what it says at its
+            // right, or on the inset where it says nothing there; and a long
+            // one beside a long name, which never gives way to it (VKCF3Z,
+            // 2026-11-06).
+            Choice { id: saying; width: root.panel; name: "Battery"; side: "79%"
+                say: "full in 40 min"; glyph: "$"; selected: true }
+            Choice { id: sayingAlone; width: root.panel; name: "Battery"
+                say: "full in 40 min"; glyph: "$"; selected: true }
+            Choice { id: sayingLong; width: root.panel; name: root.long; side: "79%"
+                say: root.sentence; glyph: "$"; selected: true }
+            Choice { id: sayingNot; width: root.panel; name: root.long; side: "79%"
+                glyph: "$"; selected: true }
+            // Home's house, a mark drawn small for its em, heading its
+            // place as the launcher's head does, on the rows' glyph column,
+            // and as a row wears it.
+            Prompt {
+                id: housed
+                width: root.panel
+                lead: root.house
+                leadColumn: Theme.level.name.pitch + Theme.space.rung.mark
+            }
+            Choice { id: houseRow; width: root.panel; name: "Home"; glyph: root.house }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -620,6 +644,52 @@ ShellRoot {
             `${name.base} against ${figure.base}`);
         expect("and nothing after its name",
             texts.filter(t => t.text.includes("12")).length === 1, said(texts));
+    }
+
+    // What the cursor row says of how it stands, on the row rather than in
+    // the head: before what it says at its right, joined by the dot a mark
+    // from each ink, as the status line joins its facts; on the inset with
+    // nothing there; and never taking the name's room.
+    function headMarkHolds() {
+        const head = textItem(housed, root.house);
+        const row = textItem(houseRow, root.house);
+        expect("a place's mark heads its rows at their size", head !== null && row !== null
+            && Math.abs(head.font.pointSize - row.font.pointSize) <= 0.01,
+            `the head's at ${head?.font.pointSize}, the row's at ${row?.font.pointSize}`);
+    }
+
+    function sayHolds() {
+        const texts = drawn(saying, []).sort((a, b) => a.from - b.from);
+        const say = texts.find(t => t.text === "full in 40 min");
+        const side = texts.find(t => t.text === "79%");
+        const dot = textItem(saying, "\u00b7");
+        countProbe.text = "\u00b7";
+        const dotBox = countProbe.tightBoundingRect;
+        const dotFrom = dot ? dot.mapToItem(null, 0, 0).x + dotBox.x / 8 : NaN;
+        const dotTo = dotFrom + dotBox.width / 8;
+        countProbe.text = "12";
+        expect("the say stands before the side, the dot a mark from each",
+            say !== undefined && side !== undefined
+                && Math.abs(dotFrom - say.to - Theme.space.rung.mark) <= 1
+                && Math.abs(side.from - dotTo - Theme.space.rung.mark) <= 1
+                && Math.abs(side.to - (root.panel - Theme.space.rung.inset)) <= 1,
+            `${said(texts)}, the dot's ink ${dotFrom} to ${dotTo}`);
+        const name = setting(saying, "Battery");
+        const words = setting(saying, "full in 40 min");
+        expect("the say is on the name's baseline", name !== null && words !== null
+            && Math.abs(name.base - words.base) <= 0.5,
+            `${JSON.stringify(name)} ${JSON.stringify(words)}`);
+        const alone = drawn(sayingAlone, []).find(t => t.text === "full in 40 min");
+        expect("with nothing at its right, the say ends on the inset", alone !== undefined
+            && Math.abs(alone.to - (root.panel - Theme.space.rung.inset)) <= 1
+            && textItem(sayingAlone, "\u00b7") === null, said(drawn(sayingAlone, [])));
+        const named = readsOn(sayingLong, root.long);
+        const unsaid = readsOn(sayingNot, root.long);
+        const longSay = drawn(sayingLong, []).find(t => t.text === root.sentence);
+        expect("a long say gives way, from its end, and never the name",
+            named !== null && unsaid !== null && Math.abs(named.width - unsaid.width) <= 0.5
+                && (longSay === undefined || longSay.truncated),
+            `${named?.width} against ${unsaid?.width}, ${said(drawn(sayingLong, []))}`);
     }
 
     // The gutter, as his Neovim's number, relativenumber and
@@ -1009,6 +1079,8 @@ ShellRoot {
             root.gutterHolds();
             root.marksHold();
             root.countBeforeChord();
+            root.sayHolds();
+            root.headMarkHolds();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

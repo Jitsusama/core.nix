@@ -5668,6 +5668,8 @@ Scope {
             completion: root.completion,
             // What the field asks while nothing's typed.
             hint: prompt.hint,
+            // How many the find found, said after what's typed in normal.
+            found: prompt.narrowSaid ? prompt.narrowed : "",
             held: root.held.map(step => step.row.chip ?? step.row.name),
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
@@ -6403,42 +6405,65 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        // The find's / leads the line at every depth, in
-                        // the accent while it finds and muted in normal, as
-                        // Vim's / line is the one place letters go; a held
-                        // thing's glyph follows it, leading the path. Words
-                        // asked for are typed beside the thing's own glyph.
-                        // An ask leads with nothing, since the line isn't a
-                        // find while it stands, its words where the find's are.
+                        // The line's first column holds the mode's mark, as
+                        // Vim's / line starts with its /: the find's / in
+                        // the accent, and nothing in normal or visual, whose
+                        // keys are on the rows, the column kept so nothing
+                        // after it moves as the mark comes and goes (VKCF3Z,
+                        // 2026-11-06, on Joel's "when in normal mode, it
+                        // shouldn't have a / at the front"). That column is
+                        // the gutter's, and the rest stand on the rows' own:
+                        // a held thing's glyph, or the padlock, over their
+                        // glyphs, and what's typed or a place's name over
+                        // their names, as the : line's typing stands, so
+                        // nothing moves between / and : either. An ask
+                        // leads with nothing, since the line isn't a find
+                        // while it stands, its words where the find's are.
                         readonly property bool sigilLeads: !secret && !words && root.asked === null
-                        glyph: root.asked !== null ? "" : secret ? Theme.glyph.secret
-                            : !sigilLeads && thing ? thing.lead ?? thing.glyph : "/"
-                        hue: secret ? Theme.machine
-                            : !sigilLeads && thing ? Theme[thing.leadHue ?? thing.hue]
-                            : mode === "find" ? Theme.accent : Theme.muted
-                        lead: sigilLeads && thing ? thing.lead ?? thing.glyph : ""
-                        leadHue: thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
-                        glyphWidth: root.glyphColumn
+                        // Home is a place like any other, so its head says
+                        // where Joel is as a place's does: its glyph and its
+                        // Title, typing after them (VKCF3Z, 2026-11-06: a
+                        // bare band said nothing at the top of the screen
+                        // he sees most).
+                        readonly property bool home: sigilLeads && root.held.length === 0
+                        glyph: sigilLeads && mode === "find" ? "/" : ""
+                        hue: Theme.accent
+                        lead: root.asked !== null ? "" : secret ? Theme.glyph.secret
+                            : thing ? thing.lead ?? thing.glyph
+                            : home ? Theme.glyph.home : ""
+                        // Home's glyph muted, since it's no kind of thing,
+                        // and the accent stays where the keys go.
+                        leadHue: secret ? Theme.machine
+                            : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
+                        glyphWidth: root.textAreaAt
+                        leadColumn: root.glyphColumn
                         // A folder's path gives way before any other step.
-                        chips: root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
-                        hint: root.held.length === 0 ? "what next?"
-                            : root.held[root.held.length - 1].row.ask ?? "what to do?"
+                        chips: home ? [{ text: Words.field.home ?? "", yields: false }]
+                            : root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
+                        // Asked only where the line asks something in
+                        // particular, as a name to save by or a file a
+                        // program wants: on a find, the mark and the caret
+                        // already say "type", so a bare "which?" there was
+                        // one more level in a head held to two (VKCF3Z,
+                        // 2026-11-06, on Joel's "a bumpy hill").
+                        readonly property string asks: root.held.length === 0 ? ""
+                            : root.held[root.held.length - 1].row.ask ?? ""
+                        hint: asks !== Words.anyAsk ? asks : ""
                         ghost: root.completion
                         // An answer's headline, which y copies, is said in
                         // its ghost, so that flashes in its row's place.
                         ghostFlashed: root.flashing[-1] === true
-                        // What the selection has to say, since the foot
-                        // always says how things stand; else where the
-                        // selection is, once there's more than fits. The
-                        // row says what it is, so this doesn't.
-                        aside: foot.said !== "" ? foot.said
-                            : prompt.narrowSaid ? ""
-                            : root.matches.length > root.rows && root.current >= 0
-                                ? `${root.current + 1} of ${root.matches.length}` : ""
-                        // A find narrowing the rows says how far, in normal.
-                        narrowed: root.typed !== "" && root.current >= 0
-                            && root.matches.length > 0
-                            ? `${root.current + 1} of ${root.matches.length}` : ""
+                        // Nothing at its right: what the selection has to
+                        // say is said on its row, at the far end (Choice's
+                        // `say`), and where the cursor is, by the gutter's
+                        // numbers and the status line, so the head holds
+                        // the mark, the path and what's typed alone.
+                        aside: ""
+                        // A find narrowing the rows says how many it found,
+                        // in normal.
+                        narrowed: root.typed !== "" && root.matches.length > 0
+                            ? (Words.field.found ?? "").replace("{count}",
+                                String(root.matches.length)) : ""
                         onTextChanged: {
                             const due = root.keysDue;
                             trials.retyped(due.length > 0 ? due[due.length - 1].text
@@ -7283,6 +7308,10 @@ Scope {
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
                                     carried: selected ? root.carriedBy(entry.modelData) : ""
+                                    // What the cursor row has to say of how
+                                    // it stands, on the row, where the head
+                                    // said it before (VKCF3Z, 2026-11-06).
+                                    say: selected ? foot.said : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).
