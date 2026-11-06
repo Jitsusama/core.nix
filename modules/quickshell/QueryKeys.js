@@ -394,10 +394,9 @@ function read(standing, key, mode, words = false) {
         const count = mode === "normal" && standing.count !== "" ? Number(standing.count) : 0;
         return { act: "command", count, standing: rest(), ours: true };
     }
-    // At rest in normal too, as Vim's: it never closes or quits anything
-    // (Joel, 2026-11-05: "fuck escape quitting"), which :q, ZZ and Space w
-    // do, and it's never told "not here", since his Neovim's bell is off
-    // and he presses it out of habit to be sure of normal.
+    // At rest in normal too, closing nothing (Joel, 2026-11-05: "fuck escape
+    // quitting"), and never told "not here": his Neovim's bell is off, and
+    // he presses it out of habit to be sure of normal.
     if (key === "Escape" && (pending(standing) || mode === "normal")) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
