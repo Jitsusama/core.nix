@@ -2740,6 +2740,7 @@ onLinux {
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${./PromptFoot.qml} PromptFoot.qml
       cp ${./Hairline.qml} Hairline.qml
+      cp ${./StatusLine.qml} StatusLine.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -3143,6 +3144,23 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml command-line.qml
+      touch $out
+    '';
+
+  # A card says how it stands in one status line, the launcher's and held
+  # notices' alike, as tests/status-line.qml holds StatusLine.js to: which
+  # hints give way as room runs short, the keys list's and Return's staying.
+  a-card-says-how-it-stands-in-one-line =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-card-says-how-it-stands-in-one-line" { } ''
+      cp ${../../tests/status-line.qml} status-line.qml
+      cp ${./StatusLine.js} StatusLine.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml status-line.qml
       touch $out
     '';
 
