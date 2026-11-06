@@ -139,6 +139,9 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
 PITCH = 24
 # A box's rounding, which a baseline may be off its place by and still be on it.
 ROUNDING = 0.5
+# A length the report gives to the pixel, which two ways of reaching one place may round
+# apart by where the view sits on a half pixel, as it does under a row's half capitals.
+ROUNDED = 1
 
 
 def a_line_on(drawer: Json, past: int = 0) -> bool:
@@ -370,7 +373,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     assert told == ["Ctrl+W h back", "Space ? keys"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
-    assert rule["top"] == came["top"], came
+    assert abs(rule["top"] - came["top"]) <= ROUNDED, came
     assert rule["height"] == came["height"], came
     assert rule["x"] > 0, came
     assert rule["width"] > 0, came
