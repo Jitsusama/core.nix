@@ -713,11 +713,19 @@ fn fits_now() -> ExitCode {
         println!("It couldn't tell whether the image fits, so it doesn't stand in the way.");
         return ExitCode::SUCCESS;
     };
+    let mm_stats: Vec<String> = fs::read_dir("/sys/block")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|device| device.file_name().to_string_lossy().starts_with("zram"))
+        .filter_map(|device| fs::read_to_string(device.path().join("mm_stat")).ok())
+        .collect();
     let fit = fits::Fit::of(
         memory,
         fits::Zones::parse(&zones),
         reserve,
-        fits::swap_free(&swaps),
+        &fits::swap_areas(&swaps),
+        fits::Squeeze::parse(&mm_stats),
     );
     println!("{}", fit.said());
     if fit.fits() {

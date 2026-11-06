@@ -68,8 +68,9 @@ in
     # nothing more.
     boot.initrd.kernelModules = [ "lz4" ];
 
-    # For `hibernate-unlock fits`, which whatever asks for a hibernation runs
-    # first, so one that can't fit is refused before the screen locks.
+    # For `hibernate-unlock fits`, for whatever asks for a hibernation to run
+    # first: asked inside the sleep, it would come after the screen locked.
+    # Nothing here asks it.
     environment.systemPackages = [ unlock ];
 
     # systemd-sleep runs each program here before a sleep and after it, with
