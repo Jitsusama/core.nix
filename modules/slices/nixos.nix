@@ -261,6 +261,25 @@ in
     };
     systemd.user.slices.background.sliceConfig.IOWeight = 1;
 
+    # Work other sessions wait on, beside jobs rather than in it. With no
+    # target of its own, everything in jobs waits on the disk whenever an
+    # app's or a session's work misses theirs: on 5 November pushes holding
+    # one of a repository's few walk slots sat about an hour waiting in
+    # the kernel's latency throttle, while twelve walks queued behind them
+    # waited 80 hours that day. Here a push ranks with the sessions waiting
+    # on it, at their disk target, so the two never hold each other back,
+    # while jobs still gives way to both. On the processor it still yields
+    # to what Joel uses, at a tenth of an app's weight, and past its
+    # ceiling it swaps its own memory, as jobs does. Whoever starts such
+    # work puts it here, with `systemd-run --user --scope --slice=`. A dash
+    # in the name would nest it under a parent with no target.
+    systemd.user.slices.shared.sliceConfig = {
+      CPUWeight = 10;
+      IOWeight = 10;
+      MemoryHigh = "15%";
+    }
+    // latency;
+
     # Each measured disk is shared by weight from the moment it appears, and
     # stopping its unit hands it back to first come, first served. Boot wants
     # the unit, for a disk the initrd already found: a device plugged before
@@ -493,6 +512,7 @@ in
     environment.sessionVariables = {
       JOBS_CGROUP = "jobs.slice/jobs.service";
       TIMED_CGROUP = "jobs.slice/jobs-timed.slice/timed.service";
+      SHARED_SLICE = "shared.slice";
     };
 
     # The Nix daemon's builds run outside the account, in build.slice beside

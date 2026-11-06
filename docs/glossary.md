@@ -246,6 +246,7 @@ off.
 | compile cache | sccache's store of compiled crates, keyed by their inputs, which every worktree's cargo build reads before compiling one | build cache | `sccache`, `~/.cache/sccache` |
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
+| shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at the sessions' own disk target | | `shared.slice`, `SHARED_SLICE` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | offload builder | a builder elsewhere lent to the machine while its queue has builds one could take, and given back once idle | remote builder | `nix-offload` |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
