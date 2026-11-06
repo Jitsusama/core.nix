@@ -100,9 +100,9 @@ included, so the boot screen held its last frame for the whole read, the
 longer the more memory was in use. The patch has the panic screen's drawing,
 which needs no process and writes straight into each screen's buffer, fill
 a bar as `kernel/power/swap.c` counts the image's pages. It draws nothing
-unless told the bar's size and place on the kernel's command line, which the
-boot screen does (`modules/plymouth/nixos.nix`), drawing the empty track the
-bar fills in the same place.
+until told the bar's size and place through the `drm` module's parameters,
+which the boot screen sets as a restore starts (`modules/plymouth/nixos.nix`),
+since its own pictures say where its empty track goes.
 
 ### The Settings
 
