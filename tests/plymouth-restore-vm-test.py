@@ -27,6 +27,9 @@ if TYPE_CHECKING:
 # The longest a wait may take for what it waits on. A wait ends when it happens, so this is
 # only a ceiling, for a host busy with other machines.
 READING = dt.timedelta(seconds=300)
+# How long the ask may take to show: the disk waits two minutes for its passphrase, and the
+# boot goes on without it after.
+ASKING = dt.timedelta(seconds=90)
 # How long a hibernation may take to make its image and power off.
 GOES_OFF = dt.timedelta(minutes=3)
 # What the kernel says once every program is frozen and it's about to read the image, as it
@@ -287,7 +290,15 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     except subprocess.TimeoutExpired:
         pytest.fail("the machine never went off to hibernate")
     machine.start()
-    machine.wait_for_text("disk is locked", timeout=READING)
+    try:
+        machine.wait_for_text("disk is locked", timeout=ASKING)
+    except Exception:
+        # What the screens showed instead, while the disk still waits, for whoever reads
+        # the failure.
+        shot = photographed(machine, Path(tempfile.mkdtemp()), "unasked")
+        kept(machine, shot.path, "unasked")
+        kept(machine, shot.large, "unasked-large")
+        raise
     disk = the_disk(machine)
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 {CRAWL} 0 0 0 0")
     machine.send_chars(f"{values['passphrase']}\n")
