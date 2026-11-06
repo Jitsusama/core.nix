@@ -876,7 +876,7 @@
     tests stay, with its store named for a build sent there whole when the helper gives one,
     and it's named as being made until it stands or won't; it's given back once idle, at the
     deadline or once gone, with a wait after a failure or one given back idle while work waits,
-    and none after one given back in use;
+    and none after one given back in use or one that stood and then went;
     only builders it asked for are ever given back; a stop ends at once, and a reload once
     nothing uses or wants its builder, leaving its builder for the next start, which takes it
     back before the deadline, keeping its price and idle time, or gives it back, priced to
@@ -904,7 +904,8 @@
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
     takes it, else tells changed-checks to run here; and `relay` dials a far side again
     while it closes before saying its first line, passes that line and everything after
-    both ways, and hangs up once, without dialling again, on one that says nothing in time
+    both ways, and hangs up once, without dialling again, on one that says nothing in time,
+    and ends once its far side has answered no caller for long enough, never while idle
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender

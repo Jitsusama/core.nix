@@ -364,13 +364,20 @@ fn main() -> ExitCode {
         let _ = std::io::Write::flush(&mut std::io::stdout());
         // Less than the 10 s ssh gives a server to answer, so a caller
         // hung up on hears it before ssh gives up on its own.
-        relay::Relay {
+        // Three minutes of callers hung up on is a tunnel that won't come
+        // back, where one connection's failing to open is dialled again.
+        let gave_up = relay::Relay {
             to,
             within: Duration::from_secs(9),
             pause: Duration::from_millis(250),
+            gives_up: Duration::from_secs(180),
         }
         .serve_all(listeners, &LEAVING);
-        return ExitCode::SUCCESS;
+        return if gave_up {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        };
     }
     if arguments.first().map(String::as_str) == Some("stand") {
         let (standing, beside) = (given("--standing"), given("--beside"));
