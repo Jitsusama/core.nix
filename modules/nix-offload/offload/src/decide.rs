@@ -5,8 +5,11 @@ use crate::journal::Event;
 
 /// How long a builder sits unused before it's given back.
 pub const IDLE: u64 = 15 * 60;
-/// How long after a builder fails, or goes on its own, before another is
-/// asked for, so a helper that keeps failing doesn't make one a minute.
+/// How long after a builder fails to stand before another is asked for,
+/// so a helper that keeps failing doesn't make one a minute. One that
+/// stood and then went is asked for again at once: on 5 November one
+/// whose tunnel broke was lost, and with this hold after it none was lent
+/// for half an hour, every build falling back to the laptop.
 pub const AFTER_FAILING: u64 = 30 * 60;
 /// How near its end a builder that goes on its own ended on time, rather
 /// than being lost: one asked to live until 23:59 on 2 November was
@@ -156,7 +159,7 @@ pub fn asks_outliving(hours: Hours, tick: Tick, used: u64, ends: u64) -> bool {
 /// unused only because the machine slept, just before it `woke`.
 pub fn next_after(event: Event, wants: bool, used: u64, ends: u64, woke: bool, now: u64) -> Hold {
     let (until, unused) = match event {
-        Event::Lost | Event::Failed => (now + AFTER_FAILING, false),
+        Event::Failed => (now + AFTER_FAILING, false),
         Event::Stopped if wants && !woke && now < ends && now.saturating_sub(used) >= IDLE => {
             (now + AFTER_FAILING, true)
         }
@@ -344,10 +347,10 @@ mod tests {
     fn none_is_lent_while_waiting_out_a_failure() {
         let failed = next_after(Event::Failed, false, 5, LATER, false, 5);
         assert_eq!(failed.until, 5 + AFTER_FAILING);
-        assert_eq!(
-            next_after(Event::Lost, false, 5, LATER, false, 5).until,
-            5 + AFTER_FAILING
-        );
+        // One that stood and then went is asked for again at once: on 5
+        // November one whose tunnel broke was lost, and none was lent for
+        // the 30 minutes after, everything building on the laptop.
+        assert_eq!(next_after(Event::Lost, true, 5, LATER, false, 5).until, 5);
         assert_eq!(
             next_after(Event::Stopped, false, 0, LATER, false, IDLE).until,
             IDLE

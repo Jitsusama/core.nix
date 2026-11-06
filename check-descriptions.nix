@@ -880,7 +880,7 @@
     tests stay, with its store named for a build sent there whole when the helper gives one,
     and it's named as being made until it stands or won't; it's given back once idle, at the
     deadline or once gone, with a wait after a failure or one given back idle while work waits,
-    and none after one given back in use;
+    and none after one given back in use or one that stood and then went;
     only builders it asked for are ever given back; a stop ends at once, and a reload once
     nothing uses or wants its builder, leaving its builder for the next start, which takes it
     back before the deadline, keeping its price and idle time, or gives it back, priced to
@@ -897,7 +897,8 @@
     while and for a lender restarting, saying how long, or, when none stands or none answers,
     builds nothing and exits 75, saying so, unless --here asks it to build here; with
     --here-when-idle it builds here only while this machine's CPU pressure has stayed under
-    10% and never a VM test, else sends it as ever; a tree's
+    10% and never a VM test, else sends it as ever; with --bulk, its VM tests waiting for a VM
+    builder's room let any run's that isn't bulk go first, waiting or coming; a tree's
     uncommitted changes go as a commit of what its index holds, files staged or added with -N
     included and untracked ones left, with the branch and index untouched; with
     --print-out-paths, what was built is copied into this store from the builder and only then
@@ -907,7 +908,8 @@
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
     takes it, else tells changed-checks to run here; and `relay` dials a far side again
     while it closes before saying its first line, passes that line and everything after
-    both ways, and hangs up once, without dialling again, on one that says nothing in time
+    both ways, and hangs up once, without dialling again, on one that says nothing in time,
+    and ends once its far side has answered no caller for long enough, never while idle
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender

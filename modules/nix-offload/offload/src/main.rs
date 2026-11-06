@@ -7,10 +7,10 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] (FLAKE ATTR... | DRV...)` to
-//! build a flake, or
-//! derivations, on the builder, or on a machine nearby for systems this
-//! one can't build, as src/there.rs says. A build waiting for a builder
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk]
+//! (FLAKE ATTR... | DRV...)` to build a flake, or derivations, on the
+//! builder, or on a machine nearby for systems this one can't build, as
+//! src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
 //!
 //! `nix-offload relay --listen ADDRESS --to ADDRESS` passes connections on
@@ -200,7 +200,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
+                    [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] \
                     (FLAKE ATTR... | DRV...) \
                     | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
@@ -364,13 +364,20 @@ fn main() -> ExitCode {
         let _ = std::io::Write::flush(&mut std::io::stdout());
         // Less than the 10 s ssh gives a server to answer, so a caller
         // hung up on hears it before ssh gives up on its own.
-        relay::Relay {
+        // Three minutes of callers hung up on is a tunnel that won't come
+        // back, where one connection's failing to open is dialled again.
+        let gave_up = relay::Relay {
             to,
             within: Duration::from_secs(9),
             pause: Duration::from_millis(250),
+            gives_up: Duration::from_secs(180),
         }
         .serve_all(listeners, &LEAVING);
-        return ExitCode::SUCCESS;
+        return if gave_up {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        };
     }
     if arguments.first().map(String::as_str) == Some("stand") {
         let (standing, beside) = (given("--standing"), given("--beside"));
@@ -639,7 +646,8 @@ fn at_once<'a>(
                 scope.spawn(move || {
                     let began = now();
                     let (dir, _claim) = if vm {
-                        there::admitted(dir, &others, there::count(part), room)
+                        let bulk = there::bulk(part);
+                        there::admitted(dir, &others, there::count(part), room, bulk)
                     } else {
                         (dir.as_path(), None)
                     };
