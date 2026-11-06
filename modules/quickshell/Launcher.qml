@@ -2005,8 +2005,11 @@ Scope {
         const taught = [];
         // A row Return opens that holds parts, as a program its commands
         // and windows, says Ctrl+] goes into them, first, furthest from
-        // Return, as normal's foot does (Joel, 2026-11-05: "in programs i
-        // don't understand how to go to sub commands on a program").
+        // Return, as normal's foot does, so nothing slides as it comes and
+        // goes with the row (Joel, 2026-11-05: "in programs i don't
+        // understand how to go to sub commands on a program"). It's the
+        // most needed, though, so the others give way before it
+        // (findYielding).
         const stepping = stepsIn(choice) || stepsThing(choice);
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             taught.push([hintKey("follow", "find"), hints.in ?? ""]);
@@ -2019,6 +2022,16 @@ Scope {
             taught.push([chordText(choice.chord), hints.nextTime ?? ""]);
         return taught;
     }
+
+    // The find's keys that give way first, short of room, in order of
+    // need rather than as drawn: the completion, whose ghost the line
+    // already shows, then less to type or next time, so Ctrl+] in and
+    // Return never go (VKCF3Z, 2026-11-06: at "k", "Ctrl+] in \u00b7
+    // Super+\u21b5 next time \u00b7 \u21b5 start"). Other modes give way
+    // furthest from Return first.
+    readonly property var findYielding: prompt.mode !== "find" ? [] : [
+        (Words.field.hints ?? {}).complete, (Words.field.hints ?? {}).enough,
+        (Words.field.hints ?? {}).nextTime].filter(word => !!word)
 
     // Normal's keys for a row: Return's act, which goes in where it steps
     // in, - where there's a place to go up to, then : and Space ?.
@@ -7232,12 +7245,16 @@ Scope {
                         // what waits and the mode's word leave them, those
                         // furthest from Return giving way first: drawn
                         // whatever their room, they ran over "1 new" and
-                        // "2 chosen" in visual over a full list at 2.
+                        // "2 chosen" in visual over a full list at 2. The
+                        // find says no mode word, so its room is the keys'
+                        // too, as it is the facts' (room, below): held for
+                        // it, the find's Ctrl+] cut the opening's room short,
+                        // and the first letter moved the keys.
                         readonly property real keysRoom: width - Theme.space.rung.inset
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
-                            - modeWord.room
+                            - (prompt.mode === "find" ? 0 : modeWord.room)
                         readonly property var kept: Standing.keysFitted(told,
-                            told => root.keysWide(told), keysRoom)
+                            told => root.keysWide(told), keysRoom, root.findYielding)
                         readonly property real returnPlace: told.length === 0 ? 0
                             : root.returnPlace(told[0])
                         // Where Return's place starts, which holds still.
