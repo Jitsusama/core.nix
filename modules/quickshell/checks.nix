@@ -316,6 +316,7 @@ onLinux {
           "battery"
           "devices"
           "volume"
+          "tokens"
           "spend"
           "pi"
           "notices"
