@@ -2111,7 +2111,7 @@ Scope {
     property real footKeysWidest: 0
 
     function footReset() {
-        footReturnWidest = keys.advance("\u21b5", footVerbRoom);
+        footReturnWidest = statusLine.keys.advance("\u21b5", footVerbRoom);
         footKeysWidest = keysWide(footKeysRoom);
     }
 
@@ -2119,13 +2119,13 @@ Scope {
     function keysWide(told) {
         if (told.length === 0)
             return 0;
-        return told.slice(1).reduce((sum, key) => sum + keys.spacing
-            + keys.advance(key[0], key[1]), returnPlace(told[0]));
+        return told.slice(1).reduce((sum, key) => sum + statusLine.keys.spacing
+            + statusLine.keys.advance(key[0], key[1]), returnPlace(told[0]));
     }
 
     // How wide Return's place is beside what it says now.
     function returnPlace(key) {
-        return Math.max(keys.advance(key[0], key[1]), footReturnWidest);
+        return Math.max(statusLine.keys.advance(key[0], key[1]), footReturnWidest);
     }
 
     function noteKeys() {
@@ -2138,7 +2138,7 @@ Scope {
         if (prompt.mode === "normal")
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
-            ...said.map(told => keys.advance(told[0][0], told[0][1])));
+            ...said.map(told => statusLine.keys.advance(told[0][0], told[0][1])));
         if (place > footReturnWidest)
             footReturnWidest = place;
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
@@ -5129,7 +5129,7 @@ Scope {
             // What the mode word's room says: a count, a search, what's
             // chosen; and the foot's start, the mode in three capitals.
             modeSays: modeWord.visible ? modeWord.said : "",
-            modeMark: markText.visible ? markText.text : "",
+            modeMark: statusLine.marked ? statusLine.mark : "",
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -6849,12 +6849,12 @@ Scope {
                         // widest of them has needed since the launcher
                         // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.rung.inset
-                            - Math.max(root.footKeysWidest, keys.implicitWidth)
+                            - Math.max(root.footKeysWidest, statusLine.keys.implicitWidth)
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.
-                        readonly property real room: keysFrom - Theme.space.rung.groups - standing.x
-                            - modeWord.room
+                        readonly property real room: keysFrom - Theme.space.rung.groups
+                            - statusLine.factsAt - modeWord.room
 
                         // As the card last showed it, while it's closed.
                         property string said: ""
@@ -6877,9 +6877,10 @@ Scope {
                         }
 
                         width: parent.width
-                        // Down to its baseline and an inset under it, so the
-                        // last baseline stands an inset above the frame.
-                        height: root.footBase + Theme.space.rung.inset
+                        // Its baseline on the rows' rhythm, and the frame's
+                        // bottom where the line's text centres under its
+                        // hairline (docs/design.md: a frame's bottom is set).
+                        height: statusLine.tall
 
                         // How things stand, the quietest thing here: the
                         // facts the margin's pieces hold that are always
@@ -6986,7 +6987,7 @@ Scope {
                                 ? foot.width - Theme.space.rung.inset - x
                                 : room - Theme.space.rung.groups)
                             anchors.baseline: parent.top
-                            anchors.baselineOffset: root.footBase
+                            anchors.baselineOffset: statusLine.base
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
@@ -6999,36 +7000,28 @@ Scope {
                             font: measure.font
                         }
 
-                        // The mode in three capitals at the foot's start, as
-                        // held notices' foot names it (Joel, 2026-11-05: "the
-                        // mode should be 3 letters, in caps, and in a place
-                        // where they are more obvious and not lost with other
-                        // things"): set as a label, muted in normal and in the
-                        // accent in every other mode, as his status line
-                        // names a mode. Every mark is three of the mono's
-                        // capitals, so the facts after it never move, and a
-                        // line with no modes, as a secret's, keeps its room
-                        // with none shown.
-                        Text {
-                            id: markText
+                        // The status line held notices' foot is too (StatusLine.qml):
+                        // the mode in three capitals first (Joel, 2026-11-05: "the
+                        // mode should be 3 letters, in caps, and in a place where
+                        // they are more obvious and not lost with other things"),
+                        // then the facts and the mode's word, set here from where
+                        // it says, then the selected row's keys at the right,
+                        // joined by dots, Return last in its place
+                        // (footReturnWidest), the rest close by. A line with no
+                        // modes, as a secret's, keeps the mark's room with none
+                        // shown.
+                        StatusLine {
+                            id: statusLine
 
-                            readonly property string mark: ModeMarks.mark(prompt.mode,
-                                root.commanding !== null)
-
-                            x: Theme.space.rung.inset
-                            anchors.baseline: parent.top
-                            anchors.baselineOffset: root.footBase
-                            visible: prompt.modal
-                            text: mark
-                            textFormat: Text.PlainText
-                            color: mark === ModeMarks.mark("normal", false) ? Theme.muted
-                                : Theme.accent
-                            font.family: Theme.level.label.family
-                            font.pointSize: Theme.level.label.pointSize
-                            font.weight: Theme.level.label.weight
-                            font.capitalization: Theme.level.label.capitalization
-                            font.letterSpacing: Theme.level.label.letterSpacing
-                            font.features: Theme.level.label.features
+                            anchors.fill: parent
+                            // On the rows' rhythm, as #1954 set the foot's.
+                            base: root.footBase
+                            mark: ModeMarks.mark(prompt.mode, root.commanding !== null)
+                            resting: mark === ModeMarks.mark("normal", false)
+                            marked: prompt.modal
+                            hints: foot.shown
+                            widths: foot.shown.map((key, at) => at === foot.shown.length - 1
+                                ? foot.returnPlace : 0)
                         }
 
                         Row {
@@ -7128,15 +7121,12 @@ Scope {
                                 (sum, fact) => sum + place(fact), 0)
                                 + Math.max(0, kept.length - 1) * spacing)
 
-                            // Past the mark, a group apart, as the facts are a
-                            // group of their own on the line. The label's
-                            // tracking follows its last capital too, so it's
-                            // taken off, leaving the rung from ink to ink:
-                            // with it the gap measured 24 where the rung is 20.
-                            x: markText.x + markText.implicitWidth - markText.font.letterSpacing
-                                + Theme.space.rung.groups
-                            // Its facts' baselines on the foot's.
-                            y: root.footBase - measure.ascent
+                            // Where the status line says the facts start, a
+                            // group past the mark.
+                            x: statusLine.factsAt
+                            // On the status line's baseline, as its letters
+                            // are, its facts all in the one face.
+                            y: statusLine.base - measure.ascent
                             spacing: Theme.space.rung.items
 
                             // The foot's face: Note, a step under the rows,
@@ -7163,6 +7153,11 @@ Scope {
                                 Text {
                                     required property var modelData
 
+                                    // The room it has needed since the launcher
+                                    // opened, so one reading shorter moves
+                                    // nothing after it; the gap to the next
+                                    // counts from that room (VKCF3Z, 2026-11-05).
+                                    width: standing.place(modelData)
                                     text: modelData.said
                                     textFormat: Text.PlainText
                                     // Its figures in text, small enough at Note
@@ -7176,23 +7171,6 @@ Scope {
                             }
                         }
 
-                        KeyHints {
-                            id: keys
-                            x: foot.width - Theme.space.rung.inset - implicitWidth
-                            anchors.baseline: parent.top
-                            anchors.baselineOffset: root.footBase
-                            // The selected row's keys, Return last in its
-                            // place (footReturnWidest), the rest close by.
-                            // Return's words end its place, on the inset, so
-                            // the room held for a wider word stands to their
-                            // left, never as a gap before the frame (Joel,
-                            // 2026-11-05: "a right padding for text most of
-                            // the time which looks fucking janky"; VKCF3Z).
-                            keys: foot.shown
-                            widths: foot.shown.map((key, at) => at === foot.shown.length - 1
-                                ? foot.returnPlace : 0)
-                            endsRight: true
-                        }
                     }
                 }
             }

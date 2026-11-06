@@ -28,6 +28,11 @@ Row {
     // The type's level (Theme.level): Note, a step under what they're
     // keys for, wherever they're said.
     property var level: Theme.level.note
+    // Whether a muted dot stands between two hints, a mark from each, as a
+    // card's status line joins them (StatusLine.qml), so its hints read as
+    // one line of the same kind as the facts before them. The dot is in
+    // the gap, so a line summing the hints by `spacing` sums it too.
+    property bool dotted: false
 
     // How wide a key and its word are drawn, for a line holding a place
     // for them before they show: the keys a tie apart, then the word a
@@ -39,7 +44,14 @@ Row {
             + ((word ?? "") === "" ? 0 : Theme.space.rung.mark + face.advanceWidth(word));
     }
 
-    spacing: Theme.space.rung.items
+    // Read again once the theme's face arrives, since a binding follows
+    // what it reads and never what a call measured before.
+    spacing: {
+        void face.font;
+        return dotted ? 2 * Theme.space.rung.mark + face.advanceWidth(hints.dot)
+            : Theme.space.rung.items;
+    }
+    readonly property string dot: "\u00b7"
     // On its words' baseline, so a line can set it on its own.
     baselineOffset: face.ascent
 
@@ -64,6 +76,19 @@ Row {
 
             width: Math.max(said.implicitWidth, hints.widths[index] ?? 0)
             height: said.implicitHeight
+
+            // The dot before every hint but the first, in the gap before
+            // it, a mark from each side.
+            Text {
+                x: -Theme.space.rung.mark - implicitWidth
+                visible: hints.dotted && hint.index > 0
+                text: hints.dot
+                textFormat: Text.PlainText
+                color: Theme.muted
+                font.family: hints.level.family
+                font.pointSize: hints.level.pointSize
+                font.weight: hints.level.weight
+            }
 
             Row {
                 id: said
