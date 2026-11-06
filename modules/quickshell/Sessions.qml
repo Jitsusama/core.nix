@@ -899,9 +899,12 @@ Singleton {
             reopenNext();
         }
     }
+    // It asks again rather than taking the next at once, since a timer
+    // this long is a coarse one, which may fire up to a twentieth of its
+    // interval early: one did, beginning a session 1.99 s after the last.
     Timer {
         id: reopenPacing
-        onTriggered: root.reopenNext()
+        onTriggered: root.reopenSoon()
     }
 
     // Reopens every session the last boot took away, each in its own
@@ -1049,8 +1052,10 @@ Singleton {
             reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null,
                 away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
                 quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
-            reopenStartedAt = Date.now();
+            // The pace is counted from once it's begun and said, so the next
+            // is said two seconds after however long this one took to start.
             reopened(next.one, next.one.cwd, next.told);
+            reopenStartedAt = Date.now();
             reopenPatience.restart();
         });
     }
