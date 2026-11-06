@@ -55,13 +55,14 @@ fn main() -> ExitCode {
         }
         ["ask"] => asked(Path::new(SOCKET)),
         ["ask", "--socket", file] => asked(Path::new(file)),
-        ["follow", rest @ ..] => match follow_args(rest) {
-            Some((config, every)) => followed(&config, Duration::from_secs(every)),
-            None => {
+        ["follow", rest @ ..] => {
+            if let Some((config, every)) = follow_args(rest) {
+                followed(&config, Duration::from_secs(every))
+            } else {
                 eprintln!("{USAGE}");
                 ExitCode::from(64)
             }
-        },
+        }
         ["job", folder] => {
             ExitCode::from(u8::try_from(session::job(Path::new(folder))).unwrap_or(1))
         }

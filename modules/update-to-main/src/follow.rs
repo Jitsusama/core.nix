@@ -30,7 +30,7 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 
 /// How long heads whose update failed wait before they're asked for
 /// again, in case what failed was the builders and not the commit.
-const FAILED_AGAIN: Duration = Duration::from_secs(30 * 60);
+const FAILED_AGAIN: Duration = Duration::from_mins(30);
 
 /// The key main's own head is kept under among the inputs', which no
 /// flake input can be named.
