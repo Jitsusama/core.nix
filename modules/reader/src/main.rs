@@ -3679,7 +3679,7 @@ impl App {
             return;
         }
         self.held_pt = Some(self.painter.height_pt());
-        self.settled_pt = self.painter.height_pt() - page::BOTTOM_PT - 1.0;
+        self.settled_pt = self.painter.height_pt() - page::bottom_pt() - 1.0;
         self.painter.replace(page);
         let settled = self.settled_pt;
         let below: Vec<Key> = self
@@ -4422,9 +4422,9 @@ fn start_at(place: &place::Place, starts: &[(usize, f64)]) -> Option<f64> {
 
 fn first_width(measuring: bool) -> page::Width {
     if measuring {
-        page::Width::WHOLE
+        page::Width::whole()
     } else {
-        place::window_pt().map_or(page::Width::WHOLE, page::Width::for_window)
+        place::window_pt().map_or_else(page::Width::whole, page::Width::for_window)
     }
 }
 

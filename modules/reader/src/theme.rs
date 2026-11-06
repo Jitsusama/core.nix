@@ -311,6 +311,10 @@ impl Rungs {
     }
 }
 
+/// The outer column of a page without a theme: the glyph column, a name's
+/// cell of 24 and a mark of 8, in logical pixels.
+pub const PLAIN_OUTER_PX: f64 = 32.0;
+
 /// The page's space: the theme's rungs across it, and down it its own line
 /// and beat, in logical pixels, which home.nix says and why.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -321,6 +325,10 @@ pub struct Space {
     /// What every space down the page is a whole number of: half a line,
     /// so every baseline lands on the beat.
     pub beat: f64,
+    /// The page's outer column, either side of its words: the glyph
+    /// column, Name's pitch and a mark, which a spread table or code ends
+    /// on and a list's numbers hang within.
+    pub outer: f64,
 }
 
 impl Space {
@@ -340,6 +348,7 @@ impl Space {
             },
             pitch: 28.0,
             beat: 14.0,
+            outer: PLAIN_OUTER_PX,
         }
     }
 
@@ -358,7 +367,11 @@ impl Space {
                 }
             }
         }
-        for (name, slot) in [("pitch", &mut self.pitch), ("beat", &mut self.beat)] {
+        for (name, slot) in [
+            ("pitch", &mut self.pitch),
+            ("beat", &mut self.beat),
+            ("outer", &mut self.outer),
+        ] {
             if let Some(px) = length(said.get(name)) {
                 *slot = px;
             }
@@ -677,6 +690,7 @@ mod tests {
                 "rung": {"mark": 10, "inset": 30, "tie": -1, "far": 2},
                 "pitch": 32,
                 "beat": 16,
+                "outer": 40,
             },
         });
         let theme = Theme::read(&file.to_string());
@@ -692,6 +706,7 @@ mod tests {
             "a rung not said stays"
         );
         assert!((space.pitch - 32.0).abs() < 1e-9 && (space.beat - 16.0).abs() < 1e-9);
+        assert_eq!(space.outer, 40.0, "the outer column as the theme says it");
         let typst = theme.typst();
         assert!(
             typst.contains(
@@ -721,6 +736,7 @@ mod tests {
         ];
         assert_eq!(rungs, [4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 32.0, 48.0]);
         assert_eq!((space.pitch, space.beat), (28.0, 14.0));
+        assert_eq!(space.outer, 32.0, "the glyph column, Name's 24 and a mark");
     }
 
     #[test]
