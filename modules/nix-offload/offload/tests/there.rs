@@ -523,6 +523,9 @@ fn what_the_builder_would_build_and_this_machine_holds_goes_up_instead() {
 fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
     // A VM test's system referenced a model's 14 GB of downloads, which
     // no cache holds, and sending it went on for a day on 4 November.
+    // This store recorded them as fetched by another derivation than the
+    // one the builder plans, as it did once curl moved on 5 November,
+    // and the same bytes are fetched there all the same.
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
@@ -536,7 +539,8 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
          \x20 /nix/store/cccc-weights.drv\n",
     )
     .unwrap();
-    // The weights are fixed, so they show no path of their own.
+    // The weights are fixed, so they show no path among their outputs,
+    // only in what their builder is told.
     fs::write(
         folder.path().join("derivations"),
         r#"{"version": 4, "derivations": {
@@ -548,6 +552,7 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
                 "inputs": {"drvs": {"cccc-weights.drv": {"outputs": ["out"]}}}},
             "cccc-weights.drv": {
                 "outputs": {"out": {"hash": "sha256-AAAA", "method": "flat"}},
+                "env": {"out": "/nix/store/dddd-weights"},
                 "inputs": {"drvs": {}}}}}"#,
     )
     .unwrap();
@@ -563,7 +568,7 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
             "/nix/store/bbbb-model": {"narSize": 5000, "ca": null,
                                    "deriver": "/nix/store/bbbb-model.drv"},
             "/nix/store/dddd-weights": {"narSize": 14000000000, "ca": "fixed:sha256:00",
-                                     "deriver": "/nix/store/cccc-weights.drv"}}"#,
+                                     "deriver": "/nix/store/ffff-weights.drv"}}"#,
     )
     .unwrap();
     let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
@@ -601,7 +606,7 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
-        said.contains("the builder couldn't fetch them, so they go up from here")
+        said.contains("the builder couldn't fetch them all, so what it lacks goes up from here")
             && said.contains("sending 1 output of 14.0 GB"),
         "{said}"
     );

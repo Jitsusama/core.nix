@@ -155,38 +155,95 @@ pub fn described(info: &Value) -> BTreeMap<String, Stored> {
         .collect()
 }
 
+/// The fixed outputs of the derivations `nix derivation show` printed, by
+/// their paths, each with the derivation that gives it. Now one shows no
+/// path among its outputs, so it's read from the derivation's
+/// environment, where its builder is told it; before, it had one beside
+/// its hash.
+///
+/// A fixed output is matched to what the builder plans by this path, not
+/// by the deriver this store recorded for it: one path is given by every
+/// derivation that downloads the same bytes, and the one recorded is
+/// whichever fetched it first. Matched by deriver, a model's 16.5 GB of
+/// downloads, fetched here before curl moved, went up through the tunnel
+/// for two hours on 5 November rather than being fetched by the builder.
+pub fn fixed(shown: &Value) -> BTreeMap<String, String> {
+    let all = shown.get("derivations").unwrap_or(shown);
+    let mut fixed = BTreeMap::new();
+    for (derivation, shown) in all.as_object().into_iter().flatten() {
+        for (name, output) in shown
+            .get("outputs")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(_, output)| output.get("hash").is_some())
+        {
+            let path = output
+                .get("path")
+                .or_else(|| shown.pointer(&format!("/env/{name}")))
+                .and_then(Value::as_str);
+            if let Some(path) = path {
+                fixed.insert(stored(path), stored(derivation));
+            }
+        }
+    }
+    fixed
+}
+
 /// Of what sending would take up with it, `closure`, the fixed derivations
-/// the builder is to fetch for itself first: those it would otherwise
-/// build, `planned`, since no cache it asks holds them. Sent, the 14 GB
-/// of a model's downloads took a day through a tunnel on 4 November,
-/// where their own source gives them in minutes.
-pub fn fetched(planned: &BTreeSet<String>, closure: &BTreeMap<String, Stored>) -> Vec<String> {
+/// the builder is to fetch for itself first: those whose outputs it would
+/// otherwise build, as [`fixed`] reads them from its plan, since no cache
+/// it asks holds them. Sent, the 14 GB of a model's downloads took a day
+/// through a tunnel on 4 November, where their own source gives them in
+/// minutes.
+pub fn fetched(
+    fixed: &BTreeMap<String, String>,
+    closure: &BTreeMap<String, Stored>,
+) -> Vec<String> {
     let fetched: BTreeSet<String> = closure
-        .values()
-        .filter(|stored| stored.fixed)
-        .filter_map(|stored| stored.deriver.clone())
-        .filter(|deriver| planned.contains(deriver))
+        .iter()
+        .filter(|(_, stored)| stored.fixed)
+        .filter_map(|(path, _)| fixed.get(path).cloned())
         .collect();
     fetched.into_iter().collect()
 }
 
+/// How much of `closure` the builder fetches for itself: the outputs of
+/// `fetching`, among the planned `fixed` ones.
+pub fn fetched_size(
+    fixed: &BTreeMap<String, String>,
+    closure: &BTreeMap<String, Stored>,
+    fetching: &[String],
+) -> u64 {
+    closure
+        .iter()
+        .filter(|(path, _)| fixed.get(*path).is_some_and(|it| fetching.contains(it)))
+        .map(|(_, stored)| stored.size)
+        .sum()
+}
+
 /// How much of `closure` goes up: what the builder would build of it, as
-/// `planned`, less what it fetched for itself. The rest it holds, or
-/// fetches from a cache.
+/// `planned`, or as `fixed` for a download, less what it fetched for
+/// itself. The rest it holds, or fetches from a cache.
 pub fn sent_up(
     planned: &BTreeSet<String>,
+    fixed: &BTreeMap<String, String>,
     closure: &BTreeMap<String, Stored>,
     fetched: &[String],
 ) -> u64 {
     closure
-        .values()
-        .filter(|stored| {
-            stored
-                .deriver
-                .as_ref()
-                .is_some_and(|deriver| planned.contains(deriver) && !fetched.contains(deriver))
+        .iter()
+        .filter(|(path, stored)| match fixed.get(*path) {
+            Some(derivation) => !fetched.contains(derivation),
+            None => {
+                !stored.fixed
+                    && stored
+                        .deriver
+                        .as_ref()
+                        .is_some_and(|deriver| planned.contains(deriver))
+            }
         })
-        .map(|stored| stored.size)
+        .map(|(_, stored)| stored.size)
         .sum()
 }
 
@@ -367,22 +424,50 @@ mod tests {
     }
 
     #[test]
+    fn a_fixed_output_is_known_by_its_path_in_either_format() {
+        // Now one shows its path only in its environment; before, it had
+        // one beside its hash. One that isn't fixed isn't among them.
+        let now = json!({"version": 4, "derivations": {
+            "a.drv": {"outputs": {"out": {"hash": "sha256-AAAA", "method": "flat"}},
+                      "env": {"out": "/nix/store/a"}, "inputs": {"drvs": {}}},
+            "b.drv": {"outputs": {"out": {"path": "b"}}, "env": {"out": "/nix/store/b"},
+                      "inputs": {"drvs": {}}}}});
+        let before = json!({"/nix/store/a.drv": {
+            "outputs": {"out": {"path": "/nix/store/a", "hashAlgo": "sha256", "hash": "00"}},
+            "inputDrvs": {}}});
+        let wanted = BTreeMap::from([("/nix/store/a".to_owned(), "/nix/store/a.drv".to_owned())]);
+        for shown in [now, before] {
+            assert_eq!(fixed(&shown), wanted, "{shown}");
+        }
+    }
+
+    #[test]
     fn what_the_builder_lacks_of_a_fixed_path_it_fetches_itself() {
         let info = json!({
             "/nix/store/model": {"narSize": 5, "ca": null, "deriver": "/nix/store/model.drv"},
             "/nix/store/weights": {"narSize": 14_000, "ca": "fixed:sha256:00",
-                                   "deriver": "/nix/store/weights.drv"},
+                                   "deriver": "/nix/store/weights-before.drv"},
             "/nix/store/libc": {"narSize": 300, "ca": null, "deriver": "/nix/store/libc.drv"},
             "/nix/store/patch": {"narSize": 2, "ca": "fixed:r:sha256:00", "deriver": null}});
         let closure = described(&info);
         assert!(closure["/nix/store/weights"].fixed && !closure["/nix/store/model"].fixed);
         // The builder would build the model and its weights, and has libc.
+        // This store recorded the weights as another derivation's, which
+        // downloads the same bytes, so they're known by their path.
         let planned = set(&["/nix/store/model.drv", "/nix/store/weights.drv"]);
-        let fetching = fetched(&planned, &closure);
+        let planned_fixed = BTreeMap::from([(
+            "/nix/store/weights".to_owned(),
+            "/nix/store/weights.drv".to_owned(),
+        )]);
+        let fetching = fetched(&planned_fixed, &closure);
         assert_eq!(fetching, ["/nix/store/weights.drv"]);
-        assert_eq!(sent_up(&planned, &closure, &fetching), 5);
+        assert_eq!(fetched_size(&planned_fixed, &closure, &fetching), 14_000);
+        assert_eq!(sent_up(&planned, &planned_fixed, &closure, &fetching), 5);
         // A fetch that failed leaves the weights to go up too.
-        assert_eq!(sent_up(&planned, &closure, &[]), 14_005);
+        assert_eq!(sent_up(&planned, &planned_fixed, &closure, &[]), 14_005);
+        // Weights the builder already holds aren't planned, nor sent.
+        assert!(fetched(&BTreeMap::new(), &closure).is_empty());
+        assert_eq!(sent_up(&planned, &BTreeMap::new(), &closure, &[]), 5);
         // In the second format, a fixed path names its method; a
         // derivation's text isn't fixed.
         let info = json!({"version": 2, "info": {

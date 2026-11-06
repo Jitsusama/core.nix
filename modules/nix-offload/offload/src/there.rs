@@ -757,11 +757,13 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     if planned.is_empty() {
         return;
     }
-    let derivations = held::derivations(&json_of(
+    let shown = json_of(
         Command::new(nix)
             .args(["derivation", "show"])
             .args(&planned),
-    ));
+    );
+    let derivations = held::derivations(&shown);
+    let fixed = held::fixed(&shown);
     let outputs = derivations
         .values()
         .flat_map(|derivation| derivation.outputs.values());
@@ -786,15 +788,16 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
             .args(["path-info", "--recursive", "--json"])
             .args(&sending),
     ));
+    let fetching = held::fetched(&fixed, &closure);
     let fetched = fetched_first(
-        &held::fetched(&planned, &closure),
-        &closure,
+        &fetching,
+        held::fetched_size(&fixed, &closure, &fetching),
         lent,
         scratch,
         ssh,
     );
     let own: u64 = sending.iter().filter_map(|path| holds.get(path)).sum();
-    let size = held::sent_up(&planned, &closure, &fetched).max(own);
+    let size = held::sent_up(&planned, &fixed, &closure, &fetched).max(own);
     let (outputs, them) = match sending.len() {
         1 => ("1 output".to_owned(), "it"),
         count => (format!("{count} outputs"), "them"),
@@ -822,15 +825,17 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
 }
 
 /// What the builder is asked, with fixed derivations on its standard
-/// input: to fetch their outputs from their own sources.
-const FETCHES: &str = "xargs -r nix-store --realise > /dev/null";
+/// input: to fetch their outputs from their own sources. It keeps going
+/// past one it can't fetch, such as a file only this machine was given,
+/// so the rest are fetched there still, and the copy after skips them.
+const FETCHES: &str = "xargs -r nix-store --keep-going --realise > /dev/null";
 
 /// Has the builder fetch `fetching` for itself, saying so, and answers
 /// them once it has, or none when it couldn't, so they go up from here
 /// as before.
 fn fetched_first(
     fetching: &[String],
-    closure: &BTreeMap<String, held::Stored>,
+    size: u64,
     lent: &Builder,
     scratch: &Path,
     ssh: &str,
@@ -838,17 +843,6 @@ fn fetched_first(
     if fetching.is_empty() {
         return Vec::new();
     }
-    let size = closure
-        .values()
-        .filter(|stored| {
-            stored.fixed
-                && stored
-                    .deriver
-                    .as_ref()
-                    .is_some_and(|deriver| fetching.contains(deriver))
-        })
-        .map(|stored| stored.size)
-        .sum();
     let downloads = match fetching.len() {
         1 => "1 download".to_owned(),
         count => format!("{count} downloads"),
@@ -861,7 +855,9 @@ fn fetched_first(
     if answered(lent, FETCHES, fetching, scratch, ssh).is_some() {
         return fetching.to_vec();
     }
-    eprintln!("nix-offload: the builder couldn't fetch them, so they go up from here");
+    eprintln!(
+        "nix-offload: the builder couldn't fetch them all, so what it lacks goes up from here"
+    );
     Vec::new()
 }
 
