@@ -3105,11 +3105,8 @@ Scope {
             commandSay(fill(words.none), true);
             return;
         }
-        const sure = () => {
-            for (const act of acts)
-                run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
-            changedBy(acts);
-        };
+        const sure = () => commandActs(acts.map(act => act.confirm
+            ? Object.assign({}, act, { confirm: false }) : act));
         if (asked.ask !== "") {
             const question = asked.ask === "some" ? fill(words.some)
                 : Confirm.question(found.map(one => ({ ends: entry.command,
@@ -3123,9 +3120,22 @@ Scope {
             sure();
             return;
         }
-        for (const act of acts)
-            run(act, false);
-        changedBy(acts);
+        commandActs(acts);
+    }
+
+    // A line's acts run: one u can take back done where it stands, as d
+    // does it, the launcher kept open so u can, as Vim's :g/x/d leaves the
+    // buffer in view; the rest as Return does them. Where every one can be
+    // taken back, the foot says so, as after d.
+    function commandActs(acts) {
+        for (const act of acts) {
+            if (typeof act.undo === "function")
+                Operators.doing(act)();
+            else
+                run(act, false);
+        }
+        if (changedBy(acts) === acts.length)
+            operatorTells(Operators.doneSaid(acts.length, Words.field.operators ?? {}));
     }
 
     // @:, the last line Return ran run again on the cursor row as it is
