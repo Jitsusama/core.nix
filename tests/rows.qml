@@ -163,6 +163,13 @@ ShellRoot {
                 mark: "NOR"
                 hints: [["\u21b5", "open"]]
             }
+            PromptHead {
+                id: asking
+                width: root.panel
+                asked: "Joel needs a password"
+                askedOpens: "J"
+                reason: "to install a program"
+            }
             // Three steps in, beside a note longer than the line has room
             // for, as Machine's processors' cores say.
             Prompt {
@@ -351,6 +358,19 @@ ShellRoot {
         id: figureSmall
         text: "x"
         font: figureCaps.font
+    }
+    // Words, a prompt's head: its capitals and small letters.
+    TextMetrics {
+        id: wordsCaps
+        text: "H"
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.variableAxes: Theme.level.words.variableAxes
+    }
+    TextMetrics {
+        id: wordsSmall
+        text: "x"
+        font: wordsCaps.font
     }
     // A row's name, whose capitals are centred in the row.
     TextMetrics {
@@ -568,6 +588,19 @@ ShellRoot {
             expect("a status line's hints sit on its mark's baseline", lineMark !== null
                 && lineHint !== null && Math.abs(lineMark.base - lineHint.base) <= 0.5,
                 `${JSON.stringify(lineMark)} against ${JSON.stringify(lineHint)}`);
+            // A prompt's head is a band with no rows under it, its frame
+            // over it and a hairline under it: its first capital stands the
+            // inset under the frame, and the hairline falls where the lines
+            // centre, their capitals' middle and their small letters'
+            // averaged on the band's (VKCF3Z, 2026-11-05).
+            const caps = wordsCaps.tightBoundingRect.height;
+            const small = wordsSmall.tightBoundingRect.height;
+            const lastLine = root.setting(asking, "to install a program");
+            const lines = lastLine === null ? NaN
+                : (2 * asking.inset + caps - small) / 4 + lastLine.base / 2;
+            expect("a prompt's head centres its lines under the inset",
+                Math.abs(lines - asking.height / 2) <= 0.5,
+                `lines' middle ${lines} in a head ${asking.height} tall: ${JSON.stringify(lastLine)}`);
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
