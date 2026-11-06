@@ -23,7 +23,18 @@ function baseline(tall, caps, xHeight) {
 // top, so the line reads centred in it: where a frame's bottom falls when
 // a status line closes it (docs/design.md, A frame's bottom is set).
 function around(base, caps, xHeight) {
-    return 2 * (base - lift(caps, xHeight));
+    return holding(base, base, caps, xHeight);
+}
+
+// How tall a band is that holds lines from a first baseline `first` below
+// its top to a last one `last`, so they read centred in it: their capitals'
+// middle and their small letters' averaged on the band's, the first line's
+// capitals and small letters setting both. Where no rows under it set the
+// band, its first capital stands the frame's inset under its top, and this
+// says where the hairline under it falls (docs/design.md: text in a band
+// centres in it).
+function holding(first, last, caps, xHeight) {
+    return first + last - 2 * lift(caps, xHeight);
 }
 
 // How tall a band over a row is, closed by an `edge` thick hairline, whose

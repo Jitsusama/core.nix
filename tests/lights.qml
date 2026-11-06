@@ -42,18 +42,21 @@ ShellRoot {
     property int at: 0
     property int left: 0
 
-    // Written in place, as the kernel changes the file.
-    FileView {
+    // Written in place in one write, as the kernel changes the file, so
+    // each change is one change heard. Truncating first, as a FileView's
+    // setText does, is two: the shell could read the file between them,
+    // or after both, and hear one change twice.
+    Process {
         id: firmware
-        path: `${root.leds}/test::kbd_backlight/brightness_hw_changed`
-        atomicWrites: false
-        printErrors: false
     }
 
     function begin() {
         const step = cases[at];
-        if (step.writes !== null)
-            firmware.setText(step.writes + "\n");
+        if (step.writes !== null) {
+            firmware.command = ["sh", "-c", 'printf "%s\\n" "$1" 1<> "$2"', "sh", step.writes,
+                `${root.leds}/test::kbd_backlight/brightness_hw_changed`];
+            firmware.running = true;
+        }
         left = 100;
         waiting.start();
     }

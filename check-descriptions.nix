@@ -701,10 +701,11 @@
   '';
   merge-net-catches-a-broken-merge = ''
     merge-net runs each VM test a head of main changed since the last it passed, two at once,
-    sends again only what no builder took, never runs one again where it passed, reverts the
-    merge it finds broke a test that failed twice and holds switching until the revert is on
-    main, quarantines one that failed then passed, reverts nothing for one quarantined, starts
-    nothing while the machine is held, and says which changes run their VM tests before merging
+    as bulk where nix-offload there takes it, sends again only what no builder took, never runs
+    one again where it passed, reverts the merge it finds broke a test that failed twice and
+    holds switching until the revert is on main, quarantines one that failed then passed,
+    reverts nothing for one quarantined, starts nothing while the machine is held, and says
+    which changes run their VM tests before merging
   '';
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests
@@ -880,7 +881,7 @@
     tests stay, with its store named for a build sent there whole when the helper gives one,
     and it's named as being made until it stands or won't; it's given back once idle, at the
     deadline or once gone, with a wait after a failure or one given back idle while work waits,
-    and none after one given back in use;
+    and none after one given back in use or one that stood and then went;
     only builders it asked for are ever given back; a stop ends at once, and a reload once
     nothing uses or wants its builder, leaving its builder for the next start, which takes it
     back before the deadline, keeping its price and idle time, or gives it back, priced to
@@ -897,7 +898,8 @@
     while and for a lender restarting, saying how long, or, when none stands or none answers,
     builds nothing and exits 75, saying so, unless --here asks it to build here; with
     --here-when-idle it builds here only while this machine's CPU pressure has stayed under
-    10% and never a VM test, else sends it as ever; a tree's
+    10% and never a VM test, else sends it as ever; with --bulk, its VM tests waiting for a VM
+    builder's room let any run's that isn't bulk go first, waiting or coming; a tree's
     uncommitted changes go as a commit of what its index holds, files staged or added with -N
     included and untracked ones left, with the branch and index untouched; with
     --print-out-paths, what was built is copied into this store from the builder and only then
@@ -907,7 +909,8 @@
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
     takes it, else tells changed-checks to run here; and `relay` dials a far side again
     while it closes before saying its first line, passes that line and everything after
-    both ways, and hangs up once, without dialling again, on one that says nothing in time
+    both ways, and hangs up once, without dialling again, on one that says nothing in time,
+    and ends once its far side has answered no caller for long enough, never while idle
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender
@@ -1245,6 +1248,10 @@
   '';
   sessions-sit-beside-the-programs = ''
     agents' sessions have a slice beside Joel's programs at their weight, and the sorter watches both
+  '';
+  shared-work-ranks-with-the-sessions = ''
+    work other sessions wait on has a slice beside jobs at the sessions' disk target, below Joel's
+    programs on the processor, with a memory ceiling, named in SHARED_SLICE
   '';
   shaper-finds-the-rate = ''
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what
@@ -2010,8 +2017,8 @@
     after at the same timeout, touching nothing when it isn't running
   '';
   the-viewfinder-keeps-its-own-keys = ''
-    Escape closes the camera's viewfinder even where a script in mpv's own folder binds Escape,
-    as the player's vi keys do, since the viewfinder loads none of them
+    ZZ closes the camera's viewfinder, and Escape and q leave it open, even where a script in
+    mpv's own folder binds Z, as the player's vi keys do, since the viewfinder loads none of them
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

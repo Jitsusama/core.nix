@@ -14,11 +14,16 @@
 //! on the same port beside this one's. Told to leave, a relay takes no new
 //! connection, so each goes to the successor, and keeps every one it has
 //! until it closes, ending with the last.
+//!
+//! A tunnel can go on running while every connection it opens fails. Once
+//! the far side has answered no caller for a while, the relay ends with
+//! its connections, so the helper's hold on the builder ends with it.
 
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -33,6 +38,12 @@ pub struct Relay {
     pub within: Duration,
     /// How long to wait before dialling again.
     pub pause: Duration,
+    /// How long the far side may answer no caller before the relay ends:
+    /// on 5 November from 22:12 a tunnel's process lived on while every
+    /// connection it opened failed, and its builder stayed lent, nothing
+    /// reaching it, for half an hour. Ending ends the helper's hold, so
+    /// the builder is given back and another lent.
+    pub gives_up: Duration,
 }
 
 /// The longest first line waited for; ssh's is at most 255 bytes.
@@ -143,7 +154,9 @@ impl Relay {
     /// Passes on every connection `listeners` take, each in a thread of its
     /// own, until `leaving` is set; then takes those already waiting,
     /// listens no more, and returns once every one taken has closed.
-    pub fn serve_all(&self, listeners: Vec<TcpListener>, leaving: &AtomicBool) {
+    /// Whether it gave up instead, the far side answering no caller for
+    /// [`Relay::gives_up`].
+    pub fn serve_all(&self, listeners: Vec<TcpListener>, leaving: &AtomicBool) -> bool {
         let mut polled: Vec<libc::pollfd> = listeners
             .iter()
             .map(|listener| libc::pollfd {
@@ -154,15 +167,26 @@ impl Relay {
             .collect();
         let within = libc::c_int::try_from(HEARD_WITHIN.as_millis()).unwrap_or(100);
         let mut passing = Vec::new();
+        let failing = Failing::default();
         while !leaving.load(Ordering::SeqCst) {
             // SAFETY: polls the listeners' own sockets, which outlive it.
             unsafe { libc::poll(polled.as_mut_ptr(), polled.len() as libc::nfds_t, within) };
-            self.take(&listeners, &mut passing);
+            self.take(&listeners, &mut passing, &failing);
             passing.retain(|pass: &JoinHandle<()>| !pass.is_finished());
+            if failing.for_at_least(self.gives_up) {
+                // Its connections go with it: none reaches the far side.
+                eprintln!(
+                    "nix-offload: {} has answered no caller for {} s, so the relay ends, and the \
+                     builder behind it goes",
+                    self.to,
+                    self.gives_up.as_secs()
+                );
+                return true;
+            }
         }
         // Those already waiting are taken before the listeners close, which
         // would refuse them.
-        self.take(&listeners, &mut passing);
+        self.take(&listeners, &mut passing, &failing);
         drop(listeners);
         eprintln!(
             "nix-offload: told to leave, so the relay takes no new connection, and ends once \
@@ -172,11 +196,17 @@ impl Relay {
         for pass in passing {
             let _ = pass.join();
         }
+        false
     }
 
     /// Takes every connection waiting on `listeners`, passing each on in a
     /// thread of its own.
-    fn take(&self, listeners: &[TcpListener], passing: &mut Vec<JoinHandle<()>>) {
+    fn take(
+        &self,
+        listeners: &[TcpListener],
+        passing: &mut Vec<JoinHandle<()>>,
+        failing: &Failing,
+    ) {
         for listener in listeners {
             loop {
                 match listener.accept() {
@@ -184,8 +214,8 @@ impl Relay {
                         if caller.set_nonblocking(false).is_err() {
                             continue;
                         }
-                        let relay = self.clone();
-                        passing.push(thread::spawn(move || relay.pass(caller)));
+                        let (relay, failing) = (self.clone(), failing.clone());
+                        passing.push(thread::spawn(move || relay.pass(caller, &failing)));
                     }
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
                     // Out of files, say: waited on rather than polled for
@@ -200,16 +230,18 @@ impl Relay {
     }
 
     /// Passes one caller on, or hangs up on it when the far side never says
-    /// its first line in time.
-    fn pass(&self, mut caller: TcpStream) {
+    /// its first line in time, saying which to `failing`.
+    fn pass(&self, mut caller: TcpStream, failing: &Failing) {
         let Some((far, first)) = self.reached() else {
             eprintln!(
                 "nix-offload: {} never answered within {} s, so a caller was hung up on",
                 self.to,
                 self.within.as_secs()
             );
+            failing.failed();
             return;
         };
+        failing.answered();
         if caller.write_all(&first).is_err() {
             return;
         }
@@ -253,6 +285,31 @@ impl Relay {
                     .min(ending.saturating_duration_since(Instant::now())),
             );
         }
+    }
+}
+
+/// Since when every caller has been hung up on, shared by the threads
+/// passing them: none while the last caller was answered, or none came.
+#[derive(Clone, Default)]
+struct Failing(Arc<Mutex<Option<Instant>>>);
+
+impl Failing {
+    fn failed(&self) {
+        if let Ok(mut since) = self.0.lock() {
+            since.get_or_insert_with(Instant::now);
+        }
+    }
+
+    fn answered(&self) {
+        if let Ok(mut since) = self.0.lock() {
+            *since = None;
+        }
+    }
+
+    fn for_at_least(&self, long: Duration) -> bool {
+        self.0
+            .lock()
+            .is_ok_and(|since| since.is_some_and(|since| since.elapsed() >= long))
     }
 }
 
@@ -329,6 +386,7 @@ mod tests {
             to: far.local_addr().expect("the far address").to_string(),
             within,
             pause: Duration::from_millis(10),
+            gives_up: Duration::from_secs(60),
         }
     }
 
@@ -338,7 +396,9 @@ mod tests {
         let listeners = listening(at);
         assert!(!listeners.is_empty(), "nothing listened on {at}");
         let relay = relay_to(far, Duration::from_secs(5));
-        thread::spawn(move || relay.serve_all(listeners, leaving))
+        thread::spawn(move || {
+            relay.serve_all(listeners, leaving);
+        })
     }
 
     fn relayed(far: &TcpListener, within: Duration) -> TcpStream {
@@ -441,6 +501,40 @@ mod tests {
             .collect();
         assert!(bound.len() <= addresses.len());
         assert!(listening("no.such.name.invalid:0").is_empty());
+    }
+
+    #[test]
+    fn a_relay_whose_far_side_answers_no_caller_for_long_enough_ends() {
+        static NEVER: AtomicBool = AtomicBool::new(false);
+        let relay = |gives_up| Relay {
+            to: format!("127.0.0.1:{}", free_port()),
+            within: Duration::from_millis(50),
+            pause: Duration::from_millis(10),
+            gives_up,
+        };
+        let listeners = listening("127.0.0.1:0");
+        let at = listeners[0].local_addr().expect("its address");
+        let failing = relay(Duration::from_millis(400));
+        let serving = thread::spawn(move || failing.serve_all(listeners, &NEVER));
+        let ending = Instant::now() + Duration::from_secs(5);
+        while !serving.is_finished() {
+            assert!(
+                Instant::now() < ending,
+                "the relay kept on with nothing answering"
+            );
+            if let Ok(mut caller) = TcpStream::connect(at) {
+                let _ = caller.read_to_end(&mut Vec::new());
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(serving.join().expect("the relay"), "it says it gave up");
+
+        // Idle, with no caller to fail, it keeps on.
+        let listeners = listening("127.0.0.1:0");
+        let idle = relay(Duration::from_millis(100));
+        let serving = thread::spawn(move || idle.serve_all(listeners, &NEVER));
+        thread::sleep(Duration::from_millis(500));
+        assert!(!serving.is_finished(), "an idle relay ended");
     }
 
     #[test]

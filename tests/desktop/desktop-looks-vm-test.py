@@ -260,6 +260,30 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         lists_every_key(desktop, scale)
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
+        numbers_programs(desktop, scale)
+
+
+def numbers_programs(desktop: Desktop, scale: str) -> None:
+    """Step into Programs, and photograph its normal and a find in it, the gutter numbering both.
+
+    Normal counts from the cursor and the find numbers each row as it is, in one room, as wide
+    as Programs' own rows need (VKCF3Z, 2026-11-05).
+    """
+    at = scale.replace(".", "-")
+    desktop.answer("programs")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Programs")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: len(shown["held"]) == 1 and shown["gutter"]["shown"])
+    gutter = desktop.showing()["gutter"]
+    assert gutter["relative"], f"at {scale} normal in Programs: {gutter}"
+    desktop.photograph(f"launcher-programs-normal-at-{at}")
+    desktop.type_in("k")
+    desktop.launcher_until(
+        lambda shown: shown["gutter"]["shown"] and not shown["gutter"]["relative"]
+    )
+    assert desktop.showing()["gutter"]["room"] == gutter["room"], f"at {scale} {gutter}"
+    desktop.photograph(f"launcher-programs-found-at-{at}")
+    desktop.close_launcher()
 
 
 def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
@@ -1172,7 +1196,7 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 assert facts[-1] < drawer["foot"], f"at {scale} {name}'s facts are cut: {drawer}"
                 said = name.replace(".", "-")
                 desktop.photograph(f"file-picker-{said}-at-{scale.replace('.', '-')}")
-            # Escape leaves insert, then refuses the ask from the folder it opened in.
+            # :q refuses the ask from any folder, Escape closing nothing.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
@@ -1242,11 +1266,42 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
-            # Escape leaves insert, then refuses the ask from the folder it opened in.
+            at_the_top(desktop, scale)
+            # :q refuses the ask from any folder, Escape closing nothing.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
+
+
+def at_the_top(desktop: Desktop, scale: str) -> None:
+    """Go up by - to /, a dialog's top, where - says it has nowhere to go; photograph it.
+
+    Each folder's foot offers - up, and / offers none, since - there would leave the ask.
+    The head still says where he is, "Open the Notes \u203a /", as it does a folder down.
+    """
+    machine = desktop.machine
+    desktop.normal()
+    while len(desktop.showing()["held"]) > 1:
+        depth = len(desktop.showing()["held"])
+        assert "- up" in desktop.showing()["selected"]["told"], desktop.showing()["selected"]
+        machine.send_chars("-")
+
+        def up(shown: Json, depth: int = depth) -> bool:
+            """Say whether the picker went up one folder from this depth, a row selected."""
+            return bool(len(shown["held"]) == depth - 1 and shown["selected"] is not None)
+
+        desktop.launcher_until(up)
+    assert "- up" not in desktop.showing()["selected"]["told"], desktop.showing()["selected"]
+    machine.send_chars("-")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["saying"] == ["- not here"]
+            and len(shown["held"]) == 1
+            and shown["path"][-1:] == ["/"]
+        )
+    )
+    desktop.photograph(f"file-picker-at-the-top-at-{scale.replace('.', '-')}")
 
 
 def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
@@ -1296,7 +1351,7 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
             desktop.photograph(f"file-picker-save-replace-at-{shot}")
             machine.send_chars("n")
             desktop.launcher_until(lambda shown: shown["question"] == "" and shown["open"])
-            # Escape, from normal on the name, refuses the ask from the folder it opened in.
+            # :q, from normal on the name, refuses the ask, Escape closing nothing.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
@@ -1365,7 +1420,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
-            # Escape climbs back to the folder it opened in, then refuses the ask there.
+            # :q refuses the ask from any folder, Escape closing nothing.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:

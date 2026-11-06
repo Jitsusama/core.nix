@@ -2,8 +2,8 @@
 -- mirror shows Joel to himself, and a panel below saying what the keys do.
 -- Return takes a picture, or starts a video and then stops it, and either
 -- way the viewfinder goes once it's done, as a screenshot's would; Tab
--- changes which; Escape closes it, finishing a video first. Nothing else is
--- bound, so no
+-- changes which; ZZ closes it, finishing a video first. Escape and q close
+-- nothing, as in all of Joel's programs. Nothing else is bound, so no
 -- stray key seeks or pauses a camera.
 --
 -- A picture is the frame on screen, turned back the way others see it, as
@@ -38,7 +38,7 @@ require('mp.options').read_options(options, 'camera')
 local mode = options.mode
 local camera = 'av://v4l2:' .. options.device
 local recording = nil
--- Escape closes once a recording has finished, or at once when pressed again.
+-- ZZ closes once a recording has finished, or at once when pressed again.
 local closing = false
 local ready = false
 -- The source whose frames the viewfinder shows, or nil while it changes.
@@ -118,12 +118,12 @@ end
 -- What the keys do now, as the launcher's footer says it: the key in the
 -- text's colour, its word muted. When the panel would be wider than the
 -- window, the hints go in the order goes gives, Tab's and then Return's;
--- Escape's always stays, so the way out is always said.
+-- ZZ's always stays, so the way out is always said.
 local function hints()
   if closing then
-    return { { 'Esc', 'close now' } }
+    return { { 'ZZ', 'close now' } }
   elseif recording and recording.stopping then
-    return { { 'Esc', 'close' } }
+    return { { 'ZZ', 'close' } }
   elseif recording then
     return { { '↵', 'stop' } }
   end
@@ -131,7 +131,7 @@ local function hints()
   return {
     { '↵', mode == 'picture' and 'take' or 'record', goes = 2 },
     { '⇥', other, goes = 1 },
-    { 'Esc', 'close' },
+    { 'ZZ', 'close' },
   }
 end
 
@@ -189,7 +189,7 @@ local function draw()
     )
   end
   left = font .. left
-  local shown_hints = ready and hints() or { { 'Esc', 'close' } }
+  local shown_hints = ready and hints() or { { 'ZZ', 'close' } }
   local function said(gone)
     local parts = {}
     for _, hint in ipairs(shown_hints) do
@@ -490,6 +490,28 @@ local function close()
   end
 end
 
+-- A Z waits 300 ms, his Neovim's timeoutlen, for the second that closes,
+-- and alone does nothing; any other key lets it go.
+local first_z = nil
+
+local function forget_z()
+  if first_z then
+    first_z:kill()
+    first_z = nil
+  end
+end
+
+local function z()
+  if first_z then
+    forget_z()
+    close()
+  else
+    first_z = mp.add_timeout(0.3, function()
+      first_z = nil
+    end)
+  end
+end
+
 -- Return pressed before the camera wakes is done once it has, so a picture
 -- asked for at once is taken as soon as there is one.
 local waiting = false
@@ -526,8 +548,10 @@ end
 
 -- Every key the viewfinder answers, by what it does, read from this one
 -- table so the desktop's one control system can retune them: few on
--- purpose, and q closing as Escape does, as Joel's Neovim closes help
--- (docs/design.md, Vi's Keys).
+-- purpose (docs/design.md, Vi's Keys). Space takes or records, as Return
+-- does, so it leads nothing and there's no Space w, as in his player: ZZ
+-- alone closes. Nothing closes by a key pressed in passing, so Escape only
+-- lets a waiting Z go, and q says what closes, over the picture.
 local keys = {
   { act = 'act', keys = { 'ENTER', 'KP_ENTER', 'SPACE' }, run = act },
   {
@@ -551,12 +575,25 @@ local keys = {
       choose('video')
     end,
   },
-  { act = 'close', keys = { 'ESC', 'q' }, run = close },
+  { act = 'close', keys = { 'Z' }, run = z },
+  { act = 'stay', keys = { 'ESC' }, run = function() end },
+  {
+    act = 'say',
+    keys = { 'q', 'Q' },
+    run = function(key)
+      mp.osd_message(key .. ' does nothing · ZZ closes')
+    end,
+  },
 }
 
 for _, binding in ipairs(keys) do
   for _, key in ipairs(binding.keys) do
-    mp.add_forced_key_binding(key, 'camera-' .. binding.act .. '-' .. key, binding.run)
+    mp.add_forced_key_binding(key, 'camera-' .. binding.act .. '-' .. key, function()
+      if binding.act ~= 'close' then
+        forget_z()
+      end
+      binding.run(key)
+    end)
   end
 end
 

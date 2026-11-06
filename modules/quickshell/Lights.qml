@@ -36,6 +36,13 @@ Singleton {
     // Says the firmware has just changed it.
     signal turned
 
+    // The level last heard, and when. The file watcher can say one change
+    // twice, and the second reads the same level within moments; a key is
+    // never pressed that fast, so that's the same change, heard once.
+    property int heardLevel: -1
+    property real heardAt: 0
+    readonly property int sameChange: 200
+
     FileView {
         id: file
         path: "/run/keyboard-lights/capslock"
@@ -74,6 +81,11 @@ Singleton {
             const steps = parseInt(most.text());
             if (isNaN(now) || isNaN(steps) || steps <= 0)
                 return;
+            const at = Date.now();
+            if (now === root.heardLevel && at - root.heardAt < root.sameChange)
+                return;
+            root.heardLevel = now;
+            root.heardAt = at;
             root.lit = Math.min(now, steps) / steps;
             root.dark = now === 0;
             root.turned();

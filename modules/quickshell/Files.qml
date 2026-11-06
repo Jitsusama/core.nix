@@ -44,8 +44,8 @@ Singleton {
         return cut < 0 || said === "/" ? "" : cut === 0 ? "/" : said.slice(0, cut);
     }
 
-    // A file's row: Return does the first of `acts`, and the right arrow
-    // lists them all, then Copy the Path; given `inside`, Return steps in.
+    // A file's row: Return does the first of `acts`, and Ctrl+] goes into
+    // them all, then Copy the Path; given `inside`, Return steps in.
     function file(path, thing, acts, inside) {
         return made("file", path, thing, acts, inside ?? null, {});
     }

@@ -162,29 +162,33 @@ impl StandIn {
 
     /// Run it with these variables set besides.
     fn run_told(&self, arguments: &[&str], told: &[(&str, &str)]) -> Output {
+        self.started(arguments, told)
+            .wait_with_output()
+            .expect("changed-checks runs")
+    }
+
+    /// Start it with these variables set besides, its output piped.
+    fn started(&self, arguments: &[&str], told: &[(&str, &str)]) -> std::process::Child {
         let path = format!(
             "{}:{}",
             self.folder.join("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        let started = {
-            let _starting = starting();
-            Command::new(env!("CARGO_BIN_EXE_changed-checks"))
-                .args(arguments)
-                .env("PATH", path)
-                .env("STAND_IN", &self.folder)
-                .env("XDG_CACHE_HOME", self.folder.join("cache"))
-                .env("XDG_STATE_HOME", self.folder.join("state"))
-                .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
-                // No stall, whatever the machine running the tests holds.
-                .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
-                .envs(told.iter().copied())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .expect("changed-checks starts")
-        };
-        started.wait_with_output().expect("changed-checks runs")
+        let _starting = starting();
+        Command::new(env!("CARGO_BIN_EXE_changed-checks"))
+            .args(arguments)
+            .env("PATH", path)
+            .env("STAND_IN", &self.folder)
+            .env("XDG_CACHE_HOME", self.folder.join("cache"))
+            .env("XDG_STATE_HOME", self.folder.join("state"))
+            .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
+            // No stall, whatever the machine running the tests holds.
+            .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
+            .envs(told.iter().copied())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("changed-checks starts")
     }
 
     fn built(&self) -> String {
@@ -689,6 +693,33 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
     assert!(text(&ran.stderr).contains("kept x86_64-linux's checks at 0123456789ab"));
     let kept = Path::new("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
     assert!(stand_in.folder.join(kept).exists());
+}
+
+#[test]
+fn a_run_evaluating_here_waits_its_turn_while_another_holds_it() {
+    let stand_in = StandIn::new("turns");
+    stand_in.checks("base", BASE);
+    let lock = stand_in.path("cache/changed-checks/evaluating-here.lock");
+    fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
+    let held = fs::File::create(&lock).expect("the lock");
+    held.lock().expect("held");
+
+    let mut running = stand_in.started(&["--system", "x86_64-linux", "--keep-base"], &[]);
+    let mut said = std::io::BufReader::new(running.stderr.take().expect("its stderr"));
+    let mut line = String::new();
+    while !line.contains("another run evaluates on this machine, so this waits its turn") {
+        line.clear();
+        let read = std::io::BufRead::read_line(&mut said, &mut line).expect("read");
+        assert_ne!(read, 0, "it ended without waiting its turn");
+    }
+    let kept = stand_in.path("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
+    assert!(!kept.exists(), "nothing is evaluated while it waits");
+    drop(held);
+
+    let ran = running.wait_with_output().expect("it runs");
+    let rest = std::io::read_to_string(said).expect("read");
+    assert!(ran.status.success(), "{rest}");
+    assert!(kept.exists(), "kept once its turn came: {rest}");
 }
 
 #[test]

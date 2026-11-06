@@ -816,7 +816,13 @@ Scope {
     // typed and selected before it, so - climbs back out
     // through every step and onto the search it came from, as any way in
     // does (Joel, 2026-10-26: every way in climbs back out the same way).
+    // The steps are one jump, as Vim's :tag is, so Ctrl+O goes straight
+    // back to the search.
     function goTo(spot) {
+        oneJump(() => walkTo(spot));
+    }
+
+    function walkTo(spot) {
         const came = here();
         held = [];
         restart("");
@@ -1179,12 +1185,19 @@ Scope {
     // Where Joel is, as the field shows it: each step as its row named it,
     // in the rows' own case (Shortcuts, Desktop), so the path reads as the
     // rows he picked did. A step named as the one before it (the Shortcuts
-    // category's Shortcuts) is said once.
-    readonly property var path: held.reduce((steps, step) => {
-        const said = step.row.title ?? step.row.name;
-        const last = steps.length > 0 ? steps[steps.length - 1] : "";
-        return said.toLowerCase() === last.toLowerCase() ? steps : steps.concat([said]);
-    }, [])
+    // category's Shortcuts) is said once. A collection standing in a place
+    // of its own, as the file picker's lists /, says it after its title
+    // while nothing below it is held, as each folder below says its own,
+    // so the path never loses where he is (VKCF3Z, 2026-11-05).
+    readonly property var path: {
+        const steps = held.reduce((said, step) => {
+            const own = step.row.title ?? step.row.name;
+            const last = said.length > 0 ? said[said.length - 1] : "";
+            return own.toLowerCase() === last.toLowerCase() ? said : said.concat([own]);
+        }, []);
+        const place = held.length === 1 ? held[0].row.from?.collection?.place : undefined;
+        return typeof place === "string" && place !== "" ? steps.concat([place]) : steps;
+    }
 
     // Words with their first letter a capital, as a row's name starts.
     function capitalised(words) {
@@ -2001,7 +2014,7 @@ Scope {
         // "Ctrl+] in \u00b7 Space ? keys \u00b7 \u21b5 open").
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             keys.push([hintKey("follow"), hints.in ?? ""]);
-        if (held.length > 0)
+        if (canGoUp)
             keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
@@ -2092,18 +2105,47 @@ Scope {
     // whitespacing ... is all fucked up"), and took room from how things
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
-    // under the selection. They open as wide as most rows need, Return's
-    // place as wide as "connect" and the keys as wide as a setting's with
-    // more behind it, so the first letter typed doesn't move them: grown only as
-    // rows came, Return moved in as soon as Joel typed, since home's rows
-    // say less than what a letter finds.
-    readonly property string footVerbRoom: "connect"
-    // Return, then the widest key a row adds beside it on the find, where
-    // the launcher opens: as wide as Shift+Return's "below" beside a mark.
+    // under the selection. Return's place opens as wide as the widest
+    // Return word, so the first letter typed doesn't move it: grown only
+    // as rows came, Return moved in as soon as Joel typed, since home's
+    // rows say less than what a letter finds. The keys before it hold no
+    // room until a row says them.
+    // Chosen afresh as each opening's room is set (footReset), since a
+    // binding would weigh the verbs once, maybe before the foot's face had
+    // loaded and measured them all alike (Y2YBTS, 2026-11-05).
+    property string footVerbRoom: "connect"
+
+    // The widest verb the words file names, in any of its states, as the
+    // foot draws it after Return (VKCF3Z, 2026-11-05: "Hold room at the
+    // far end for the widest Return word the words file names"). A room
+    // kept for "connect" alone let "\u21b5 brighten" move Return on the
+    // first letter; "connect", which a network's source says, stays the
+    // least. A source's own wider verb may still move it once.
+    function widestVerb(things) {
+        let widest = "connect";
+        for (const entry of things) {
+            const states = Object.values(entry.states ?? {});
+            for (const verb of [entry.verb].concat(states.map(state => state.verb))) {
+                if (typeof verb === "string"
+                    && statusLine.keys.advance("\u21b5", verb)
+                        > statusLine.keys.advance("\u21b5", widest))
+                    widest = verb;
+            }
+        }
+        return widest;
+    }
+    // Return and its widest word on the find, where the launcher opens,
+    // and the completion key the first letter brings, since room is held
+    // only for what a mode draws (VKCF3Z, 2026-11-05): held for
+    // Shift+Return's "below" and the right arrow too, which no foot on the
+    // find draws, it cut the date at 1.5 beside an empty stretch; held for
+    // Return alone, "Ctrl+Y complete" on the first letter cut it then and
+    // slid every fact after it. A row's own keys grow it as they come
+    // (noteKeys).
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
+        [prompt.completeKey, (Words.field.hints ?? {}).complete ?? ""]]
     // What normal says beside Return at home: the commands and the keys,
-    // kept once normal is taken rather than from the opening. Kept from
+    // kept while normal is taken rather than from the opening. Kept from
     // the start, it cut the battery's charge from the glance on the find,
     // which never gives way; - up is said only once a step is held, and
     // Ctrl+] in only on a row holding parts, whose rows grow the room as
@@ -2147,8 +2189,14 @@ Scope {
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
             ...said.map(told => statusLine.keys.advance(told[0][0], told[0][1])));
-        if (place > footReturnWidest)
+        // Said as it grows, so a test sees which row's Return took the
+        // room, though the foot shows only the selection's.
+        if (place > footReturnWidest) {
+            const widest = said.find(told =>
+                statusLine.keys.advance(told[0][0], told[0][1]) === place);
+            Report.say(`foot room for ${widest[0].join(" ")}`);
             footReturnWidest = place;
+        }
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
         if (wide > footKeysWidest)
             footKeysWidest = wide;
@@ -2217,12 +2265,21 @@ Scope {
         rowsMade += 1;
         noteKeys();
         noteFigures();
+        noteDigits();
     }
     onAskingChanged: noteKeys()
     Connections {
         target: prompt
         function onModeChanged() {
             root.readSelectedActions();
+            // The foot's room starts again for each mode, which changes
+            // what it draws, so the glance never gives way to keys a mode
+            // no longer shows, as normal's once back on the find (QIFT5D);
+            // and its facts' forms with it, which within one mode only
+            // shorten, or a form normal forced would outlive it (Y2YBTS).
+            root.footReset();
+            root.footStage = 0;
+            root.factsWidest = {};
             root.noteKeys();
         }
     }
@@ -2541,6 +2598,8 @@ Scope {
     onHeldChanged: {
         const left = placeHeld;
         placeHeld = held;
+        // A place's gutter is as wide as its own rows need, home's three.
+        gutterDigits = held.length === 0 ? 3 : 1;
         if (open && placeOf(left) !== placeOf(held)) {
             lastPlace = { held: left, here: here() };
             // A place stepped to afresh goes on the way back, and leaves
@@ -2578,6 +2637,27 @@ Scope {
         jumping = false;
         restart(to.here.typed);
         reselect(to.here);
+    }
+    // Goes somewhere by several steps as one jump, as Vim's :cd or :bnext
+    // is one: the place left goes on the jump list and is the place used
+    // last, never a step on the way, so Ctrl+O goes back to where Joel
+    // was; one that ends where it began, as a place made again in place
+    // does, is no jump at all. A walk that opens a collection afresh
+    // (into) lets go what was on the way back, which is kept here.
+    function oneJump(walk) {
+        const left = { held: held, here: here() };
+        const was = { back: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last: lastPlace };
+        jumping = true;
+        try {
+            walk();
+        } finally {
+            jumping = false;
+        }
+        const moved = placeOf(left.held) !== placeOf(held);
+        jumpsBack = moved ? was.back.concat([left]) : was.back;
+        jumpsAhead = moved ? [] : was.ahead;
+        tagsBack = was.tags;
+        lastPlace = moved ? left : was.last;
     }
     // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
     // that opens on Return, as a mail, a program or a session do, into the
@@ -2646,10 +2726,25 @@ Scope {
     // Whether the gutter counts from the cursor row or numbers each row
     // as it is, which Space u l switches, as his u l does.
     property bool numbersRelative: true
-    // Whether the gutter numbers the rows: in normal, on a list, never on
-    // the find or the command line (the vi-paradigm spec, Normal).
-    readonly property bool numbered: prompt.modal && prompt.mode === "normal"
-        && commanding === null && matches.length > 0
+    // Whether the gutter numbers the rows: wherever a list shows, in every
+    // mode (VKCF3Z, 2026-11-05), counting from the cursor in normal and
+    // visual and as each row is on the find and the command line, as his
+    // numbertoggle does (Joel, 2026-11-05: "it needs to show in find as
+    // well as normal mode, showing real numbers in find mode").
+    readonly property bool numbered: prompt.modal && matches.length > 0 && over === null
+    readonly property bool numbersCounted: numbersRelative && commanding === null
+        && (prompt.mode === "normal" || prompt.mode === "visual")
+    // How many digits the gutter holds: the most this place's find can
+    // list, so neither its first letter nor its narrowing widens it. Home's
+    // find reaches every thing, hundreds, so it holds three; a place holds
+    // its own rows' as they come (VKCF3Z, 2026-11-05).
+    property int gutterDigits: 3
+
+    function noteDigits() {
+        const digits = String(Math.max(1, matches.length)).length;
+        if (digits > gutterDigits)
+            gutterDigits = digits;
+    }
     onNumberedChanged: placeNumbers()
     onRowsDrawnChanged: Qt.callLater(placeNumbers)
 
@@ -3348,7 +3443,12 @@ Scope {
         if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
         const made = Date.now();
-        held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
+        // Going back lands on the row stepped into, as oil's - lands on the
+        // folder it came from, though it was stepped into without being
+        // selected, as the file picker holds each folder on the way to
+        // where it opens; Return steps into the selection, so it's the same.
+        held = held.concat([Object.assign(here(), { key: steadyId(row), row: row,
+            rows: into ?? [] })]);
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -3660,6 +3760,12 @@ Scope {
     function beside(by) {
         held[held.length - 1]?.row?.beside?.(by);
     }
+
+    // Whether - has a place to go up to: anywhere but home, and but a
+    // collection with nothing above it, as a dialog's (`outermost`), which
+    // - would leave for a home it never showed, its ask still waiting.
+    readonly property bool canGoUp: held.length > 1
+        || (held.length === 1 && held[0].row.from?.collection?.outermost !== true)
 
     function back() {
         if (held.length === 0)
@@ -4068,9 +4174,6 @@ Scope {
     property int keysTimed: 0
     property int keysWaiting: 0
 
-    // Moves the selection as an arrow does, timing the key to its frame as
-    // a typed one is. A key that moves nothing draws nothing, so it isn't
-    // timed: its frame would be whatever came next.
     // The last f or F, which ; and , go again (Finding.js).
     property var lastLetter: null
 
@@ -4118,6 +4221,9 @@ Scope {
         arrowed(to, QueryKeys.keyOf(act, "normal"));
     }
 
+    // Moves the selection as an arrow does, timing the key to its frame as
+    // a typed one is. A key that moves nothing draws nothing, so it isn't
+    // timed: its frame would be whatever came next.
     function arrowed(to, arrow) {
         trials.pressed("arrows");
         if (to === current)
@@ -5285,7 +5391,7 @@ Scope {
             // Normal's gutter: whether it shows, its numbers top to bottom,
             // the cursor row's, how many it made and how wide its room is.
             gutter: {
-                shown: rowsGutter.shown, relative: root.numbersRelative,
+                shown: rowsGutter.shown, relative: rowsGutter.relative,
                 numbers: rowsGutter.said().map(number => number.text),
                 cursor: (rowsGutter.said().find(number => number.ink === "text") ?? {}).text
                     ?? "",
@@ -5366,6 +5472,13 @@ Scope {
             // Where the status line's last ink should end: the inset in
             // from the frame, as its first starts.
             footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
+            // How far in the keys may reach, room held for keys a row
+            // may say included, which the facts are fitted short of.
+            keysFrom: Math.round(foot.keysFrom),
+            // The room held for the widest keys since opening, and what the
+            // keys said now take, so a test can tell which held it.
+            keysRoom: { held: Math.round(Math.min(root.footKeysWidest, foot.keysRoom)),
+                said: Math.round(root.keysWide(foot.kept)) },
             // The keys the foot says now, each its mark and its word.
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
@@ -5620,7 +5733,6 @@ Scope {
             fading = false;
             parting = "";
             footCatchUp();
-            footReset();
             footStage = 0;
             factsWidest = {};
             figuresStep = "";
@@ -5647,6 +5759,18 @@ Scope {
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
+            // The gutter as wide as where it opens can number.
+            gutterDigits = held.length === 0 ? 3 : 1;
+            noteDigits();
+            // Weighed once an opening, not on every mode change, which
+            // walks every thing's verbs.
+            footVerbRoom = widestVerb(Words.all.things ?? []);
+            // The foot's room once the line is back on the find: set
+            // before, the rows noted their keys while it was still in
+            // the normal it closed in, and the find opened with normal's
+            // room, cutting the glance's date and charge.
+            footReset();
+            noteKeys();
             Report.say(`stands ${standing.said}`);
         } else {
             // An ask closing with it says no, as Escape would, and is
@@ -6140,7 +6264,7 @@ Scope {
                         onBackward: {
                             root.searchNow();
                             trials.pressed("backs");
-                            if (root.held.length === 0)
+                            if (!root.canGoUp)
                                 root.say([[root.hintKey("out"),
                                     (Words.field.hints ?? {}).notHere ?? ""]]);
                             else
@@ -6440,9 +6564,9 @@ Scope {
                             }
                         }
 
-                        // Normal's numbers beside the rows (Gutter.qml), in a
-                        // room kept in every mode, so no row moves on a mode
-                        // change; empty on the find and the command line.
+                        // The rows' numbers (Gutter.qml), in every mode, in
+                        // the room the place's list can number, so no row
+                        // moves on a mode change or a letter.
                         Gutter {
                             id: rowsGutter
                             x: Theme.space.rung.inset
@@ -6452,7 +6576,8 @@ Scope {
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
                             current: root.current
-                            relative: root.numbersRelative
+                            relative: root.numbersCounted
+                            digits: root.gutterDigits
                             shown: root.numbered
                         }
 
@@ -6984,10 +7109,18 @@ Scope {
                         readonly property real returnAt: width - Theme.space.rung.inset - returnPlace
                         // How far in the keys may reach: as far as the
                         // widest of them has needed since the launcher
-                        // opened, so the left's room holds still too.
+                        // opened, so the left's room holds still too. The
+                        // keys are measured by their advances, as noteKeys
+                        // measures them, not by the row's laid-out width,
+                        // which lags to its next layout pass: opening from
+                        // normal, it still held normal's keys as the facts
+                        // were fitted, and the glance opened cut for good.
+                        // Only the keys drawn are measured, and the room held
+                        // for any never passes theirs, or visual's would run
+                        // over "1 new" again.
                         readonly property real keysFrom: width - Theme.space.rung.inset
                             - Math.max(Math.min(root.footKeysWidest, keysRoom),
-                                statusLine.keys.implicitWidth)
+                                root.keysWide(kept))
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.

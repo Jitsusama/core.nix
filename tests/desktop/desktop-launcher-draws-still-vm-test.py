@@ -261,9 +261,56 @@ def test_a_refresh_leaves_the_list_where_it_was_scrolled(desktop: Desktop) -> No
         desktop.close(window)
 
 
+def closed_from_normal(desktop: Desktop) -> None:
+    """Open the launcher and close it from normal, as Joel leaves it, before it's measured.
+
+    Every opening but the first follows a close from normal, and the foot once kept normal's
+    room from it on the find, which cut the glance's date and charge; a subtest run alone opened
+    on a launcher never closed, and passed.
+    """
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    desktop.close_launcher()
+
+
+def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
+    """See the find's foot hold room for Return's widest word and the completion, and no more.
+
+    The first letter brings Ctrl+Y's completion beside Return, which then starts just where
+    the room held from the opening does: no further in, and not past it. Room once held for
+    Shift+Return's "below" and the right arrow, which no foot here draws, cut the date at 1.5
+    beside an empty stretch; held for Return alone, the completion cut it on the first letter
+    (VKCF3Z, 2026-11-05: "room is held only for what this mode draws").
+    """
+    machine = desktop.machine
+    opened = desktop.showing()
+    assert [hint.split(" ")[0] for hint in opened["hints"]] == ["\u21b5"], opened["hints"]
+    machine.send_chars("s")
+    desktop.launcher_until(lambda shown: any("complete" in hint for hint in shown["hints"]))
+    shown = desktop.showing()
+    foot = laid_out(desktop)["foot"]
+    assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
+    # The room the opening held is just what the keys the letter brought take.
+    assert opened["keysRoom"]["held"] == shown["keysRoom"]["said"], (
+        f"the opening held {opened['keysRoom']['held']} px for the keys, which take"
+        f" {shown['keysRoom']['said']}: {shown['hints']}"
+    )
+    # And that's how they're drawn: the first key starts as far in from the status line's end
+    # as they take, in the card's frame, where the foot's words are laid out.
+    first = next(word for word in foot if word["text"].startswith("Ctrl"))
+    reach = shown["footEnd"] - first["starts"]
+    assert abs(reach - shown["keysRoom"]["said"]) <= 1, (
+        f"the keys take {shown['keysRoom']['said']} px and are drawn over {reach}"
+    )
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+
+
 def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) -> None:
     """A fact in the foot that reads shorter keeps its room, so nothing after it slides."""
     machine = desktop.machine
+    closed_from_normal(desktop)
     # The kernel's stand-in battery, whose charge UPower reads as it changes.
     capacity = "/sys/module/test_power/parameters/battery_capacity"
     was = machine.succeed(f"cat {capacity}").strip()
@@ -271,12 +318,23 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: " 100%" in shown["glance"])
+    holds_room_only_for_what_it_draws(desktop)
     before = laid_out(desktop)
     # From 100% to 99%: the battery reads shorter, and what follows it
     # stays where it was.
     machine.succeed(f"echo 99 > {capacity}")
     desktop.launcher_until(lambda shown: " 99%" in shown["glance"])
     after = laid_out(desktop)
+    # Back on the find from normal, the foot keeps only the find's room, so
+    # the glance draws what it drew before, date and charge, its time aside
+    # since a minute may turn (QIFT5D, 2026-11-05: facts gave way to normal's
+    # keys, no longer drawn; Y2YBTS: a form normal forced outlived it).
+    drew = desktop.showing()["glance"].split("  ")[1:]
+    desktop.normal()
+    machine.send_chars("/")
+    desktop.launcher_until(
+        lambda shown: shown["mode"] == "find" and shown["glance"].split("  ")[1:] == drew
+    )
     desktop.close_launcher()
     machine.succeed(f"echo {was} > {capacity}")
     # It measures something: the battery is in the foot, and after it more.
@@ -620,6 +678,7 @@ def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
 def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:
     """Nothing on the launcher moves unless it changes, as letters, erasures and arrows go."""
     machine = desktop.machine
+    closed_from_normal(desktop)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     before = laid_out(desktop)
@@ -645,7 +704,13 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
         desktop.launcher_until(heard)
         after = laid_out(desktop)
         desktop.photograph(f"launcher-still-{step:02}-{key}")
-        shifts += [f"after {key!r} ({typed!r}) {shift}" for shift in moved(before, after)]
+        # What the foot read before and after, so a move says what took
+        # its room as well as what gave it.
+        read = [" ".join(word["text"] for word in laid["foot"]) for laid in (before, after)]
+        shifts += [
+            f"after {key!r} ({typed!r}) {shift}, the foot reading {read[0]!r} then {read[1]!r}"
+            for shift in moved(before, after)
+        ]
         before = after
     desktop.close_launcher()
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)

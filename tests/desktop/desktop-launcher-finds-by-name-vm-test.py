@@ -558,7 +558,7 @@ def walk_the_gutter(desktop: Desktop) -> None:
     The cursor row's number is absolute and the rest count from it, as his Neovim's
     relativenumber does, made a number a row in view however long the list; Space u l numbers
     each row as it is and back; the narrowed find says its count after what's typed; and on
-    the find the gutter is empty again, in the same room.
+    the find it numbers each row as it is, in the same room, as his numbertoggle does.
     """
     machine = desktop.machine
 
@@ -598,18 +598,14 @@ def walk_the_gutter(desktop: Desktop) -> None:
     count = desktop.showing()["count"]
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
     assert any(word["text"] == f"\u00b7 1 of {count}" for word in field), field
-    # On the find it empties and makes no number, its room kept, and normal numbers it again.
+    # On the find it numbers each row as it is, in the same room, so no row moves, and normal
+    # counts from the cursor again (Joel, 2026-11-05: "real numbers in find mode and
+    # relative numbers in command mode").
     room = desktop.showing()["gutter"]["room"]
     assert room > 0, desktop.showing()["gutter"]
     machine.send_chars("A")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["mode"] == "find"
-            and (shown["gutter"]["shown"], shown["gutter"]["numbers"]) == (False, [])
-            and shown["gutter"]["made"] == 0
-            and shown["gutter"]["room"] == room
-        )
-    )
+    desktop.launcher_until(lambda shown: shown["mode"] == "find")
+    assert numbered(["1", "2", "3"], relative=False)["gutter"]["room"] == room
     desktop.normal()
     numbered(["1", "1"], relative=True)
 

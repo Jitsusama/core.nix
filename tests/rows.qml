@@ -163,6 +163,13 @@ ShellRoot {
                 mark: "NOR"
                 hints: [["\u21b5", "open"]]
             }
+            PromptHead {
+                id: asking
+                width: root.panel
+                asked: "Joel needs a password"
+                askedOpens: "J"
+                reason: "to install a program"
+            }
             // Three steps in, beside a note longer than the line has room
             // for, as Machine's processors' cores say.
             Prompt {
@@ -352,6 +359,19 @@ ShellRoot {
         text: "x"
         font: figureCaps.font
     }
+    // Words, a prompt's head: its capitals and small letters.
+    TextMetrics {
+        id: wordsCaps
+        text: "H"
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.variableAxes: Theme.level.words.variableAxes
+    }
+    TextMetrics {
+        id: wordsSmall
+        text: "x"
+        font: wordsCaps.font
+    }
     // A row's name, whose capitals are centred in the row.
     TextMetrics {
         id: nameCaps
@@ -410,24 +430,35 @@ ShellRoot {
         expect("the numbers end together, right-aligned",
             said.every(number => Math.abs(number.ends - said[0].ends) <= 0.5),
             JSON.stringify(said));
-        expect("three digits fit its room", gutter.widest("999") <= said[0].ends,
-            `${gutter.widest("999")} past ${said[0].ends}`);
-        // The numbers stand a mark from the text they number, as a key
-        // does from its word (docs/design.md, The Ladder).
-        expect("the numbers end a mark before the rows",
-            Math.abs(gutter.width - said[0].ends - Theme.space.rung.mark) <= 0.5,
+        expect("its digits fit its room, and no more",
+            Math.abs(gutter.widest("999") - said[0].ends) <= 0.5,
+            `${gutter.widest("999")} against ${said[0].ends}`);
+        // The numbers stand a tie from the text they number, as Vim's
+        // number column stands a space from the text (VKCF3Z, 2026-11-05).
+        expect("the numbers end a tie before the rows",
+            Math.abs(gutter.width - said[0].ends - Theme.space.rung.tie) <= 0.5,
             `${gutter.width - said[0].ends} before the rows`);
+
         expect("it makes a number a slot, not a row", gutter.made === gutter.slots,
             `${gutter.made} for ${gutter.slots} slots`);
         gutter.relative = false;
         expect("absolute, each row says its own number",
             JSON.stringify(texts()) === JSON.stringify(["1", "2", "3"]), texts());
-        const room = gutter.width;
         gutter.shown = false;
-        expect("off normal it draws no number and makes none",
+        expect("with no rows to number it draws no number and makes none",
             texts().length === 0 && gutter.made === 0, `${texts()}, ${gutter.made} made`);
-        expect("and keeps its room, so no row moves", gutter.width === room && room > 0,
-            `${gutter.width}, was ${room}`);
+        // A gutter keeping its room with nothing in it was an empty gap
+        // before the rows (Joel, 2026-11-05: "when not present it looks
+        // like shit").
+        expect("and keeps no room", gutter.width === 0, `${gutter.width}`);
+        gutter.shown = true;
+        // As wide as the most its list can number, held by the launcher.
+        const three = gutter.width;
+        gutter.digits = 2;
+        expect("two digits take one digit's advance less than three",
+            Math.abs(three - gutter.width - (gutter.widest("999") - gutter.widest("99"))) <= 0.5,
+            `${three} then ${gutter.width}`);
+        gutter.digits = 3;
     }
 
     function check() {
@@ -568,6 +599,19 @@ ShellRoot {
             expect("a status line's hints sit on its mark's baseline", lineMark !== null
                 && lineHint !== null && Math.abs(lineMark.base - lineHint.base) <= 0.5,
                 `${JSON.stringify(lineMark)} against ${JSON.stringify(lineHint)}`);
+            // A prompt's head is a band with no rows under it, its frame
+            // over it and a hairline under it: its first capital stands the
+            // inset under the frame, and the hairline falls where the lines
+            // centre, their capitals' middle and their small letters'
+            // averaged on the band's (VKCF3Z, 2026-11-05).
+            const caps = wordsCaps.tightBoundingRect.height;
+            const small = wordsSmall.tightBoundingRect.height;
+            const lastLine = root.setting(asking, "to install a program");
+            const lines = lastLine === null ? NaN
+                : (2 * asking.inset + caps - small) / 4 + lastLine.base / 2;
+            expect("a prompt's head centres its lines under the inset",
+                Math.abs(lines - asking.height / 2) <= 0.5,
+                `lines' middle ${lines} in a head ${asking.height} tall: ${JSON.stringify(lastLine)}`);
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));

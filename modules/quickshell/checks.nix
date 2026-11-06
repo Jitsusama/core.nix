@@ -316,6 +316,7 @@ onLinux {
           "battery"
           "devices"
           "volume"
+          "tokens"
           "spend"
           "pi"
           "notices"
@@ -2739,6 +2740,7 @@ onLinux {
       cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${./PromptFoot.qml} PromptFoot.qml
+      cp ${./PromptHead.qml} PromptHead.qml
       cp ${./Hairline.qml} Hairline.qml
       cp ${./StatusLine.qml} StatusLine.qml
       cp ${lights} Lights.qml

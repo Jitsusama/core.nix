@@ -20,6 +20,7 @@ import qs
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
+import "Bands.js" as Bands
 import "Picking.js" as Picking
 
 Singleton {
@@ -319,22 +320,31 @@ Singleton {
                     // the query is, at Figure, or the voice's hint before
                     // any are; and the box's size, a figure too. All sit on
                     // the Title's baseline, its capitals the frame's inset
-                    // under its top, and the rule under it what a row leaves
-                    // under a row's capitals (docs/design.md, Space, The
-                    // Ladder).
+                    // under its top. No rows under it set its band, so the
+                    // rule under it falls where the line reads centred
+                    // (docs/design.md: text in a band centres in it; VKCF3Z,
+                    // 2026-11-05).
                     Item {
                         width: parent.width
-                        readonly property real capitals: titleFace.tightBoundingRect("H").height
+                        // TextMetrics, since a FontMetrics' call in a
+                        // binding is asked once, before the face has loaded.
+                        readonly property real capitals: titleCaps.tightBoundingRect.height
                         // Whole device pixels tall, counted from the frame's
                         // outer edge, so the rule under it falls clean.
-                        height: rule.whole(panel.inset + capitals
-                            + (4 * Theme.space.beat - capitals) / 2 + Theme.border) - Theme.border
+                        height: rule.whole(Bands.around(panel.inset + capitals, capitals,
+                            titleSmall.tightBoundingRect.height) + Theme.border) - Theme.border
 
-                        FontMetrics {
-                            id: titleFace
+                        TextMetrics {
+                            id: titleCaps
+                            text: "H"
                             font.family: Theme.level.title.family
                             font.pointSize: Theme.level.title.pointSize
                             font.variableAxes: Theme.level.title.variableAxes
+                        }
+                        TextMetrics {
+                            id: titleSmall
+                            text: "x"
+                            font: titleCaps.font
                         }
 
                         Text {

@@ -1,13 +1,14 @@
-// A list's gutter in normal: the rows in view numbered at Note, muted,
-// relative to the cursor row, whose own number is absolute and in text, as
-// Joel's Neovim sets number, relativenumber and cursorlineopt=number; or
-// every row absolute, as his u l switches them (the vi-paradigm spec,
-// Normal). It is normal's cue beside the rows, so off normal it draws
-// nothing, keeping its room so no row moves on a mode change.
+// A list's gutter: the rows in view numbered at Note, muted, relative to
+// the cursor row, whose own number is absolute and in text, as Joel's
+// Neovim sets number, relativenumber and cursorlineopt=number; or every row
+// absolute, as his u l switches them and as the find and the command line
+// number them, as his numbertoggle does (Joel, 2026-11-05: "real numbers in
+// find mode and relative numbers in command mode"). Where it numbers
+// nothing it keeps no room, since an empty gutter was a gap before the rows.
 //
 // It makes a number a slot, a list's height of them, rather than one a
-// row, and none at all off normal, so a long list costs nothing more and
-// the find costs nothing: the rows in view say where each number goes.
+// row, so a long list costs nothing more: the rows in view say where each
+// number goes.
 pragma ComponentBehavior: Bound
 import QtQuick
 
@@ -22,14 +23,19 @@ Item {
     property int current: 0
     property bool relative: true
     property bool shown: false
+    // How many digits its room holds: the most its list can number, which
+    // the launcher holds while a place is open, so neither a find
+    // narrowing nor its first letter widens it.
+    property int digits: 3
     // How many numbers it has made, now: its slots while shown, else none.
     readonly property int made: numbers.count
 
-    // Three digits' room, so a long list never widens it, and a mark
-    // before the rows, as a key stands from its word (docs/design.md,
-    // The Ladder). Read from the metrics' own property, which follows the face as it
-    // loads, where a call in a binding is asked once, before it has.
-    width: Math.ceil(metrics.advanceWidth) + Theme.space.rung.mark
+    // Its digits' room and a tie before the rows, as Vim's number column
+    // stands a space from the text (VKCF3Z, 2026-11-05), or none where it
+    // numbers nothing. Read from the metrics' own property, which follows
+    // the face as it loads, where a call in a binding is asked once, before
+    // it has.
+    width: shown ? Math.ceil(metrics.advanceWidth) + Theme.space.rung.tie : 0
 
     // How wide a number is in the gutter's face, for a test to measure by.
     function widest(text) {
@@ -63,7 +69,7 @@ Item {
 
     TextMetrics {
         id: metrics
-        text: "999"
+        text: "9".repeat(Math.max(1, gutter.digits))
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
     }
@@ -81,7 +87,7 @@ Item {
                 && number.row.at === gutter.current
 
             visible: number.row !== null
-            width: gutter.width - Theme.space.rung.mark
+            width: gutter.width - Theme.space.rung.tie
             horizontalAlignment: Text.AlignRight
             y: (number.row?.base ?? 0) - number.baselineOffset
             text: number.row === null ? "" : gutter.numberOf(number.row.at)

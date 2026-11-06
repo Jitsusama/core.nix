@@ -481,8 +481,8 @@ the theme refuses a ladder that doesn't widen outward.
 
 | Rung | Pixels | Between |
 | ---- | ------ | ------- |
-| tie | 4 (xs) | the parts of one token: a chord's keys, "Space ?" |
-| mark | 8 (s) | a mark and its text, a key and its word, "? keys", the gutter's numbers and the text |
+| tie | 4 (xs) | the parts of one token: a chord's keys, "Space ?", the gutter's numbers and the ground |
+| mark | 8 (s) | a mark and its text, a key and its word, "? keys", a dot and what it joins |
 | apart | 12 (m) | two runs of one thing: a name and its words, typed text and its count, a title and its hint, chord and chord |
 | items | 16 (l) | things on one line: hint and hint, fact and fact |
 | groups | 20 | groups on one line (the facts, the state, the hints), and column and column |
@@ -1856,14 +1856,19 @@ says its own (`status.lua`).
 the cursor. A list shows relative numbers in a gutter at Note, muted, the
 cursor row's own absolute and in text, as his `number`, `relativenumber`
 and `cursorlineopt=number` draw them; Space u l switches them to absolute.
-The gutter's room is kept in every mode, three digits wide with the numbers
-right-aligned, and on the find and command lines the gutter is empty, so
-nothing moves sideways as the mode changes. The find line, the command line
+On the find and the command line the numbers are absolute, as his
+numbertoggle draws them in insert, so a list is never shown without them
+(Joel, 2026-11-05: "when not present it looks like shit"). The gutter is
+as wide as the digits of the most rows the place's find can list, three on
+home, two in Programs and one in a small place, then a tie to the ground. It
+holds that width while the list is open, so no letter or mode moves a row
+sideways. The find line, the command line
 and the head start at the card's inset, over the numbers, as Vim's / and :
 lines start at column 0 left of its number column: the gutter is the list's,
 and the lines are the card's. A picker's ask keeps its room that way.
 While a find narrows the rows, the find line keeps it after a muted `/`,
-with its count: "/slack · 3 of 12".
+with what it found: "/slack · 3 found". The status line says where the
+cursor stands ("1 of 3"), so the two never both read "of".
 
 - **Moving:** j k, gg G and {n}G, H M L, Ctrl+D Ctrl+U Ctrl+F Ctrl+B, and
   { } to the next and previous group of rows, each taking a count. Only a
@@ -2091,8 +2096,17 @@ hairline, the rows, a hairline, the status line.
   beside it, as Vim's search count sits beside the search; the head's right
   end is the selection's note's.
 - **The rows** are the launcher's: the gutter, the glyph, the name and its
-  words, the side at the far end, the ground hugging its ink. A held
+  words, the side at the far end, the ground hugging its ink. What a row
+  is, holds or does follows its name, in Words ("Shortcuts" then "Tabs,
+  Tab Numbers"; "brightness ⟨percent⟩" then "Sets the screen's
+  brightness"). A figure
+  or a state, a count, a size, a time or a chord, sits at the far end in
+  Note, ending on the inset, a count before its chord across a dot. A held
   notice's card opens under its line, typed as the drawer's plate is.
+- **A path** gives way from its middle: a middle step shortens to its last
+  folder ("…/more"), then to "…", while the ask and the last step stay
+  whole at every width. What's typed after it scrolls inside its own room
+  past that point, a muted "…" at its start saying some went off.
 - **The command line** sits at the bottom, over the status line, with its
   menu rising from it, as Vim's does: what's typed sits beside what it
   offers.
@@ -2223,6 +2237,9 @@ changes only through his config (Joel, 2026-11-05).
 17. :setl takes a range, :%setl mute setting each thing's own, where Vim's
     :setlocal takes none, since a list holds many things where a window
     shows one buffer.
+18. Ctrl+] on the find goes into the chosen row's parts, as in normal,
+    where Vim's command line would expand an abbreviation; there are none
+    to expand.
 
 **Where Vim's keys live.** Each act is named once in
 `modules/keys/language.toml`, with its keys in Neovim's notation, the

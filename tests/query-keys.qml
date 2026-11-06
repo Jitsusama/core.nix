@@ -1455,9 +1455,19 @@ QtObject {
         // told "not here".
         holds("Escape at rest in normal does nothing, and says nothing",
             typed(["Escape", "Escape", "Escape"]), typed(["Escape"]));
-        holds("no key in any mode closes the launcher by Escape",
-            Keys.table.filter(one => one.keys.includes("Escape")
-                && ["close", "dismiss", "quit"].includes(one.act)).map(one => one.act), []);
+        // The read says it's at rest, so a prompt does what rest does
+        // (Prompt.qml's rested) by one rule rather than its own copy.
+        holds("Escape at rest in normal is read as rest",
+            Keys.read(Keys.rest(), "Escape", "normal").rested, true);
+        holds("but not while a count waits, which it lets go",
+            !!Keys.read(typed(["Escape", "3"]).standing, "Escape", "normal").rested, false);
+        holds("nor on the find, which it leaves",
+            !!Keys.read(Keys.rest(), "Escape", "find").rested, false);
+        // Escape only leaves what was begun or goes back a step, so no
+        // act added to it later can close or quit anything.
+        holds("Escape's rows only leave for normal or go back",
+            [...new Set(Keys.table.filter(one => one.keys.includes("Escape"))
+                .map(one => one.act))].sort(), ["back", "normal"]);
         holds("a letter on the find types, meaning nothing idle", typed(["n"]).idle, []);
         // A begun Space waits for its next key however long, as his
         // which-key holds it (Prompt.qml's standing); Escape lets it go.

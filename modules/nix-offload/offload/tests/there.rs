@@ -1671,7 +1671,7 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
-            "here-when-idle\nprint\nderivation\noutlive\n"
+            "here-when-idle\nprint\nderivation\noutlive\nbulk\n"
         )
     );
 }
@@ -2766,6 +2766,42 @@ fn a_run_waiting_for_room_isnt_passed_by_one_that_came_after_it() {
         .collect();
     assert_eq!(order, ["vm-a0", "vm-b0", "vm-c0"], "{said}");
     assert_eq!(said.matches("so this waits for room").count(), 2, "{said}");
+}
+
+// The after-merge net sends dozens of VM tests a round, so on 5 November a
+// session's few, sent while one waited, waited behind the whole round: a
+// bulk run lets any run that isn't, waiting or coming, go before it.
+#[test]
+fn a_bulk_run_waiting_for_room_lets_one_that_isnt_go_first() {
+    let tests = |name: &str, count: usize, flags: &[&str]| -> Vec<String> {
+        flags
+            .iter()
+            .copied()
+            .chain(["-L", "github:o/r/abc"])
+            .map(str::to_owned)
+            .chain((0..count).map(|test| format!("checks.x.vm-{name}{test}")))
+            .collect()
+    };
+    let (first, bulk, later) = (
+        tests("a", 3, &[]),
+        tests("b", 4, &["--bulk"]),
+        tests("c", 2, &[]),
+    );
+    let (_, sent, said) = one_after_another(&[&first, &bulk, &later]);
+    let order: Vec<&str> = sent
+        .iter()
+        .map(|build| {
+            ["vm-a0", "vm-b0", "vm-c0"]
+                .into_iter()
+                .find(|test| build.contains(*test))
+                .unwrap_or(build)
+        })
+        .collect();
+    assert_eq!(order, ["vm-a0", "vm-c0", "vm-b0"], "{said}");
+    assert!(
+        said.contains("this run is bulk, so runs that aren't go first"),
+        "{said}"
+    );
 }
 
 /// Two `there` runs with `runs`' arguments, the second started while the
