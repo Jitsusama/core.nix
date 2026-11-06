@@ -1043,9 +1043,21 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     # name ends and its kind begins.
     named = scale.replace(".", "-")
     desktop.photograph(f"notice-at-{named}")
-    with desktop.told("keys notices"), desktop.told("notice offers :pause"):
+    # Held, a row is the toast's notice in a list: its number on the inset, and every line of it
+    # a tie and a mark past the number, its glyph on the line that signs it (Joel, 2026-11-06:
+    # "I don't like the indent when I'm in list view").
+    with (
+        desktop.told("keys notices"),
+        desktop.told("notice offers :pause"),
+        desktop.told("notice rows start on the inset"),
+    ):
         machine.send_key("meta_l-n")
     desktop.photograph(f"notice-held-at-{named}")
+    with desktop.told("notice selects 1"):
+        machine.send_chars("V")
+    desktop.photograph(f"notice-held-visual-at-{named}")
+    with desktop.told("notice mode normal"):
+        machine.send_key("esc")
     with desktop.told("lets notices go"):
         machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
