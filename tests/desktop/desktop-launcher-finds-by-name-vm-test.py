@@ -108,12 +108,14 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # The / stays, muted, since normal's keys are on the rows.
     assert (shown["sigil"], shown["sigilHue"]) == ("/", "muted"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-    held = placed(laid["foot"])
-    # The mode's mark and the status facts hold their places; the keys are normal's own,
-    # drawn with their marks.
-    assert status_facts(laid["foot"], shown["selected"]["told"])[0] == mark, laid["foot"]
-    assert facts, laid["foot"]
-    assert facts <= held, (facts, laid["foot"])
+    # The mode's mark and the clock, first of the facts, hold their places. The rest of the
+    # glance may read its least, giving way to normal's keys as draws-still walks it, and the
+    # keys are normal's own, drawn with their marks.
+    now_mark, now_facts = status_facts(laid["foot"], shown["selected"]["told"])
+    assert now_mark == mark, laid["foot"]
+    first = min(facts, key=lambda fact: fact[1])
+    assert first[0] == "clock", facts
+    assert first in now_facts, (facts, laid["foot"])
     # The answer copies on Return and holds more, so Ctrl+] in comes first, furthest from
     # Return, and the key list's stays just before Return.
     told = desktop.showing()["selected"]["told"]
