@@ -31,11 +31,22 @@ Item {
     // Whether rows lie behind it for its hairline to split it from; over a
     // viewer none do, and the field's own hairline already sits above it.
     property bool split: true
-    // A line's pitch: a Note line and the room the space scale gives it.
-    readonly property real pitch: Theme.space.xl
+    // A line's pitch, two beats, so the menu sits on the card's grid as the
+    // drawer's lines do (VKCF3Z, 2026-11-05).
+    readonly property real pitch: 2 * Theme.space.beat
     readonly property int showing: Math.min(lines.length, most)
+    // Where its commands stand from its left: on the names' column, a
+    // glyph's column past the inset, unless its surface's names stand
+    // elsewhere, as the launcher's do past its gutter.
+    property real commandsAt: Theme.space.rung.inset + Theme.level.name.pitch
+        + Theme.space.rung.mark
+    // The room above its first line and below its last: a beat, so its last
+    // line's middle lies a row's middle above its bottom, and its baselines
+    // fall on the rows' grid, and the chosen line's ground stands clear of
+    // the hairline.
+    readonly property real room: Theme.space.beat
 
-    implicitHeight: showing === 0 ? 0 : showing * pitch + Theme.border + 2 * Theme.space.xs
+    implicitHeight: showing === 0 ? 0 : showing * pitch + Theme.border + 2 * room
     visible: showing > 0
     clip: true
 
@@ -44,6 +55,14 @@ Item {
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
         font.weight: Theme.level.note.weight
+    }
+
+    // A TextMetrics, which follows the face as it loads, where a
+    // FontMetrics' call in a binding is asked once, before it has.
+    TextMetrics {
+        id: noteCaps
+        text: "H"
+        font: note.font
     }
 
     // The commands' column, as wide as the widest command the menu holds.
@@ -56,19 +75,24 @@ Item {
     function written(entry) {
         return Commands.called(entry) + (entry.after ?? "");
     }
-    readonly property real commandsAt: Theme.space.l + Theme.space.xxl
-    readonly property real titlesAt: commandsAt + Math.ceil(commandsWide) + Theme.space.xl
+    readonly property real titlesAt: commandsAt + Math.ceil(commandsWide)
+        + Theme.space.rung.groups
+    // How tall a Note line's capitals stand, which the chosen line's ground
+    // is set round.
+    readonly property real capitals: noteCaps.tightBoundingRect.height
 
+    // Inset to inset, spanning the ink, as every rule of a card does.
     Rectangle {
         visible: menu.split
-        width: parent.width
+        x: Theme.space.rung.inset
+        width: parent.width - 2 * x
         height: Theme.border
         color: Theme.edge
     }
 
     ListView {
         id: list
-        y: Theme.border + Theme.space.xs
+        y: Theme.border + menu.room
         width: parent.width
         height: menu.showing * menu.pitch
         model: menu.lines.length
@@ -94,8 +118,14 @@ Item {
             width: list.width
             height: menu.pitch
 
+            // Close round its ink, a mark round the command and the key,
+            // above the capitals and below the baseline, as the rows'
+            // ground is (Choice.qml).
             Rectangle {
-                anchors.fill: parent
+                x: menu.commandsAt - Theme.space.rung.mark
+                y: command.y + command.baselineOffset - menu.capitals - Theme.space.rung.mark
+                width: key.x + key.width + Theme.space.rung.mark - x
+                height: menu.capitals + 2 * Theme.space.rung.mark
                 visible: entry.picked
                 radius: Theme.inner
                 color: Qt.alpha(Theme.selection, Theme.floating.selection)
@@ -115,7 +145,7 @@ Item {
 
             Text {
                 x: menu.titlesAt
-                width: key.x - x - Theme.space.xl
+                width: key.x - x - Theme.space.rung.groups
                 anchors.baseline: command.baseline
                 text: entry.line.title ?? ""
                 textFormat: Text.PlainText
@@ -128,7 +158,7 @@ Item {
 
             Text {
                 id: key
-                x: parent.width - Theme.space.l - implicitWidth
+                x: parent.width - Theme.space.rung.inset - implicitWidth
                 anchors.baseline: command.baseline
                 text: entry.line.key ?? ""
                 textFormat: Text.PlainText

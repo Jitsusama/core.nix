@@ -27,12 +27,19 @@ Item {
 
     // Three digits' room, so a long list never widens it, and a mark
     // before the rows, as a key stands from its word (docs/design.md,
-    // The Ladder).
-    width: widest("000") + Theme.space.rung.mark
+    // The Ladder). Read from the metrics' own property, which follows the face as it
+    // loads, where a call in a binding is asked once, before it has.
+    width: Math.ceil(metrics.advanceWidth) + Theme.space.rung.mark
 
+    // How wide a number is in the gutter's face, for a test to measure by.
     function widest(text) {
-        metrics.text = text;
-        return Math.ceil(metrics.advanceWidth);
+        probe.text = text;
+        return Math.ceil(probe.advanceWidth);
+    }
+
+    TextMetrics {
+        id: probe
+        font: metrics.font
     }
 
     function numberOf(at) {
@@ -56,6 +63,7 @@ Item {
 
     TextMetrics {
         id: metrics
+        text: "999"
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
     }

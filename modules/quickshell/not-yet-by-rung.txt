@@ -3,10 +3,5 @@
 # lets through. Each surface moved to the rungs takes its file off, and the
 # check fails on a file listed here that no longer needs to be, so the list
 # only shrinks; a new file names rungs from the start, never listed here.
-quickshell/Choice.qml
-quickshell/CommandLine.qml
-quickshell/CommandMenu.qml
 quickshell/Drawer.qml
 quickshell/HeldNotices.qml
-quickshell/Launcher.qml
-quickshell/Prompt.qml

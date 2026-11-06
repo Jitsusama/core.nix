@@ -213,6 +213,9 @@ Floating {
     property real rowLine: 0
     // The middle of each row the card shows, for the moment's lines.
     property var rowLines: []
+    // How far below a row's line its name's baseline stands, as the card
+    // sets its rows (their capitals centred on the line, Choice.qml).
+    property real rowDrop: 0
 
     readonly property string eyebrow: shown ? shown.eyebrow ?? "" : ""
     readonly property string title: shown ? shown.title ?? "" : ""
@@ -264,7 +267,7 @@ Floating {
     // How far below a line's centre a row's name has its baseline, as a row
     // centred on that line does. Every line here is set on such a
     // baseline, whatever its own face, since the faces' line boxes differ.
-    readonly property real dropped: monoRuler.y + monoRuler.baselineOffset
+    readonly property real dropped: rowDrop
     // How far apart a Title's lines sit: its own pitch, tighter than the
     // plate's two, so a name that wraps reads as one heading rather than
     // two (VKCF3Z, 2026-11-04).
@@ -884,17 +887,6 @@ Floating {
     // Each new thing it shows starts at its top; the same thing read anew,
     // as a row refreshes, stays where it was scrolled.
     onTitleChanged: view.contentY = 0
-
-    // An empty line of the mono, centred on a line's centre as a row's
-    // words are, whose baseline says where the plate's are: an empty line
-    // keeps the baseline a filled one has.
-    Text {
-        id: monoRuler
-        y: -height / 2
-        visible: false
-        font.family: Theme.level.name.family
-        font.pointSize: Theme.level.name.pointSize
-    }
 
     // The widest of its facts' names, which their values start beyond, so
     // the values share one edge: a name is never cut short, and a value

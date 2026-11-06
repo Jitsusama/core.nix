@@ -84,15 +84,14 @@ Scope {
     // never run off the screen). Home's gap is allowed for whether it shows
     // or not, so what's found never changes how many.
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
-        (screenHere.height - 2 * Theme.space.xl - cardChrome - Theme.space.m)
-            / Theme.space.xxxl)))
+        (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
+            / rowTall)))
     // How tall the card is but for its rows: the line, its hairline and the
     // foot, which no screen changes.
     readonly property real cardChrome: card.height - listBox.height
     // How tall the drawer stands in the card's place: down to the rows'
     // end, so the foot stays in sight under it, saying how to come back.
-    readonly property real rowsEnd: Theme.border + prompt.height + 2 * Theme.inset
-        + Theme.border + Theme.inset + listBox.height
+    readonly property real rowsEnd: Theme.border + headTall + Theme.border + listBox.height
     // The card's words but its foot, which give way to the drawer where it
     // takes their place, fading on the drawer's own curve as it comes.
     property real wordsShown: drawerOver && drawerHolds ? 0 : 1
@@ -1706,7 +1705,7 @@ Scope {
     // How tall the list is while the launcher's open: always its rows, and
     // home's gap when it has one.
     // Set as it opens, from the rows the screen gives.
-    property int tall: 8 * Theme.space.xxxl
+    property int tall: 8 * rowTall
 
     // What kind of thing a row is, as it says at its right edge, by what
     // its provider calls its things: a closed set of nouns, so a kind is
@@ -2365,8 +2364,8 @@ Scope {
     // while it's open, so nothing moves under him.
     // How many characters a row's name and what it holds have room for.
     function rowRoom() {
-        return Math.floor((list.width - Theme.space.l - Theme.space.xxl
-            - Theme.space.xxl - Theme.space.m - Theme.space.l)
+        return Math.floor((list.width - 2 * Theme.space.rung.inset - glyphColumn
+            - Theme.space.rung.groups - Theme.space.rung.apart)
             / Math.max(1, rowFace.advanceWidth("0")));
     }
 
@@ -4779,7 +4778,9 @@ Scope {
         const chosen = list.itemAtIndex(root.current);
         const selection = !picked.visible || !chosen ? null : {
             y: Math.round(picked.mapToItem(card, 0, 0).y),
-            row: Math.round(chosen.mapToItem(card, 0, chosen.height - Theme.space.xxxl).y)
+            // Where its row's ground would stand, close round the row's ink.
+            row: Math.round(chosen.mapToItem(card, 0, chosen.height - root.rowTall
+                + (root.rowTall - root.rowCaps) / 2 - Theme.space.rung.mark).y)
         };
         // Where the first row is drawn below the top of the list, so a test
         // can say a list shown from its start leaves no space above it:
@@ -4907,17 +4908,48 @@ Scope {
     // The card's lines the drawer's are set on, down from its top: the
     // field's centre, the prompt an inset inside the frame, and the first
     // row's, below the field, its hairline and the list's inset.
-    readonly property real fieldLine: Theme.border + Theme.inset + prompt.height / 2
-    readonly property real fieldBase: Theme.border + Theme.inset + prompt.baselineOffset
-    readonly property real rowLine: Theme.border + prompt.height + 2 * Theme.inset
-        + Theme.border + Theme.inset + rowTall / 2
-    // How tall a row is, a step of the scale; its middle is a centre, half
-    // of it, rather than a step of its own.
-    readonly property real rowTall: Theme.space.xxxl
+    readonly property real fieldLine: Theme.border + headTop + prompt.height / 2
+    readonly property real fieldBase: headBase
+    readonly property real rowLine: Theme.border + headTall + Theme.border + rowTall / 2
+    // How tall a row is, four beats; its middle is a centre, half of it,
+    // rather than a space of its own.
+    readonly property real rowTall: 4 * Theme.space.beat
+    // The card's columns and lines, from its frame's inside edge, each a
+    // rung of the ladder (docs/design.md, The Ladder): all its text an
+    // inset from the frame on every side, to the ink, the gutter's numbers
+    // on that inset too, the rows' text area a mark past the numbers' room
+    // (the gutter keeps it), their glyphs an inset into it, their names a
+    // glyph's column on, and the flush-right edge an inset from the frame.
+    // A glyph's column is a mark's square cell, a line pitch wide, and the
+    // mark rung before its text (VKCF3Z, 2026-11-05).
+    readonly property real glyphColumn: Theme.level.name.pitch + Theme.space.rung.mark
+    // Where the rows, the field and the command line stand. Counted from the
+    // gutter's numbers' end (roles.md rule 3): a row's ground starts a mark
+    // past them, where the gutter's room ends, and its glyph a mark into
+    // the ground; each keeps its own inset inside, so each stands its inset
+    // less a mark before the gutter's end.
+    readonly property real textAreaAt: rowsGutter.x + rowsGutter.width
+        - (Theme.space.rung.inset - Theme.space.rung.mark)
+    // The head's line, set so its capitals stand an inset under the frame.
+    readonly property real headTop: Theme.space.rung.inset
+        - (prompt.baselineOffset - headCaps.tightBoundingRect.height)
+    // Where the field's baseline stands, down from the card's top.
+    readonly property real headBase: Theme.border + headTop + prompt.baselineOffset
+    // How tall the head is above its hairline: so the first row's baseline
+    // lies a row under the field's, and the plate's beat counts on from
+    // it (VKCF3Z, 2026-11-05).
+    readonly property real headTall: headBase + rowTall - 2 * Theme.border
+        - (rowTall + rowCaps) / 2
+    // How tall a row's capitals stand, which its ground is set round.
+    readonly property real rowCaps: nameCaps.tightBoundingRect.height
+    // Where the foot's baseline stands under its hairline: its capitals
+    // centred in a row's height, as a row's are, and an inset above the
+    // frame under it (VKCF3Z, 2026-11-05).
+    readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets the collections apart at home, above a row that
     // has one; the card's height, the list and the rows' lines all read
     // it, so the plate's lines can't drift from the list's.
-    readonly property real apart: matches.some(row => row.gap) ? Theme.space.m : 0
+    readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
     // The middle of each row the card shows, down from its top: the first
     // row's, then a row further for each, and home's gap above a row that
     // has one, so Now's plate can set a line on any of them. Worked out
@@ -4927,7 +4959,7 @@ Scope {
         let line = rowLine;
         return matches.slice(0, rows).map((row, at) => {
             if (at > 0)
-                line += Theme.space.xxxl + (row.gap ? apart : 0);
+                line += rowTall + (row.gap ? apart : 0);
             return line;
         });
     }
@@ -4961,8 +4993,8 @@ Scope {
     // screen too short for a quarter down.
     readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
         ? screenHere.height * 11 / 12 - card.height
-        : Math.max(Theme.space.xl, Math.min(screenHere.height / 4,
-            screenHere.height - Theme.space.xl - card.height)))
+        : Math.max(Theme.space.rung.screen, Math.min(screenHere.height / 4,
+            screenHere.height - Theme.space.rung.screen - card.height)))
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -5401,7 +5433,7 @@ Scope {
             // Always the same height, eight rows and home's gap, kept until
             // it closes, so the card is the same shape however much home
             // holds.
-            tall = rows * Theme.space.xxxl + (matches.slice(0, rows).some(row => row.gap)
+            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
@@ -5700,10 +5732,39 @@ Scope {
             Column {
                 width: parent.width
 
-                // What's typed, an inset inside the frame.
+                // The faces whose capitals set the head's, the rows' and the
+                // foot's lines (root.headTop, root.rowCaps, root.footBase):
+                // TextMetrics rather than a FontMetrics' call, which a
+                // binding asks once, before the face has loaded, and reads
+                // small ever after (HVD6O3, 2026-11-05).
+                TextMetrics {
+                    id: headCaps
+                    text: "H"
+                    font.family: Theme.level.figure.family
+                    font.pointSize: Theme.level.figure.pointSize
+                    font.weight: Theme.level.figure.weight
+                }
+
+                TextMetrics {
+                    id: nameCaps
+                    text: "H"
+                    font.family: Theme.level.name.family
+                    font.pointSize: Theme.level.name.pointSize
+                }
+
+                TextMetrics {
+                    id: footCaps
+                    text: "H"
+                    font.family: Theme.level.note.family
+                    font.pointSize: Theme.level.note.pointSize
+                }
+
+                // What's typed, its capitals an inset inside the frame, its
+                // hairline drawn over its last pixel so the rows meet the
+                // line with what a row leaves.
                 Item {
                     width: parent.width
-                    height: prompt.height + 2 * Theme.inset
+                    height: root.headTall
                     opacity: root.wordsShown
 
                     Prompt {
@@ -5735,14 +5796,13 @@ Scope {
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
                         keyWords: Words.field.keys ?? {}
-                        // At the card's inset, over the gutter's numbers, as
-                        // Vim's / and : lines start at column 0, left of its
-                        // number column: the line is the screen's, the
-                        // gutter the buffer's, and a long ask keeps its room
-                        // (VKCF3Z, 2026-11-05).
-                        x: Theme.inset
-                        y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        // From the frame, its own inset inside, at the card's
+                        // inset over the gutter's numbers, as Vim's / and :
+                        // lines start at column 0, left of its number column:
+                        // the line is the screen's, the gutter the buffer's,
+                        // and a long ask keeps its room (VKCF3Z, 2026-11-05).
+                        y: root.headTop
+                        width: parent.width
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
@@ -5763,7 +5823,7 @@ Scope {
                             : mode === "find" ? Theme.accent : Theme.muted
                         lead: sigilLeads && thing ? thing.lead ?? thing.glyph : ""
                         leadHue: thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
-                        glyphWidth: Theme.space.xxl
+                        glyphWidth: root.glyphColumn
                         // A folder's path gives way before any other step.
                         chips: root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
                         hint: root.held.length === 0 ? "what next?"
@@ -6000,9 +6060,8 @@ Scope {
                     // : is open, made only then.
                     Loader {
                         id: commandLoader
-                        x: Theme.inset
-                        y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        y: root.headTop
+                        width: parent.width
                         height: prompt.height
                         active: root.commanding !== null
                         onLoaded: item.take(root.commanding?.range ?? "")
@@ -6027,14 +6086,13 @@ Scope {
                     // column, and for what went wrong the failed mark in
                     // the alert.
                     Item {
-                        x: Theme.inset
-                        y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        y: root.headTop
+                        width: parent.width
                         height: prompt.height
                         visible: root.commandSays
 
                         Text {
-                            x: Theme.space.l
+                            x: Theme.space.rung.inset
                             anchors.baseline: commandSaidText.baseline
                             visible: root.commandFailed
                             text: Theme.glyph.failed
@@ -6045,8 +6103,8 @@ Scope {
 
                         Text {
                             id: commandSaidText
-                            x: Theme.space.l + Theme.space.xxl
-                            width: parent.width - x - Theme.space.l
+                            x: Theme.space.rung.inset + root.glyphColumn
+                            width: parent.width - x - Theme.space.rung.inset
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.commandSaid
                             textFormat: Text.PlainText
@@ -6060,19 +6118,22 @@ Scope {
                     }
                 }
 
-                // What it reaches, split from what's typed by a hairline.
+                // What it reaches, split from what's typed by a hairline,
+                // inset to inset, so it spans the ink and never cuts the
+                // card into boxes against the frame (VKCF3Z, 2026-11-05).
                 Rectangle {
-                    width: parent.width
+                    x: Theme.space.rung.inset
+                    width: parent.width - 2 * x
                     height: Theme.border
                     color: Theme.edge
                     opacity: root.wordsShown
                 }
 
+                // The rows and the foot, from frame to frame: the rows meet
+                // the head's hairline and the foot's with what a row leaves,
+                // and the foot's baseline stands an inset above the frame.
                 Column {
-                    x: Theme.inset
-                    width: parent.width - 2 * Theme.inset
-                    topPadding: Theme.inset
-                    bottomPadding: Theme.inset
+                    width: parent.width
 
                     // As tall as it opened, whatever's found, so the foot
                     // never jumps and a row never moves because others
@@ -6113,6 +6174,7 @@ Scope {
                         // change; empty on the find and the command line.
                         Gutter {
                             id: rowsGutter
+                            x: Theme.space.rung.inset
                             height: parent.height
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
@@ -6135,9 +6197,10 @@ Scope {
 
                             visible: root.over === null
                             // Beside the gutter, which numbers its rows in
-                            // normal and keeps its room everywhere else.
-                            x: rowsGutter.width
-                            width: parent.width - rowsGutter.width
+                            // normal and keeps its room everywhere else, out
+                            // to the frame, its rows keeping their own inset.
+                            x: root.textAreaAt
+                            width: parent.width - x
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: commandMenu.height
@@ -6247,7 +6310,7 @@ Scope {
                             // the first row's top as rowTop is; the fill
                             // adds the list's origin, below.
                             function fillAt(at) {
-                                return list.rowTop(at) + list.rowHeight(at) - Theme.space.xxxl;
+                                return list.rowTop(at) + list.rowHeight(at) - root.rowTall;
                             }
 
                             function pick(glide) {
@@ -6275,12 +6338,12 @@ Scope {
                             function rowTop(at) {
                                 let top = 0;
                                 for (let each = 0; each < at && each < root.matches.length; each += 1)
-                                    top += Theme.space.xxxl + (root.matches[each].gap ? root.apart : 0);
+                                    top += root.rowTall + (root.matches[each].gap ? root.apart : 0);
                                 return top;
                             }
 
                             function rowHeight(at) {
-                                return Theme.space.xxxl + (root.matches[at]?.gap ? root.apart : 0);
+                                return root.rowTall + (root.matches[at]?.gap ? root.apart : 0);
                             }
 
                             // Where a row's name has its baseline, down
@@ -6392,8 +6455,14 @@ Scope {
                                 // its row as the list had gone down.
                                 parent: list.contentItem
                                 z: -1
-                                width: list.width
-                                height: Theme.space.xxxl
+                                // Close round its ink, as Choice's own ground
+                                // is (Choice.qml): a mark round the glyph and
+                                // what's flush right, above the capitals and
+                                // below the baseline, so more room stands
+                                // outside it than in.
+                                x: Theme.space.rung.inset - Theme.space.rung.mark
+                                width: list.width - 2 * x
+                                height: root.rowCaps + 2 * Theme.space.rung.mark
                                 // The rows sit from the list's origin, which
                                 // moves off 0 as rows above come or go while
                                 // the list is scrolled, so the fill does too,
@@ -6401,7 +6470,8 @@ Scope {
                                 // stayed where its row had been, under
                                 // another row (Joel, 2026-10-29: the
                                 // highlight sat off the selected text).
-                                y: list.originY + list.pickY
+                                y: list.originY + list.pickY + (root.rowTall - root.rowCaps) / 2
+                                    - Theme.space.rung.mark
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 radius: Theme.inner
                                 // While the drawer holds the keys the row
@@ -6452,7 +6522,7 @@ Scope {
                                     : "act"
 
                                 width: list.width
-                                height: Theme.space.xxxl + (modelData.gap ? root.apart : 0)
+                                height: root.rowTall + (modelData.gap ? root.apart : 0)
 
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y
@@ -6563,6 +6633,16 @@ Scope {
                     // is, where an answer came from) is said at the field's
                     // right end instead, so the glance never gives way to
                     // it: Joel often didn't see the battery or the network.
+                    // A region of its own, under a hairline as the head is
+                    // over the rows, so no gap among the rows outranks it;
+                    // inset to inset, as the head's is.
+                    Rectangle {
+                        x: Theme.space.rung.inset
+                        width: parent.width - 2 * x
+                        height: Theme.border
+                        color: Theme.edge
+                    }
+
                     Item {
                         id: foot
 
@@ -6618,16 +6698,16 @@ Scope {
                         readonly property real returnPlace: told.length === 0 ? 0
                             : root.returnPlace(told[0])
                         // Where Return's place starts, which holds still.
-                        readonly property real returnAt: width - Theme.space.l - returnPlace
+                        readonly property real returnAt: width - Theme.space.rung.inset - returnPlace
                         // How far in the keys may reach: as far as the
                         // widest of them has needed since the launcher
                         // opened, so the left's room holds still too.
-                        readonly property real keysFrom: width - Theme.space.l
+                        readonly property real keysFrom: width - Theme.space.rung.inset
                             - Math.max(root.footKeysWidest, keys.implicitWidth)
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.
-                        readonly property real room: keysFrom - Theme.space.xl - standing.x
+                        readonly property real room: keysFrom - Theme.space.rung.groups - standing.x
                             - modeWord.room
 
                         // As the card last showed it, while it's closed.
@@ -6651,7 +6731,9 @@ Scope {
                         }
 
                         width: parent.width
-                        height: Theme.space.xxxl
+                        // Down to its baseline and an inset under it, so the
+                        // last baseline stands an inset above the frame.
+                        height: root.footBase + Theme.space.rung.inset
 
                         // How things stand, the quietest thing here: the
                         // facts the margin's pieces hold that are always
@@ -6748,12 +6830,17 @@ Scope {
                                     : measure.advanceWidth(root.placeSays),
                                     measure.advanceWidth(Operators.chosenSaid(999,
                                         Words.field.visual ?? {})));
-                                return keys.spacing + Math.ceil(widest);
+                                return Theme.space.rung.groups + Math.ceil(widest);
                             }
-                            x: standing.x + standing.width + keys.spacing
+                            // A group after the facts, since it says the line's
+                            // state rather than one more fact, past the room
+                            // the facts have held.
+                            x: standing.x + standing.held + Theme.space.rung.groups
                             width: Math.max(0, root.pendingSaid !== ""
-                                ? foot.width - Theme.space.l - x : room - keys.spacing)
-                            anchors.verticalCenter: parent.verticalCenter
+                                ? foot.width - Theme.space.rung.inset - x
+                                : room - Theme.space.rung.groups)
+                            anchors.baseline: parent.top
+                            anchors.baselineOffset: root.footBase
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
@@ -6782,8 +6869,9 @@ Scope {
                             readonly property string mark: ModeMarks.mark(prompt.mode,
                                 root.commanding !== null)
 
-                            x: Theme.space.l
-                            anchors.verticalCenter: parent.verticalCenter
+                            x: Theme.space.rung.inset
+                            anchors.baseline: parent.top
+                            anchors.baselineOffset: root.footBase
                             visible: prompt.modal
                             text: mark
                             textFormat: Text.PlainText
@@ -6886,6 +6974,14 @@ Scope {
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
 
+                            // The room the facts have held, after the last of
+                            // them, so the gap between two is always one
+                            // item's (docs/design.md, The Ladder: held room at
+                            // the far end).
+                            readonly property real held: Math.max(width, kept.reduce(
+                                (sum, fact) => sum + place(fact), 0)
+                                + Math.max(0, kept.length - 1) * spacing)
+
                             // Past the mark, a group apart, as the facts are a
                             // group of their own on the line. The label's
                             // tracking follows its last capital too, so it's
@@ -6893,8 +6989,9 @@ Scope {
                             // with it the gap measured 24 where the rung is 20.
                             x: markText.x + markText.implicitWidth - markText.font.letterSpacing
                                 + Theme.space.rung.groups
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: keys.spacing
+                            // Its facts' baselines on the foot's.
+                            y: root.footBase - measure.ascent
+                            spacing: Theme.space.rung.items
 
                             // The foot's face: Note, a step under the rows,
                             // its figures tabular.
@@ -6920,7 +7017,6 @@ Scope {
                                 Text {
                                     required property var modelData
 
-                                    width: standing.place(modelData)
                                     text: modelData.said
                                     textFormat: Text.PlainText
                                     // Its figures in text, small enough at Note
@@ -6936,8 +7032,9 @@ Scope {
 
                         KeyHints {
                             id: keys
-                            x: foot.width - Theme.space.l - implicitWidth
-                            anchors.verticalCenter: parent.verticalCenter
+                            x: foot.width - Theme.space.rung.inset - implicitWidth
+                            anchors.baseline: parent.top
+                            anchors.baselineOffset: root.footBase
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
                             keys: foot.shown
@@ -6963,6 +7060,7 @@ Scope {
             fieldBase: root.fieldBase
             rowLine: root.rowLine
             rowLines: root.rowLines
+            rowDrop: root.rowCaps / 2
             out: root.drawerOut && (!root.drawerOver || root.drawerHolds)
             waits: root.drawerOut && root.drawerOver && !root.drawerHolds
             given: root.drawerShows
