@@ -27,6 +27,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
 import "Reading.js" as Reading
+import "MarkSize.js" as MarkSize
 
 Rectangle {
     id: row
@@ -95,6 +96,14 @@ Rectangle {
     // place of its kind or chord while it's the cursor row, since no
     // Return does it: "d disconnect", or the line Return writes, ":lockscreen".
     property string carried
+    // What the cursor row says of how it stands, as a battery's "full in
+    // 40 min", at the far end in Note, before what it says at its right,
+    // so that keeps the inset and only this comes and goes; with nothing
+    // there, it takes the inset itself. It's a fact about the row, so it's
+    // said on the row rather than in the head (VKCF3Z, 2026-11-06). The
+    // name never gives way to it: it has what the name and its words
+    // leave, and a long one is cut from its end.
+    property string say
     // A word after the name, muted: "here" beside a workspace.
     property string count
     // What kind of thing it is, for a noun; empty for an act or a set.
@@ -205,21 +214,9 @@ Rectangle {
         : markInk.tightBoundingRect.height
     readonly property real inkMiddle: markInk.tightBoundingRect.y + inkTall / 2
     // Every mark at one optical size beside the type, whatever its shape,
-    // so a wide one such as the keyboard doesn't read smaller than the
-    // rest down the column (the launcher audit's finding 10): scaled so its
-    // ink's area is the size's square, never taller than it, so a narrow
-    // mark doesn't outgrow the type, and never wider than its cell, so it
-    // keeps its column. The size is fifteen sixteenths of the em, the
-    // face's size in pixels at 96 points to the inch: 15 at Figure, a step
-    // lighter than the em beside the names (VKCF3Z, 2026-11-05).
-    readonly property real markSize: Theme.level.figure.pointSize * 4 / 3 * 15 / 16
-    readonly property real markScale: {
-        const wide = markInk.tightBoundingRect.width / fine;
-        const tall = inkTall / fine;
-        return wide <= 0 || tall <= 0 ? 1
-            : Math.min(markSize / Math.sqrt(wide * tall), markSize / tall,
-                Theme.level.name.pitch / wide);
-    }
+    // and never wider than its cell (MarkSize.js).
+    readonly property real markScale: MarkSize.scale(markInk.tightBoundingRect.width / fine,
+        inkTall / fine, Theme.level.figure.pointSize, Theme.level.name.pitch)
     // Where the mark's ink centres, down from the row's top: on the name's
     // capitals' middle, its baseline less half their height as drawn on
     // this screen, whose pixels round them: measured at its own scale.
@@ -415,9 +412,12 @@ Rectangle {
         // does, so a count is said at a row's right even where its chord
         // is (VKCF3Z, 2026-11-05: "12 \u00b7 \u2699 + 0").
         readonly property bool counted: chorded && said !== ""
-        width: Math.max(column, chorded ? keys.width
+        // How wide what it says is drawn, from its right, which the say
+        // stands before.
+        readonly property real inked: chorded ? keys.width
                 + (counted ? beforeKeys.implicitWidth + Theme.space.rung.mark : 0)
-            : sided ? sideText.width : 0)
+            : sided ? sideText.width : 0
+        width: Math.max(column, inked)
         height: chorded ? keys.height : sideText.height
 
         Chord {
@@ -514,6 +514,52 @@ Rectangle {
                 if (row.nameCut)
                     row.sidesTurn = false;
             }
+        }
+    }
+
+    // Where the say ends: a mark, the dot and a mark short of the ink
+    // said at the right, as the status line joins its facts, or the inset
+    // where nothing's said there, or clear of a graph.
+    readonly property real sayEnd: graphed ? drawing.x - Theme.space.rung.groups
+        : right.inked === 0 ? right.x + right.width
+        : right.x + right.width - right.inked - 2 * Theme.space.rung.mark - sayDot.width
+    // Where it may start: past the name, and its words where there are any.
+    readonly property real sayFrom: (row.detail !== "" ? countText.x + countText.width
+        : nameBox.x + nameBox.width) + Theme.space.rung.groups
+
+    Text {
+        id: sayText
+        width: Math.max(0, Math.min(implicitWidth, row.sayEnd - row.sayFrom))
+        x: row.sayEnd - width
+        anchors.baseline: monoLine.baseline
+        visible: row.say !== "" && width > 0
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
+        text: row.say
+        color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+        font.weight: Theme.level.note.weight
+        font.features: Theme.level.note.features
+    }
+
+    // The dot between the say and what's said at the right, measured to
+    // its ink, as the figure before a chord's is.
+    Item {
+        id: sayDot
+        x: row.sayEnd + Theme.space.rung.mark
+        anchors.baseline: monoLine.baseline
+        baselineOffset: sayDotText.baselineOffset
+        width: dotInk.tightBoundingRect.width / row.fine
+        height: sayDotText.height
+        visible: sayText.visible && !row.graphed && right.inked > 0
+
+        Text {
+            id: sayDotText
+            x: -dotInk.tightBoundingRect.x / row.fine
+            text: "\u00b7"
+            color: row.flashed ? row.flashInk : Theme.muted
+            font: countFigure.font
         }
     }
 

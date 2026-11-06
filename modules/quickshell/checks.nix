@@ -2678,6 +2678,7 @@ onLinux {
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
+      cp ${./MarkSize.js} MarkSize.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${../../tests/graphs.qml} shell.qml
@@ -2728,6 +2729,7 @@ onLinux {
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
+      cp ${./MarkSize.js} MarkSize.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml

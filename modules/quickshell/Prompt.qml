@@ -26,7 +26,9 @@
 // and the aside and the field's keys at Note, a step under the rest.
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Shapes
 import "Reading.js" as Reading
+import "MarkSize.js" as MarkSize
 import "Editing.js" as Editing
 import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as QueryKeys
@@ -41,7 +43,7 @@ Item {
     property color hue: Theme.muted
     // Room between the glyph and what's typed: the launcher lines what's
     // typed up with its results' column, and a secret sits close by its lock.
-    property int glyphWidth: glyphText.implicitWidth + Theme.space.rung.mark
+    property real glyphWidth: glyphText.implicitWidth + Theme.space.rung.mark
     // Where its mark stands from its left, so a frame holding it sets the
     // mark on its own column by this rather than by a number of its own.
     readonly property real markAt: glyphText.x
@@ -49,8 +51,43 @@ Item {
     // find's / leads the line.
     property string lead
     property color leadHue: Theme.muted
-    readonly property real leadWidth: lead === "" ? 0
+    // Given, the lead's column is held at it whether a lead is drawn or
+    // not, so what's typed keeps its place as a thing is held and let go,
+    // as the launcher's rows keep their glyph column.
+    property real leadColumn: 0
+    readonly property real leadWidth: leadColumn > 0 ? leadColumn : lead === "" ? 0
         : leadText.implicitWidth + Theme.space.rung.mark
+    // Held on the rows' glyph column, the lead reads at the rows' mark size
+    // and no wider than their cell, so a place's mark heads its rows at
+    // theirs whatever its shape (MarkSize.js). A lock's padlock, given no
+    // column, keeps its size, which the splash's prompt is drawn to match.
+    readonly property real leadScale: leadColumn <= 0 ? 1
+        : MarkSize.scale(leadInk.tightBoundingRect.width / leadFine, leadTall / leadFine,
+            Theme.level.figure.pointSize, Theme.level.name.pitch)
+    // The lead's ink measured at many times its size and read back down, as
+    // a row measures its mark (Choice.qml), the outline giving its height,
+    // since Qt's tight measure runs down to the baseline.
+    readonly property real leadFine: 8
+    readonly property real leadTall: leadOutline.boundingRect.height > 0
+        ? Math.min(leadOutline.boundingRect.height, leadInk.tightBoundingRect.height)
+        : leadInk.tightBoundingRect.height
+    TextMetrics {
+        id: leadInk
+        text: prompt.lead
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize * prompt.leadFine
+    }
+    Shape {
+        id: leadOutline
+        visible: false
+        ShapePath {
+            PathText {
+                text: prompt.lead
+                font.family: Theme.level.figure.family
+                font.pointSize: Theme.level.figure.pointSize * prompt.leadFine
+            }
+        }
+    }
     // Where what follows the glyphs starts, from the line's own inset.
     readonly property real ledWidth: glyphWidth + leadWidth
     property bool secret: false
@@ -64,7 +101,7 @@ Item {
     property string hint
     // Said in muted type at the right end of the line.
     property string aside
-    // How far a find narrows the rows, as "3 of 12", said after what's
+    // How far a find narrows the rows, as "3 found", said after what's
     // typed in normal, so a list narrowed always says so; nothing on the
     // find, where the rows narrow as it's typed (the vi-paradigm spec).
     property string narrowed
@@ -789,7 +826,7 @@ Item {
         text: prompt.lead
         color: prompt.leadHue
         font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.pointSize: Theme.level.figure.pointSize * prompt.leadScale
     }
 
     Text {
@@ -1286,8 +1323,10 @@ Item {
             font.variableAxes: hintText.level.variableAxes
         }
 
-        // The narrowed find's count, at Note, apart from what's typed, as
-        // the ladder sets typed text and its count (docs/design.md).
+        // The narrowed find's count, apart from what's typed, muted at
+        // the typed letters' own Figure, so the line holds two levels at
+        // most, a place's name and what's typed (VKCF3Z, 2026-11-06: one
+        // calm head).
         Text {
             x: input.contentWidth + Theme.space.rung.apart
             width: Math.max(0, input.width - x)
@@ -1296,9 +1335,10 @@ Item {
             visible: prompt.narrowSaid
             text: `\u00b7 ${prompt.narrowed}`
             color: Theme.muted
-            font.family: Theme.level.note.family
-            font.pointSize: Theme.level.note.pointSize
-            font.features: { "tnum": 1 }
+            font.family: Theme.level.figure.family
+            font.pointSize: Theme.level.figure.pointSize
+            font.weight: Theme.level.figure.weight
+            font.features: Theme.level.figure.features
         }
     }
 }

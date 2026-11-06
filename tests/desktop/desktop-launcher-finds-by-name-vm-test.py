@@ -105,8 +105,8 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
     shown = desktop.showing()
     assert shown["caretShown"] is False, shown
-    # The / stays, muted, since normal's keys are on the rows.
-    assert (shown["sigil"], shown["sigilHue"]) == ("/", "muted"), shown
+    # The / goes, its column kept, since normal's keys are on the rows.
+    assert shown["sigil"] == "", shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     # The mode's mark and the clock, first of the facts, hold their places. The rest of the
     # glance may read its least, giving way to normal's keys as draws-still walks it, and the
@@ -623,10 +623,11 @@ def walk_the_gutter(desktop: Desktop) -> None:
     machine.send_chars(" ul")
     numbered(["1", "1", "2"], relative=True)
     desktop.photograph("launcher-gutter")
-    # The find narrows the list, which normal says after it, in the field.
+    # The find narrows the list, which normal says after it, in the field: how many it found,
+    # the gutter and the status line saying where the cursor is.
     count = desktop.showing()["count"]
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert any(word["text"] == f"\u00b7 1 of {count}" for word in field), field
+    assert any(word["text"] == f"\u00b7 {count} found" for word in field), field
     # On the find it numbers each row as it is, in the same room, so no row moves, and normal
     # counts from the cursor again (Joel, 2026-11-05: "real numbers in find mode and
     # relative numbers in command mode").

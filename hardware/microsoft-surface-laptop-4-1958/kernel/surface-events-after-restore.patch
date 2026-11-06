@@ -1,0 +1,239 @@
+platform/surface: aggregator: re-enable events after the restore
+
+After a resume from hibernation, the EC doesn't answer requests to
+enable events while the restore runs. On the Surface Laptop 4 (AMD),
+hibernated docked with its lid shut, each of the three SAM-HID event
+sources timed out after nine seconds, 27 s before any program ran
+again, with the screen dark:
+
+  surface_serial_hub serial0-0: failed to enable event source (tc: 0x15, iid: 0x01, reg: 0x21)
+  surface_serial_hub serial0-0: failed to enable event source (tc: 0x15, iid: 0x03, reg: 0x21)
+  surface_serial_hub serial0-0: failed to enable event source (tc: 0x15, iid: 0x05, reg: 0x21)
+  surface_serial_hub serial0-0: rtl: dropping unexpected command message (rqid = 0x0144)
+
+The EC's answers to all nine tries came at once, just after the last
+timed out. A restore hibernated with the lid open took 0.01 s for the
+same step. On a Surface Pro 8 the same failures leave the cover's
+keyboard and touchpad dead until it's reattached, and asking again from
+a work item just after the restore succeeded on the first try
+(linux-surface#2294); asking again inside the restore hung it.
+
+So ->restore only marks every registered event, and ->complete, once
+it has told the EC the display is on, queues a work item that
+re-enables the marked events, retrying those the EC still doesn't
+answer for every half second, up to 20 tries. A later ->prepare
+cancels the work and the next ->complete queues it again, so nothing
+is lost to a sleep in between.
+
+diff --git a/drivers/platform/surface/aggregator/controller.c b/drivers/platform/surface/aggregator/controller.c
+--- a/drivers/platform/surface/aggregator/controller.c
++++ b/drivers/platform/surface/aggregator/controller.c
+@@ -286,12 +286,14 @@ struct ssam_nf_refcount_key {
+  * @key:      The key of the event.
+  * @refcount: The reference-count of the event.
+  * @flags:    The flags used when enabling the event.
++ * @restore:  Whether the event still has to be re-enabled after hibernation.
+  */
+ struct ssam_nf_refcount_entry {
+ 	struct rb_node node;
+ 	struct ssam_nf_refcount_key key;
+ 	int refcount;
+ 	u8 flags;
++	bool restore;
+ };
+ 
+ /**
+@@ -2609,20 +2611,68 @@ err:
+  * disabling the events and more details.
+  */
+ void ssam_notifier_restore_registered(struct ssam_controller *ctrl)
++{
++	ssam_notifier_mark_registered_for_restore(ctrl);
++	ssam_notifier_restore_marked(ctrl);
++}
++
++/**
++ * ssam_notifier_mark_registered_for_restore() - Mark all events for which
++ * notifiers have been registered as still to be re-enabled.
++ * @ctrl: The controller for which to mark the events.
++ *
++ * Marks every registered event for ssam_notifier_restore_marked(), without
++ * talking to the EC.
++ */
++void ssam_notifier_mark_registered_for_restore(struct ssam_controller *ctrl)
+ {
+ 	struct ssam_nf *nf = &ctrl->cplt.event.notif;
+ 	struct rb_node *n;
+ 
++	mutex_lock(&nf->lock);
++	for (n = rb_first(&nf->refcount); n; n = rb_next(n))
++		rb_entry(n, struct ssam_nf_refcount_entry, node)->restore = true;
++	mutex_unlock(&nf->lock);
++}
++
++/**
++ * ssam_notifier_restore_marked() - Re-enable the events still marked as to
++ * be restored.
++ * @ctrl: The controller for which to restore the events.
++ *
++ * Re-enables every event marked by
++ * ssam_notifier_mark_registered_for_restore() and not re-enabled since,
++ * clearing the mark of each the EC enabled or doesn't support. Failures are
++ * logged, and the remaining events are still tried.
++ *
++ * Return: Returns the number of events still marked, which a later call may
++ * retry.
++ */
++int ssam_notifier_restore_marked(struct ssam_controller *ctrl)
++{
++	struct ssam_nf *nf = &ctrl->cplt.event.notif;
++	struct rb_node *n;
++	int left = 0;
++
+ 	mutex_lock(&nf->lock);
+ 	for (n = rb_first(&nf->refcount); n; n = rb_next(n)) {
+ 		struct ssam_nf_refcount_entry *e;
++		int status;
+ 
+ 		e = rb_entry(n, struct ssam_nf_refcount_entry, node);
++		if (!e->restore)
++			continue;
+ 
+-		/* Ignore errors, will get logged in call. */
+-		ssam_ssh_event_enable(ctrl, e->key.reg, e->key.id, e->flags);
++		/* Errors are logged in the call. */
++		status = ssam_ssh_event_enable(ctrl, e->key.reg, e->key.id, e->flags);
++		if (status && status != -EINVAL)
++			left++;
++		else
++			e->restore = false;
+ 	}
+ 	mutex_unlock(&nf->lock);
++
++	return left;
+ }
+ 
+ /**
+diff --git a/drivers/platform/surface/aggregator/controller.h b/drivers/platform/surface/aggregator/controller.h
+--- a/drivers/platform/surface/aggregator/controller.h
++++ b/drivers/platform/surface/aggregator/controller.h
+@@ -261,6 +261,8 @@ void ssam_controller_destroy(struct ssam_controller *ctrl);
+ 
+ int ssam_notifier_disable_registered(struct ssam_controller *ctrl);
+ void ssam_notifier_restore_registered(struct ssam_controller *ctrl);
++void ssam_notifier_mark_registered_for_restore(struct ssam_controller *ctrl);
++int ssam_notifier_restore_marked(struct ssam_controller *ctrl);
+ 
+ int ssam_irq_setup(struct ssam_controller *ctrl);
+ void ssam_irq_free(struct ssam_controller *ctrl);
+diff --git a/drivers/platform/surface/aggregator/core.c b/drivers/platform/surface/aggregator/core.c
+--- a/drivers/platform/surface/aggregator/core.c
++++ b/drivers/platform/surface/aggregator/core.c
+@@ -23,6 +23,7 @@
+ #include <linux/serdev.h>
+ #include <linux/sysfs.h>
+ #include <linux/units.h>
++#include <linux/workqueue.h>
+ 
+ #include <linux/surface_aggregator/controller.h>
+ #include <linux/surface_aggregator/device.h>
+@@ -408,6 +409,53 @@ static void ssam_serial_hub_shutdown(struct serdev_device *serdev)
+ 		ssam_err(c, "pm: D0-exit notification failed: %d\n", status);
+ }
+ 
++/*
++ * Re-enabling events after hibernation. While the restore runs, the EC
++ * doesn't answer requests to enable events: each times out after its
++ * tries, nine seconds on the Surface Laptop 4 (AMD), holding the whole
++ * restore up, and the event stays off, leaving SAM-HID devices such as the
++ * keyboard and touchpad dead. Asked again once the restore is over, it
++ * answers. So the restore only marks the events, and they're re-enabled
++ * from a work item queued once the EC has been told the display is on,
++ * retrying those the EC still doesn't answer for.
++ */
++#define SSAM_RESTORE_EVENTS_TRIES	20
++#define SSAM_RESTORE_EVENTS_DELAY	msecs_to_jiffies(500)
++
++static struct ssam_controller *ssam_restore_events_ctrl;
++static bool ssam_restore_events_pending;
++static int ssam_restore_events_tries;
++
++static void ssam_restore_events_fn(struct work_struct *work);
++static DECLARE_DELAYED_WORK(ssam_restore_events_work, ssam_restore_events_fn);
++
++static void ssam_restore_events_fn(struct work_struct *work)
++{
++	struct ssam_controller *c = ssam_restore_events_ctrl;
++	int left;
++
++	left = ssam_notifier_restore_marked(c);
++	ssam_restore_events_tries++;
++
++	if (!left) {
++		WRITE_ONCE(ssam_restore_events_pending, false);
++		if (ssam_restore_events_tries > 1)
++			ssam_info(c, "pm: events re-enabled after %d tries\n",
++				  ssam_restore_events_tries);
++		return;
++	}
++
++	if (ssam_restore_events_tries < SSAM_RESTORE_EVENTS_TRIES) {
++		queue_delayed_work(system_unbound_wq, &ssam_restore_events_work,
++				   SSAM_RESTORE_EVENTS_DELAY);
++		return;
++	}
++
++	WRITE_ONCE(ssam_restore_events_pending, false);
++	ssam_err(c, "pm: %d events still not re-enabled after %d tries\n", left,
++		 ssam_restore_events_tries);
++}
++
+ #ifdef CONFIG_PM_SLEEP
+ 
+ static int ssam_serial_hub_pm_prepare(struct device *dev)
+@@ -415,6 +463,12 @@ static int ssam_serial_hub_pm_prepare(struct device *dev)
+ 	struct ssam_controller *c = dev_get_drvdata(dev);
+ 	int status;
+ 
++	/*
++	 * A re-enable still pending stays pending, and is queued again once
++	 * this transition completes.
++	 */
++	cancel_delayed_work_sync(&ssam_restore_events_work);
++
+ 	/*
+ 	 * Try to signal display-off, This will quiesce events.
+ 	 *
+@@ -446,6 +500,9 @@ static void ssam_serial_hub_pm_complete(struct device *dev)
+ 	status = ssam_ctrl_notif_display_on(c);
+ 	if (status)
+ 		ssam_err(c, "pm: display-on notification failed: %d\n", status);
++
++	if (READ_ONCE(ssam_restore_events_pending))
++		queue_delayed_work(system_unbound_wq, &ssam_restore_events_work, 0);
+ }
+ 
+ static int ssam_serial_hub_pm_suspend(struct device *dev)
+@@ -601,7 +658,11 @@ static int ssam_serial_hub_pm_restore(struct device *dev)
+ 	if (status)
+ 		ssam_err(c, "pm: D0-entry notification failed: %d\n", status);
+ 
+-	ssam_notifier_restore_registered(c);
++	/* Re-enabled once the restore completes, see above. */
++	ssam_notifier_mark_registered_for_restore(c);
++	ssam_restore_events_ctrl = c;
++	ssam_restore_events_tries = 0;
++	WRITE_ONCE(ssam_restore_events_pending, true);
+ 	return 0;
+ }
+ 
+@@ -781,6 +842,9 @@ static void ssam_serial_hub_remove(struct serdev_device *serdev)
+ 	/* Clear static reference so that no one else can get a new one. */
+ 	ssam_clear_controller();
+ 
++	WRITE_ONCE(ssam_restore_events_pending, false);
++	cancel_delayed_work_sync(&ssam_restore_events_work);
++
+ 	/* Disable and free IRQ. */
+ 	ssam_irq_free(ctrl);
+ 

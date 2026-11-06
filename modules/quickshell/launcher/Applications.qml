@@ -1084,7 +1084,10 @@ Provider {
                     .join(" "),
                 glyph: programGlyph(entry.id),
                 hue: "program",
-                side: entry.genericName.toLowerCase(),
+                // What it is follows its name, in its words, on every row,
+                // in a place as at home, as the row fields rule has it: the
+                // far end keeps its chord (VKCF3Z, 2026-11-06).
+                count: entry.genericName.toLowerCase(),
                 chord: binds.length > 0 ? binds[0].chord : [],
                 stands: binds.map(bind => bind.does),
                 // Then the action's words are what it's called, and count as
@@ -1113,7 +1116,13 @@ Provider {
             const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
             Object.defineProperties(row, {
                 verb: { enumerable: true, get: () => latest() ? "go" : "start" },
-                count: { enumerable: true, get: () => provider.windowCount(entry) },
+                // What it is, then how many windows it has open, after its
+                // name.
+                count: {
+                    enumerable: true,
+                    get: () => [entry.genericName.toLowerCase(), provider.windowCount(entry)]
+                        .filter(part => part !== "").join(" \u00b7 ")
+                },
                 // The layer of its own keys it holds as Shortcuts, so the
                 // layer, named as the program is, isn't listed beside it
                 // (Rank.js's keysHeld).

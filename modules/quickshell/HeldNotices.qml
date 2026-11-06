@@ -1355,10 +1355,13 @@ Floating {
         // The head: where Joel is, the notices' glyph and their Title, as a
         // place in the launcher reads, led by the find's /, which types
         // here, since a find narrows the list beneath. The / stands at the
-        // inset over the gutter, as Vim's lines start at column 0, muted at
-        // rest and the accent while it finds; the glyph and the Title follow
-        // a mark apart, as one place, and what's typed follows the Title at
-        // Figure, on its baseline (VKCF3Z's family mocks, 2026-11-05).
+        // inset over the gutter, as Vim's lines start at column 0, in the
+        // accent, and only while it finds: in normal or visual the column
+        // stands empty, held so nothing after it moves (VKCF3Z, 2026-11-06,
+        // on Joel's "when in normal mode, it shouldn't have a / at the
+        // front"). The glyph and the Title follow a mark apart, as one
+        // place, and what's typed follows the Title at Figure, on its
+        // baseline (VKCF3Z's family mocks, 2026-11-05).
         Item {
             id: head
 
@@ -1377,7 +1380,10 @@ Floating {
                 x: Theme.space.rung.inset
                 y: held.headBase - baselineOffset
                 text: "/"
-                color: held.mode === "find" ? Theme.accent : Theme.muted
+                // Hidden rather than emptied, so its width still sets the
+                // glyph's column.
+                visible: held.mode === "find"
+                color: Theme.accent
                 font: figure.font
             }
 

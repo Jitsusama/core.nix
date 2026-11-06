@@ -650,6 +650,11 @@ in
     console = "/";
     means = "the launcher and the margin, finding what's there";
   };
+  home = {
+    glyph = nerd "f02dc";
+    console = "~";
+    means = "the launcher's first place, where it opens";
+  };
   brightness = {
     glyph = nerd "f00e0";
     console = "*";
