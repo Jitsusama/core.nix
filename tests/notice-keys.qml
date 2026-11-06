@@ -258,7 +258,7 @@ QtObject {
         holds("nor does a hint", Keys.hints("normal", {}, {}).concat(Keys.hints("visual", {}, {}))
             .filter(one => one.key in letters).map(one => one.key), []);
         holds("a move lists its letter alone", listed[1],
-            { heading: "", keys: "j", does: "down a card", act: "down" });
+            { heading: "", keys: "j", chords: ["j"], does: "down a card", act: "down" });
         holds("a sequence is listed as typed", listed.find(one => one.act === "first").keys, "gg");
         holds("each mode has its heading", listed.filter(one => one.heading !== "")
             .map(one => one.heading), ["Normal: moving and acting", "The find: the / line",
@@ -277,6 +277,39 @@ QtObject {
             || one.keys.length > 14).map(one => one.does), []);
         holds(":help dd opens at d", listed[Keys.helpAt(listed, "done")].act, "done");
 
+        // The list is cut by how tall its lines stand, a heading two
+        // pitches and the line under it a pitch and a beat, so it never
+        // runs past the rows it stands in for (at 2 on a 768 screen it
+        // ran 36 past them, and its frame off the screen).
+        const steps = { pitch: 24, beat: 12 };
+        const keyed = { heading: "" };
+        const grouped = { heading: "A group" };
+        const short = [grouped, keyed, keyed, grouped, keyed, keyed];
+        holds("each line's step", [1, 2, 3, 4, 5].map(at => Keys.stepTo(short, at, steps)),
+            [36, 24, 48, 36, 24]);
+        holds("as many as fit the room", Keys.shownFrom(short, 0, 144, steps), 5);
+        holds("and fewer in less", Keys.shownFrom(short, 0, 60, steps), 3);
+        holds("one at least", Keys.shownFrom(short, 0, 0, steps), 1);
+        holds("and none past the end", Keys.shownFrom(short, 6, 144, steps), 0);
+        holds("it scrolls till its last line shows", Keys.lastTop(short, 144, steps), 1);
+        holds("and not at all when it fits", Keys.lastTop(short, 500, steps), 0);
+        const tall = (top, spare) => {
+            let used = 0;
+            for (let at = top + 1; at < top + Keys.shownFrom(listed, top, spare, steps); at++)
+                used += Keys.stepTo(listed, at, steps);
+            return used;
+        };
+        for (const spare of [144, 192]) {
+            const last = Keys.lastTop(listed, spare, steps);
+            const views = [];
+            for (let top = 0; top <= last; top++)
+                views.push(top);
+            holds(`every view of the keys fits ${spare}`,
+                views.filter(top => tall(top, spare) > spare), []);
+            holds(`and the last ends on the last key at ${spare}`,
+                last + Keys.shownFrom(listed, last, spare, steps), listed.length);
+        }
+
         // As the launcher's foot: Return at the right end, Space ? just before it.
         const said = (mode, has, words) => Keys.hints(mode, has, words ?? {})
             .map(one => `${one.key} ${one.word}`);
@@ -287,8 +320,10 @@ QtObject {
             ["done", "command", "keys"]);
         holds("visual's hints", said("visual", {}, { done: "forget" }),
             ["d forget", "y copy", ": commands", "Space ? keys"]);
-        holds("the find's hints", said("find", {}), ["Esc normal", "\u21b5 go to"]);
-        holds("insert ends with Return's", said("insert", {}), ["Esc normal", "\u21b5 send"]);
+        // A line's foot never names Escape, which only leaves its mode.
+        holds("the find's hints", said("find", {}), ["\u21b5 go to"]);
+        holds("insert's hints", said("insert", {}), ["\u21b5 send"]);
+        holds("the command line's hints", said("command", {}), ["\u21b5 run"]);
         holds("the key list says how to leave it", said("listing", {}),
             ["j k scroll", "Esc back"]);
         holds("keys are spelt as the launcher's foot spells them",

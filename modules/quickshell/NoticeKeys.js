@@ -106,7 +106,9 @@ const table = [
     { act: "scroll", keys: ["j k"], modes: ["listing"], hint: "scroll" },
     { act: "back", keys: ["Escape"], modes: ["listing"], hint: "back" },
 
-    // The find line: what types is the line's, these its own.
+    // The find line: what types is the line's, these its own. No line's
+    // foot names Escape, which only leaves its mode, as the drawer's
+    // find names none (VKCF3Z, 2026-11-05).
     { act: "open", keys: ["Return", "Enter"], modes: ["find"], hint: "go to",
         does: "go to its sender" },
     { act: "choose", keys: ["Down", "Tab", "Ctrl+N"], modes: ["find", "command"],
@@ -114,20 +116,17 @@ const table = [
     { act: "chooseBack", keys: ["Up", "Shift+Tab", "Ctrl+P"], modes: ["find", "command"],
         does: "the one before" },
     { act: "take", keys: ["Ctrl+Y"], modes: ["find", "command"], does: "take the chosen" },
-    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["find"], hint: "normal",
-        does: "normal, as found" },
+    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["find"], does: "normal, as found" },
     // The command line: Return runs exactly what's typed.
     { act: "run", keys: ["Return", "Enter"], modes: ["command"], hint: "run",
         does: "run what's typed" },
     { act: "away", keys: ["Ctrl+E"], modes: ["command"], does: "put the menu away" },
-    { act: "drop", keys: ["Escape", "Ctrl+C"], modes: ["command"], hint: "drop",
-        does: "drop the line" },
+    { act: "drop", keys: ["Escape", "Ctrl+C"], modes: ["command"], does: "drop the line" },
     // A reply's prompt: Return hands its words over, from insert or from
     // normal over them, where Vim's editing works.
     { act: "send", keys: ["Return", "Enter"], modes: ["insert", "prompt"], hint: "send",
         does: "send the reply" },
-    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["insert"], hint: "normal",
-        does: "normal over them" },
+    { act: "normal", keys: ["Escape", "Ctrl+C"], modes: ["insert"], does: "normal over them" },
     { act: "insert", keys: ["i", "a"], modes: ["prompt"], does: "insert, or after" },
     { act: "insertEnds", keys: ["I", "A"], modes: ["prompt"], does: "insert at an end" },
     { act: "left", keys: ["h", "Left", "Backspace"], modes: ["prompt"], does: "a letter left" },
@@ -388,11 +387,12 @@ function spoken(keys) {
 }
 
 // The keys listed: each group's heading, then a line for each act first
-// done in it, its first two keys and what it does.
+// done in it, its first two keys and what it does. Its chords are the keys
+// apart, since a chord of several keys, "Space w", has a space of its own.
 function keyList() {
     const out = [];
     for (const group of groups) {
-        out.push({ heading: group.name, keys: "", does: "" });
+        out.push({ heading: group.name, keys: "", chords: [], does: "" });
         const listed = [];
         for (const row of table) {
             const home = groups.find(one => one.modes.some(mode => inMode(row, mode)));
@@ -407,10 +407,43 @@ function keyList() {
             const named = key => !(key in arrowLetters && keys.includes(arrowLetters[key]));
             const said = keys.filter(named).map(spoken).filter((one, at, all) => all.indexOf(one) === at);
             out.push({ heading: "", keys: said.slice(0, 2).join(" "),
-                does: row.does, act: row.act });
+                chords: said.slice(0, 2), does: row.does, act: row.act });
         }
     }
     return out;
+}
+
+// How far a line of Space ?'s list stands under the one shown before it,
+// as the drawer's key list sets them, by the `steps` its surface gives,
+// `{ pitch, beat }`: a heading an empty line under it, two pitches; the
+// line under a heading a pitch and a beat; the rest a pitch.
+function stepTo(list, at, steps) {
+    return list[at].heading !== "" ? 2 * steps.pitch
+        : list[at - 1].heading !== "" ? steps.pitch + steps.beat : steps.pitch;
+}
+
+// How many of the list's lines show from `top` when the first's baseline
+// and the last's may stand `spare` apart: as many as fit, one at least.
+// A heading takes more than a line, so a count of lines alone would run
+// the list past the rows it stands in for.
+function shownFrom(list, top, spare, steps) {
+    let used = 0;
+    let at = top + 1;
+    while (at < list.length && used + stepTo(list, at, steps) <= spare) {
+        used += stepTo(list, at, steps);
+        at += 1;
+    }
+    return Math.max(Math.min(at, list.length) - top, 0);
+}
+
+// The furthest the list scrolls: the first top from which every line to
+// its end shows, so its last line is never scrolled past.
+function lastTop(list, spare, steps) {
+    let top = Math.max(list.length - 1, 0);
+    while (top > 0 && shownFrom(list, top - 1, spare, steps) === list.length - top + 1) {
+        top -= 1;
+    }
+    return top;
 }
 
 // Where Space ? opens for :help on a key or an act: the first line listing
