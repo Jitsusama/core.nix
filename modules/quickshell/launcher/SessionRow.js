@@ -12,9 +12,11 @@ const KIND = "session";
 
 // How a running session can stand, in the one order every list of
 // sessions keeps: what only Joel can move first, then what's under way,
-// then what waits for work, then what he put down. One idle is listening,
-// never waiting, which is only ever said of something waiting on Joel.
-const STATES = ["needs", "working", "inLine", "listening", "paused"];
+// then what waits for work, then what he put down, then what gave its
+// memory back until it's wanted (the harness's park-workflow). One idle
+// is listening, never waiting, which is only ever said of something
+// waiting on Joel.
+const STATES = ["needs", "working", "inLine", "listening", "paused", "parked"];
 
 // How a session stands, from its presence, whether its want is truly
 // Joel's (`asks`, Sessions.asks) and whether it waits its turn in the
@@ -26,6 +28,9 @@ function state(presence, asks, queued) {
     }
     if (asks) {
         return "needs";
+    }
+    if (presence.state === "parked") {
+        return "parked";
     }
     if (presence.state === "paused") {
         return "paused";
@@ -119,8 +124,13 @@ function tree(sessions) {
 // leaves it as it is before what changes it, and what ends it last. Every
 // session on the mesh reads its steer inbox, so each can be talked to,
 // paused, resumed and stopped; one with no window offers no Go To, and
-// only one under way can be stopped.
+// only one under way can be stopped. One parked has no process to pause
+// or stop and no window known to go to: it can be woken, or talked to,
+// which wakes it too.
 function acts(standing, windowed) {
+    if (standing === "parked") {
+        return ["wake", "talk"];
+    }
     const ids = windowed ? ["switch"] : [];
     ids.push("talk");
     ids.push(standing === "paused" ? "resume" : "pause");

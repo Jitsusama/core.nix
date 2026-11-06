@@ -977,6 +977,17 @@ changes = true
 undoable = true
 range = true
 
+# A parked session started again in its window, as a message would wake
+# it. Nothing is lost by it, since it goes on where it parked and parks
+# again once idle, so it asks nothing. Wake.
+[acts.wake]
+command = "wake"
+short = "wak"
+kinds = ["list"]
+changes = true
+guarded = true
+range = true
+
 # Words written to whoever sent a notice or a mail, in a prompt on its card
 # unless they follow the command: sent, they can't be taken back, but the
 # words written and sent were the asking. Reply, and Reply All as :reply all.

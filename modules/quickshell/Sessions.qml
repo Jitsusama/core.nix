@@ -56,26 +56,45 @@ Singleton {
             return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
         };
         const kitties = kittyWindows();
-        return live.map(record => {
-            const presence = record.presence;
-            const address = (presence.addresses ?? [])[0];
-            const label = labelled(typeof presence.title === "string" ? presence.title : "");
-            return {
-                window: windowOf(record.kitty, kitties),
-                address: address,
-                title: titles[address] || label.cut || address,
-                folder: label.folder,
-                presence: presence,
-                kitty: record.kitty,
-                held: record.held,
-                machine: record.machine ?? machine,
-                here: record.here ?? true,
-                attach: record.attach ?? null,
-                reachable: record.reachable ?? true,
-                changed: record.changed ?? 0
-            };
-        }).sort((a, b) => Number(b.here) - Number(a.here)
-            || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
+        return live.map(record => shown(record, kitties))
+            .sort((a, b) => Number(b.here) - Number(a.here)
+                || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
+    }
+    // Each session parked here (the harness's park-workflow): ended while
+    // idle to give back its memory, until its holder starts it again in
+    // its window, for a message that gives it a turn or a key typed there.
+    // Shown as each running one is, but with no window known, since its
+    // process, and the window its node knew it by, have gone; in the order
+    // the records are. Never among `running`, so nothing counts it as
+    // running or starts another session in its place.
+    readonly property var parked: resting.map(record => shown(record, {}))
+
+    // A session as `running` lists it, from its record.
+    function shown(record, kitties) {
+        const presence = record.presence;
+        const address = (presence.addresses ?? [])[0];
+        const label = labelled(typeof presence.title === "string" ? presence.title : "");
+        return {
+            window: windowOf(record.kitty, kitties),
+            address: address,
+            title: titles[address] || label.cut || address,
+            folder: label.folder,
+            presence: presence,
+            kitty: record.kitty,
+            held: record.held,
+            machine: record.machine ?? machine,
+            here: record.here ?? true,
+            attach: record.attach ?? null,
+            reachable: record.reachable ?? true,
+            changed: record.changed ?? 0
+        };
+    }
+
+    // A session parked, by any address it goes by, or null.
+    function parkedAs(address) {
+        const upper = String(address).toUpperCase();
+        return parked.find(one => (one.presence?.addresses ?? [one.address])
+            .some(each => String(each).toUpperCase() === upper)) ?? null;
     }
     readonly property int working: running.filter(session => session.presence.busy).length
     // Those waiting on Joel, as each says while it does: { kind, since,
@@ -1548,6 +1567,11 @@ Singleton {
         if (text === "")
             return false;
         steer(address, { text: text, id: `talk-${Date.now()}` });
+        // Talk gives a parked session a turn, as a question would, so it's
+        // woken to read it.
+        const resting = parkedAs(address);
+        if (resting)
+            wake(resting);
         return true;
     }
 
@@ -1696,7 +1720,8 @@ Singleton {
     readonly property real bootedAt: Date.now()
         - Number(uptime.text().split(" ")[0] || 0) * 1000
 
-    // A process's own files, read when asked.
+    // A process's own files, and a parked session's marker, read when
+    // asked.
     FileView {
         id: process
         blockLoading: true
@@ -1757,8 +1782,13 @@ Singleton {
     // reads it isn't told for nothing.
     property var live: []
     property string liveSaid: ""
+    // Each parked session's record, { file, presence, kitty, held }, as
+    // `live` keeps the running ones'.
+    property var resting: []
     function relive() {
         const next = [];
+        const sleeping = [];
+        const markers = parkedMarkers();
         // A node from before it passed records on says too little to show.
         if (!fromFolder) {
             for (const id of Object.keys(node).sort()) {
@@ -1770,6 +1800,12 @@ Singleton {
                 const kitty = kittyOfWindow(session.window);
                 const here = (session.machine ?? machine) === machine;
                 const changed = Date.parse(session.at ?? "") || 0;
+                // The node says one parked has ended, which its process
+                // has; its record says it's parked.
+                if (state === "ended" && here && parks(presence, markers)) {
+                    sleeping.push({ file: id, presence: presence, kitty: null, held: null });
+                    continue;
+                }
                 if (!running || !presence || (presence.addresses ?? []).length === 0)
                     continue;
                 // One elsewhere the node last heard of before this boot is
@@ -1806,12 +1842,15 @@ Singleton {
                         kitty: kittyOf(presence),
                         held: null
                     });
+                else if (parks(presence, markers))
+                    sleeping.push({ file: file, presence: presence, kitty: null, held: null });
             }
         }
-        const said = JSON.stringify(next);
+        const said = JSON.stringify([next, sleeping]);
         if (said === liveSaid)
             return;
         liveSaid = said;
+        resting = sleeping;
         const by = {};
         for (const record of next) {
             for (const address of record.presence.addresses)
@@ -1942,7 +1981,7 @@ Singleton {
             return;
         const next = Object.assign({}, titles);
         let changed = false;
-        for (const record of live) {
+        for (const record of live.concat(resting)) {
             const address = record.presence.addresses[0];
             if (next[address])
                 continue;
@@ -2156,6 +2195,77 @@ Singleton {
         }
     }
 
+    // The sessions parked now, by the marker each keeps while it is
+    // (the harness's park-workflow/parked/<session>.json), deleted as it
+    // starts again. A record can go on saying "parked" after its session
+    // has stopped being, so it's parked only while its marker stands. One
+    // listing of one folder, which changes only as a session parks or
+    // wakes, rather than a file watched for each.
+    readonly property string parkedFolder: `${state}/park-workflow/parked`
+    // A listing of a folder that isn't there yet says it's empty, and never
+    // hears of it after, and the harness makes its park folder only as a
+    // session first parks. So the folders above it are listed too, each
+    // of nothing but folders, which change only as one is made, and the
+    // listing below one listed again as it does: never the one above,
+    // which would list itself again for ever.
+    function relist(listing, folder) {
+        listing.folder = "";
+        listing.folder = `file://${folder}`;
+    }
+    FolderListModel {
+        folder: `file://${root.state}`
+        showFiles: false
+        onCountChanged: root.relist(parkFolder, `${root.state}/park-workflow`)
+    }
+    FolderListModel {
+        id: parkFolder
+        folder: `file://${root.state}/park-workflow`
+        showFiles: false
+        onCountChanged: root.relist(markers, root.parkedFolder)
+    }
+    FolderListModel {
+        id: markers
+        folder: `file://${root.parkedFolder}`
+        showDirs: false
+        nameFilters: ["*.json"]
+        onCountChanged: root.relive()
+        onStatusChanged: root.relive()
+    }
+    function parkedMarkers() {
+        const ids = {};
+        if (markers.status !== FolderListModel.Ready)
+            return ids;
+        for (let at = 0; at < markers.count; at += 1)
+            ids[String(markers.get(at, "fileName")).replace(/\.json$/, "")] = true;
+        return ids;
+    }
+    function parks(presence, markers) {
+        return !!presence && presence.state === "parked" && (presence.addresses ?? []).length > 0
+            && typeof presence.session === "string" && markers[presence.session] === true;
+    }
+
+    // Wakes a parked session, as a peer sending it a turn does: anything
+    // written to the file its marker names has its holder start it again
+    // in its window, written in place, since the holder reads it whole and
+    // deletes it (the harness's askWake). It starts with its steer inbox
+    // read, so words left there first reach it as it wakes.
+    function wake(session) {
+        const id = String(session?.presence?.session ?? "");
+        if (!parked.some(one => one.presence.session === id))
+            return;
+        let marker = null;
+        try {
+            marker = JSON.parse(read(`${parkedFolder}/${id}.json`));
+        } catch (error) {
+            marker = null;
+        }
+        const wakes = typeof marker?.wake === "string" ? marker.wake : "";
+        if (!wakes.startsWith("/"))
+            return;
+        Niri.spawn(["sh", "-c", 'printf "%s\\n" "$2" > "$1"', "wake", wakes,
+            JSON.stringify({ session: id, messageId: "joel", at: new Date().toISOString() })]);
+        Report.say(`woke session ${session.address}`);
+    }
     // Each running session's record, by every address it answers to; and
     // every record, by its file.
     property var present: ({})

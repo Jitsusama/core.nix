@@ -45,16 +45,20 @@ Provider {
     }
 
     // The session that has each quest loaded, the one used last: its
-    // address and what it is (Sessions.isOf). Said as text first, which
-    // changes only when they do, since the sessions are listed again
-    // whenever a window does.
+    // address and what it is (Sessions.isOf), a running one before one
+    // parked. Said as text first, which changes only when they do, since
+    // the sessions are listed again whenever a window does.
     readonly property string holding: {
         const by = {};
-        for (const session of Sessions.running) {
+        for (const session of Sessions.running.concat(Sessions.parked)) {
             const owns = session.presence.owns ?? [];
             const quest = owns.find(owned => /^QEST-/.test(owned));
             if (quest && !by[quest])
-                by[quest] = { address: session.address, is: Sessions.isOf(session) };
+                by[quest] = {
+                    address: session.address,
+                    is: Sessions.isOf(session),
+                    parked: Sessions.parked.includes(session)
+                };
         }
         return JSON.stringify(by);
     }
@@ -112,8 +116,13 @@ Provider {
         const session = loaded[quest.id];
         const ongoing = session
             ? Sessions.running.find(one => one.address === session.address) : undefined;
+        // One parked is woken in its own window, never joined by a second.
+        const resting = session && !ongoing
+            ? Sessions.parked.find(one => one.address === session.address) : undefined;
         if (ongoing)
             Sessions.goTo(ongoing);
+        else if (resting)
+            Sessions.wake(resting);
         else
             Sessions.start(quest.id, quest.folder);
     }
@@ -127,7 +136,7 @@ Provider {
             // its Agents row says more of (Launcher.qml's compose).
             is: session ? session.is : `quest:${quest.id}`,
             rich: 1,
-            verb: session ? "go" : "open",
+            verb: session ? (session.parked ? Words.verb("verb:quest:wake") : "go") : "open",
             name: quest.title || quest.id,
             unfinished: isOpen(quest),
             glyph: Theme.glyph[marks[quest.status] ?? "pending"],
@@ -176,11 +185,14 @@ Provider {
         // Start a Session says where its Return starts one, and, where the
         // realm has another machine, the right arrow steps into each.
         const choosing = !session && Sessions.choosesMachine;
+        // Return goes to its session, wakes the one parked, or starts one.
+        const first = !session ? "verb:quest:open"
+            : session.parked ? "verb:quest:wake" : "verb:quest:switch";
         return [thing({
-            key: session ? "verb:quest:switch" : "verb:quest:open",
-            verb: Words.verb(session ? "verb:quest:switch" : "verb:quest:open"),
-            name: Words.name(session ? "verb:quest:switch" : "verb:quest:open"),
-            glyph: Words.glyph(session ? "verb:quest:switch" : "verb:quest:open"),
+            key: first,
+            verb: Words.verb(first),
+            name: Words.name(first),
+            glyph: Words.glyph(first),
             hue: "action",
             note: choosing ? "this machine" : "",
             later: true,
