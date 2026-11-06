@@ -256,6 +256,13 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     # Return goes there: the crumbs say each step, and the spot is selected.
     machine.send_key("ret")
     desktop.launcher_until(at_rotation)
+    # Its three steps are one jump, as Vim's :tag is: Ctrl+O goes straight back to the
+    # search it was found by, and Tab, which is Ctrl+I, forward to it again.
+    desktop.normal()
+    machine.send_key("ctrl-o")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "rotation")
+    machine.send_key("tab")
+    desktop.launcher_until(at_rotation)
     screen = desktop.showing()["path"][-1]
     # h goes nowhere either, saying -, which goes back up, onto the
     # screen it was inside.
