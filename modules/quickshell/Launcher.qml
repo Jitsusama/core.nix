@@ -2144,9 +2144,12 @@ Scope {
     // Shift+Return's "below" and the right arrow too, which no foot on the
     // find draws, it cut the date at 1.5 beside an empty stretch; held for
     // Return alone, "Ctrl+Y complete" on the first letter cut it then and
-    // slid every fact after it. A row's own keys grow it as they come
-    // (noteKeys).
+    // slid every fact after it. Ctrl+] in is drawn on the find beside a
+    // row holding parts, so it's held too: left out, the first letter
+    // picking a program slid the keys in by its width. A row's own keys
+    // grow it as they come (noteKeys).
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
+        [hintKey("follow", "find"), (Words.field.hints ?? {}).in ?? ""],
         [prompt.completeKey, (Words.field.hints ?? {}).complete ?? ""]]
     // What normal says beside Return at home: the commands and the keys,
     // kept while normal is taken rather than from the opening. Kept from
