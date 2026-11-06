@@ -302,7 +302,12 @@ QtObject {
         // shares its machine, in half a key's 4 ms: about 0.4 ms alone, and
         // past 1 ms while VM tests shared the machine (2026-11-04). And the
         // longest place the launcher lists, a folder of 1000 files, within
-        // the key's 4 ms.
+        // the key's 4 ms. A machine at a load of 40 to 70 took every one
+        // past its bound, even the fastest batch (2026-11-05), so each is
+        // held to its bound or to six walks over the same rows timed beside
+        // it, whichever is longer: the walk slows as the machine does, and
+        // yG and dG took one to four walks at a load of 40, while a span
+        // done row by row over the place would take hundreds of walks.
         const made = { run, float, close, actions, copies, commands };
         operatorsTimed(holds, 400, 2, made);
         operatorsTimed(holds, 1000, 4, made);
@@ -329,25 +334,40 @@ QtObject {
             }
             return Operators.spanned(last.count, last.motion, all);
         };
+        // The least any operator does over the place: ask each row for its
+        // actions and read its copy.
+        const walk = () => {
+            for (const window of windows)
+                window.verbs()[1].copies();
+        };
+        const batch = work => {
+            const began = Date.now();
+            for (let at = 0; at < 50; at++)
+                work();
+            return (Date.now() - began) / 50;
+        };
+        // The fastest batch of `work` and of the walk, each batch of one
+        // timed beside one of the other, so both see the same machine.
         const timed = work => {
             let fastest = Infinity;
-            for (let batch = 0; batch < 20; batch++) {
-                const began = Date.now();
-                for (let at = 0; at < 50; at++)
-                    work();
-                fastest = Math.min(fastest, (Date.now() - began) / 50);
+            let walked = Infinity;
+            for (let at = 0; at < 20; at++) {
+                walked = Math.min(walked, batch(walk));
+                fastest = Math.min(fastest, batch(work));
             }
-            return fastest;
+            return { fastest, bound: Math.max(under, 6 * walked) };
         };
         const yanking = timed(() => Operators.copied(Operators.copiesIn(
             Operators.taken(windows, spanOf("y"), null), actions, copies).map(one => one.action)));
         const ending = timed(() => Operators.asks(Operators.endings(
             Operators.taken(windows, spanOf("d"), null), actions).map(one => one.action),
             commands));
-        console.log(`yG over ${count} rows in ${yanking.toFixed(3)} ms, `
-            + `dG in ${ending.toFixed(3)} ms`);
-        holds(`yG over ${count} rows in under ${under} ms`, yanking < under, true);
-        holds(`and dG over ${count}`, ending < under, true);
+        console.log(`yG over ${count} rows in ${yanking.fastest.toFixed(3)} ms of `
+            + `${yanking.bound.toFixed(3)}, dG in ${ending.fastest.toFixed(3)} ms of `
+            + `${ending.bound.toFixed(3)}`);
+        holds(`yG over ${count} rows in under ${under} ms, or six walks on a busy machine`,
+            yanking.fastest < yanking.bound, true);
+        holds(`and dG over ${count}`, ending.fastest < ending.bound, true);
     }
 
     // An operator waiting for what it acts on, as the mode word's room says
