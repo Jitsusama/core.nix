@@ -2038,8 +2038,8 @@ Floating {
                 }
 
                 // The hints that fit: the one furthest from Return gives
-                // way first, and the keys list, done and Return never do
-                // (NoticeList.js). The dots' gap is read, so they're
+                // way first, Return last, and the keys list and done never
+                // do (NoticeList.js). The dots' gap is read, so they're
                 // measured again once the theme's face arrives.
                 readonly property var shown: {
                     const keys = statusLine.keys;

@@ -257,8 +257,9 @@ function wholeWords(text, lines, wide, measure) {
 
 // The hints that never give way: the keys list's, the way to every key;
 // done's, since choosing notices to act on them is visual's point, as
-// Joel chooses some "and then dd to mark them as read"; and Return's.
-const stays = hint => hint.act === "keys" || hint.act === "done" || hint.key === "\u21b5";
+// Joel chooses some "and then dd to mark them as read". Return's, drawn
+// last, goes last, so normal keeps its place in the list (VKCF3Z).
+const stays = hint => hint.act === "keys" || hint.act === "done";
 
 // The hints the foot keeps in `fits`, each { act, key, word } as wide as
 // `wide` measures it and the gap between two `join`: short of room, the

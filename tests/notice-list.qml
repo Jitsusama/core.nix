@@ -161,8 +161,8 @@ QtObject {
         holds("measured by its room, not its length", measured < 1000, true);
 
         // The foot's hints give way furthest from Return first, one at a
-        // time, and never the keys list, done or Return. Each is as wide as
-        // its letters here, two apart.
+        // time, never the keys list or done, and Return last. Each is as
+        // wide as its letters here, two apart.
         const hinted = (key, act, word) => ({ act, key, word });
         const footWide = hint => hint.key.length + hint.word.length;
         const acts = hints => hints.map(hint => hint.act);
@@ -178,8 +178,10 @@ QtObject {
             ["done", "keys"]);
         const normalHints = [hinted("d", "done", "done"), hinted(":", "command", "commands"),
             hinted("Space ?", "keys", "keys"), hinted("\u21b5", "open", "go to")];
-        holds("nor Return", acts(List.footHints(normalHints, footWide, 2, 25)),
+        holds("Return stays while it fits", acts(List.footHints(normalHints, footWide, 2, 28)),
             ["done", "keys", "open"]);
+        holds("and goes last", acts(List.footHints(normalHints, footWide, 2, 25)),
+            ["done", "keys"]);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
