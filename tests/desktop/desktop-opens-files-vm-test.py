@@ -22,7 +22,7 @@ from desktop_session import STARTING, drawn_at, retry
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from desktop_session import Desktop
+    from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
 
@@ -226,9 +226,10 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
 # deletes back, and in normal w b e 0 $ x dw cw and u edit it as Vim's
 # do; j goes down into the folders, Return on one opens it, the name
 # kept, and Return on the name saves it there. A name already there asks
-# once, n saving nothing and y saving over it. Escape, pressed until the
-# launcher closes, chooses nothing. The portal hands the program each
-# path picked, and each ask's socket goes once it's answered.
+# once, n saving nothing and y saving over it. - goes up a folder, Ctrl+O
+# and Ctrl+I back and forward, and Escape at rest does nothing; :q chooses
+# nothing. The portal hands the program each path picked, and each ask's
+# socket goes once it's answered.
 
 
 def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Desktop) -> None:
@@ -289,6 +290,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     choose("open")
     desktop.photograph("file-chooser")
     go_beside(desktop, held)
+    goes_up_and_back(desktop, chose, held)
     open_own(desktop, chose)
     commands_open(desktop, held)
     desktop.on_find()
@@ -334,7 +336,7 @@ def saved_by_commands(
     desktop.normal()
     desktop.machine.send_chars("ZZ")
     answered("0", f"file://{notes}/zz.md")
-    # :q answers nothing, as Escape at the folder asked in does.
+    # :q answers nothing, a dialog's cancel, since Escape closes nothing.
     choose("open")
     ran(desktop, "q", closes=True)
     answered("1")
@@ -443,6 +445,18 @@ def commands_open(desktop: Desktop, held: int) -> None:
     desktop.launcher_until(
         lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
     )
+    # Each of :cd and :e is one jump, as Vim's are, so Ctrl+O goes back to
+    # the folder :cd went to and Ctrl+I comes forward again.
+    jumped(desktop, "ctrl-o", "~/chosen-notes/made", held + 1)
+    jumped(desktop, "ctrl-i", "~/chosen-notes", held)
+
+
+def jumped(desktop: Desktop, key: str, folder: str, held: int) -> None:
+    """Press Ctrl+O or Ctrl+I, and wait until the picker shows this folder, this deep."""
+    desktop.machine.send_key(key)
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == [folder] and len(shown["held"]) == held
+    )
 
 
 def go_beside(desktop: Desktop, held: int) -> None:
@@ -454,6 +468,88 @@ def go_beside(desktop: Desktop, held: int) -> None:
         lambda shown: shown["path"][-1:] == ["~/chosen-notes-beside"] and len(shown["held"]) == held
     )
     machine.send_chars("[b")
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
+    )
+    # Each is one jump, as Vim's :bnext is, rather than a step out and one
+    # in, so Ctrl+O goes back to the folder beside, never to their parent.
+    beside = 2
+    desktop.launcher_until(lambda shown: shown["jumps"] == {"back": beside, "ahead": 0})
+    jumped(desktop, "ctrl-o", "~/chosen-notes-beside", held)
+    jumped(desktop, "ctrl-i", "~/chosen-notes", held)
+
+
+def goes_up_and_back(desktop: Desktop, chose: str, held: int) -> None:
+    """Go up by -, back by Ctrl+O and Ctrl+I and in by Return; Escape at rest does nothing.
+
+    Escape in normal at rest leaves the ask waiting, as it closes nothing (Joel, 2026-11-05), so
+    the - after it still finds the picker. Each - goes to the folder holding this one, the
+    cursor on the folder it came from, up to /, where - has nowhere to go and says so rather
+    than leaving the ask for the launcher's home. l and h mean nothing on a row, saying Return
+    and - instead, and the arrows are Vim's: Down and Up move as j and k, Right and Left nowhere.
+    """
+    machine = desktop.machine
+    account = desktop.account
+
+    def stands(folder: str, depth: int, name: str) -> None:
+        """Wait until the picker shows this folder this deep, the cursor on this row."""
+        desktop.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["path"][-1:] == [folder]
+                and len(shown["held"]) == depth
+                and (shown["selected"] or {}).get("name") == name
+            )
+        )
+
+    def says(*saying: str) -> None:
+        """Wait until the foot says this for the key just pressed."""
+        desktop.launcher_until(lambda shown: shown["saying"] == list(saying))
+
+    desktop.normal()
+    machine.send_key("esc")
+    machine.send_chars("-")
+    stands("~", held - 1, "chosen-notes")
+    machine.fail(f"test -e {chose}")
+    machine.send_chars("l")
+    says("l not here", "\u21b5 open")
+    machine.send_chars("h")
+    says("h not here", "- up")
+    # The arrows beside go nowhere either, whatever the launcher says of them.
+    for key in ["right", "left"]:
+        machine.send_key(key)
+        desktop.launcher_until(lambda shown: shown["saying"][-1:] != ["- up"])
+        stands("~", held - 1, "chosen-notes")
+        machine.send_chars("h")
+        says("h not here", "- up")
+    at = desktop.showing()["current"]
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: shown["current"] == at + 1)
+    machine.send_key("up")
+    stands("~", held - 1, "chosen-notes")
+    machine.send_chars("-")
+    stands("/home", held - 2, account)
+    jumped(desktop, "ctrl-o", "~", held - 1)
+    stands("~", held - 1, "chosen-notes")
+    jumped(desktop, "ctrl-i", "/home", held - 2)
+    machine.send_chars("-")
+    desktop.launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "home"
+    )
+    machine.send_chars("-")
+    says("- not here")
+    assert len(desktop.showing()["held"]) == 1, desktop.showing()["held"]
+    # Return goes back down, folder by folder, to where the ask opened.
+    for folder, name in [("/home", account), ("~", "chosen-notes")]:
+        machine.send_key("ret")
+
+        def inside(shown: Json, folder: str = folder) -> bool:
+            """Say whether the picker shows this folder, a row selected."""
+            return bool(shown["path"][-1:] == [folder] and shown["selected"] is not None)
+
+        desktop.launcher_until(inside)
+        desktop.down_to(name)
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
     )

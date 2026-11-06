@@ -110,6 +110,18 @@ ShellRoot {
             homeDepth = held.length;
         }
 
+        // Each walk to another place by several steps, counted as the one
+        // jump the launcher's jump list keeps of it.
+        property int jumps: 0
+
+        function oneJump(walk) {
+            const place = () => held.map(step => step.row.key).join(" ");
+            const was = place();
+            walk();
+            if (place() !== was)
+                jumps += 1;
+        }
+
         // Each question asked once, as the launcher's line asks it.
         property var asked: []
 
@@ -458,8 +470,10 @@ ShellRoot {
         const way = chooser.onTheWay(notes).map(path => `folder:${path}`).join(" ");
         expect("every folder on the way is held above the one asked for", heldPaths() === way,
             `${heldPaths()}, not ${way}`);
-        expect("the folder asked for is where it opened, so Escape there refuses the ask",
+        expect("the folder asked for is where it opened, so Ctrl+O has no folder on the way",
             launcher.homeDepth === launcher.held.length, `${launcher.homeDepth}`);
+        expect("and the dialog has nothing above it, for - to leave the ask for",
+            chooser.collection.outermost === true, JSON.stringify(chooser.collection));
         const titles = launcher.held.slice(1).map(step => step.row.title);
         expect("the path says one folder, the one held deepest",
             titles.every(title => title === "~/notes"), titles.join(" "));
@@ -516,10 +530,13 @@ ShellRoot {
         const around = rowsIn(home).map(row => row.key)
             .filter(key => key.startsWith(`folder:${home}/`));
         const next = around[(around.indexOf(`folder:${notes}`) + 1) % around.length];
+        const jumps = launcher.jumps;
         launcher.held[depth - 1].row.beside(1);
         expect("]b goes to the next folder its holder lists, held where this one was",
             around.length > 1 && deepest() === next && launcher.held.length === depth,
             `${deepest()} at ${launcher.held.length}, not ${next} at ${depth} of ${around}`);
+        expect("in one jump, as :bnext is", launcher.jumps === jumps + 1,
+            `${launcher.jumps - jumps} jumps`);
         launcher.held[depth - 1].row.beside(-1);
         expect("[b goes to the one before", deepest() === `folder:${notes}`, deepest());
         for (let pressed = 0; pressed < around.length; pressed += 1)
@@ -636,10 +653,12 @@ ShellRoot {
         const edit = command(notes, "edit");
         expect(":e completes files too", edit.args("n").map(each => each.value).join(" ")
             === "notes.txt", JSON.stringify(edit.args("n")));
+        const jumps = launcher.jumps;
         cd.run(called("sub"));
-        expect(":cd goes to the folder, held as if the ask opened there",
-            step().row.key === `folder:${notes}/sub` && launcher.homeDepth === launcher.held.length,
-            heldPaths());
+        expect(":cd goes to the folder in one jump, each folder on the way held",
+            step().row.key === `folder:${notes}/sub` && launcher.jumps === jumps + 1
+                && launcher.held.length === 1 + chooser.onTheWay(`${notes}/sub`).length,
+            `${heldPaths()}, ${launcher.jumps - jumps} jumps`);
         edit.run(called("~/notes/"));
         expect(":e on a folder goes there", step().row.key === `folder:${notes}`, heldPaths());
     }
