@@ -56,7 +56,7 @@ impl Memory {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Zones {
     /// What the kernel keeps back from every allocation,
-    /// `totalreserve_pages`, as mm/page_alloc.c's
+    /// `totalreserve_pages`, as `mm/page_alloc.c`'s
     /// `calculate_totalreserve_pages` sums it: each zone's largest lowmem
     /// reserve (`protection`) and its high watermark, at most the pages it
     /// manages.

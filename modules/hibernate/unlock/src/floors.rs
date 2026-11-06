@@ -33,10 +33,13 @@ pub fn lift(root: &Path, kept: &Path) -> io::Result<usize> {
     if floors.is_empty() {
         return Ok(0);
     }
-    let lines: String = floors
-        .iter()
-        .map(|(name, bytes)| format!("{name} {bytes}\n"))
-        .collect();
+    let mut lines = String::new();
+    for (name, bytes) in &floors {
+        lines.push_str(name);
+        lines.push(' ');
+        lines.push_str(bytes);
+        lines.push('\n');
+    }
     fs::write(kept, lines)?;
     for (name, _) in &floors {
         fs::write(root.join(name).join("memory.min"), "0")?;
