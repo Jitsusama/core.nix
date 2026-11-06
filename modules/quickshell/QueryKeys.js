@@ -349,9 +349,10 @@ function matching(typed, mode, words) {
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and at rest in normal does nothing, saying nothing; one meaning
-// nothing else in normal is `idle`, said "not here". Words says the line holds a prompt's words
-// rather than a find, which normal edits.
+// does, and at rest in normal does nothing, saying nothing, read as
+// `rested`; one meaning nothing else in normal is `idle`, said "not
+// here". Words says the line holds a prompt's words rather than a find,
+// which normal edits.
 function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
     // changes nothing, so a sequence or a count begun carries on past it.
@@ -386,7 +387,8 @@ function read(standing, key, mode, words = false) {
     // quitting"), and never told "not here": his Neovim's bell is off, and
     // he presses it out of habit to be sure of normal.
     if (key === "Escape" && (pending(standing) || mode === "normal")) {
-        return { act: "", count: 0, standing: rest(), ours: true };
+        const rested = mode === "normal" && !pending(standing);
+        return { act: "", count: 0, standing: rest(), ours: true, rested };
     }
     // Normal's and visual's counts and operators, which keep an operator's
     // count apart from its motion's.
