@@ -740,6 +740,18 @@ ShellRoot {
                     && typedIn !== null && typedIn.cursorPosition === folderTyped.text.length
                     && caret <= folderTyped.end + 0.5,
                 `${said(texts)}, caret ends at ${caret} of ${folderTyped.end}`);
+            // Scrolled, a muted mark at the field's start says letters went
+            // off it, in room taken from what's typed; at rest there's none.
+            const precedes = typedIn === null ? undefined
+                : Array.from(typedIn.children).find(child => child.text === "\u2026");
+            expect("a field scrolled says so at its start, in its own room",
+                folderTyped.scrolled && !foldered.scrolled && precedes !== undefined
+                    && precedes.visible && Qt.colorEqual(precedes.color, Theme.muted)
+                    && precedes.x + precedes.contentWidth <= typedIn.leftPadding + 0.5
+                    && typedIn.leftPadding > 0,
+                precedes === undefined ? "no mark"
+                    : `mark ${precedes.x} to ${precedes.x + precedes.contentWidth}, `
+                        + `typed from ${typedIn.leftPadding}`);
             // A path's mark stands a rung apart from the ink either side, to
             // its own, so a step reads further off than a word does (the
             // picker audit's finding 13).

@@ -328,6 +328,14 @@ Item {
 
     // Where the caret is, between letters in insert or on one in normal.
     readonly property int caret: input.cursorPosition
+    // Whether what's typed is scrolled, its first letter off the field's
+    // start, as it is once it's wider than the room the path leaves. Set
+    // as the field moves rather than bound, since the mark it shows takes
+    // room from the field, which moves what's typed again.
+    property bool scrolled: false
+    function seeScrolled() {
+        scrolled = input.text !== "" && input.positionToRectangle(0).x < input.leftPadding - 0.5;
+    }
 
     // Puts the caret at a place in what's typed, as a save's name puts it
     // before the extension.
@@ -1074,6 +1082,13 @@ Item {
         // scrolled, ends short of the field's end by it rather than the
         // caret standing past the end.
         rightPadding: prompt.caretWidth
+        // Scrolled, a muted mark at the start says letters went off it, as
+        // Vim's precedes mark does a line scrolled sideways, its room taken
+        // from what's typed rather than the path (VKCF3Z, 2026-11-06).
+        leftPadding: prompt.scrolled ? scrolledMark.implicitWidth : 0
+        onCursorRectangleChanged: prompt.seeScrolled()
+        onContentWidthChanged: prompt.seeScrolled()
+        onWidthChanged: prompt.seeScrolled()
         y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
@@ -1135,6 +1150,16 @@ Item {
         // steady and a launcher left still draws nothing (the launcher
         // audit's finding 34, held by goes-places' frame count).
         // In a modal line it blinks, and only insert draws it.
+        Text {
+            id: scrolledMark
+            visible: prompt.scrolled
+            anchors.baseline: parent.baseline
+            textFormat: Text.PlainText
+            text: "\u2026"
+            color: Theme.muted
+            font: input.font
+        }
+
         cursorDelegate: Rectangle {
             width: prompt.caretWidth
             color: Theme.accent
