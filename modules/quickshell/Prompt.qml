@@ -333,9 +333,23 @@ Item {
     // as the field moves rather than bound, since the mark it shows takes
     // room from the field, which moves what's typed again.
     property bool scrolled: false
+    // Where the field is shown from, past its start: scrolled, the first
+    // letter wholly past the mark, since Qt draws a letter scrolled off
+    // into the field's padding, where the mark would lie over it.
+    property real shownFrom: 0
     function seeScrolled() {
         scrolled = input.text !== "" && input.positionToRectangle(0).x < input.leftPadding - 0.5;
+        let from = 0;
+        for (let at = 0; scrolled && at <= input.text.length; at++) {
+            from = input.positionToRectangle(at).x;
+            if (from >= input.leftPadding - 0.5)
+                break;
+        }
+        shownFrom = from;
     }
+    // Where the field starts in the line, after the path.
+    readonly property real fieldX: Theme.space.rung.inset + ledWidth
+        + (chips.length > 0 ? held.width + pathGap : 0)
 
     // Puts the caret at a place in what's typed, as a save's name puts it
     // before the extension.
@@ -753,7 +767,7 @@ Item {
     Text {
         id: glyphText
         x: Theme.space.rung.inset
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         text: prompt.glyph
         color: prompt.hue
         font.family: Theme.level.figure.family
@@ -763,7 +777,7 @@ Item {
     Text {
         id: leadText
         x: Theme.space.rung.inset + prompt.glyphWidth
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         visible: prompt.lead !== ""
         text: prompt.lead
         color: prompt.leadHue
@@ -775,7 +789,7 @@ Item {
         id: asideText
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.rung.inset
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
         // drawn whole, over the hint that took the room.
@@ -795,7 +809,7 @@ Item {
         id: capitalsGlyph
         anchors.right: asideText.left
         anchors.rightMargin: Theme.space.rung.mark
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         visible: prompt.capitals
         text: Theme.glyph.capitals
         color: Theme.warning
@@ -1062,9 +1076,9 @@ Item {
     // face and ink.
     Text {
         id: askedText
-        x: input.x
+        x: prompt.fieldX
         width: input.width
-        anchors.baseline: input.baseline
+        anchors.baseline: shown.baseline
         visible: prompt.asking !== ""
         text: prompt.asking
         textFormat: Text.PlainText
@@ -1073,22 +1087,53 @@ Item {
         font: input.font
     }
 
+    // Scrolled, a muted mark at the field's start says letters went off
+    // it, as Vim's precedes mark does a line scrolled sideways, its room
+    // taken from what's typed rather than the path (VKCF3Z, 2026-11-06).
+    Text {
+        id: scrolledMark
+        objectName: "precedes"
+        x: prompt.fieldX
+        anchors.baseline: shown.baseline
+        visible: prompt.scrolled
+        textFormat: Text.PlainText
+        text: "\u2026"
+        color: Theme.muted
+        font: input.font
+    }
+
+    // The field as shown, cut where its first whole letter starts once
+    // it's scrolled. The field keeps its place in the line however much
+    // is cut, so the cut never moves what's typed.
+    Item {
+        id: shown
+        x: prompt.fieldX + prompt.shownFrom
+        width: Math.max(0, input.width - prompt.shownFrom)
+        height: prompt.height
+        baselineOffset: input.y + input.baselineOffset
+        clip: prompt.scrolled
+    }
+
     TextInput {
         id: input
-        x: Theme.space.rung.inset + prompt.ledWidth
-            + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
-        width: prompt.end - x
+        parent: shown
+        x: -prompt.shownFrom
+        width: prompt.end - prompt.fieldX
         // Room for the caret after the last letter, so what's typed,
         // scrolled, ends short of the field's end by it rather than the
         // caret standing past the end.
         rightPadding: prompt.caretWidth
-        // Scrolled, a muted mark at the start says letters went off it, as
-        // Vim's precedes mark does a line scrolled sideways, its room taken
-        // from what's typed rather than the path (VKCF3Z, 2026-11-06).
+        // Scrolled, the mark's room, kept clear of the caret.
         leftPadding: prompt.scrolled ? scrolledMark.implicitWidth : 0
         onCursorRectangleChanged: prompt.seeScrolled()
         onContentWidthChanged: prompt.seeScrolled()
         onWidthChanged: prompt.seeScrolled()
+        // Qt scrolls again only as the caret or the words move, so the
+        // mark's room, once taken, would lie over the first letter shown.
+        onLeftPaddingChanged: {
+            ensureVisible(cursorPosition);
+            prompt.seeScrolled();
+        }
         y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
@@ -1150,16 +1195,6 @@ Item {
         // steady and a launcher left still draws nothing (the launcher
         // audit's finding 34, held by goes-places' frame count).
         // In a modal line it blinks, and only insert draws it.
-        Text {
-            id: scrolledMark
-            visible: prompt.scrolled
-            anchors.baseline: parent.baseline
-            textFormat: Text.PlainText
-            text: "\u2026"
-            color: Theme.muted
-            font: input.font
-        }
-
         cursorDelegate: Rectangle {
             width: prompt.caretWidth
             color: Theme.accent

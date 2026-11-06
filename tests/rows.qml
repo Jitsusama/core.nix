@@ -345,6 +345,29 @@ ShellRoot {
         return null;
     }
 
+    // The item under one that goes by a name.
+    function byName(item, name) {
+        for (const child of item.children) {
+            if (child.objectName === name)
+                return child;
+            const found = byName(child, name);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    // Where an item is first shown from, in another above it: the start
+    // of the furthest in of the boxes that clip it.
+    function shownFrom(item, above) {
+        let from = -Infinity;
+        for (let at = item; at !== null && at !== above; at = at.parent) {
+            if (at.clip)
+                from = Math.max(from, at.mapToItem(above, 0, 0).x);
+        }
+        return from;
+    }
+
     // The field a line types in.
     function inputOf(item) {
         for (const child of item.children) {
@@ -742,16 +765,25 @@ ShellRoot {
                 `${said(texts)}, caret ends at ${caret} of ${folderTyped.end}`);
             // Scrolled, a muted mark at the field's start says letters went
             // off it, in room taken from what's typed; at rest there's none.
-            const precedes = typedIn === null ? undefined
-                : Array.from(typedIn.children).find(child => child.text === "\u2026");
-            expect("a field scrolled says so at its start, in its own room",
-                folderTyped.scrolled && !foldered.scrolled && precedes !== undefined
+            // Every letter shown is shown whole, after the mark.
+            const precedes = root.byName(folderTyped, "precedes");
+            const markEnd = precedes === null ? Infinity
+                : precedes.mapToItem(folderTyped, precedes.contentWidth, 0).x;
+            const clipFrom = typedIn === null ? Infinity : root.shownFrom(typedIn, folderTyped);
+            const letterAt = at => typedIn.mapToItem(folderTyped,
+                typedIn.positionToRectangle(at).x, 0).x;
+            const lettersCut = typedIn === null ? [] : Array.from(folderTyped.text).map((_, at) =>
+                [letterAt(at), letterAt(at + 1)]).filter(([from, to]) =>
+                    to > clipFrom + 0.5 && (from < clipFrom - 0.5 || from < markEnd - 0.5));
+            expect("a field scrolled says so at its start, its letters whole after it",
+                folderTyped.scrolled && !foldered.scrolled && precedes !== null
+                    && !(foldered.children.some(child => child.objectName === "precedes"
+                        && child.visible))
                     && precedes.visible && Qt.colorEqual(precedes.color, Theme.muted)
-                    && precedes.x + precedes.contentWidth <= typedIn.leftPadding + 0.5
-                    && typedIn.leftPadding > 0,
-                precedes === undefined ? "no mark"
-                    : `mark ${precedes.x} to ${precedes.x + precedes.contentWidth}, `
-                        + `typed from ${typedIn.leftPadding}`);
+                    && lettersCut.length === 0,
+                precedes === null ? "no mark"
+                    : `mark ends at ${markEnd}, shown from ${clipFrom}, `
+                        + `letters cut: ${JSON.stringify(lettersCut)}`);
             // A path's mark stands a rung apart from the ink either side, to
             // its own, so a step reads further off than a word does (the
             // picker audit's finding 13).
@@ -861,7 +893,7 @@ ShellRoot {
             // where letters would, so the caret never cuts its first letter
             // (VKCF3Z's space audit, the picker's fault 11: "open which
             // file?" read with its o cut).
-            const line = [...voicedField.children].find(child => child.cursorPosition !== undefined);
+            const line = root.inputOf(voicedField);
             const letters = line.mapToItem(null, 0, 0).x;
             const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
             expect("a hint starts past the caret", hinting !== undefined
