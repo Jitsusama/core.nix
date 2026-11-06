@@ -973,7 +973,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
                 shown["open"]
                 and shown.get("listing") == listing
                 and ("Space ?  F1" in shown["drawer"]["drawnFacts"]) == listing
-                and ("Find" in shown["drawer"]["drawnFacts"]) == listing
+                and ("The find: the / line" in shown["drawer"]["drawnFacts"]) == listing
             )
         )
         drawer = desktop.showing()["drawer"]
