@@ -324,7 +324,9 @@ Provider {
             name: Words.name("capture:recent"),
             glyph: Words.glyph("capture:recent"),
             hue: "program",
-            count: taken.length === 0 ? String((Words.of("capture:recent").said ?? {}).none ?? "")
+            // How many at its right, where a row's figure stands (VKCF3Z,
+            // 2026-11-05: one place for each kind of fact).
+            side: taken.length === 0 ? String((Words.of("capture:recent").said ?? {}).none ?? "")
                 : String(taken.length),
             ask: "which?",
             empty: Words.of("capture:recent").empty
