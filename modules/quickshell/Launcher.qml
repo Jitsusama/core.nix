@@ -5363,6 +5363,10 @@ Scope {
             // How far in the keys may reach, room held for keys a row
             // may say included, which the facts are fitted short of.
             keysFrom: Math.round(foot.keysFrom),
+            // The room held for the widest keys since opening, and what the
+            // keys said now take, so a test can tell which held it.
+            keysRoom: { held: Math.round(root.footKeysWidest),
+                said: Math.round(root.keysWide(foot.told)) },
             // The keys the foot says now, each its mark and its word.
             hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.

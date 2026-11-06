@@ -298,7 +298,8 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     held = shown["keysAt"] - shown["keysFrom"]
     drawn = enter["starts"] - completion["starts"]
     assert abs(held - drawn) <= 1, (
-        f"the keys held {held} px before Return and drew {drawn}: {shown['hints']}"
+        f"the keys held {held} px before Return and drew {drawn}: {shown['hints']},"
+        f" opened {opened['keysRoom']}, now {shown['keysRoom']}"
     )
     machine.send_key("ctrl-u")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
