@@ -133,7 +133,8 @@ function keyList() {
     const line = (keys, does) => ({ heading: "", keys, does });
     return [
         { heading: "Normal", keys: "", does: "" },
-        line("h j k l", "Move a step, or a count's"),
+        line("h j k l", "Move a step"),
+        line("3l", "So many steps"),
         line("H J K L", "Size from the bottom right"),
         line("f", "Show the cells, then pick one"),
         line("f f", "From that cell to another"),
