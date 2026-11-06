@@ -428,16 +428,16 @@ Rectangle {
         // the dot's ink, so a dot means one thing across the card (VKCF3Z,
         // 2026-11-05).
         // The dot's ink, and where the count's ends short of its advance
-        // by its last letter's bearing, measured at eight times the size
-        // and read back down, since a measure at the size drawn comes in
-        // whole pixels, which a screen at 1.5 or 2 draws finer than.
+        // by its last letter's bearing, measured at the fine size and read
+        // back down, since a measure at the size drawn comes in whole
+        // pixels, which a screen at 1.5 or 2 draws finer than.
         TextMetrics {
             id: dotInk
             text: "\u00b7"
             font.family: Theme.level.note.family
             font.italic: Theme.level.note.italic
             font.weight: Theme.level.note.weight
-            font.pointSize: Theme.level.note.pointSize * 8
+            font.pointSize: Theme.level.note.pointSize * row.fine
         }
         TextMetrics {
             id: countInk
@@ -445,11 +445,13 @@ Rectangle {
             font.family: Theme.level.note.family
             font.italic: Theme.level.note.italic
             font.weight: Theme.level.note.weight
-            font.pointSize: Theme.level.note.pointSize * 8
+            font.pointSize: Theme.level.note.pointSize * row.fine
         }
+        // From the figure's width as drawn rather than its fine advance,
+        // since a face hinted fully draws its advance in whole pixels.
         readonly property real countBearing: right.said === "" ? 0
-            : Math.max(0, countInk.advanceWidth - countInk.tightBoundingRect.x
-                - countInk.tightBoundingRect.width) / 8
+            : Math.max(0, countFigure.implicitWidth - (countInk.tightBoundingRect.x
+                + countInk.tightBoundingRect.width) / row.fine)
         Row {
             id: beforeKeys
             anchors.right: keys.left
@@ -472,12 +474,12 @@ Rectangle {
                 font.features: Theme.level.note.features
             }
             Item {
-                width: dotInk.tightBoundingRect.width / 8
+                width: dotInk.tightBoundingRect.width / row.fine
                 height: dotText.height
 
                 Text {
                     id: dotText
-                    x: -dotInk.tightBoundingRect.x / 8
+                    x: -dotInk.tightBoundingRect.x / row.fine
                     text: "\u00b7"
                     color: row.flashed ? row.flashInk : Theme.muted
                     font: countFigure.font

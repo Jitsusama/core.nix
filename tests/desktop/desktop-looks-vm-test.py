@@ -320,7 +320,8 @@ def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["desktop"])
     selected = desktop.showing()["selected"]
-    assert selected["side"] and selected["chord"], f"at {scale} Desktop's first: {selected}"
+    assert selected["side"], f"at {scale} Desktop's first has no count: {selected}"
+    assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
     desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
