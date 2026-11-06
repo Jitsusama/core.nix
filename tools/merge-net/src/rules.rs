@@ -1,6 +1,8 @@
 //! Which changes run their VM tests before they merge: `must-run.txt`
 //! names each area, the paths that are it and the tests it runs.
 
+use crate::watch::Changed;
+
 /// The areas, as `must-run.txt` holds them, built into the program so it
 /// answers the same on any branch it was built from.
 const MUST_RUN: &str = include_str!("../must-run.txt");
@@ -11,7 +13,13 @@ pub struct Area {
     pub name: String,
     pub paths: Vec<String>,
     pub tests: Vec<String>,
+    /// Whether a change to it is also sent through one VM test end to end,
+    /// for what runs VM tests, whose change moves none of them.
+    pub there: bool,
 }
+
+/// The word among an area's tests that sets `there`.
+const THERE: &str = "there";
 
 /// The areas `must-run.txt` names.
 pub fn areas() -> Vec<Area> {
@@ -36,12 +44,16 @@ pub fn parse(text: &str) -> Result<Vec<Area>, String> {
                     .map(str::to_owned)
                     .collect::<Vec<_>>()
             };
+            let mut tests = words(tests);
+            let there = tests.iter().any(|test| test == THERE);
+            tests.retain(|test| test != THERE);
             let area = Area {
                 name: name.trim().to_owned(),
                 paths: words(paths),
-                tests: words(tests),
+                tests,
+                there,
             };
-            if area.paths.is_empty() || area.tests.is_empty() {
+            if area.paths.is_empty() || (area.tests.is_empty() && !area.there) {
                 return Err(format!("an area needs paths and tests: {line}"));
             }
             Ok(area)
@@ -50,15 +62,19 @@ pub fn parse(text: &str) -> Result<Vec<Area>, String> {
 }
 
 /// What a change has to run first: each area it touches, with the files
-/// that touch it, and the VM tests among `known` the areas name, sorted.
-/// With no names known, the tests are the areas' patterns.
+/// that touch it, the VM tests among `known` the areas name, sorted, and
+/// the areas to send through one VM test. With no names known, the tests
+/// are the areas' patterns.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Needs {
     pub touched: Vec<(String, Vec<String>)>,
     pub tests: Vec<String>,
+    pub there: Vec<String>,
 }
 
 /// Say which areas `files` touch, and which of `known`'s VM tests they run.
+/// Given the VM tests whose derivation moved from main as `known`, only
+/// those run, since the rest would give main's result.
 pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Needs {
     let mut found = Needs::default();
     let mut patterns: Vec<&str> = Vec::new();
@@ -70,6 +86,9 @@ pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Need
             .collect();
         if !hit.is_empty() {
             found.touched.push((area.name.clone(), hit));
+            if area.there {
+                found.there.push(area.name.clone());
+            }
             patterns.extend(area.tests.iter().map(String::as_str));
         }
     }
@@ -84,6 +103,30 @@ pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Need
     found.tests.sort();
     found.tests.dedup();
     found
+}
+
+/// What a change touching `files` runs first, given `said`, what
+/// `changed-checks --name-only` printed for it, when it could compare: the
+/// VM tests the areas name whose derivation moved from main, or broke.
+/// Without it, every VM test in `known` the areas name runs.
+pub fn first(
+    areas: &[Area],
+    files: &[String],
+    said: Option<&str>,
+    known: Option<&[String]>,
+) -> Needs {
+    let moved = said.map(|said| {
+        let changed = Changed::parse(said);
+        let mut moved = changed.vm_tests();
+        moved.extend(
+            changed
+                .broken
+                .into_iter()
+                .filter(|name| name.starts_with("vm-")),
+        );
+        moved
+    });
+    needs(areas, files, moved.as_deref().or(known))
 }
 
 /// A test as `needs` names it: alone, or, when `list` (main's quarantine
@@ -180,6 +223,39 @@ mod tests {
             needs.tests,
             words("vm-boot-asks-in-the-theme vm-reboot-cannot-hang")
         );
+    }
+
+    #[test]
+    fn only_the_tests_that_moved_from_main_run_first() {
+        let areas = parse("kernel: modules/kernel/* => vm-boot-* vm-reboot-cannot-hang").unwrap();
+        let known = words("vm-boot-a vm-boot-b vm-boot-c vm-reboot-cannot-hang");
+        let files = words("modules/kernel/nixos.nix");
+        let said = "changed  vm-boot-a\nchanged  formatting\nbroken   vm-boot-c\n";
+        let found = first(&areas, &files, Some(said), Some(&known));
+        assert_eq!(found.tests, words("vm-boot-a vm-boot-c"));
+        let found = first(&areas, &files, Some("changed  formatting\n"), Some(&known));
+        assert_eq!(found.touched.len(), 1, "touched, all the same");
+        assert!(found.tests.is_empty(), "none moved, so none runs");
+        let found = first(&areas, &files, None, Some(&known));
+        assert_eq!(found.tests, known, "with nothing compared, all run");
+    }
+
+    #[test]
+    fn a_change_to_what_runs_vm_tests_sends_one_through_it() {
+        let offload = areas()
+            .into_iter()
+            .find(|area| area.name == "nix-offload")
+            .unwrap();
+        assert!(offload.there);
+        assert_eq!(offload.tests, words("vm-*"));
+        let needs = needs(
+            &[offload],
+            &words("modules/nix-offload/offload/src/main.rs"),
+            Some(&[]),
+        );
+        assert!(needs.tests.is_empty());
+        assert_eq!(needs.there, words("nix-offload"));
+        assert!(parse("a: a/* => there").is_ok());
     }
 
     #[test]

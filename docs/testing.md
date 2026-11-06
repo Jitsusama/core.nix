@@ -125,7 +125,10 @@ A change `merge-net needs` says touches something a revert would come too
 late for runs the VM tests it names, whole, first: boot, the initrd, the
 kernel, the disk and LUKS, the TPM, secure boot, the install, the stick and
 its guide, the greeter or lock, `flake.lock` or nix-offload
-(`tools/merge-net/must-run.txt`). A machine switches only to merged main,
+(`tools/merge-net/must-run.txt`). Of those, it names only the ones whose
+derivation moved from main, since the rest would give main's result. A
+change to nix-offload, which moves none, sends one VM test's subtests
+through itself with `run-subtests --there` instead. A machine switches only to merged main,
 and a bad switch is undone by switching back to the generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which

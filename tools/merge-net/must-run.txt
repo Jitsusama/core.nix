@@ -3,6 +3,10 @@
 # in or build, where a revert after the fact comes too late for a machine
 # that switched to it. Each line is an area, the paths that are it, and
 # after `=>` the VM tests it runs. A `*` stands for anything, a `/` too.
+# Only those whose derivation moved from main run, since the rest would
+# give main's result. A `there` among the tests marks what runs VM tests,
+# whose change moves none of them: it asks for one VM test sent through
+# the change itself, end to end.
 boot: modules/plymouth/* modules/console/* modules/kmscon/* modules/systemd/* tests/plymouth* tests/shutdown* => vm-boot-* vm-reboot-cannot-hang
 initrd: modules/bluetooth-disk-prompt/* tests/bluetooth-disk-prompt* => vm-boot-* vm-bluetooth-types-at-the-disk-prompt
 kernel: modules/kernel/* hardware/* tests/patched-kernel-source.sh tests/kernel-settings-hold.sh => vm-boot-* vm-reboot-cannot-hang vm-hibernation-comes-back
@@ -12,4 +16,4 @@ secure boot: modules/lanzaboote/* => vm-secure-boot-installs vm-boot-*
 install: modules/guide/* tests/vm/guide/* => vm-guide-* vm-secure-boot-installs
 greeter and lock: modules/greetd/* modules/swayidle/* modules/quickshell/Lock.qml tests/greeter* tests/sessions-behind-the-lock* => vm-greeter-signs-in vm-desktop-locks-and-asks
 flake.lock: flake.lock => vm-*
-nix-offload: modules/nix-offload/* => vm-*
+nix-offload: modules/nix-offload/* => vm-* there

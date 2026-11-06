@@ -36,7 +36,7 @@ mod world;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 use state::{State, short};
 use watch::Round;
@@ -154,16 +154,51 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         .collect();
     files.sort();
     files.dedup();
+    let areas = rules::areas();
     let known = known_vm_tests();
-    let found = rules::needs(&rules::areas(), &files, known.as_deref());
-    if found.touched.is_empty() {
+    if rules::needs(&areas, &files, known.as_deref())
+        .touched
+        .is_empty()
+    {
         println!("no: nothing here needs its VM tests before merging; the net runs them after");
         return Ok(ExitCode::SUCCESS);
     }
-    println!("yes: run these VM tests before merging, since the change touches");
+    // Only a test whose derivation moved from main can give a result main
+    // hasn't, so changed-checks is asked which moved; it costs an
+    // evaluation, which only a change touching an area pays.
+    let said = moved_from(base);
+    if said.is_none() {
+        println!("(changed-checks couldn't say which VM tests moved, so every one named runs)");
+    }
+    let found = rules::first(&areas, &files, said.as_deref(), known.as_deref());
+    let touched = found
+        .touched
+        .iter()
+        .map(|(area, _)| area.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if found.tests.is_empty() && found.there.is_empty() {
+        println!(
+            "no: the change touches {touched}, but none of the VM tests it runs moved from \
+             {base}, so each would give main's result; the net runs the rest after"
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
+    println!("yes: the change touches");
     for (area, hits) in &found.touched {
         println!("  {area}: {}", hits.join(" "));
     }
+    for area in &found.there {
+        println!(
+            "send one VM test through the changed {area}, end to end: run one VM test's \
+             subtests with run-subtests --there, with the change's own {area} first on PATH"
+        );
+    }
+    if found.tests.is_empty() {
+        println!("no VM test it runs moved from {base}, so none runs whole first");
+        return Ok(ExitCode::SUCCESS);
+    }
+    println!("run these VM tests whole before merging, since they moved from {base}:");
     // The list is read from the base, main, so a branch can't quarantine
     // its own failure.
     let list = git(&["show", &format!("{base}:{}", world::QUARANTINE)])
@@ -177,6 +212,19 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// What `changed-checks --name-only` says moved between `base` and the
+/// working copy, or nothing when it couldn't compare.
+fn moved_from(base: &str) -> Option<String> {
+    let ran = Command::new("changed-checks")
+        .args(["--base", base, "--name-only", "--system", SYSTEM])
+        .stderr(Stdio::inherit())
+        .output()
+        .ok()?;
+    let said = String::from_utf8_lossy(&ran.stdout).into_owned();
+    // It fails when a check no longer evaluates, and names it.
+    (ran.status.success() || said.lines().any(|line| line.starts_with("broken"))).then_some(said)
 }
 
 /// The VM tests core has, from the list each new main writes
