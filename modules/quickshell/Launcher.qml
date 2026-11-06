@@ -2182,8 +2182,10 @@ Scope {
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
         // Room for the drawer's own only once the keys have gone in, so
         // the rows' foot never gives up room to keys they don't show.
-        if (QueryKeys.paged(prompt.mode))
-            said.push(drawerKeys(prompt.mode));
+        // Choosing, the drawer names no key, so it takes no room.
+        const drawn = QueryKeys.paged(prompt.mode) ? drawerKeys(prompt.mode) : [];
+        if (drawn.length > 0)
+            said.push(drawn);
         if (prompt.mode === "normal")
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
