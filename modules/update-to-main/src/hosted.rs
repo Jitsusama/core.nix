@@ -6,6 +6,14 @@
 //! It unpacks the flake's folder from them and builds it, after the account
 //! has fetched the inputs only it can reach, each of which the store holds
 //! to the hash its lock names.
+//!
+//! In a repository whose main moves far more often than the flake's folder,
+//! the account may also name the commit that last changed the folder. When
+//! that commit's folder is the very tree last built, nothing is fetched or
+//! built. That answer is the account's, not the host's, so it only ever
+//! spares a fetch: what's built is still a commit the host named, and an
+//! account that lies can at most hold the machine where it is, as one that
+//! gives no token can.
 
 use crate::config::{Config, Hosted};
 use crate::git::{self, Repo};
@@ -26,14 +34,21 @@ const FETCH: &str =
 
 /// Asks the host for main's head, and makes sure root's copy can read it
 /// from the account's checkout, fetching it there as the account when it
-/// isn't there yet.
-pub fn head(config: &Config, hosted: &Hosted) -> Result<String, Failure> {
+/// isn't there yet. When the folder is where it was at `last`, the commit
+/// the machine last switched to, that's the head instead, unfetched.
+pub fn head(config: &Config, hosted: &Hosted, last: Option<&str>) -> Result<String, Failure> {
     let account = run::account(&hosted.user)?;
     let main = Repo::main(config);
     git::make_copy(&main)?;
     let token = token(hosted, &account)?;
     let head = ask(config, &token)?;
     borrow(config, hosted, &account)?;
+    if let Some(last) = last
+        && !git::has(&main, &head)
+        && unmoved(config, hosted, &account, last)
+    {
+        return Ok(last.to_owned());
+    }
     if !git::has(&main, &head) {
         fetch(config, hosted, &account)?;
         if !git::has(&main, &head) {
@@ -66,18 +81,62 @@ pub fn prepare(config: &Config, hosted: &Hosted, commit: &str) -> Result<String,
 }
 
 fn token(hosted: &Hosted, account: &Account) -> Result<String, Failure> {
-    let (program, args) = hosted
-        .token
-        .split_first()
-        .ok_or_else(|| Failure::new("no command gives a token"))?;
-    let mut command = run::command_as(program.as_ref(), account, &hosted.path, &hosted.checkout);
-    command.args(args);
-    let said = run::output(command, "asking for a token", std::iter::empty::<&str>())?;
-    let token = said.lines().last().unwrap_or_default().trim().to_owned();
+    let token = said(hosted, account, &hosted.token, "asking for a token")?;
     if token.is_empty() {
         return Err(Failure::new("asking for a token gave none"));
     }
     Ok(token)
+}
+
+/// Whether the flake's folder is the tree it was at `last`, by the commit
+/// the account says last changed it on main. Anything short of that commit
+/// being in the checkout with that very tree, a command that fails or one
+/// that names something else, counts as moved, so main is fetched.
+fn unmoved(config: &Config, hosted: &Hosted, account: &Account, last: &str) -> bool {
+    let Some(command) = &hosted.changed else {
+        return false;
+    };
+    let Ok(changed) = said(
+        hosted,
+        account,
+        command,
+        "asking what last changed the folder",
+    ) else {
+        return false;
+    };
+    if !is_commit(&changed) {
+        return false;
+    }
+    let main = Repo::main(config);
+    match (
+        git::tree(&main, &changed, &hosted.directory),
+        git::tree(&main, last, &hosted.directory),
+    ) {
+        (Some(changed), Some(last)) => changed == last,
+        _ => false,
+    }
+}
+
+/// The last line a command run as the account in its checkout prints.
+fn said(
+    hosted: &Hosted,
+    account: &Account,
+    command: &[String],
+    what: &str,
+) -> Result<String, Failure> {
+    let (program, args) = command
+        .split_first()
+        .ok_or_else(|| Failure::new(format!("no command for {what}")))?;
+    let mut command = run::command_as(program.as_ref(), account, &hosted.path, &hosted.checkout);
+    command.args(args);
+    let said = run::output(command, what, std::iter::empty::<&str>())?;
+    Ok(said.lines().last().unwrap_or_default().trim().to_owned())
+}
+
+/// Whether `name` is a whole commit id, SHA-1's or SHA-256's, rather than
+/// anything git would read as a name or an option.
+fn is_commit(name: &str) -> bool {
+    matches!(name.len(), 40 | 64) && name.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Main's head as the host names it. The token goes to git in its
@@ -100,8 +159,7 @@ fn ask(config: &Config, token: &str) -> Result<String, Failure> {
     said.lines()
         .find_map(|line| {
             let (commit, name) = line.split_once('\t')?;
-            (name == main && commit.len() == 40 && commit.bytes().all(|b| b.is_ascii_hexdigit()))
-                .then(|| commit.to_owned())
+            (name == main && is_commit(commit)).then(|| commit.to_owned())
         })
         .ok_or_else(|| Failure::new(format!("the host names no {main}")))
 }
@@ -306,6 +364,15 @@ mod tests {
         let lock = lock();
         assert!(locked(&lock, "followed").is_err());
         assert!(locked(&lock, "nowhere").is_err());
+    }
+
+    #[test]
+    fn only_a_whole_commit_id_is_a_commit() {
+        assert!(is_commit(&"a".repeat(40)));
+        assert!(is_commit(&"0".repeat(64)));
+        assert!(!is_commit("main"));
+        assert!(!is_commit(&format!("--{}", "a".repeat(38))));
+        assert!(!is_commit(&"a".repeat(41)));
     }
 
     #[test]

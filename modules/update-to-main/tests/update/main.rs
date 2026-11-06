@@ -255,6 +255,7 @@ impl World {
             checkout,
             directory: "machine".to_owned(),
             token: vec![shell(), "-c".to_owned(), token],
+            changed: None,
             path: std::env::split_paths(&path).collect(),
             inputs: Vec::new(),
         });
@@ -965,6 +966,77 @@ fn a_hosted_main_is_fetched_into_a_ref_of_its_own() {
         git(&checkout, &["rev-parse", "refs/update-to-main/main"]).trim(),
         second
     );
+}
+
+/// A hosted world whose account names the commit that last changed the
+/// folder with the shell command `changed` gives for the world's folder.
+fn with_changed(changed: impl Fn(&Path) -> String) -> World {
+    let mut world = World::hosted_from(World::new(), counted_token);
+    let changed = changed(&world.root);
+    world.config.hosted.as_mut().unwrap().changed = Some(vec![shell(), "-c".to_owned(), changed]);
+    world
+}
+
+/// The commit that last changed the folder on the remote's main, as the
+/// host would name it.
+fn last_changed(world_root: &Path) -> String {
+    format!(
+        "git -C {} log -1 --format=%H main -- machine",
+        world_root.join("origin").display()
+    )
+}
+
+/// Main moves every few minutes in a large repository, mostly outside the
+/// flake's folder, and fetching it took minutes each ask. While the folder
+/// is as it was last built, nothing is fetched or built.
+#[test]
+fn a_hosted_folder_where_it_was_is_neither_fetched_nor_built() {
+    let world = with_changed(last_changed);
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    let elsewhere = world.unsigned("outside the folder");
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: one.clone(),
+            followed: BTreeMap::new()
+        }
+    );
+    assert_eq!(
+        git(&checkout, &["rev-parse", "refs/update-to-main/main"]),
+        one,
+        "main at {elsewhere} was fetched"
+    );
+    assert_eq!(world.builds(), 1);
+    let two = world.hosted_commit("two", None);
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert_eq!(world.read("seen"), "onetwo");
+}
+
+/// The account's answer is only ever a reason not to fetch: a commit of its
+/// own, whose folder isn't the one last built, is never built, and main is
+/// fetched as the host names it.
+#[test]
+fn a_hosted_folder_the_account_names_wrongly_is_fetched_from_main() {
+    let world =
+        with_changed(|root| format!("git -C {} rev-parse HEAD", root.join("checkout").display()));
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    git(&checkout, &["checkout", "--quiet", &one]);
+    fs::write(checkout.join("machine/file"), "the account's own").unwrap();
+    git(
+        &checkout,
+        &["commit", "--quiet", "-am", "the account's own"],
+    );
+    let two = world.hosted_commit("two", None);
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert_eq!(world.read("seen"), "onetwo");
 }
 
 #[test]

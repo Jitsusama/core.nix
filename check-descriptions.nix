@@ -2069,7 +2069,8 @@
   '';
   update-to-main-updates-to-signed-main = ''
     update-to-main builds and switches to a main signed by a key it was given and descended from what
-    it ran, builds nothing when main hasn't moved, refuses an unsigned, untrusted or rewritten main
+    it ran, builds nothing when main hasn't moved, neither fetches nor builds a hosted main whose
+    folder hasn't moved, refuses an unsigned, untrusted or rewritten main
     and a low battery, refuses to start or switch while the machine is busy or can't tell, leaves
     the machine as it was when the build fails, goes back when the switch
     fails or the machine isn't whole after it, leaves a new kernel for the next boot, joins asks to

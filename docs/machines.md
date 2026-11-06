@@ -152,8 +152,13 @@ token the account's `token` command prints, reads that commit's objects from
 the account's checkout, which git checks against it, and builds the flake in
 `directory`. The account fetches main into its checkout when the commit
 isn't there yet, into `refs/update-to-main/main` rather than a branch, and
-fetches each of `inputs`, the private ones, by its lock. The machine then
-trusts the host and takes no signers:
+fetches each of `inputs`, the private ones, by its lock. In a repository
+whose main moves more often than the folder does, `changed` names a
+command that prints the newest commit on main changing `directory`; while
+that commit's folder is the one last built, nothing is fetched or built.
+The account's answer only ever spares a fetch, since what's built is
+still a commit the host named. The machine then trusts the host and takes
+no signers:
 
 ```nix
 jitsusama.update-to-main = {
@@ -164,6 +169,7 @@ jitsusama.update-to-main = {
     checkout = "/home/someone/everything";
     directory = "machines";
     token = [ "/home/someone/bin/forge-token" ];
+    changed = [ "/home/someone/bin/forge-last-change" "machines" ];
     inputs = [ "private-modules" ];
   };
   askers = [ "someone" ];
