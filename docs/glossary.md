@@ -93,6 +93,7 @@ first in the queue and conclude.
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
+| park | a session ending itself while idle to give back its memory, until a message or a key wakes it in its window | | presence `parked`, park-workflow |
 | reopen | opening a closed session again where it left off, in its own window and folder | restore | `restore.json` |
 | Sessions to Reopen | the sessions the last boot's end took away and those another machine carried here | Reopen Last Boot's Sessions | `toReopen` |
 | carried | a session another machine handed this one as it went away, to reopen here | | `carried` in `restore.json` |
@@ -258,7 +259,7 @@ off.
 | charger | the power cable, and what it's plugged into | mains | AC |
 | Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
-| wake | coming back from sleep | | |
+| wake | coming back from sleep, as the machine does, or from a park, as a session does | | |
 | idle | of the machine, every session left untouched past the screens going off, and nothing holding it awake | inactive | logind's `IdleHint` |
 | idle sleep | the sleep a laptop falls into left idle on battery, never on the charger | autosuspend | `idle-sleep`, logind's `IdleAction` |
 | hibernate | the machine off with its memory written to the swap file, until it starts again from it | | `systemctl hibernate` |
