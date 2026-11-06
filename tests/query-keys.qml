@@ -1265,7 +1265,11 @@ QtObject {
             // those followed.
             ["Ctrl+] follows the row to its own place, and Ctrl+T back",
                 ["Escape", "Ctrl+]", "Ctrl+t"], ["normal", "follow", "tagBack"]],
-            ["on the find, Ctrl+] and Ctrl+T are the field's", ["Ctrl+]", "Ctrl+t"], []],
+            // And Ctrl+] from the find, where a program's name is typed, so
+            // its commands and windows are a key away (Joel, 2026-11-05);
+            // Ctrl+T there stays the field's.
+            ["and from the find", ["Ctrl+]"], ["follow"]],
+            ["on the find, Ctrl+T is the field's", ["Ctrl+t"], []],
             ["Space ? and F1 show every key here", ["Escape", "Space", "?", "F1"],
                 ["normal", "keys", "keys"]],
             ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
@@ -1560,6 +1564,10 @@ QtObject {
         holds("the find's next row, Ctrl+N", keyed("next row"), "Ctrl+N");
         holds("the find's caret", keyed("caret"), "\u2190  \u2192");
         holds("the find's word deleted", keyed("word"), "Ctrl+W");
+        // The find's foot names Ctrl+] on a row holding parts, so its list
+        // names it too (MVL7F9, #1979).
+        holds("the find lists Ctrl+] into a row's parts", sections.Find.includes("Ctrl+]"),
+            true);
         holds("normal's keys aren't listed on the find, where they type",
             ["j", "k", "gg", "ZZ", "Tab"].filter(key => sections.Find.includes(key)),
             []);
