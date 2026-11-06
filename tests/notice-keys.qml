@@ -140,6 +140,15 @@ QtObject {
         holds("one after it starts afresh", late.act, "pending");
         holds("another key goes on as ever", Keys.read(standing, "j", "normal", { now: 1100 }).act,
             "down");
+        // The wait runs from when visual's d has done its work, so a slow
+        // act under load never spends the time the second d has.
+        const settled = Keys.settled(standing, 1350);
+        holds("the wait runs from when the act is done",
+            Keys.read(settled, "d", "normal", { now: 1600 }).act, "");
+        holds("and nothing else changes", Object.assign({}, settled, { taken: null }),
+            Object.assign({}, standing, { taken: null }));
+        holds("with nothing taken it settles nothing", Keys.settled(Keys.rest(), 1350),
+            Keys.rest());
 
         holds("a held j moves", typed(["j"], "normal", true).acts, ["down"]);
         for (const key of ["d", "u", ".", "Ctrl+R", "Return", "V"])
