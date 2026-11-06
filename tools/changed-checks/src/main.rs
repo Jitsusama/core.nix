@@ -176,6 +176,25 @@ impl Options {
     }
 }
 
+/// Says how many VM tests a run builds, before it builds them. On 6
+/// November one `--build` for a change of the shell's alone sent 27 of
+/// them, which held every VM builder for 66 minutes while other changes'
+/// runs waited up to 53; the gate before merging needed none of them.
+fn say_vm_tests(targets: &[&str]) {
+    let vm = targets
+        .iter()
+        .filter(|name| name.starts_with("vm-"))
+        .count();
+    if vm > 0 {
+        let tests = if vm == 1 { "test" } else { "tests" };
+        eprintln!(
+            "changed-checks: building {vm} VM {tests} whole, as --build asks. Before merging, \
+             a change needs only those `merge-net needs` names and `run-subtests --there` \
+             on the subtests its files reach; the net runs the rest after the merge."
+        );
+    }
+}
+
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
     if arguments.iter().any(|argument| argument == "--help") {
@@ -499,6 +518,7 @@ fn compare(
     if !options.build || targets.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
+    say_vm_tests(&targets);
     let began = Instant::now();
     let count = targets.len();
     let (quarantined, blocking): (Vec<&str>, Vec<&str>) = targets
