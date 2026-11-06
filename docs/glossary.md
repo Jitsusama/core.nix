@@ -237,7 +237,7 @@ off.
 | firmware | the program in the machine's chip that starts it, and its settings | BIOS, UEFI | |
 | processor | what runs every program | CPU | |
 | memory | what programs run in while the machine is on | RAM | |
-| swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zram |
+| swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zswap |
 | memory pressure | how long programs are waiting for memory | | PSI |
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
 | trace | one thing a program did, followed through its steps, each a span with a start and an end | | OpenTelemetry's traces |

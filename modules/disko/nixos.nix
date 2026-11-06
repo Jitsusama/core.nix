@@ -15,6 +15,15 @@
 }:
 let
   cfg = config.jitsusama.disk;
+  swapFileGrows = pkgs.writeShellApplication {
+    name = "swap-file-grows";
+    runtimeInputs = [
+      pkgs.btrfs-progs
+      pkgs.coreutils
+      pkgs.gnugrep
+    ];
+    text = builtins.readFile ./swap-file-grows.sh;
+  };
   initrdSystemd = config.boot.initrd.systemd.package;
 
   # Where the initrd says, for each volume in its crypttab that a YubiKey
@@ -122,6 +131,22 @@ in
   # their passphrase prompt. Should the reading fail, nothing is written and
   # the disk opens as it would with the plugins.
   config.environment.systemPackages = [ cryptsetup ];
+
+  # disko makes the swap file only when it installs, so a machine whose
+  # swapSize grew since grows its file as it next starts, before anything
+  # swaps to it (swap-file-grows.sh says when it won't). Never on a switch,
+  # since the file is in use then.
+  config.systemd.services.swap-file-grows = {
+    description = "Grow the swap file to ${cfg.swapSize}";
+    wantedBy = [ "swap-swapfile.swap" ];
+    before = [ "swap-swapfile.swap" ];
+    unitConfig.RequiresMountsFor = "/swap";
+    restartIfChanged = false;
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${swapFileGrows}/bin/swap-file-grows /swap/swapfile ${cfg.swapSize}";
+    };
+  };
 
   config.boot.initrd.systemd.storePaths = [ findKeyed ];
   config.boot.initrd.systemd.services."systemd-cryptsetup@" = {

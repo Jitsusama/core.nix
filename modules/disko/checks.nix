@@ -8,6 +8,14 @@
   ...
 }:
 {
+  # A swap file grows to the size asked for as the machine starts, and is
+  # otherwise left as it is: in use, holding a hibernation, short of room,
+  # or already big enough.
+  swap-file-grows-only-when-it-may = pkgs.runCommandLocal "swap-file-grows-only-when-it-may" { } ''
+    ${pkgs.bash}/bin/bash ${./swap-file-grows-check.sh} ${./swap-file-grows.sh}
+    touch $out
+  '';
+
   # The cryptsetup a person types reads a disk's YubiKey tokens through
   # systemd's plugin: its dump of one says what the key asks for, which
   # cryptsetup alone can't. The plugin writes its part to stderr.

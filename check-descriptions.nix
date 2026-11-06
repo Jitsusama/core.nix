@@ -2369,6 +2369,10 @@
   vm-first-passes-clippy = ''
     clippy finds nothing in vm-first or its tests
   '';
+  swap-file-grows-only-when-it-may = ''
+    a swap file smaller than asked for grows as the machine starts, and one in use, holding a
+    hibernation, short of room or big enough stays as it is
+  '';
   vm-full-swap-ends-what-filled-it = ''
     full swap ends the cgroup that filled it through systemd-oomd, before the kernel's OOM killer,
     and leaves the rest
@@ -2421,7 +2425,7 @@
     opens another machine's bundle by its passphrase and is signed with both machines' db keys
   '';
   vm-hibernation-comes-back = ''
-    a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
+    a machine hibernated to a swap file on btrfs inside LUKS, with zswap in front and no resume=,
     comes back from an lz4 image through systemd's initrd as it was, once the TPM and a PIN typed
     at its prompt open the disk, lets the lock go for that one prompt, and boots anew after; with
     more held under a slice's hard memory floor than the image may hold, it still comes back, the
@@ -2522,9 +2526,6 @@
   '';
   vm-speakers-are-tuned = ''
     the XPS 14's speakers hear the tuning, headphones don't
-  '';
-  vm-swap-comes-down-while-probed = ''
-    the compressed swap comes down, its reset waiting out udev's probe
   '';
   vm-the-connection-stays-quick = ''
     under four uploads on an 8 Mbit/s connection 20 ms away, an app's ping stays under 80 ms with

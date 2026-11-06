@@ -1,6 +1,6 @@
 # Keeps the machine responsive when memory runs short, as it does when a big
-# Rust or Go build links: memory swaps to compressed RAM rather than disk,
-# systemd-oomd stops a runaway group before the machine thrashes, and writes
+# Rust or Go build links: memory swaps to a compressed pool in RAM, and only
+# its coldest pages on to the disk, systemd-oomd stops a runaway group before the machine thrashes, and writes
 # reach the disk steadily rather than in stalls. The kernel's own
 # documentation gives each value's reasoning: Documentation/admin-guide/
 # sysctl/vm.rst and mm/multigen_lru.rst.
@@ -21,35 +21,31 @@ let
   lruGen = "/sys/kernel/mm/lru_gen/enabled";
 in
 {
-  # Swap to zstd-compressed RAM, as much as memory holds. At NixOS's half,
-  # a 62 GiB laptop's builds filled zram's 31 GiB and sent 0.42 of 2.02 TiB
-  # swapped in a 13-hour day to the swapfile on its SSD, which wears it and
-  # reads back in milliseconds rather than microseconds; a full zram sends
-  # the newest pages there, not the coldest. Full, zram held its 31 GiB in
-  # 9.7 GiB of memory, so all of memory's worth costs about a third of it.
-  zramSwap.enable = true;
-  zramSwap.memoryPercent = 100;
-  # Taking the swap down resets its device, which the kernel refuses while
-  # anything holds it open, and udev opens it to probe it as swapoff closes
-  # it. One shutdown in 18 failed that way, and a restart by hand would
-  # leave the device at its old size, since the kernel refuses a new one;
-  # NixOS doesn't restart it on a switch for that reason. Upstream's
-  # systemd/zram-generator#226 is still open. zram-reset-waits.patch
-  # retries while it's busy; take it out once zram-generator does that
-  # itself.
-  services.zram-generator.package = pkgs.zram-generator.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [
-      ./zram-reset-waits.patch
-    ];
-  });
+  # Swap through a zstd-compressed pool in memory, held to a fifth of it,
+  # in front of the swap file: what doesn't fit, the pool's coldest pages,
+  # goes on to the disk. zram at all of memory held what it swapped in
+  # memory it took as it went, charged to no group: from 4 to 6 November a
+  # 62 GiB laptop had 40 kills by the kernel's own OOM killer, every one
+  # with swap free (39 GiB of 126 in use on average, 106 at the worst) and
+  # zram's pages holding 13 to 16 GB of memory beside the slices' floors,
+  # so reclaim gave up with 13 GB of file cache unreclaimed. The pool can't
+  # grow past its fifth, and its shrinker writes back the coldest pages as
+  # memory runs short, which zram, full, did with the newest instead.
+  boot.kernelParams = [
+    "zswap.enabled=1"
+    "zswap.compressor=zstd"
+    "zswap.max_pool_percent=20"
+    "zswap.shrinker_enabled=1"
+  ];
 
   boot.kernel.sysctl = {
-    # Swapping to zram costs about a tenth of reading the disk, which the
-    # kernel's formula makes 180: 10x + x = 200.
+    # A swapped page read back from the pool costs about a tenth of reading
+    # the disk, which the kernel's formula makes 180: 10x + x = 200. Those
+    # that reach the disk are the coldest, read back least.
     "vm.swappiness" = 180;
 
-    # zram has no seek to amortize, so read back only the page that was asked
-    # for.
+    # The pool has no seek to amortize, so read back only the page that was
+    # asked for.
     "vm.page-cluster" = 0;
 
     # Start writing dirty pages at 64 MiB and make writers wait at 256 MiB,

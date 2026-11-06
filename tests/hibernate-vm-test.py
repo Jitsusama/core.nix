@@ -71,7 +71,7 @@ def swapping(machine: BaseMachine) -> QemuMachine:
     # Only a machine QEMU runs can be stopped and started again.
     assert isinstance(machine, QemuMachine)
     machine.wait_for_unit("default.target")
-    machine.wait_for_unit("dev-zram0.swap")
+    assert machine.succeed("cat /sys/module/zswap/parameters/enabled").strip() == "Y"
     machine.succeed(
         "cryptsetup luksFormat --batch-mode --key-file /etc/disk.key /dev/vdc",
         "cryptsetup open --key-file /etc/disk.key /dev/vdc disk",
@@ -129,8 +129,8 @@ def test_a_loaded_machine_fits_beside_the_reserve(swapping: QemuMachine) -> None
     """With memory full of a program's pages and the disk's cache, it still comes back.
 
     The reserve holds the image to half of memory less twice it, which the load is past, so
-    the kernel drops the cache and swaps part of memory, to zram first, before the image
-    fits. The program's pages are a file in tmpfs, as compressible as hex.
+    the kernel drops the cache and swaps part of memory, through zswap's pool, before the
+    image fits. The program's pages are a file in tmpfs, as compressible as hex.
     """
     swapping.succeed(
         "head -c 32M /dev/urandom | od -An -tx1 -v > /dev/shm/held",
