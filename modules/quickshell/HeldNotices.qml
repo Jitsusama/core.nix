@@ -105,20 +105,31 @@ Floating {
     onSelectedChanged: if (mode === "visual") Report.say(`notice selects ${selected.length}`)
 
     // The view: the first line shown, kept around the cursor, and how many
-    // show, as many as fit the screen's height up to eight.
+    // show, as many as fit the screen's height up to eight, and never more
+    // than the frame has room for inside the screen's rung.
     property int firstShown: 0
     readonly property int room: Math.max(Math.min(NoticeList.room,
-        Math.floor((screenHeight * linesShare) / rowHeight)), 3)
+        Math.floor((screenHeight * linesShare) / rowHeight),
+        Math.floor(listTall / rowHeight)), 1)
     // How much of the screen's height the lines take at most, leaving the
     // cursor card, the menu and the foot room beneath them. Half, so eight
     // of the launcher's rows fit a screen 768 tall: seven would keep the
     // cursor on the middle line, scrolloff held to half the view.
     readonly property real linesShare: 0.5
     property real screenHeight: 768
-    // While the command line is up its menu takes the lines' room, so they
-    // give way round the cursor, down to one, and the frame never passes
-    // the screen's rung on a short screen.
-    readonly property int shownRoom: mode === "command" ? commandRows : room
+    // While the command line is up its menu takes the lines' room, and at
+    // rest the cursor's open card does, so they give way round the cursor,
+    // down to one, and the frame never passes the screen's rung on a short
+    // screen.
+    readonly property int shownRoom: mode === "command" ? commandRows
+        : Math.max(1, Math.min(room, Math.floor((listTall - cardShown) / rowHeight)))
+    // How tall the cursor's card stands under its row, as the card says it
+    // with the notice it opens, so a card going away never clears the one
+    // that replaced it.
+    property var cardOf: null
+    property real cardTall: 0
+    readonly property real cardShown: cardOf !== null && cardOf === listed[cursor]
+        && mode !== "command" ? cardTall : 0
     readonly property int shownTop: Math.max(firstShown, cursor - shownRoom + 1)
     readonly property var inView: listed.slice(shownTop, shownTop + shownRoom)
     function follow() {
@@ -1529,8 +1540,21 @@ Floating {
                     // under it stands as far off, less a beat where a row
                     // follows: the next Name a row less a beat under the
                     // card's last line, as VKCF3Z's family mocks set it.
-                    height: field.visible ? field.y + field.height : lastBase + held.rowLeaves
-                        - (line.index < held.inView.length - 1 ? Theme.space.beat : 0)
+                    height: tall - (line.index < held.inView.length - 1 ? Theme.space.beat : 0)
+                    readonly property real tall: field.visible ? field.y + field.height
+                        : lastBase + held.rowLeaves
+                    // Told to the list, which gives it room on a short
+                    // screen; set rather than bound, as the rows shown
+                    // follow from it.
+                    function told() {
+                        if (!card.visible)
+                            return;
+                        held.cardTall = card.tall;
+                        held.cardOf = line.modelData;
+                    }
+                    onTallChanged: told()
+                    onVisibleChanged: told()
+                    Component.onCompleted: told()
 
                     Text {
                         id: body
@@ -1963,12 +1987,14 @@ Floating {
     readonly property int menuRoom: Math.max(1, Math.min(10,
         Math.floor((commandTall - inView.length * rowHeight) / commandMenu.pitch) - 1))
     // How tall the lines and the menu may be while the command line is up:
-    // the screen less its rung each side, the frame's hairlines, the head
-    // and its rule, the command line, the foot and its rule, and the menu's
-    // hairline. A menu line's pitch more is kept for the menu's room above
-    // and below its lines.
-    readonly property real commandTall: screenHeight - 2 * Theme.space.rung.screen
-        - 5 * Theme.border - headTall - 2 * rowHeight - sheet.bottomPadding
+    // the lines' height less the command line and the menu's hairline. A
+    // menu line's pitch more is kept for the menu's room above and below
+    // its lines.
+    readonly property real commandTall: listTall - Theme.border - rowHeight
+    // How tall the lines may be: the screen less its rung each side, the
+    // frame's hairlines, the head and its rule, and the foot and its rule.
+    readonly property real listTall: screenHeight - 2 * Theme.space.rung.screen
+        - 4 * Theme.border - headTall - rowHeight - sheet.bottomPadding
     // The lines that leave the menu three where the screen has the room.
     readonly property int commandRows: Math.max(1, Math.min(room,
         Math.floor((commandTall - 4 * commandMenu.pitch) / rowHeight)))
