@@ -369,6 +369,83 @@ fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result
     })
 }
 
+/// Tell the owner that `test` fails at `commit`, the merge a bisect found,
+/// which `before` says didn't break it, and revert and hold nothing.
+fn blames_none(
+    world: &dyn World,
+    state: &State,
+    test: &str,
+    commit: &str,
+    log: &str,
+    not_broken_here: Before,
+) -> Result<(), String> {
+    let (kind, why) = match not_broken_here {
+        Before::Absent => (
+            "failed-at-birth",
+            "the first merge to have it, so it may only have moved a case already failing, \
+             as a split does",
+        ),
+        Before::Unchanged => (
+            "failed-unchanged",
+            "a merge that didn't change it, so something outside the code broke it, such as \
+             the date or the builders",
+        ),
+        _ => (
+            "failed-before",
+            "and before it too, so no merge since broke it",
+        ),
+    };
+    // No merge is to blame for a test failing unchanged, so its finding
+    // names no owner.
+    let owner = (not_broken_here != Before::Unchanged)
+        .then(|| pr_of(&world.subject(commit)))
+        .flatten();
+    state.find(&json!({
+        "kind": kind, "test": test, "commit": commit,
+        "owner_pr": owner, "log": log, "at": now(),
+    }))?;
+    state.say(&format!(
+        "{test} fails at {}, {why}: nothing is reverted or held",
+        short(commit)
+    ));
+    Ok(())
+}
+
+/// Whether `test`, broken by `commit` and failing at `head`, passes at
+/// main's newest head, so a fix forward has landed since and a revert
+/// would only undo the merge under it; if so its owner is told. A round
+/// and its search take hours while merges keep landing, and on 5 November
+/// both tests the round at b74ab91b searched for were fixed forward
+/// before it could revert.
+fn fixed_forward(
+    world: &dyn World,
+    state: &State,
+    head: &str,
+    test: &str,
+    commit: &str,
+) -> Result<bool, String> {
+    let newest = world.head()?;
+    if newest == head
+        || !matches!(
+            attempt(world, state, &newest, test),
+            Outcome::Passed | Outcome::Flaky
+        )
+    {
+        return Ok(false);
+    }
+    state.find(&json!({
+        "kind": "fixed-forward", "test": test, "commit": commit,
+        "owner_pr": pr_of(&world.subject(commit)), "fixed_at": newest, "at": now(),
+    }))?;
+    state.say(&format!(
+        "{test} broke at {}, but passes at main's newest head {}, so it was fixed forward: \
+         nothing is reverted or held",
+        short(commit),
+        short(&newest)
+    ));
+    Ok(true)
+}
+
 /// The PR a merge commit's subject names, as GitHub writes it.
 pub fn pr_of(subject: &str) -> Option<u64> {
     let rest = subject.strip_prefix("Merge pull request #")?;
@@ -573,40 +650,16 @@ fn broke(
             Before::Passed => Some(commit),
             Before::Unsent => None,
             not_broken_here => {
-                let (kind, why) = match not_broken_here {
-                    Before::Absent => (
-                        "failed-at-birth",
-                        "the first merge to have it, so it may only have moved a case already \
-                         failing, as a split does",
-                    ),
-                    Before::Unchanged => (
-                        "failed-unchanged",
-                        "a merge that didn't change it, so something outside the code broke \
-                         it, such as the date or the builders",
-                    ),
-                    _ => (
-                        "failed-before",
-                        "and before it too, so no merge since broke it",
-                    ),
-                };
-                // No merge is to blame for a test failing unchanged, so
-                // its finding names no owner.
-                let owner = (not_broken_here != Before::Unchanged)
-                    .then(|| pr_of(&world.subject(&commit)))
-                    .flatten();
-                state.find(&json!({
-                    "kind": kind, "test": test, "commit": commit,
-                    "owner_pr": owner, "log": log, "at": now(),
-                }))?;
-                state.say(&format!(
-                    "{test} fails at {}, {why}: nothing is reverted or held",
-                    short(&commit)
-                ));
-                return Ok(());
+                return blames_none(world, state, test, &commit, &log, not_broken_here);
             }
         },
         None => None,
     };
+    if let Some(commit) = &bad
+        && fixed_forward(world, state, head, test, commit)?
+    {
+        return Ok(());
+    }
     let Some(commit) = bad else {
         state.set_hold(&json!({
             "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
@@ -973,6 +1026,43 @@ mod tests {
             Round::Idle,
             "a head is failed once"
         );
+    }
+
+    #[test]
+    fn a_test_fixed_forward_since_its_round_began_reverts_nothing() {
+        let state = state("fixed-forward");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "fixed-forward");
+        assert_eq!(found[0]["fixed_at"], "n");
+
+        let state = super::tests::state("still-broken");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("n", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
     }
 
     #[test]

@@ -147,7 +147,8 @@ would keep another in place. A test that failed before that merge too, or
 that didn't exist before it, as when a split moves a failing case under a
 new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
-code broke it. One that
+code broke it. So is one that passes at main's newest head, since a fix
+forward has landed while the net searched. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
