@@ -92,6 +92,7 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
     let mut follower = Follower::default();
     let mut unread = None;
+    let mut seen = None;
     loop {
         let config = match Config::read(file) {
             Ok(config) => config,
@@ -106,9 +107,10 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
             println!("the system holds another update-to-main; starting again");
             return ExitCode::SUCCESS;
         }
-        match follow::heads(&config) {
+        match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {
                 unread = None;
+                seen = Some(heads.clone());
                 let ended = fs::read_to_string(&config.ended).unwrap_or_default();
                 if follower.should_ask(&heads, &ended, Instant::now(), every) {
                     let at: Vec<String> = heads
