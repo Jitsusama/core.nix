@@ -407,7 +407,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // the page's grid. Its top stands one and a half lines under the baseline
 // before it, and the next baseline two lines under its foot, so the room
 // either side looks even. Code wider than the measure widens the block
-// evenly, its ground no further out than the page's outer column. The
+// evenly, its ground no further out than the page's outer column. A
+// narrow window's page has no margin to hang into, so there the ground
+// keeps to the measure and its words stand a mark inside it. The
 // language is an eyebrow at the top right, on the first line's baseline,
 // or on a line of its own when the first line would come within the items
 // rung of it.
@@ -421,7 +423,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
  set par(leading: code-line - code-caps * code-size, justify: false, spacing: code-line - code-caps * code-size)
  layout(size => {
   let advance = measure([0]).width
-  let inner = calc.min(calc.max(size.width, longest * advance), size.width + 2 * calc.max(0pt, spread - code-inset))
+  let inner = calc.min(calc.max(size.width, longest * advance), size.width + 2 * (spread - code-inset))
   let width = inner + 2 * code-inset
   let label = if lang == "" { none } else { eyebrow(lang) }
   let alone = label != none and first * advance + measure(label).width + rung.items > inner
