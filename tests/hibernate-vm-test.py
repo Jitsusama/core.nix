@@ -156,8 +156,9 @@ def test_memory_under_a_hard_floor_is_swapped_out_for_the_image(swapping: QemuMa
         "mkdir -p /run/floored",
         "mount -t tmpfs -o size=400m tmpfs /run/floored",
         # tmpfs pages count against the cgroup that wrote them, so the writer stays to hold
-        # them there.
+        # them there. A transient service's PATH holds none of the system's programs.
         f"systemd-run --slice={FLOORED} --unit=floored --property=MemoryMin={FLOOR}"
+        " --setenv=PATH=/run/current-system/sw/bin"
         " sh -c 'head -c 300M /dev/zero > /run/floored/held && touch /run/floored/full;"
         " exec sleep infinity'",
         f"systemctl set-property --runtime {FLOORED} MemoryMin={FLOOR}",
