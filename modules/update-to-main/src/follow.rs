@@ -2,9 +2,12 @@
 //! update as soon as main moves, so a merge doesn't wait for someone to
 //! ask. It reads where each repository's branch is with `git ls-remote`,
 //! which costs the host one small answer, and asks when one moved since its
-//! last update ended. A hosted main's folder can't be read that cheaply, so
-//! it also asks every so often, which its `changed` command answers
-//! without a fetch while the folder is where it was.
+//! last update ended. A hosted main's head moves far more often than the
+//! flake's folder in it, so its head is the newest commit that changed the
+//! folder, as the account's own `changed` command says, run on each look
+//! like `git ls-remote` is. It also asks every so often, in case that
+//! command can't be run, which the daemon answers without a fetch while the
+//! folder is where it was.
 //!
 //! Everything that may stop a switch stays the daemon's to judge: a call,
 //! a hold, a low battery, a daemon whose restart needs a hold, and asks
@@ -14,8 +17,9 @@
 //! refusal for a held daemon until the machine's last ending changes,
 //! since only a person's ask, with a hold sent, gets that one through.
 
-use crate::config::Config;
+use crate::config::{Config, Hosted};
 use crate::follows::Followed;
+use crate::hosted;
 use crate::line::Line;
 use crate::update::NEEDS_HOLD;
 use std::process::{Command, Stdio};
@@ -114,16 +118,24 @@ impl Follower {
     }
 }
 
-/// Where main and each followed input's branch are, as their hosts say.
-/// A hosted main isn't read, since its host wants a token and its folder
-/// moves far less often than its head.
-pub fn heads(config: &Config) -> Result<Followed, String> {
+/// Where main and each followed input's branch are, as their hosts say,
+/// given where they were at the last look. A hosted main is where its
+/// folder last changed instead, since its host wants a token only root
+/// holds.
+pub fn heads(config: &Config, was: Option<&Followed>) -> Result<Followed, String> {
     let mut heads = Followed::new();
-    if config.hosted.is_none() {
-        heads.insert(
-            MAIN.to_owned(),
-            remote_head(config, &config.repository, &config.branch)?,
-        );
+    match &config.hosted {
+        None => {
+            heads.insert(
+                MAIN.to_owned(),
+                remote_head(config, &config.repository, &config.branch)?,
+            );
+        }
+        Some(hosted) => {
+            if let Some(folder) = folder_head(hosted, was) {
+                heads.insert(MAIN.to_owned(), folder);
+            }
+        }
     }
     for (name, follow) in &config.follows {
         heads.insert(
@@ -132,6 +144,27 @@ pub fn heads(config: &Config) -> Result<Followed, String> {
         );
     }
     Ok(heads)
+}
+
+/// The newest commit that changed a hosted main's folder, as its `changed`
+/// command says. A read that fails, or says no commit, keeps the last
+/// look's answer, so a host away a moment isn't taken for a move.
+fn folder_head(hosted: &Hosted, was: Option<&Followed>) -> Option<String> {
+    let read = || {
+        let (program, args) = hosted.changed.as_ref()?.split_first()?;
+        let output = Command::new(program)
+            .args(args)
+            .env("PATH", std::env::join_paths(&hosted.path).ok()?)
+            .current_dir(&hosted.checkout)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        let said = String::from_utf8_lossy(&output.stdout);
+        let commit = said.lines().last()?.trim();
+        (output.status.success() && hosted::is_commit(commit)).then(|| commit.to_owned())
+    };
+    read().or_else(|| was?.get(MAIN).cloned())
 }
 
 fn remote_head(config: &Config, repository: &str, branch: &str) -> Result<String, String> {
@@ -175,6 +208,36 @@ mod tests {
         Line::Refused {
             commit: None,
             why: why.to_owned(),
+        }
+    }
+
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    fn hosted_saying(script: &str) -> Hosted {
+        Hosted {
+            user: "someone".to_owned(),
+            checkout: std::env::temp_dir(),
+            directory: "flake".to_owned(),
+            token: Vec::new(),
+            changed: Some(vec!["sh".to_owned(), "-c".to_owned(), script.to_owned()]),
+            path: std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect(),
+            inputs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_hosted_main_is_where_its_folder_last_changed() {
+        let hosted = hosted_saying(&format!("echo a warning first; echo {COMMIT}"));
+        assert_eq!(folder_head(&hosted, None).as_deref(), Some(COMMIT));
+    }
+
+    #[test]
+    fn a_folder_that_cant_be_read_stays_where_it_was() {
+        let was = Followed::from([(MAIN.to_owned(), COMMIT.to_owned())]);
+        for script in ["echo not-a-commit", &format!("echo {COMMIT}; exit 1")] {
+            let hosted = hosted_saying(script);
+            assert_eq!(folder_head(&hosted, Some(&was)).as_deref(), Some(COMMIT));
+            assert_eq!(folder_head(&hosted, None), None, "{script} names no commit");
         }
     }
 

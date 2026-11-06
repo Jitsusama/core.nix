@@ -135,7 +135,7 @@ fn said(
 
 /// Whether `name` is a whole commit id, SHA-1's or SHA-256's, rather than
 /// anything git would read as a name or an option.
-fn is_commit(name: &str) -> bool {
+pub fn is_commit(name: &str) -> bool {
     matches!(name.len(), 40 | 64) && name.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
