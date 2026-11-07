@@ -1018,6 +1018,28 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
 # over its socket, rather than starting another.
 
 
+def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> None:
+    """Kitty typed lists the folders zoxide learned under it, kitty first, so Return switches."""
+    folder = f"/home/{desktop.account}/src/estuary"
+    desktop.as_account(f"mkdir -p {folder} && zoxide add {folder}")
+    try:
+        desktop.answer("kitty")
+
+        def under_kitty(shown: Json) -> bool:
+            """Say whether kitty is selected with the folder among the rows just under it."""
+            rows = shown["rows"]
+            if "kitty" not in rows or (shown["selected"] or {}).get("name") != "kitty":
+                return False
+            at = rows.index("kitty")
+            return "estuary" in rows[at + 1 : at + 4]
+
+        desktop.launcher_until(under_kitty)
+        desktop.photograph("launcher-kitty-typed")
+    finally:
+        desktop.close_launcher()
+        desktop.as_account(f"zoxide remove {folder} && rmdir {folder}")
+
+
 def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -> None:
     """Recent in kitty lists a folder zoxide learned, and Return opens a window there."""
     machine = desktop.machine

@@ -79,6 +79,24 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
 
 
 @pytest.mark.usefixtures("google")
+def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> None:
+    """Calendar typed lists its next meetings under it, Calendar first, so Return opens it."""
+
+    def under_calendar(shown: Json) -> bool:
+        """Say whether Calendar is selected with Design Review among the rows just under it."""
+        rows = cast("list[str]", shown["rows"])
+        if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
+            return False
+        at = rows.index("Calendar")
+        return "Design Review" in rows[at + 1 : at + 4]
+
+    desktop.answer("calendar")
+    desktop.launcher_until(under_calendar)
+    desktop.photograph("launcher-calendar-typed")
+    desktop.close_launcher()
+
+
+@pytest.mark.usefixtures("google")
 def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     """Now lists today's next meeting as a row of its own, joining one about to start."""
     machine = desktop.machine
