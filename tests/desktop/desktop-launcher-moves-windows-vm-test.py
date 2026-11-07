@@ -414,6 +414,21 @@ def test_q_closes_only_the_launcher_and_no_key_reaches_the_window_behind(
         desktop.as_account("systemctl --user stop wev-escape")
 
 
+def test_niri_tells_the_shell_it_gives_the_keys_on_demand(desktop: Desktop) -> None:
+    """The session niri starts tells the shell it gives the keys as a surface asks on demand.
+
+    The shell asks on demand only once told, and exclusively before, since a switch restarts
+    it under the niri already running, and an older niri never gives a mapped surface the
+    keys on demand. What the newest surface and a click do with them is proven on a nested
+    niri (tests/focus-on-niri-test.py); this is the wire from niri to the shell.
+    """
+    shell = "/proc/$(systemctl --user show quickshell -p MainPID --value)/environ"
+    environment = desktop.as_account(f"tr '\\0' '\\n' < {shell}").splitlines()
+    assert "NIRI_ON_DEMAND_WHEN_ASKED=1" in environment, (
+        "the shell wasn't told niri gives the keys on demand, so it asks exclusively"
+    )
+
+
 # In normal mode d does a row's ending action and y its copy, as Vim's d
 # and y do a line's: dd, a count's rows or a motion's span. A window's
 # Close can't be put back, so d over more than one asks once on the line,
