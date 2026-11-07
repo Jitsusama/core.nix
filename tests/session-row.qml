@@ -313,6 +313,38 @@ QtObject {
                 failures.push(`together, ${states || "none"}: "${got}", not "${want}"`);
         }
 
+        // What landed reads newest first, changes and what says what to
+        // try, never a plan item ticked alone or one Joel has read, and
+        // only a web link opens.
+        const landing = (ref, at, more) => Object.assign({ ref: ref, at: at, what: ref }, more);
+        const landers = [
+            { address: "A", presence: { session: "a", landings: [
+                landing("core.nix#2140", "2026-11-07T11:31:00Z",
+                    { url: "https://github.com/o/core.nix/pull/2140" }),
+                landing("PLAN-20261106-2ZPAI5#3", "2026-11-07T11:32:00Z"),
+                landing("PLAN-20261106-2ZPAI5", "2026-11-07T11:32:30Z"),
+                landing("PLAN-20261106-2ZPAI5#4", "2026-11-07T11:30:00Z",
+                    { person: "try Stop twice" })] } },
+            { address: "B", presence: { session: "b", landings: [
+                landing("world#9", "2026-11-07T11:33:00Z", { url: "file:///etc/passwd" }),
+                landing("core.nix#2138", "2026-11-07T11:20:00Z")] } },
+            { address: "C", presence: { session: "c" } }
+        ];
+        const landedAs = rows => rows.map(one => `${one.session.address}:${one.ref}`
+            + `${one.person === "" ? "" : "+try"}${one.url === "" ? "" : "+url"}`).join(" ");
+        const unread = SessionRow.landed(landers, []);
+        const unreadWant = "B:world#9 A:core.nix#2140+url A:PLAN-20261106-2ZPAI5#4+try "
+            + "B:core.nix#2138";
+        if (landedAs(unread) !== unreadWant)
+            failures.push(`what landed: "${landedAs(unread)}", not "${unreadWant}"`);
+        const once = SessionRow.landed(landers, [unread[1].key]);
+        const onceWant = "B:world#9 A:PLAN-20261106-2ZPAI5#4+try B:core.nix#2138";
+        if (landedAs(once) !== onceWant)
+            failures.push(`with one read: "${landedAs(once)}", not "${onceWant}"`);
+        const kept = SessionRow.stillRead(landers, [unread[1].key, "z gone#1 2026"]);
+        if (kept.join() !== unread[1].key)
+            failures.push(`what's kept read: ${JSON.stringify(kept)}`);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

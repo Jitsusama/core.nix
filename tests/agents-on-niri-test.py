@@ -84,6 +84,18 @@ def orchestrators_listed() -> None:
     (WORKFLOW / "quests.json").write_text(json.dumps({"quests": quests}))
 
 
+# What the paused session landed, newest first: a change merged, a plan item ticked alone, which
+# Landed leaves out, and a change saying what to try.
+STOPPED = "An Agent's Stop Waits for a Second Return"
+CLOSING = "A Session Closes From the Launcher"
+TRY = "press d on a session"
+LANDINGS = [
+    {"at": "2026-11-07T11:31:00Z", "ref": "core.nix#2140", "what": STOPPED},
+    {"at": "2026-11-07T11:25:00Z", "ref": "PLAN-20261107-PAUSED#2", "what": "Ticked alone"},
+    {"at": "2026-11-07T11:19:00Z", "ref": "core.nix#2138", "what": CLOSING, "person": TRY},
+]
+
+
 def owner() -> Json:
     """Give this process as pi's presence names its owner: its pid, the boot and its start."""
     stat = Path("/proc/self/stat").read_text()
@@ -139,7 +151,7 @@ def shell() -> Iterator[Shell]:
     lay("BOSSES", "Orchestrating Quest", {"busy": True, "state": "busy"})
     under = {"orchestratedBy": "BOSSES", "busy": False}
     lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
-    lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
+    lay("PAUSED", "Paused Quest", {**under, "state": "paused", "landings": LANDINGS})
     lost_on_the_last_boot()
     orchestrators_listed()
     SPEND.parent.mkdir(parents=True, exist_ok=True)
@@ -327,6 +339,26 @@ def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: S
         time.sleep(0.1)
     told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
     assert [(one["act"], one["from"]) for one in told] == [("close", "joel")], told
+
+
+def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shell: Shell) -> None:
+    """Landed counts what's unread, but a plan item ticked alone; Return and d read; u unreads."""
+    opened(shell)
+    shell.launcher_until(lambda shown: "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    assert shell.showing()["selected"]["side"] == "2", shell.showing()
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
+    assert shell.showing()["selected"]["side"] == "core.nix#2140", shell.showing()
+    # No link to it is known and its session has no window, so Return only reads it.
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["rows"] == [CLOSING])
+    assert shell.showing()["selected"]["note"] == TRY, shell.showing()
+    shell.normal()
+    shell.send_chars("d")
+    shell.launcher_until(lambda shown: CLOSING not in shown["rows"])
+    shell.send_chars("u")
+    shell.launcher_until(lambda shown: CLOSING in shown["rows"])
 
 
 def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(

@@ -64,6 +64,11 @@ Provider {
         const lost = source("agents")?.toReopen ?? null;
         if (lost)
             rows.push({ group: "wants", name: lost.name, row: lost });
+        // What sessions landed that he hasn't read, Agents' own row too,
+        // while any is (VKCF3Z's design: Landed in Now, tier 2).
+        const landed = source("agents")?.landed ?? null;
+        if (landed)
+            rows.push({ group: "wants", name: landed.name, row: landed });
         return [waiting].concat(moment, Now.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()

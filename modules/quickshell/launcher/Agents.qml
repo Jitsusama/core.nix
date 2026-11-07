@@ -645,10 +645,84 @@ Provider {
         }
     }
 
-    things: toReopen ? [toReopen, start] : [start]
+    // What sessions landed that Joel hasn't read (SessionRow.js's landed):
+    // one row while any is, Landed, its count at its side, which Now shows
+    // among what wants him (VKCF3Z's design, tier 2) and Agents after the
+    // sessions. A step in, each landing, newest first: what it is as its
+    // name, its ref at the right in the mono, and what to try as its note
+    // in the serif. Return goes to the change, or to its session where no
+    // link to the change is known, and marks it read; its own step in holds
+    // Go To the Change, Go To the Session, Copy the Try Line and Read, which
+    // d does too and u takes back. Read only from the sessions there are,
+    // so one that ended takes what it landed with it.
+    readonly property var landed: {
+        const sessions = Sessions.running.concat(Sessions.parked);
+        const unread = SessionRow.landed(sessions, Sessions.landingsRead);
+        if (unread.length === 0)
+            return null;
+        const read = one => Sessions.readLandings([one.key],
+            SessionRow.stillRead(sessions, Sessions.landingsRead));
+        const act = (id, fields) => thing(Object.assign({
+            key: `verb:agents:landed:${id}`,
+            verb: Words.verb(`verb:agents:landed:${id}`),
+            name: Words.name(`verb:agents:landed:${id}`),
+            glyph: Words.glyph(`verb:agents:landed:${id}`),
+            hue: "action"
+        }, fields));
+        const windowed = one => Sessions.running.includes(one.session)
+            && provider.windowedOf(one.session);
+        const toChange = one => () => Niri.spawn(["xdg-open", one.url]);
+        const toSession = one => () => Sessions.goTo(one.session);
+        // Where Return takes it: the change, else its session, else nowhere
+        // but read.
+        const goes = one => one.url !== "" ? "change" : windowed(one) ? "session" : "";
+        const parts = one => [
+            one.url !== "" ? act("change", { later: true, run: toChange(one) }) : null,
+            windowed(one) ? act("session", { later: true, run: toSession(one) }) : null,
+            one.person !== "" ? copyRow({
+                key: "verb:agents:landed:try",
+                name: Words.name("verb:agents:landed:try"),
+                copy: one.person,
+                figure: false,
+                glyph: Words.glyph("verb:agents:landed:try")
+            }) : null,
+            act("read", Object.assign({
+                run: () => read(one),
+                undo: () => Sessions.unreadLandings([one.key])
+            }, Words.ending("verb:agents:landed:read")))
+        ].filter(row => row !== null);
+        const landing = one => thing({
+            thing: true,
+            key: `agents:landed:${one.key}`,
+            name: one.what,
+            side: one.ref,
+            note: one.person,
+            verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
+            glyph: Words.glyph("agents:landed"),
+            hue: "action",
+            later: goes(one) !== "",
+            run: () => {
+                if (goes(one) === "change")
+                    toChange(one)();
+                else if (goes(one) === "session")
+                    toSession(one)();
+                read(one);
+            },
+            verbs: () => parts(one)
+        });
+        return thingRow({
+            key: "agents:landed",
+            name: Words.name("agents:landed"),
+            side: String(unread.length),
+            glyph: Words.glyph("agents:landed"),
+            hue: "action"
+        }, () => unread.map(landing));
+    }
+
+    things: [toReopen, landed].filter(row => row !== null).concat([start])
 
     function everything() {
-        return all.concat(toReopen ? [toReopen] : [], [start]);
+        return all.concat([toReopen, landed].filter(row => row !== null), [start]);
     }
 
     // How every session stands, running and parked, read from Sessions

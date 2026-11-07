@@ -207,6 +207,47 @@
       "glyph": "queued"
     },
     {
+      "id": "agents:landed",
+      "in": "agents",
+      "name": "Landed",
+      "verb": "more",
+      "glyph": "done"
+    },
+    {
+      "id": "verb:agents:landed:change",
+      "command": "buffer",
+      "in": "agents:landed",
+      "name": "Go To the Change",
+      "verb": "go to",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:agents:landed:session",
+      "command": "buffer",
+      "in": "agents:landed",
+      "name": "Go To the Session",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:agents:landed:try",
+      "command": "yank",
+      "in": "agents:landed",
+      "name": "Copy the Try Line",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:agents:landed:read",
+      "command": "forget",
+      "in": "agents:landed",
+      "name": "Read",
+      "verb": "mark",
+      "glyph": "read",
+      "act": "ending",
+      "ends": "forget"
+    },
+    {
       "id": "agents:start",
       "in": "agents",
       "name": "Start a Session",

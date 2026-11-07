@@ -440,6 +440,33 @@ Singleton {
         forgottenFile.setText(JSON.stringify({ ids: forgotten }));
     }
 
+    // The landings Joel has read, by key (SessionRow.js's landed), kept by
+    // the shell, since a session's presence is the harness's to write.
+    // Whoever marks one read says which are still held (`held`), so what's
+    // kept never grows past them.
+    property var landingsRead: {
+        try {
+            const keys = JSON.parse(landingsReadFile.text()).keys;
+            return Array.isArray(keys) ? keys.map(String) : [];
+        } catch (_error) {
+            return [];
+        }
+    }
+    FileView {
+        id: landingsReadFile
+        path: Quickshell.statePath("landings-read.json")
+        blockLoading: true
+        printErrors: false
+    }
+    function readLandings(keys, held) {
+        landingsRead = held.filter(key => !keys.includes(key)).concat(keys);
+        landingsReadFile.setText(JSON.stringify({ keys: landingsRead }));
+    }
+    function unreadLandings(keys) {
+        landingsRead = landingsRead.filter(key => !keys.includes(key));
+        landingsReadFile.setText(JSON.stringify({ keys: landingsRead }));
+    }
+
     // One of them, in its own folder only: when that's gone, nothing is
     // opened, and `gone(cwd)` is told so the caller says so, since there's
     // no quest here to start afresh. Its row said so already unless the
