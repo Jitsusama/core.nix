@@ -26,7 +26,7 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import launcher_on_niri
 import pytest
@@ -288,7 +288,7 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
         SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
 
 
-def drawn_figures(shown: dict) -> dict[str, str]:
+def drawn_figures(shown: dict[str, Any]) -> dict[str, str]:
     """Each drawer fact drawing a figure, by its name, to the figure's shape."""
     drawer = shown["drawer"]
     return {

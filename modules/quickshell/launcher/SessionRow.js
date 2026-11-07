@@ -416,15 +416,12 @@ function figures(usage, today, said, named) {
         }) : "",
         cache: day && sent > 0 ? fill("cacheRead", { share: read.toFixed(1) }) : ""
     };
-    // Context carries Meter's stroke of how full it is, in the warning's
-    // colour from FULL_AT, as its row's glyph wears it (VKCF3Z, 2026-11-07).
-    const drawn = {
-        context: { shape: "stroke", values: [usage.context?.used / usage.context?.limit],
-            warn: fullness(usage) >= FULL_AT }
-    };
-    return Object.keys(known).filter(id => known[id] !== "")
-        .map(id => Object.assign({ label: named(id), value: known[id] },
-            drawn[id] ? { figure: drawn[id] } : {}));
+    // Context carries Meter's stroke of how full, warning from FULL_AT as
+    // its row's glyph does (VKCF3Z, 2026-11-07).
+    const stroke = { shape: "stroke", values: [usage.context?.used / usage.context?.limit],
+        warn: fullness(usage) >= FULL_AT };
+    return Object.keys(known).filter(id => known[id] !== "").map(id => Object.assign(
+        { label: named(id), value: known[id] }, id === "context" ? { figure: stroke } : {}));
 }
 
 // How the sessions stand together, from how each stands (`states`) and
