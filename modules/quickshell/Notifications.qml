@@ -472,6 +472,11 @@ Scope {
                 if (card)
                     found.push(card.area);
             }
+            // Emptied first, since Qt takes a list holding the same
+            // regions as no change at all, and a card that moved with its
+            // column would keep being blurred where it was. Both land in
+            // the one polish that builds what niri gets.
+            areas = [];
             areas = found;
         }
 
@@ -701,6 +706,8 @@ Scope {
                 screenHeight: window.screen ? window.screen.height : 768
                 onVisibleChanged: Qt.callLater(window.gather)
                 onHeightChanged: Qt.callLater(window.gather)
+                // It moves as what's playing comes and goes above it.
+                onYChanged: Qt.callLater(window.gather)
             }
 
             // The notices, one stack: the front one whole, and behind it
@@ -717,6 +724,9 @@ Scope {
                 height: root.shown.length === 0 || root.holding ? 0 : Math.max(root.frontHeight,
                     root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
                 visible: root.shown.length > 0 && !root.holding
+                // The cards move with it as what's above them comes and
+                // goes, which their regions follow only when told.
+                onYChanged: Qt.callLater(window.gather)
 
             Repeater {
                 id: cards
