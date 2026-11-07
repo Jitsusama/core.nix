@@ -14,13 +14,52 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 5;
+pub const SCHEMA: i64 = 6;
 
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
 /// the turns again each time cost most of a pass once they were counted
-/// in hundreds of thousands; these are a fiftieth as many.
+/// in hundreds of thousands; these are a fiftieth as many. A turn's
+/// provider and the budget its log said are among what they're split by,
+/// since the budget a turn draws on is worked out from both.
 macro_rules! hours {
+    () => {
+        "
+CREATE TABLE turn_hours (
+    hour INTEGER NOT NULL, session TEXT NOT NULL, quest TEXT, model TEXT NOT NULL,
+    kind TEXT NOT NULL, provider TEXT NOT NULL, budget TEXT, turns INTEGER NOT NULL,
+    cost REAL NOT NULL);
+CREATE INDEX turn_hours_key ON turn_hours (hour, session, quest, model, kind);
+CREATE TRIGGER turn_hours_add AFTER INSERT ON turns BEGIN
+    INSERT INTO turn_hours SELECT NEW.hour, NEW.session, NEW.quest, NEW.model, NEW.kind,
+        NEW.provider, NEW.budget, 0, 0
+        WHERE NOT EXISTS (SELECT 1 FROM turn_hours WHERE hour = NEW.hour
+            AND session = NEW.session AND quest IS NEW.quest AND model = NEW.model
+            AND kind = NEW.kind AND provider = NEW.provider AND budget IS NEW.budget);
+    UPDATE turn_hours SET turns = turns + 1, cost = cost + NEW.cost
+        WHERE hour = NEW.hour AND session = NEW.session AND quest IS NEW.quest
+            AND model = NEW.model AND kind = NEW.kind AND provider = NEW.provider
+            AND budget IS NEW.budget;
+END;
+CREATE TRIGGER turn_hours_take AFTER DELETE ON turns BEGIN
+    UPDATE turn_hours SET turns = turns - 1, cost = cost - OLD.cost
+        WHERE hour = OLD.hour AND session = OLD.session AND quest IS OLD.quest
+            AND model = OLD.model AND kind = OLD.kind AND provider = OLD.provider
+            AND budget IS OLD.budget;
+    DELETE FROM turn_hours WHERE turns = 0 AND hour = OLD.hour AND session = OLD.session
+        AND quest IS OLD.quest AND model = OLD.model AND kind = OLD.kind
+        AND provider = OLD.provider AND budget IS OLD.budget;
+END;
+CREATE TRIGGER turns_stay BEFORE UPDATE ON turns BEGIN
+    SELECT RAISE(ABORT, 'a turn is added or forgotten, never changed');
+END;
+"
+    };
+}
+
+/// The hours as the fourth shape first kept them, before they were split
+/// by provider and budget, which taking a third shape up builds.
+macro_rules! hours_4 {
     () => {
         "
 CREATE TABLE turn_hours (
@@ -52,15 +91,26 @@ END;
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 4] = [
+const UPGRADES: [&str; 5] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
-        hours!(),
+        hours_4!(),
         "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, COUNT(*), SUM(cost)
          FROM turns GROUP BY hour, session, quest, model, kind;"
     ),
     "ALTER TABLE sessions ADD COLUMN kind TEXT; ALTER TABLE sessions ADD COLUMN name TEXT;",
+    // A turn read before budgets were has none its log said, so it draws
+    // on the budget claiming its provider, or the default.
+    concat!(
+        "ALTER TABLE turns ADD COLUMN budget TEXT;
+         DROP TRIGGER turn_hours_add; DROP TRIGGER turn_hours_take; DROP TRIGGER turns_stay;
+         DROP TABLE turn_hours;",
+        hours!(),
+        "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, provider, budget,
+         COUNT(*), SUM(cost) FROM turns
+         GROUP BY hour, session, quest, model, kind, provider, budget;"
+    ),
 ];
 
 const TABLES: &str = concat!(
@@ -78,7 +128,8 @@ CREATE TABLE turns (
     input REAL NOT NULL, output REAL NOT NULL, cache_read REAL NOT NULL,
     cache_write REAL NOT NULL, cache_write_long REAL NOT NULL,
     cost REAL NOT NULL, cost_cache_write REAL NOT NULL, cost_output REAL NOT NULL,
-    gap REAL, rebuilt REAL NOT NULL, rebuilt_cost REAL NOT NULL, cause TEXT);
+    gap REAL, rebuilt REAL NOT NULL, rebuilt_cost REAL NOT NULL, cause TEXT,
+    budget TEXT);
 CREATE INDEX turns_hour ON turns (hour);
 CREATE INDEX turns_session ON turns (session);
 CREATE INDEX turns_at ON turns (at);
@@ -413,7 +464,7 @@ impl History {
                 self.db
                     .execute(
                         "INSERT INTO turns VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-                         ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                         ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                         params![
                             turn.session,
                             turn.at,
@@ -434,6 +485,7 @@ impl History {
                             turn.rebuilt,
                             turn.rebuilt_cost,
                             turn.cause.as_ref().map(crate::logs::Cause::name),
+                            turn.budget,
                         ],
                     )
                     .map_err(sql)?;
@@ -564,7 +616,8 @@ mod tests {
                     .replace(hours!(), "")
                     .replace("\n    resets REAL,", "")
                     .replace("\n    since REAL,", "")
-                    .replace(SESSIONS_5, ""),
+                    .replace(SESSIONS_5, "")
+                    .replace(TURNS_6, ""),
             )
             .unwrap();
             db.execute_batch(
@@ -594,7 +647,10 @@ mod tests {
         history
             .db
             .execute(
-                "INSERT INTO turns VALUES (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
+                "INSERT INTO turns (session, at, hour, model, provider, kind, quest, input,
+                 output, cache_read, cache_write, cache_write_long, cost, cost_cache_write,
+                 cost_output, gap, rebuilt, rebuilt_cost, cause) VALUES
+                 (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
                  0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL)",
                 params![session, crate::time::hour_start(hour), hour, quest, cost],
             )
@@ -689,7 +745,12 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(hours!(), "").replace(SESSIONS_5, ""))
+                .execute_batch(
+                    &TABLES
+                        .replace(hours!(), "")
+                        .replace(SESSIONS_5, "")
+                        .replace(TURNS_6, ""),
+                )
                 .unwrap();
             history
                 .db
@@ -709,6 +770,50 @@ mod tests {
     /// What shape 5 added to a session.
     const SESSIONS_5: &str = ",\n    kind TEXT, name TEXT";
 
+    /// What shape 6 added to a turn.
+    const TURNS_6: &str = ",\n    budget TEXT";
+
+    /// The tables as the fifth shape kept them.
+    fn fifth_shape() -> String {
+        TABLES.replace(TURNS_6, "").replace(hours!(), hours_4!())
+    }
+
+    // The fifth shape's turns, read before budgets were, gain a budget
+    // none of their logs said, and each hour's sums are split by provider
+    // and budget, so its picture reads as it did.
+    #[test]
+    fn turns_gain_a_budget_where_they_stand() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history.db.execute_batch(&fifth_shape()).unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '5');")
+                .unwrap();
+            turn(&history, "a", 10, Some("q"), 1.5);
+            turn(&history, "a", 10, Some("q"), 2.5);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        hours_hold(&history);
+        let split: (String, Option<String>, i64) = history
+            .db
+            .query_row(
+                "SELECT provider, budget, turns FROM turn_hours",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(split, ("anthropic".into(), None, 2));
+        turn(&history, "a", 10, Some("q"), 1.0);
+        hours_hold(&history);
+        assert!(!dir.path().join("history.db.schema-5").exists());
+    }
+
     // The fourth shape's sessions gain a kind and a name, none for those
     // read before, and its turns stay.
     #[test]
@@ -721,7 +826,7 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(SESSIONS_5, ""))
+                .execute_batch(&fifth_shape().replace(SESSIONS_5, ""))
                 .unwrap();
             history
                 .db

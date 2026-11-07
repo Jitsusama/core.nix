@@ -24,6 +24,7 @@
 //! the clock) is plain functions over plain data, tested without them.
 
 pub mod backtest;
+pub mod budgets;
 pub mod caps;
 pub mod cli;
 pub mod collection;

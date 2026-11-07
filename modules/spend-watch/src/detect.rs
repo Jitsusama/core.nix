@@ -1245,6 +1245,7 @@ mod tests {
                     ..Cost::default()
                 },
                 quest: None,
+                budget: None,
                 gap: None,
                 rebuilt: 0.0,
                 rebuilt_cost: 0.0,
@@ -1272,6 +1273,7 @@ mod tests {
                         ..Cost::default()
                     },
                     quest: None,
+                    budget: None,
                     gap: None,
                     rebuilt: 0.0,
                     rebuilt_cost: 100.0 * share(back),
@@ -1625,6 +1627,7 @@ mod tests {
                         ..Cost::default()
                     },
                     quest: Some("child".into()),
+                    budget: None,
                     gap: None,
                     rebuilt: 0.0,
                     rebuilt_cost: 0.0,

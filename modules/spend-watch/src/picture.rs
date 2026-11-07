@@ -141,7 +141,8 @@ impl Picture {
             .map_err(fail)?
             .unwrap_or(crate::time::hour_of(now));
         let now_hour = crate::time::hour_of(now);
-        let inputs = Inputs::read(history, first_hour, now_hour + 1)?;
+        let budgets = crate::budgets::Budgets::of(config);
+        let inputs = Inputs::read(history, &budgets, first_hour, now_hour + 1)?;
         let (ratios, shifts) = learned(&inputs, &zone);
         let pieces = inputs.pieces(&ratios);
         let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
