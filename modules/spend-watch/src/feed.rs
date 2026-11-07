@@ -316,6 +316,7 @@ fn check(record: &Record) -> Result<(), String> {
                 return Err("a cap's window is hours and its warning a fraction".into());
             }
             check_unit(cap)?;
+            check_label(&cap.label)?;
             // Each figure is a share of it; no allowance is null.
             if cap.allowance.is_some_and(|allowance| allowance <= 0.0)
                 || cap.fallback.is_some_and(|fallback| fallback <= 0.0)
@@ -329,6 +330,42 @@ fn check(record: &Record) -> Result<(), String> {
             }
         }
         Record::Health(_) | Record::Read(_) | Record::Said(_) => {}
+    }
+    Ok(())
+}
+
+/// Words a window's name never says: what the glossary's allowance
+/// replaces, with cap and quota, which say the same thing, and the
+/// glossary's own words for the kinds, since a sentence names a window
+/// with its kind after it ("near the Week allowance").
+const UNSAID: [&str; 6] = ["cap", "limit", "quota", "allowance", "budget", "window"];
+
+/// A window's name, as the contract's README has it: in Title Case, each
+/// word and each part of a hyphenated one opening with a capital, never
+/// with a figure, and in the glossary's words (VKCF3Z, 2026-11-07).
+fn check_label(label: &str) -> Result<(), String> {
+    let words: Vec<&str> = label.split_whitespace().collect();
+    if words.is_empty() {
+        return Err("a window is named".into());
+    }
+    let capitalized = |part: &str| part.chars().next().is_some_and(char::is_uppercase);
+    if !words
+        .iter()
+        .flat_map(|word| word.split('-'))
+        .all(capitalized)
+    {
+        return Err(format!("window {label:?} isn't named in Title Case"));
+    }
+    if let Some(said) = words.iter().find(|word| {
+        let bare = word
+            .trim_end_matches("'s")
+            .trim_end_matches('s')
+            .to_lowercase();
+        UNSAID.contains(&bare.as_str())
+    }) {
+        return Err(format!(
+            "window {label:?} says {said:?}: a window is named for its length"
+        ));
     }
     Ok(())
 }
@@ -555,6 +592,46 @@ mod tests {
         }
     }
 
+    // A window is named for its length in words, in Title Case, with what
+    // it's for in front, and in the glossary's words; a feed that names
+    // one otherwise has its cap refused, so every feed's names agree.
+    #[test]
+    fn a_window_is_named_as_the_contract_says() {
+        let named = |label: &str| {
+            parse(
+                &serde_json::json!({
+                    "v": 1, "kind": "cap", "name": "w", "label": label,
+                    "allowance": 300, "windowHours": 24, "spent": 0, "warn": 0.8,
+                    "state": "ok", "at": "2026-10-14T05:00:00Z",
+                })
+                .to_string(),
+            )
+        };
+        for label in [
+            "Week",
+            "Five Hours",
+            "Premium Day",
+            "Forty-Five Hours",
+            "Delta's Week",
+        ] {
+            assert!(named(label).is_ok(), "{label}: {:?}", named(label));
+        }
+        for (label, why) in [
+            ("", "is named"),
+            ("5 h", "Title Case"),
+            ("the week", "Title Case"),
+            ("Premium day", "Title Case"),
+            ("Forty-five Hours", "Title Case"),
+            ("Weekly Cap", "says \"Cap\""),
+            ("Daily Limits", "says \"Limits\""),
+            ("Week Allowance", "says \"Allowance\""),
+            ("Quota", "says \"Quota\""),
+        ] {
+            let refused = named(label).unwrap_err();
+            assert!(refused.contains(why), "{label}: {refused}");
+        }
+    }
+
     #[test]
     fn a_line_without_a_version_is_refused() {
         assert!(parse(r#"{"kind":"said","severity":"info","text":"x"}"#).is_err());
@@ -573,7 +650,7 @@ mod tests {
     #[test]
     fn a_cap_of_nothing_is_refused() {
         let line = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
             "allowance": 0, "windowHours": 168, "spent": 1, "warn": 0.9,
             "state": "refused", "at": "2026-10-14T05:00:00Z",
         });
@@ -590,7 +667,7 @@ mod tests {
     fn a_period_s_reset_is_kept_after_it_was_read() {
         let day = |resets: &str| {
             serde_json::json!({
-                "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+                "v": 1, "kind": "cap", "name": "premium", "label": "Premium Day",
                 "allowance": 1000, "windowHours": 24, "spent": 421.43, "warn": 0.5,
                 "state": "ok", "resets": resets, "at": "2026-10-14T05:40:00Z",
             })
@@ -619,7 +696,7 @@ mod tests {
     fn a_share_says_what_is_used_and_when_it_resets() {
         let share = |extra: serde_json::Value| {
             let mut line = serde_json::json!({
-                "v": 1, "kind": "cap", "name": "five-hours", "label": "5 h",
+                "v": 1, "kind": "cap", "name": "five-hours", "label": "Five Hours",
                 "budget": "claude", "unit": "share", "windowHours": 5, "warn": 0.8,
                 "state": "ok", "at": "2026-11-07T10:00:00Z",
             });
@@ -642,7 +719,7 @@ mod tests {
         let priced = serde_json::json!({"used": 0.6, "resets": resets, "allowance": 20});
         assert!(share(priced).is_err());
         let unspent = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
             "allowance": 15000, "windowHours": 168, "warn": 0.9, "state": "ok",
             "at": "2026-11-07T10:00:00Z",
         });
@@ -680,7 +757,7 @@ mod tests {
 
     fn cap(allowance: Option<f64>, at: &str, state: &str) -> Record {
         let line = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
             "allowance": allowance, "windowHours": 168, "spent": 4995, "warn": 0.9,
             "fallback": 4000, "state": state, "at": at,
         });
@@ -792,13 +869,13 @@ mod tests {
         }
         // Each cap by its own newest, since one a feed reads more often
         // mustn't hide a gap in another's.
-        for (name, at) in [
-            ("weekly", "2026-10-14T15:04:12Z"),
-            ("weekly", "2026-10-14T16:04:29Z"),
-            ("premium", "2026-10-14T16:50:00Z"),
+        for (name, label, at) in [
+            ("weekly", "Week", "2026-10-14T15:04:12Z"),
+            ("weekly", "Week", "2026-10-14T16:04:29Z"),
+            ("premium", "Premium Day", "2026-10-14T16:50:00Z"),
         ] {
             let cap = serde_json::json!({
-                "v": 1, "kind": "cap", "name": name, "label": name,
+                "v": 1, "kind": "cap", "name": name, "label": label,
                 "allowance": 15000, "windowHours": 168, "spent": 4262, "warn": 0.9,
                 "state": "ok", "at": at,
             });

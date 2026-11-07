@@ -526,7 +526,7 @@ mod tests {
         turn(&history, "plan", "claude-code", "", 84.0);
         turn(&history, "probe", "anthropic", "probe", 1.0);
         let share = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "five-hours", "label": "5 h", "unit": "share",
+            "v": 1, "kind": "cap", "name": "five-hours", "label": "Five Hours", "unit": "share",
             "used": 0.62, "windowHours": 5, "warn": 0.8, "state": "ok",
             "resets": "2026-10-14T16:20:00Z", "at": "2026-10-14T14:20:00Z",
         });

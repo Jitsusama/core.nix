@@ -1518,7 +1518,7 @@ mod tests {
     // The premium day as a feed reads it: its allowance at a moment.
     fn premium(history: &History, at: f64, allowance: f64) {
         let line = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+            "v": 1, "kind": "cap", "name": "premium", "label": "Premium Day",
             "allowance": allowance, "windowHours": 24, "spent": 0, "warn": 0.8,
             "state": "ok", "at": crate::time::rfc3339(at),
         });

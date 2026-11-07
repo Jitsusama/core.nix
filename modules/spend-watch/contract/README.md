@@ -99,7 +99,8 @@ with what it's for in front when it covers only part of the budget:
 "Five Hours", "Week", "Premium Day". It never opens with a figure and
 never says cap, limit or quota, since the glossary's words are budget,
 allowance and window. A figure says the window short itself ("62% of
-5 h"), whatever the label.
+5 h"), whatever the label. A cap whose label breaks this is refused, as
+any record that breaks the contract is.
 
 `budget` is optional, as a bill's is: the budget it caps, the feed's own
 when absent. A cap's outlook, chances and warnings count only its budget's

@@ -910,7 +910,7 @@ mod tests {
             feed: feed.into(),
             budget: String::new(),
             name: "premium".into(),
-            label: "premium day".into(),
+            label: "Premium Day".into(),
             unit: caps::Unit::Dollars,
             used: None,
             allowance: Some(1000.0),
@@ -1077,7 +1077,7 @@ mod tests {
         store(
             &history,
             &serde_json::json!({
-                "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+                "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
                 "allowance": 1000, "windowHours": 168, "spent": 100, "warn": 0.9,
                 "state": "ok", "at": crate::time::rfc3339(read),
             }),
@@ -1109,7 +1109,7 @@ mod tests {
         let history = History::memory();
         let share = |used: f64, at: f64, resets: f64| {
             serde_json::json!({
-                "v": 1, "kind": "cap", "name": "five-hours", "label": "5-hour window",
+                "v": 1, "kind": "cap", "name": "five-hours", "label": "Five Hours",
                 "budget": "claude", "unit": "share", "used": used, "windowHours": 5,
                 "warn": 0.8, "state": "ok", "at": crate::time::rfc3339(at),
                 "resets": crate::time::rfc3339(resets),
