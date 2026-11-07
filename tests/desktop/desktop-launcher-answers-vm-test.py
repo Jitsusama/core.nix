@@ -1218,7 +1218,11 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         )
         assert "Servers" not in desktop.showing()["rows"], desktop.showing()["rows"]
         desktop.down_to("Clock")
-        assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
+        # Clock always steps in, saying inside that nothing keeps the time
+        # (VKCF3Z, 2026-11-06), so Return never lands on nothing.
+        assert desktop.showing()["selected"]["verb"] == "more", desktop.showing()["selected"]
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["nothing"] == "Nothing keeps the time.")
         desktop.close_launcher()
     finally:
         desktop.machine.succeed("systemctl start chronyd")
