@@ -16,9 +16,11 @@
 // (tests/daemon-kinds.py), holds records of both over one connection,
 // and names both in the watch ahead too. A client of a daemon that says
 // only what differs, as mycelium's node does, lays a change over the
-// record it holds, letting go a field said as null. Each step waits on what the
-// client says, at most ten seconds. It exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// record it holds, letting go a field said as null. A client of a kind
+// with no records knows it holds none once it's answered, and one whose
+// answer is the whole of its kind, as the node's is, lets go what went in
+// a gap. Each step waits on what the client says, at most ten seconds.
+// It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -79,6 +81,29 @@ ShellRoot {
         changesDiffer: true
     }
 
+    // Watching a kind the node answers whole, which loses one in a gap.
+    Daemon {
+        id: whole
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "waiting"
+        changesDiffer: true
+        answersWhole: true
+        onRevisionChanged: {
+            if ("waiting:a" in held && "waiting:b" in held)
+                root.heldBoth = true;
+        }
+    }
+    property bool heldBoth: false
+
+    // Watching a kind with no records.
+    Daemon {
+        id: none
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "verdict"
+    }
+
     // The kinds a record says its watch asked for, as one line.
     function askedOf(key) {
         return JSON.stringify(kinds.held[key]?.asked ?? null);
@@ -116,7 +141,7 @@ ShellRoot {
     readonly property var steps: [
         {
             what: "no daemon is said as not answering",
-            holds: () => people.state === "not answering"
+            holds: () => people.state === "not answering" && !none.answered
         },
         {
             what: "a get with no daemon is given none at once",
@@ -215,6 +240,15 @@ ShellRoot {
             holds: () => differing.held["session:a"]?.state === "busy"
                 && differing.held["session:a"]?.heard === 1
                 && !("step" in differing.held["session:a"])
+        },
+        {
+            what: "a kind with no records is known to hold none once answered",
+            holds: () => none.answered && Object.keys(none.held).length === 0
+        },
+        {
+            what: "a whole answer after a gap lets go what went in it",
+            holds: () => root.heldBoth && whole.state === "answering"
+                && "waiting:b" in whole.held && !("waiting:a" in whole.held)
         }
     ]
 

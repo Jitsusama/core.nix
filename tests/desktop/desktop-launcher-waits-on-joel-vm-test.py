@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import (
+    HARNESS,
     LAUNCHER_OPEN,
     MISSION,
     PI_PRESENCE,
@@ -429,6 +430,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # What it needs him for, in its own file: one done in a window it names,
     # and one naming none, done in the session's own; neither ready yet.
     own = {
+        "quest": "TESTQA",
         "items": [
             {
                 "id": "try",
@@ -447,7 +449,10 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
         ],
     }
     # A quest's own, ready to do now.
-    asked = {"items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}]}
+    asked = {
+        "quest": "QUEST1",
+        "items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}],
+    }
     state = "$HOME/.local/state"
     kept(desktop, f"{state}/mission/waiting/TESTQA.json", own)
     # One ready is said as a notice the moment it's heard, named by what
@@ -509,15 +514,18 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
         desktop.as_account(f"niri msg action close-window --id {window}")
 
 
-QUESTS = "$HOME/.local/share/pi/agentic-harness.pi/quest-workflow/quests"
+INDEX = f"{HARNESS}/quest-workflow/quests.json"
 
 
-def readme(desktop: Desktop, quest: str, status: str) -> None:
-    """Write a quest's README, saying its status."""
-    desktop.as_account(
-        f"mkdir -p {QUESTS}/{quest} && printf '%s\\n' '---' 'id: {quest}'"
-        f" 'status: {status}' '---' '# {quest}' > {QUESTS}/{quest}/README.md"
-    )
+def indexed(desktop: Desktop, *quests: str) -> None:
+    """Write the harness's index of quests, which holds only those still open, as these."""
+    index = {
+        "quests": [
+            {"id": quest, "address": quest.rsplit("-", 1)[-1], "title": quest, "status": "active"}
+            for quest in quests
+        ]
+    }
+    kept(desktop, INDEX, index)
 
 
 def waiting_opened(desktop: Desktop) -> None:
@@ -546,9 +554,8 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     """Needs You drops what's found done and an ended quest's, and keeps Joel's word."""
     machine = desktop.machine
     state = "$HOME/.local/state"
-    quests = QUESTS
-    readme(desktop, "QEST-20261026-LIVEQA", "active")
-    readme(desktop, "QEST-20261026-DONEQA", "concluded")
+    # The index holds the live quest, and not the concluded one.
+    indexed(desktop, "QEST-20261026-LIVEQA")
     # A live quest's, as mesh_wait writes them: one ready, one the to do
     # daemon finds ready, one it finds done, and one for later.
     kept(
@@ -621,6 +628,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         f"{state}/mission/waiting/OLDQA.json",
         {
             "updated": said,
+            "quest": "OLDQA",
             "items": [{"id": "old", "title": "Answer the old", "ready": True, "why": "it asked"}],
         },
     )
@@ -672,8 +680,8 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         lambda _: waiting_inside(desktop) == ("1", ["Prove the Keys", "Later"]),
         timeout=dt.timedelta(seconds=60),
     )
-    # A quest that ends takes its things with it, as its README says so.
-    readme(desktop, "QEST-20261026-LIVEQA", "retired")
+    # A quest that ends takes its things with it, as it leaves the index.
+    indexed(desktop)
     retry(
         lambda _: waiting_inside(desktop) == ("nothing now", []),
         timeout=dt.timedelta(seconds=30),
@@ -681,8 +689,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     desktop.as_account(
         f"rm -r {state}/mission/waiting/LIVEQA.json {state}/mission/verdicts.json"
         f" {state}/mission/waiting/DONEQA.json {state}/mission/waiting/OLDQA.json"
-        f" {state}/mission/settled.json"
-        f" {quests}/QEST-20261026-LIVEQA {quests}/QEST-20261026-DONEQA"
+        f" {state}/mission/settled.json {INDEX}"
     )
 
 
@@ -697,6 +704,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         desktop,
         asked,
         {
+            "quest": "GONEQA",
             "items": [
                 {
                     "id": "form",
@@ -706,7 +714,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                     "steps": ["Print it", "Sign it"],
                     "doneWhen": {"by": "person"},
                 }
-            ]
+            ],
         },
     )
     # Its steps, then why only Joel can, then how it'll be known done.
@@ -873,7 +881,11 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
     desktop.as_account(f"mkdir -p {MISSION}/waiting")
     begun = desktop.mark()
     with desktop.told("shows card Sign the Form"):
-        kept(desktop, asked, {"items": [{"id": "sign", "title": "Sign the Form", "ready": True}]})
+        kept(
+            desktop,
+            asked,
+            {"quest": "TESTQA", "items": [{"id": "sign", "title": "Sign the Form", "ready": True}]},
+        )
     since = desktop.machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
     # The session's presence mirrors the item as an action it wants.
     action = {"kind": "action", "since": since, "said": "Sign the Form"}
@@ -943,7 +955,7 @@ def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop
     machine = desktop.machine
     notices = desktop.in_session("niri msg layers | grep -q notifications")
     machine.wait_until_fails(notices, timeout=dt.timedelta(seconds=30))
-    readme(desktop, "QEST-20261027-GONEQA", "active")
+    indexed(desktop, "QEST-20261027-GONEQA")
     path = f"{MISSION}/waiting/GONEQA.json"
     item = {"id": "plug", "title": "Plug in the dock", "ready": True, "minutes": 1}
     with desktop.told("shows card Plug in the dock"):
@@ -960,7 +972,7 @@ def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop
         ),
         timeout=dt.timedelta(seconds=10),
     )
-    desktop.as_account(f"rm {path} && rm -r {QUESTS}/QEST-20261027-GONEQA")
+    desktop.as_account(f"rm {path} {INDEX}")
 
 
 def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
@@ -990,17 +1002,15 @@ def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
         return "agent" in held.split()[2:]
 
     # An action its quest's file holds only for later isn't Joel's yet.
-    desktop.as_account(
-        f"printf %s {shlex.quote(json.dumps({'items': [{'title': 'Later', 'ready': False}]}))}"
-        f" > {waiting}"
-    )
+    later = {"quest": "TESTQA", "items": [{"id": "later", "title": "Later", "ready": False}]}
+    desktop.as_account(f"printf %s {shlex.quote(json.dumps(later))} > {waiting}")
     wants("action", "WCJQSG")
     time.sleep(2)
     assert not marked(), "an action held only for later marked Joel"
     # It is once the file says he can do it now.
+    now = {"quest": "TESTQA", "items": [{"id": "now", "title": "Now", "ready": True}]}
     desktop.as_account(
-        f"printf %s {shlex.quote(json.dumps({'items': [{'title': 'Now', 'ready': True}]}))}"
-        f" > {waiting}.q && mv {waiting}.q {waiting}"
+        f"printf %s {shlex.quote(json.dumps(now))} > {waiting}.q && mv {waiting}.q {waiting}"
     )
     retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
     # A question an orchestrated session asks is its orchestrator's; a yes

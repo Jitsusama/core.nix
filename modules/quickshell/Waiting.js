@@ -1,10 +1,12 @@
 // What only Joel can do, for WaitingOnYou.qml and Sessions.qml (Needs You,
-// VKCF3Z's, 2026-10-30), out of the files the agents keep, each quest's
-// waiting/<address>.json, written by the session that needs him through
-// mesh_wait; what the to do daemon found of each (verdicts.json, its
-// alone), their quests' READMEs, and what Joel has said of each (the
-// shell's own settled.json). Each item is written once, by its owner, and
-// says how it knows it's done, so this decides which stand, now or later:
+// VKCF3Z's, 2026-10-30), out of what the mycelium node serves of the files
+// the agents keep: each quest's waiting/<address>.json, written by the
+// session that needs him through mesh_wait, as `waiting` records; what the
+// to do daemon found of each (verdicts.json, its alone), as `verdict`
+// records; the quests still open, as `quest` records; and what Joel has
+// said of each (the shell's own settled.json). Each item is written once,
+// by its owner, and says how it knows it's done, so this decides which
+// stand, now or later:
 // one goes once its check passes or its signal comes, its quest ends, its
 // owner takes it out or Joel says it's done; one is ready once its owner or
 // a verdict says so. Nothing goes by its age. Kept apart from Quickshell's
@@ -12,24 +14,75 @@
 // (tests/waiting-on-you.qml).
 .pragma library
 
-// A quest's README status that means it's over, so nothing of it waits.
+// A quest's status that means it's over, so nothing of it waits.
 const ENDED = ["concluded", "retired"];
 
-// A path's folders and its .json, which a file's name is without.
-const FOLDERS = /^.*\//;
-const JSON_END = /\.json$/;
-// A quest's id, which a README stands behind.
+// A quest's id, which the harness's index of quests stands behind; an
+// item of anything else, as Slack's sign-in is, has no quest to end.
 const QUEST = /^QEST-/;
-// A README's front-matter line naming its status.
-const STATUS = /^status:\s*(\S+)/;
+// The front of each kind's keys, as the node gives them (mycelium's
+// PROTOCOL.md, The Daemon Interface): `waiting:<quest>:<id>`, a folder's
+// file keying its records by its `quest`; `verdict:<quest>:<id>`; and
+// `quest:<id>`.
+const WAITING = "waiting:";
+const VERDICT = "verdict:";
+const QUEST_KEY = "quest:";
 
-// Each file as a source of items, by its file's name, which is its
-// quest's short address: `from`, who keeps it.
-function sources(files) {
-    return Object.keys(files).sort().map(path => ({
-        from: path.replace(FOLDERS, "").replace(JSON_END, ""),
-        read: files[path]
-    }));
+// A quest's short address, its id's last part, as the harness names its
+// file and its sessions by it: `from`, who keeps an item.
+function addressOf(quest) {
+    return (quest.split("-").pop() ?? quest).toUpperCase();
+}
+
+// Each item the node serves, from its `waiting` records by key, with its
+// quest, the file's unless the item names its own, and who keeps it; one
+// with no title says nothing. They're in the order their owners raised
+// them within each quest, which is how its file lists them, since the
+// node gives a file's records by id.
+function served(held) {
+    const listed = [];
+    for (const key of Object.keys(held ?? {}).sort()) {
+        const raw = held[key];
+        if (!key.startsWith(WAITING) || typeof raw?.title !== "string" || raw.title === "") {
+            continue;
+        }
+        const rest = key.slice(WAITING.length);
+        const file = rest.slice(0, rest.indexOf(":"));
+        const quest = typeof raw.quest === "string" ? raw.quest : file;
+        listed.push({ file, raised: typeof raw.raisedAt === "string" ? raw.raisedAt : "",
+            at: listed.length, item: Object.assign({}, raw, { quest, from: addressOf(file) }) });
+    }
+    return listed.sort((one, other) => one.file.localeCompare(other.file)
+        || one.raised.localeCompare(other.raised) || one.at - other.at).map(one => one.item);
+}
+
+// The to do daemon's verdicts, from its `verdict` records by key, as
+// { items: { identity: { state, at, how } } }.
+function verdictsOf(held) {
+    const items = {};
+    for (const key of Object.keys(held ?? {})) {
+        if (key.startsWith(VERDICT)) {
+            items[key.slice(VERDICT.length)] = held[key];
+        }
+    }
+    return { items };
+}
+
+// Each quest `named` that the index holds, by id, as its status and
+// title; null for one it doesn't, since it holds only the quests still
+// open, so one gone from it has ended. Before the node has answered,
+// `index` is null, and nothing is known of any.
+function owners(index, named) {
+    const known = {};
+    if (index === null || index === undefined) {
+        return known;
+    }
+    for (const quest of named) {
+        const record = index[QUEST_KEY + quest];
+        known[quest] = record ? { status: String(record.status ?? ""),
+            title: String(record.title ?? "") } : null;
+    }
+    return known;
 }
 
 // Whether Joel can do an item now: once the to do daemon found it ready,
@@ -126,32 +179,12 @@ function watched(item, live) {
     return live[owner] === true;
 }
 
-// Whether a quest has ended, from what its README said: unknown until it's
-// read, so a shell just started drops nothing; ended when the README is
-// missing or says concluded or retired.
-function ended(owners, quest) {
-    const owner = owners[quest];
+// Whether a quest has ended, from what the index of quests said: unknown
+// until the node answers, so a shell just started drops nothing; ended
+// once the index no longer holds it, or says it's concluded or retired.
+function ended(known, quest) {
+    const owner = known[quest];
     return owner === null || (typeof owner?.status === "string" && ENDED.includes(owner.status));
-}
-
-// Each item from a source, with who it's from, whether it's ready and since
-// when it's been said (its own `since`, else its file's `updated`), or null
-// for one that isn't an item.
-function itemsOf(source) {
-    const read = source.read;
-    const listed = Array.isArray(read) ? read : read?.items;
-    const quest = typeof read?.quest === "string" ? read.quest : source.from;
-    return (Array.isArray(listed) ? listed : [])
-        .filter(raw => typeof raw?.title === "string" && raw.title !== "")
-        .map(raw => Object.assign({}, raw, {
-            quest: typeof raw.quest === "string" ? raw.quest : quest,
-            from: source.from,
-            // Its file's version: 2 since mesh_wait writes how each is done.
-            v: typeof read?.v === "number" ? read.v : 1,
-            verdict: null,
-            since: Date.parse(raw.since ?? read?.updated ?? ""),
-            putOff: false
-        }));
 }
 
 // Everything that waits, in two lists: `now`, what Joel can do now; and
@@ -161,29 +194,23 @@ function itemsOf(source) {
 // waits under Later until its owner says something new of it. The to do
 // daemon's `verdicts` are { items: { identity: { state, at, how } } }: one
 // done is gone, one ready is for now.
-function sorted(files, owners, settled, verdicts) {
+function sorted(items, known, settled, verdicts) {
     const now = [];
     const later = [];
     const done = settled?.done ?? {};
     const notNow = settled?.notNow ?? {};
     const found = verdicts?.items ?? {};
-    let listed = 0;
-    for (const source of sources(files)) {
-        for (const item of itemsOf(source)) {
-            item.listed = listed;
-            listed += 1;
-            const verdict = found[identity(item)] ?? null;
-            const gone = (QUEST.test(item.quest) && ended(owners, item.quest))
-                || done[identity(item)] !== undefined || verdict?.state === "done";
-            if (gone) {
-                continue;
-            }
-            item.ready = readyOf(item, verdict);
-            item.verdict = verdict;
-            item.putOff = notNow[identity(item)]?.said === said(item);
-            (item.ready && !item.putOff ? now : later).push(item);
+    items.forEach((one, listed) => {
+        const verdict = found[identity(one)] ?? null;
+        const gone = (QUEST.test(one.quest) && ended(known, one.quest))
+            || done[identity(one)] !== undefined || verdict?.state === "done";
+        if (gone) {
+            return;
         }
-    }
+        const item = Object.assign({}, one, { listed, ready: readyOf(one, verdict), verdict,
+            putOff: notNow[identity(one)]?.said === said(one) });
+        (item.ready && !item.putOff ? now : later).push(item);
+    });
     return { now: now.sort(before), later: later.sort(before) };
 }
 
@@ -199,34 +226,14 @@ function settle(settled, item, how, at) {
     return next;
 }
 
-// The quests named by any file, whose READMEs say whether they've ended.
-function quests(files) {
+// The quests the items name, whose place in the index says whether
+// they've ended.
+function quests(items) {
     const named = {};
-    for (const source of sources(files)) {
-        for (const item of itemsOf(source)) {
-            named[item.quest] = true;
-        }
+    for (const item of items) {
+        named[item.quest] = true;
     }
     return Object.keys(named).filter(quest => QUEST.test(quest)).sort();
-}
-
-// What a README says of its quest: its status, from its front matter, or
-// "" when it gives none, and its title, its first heading.
-function readme(text) {
-    const lines = text.split("\n");
-    let status = "";
-    let body = 0;
-    if (lines[0].trim() === "---") {
-        body = lines.findIndex((line, i) => i > 0 && line.trim() === "---") + 1;
-        for (const line of lines.slice(1, body)) {
-            const found = STATUS.exec(line);
-            if (found) {
-                status = found[1];
-            }
-        }
-    }
-    const heading = lines.slice(body).find(line => line.startsWith("# "));
-    return { status, title: heading ? heading.slice(2).trim() : "" };
 }
 
 // Who has something Joel can do now, by every name a session's presence

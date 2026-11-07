@@ -5,7 +5,9 @@ argument: hello, and a watch, answered with one record for each key asked, or el
 kind asked, `<kind>:one`. Each record says the kinds its watch asked for, so tests/daemon.qml can
 tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone.
 A watch of sessions is answered as mycelium's node answers one: a record whole, then a change
-saying only the fields that differ, one dropped as null.
+saying only the fields that differ, one dropped as null. A watch of what waits is answered with
+two records the first time, and the connection then dropped, and with one of them alone after,
+as the node's whole answer is once one went in a gap; one of verdicts with none.
 """
 
 import json
@@ -13,6 +15,10 @@ import socket
 import sys
 import threading
 from pathlib import Path
+
+# How many watches of what waits have been answered, so the first is told both and the rest one.
+WAITED = {"count": 0}
+WAITED_LOCK = threading.Lock()
 
 
 def kinds_of(asked: dict[str, object]) -> list[str]:
@@ -38,6 +44,15 @@ def answer(asked: dict[str, object]) -> list[dict[str, object]]:
                 "changed": [{"key": "session:a", "state": "busy", "step": None}],
             },
         ]
+    if asked.get("kind") == "waiting":
+        with WAITED_LOCK:
+            WAITED["count"] += 1
+            first = WAITED["count"] == 1
+        waits = ["waiting:a", "waiting:b"] if first else ["waiting:b"]
+        waiting = [{"key": key, "kind": "waiting", "heard": 1} for key in waits]
+        return [{"id": asked.get("id"), "records": waiting}]
+    if asked.get("kind") == "verdict":
+        return [{"id": asked.get("id"), "records": []}]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (
@@ -63,6 +78,9 @@ def serve(client: socket.socket) -> None:
                 for said in answer(asked):
                     lines.write(json.dumps(said) + "\n")
                 lines.flush()
+                # The first watch of what waits is followed by a gap.
+                if asked.get("kind") == "waiting" and WAITED["count"] == 1:
+                    return
 
 
 def main() -> None:

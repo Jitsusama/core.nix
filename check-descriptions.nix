@@ -815,11 +815,12 @@
     realm it doesn't join are refused
   '';
   needs-you-is-true = ''
-    over the agents' own files, Needs You holds now only what Joel can do now, a timed one first
+    over the agents' own files as the node serves them, Needs You holds now only what Joel can do
+    now, a timed one first
     and then the quickest, puts what he can't yet or has put off under Later, saying what each
     waits for, keeps gone what he or the to do daemon found done, says when nothing watches one,
-    keeps nothing of an ended quest and drops nothing by its age, and counts a session's want as
-    his only while its quest has something ready or the question is his
+    keeps nothing of a quest gone from the index and drops nothing by its age, and counts a
+    session's want as his only while its quest has something ready or the question is his
   '';
   neovim-binds-every-key = ''
     Neovim binds every key keys.nix names and only those, each action provided, in its scope's
@@ -1949,8 +1950,9 @@
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
-    key, what was held stays through a gap unless the client lets it go there, and a client of two
-    kinds names both in every watch
+    key, what was held stays through a gap unless the client lets it go there, a client of two
+    kinds names both in every watch, a kind with none is known to hold none once answered, and a
+    whole answer after a gap lets go what went in it
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
