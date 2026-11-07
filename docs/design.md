@@ -1189,7 +1189,10 @@ works the same way everywhere.
   200k"), Last Turn, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.
   Context draws Meter's stroke of how full after its value, in warning
-  from 80%. A drawer's fact may carry a figure so, a stroke or Graph's
+  from 80%, and its own spend today Graph's spark of its hours, scaled
+  to the day's busiest hour of any session, so a quiet one reads quiet;
+  Context Rebuilt says what rebuilding its context cost today, an amount
+  hidden while sharing and unsaid under a cent. A drawer's fact may carry a figure so, a stroke or Graph's
   spark, after its value on the value's baseline. Where it won't fit
   beside the name, the fact is laid under its name, as a long value is;
   where it still won't, it gives way before the value. It moves no other

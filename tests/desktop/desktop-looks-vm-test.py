@@ -1701,6 +1701,16 @@ TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQE": 2, FOLD: 1}
 SPENT = {
     "v": 2,
     "sessions": {"01a1face-test": "$3.10", "01a1face-qd": "$5.10"},
+    # How the builder's day went, its hours from midnight on the day's largest one.
+    "sessionsToday": {
+        "01a1face-qd": {
+            "graph": {
+                "shape": "spark",
+                "values": [0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0.4, 0.2, 0.7, 1, 0.5, 0.3],
+            },
+            "rebuilt": "$1.20",
+        }
+    },
     "helpers": {},
     "families": {
         "QEST-20261022-TESTQA": {"all": "$14.20", "own": "$3.10", "under": "$11.10"},
@@ -1927,6 +1937,8 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     drawer = desktop.showing()["drawer"]
     drawn = dict(zip(drawer["drawnFacts"], drawer["figures"], strict=True))
     assert drawn["Context"] == "stroke", f"at {shot}: {drawer}"
+    # Its spend today carries its hours as Graph's spark.
+    assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
     desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 

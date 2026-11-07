@@ -271,18 +271,31 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
     figures = ["Model", "Context", "Last Turn", "Turns Today", "Tokens", "Cache"]
     shell.launcher_until(lambda shown: shown["drawer"]["facts"][-6:] == figures)
     # Context alone draws a figure beside its value, Meter's stroke of how full.
-    shell.launcher_until(
-        lambda shown: (
-            {
-                fact: figure
-                for fact, figure in zip(
-                    shown["drawer"]["drawnFacts"], shown["drawer"]["figures"], strict=True
-                )
-                if figure
-            }
-            == {"Context": "stroke"}
+    shell.launcher_until(lambda shown: drawn_figures(shown) == {"Context": "stroke"})
+    # Once spend-watch says how its day went, its spend today carries its hours as a
+    # spark, and what rebuilding its context cost follows, with no key pressed.
+    day = {"graph": {"shape": "spark", "values": [0, 0.4, 1]}, "rebuilt": "$1.20"}
+    spent = {"sessions": {"s-listen": "$4.20"}, "sessionsToday": {"s-listen": day}}
+    SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214", **spent}))
+    try:
+        shell.launcher_until(
+            lambda shown: (
+                drawn_figures(shown) == {"Context": "stroke", "Spent Today": "spark"}
+                and "Context Rebuilt" in shown["drawer"]["facts"]
+            )
         )
-    )
+    finally:
+        SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
+
+
+def drawn_figures(shown: dict) -> dict[str, str]:
+    """Each drawer fact drawing a figure, by its name, to the figure's shape."""
+    drawer = shown["drawer"]
+    return {
+        fact: figure
+        for fact, figure in zip(drawer["drawnFacts"], drawer["figures"], strict=True)
+        if figure
+    }
 
 
 def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: Shell) -> None:

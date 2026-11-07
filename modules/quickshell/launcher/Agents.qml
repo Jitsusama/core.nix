@@ -323,7 +323,13 @@ Provider {
     // sessions'.
     function drawerOf(session, quest, spent, family) {
         const presence = session.presence ?? {};
+        // How its day went, as spend-watch says: its hours carry no dollars,
+        // but what rebuilding its context cost is an amount, hidden while
+        // the screen is shared.
+        const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
         return SessionRow.drawer(session.title, presence, {
+            hours: day?.graph ?? null,
+            rebuilt: Quiet.sharing ? "" : String(day?.rebuilt ?? ""),
             spent: family ? word("allOf", { spent: family.all }) : spent,
             own: family ? family.own : "",
             under: family ? family.under : "",
