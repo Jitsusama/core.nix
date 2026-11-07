@@ -24,6 +24,9 @@ public:
 
     // What libqalculate makes of an expression, as maths.cpp lists it.
     Q_INVOKABLE QVariantMap calculate(const QString &expression) const;
+    // The same, given at most `waits` milliseconds rather than the usual
+    // patience, so a check can make one late on purpose.
+    Q_INVOKABLE QVariantMap calculate(const QString &expression, int waits) const;
 
 private:
     // The last expression asked and what it gave, since the launcher asks

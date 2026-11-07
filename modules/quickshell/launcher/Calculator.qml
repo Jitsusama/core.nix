@@ -18,7 +18,7 @@ Provider {
     Component.onCompleted: Maths.prepare()
 
     function answer(typed) {
-        const said = Numbers.answer(typed, settings, Maths);
+        const said = Numbers.answer(typed, settings, heeding(Maths, typed));
         if (!said)
             return null;
         return {

@@ -14,7 +14,7 @@ Provider {
     examples: ["5 km in mi", "350 f in c", "25ms", "5 ft + 3 in in cm"]
 
     function answer(typed) {
-        const said = Units.answer(typed, settings, Maths);
+        const said = Units.answer(typed, settings, heeding(Maths, typed));
         if (!said)
             return null;
         return {
