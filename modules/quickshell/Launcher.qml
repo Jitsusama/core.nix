@@ -5062,6 +5062,28 @@ Scope {
     // selected, its foot would go on naming the d that's done.
     function changedRow() {
         readSelectedActions();
+        refreshShown();
+    }
+
+    // What an act changed, shown on the frame after its key: every source
+    // what's shown is made from is made again at once, whether or not it
+    // says it changed, since a source that never says so left d's change
+    // unseen until another made the list again (Joel, 2026-11-07: "doing a
+    // dd on ntofications does not update the screen wright away"). Each
+    // place held and what holds it are read, as refreshNow reads them, and
+    // out at the top what a search ended with; a source that changed
+    // nothing draws nothing. Every other row out at the top is its
+    // source's own, which says when it changes.
+    function refreshShown() {
+        const first = held.length > 0 ? held[0].row : null;
+        const fromTop = first !== null && !first.from && !first.category;
+        const shows = source => held.some(step => step.row.from === source
+                || step.row.endedBy === source
+                || !!step.row.category && holdsFrom(step.row.category, source))
+            || fromTop && source.things.some(own => own.key === first.key)
+            || first === null && matches.some(row => row.endedBy === source);
+        for (const source of sources.filter(shows))
+            refreshed(source);
     }
 
     // u: the last change taken back, or as many as counted, each action put
@@ -5514,6 +5536,7 @@ Scope {
                 acted = { key: choice.key, typed: typed, depth: held.length };
             }
             choice.run();
+            refreshShown();
             return;
         }
         // One that opens a collection steps into it, the launcher kept open.

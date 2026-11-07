@@ -313,6 +313,9 @@ Provider {
     // Made again only when the history changes, each with its age as of
     // when it's shown.
     readonly property var all: Notices.history.map(notice => made(notice))
+    // Said, so a notice read, forgotten or arriving shows while the launcher
+    // holds the list, rather than once something else makes it again.
+    onAllChanged: changed()
 
     // The same rows, without saying how long ago each came.
     function looksThrough() {
