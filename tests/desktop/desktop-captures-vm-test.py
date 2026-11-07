@@ -99,7 +99,7 @@ def test_print_in_capture_closes_it_and_takes_what_is_beneath(desktop: Desktop) 
     quiet(desktop)
     bare = desktop.settled_screen("capture-beneath-closed")
     desktop.capture()
-    seen = desktop.settled_screen("capture-beneath-open")
+    seen = the_card_drawn(desktop, bare, "capture-beneath-open")
     with desktop.captured():
         machine.send_key("sysrq")
     desktop.launcher_until(lambda now: not now["open"])
@@ -183,7 +183,36 @@ def the_launcher_on_a_row(desktop: Desktop) -> tuple[Image.Image, Image.Image, J
     desktop.launcher_ready()
     desktop.down_to(desktop.showing()["rows"][1])
     shown = desktop.showing()
-    return bare, desktop.settled_screen("capture-the-launcher-open"), shown
+    return bare, the_card_drawn(desktop, bare, "capture-the-launcher-open"), shown
+
+
+def the_card_drawn(desktop: Desktop, bare: Image.Image, name: str) -> Image.Image:
+    """Give the screen once the launcher's card is in its pixels, against the screen without it.
+
+    The launcher says it's open and holds the keys before niri shows its frame, and a guest
+    stalled for a moment holds still as well, so a screen taken once it's still can come
+    before the card: the net's run at 1e9c63e6 took the screen beneath it twice. It's taken
+    again until the card covers enough of it to judge a picture by.
+    """
+    screens: list[Image.Image] = []
+
+    def drawn(_: bool) -> bool:
+        screens.append(desktop.settled_screen(name))
+        return covered(screens[-1], bare) > CARD_LEAST
+
+    retry(drawn, timeout=WAKING)
+    return screens[-1]
+
+
+def covered(one: Image.Image, other: Image.Image) -> float:
+    """Give how much of the screen differs between two, as far as the card is drawn apart."""
+    return ImageStat.Stat(card_between(one, other)).mean[0] / 255
+
+
+def card_between(one: Image.Image, other: Image.Image) -> Image.Image:
+    """Give where two screens differ as the card does, past the clock and a cursor, as a mask."""
+    differs = ImageChops.difference(one, other).convert("L")
+    return differs.point(lambda v: 255 if v > CARD_APART else 0)
 
 
 def quiet(desktop: Desktop) -> None:
@@ -240,9 +269,8 @@ def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> B
     the other there; the rest of the screen is the same in both, and says nothing. Gives
     the box of the screens what was taken fills.
     """
-    differs = ImageChops.difference(like, unlike).convert("L")
-    card = differs.point(lambda v: 255 if v > CARD_APART else 0)
-    shown = ImageStat.Stat(card).mean[0] / 255
+    card = card_between(like, unlike)
+    shown = covered(like, unlike)
     assert shown > CARD_LEAST, f"the card covers only {shown:.1%} of the screen, too little"
     box = where_taken(taken, like, card)
     like, unlike, card = like.crop(box), unlike.crop(box), card.crop(box)
