@@ -570,13 +570,16 @@ pub fn pr_of(subject: &str) -> Option<u64> {
     rest.split_whitespace().next()?.parse().ok()
 }
 
-/// Clear the hold once its revert is on main.
+/// Clear the hold once its revert is on main, fetching main first when the
+/// revert isn't on it as last fetched: on 7 November a revert merged at
+/// 16:02, and the hold waited 13 minutes for the next round's fetch while
+/// the round named flaky tests' owners.
 fn clear_if_reverted(world: &dyn World, state: &State) -> Result<(), String> {
     let hold = state.hold();
     if let Some(revert) = hold
         .as_ref()
         .and_then(|hold| hold["revert_commit"].as_str())
-        && world.on_main(revert)
+        && (world.on_main(revert) || (world.head().is_ok() && world.on_main(revert)))
     {
         state.clear_hold()?;
         state.say(&format!(
@@ -928,17 +931,22 @@ fn broke(
         "at": now(),
     }))?;
     match reverted {
-        Ok(landed) => state.say(&format!(
-            "reverted {} for {test} in #{}",
-            short(&commit),
-            landed.pr
-        )),
-        Err(why) => state.say(&format!(
-            "couldn't revert {} for {test}: {why}",
-            short(&commit)
-        )),
+        Ok(landed) => {
+            state.say(&format!(
+                "reverted {} for {test} in #{}",
+                short(&commit),
+                landed.pr
+            ));
+            clear_if_reverted(world, state)
+        }
+        Err(why) => {
+            state.say(&format!(
+                "couldn't revert {} for {test}: {why}",
+                short(&commit)
+            ));
+            Ok(())
+        }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -980,6 +988,8 @@ mod tests {
         build_seen: Condvar,
         waited_out: Mutex<Vec<String>>,
         reaches_main_after: usize,
+        lands_on_fetch: bool,
+        fetched_since_revert: Mutex<bool>,
         put_in_quarantine: Mutex<Vec<String>>,
         held: Option<String>,
     }
@@ -1002,6 +1012,7 @@ mod tests {
             self.held.clone()
         }
         fn head(&self) -> Result<String, String> {
+            *self.fetched_since_revert.lock().unwrap() = true;
             Ok(self.head.clone())
         }
         fn merges(&self, _: &str, _: &str) -> Result<Vec<String>, String> {
@@ -1085,6 +1096,7 @@ mod tests {
             self.quarantined.clone()
         }
         fn revert(&self, bad: &Bad) -> Result<Merged, String> {
+            *self.fetched_since_revert.lock().unwrap() = false;
             self.reverted.lock().unwrap().push(bad.commit.clone());
             self.revert_seen.notify_all();
             Ok(Merged {
@@ -1106,8 +1118,13 @@ mod tests {
             })
         }
         /// A revert is on main once `reaches_main_after` runs have been
-        /// built, and never when it's zero.
+        /// built, and never when it's zero; with `lands_on_fetch`, once
+        /// main is fetched after it's made.
         fn on_main(&self, _: &str) -> bool {
+            if self.lands_on_fetch {
+                return !self.reverted.lock().unwrap().is_empty()
+                    && *self.fetched_since_revert.lock().unwrap();
+            }
             self.reaches_main_after > 0 && self.built().len() >= self.reaches_main_after
         }
         fn wait(&self, _: u64) {}
@@ -1358,6 +1375,29 @@ mod tests {
         assert!(
             world.waited_out.lock().unwrap().is_empty(),
             "the search began while main's newest head was still being tried"
+        );
+    }
+
+    #[test]
+    fn a_hold_is_cleared_as_its_revert_merges() {
+        let state = state("cleared-as-it-merges");
+        state.set_heads("s", "s").unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            lands_on_fetch: true,
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert!(
+            state.hold().is_none(),
+            "the revert merged, so nothing waits for the next round"
         );
     }
 

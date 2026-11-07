@@ -153,7 +153,7 @@ which merge broke it the moment it does, while the round's other tests
 run on, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, reverts it through a PR merged on its own checks, clears
-the hold as each test ends once the revert is on main, and writes a
+the hold as that PR merges, or as a test ends once it's on main, and writes a
 finding for its owner in `~/.local/state/net/findings`. A check
 that fails before the revert too doesn't stop it, or one break on main
 would keep another in place. A test that failed before that merge too, or
