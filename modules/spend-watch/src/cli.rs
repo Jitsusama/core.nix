@@ -217,14 +217,40 @@ fn show(path: &std::path::Path, collection: bool) -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
+/// How old the daemon's last word on the budgets may be and still be how
+/// they stand: past its idle wait between passes, by a minute.
+const WRITTEN_LASTS: f64 = 360.0;
+
+/// The budgets as the daemon's last pass wrote them, while that's recent
+/// enough to be how they stand. Every pi session asks for them, all at once
+/// after an update reloads them, so the daemon's answer spares each a pass
+/// of its own over the whole history.
+fn written_budgets(config: &Config, now: f64) -> Option<String> {
+    let text = std::fs::read_to_string(config.runtime().ok()?.join("budgets.json")).ok()?;
+    let written: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let at = crate::time::parse(written.get("at")?.as_str()?)?;
+    let current = written.get("v")?.as_u64()? == u64::from(crate::standing::VERSION);
+    (current && (0.0..=WRITTEN_LASTS).contains(&(now - at)))
+        .then(|| serde_json::to_string_pretty(&written).ok())
+        .flatten()
+        .map(|text| text + "\n")
+}
+
 /// `budgets`: how each budget stands, as JSON for the harness, or a line
-/// each for a person.
+/// each for a person. Without a session, the JSON is the daemon's last
+/// pass's while it's recent.
 fn budgets(
     path: &std::path::Path,
     format: Format,
     session: Option<&str>,
 ) -> Result<String, String> {
     let config = Config::read(path)?;
+    if session.is_none()
+        && format == Format::Json
+        && let Some(written) = written_budgets(&config, crate::time::now())
+    {
+        return Ok(written);
+    }
     let (_, picture) = picture(&config)?;
     let standing = crate::standing::standing(&picture, &config, session);
     if format == Format::Json {
@@ -370,4 +396,36 @@ fn contract(file: &str) -> Result<String, String> {
         "{file}: {lines} lines keep the contract ({}).\n",
         counted.join(", ")
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The daemon's last word on the budgets answers while it's within an
+    // idle wait and a minute, and not once it's older, from a shape this
+    // one doesn't write, or from the future, so a stopped daemon's file
+    // falls back to a pass of the command's own.
+    #[test]
+    fn the_budgets_are_answered_from_the_last_pass_while_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC", "runtime": dir.path(),
+        }))
+        .unwrap();
+        let at = crate::time::parse("2026-10-14T12:00:00Z").unwrap();
+        assert_eq!(written_budgets(&config, at), None);
+        let write = |v: u32| {
+            let written = serde_json::json!({"v": v, "at": "2026-10-14T12:00:00Z", "budgets": []});
+            std::fs::write(dir.path().join("budgets.json"), written.to_string()).unwrap();
+        };
+        write(crate::standing::VERSION);
+        let answered = written_budgets(&config, at + WRITTEN_LASTS).unwrap();
+        assert!(answered.contains("\"budgets\": []"), "{answered}");
+        assert_eq!(written_budgets(&config, at + WRITTEN_LASTS + 1.0), None);
+        assert_eq!(written_budgets(&config, at - 1.0), None);
+        write(crate::standing::VERSION + 1);
+        assert_eq!(written_budgets(&config, at), None);
+    }
 }

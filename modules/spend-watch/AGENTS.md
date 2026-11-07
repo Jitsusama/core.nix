@@ -5,7 +5,8 @@ pi's session logs as they grow, its agents' as well (a swarm's, a review
 council's), the harness's subagent runs and its quests, and the feeds a
 machine names for a provider's bill; keeps every dollar by
 hour in `history.db`; and writes `status.json` and `collection.json` for the
-shell, the overview's row, the margin and the collection on Super+U.
+shell, the overview's row, the margin and the collection on Super+U, and
+`budgets.json` for pi's footer.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
 feed speaks.
 
@@ -135,7 +136,11 @@ feed speaks.
   they're added, and a pass reads those rather than the turns. It runs at
   most every 30 seconds while the logs grow and every five minutes while
   they don't; the heartbeat alone is written every 30 seconds, so the shell
-  can tell a stopped daemon from a quiet one.
+  can tell a stopped daemon from a quiet one. Every pi session asks
+  `budgets --json` as it starts, all of them at once when an update
+  reloads them, so without a session it answers with the last pass's
+  `budgets.json` while that's within six minutes, rather than a pass each
+  that took 20 seconds under load (2026-11-07).
 
 ## Working on It
 

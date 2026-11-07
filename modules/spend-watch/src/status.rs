@@ -1,8 +1,10 @@
 //! What the shell draws, written to the runtime directory: `status.json`,
 //! small, for the overview's row and the margin, with a heartbeat so the
-//! shell knows the watch still runs; and `collection.json` (the
-//! collection module), larger, for the launcher, written only when it
-//! changes. Every string is ready to draw, each with a quiet form for
+//! shell knows the watch still runs; `collection.json` (the collection
+//! module), larger, for the launcher, written only when it changes; and
+//! `budgets.json`, how each budget stands as `budgets --json` says it, for
+//! pi's footer, which reads it rather than running a pass of its own in
+//! every session. Every string is ready to draw, each with a quiet form for
 //! while the screen is shared, so the shell does no arithmetic and formats
 //! no money.
 
@@ -11,6 +13,7 @@ use crate::findings::{Finding, Severity};
 use crate::money::{dollars, maybe_about, whole};
 use crate::picture::{Figure, Picture};
 use crate::series::Source;
+use crate::standing::Standing;
 use serde::Serialize;
 use std::path::Path;
 
@@ -281,9 +284,11 @@ pub fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
 }
 
 /// Writes what changed: the status always (its heartbeat moves), the
-/// collection only when it differs from what was last written.
+/// collection and the budgets only when they differ from what was last
+/// written.
 pub struct Writer {
     last_collection: String,
+    last_budgets: String,
     /// The level the tokens' warning was last at, which it keeps until
     /// the time left is well past it.
     pub tokens: Option<crate::tokens::Level>,
@@ -293,6 +298,7 @@ impl Writer {
     pub fn new() -> Writer {
         Writer {
             last_collection: String::new(),
+            last_budgets: String::new(),
             tokens: None,
         }
     }
@@ -302,11 +308,29 @@ impl Writer {
         runtime: &Path,
         status: &Status,
         collection: &Collection,
+        budgets: Option<&Standing>,
     ) -> Result<(), String> {
         let text = serde_json::to_string(collection).map_err(|error| error.to_string())?;
         if text != self.last_collection {
             write_atomic(&runtime.join("collection.json"), &text)?;
             self.last_collection = text;
+        }
+        // A held watch knows no budgets, so what it last wrote is taken
+        // away rather than left to be read as current.
+        let path = runtime.join("budgets.json");
+        if let Some(budgets) = budgets {
+            let text = serde_json::to_string(budgets).map_err(|error| error.to_string())?;
+            if text != self.last_budgets {
+                write_atomic(&path, &text)?;
+                self.last_budgets = text;
+            }
+        } else {
+            self.last_budgets.clear();
+            if let Err(error) = std::fs::remove_file(&path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                return Err(format!("removing {}: {error}", path.display()));
+            }
         }
         write_atomic(
             &runtime.join("status.json"),
@@ -355,6 +379,31 @@ mod tests {
             0
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");
+    }
+
+    // A pass writes how the budgets stand as `budgets --json` says it, for
+    // pi's footer to read, and a held watch takes it away, knowing none.
+    #[test]
+    fn the_budgets_are_written_beside_the_collection() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = crate::time::parse("2026-10-14T12:00:00Z").unwrap();
+        let config = config();
+        let picture = Picture::read(&History::memory(), &config, now).unwrap();
+        let standing = crate::standing::standing(&picture, &config, None);
+        let collection = crate::collection::collection(&picture, &[], &config);
+        let mut writer = Writer::new();
+        let shown = status(&picture, &[]);
+        writer
+            .write(dir.path(), &shown, &collection, Some(&standing))
+            .unwrap();
+        let path = dir.path().join("budgets.json");
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written, serde_json::to_value(&standing).unwrap());
+        writer
+            .write(dir.path(), &held(now), &crate::collection::held(9), None)
+            .unwrap();
+        assert!(!path.exists());
     }
 
     // The margin's header says how today stands beside a five-figure day,
