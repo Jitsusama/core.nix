@@ -190,6 +190,68 @@ function leaves(inTree, needs, said) {
     return String(said.stay ?? "").replace("{kept}", `${place} ${said.and} ${items}`);
 }
 
+// A change as a landing names it, `repo#number`, never a quest document's
+// item, `PLAN-20261106-2ZPAI5#14`, and the only link a landing may open,
+// one on the web (the harness's landings.ts).
+const CHANGE = /^[\w.-]+#\d+$/;
+const DOCUMENT = /^[A-Z]+-\d{8}-[0-9A-Z]{6}(#\d+)?$/;
+const WEB = /^https:\/\//;
+
+function isChange(ref) {
+    return CHANGE.test(ref) && !DOCUMENT.test(ref);
+}
+
+// A landing's key, which Joel's reading it is kept by: its session's, its
+// ref and when it landed, so the same change landed again reads anew.
+function landingKey(session, one) {
+    return `${session.presence?.session ?? session.address} ${one.ref} ${one.at}`;
+}
+
+// What sessions landed that Joel hasn't read, for Now's Landed (VKCF3Z,
+// 2026-11-06), newest first: each change merged, and anything else that
+// says what he should try (`person`). A plan item ticked, which a session
+// lands too, is its own progress, 27 of the 77 landings on 2026-11-07,
+// so it's left out unless it says what to try. Each is { key, at, ref,
+// what, person, url, session }, `url` only a web link.
+function landed(sessions, read) {
+    const rows = [].concat(...sessions.map(session => (session.presence?.landings ?? [])
+        .filter(one => isChange(String(one.ref ?? "")) || String(one.person ?? "") !== "")
+        .map(one => ({
+            key: landingKey(session, one),
+            at: String(one.at ?? ""),
+            ref: String(one.ref),
+            what: String(one.what || one.ref),
+            person: String(one.person ?? ""),
+            url: WEB.test(String(one.url ?? "")) ? String(one.url) : "",
+            session
+        }))));
+    return rows.filter(one => !read.includes(one.key)).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+// A landing's drawer: who landed it and when as its eyebrow, what landed
+// as its title, its ref and its session as facts, and what to try as its
+// words, since a sentence never fits beside the row's ref. `said` gives
+// when (`at`), the session's title and how a fact is named; what isn't
+// known isn't said.
+function landingDrawer(one, said) {
+    const eyebrow = [one.session.address, said.at]
+        .filter(part => (part ?? "") !== "").join(" \u00b7 ");
+    const facts = [
+        { label: said.named("landed"), value: one.ref },
+        { label: said.named("session"), value: said.session }
+    ].filter(fact => (fact.value ?? "") !== "");
+    return { eyebrow, eyebrowNames: true, title: one.what, facts, body: one.person };
+}
+
+// What of Joel's reading is still worth keeping: the keys of landings a
+// session still holds, the harness keeping each a day, so what's kept
+// never grows past what's there.
+function stillRead(sessions, read) {
+    const held = [].concat(...sessions.map(session => (session.presence?.landings ?? [])
+        .map(one => landingKey(session, one))));
+    return read.filter(key => held.includes(key));
+}
+
 // The act Return does, one of `acts`: the one its state makes harmless
 // (VKCF3Z, 2026-11-06). Go To one at work or waiting on Joel, Talk to one
 // listening, Resume one paused and Wake one parked; one with no window

@@ -134,7 +134,10 @@ Provider {
             : gone.afresh ? [act("afresh", gone.afresh)] : [];
         return first.concat(orchestrators.talksOf(one.address));
     }
-    onAllChanged: changedTo(all)
+    // Said as every row it shows moves, the sessions' and those after
+    // them, so a step held in Landed loses a landing as it's read.
+    readonly property var everyRow: everything()
+    onEveryRowChanged: changedTo(everyRow)
 
     // The rows of what SessionRow.tree laid out: a session's own, or the
     // fold of an orchestration's members that only wait, which says how
@@ -645,10 +648,100 @@ Provider {
         }
     }
 
-    things: toReopen ? [toReopen, start] : [start]
+    // What sessions landed that Joel hasn't read (SessionRow.js's landed):
+    // one row while any is, Landed, its count at its side, which Now shows
+    // among what wants him (VKCF3Z's design, tier 2) and Agents after the
+    // sessions. A step in, each landing, newest first: what it is as its
+    // name and its ref at the right in the mono; its drawer says who landed
+    // it and when, and what to try, a sentence the row has no room for
+    // beside its ref. Return goes to the change, or to its session where no
+    // link to the change is known, and marks it read; its own step in holds
+    // Open the Change, Go To the Session, Copy What to Try and Read, which
+    // d does too and u takes back. Read only from the sessions there are,
+    // so one that ended takes what it landed with it.
+    readonly property var landed: {
+        const sessions = Sessions.running.concat(Sessions.parked);
+        const unread = SessionRow.landed(sessions, Sessions.landingsRead);
+        // The last read while the launcher holds it, it stays, empty, so
+        // the step in can be said again with every landing dimmed, as a
+        // row gone from any list is, rather than lost from under it; it
+        // goes once the launcher lets it go.
+        const launcher = provider.launcher;
+        const held = !!launcher && launcher.open
+            && (launcher.held ?? []).some(step => step.row.key === "agents:landed");
+        if (unread.length === 0 && !held)
+            return null;
+        const read = one => Sessions.readLandings([one.key],
+            SessionRow.stillRead(sessions, Sessions.landingsRead));
+        const act = (id, fields) => thing(Object.assign({
+            key: `verb:agents:landed:${id}`,
+            verb: Words.verb(`verb:agents:landed:${id}`),
+            name: Words.name(`verb:agents:landed:${id}`),
+            glyph: Words.glyph(`verb:agents:landed:${id}`),
+            hue: "action"
+        }, fields));
+        const windowed = one => Sessions.running.includes(one.session)
+            && provider.windowedOf(one.session);
+        const toChange = one => () => Niri.spawn(["xdg-open", one.url]);
+        const toSession = one => () => Sessions.goTo(one.session);
+        // Where Return takes it: the change, else its session, else nowhere
+        // but read.
+        const goes = one => one.url !== "" ? "change" : windowed(one) ? "session" : "";
+        const parts = one => [
+            one.url !== "" ? act("change", { later: true, run: toChange(one) }) : null,
+            windowed(one) ? act("session", { later: true, run: toSession(one) }) : null,
+            one.person !== "" ? copyRow({
+                key: "verb:agents:landed:try",
+                name: Words.name("verb:agents:landed:try"),
+                copy: one.person,
+                figure: false,
+                glyph: Words.glyph("verb:agents:landed:try")
+            }) : null,
+            act("read", Object.assign({
+                stays: true,
+                run: () => read(one),
+                undo: () => Sessions.unreadLandings([one.key])
+            }, Words.ending("verb:agents:landed:read")))
+        ].filter(row => row !== null);
+        const landing = one => thing({
+            thing: true,
+            key: `agents:landed:${one.key}`,
+            name: one.what,
+            side: one.ref,
+            drawer: () => SessionRow.landingDrawer(one, {
+                at: one.at !== "" ? started(one.at) : "",
+                session: one.session.title ?? "",
+                named: id => Words.name(`agents:${id}`)
+            }),
+            verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
+            glyph: Words.glyph("agents:landed"),
+            hue: "action",
+            later: goes(one) !== "",
+            // Read where it goes nowhere, which keeps the launcher, as a
+            // setting's change does, so the next landing is under the cursor.
+            stays: goes(one) === "",
+            run: () => {
+                if (goes(one) === "change")
+                    toChange(one)();
+                else if (goes(one) === "session")
+                    toSession(one)();
+                read(one);
+            },
+            verbs: () => parts(one)
+        });
+        return thingRow({
+            key: "agents:landed",
+            name: Words.name("agents:landed"),
+            side: unread.length > 0 ? String(unread.length) : "",
+            glyph: Words.glyph("agents:landed"),
+            hue: "action"
+        }, () => unread.map(landing));
+    }
+
+    things: [toReopen, landed].filter(row => row !== null).concat([start])
 
     function everything() {
-        return all.concat(toReopen ? [toReopen] : [], [start]);
+        return all.concat([toReopen, landed].filter(row => row !== null), [start]);
     }
 
     // How every session stands, running and parked, read from Sessions

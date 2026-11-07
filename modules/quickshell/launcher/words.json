@@ -207,6 +207,47 @@
       "glyph": "queued"
     },
     {
+      "id": "agents:landed",
+      "in": "agents",
+      "name": "Landed",
+      "verb": "more",
+      "glyph": "done"
+    },
+    {
+      "id": "verb:agents:landed:change",
+      "command": "open",
+      "in": "agents:landed",
+      "name": "Open the Change",
+      "verb": "open",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:agents:landed:session",
+      "command": "buffer",
+      "in": "agents:landed",
+      "name": "Go To the Session",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:agents:landed:try",
+      "command": "yank",
+      "in": "agents:landed",
+      "name": "Copy What to Try",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:agents:landed:read",
+      "command": "forget",
+      "in": "agents:landed",
+      "name": "Read",
+      "verb": "mark",
+      "glyph": "read",
+      "act": "ending",
+      "ends": "forget"
+    },
+    {
       "id": "agents:start",
       "in": "agents",
       "name": "Start a Session",
@@ -260,6 +301,11 @@
       "id": "agents:works",
       "in": "agents",
       "name": "Working On"
+    },
+    {
+      "id": "agents:session",
+      "in": "agents",
+      "name": "Session"
     },
     {
       "id": "agents:hears",

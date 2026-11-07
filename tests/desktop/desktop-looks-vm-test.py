@@ -1715,6 +1715,18 @@ CLOSED = [
     ("BEACON", "Beacon", "Light the beacon", "2026-11-06T22:00:00Z"),
     ("LAMPLT", "Lamplight", "Keep the lamp lit", "2026-11-07T04:00:00Z"),
 ]
+# What the owner under the orchestrator landed, newest first, as the harness keeps it: a change
+# with its page, a plan item ticked alone, which Landed leaves out, and a change saying what to
+# try (VKCF3Z's design: Landed in Now, tier 2).
+STOPPED = "Stop Waits for a Second Return"
+CLOSING = "A Session Closes From the Launcher"
+LANDINGS = [
+    {"at": "2026-11-07T11:31:00Z", "ref": "core.nix#2140", "what": STOPPED,
+     "url": "https://example.org/core.nix/pull/2140"},
+    {"at": "2026-11-07T11:25:00Z", "ref": "PLAN-20261022-TESTQC#2", "what": "Ticked alone"},
+    {"at": "2026-11-07T11:19:00Z", "ref": "core.nix#2138", "what": CLOSING,
+     "person": "Press dd on a session to close it"},
+]  # fmt: skip
 # A quest nothing orchestrates and no session has, whose step in offers to orchestrate it.
 UNSTARTED = "Chart the harbour"
 WORKFLOW = "~/.local/state/pi/agentic-harness.pi/quest-workflow"
@@ -1745,6 +1757,7 @@ def orchestrated(desktop: Desktop) -> None:
                 # The orchestrator's record names its repository, which its drawer's eyebrow
                 # says as it's written.
                 **({"repo": "core.nix"} if address == "TESTQA" else {}),
+                **({"landings": LANDINGS} if address == "TESTQC" else {}),
             },
             address,
         )
@@ -1988,6 +2001,37 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     desktop.step_out()
 
 
+def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
+    """Photograph Landed, its count at its side, then inside it, a landing's drawer out.
+
+    Each says what landed as its name and its ref in the mono at its right; its drawer says
+    who landed it and when, and what to try, a sentence the row has no room for. Nothing is
+    read, so the walk can come back to it.
+    """
+    desktop.down_to("Landed")
+    assert desktop.showing()["selected"]["side"] == "2", f"at {shot}: {desktop.showing()}"
+    desktop.photograph(f"launcher-agents-landed-at-{shot}")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
+    desktop.down_to(CLOSING)
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "core.nix#2138", f"at {shot}: {selected}"
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
+        )
+    )
+    desktop.photograph(f"launcher-agents-landed-in-at-{shot}")
+    desktop.step_out()
+
+
+def after_the_sessions(desktop: Desktop, shot: str) -> None:
+    """Photograph what Agents holds after its sessions: the closed, Landed, and Start a Session."""
+    closed_stand_last(desktop, shot)
+    landed_lists_what_sessions_landed(desktop, shot)
+    a_quest_offers_to_orchestrate(desktop, shot)
+
+
 def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
     """Photograph a quest's step in from Start a Session: Start Here, then Orchestrate.
 
@@ -2066,8 +2110,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             returns_said_in_the_foot(desktop, titles, shot)
             fold_steps_in(desktop, shot)
             close_asks_what_stays(desktop, titles["TESTQC"], "TESTQC", shot)
-            closed_stand_last(desktop, shot)
-            a_quest_offers_to_orchestrate(desktop, shot)
+            after_the_sessions(desktop, shot)
             desktop.close_launcher()
         orchestrator_says_whose_spend_is_whose(desktop)
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
