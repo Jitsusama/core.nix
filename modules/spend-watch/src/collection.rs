@@ -552,22 +552,28 @@ fn budgets(picture: &Picture, config: &crate::config::Config) -> Option<Standing
 fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
     let total = &standing.total.periods;
     let month = format!("{} this month", total["this month"].shown);
-    let mut made = line("budgets", "Budgets", month.clone());
+    let mut made = line("budgets", "Budgets", month);
     made.note = crate::standing::WORDS.into();
-    let mut all = line("budgets/all", "All AI Spend", month);
+    // The month's whole is the Budgets row's own figure, so the whole's
+    // row behind it says the nearer periods rather than saying it again.
+    let mut all = line(
+        "budgets/all",
+        "All AI Spend",
+        format!("{} today", total["today"].shown),
+    );
     all.note = joined(&[
         crate::standing::WORDS,
-        &format!("{} today", total["today"].shown),
         &format!("{} in 7 days", total["7 days"].shown),
     ]);
-    made.rows = std::iter::once(all)
-        .chain(
-            standing
-                .budgets
-                .iter()
-                .map(|budget| budget_line(picture, budget)),
-        )
+    let budgets: Vec<Line> = standing
+        .budgets
+        .iter()
+        .map(|budget| budget_line(picture, budget))
         .collect();
+    // The row's glyph is its nearest budget's, so the first screen shows a
+    // budget past its warning without stepping in.
+    made.role = worst_role(budgets.iter().map(|row| row.role.as_str())).into();
+    made.rows = std::iter::once(all).chain(budgets).collect();
     made
 }
 
@@ -595,16 +601,22 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
             .allowances
             .iter()
             .map(|allowance| {
-                let standing = if allowance.standing.is_empty() {
-                    "not read yet".to_owned()
-                } else {
-                    allowance.standing.clone()
+                let name = capitalized(&allowance.label);
+                // Behind its budget a share's row is named for its window,
+                // so its figure is the share alone.
+                let (standing, read) = match (allowance.unit, allowance.used) {
+                    ("share", Some(used)) => (percent(used), true),
+                    _ if allowance.standing.is_empty() => ("not read yet".to_owned(), false),
+                    _ => (allowance.standing.clone(), true),
                 };
                 let mut row = line(
                     format!("budget:{}:{}", budget.name, allowance.name),
-                    capitalized(&allowance.label),
+                    name.clone(),
                     standing,
                 );
+                if !read {
+                    row.copy = format!("{name} has no reading yet, so there's nothing to copy");
+                }
                 row.note = allowance_reset(picture, allowance);
                 row.role = allowance_role(Some(allowance)).into();
                 row
@@ -623,6 +635,16 @@ fn allowance_reset(picture: &Picture, allowance: &crate::standing::Allowance) ->
         .map_or_else(String::new, |at| {
             format!("resets {}", picture.zone.clock(at, picture.now))
         })
+}
+
+/// The most urgent of some rows' roles: an alert over a warning over
+/// plain text.
+fn worst_role<'a>(roles: impl Iterator<Item = &'a str>) -> &'static str {
+    roles.fold("text", |worst, role| match (worst, role) {
+        ("alert", _) | (_, "alert") => "alert",
+        ("warning", _) | (_, "warning") => "warning",
+        _ => "text",
+    })
 }
 
 /// An allowance's glyph is coloured only past its warning: a warning
@@ -1420,6 +1442,10 @@ mod tests {
         assert_eq!(names[at + 1], "Yesterday", "{names:?}");
         let budgets = &collected.now[at];
         assert_eq!(budgets.side, format!("{} this month", whole(80.0 + 20.0)));
+        // The whole's row says today's whole, which its parent doesn't.
+        let standing = crate::standing::standing(&picture, &config, None);
+        let today = format!("{} today", standing.total.periods["today"].shown);
+        assert_ne!(today, budgets.side);
         let behind: Vec<(&str, &str)> = budgets
             .rows
             .iter()
@@ -1428,11 +1454,13 @@ mod tests {
         assert_eq!(
             behind,
             [
-                ("All AI Spend", "$100 this month"),
+                ("All AI Spend", today.as_str()),
                 ("Claude Pro", "85% of 5 h"),
                 ("Your proxy cap", "$80 this month"),
             ]
         );
+        // The Budgets row takes its nearest budget's warning.
+        assert_eq!(budgets.role, "warning");
         let plan = &budgets.rows[1];
         assert_eq!(plan.role, "warning");
         assert_eq!(plan.note, "your own plan");
@@ -1441,10 +1469,8 @@ mod tests {
             .iter()
             .map(|row| (row.name.as_str(), row.side.as_str()))
             .collect();
-        assert_eq!(
-            windows,
-            [("5 h", "85% of 5 h"), ("The week", "not read yet")]
-        );
+        assert_eq!(windows, [("5 h", "85%"), ("The week", "not read yet")]);
+        assert!(plan.rows[1].copy.contains("nothing to copy"));
         assert_eq!(plan.rows[0].note, "resets 16:20");
         assert!(depth(&collected.now) <= 3);
     }
