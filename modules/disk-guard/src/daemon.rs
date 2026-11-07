@@ -186,18 +186,23 @@ const LISTING_FRESH: f64 = 6.0 * 3600.0;
 const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
-/// How soon after the last listing began one comes again once a root has
-/// left, so a build's result deleted is garbage gone within a minute; and
-/// once a process holding paths has ended, which happens every few seconds
-/// on a busy machine, so the listing's minute of the disk's time is spent
-/// at most every two.
+/// How soon after the last listing began one comes again on a filling disk
+/// once a root has left, so a build's result deleted is garbage gone within
+/// a minute; and once a process holding paths has ended, which happens every
+/// few seconds on a busy machine, so the listing's minute of the disk's time
+/// is spent at most every two. On a healthy disk neither brings a listing:
+/// on 7 November a listing of 101,000 paths took 13 minutes of a core over
+/// 15 and freed 190 MB with 313 GB free, so what they let go waits for the
+/// next six-hourly one. What a process held in the listing kept goes once it
+/// ends, either way, since that needs no listing.
 const ROOT_LEFT_GAP: f64 = 30.0;
 const HELD_ENDED_GAP: f64 = 120.0;
-/// How many times its own length a listing rests after it ends before
-/// something let go brings another on a healthy disk, so listing takes at
-/// most a tenth of the guard's time. A store of 400 GiB took 108 s and 75 s
-/// of CPU to list on 31 October, and roots left so often that one began as
-/// each ended, a core spent to free kilobytes. On a filling disk, none.
+/// How many times its own length a listing rests after it ends before a
+/// relist brings another on a healthy disk, so listing takes at most a
+/// tenth of the guard's time, kept with the listing so a restart rests
+/// too. A store of 400 GiB took 108 s and 75 s of CPU to list on 31
+/// October, and roots left so often that one began as each ended, a core
+/// spent to free kilobytes. On a filling disk, none.
 const LISTING_REST: f64 = 9.0;
 
 /// How often the guard looks for an owner that has ended: a tree's last
@@ -628,10 +633,10 @@ impl Guard {
             beaten: Arc::default(),
             resumed: false,
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
+            listing_ended: listing.as_ref().and_then(Listing::ended),
             listing,
             listing_path,
             listing_out: None,
-            listing_ended: None,
             hearing: None,
             collected_on: BTreeSet::new(),
             running: places.running.clone(),
@@ -1297,6 +1302,7 @@ impl Guard {
             Ok(dead) => {
                 let listing = Listing {
                     listed_at: begun,
+                    took: Some((now - begun).max(0.0)),
                     dead,
                 };
                 state::save(&self.listing_path, &listing)?;
@@ -1462,10 +1468,9 @@ impl Guard {
             || self
                 .listing_ended
                 .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
-        let due = rested
-            && (self.relist
-                || self.root_left && since >= ROOT_LEFT_GAP
-                || self.held_ended && since >= HELD_ENDED_GAP)
+        let let_go =
+            self.root_left && since >= ROOT_LEFT_GAP || self.held_ended && since >= HELD_ENDED_GAP;
+        let due = rested && (self.relist || pressed && let_go)
             || since >= retry
                 && if pressed {
                     listed >= LISTING_PRESSED

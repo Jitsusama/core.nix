@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -303,6 +303,16 @@ impl Store {
         disk_guard::state::save(&self.root.join("state/memory.json"), &memory).unwrap();
     }
 
+    /// Has the guard's next start upkeep at once, as one on a new binary
+    /// does, which each switch that changes the guard brings.
+    fn upkeep_due(&self) {
+        let path = self.root.join("state/memory.json");
+        let mut memory: disk_guard::state::Memory =
+            disk_guard::state::load(&path).unwrap().unwrap_or_default();
+        memory.upkept = None;
+        disk_guard::state::save(&path, &memory).unwrap();
+    }
+
     fn gc_ran(&self) -> bool {
         self.log().iter().any(|line| line.starts_with("gc "))
     }
@@ -458,11 +468,13 @@ fn a_pass_offers_nix_no_batch_after_one_is_found_stale() {
     // pass that met it in one batch went on to meet it in every other,
     // 37 deletes a minute each refused whole.
     let store = Store::new();
-    // Largest first, so the four largest fill the first batch of 8 GiB.
-    // That's the order only with no cache kept: kept, the oldest go first,
-    // and a second turning while these are made dates the smallest older.
+    // The four largest fill the first batch of 8 GiB. Largest go first with
+    // no cache kept, and oldest first with one, so each larger is older by
+    // ten seconds: dated alike, a second turning while these were made
+    // dated the smallest older, and it went first.
     for n in 0..8u64 {
-        let path = store.dead(&format!("held-{n}"), 10.0 * DAY, (2 << 30) + n);
+        let ago = 10.0 * DAY + 10.0 * f64::from(u32::try_from(n).unwrap());
+        let path = store.dead(&format!("held-{n}"), ago, (2 << 30) + n);
         fs::write(path.join("held"), "").unwrap();
     }
     fs::write(store.root.join("listing-slow"), "").unwrap();
@@ -1058,53 +1070,129 @@ fn garbage_goes_once_the_process_holding_it_ends() {
 }
 
 #[test]
-fn garbage_a_root_left_goes_within_a_minute() {
+fn on_a_filling_disk_garbage_a_root_left_goes_within_a_minute() {
     let store = Store::new();
+    let kept = rooted(&store);
+    let mut guard = store.guard(store.config_as_given("100%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    assert!(kept.exists());
+    unroot(&store, &kept);
+    step_later_until(&store, &mut guard, 45.0, &BUSY, |_, _| !kept.exists());
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
+fn on_a_healthy_disk_garbage_a_root_left_waits_for_the_six_hourly_listing() {
+    // Listed again for each root that left, the guard was the machine's
+    // largest user of its processor on 7 November: a listing of 101,000
+    // paths took 13 minutes of a core and freed 190 MB, with 313 GB free.
+    let store = Store::new();
+    let kept = rooted(&store);
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    unroot(&store, &kept);
+    step_later(&mut guard, 3600.0, &CALM);
+    assert_eq!(lists(&store), 1, "an hour on");
+    assert!(kept.exists());
+    step_later_until(&store, &mut guard, 7.0 * 3600.0, &CALM, |_, _| {
+        !kept.exists()
+    });
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+/// A dead path two hours old that a build's result link roots.
+fn rooted(store: &Store) -> PathBuf {
     let kept = store.dead("aaa-kept", 2.0 * 3600.0, 4096);
     fs::write(kept.join("alive"), "").unwrap();
     let result = store.root.join("result");
     fs::write(&result, "").unwrap();
     fs::create_dir_all(store.root.join("gcroots/auto")).unwrap();
     std::os::unix::fs::symlink(&result, store.root.join("gcroots/auto/1")).unwrap();
-    let mut guard = store.guard(store.config_as_given("0%", "0%"));
-    listed_later(&store, &mut guard, 0.0, &CALM);
-    step_later(&mut guard, 1.0, &CALM);
-    assert!(kept.exists());
-    // Its owner deletes the build's link, and nothing holds it now.
-    fs::remove_file(&result).unwrap();
+    kept
+}
+
+/// Its owner deletes the build's link, and nothing holds `kept` now.
+fn unroot(store: &Store, kept: &Path) {
+    fs::remove_file(store.root.join("result")).unwrap();
     fs::remove_file(kept.join("alive")).unwrap();
-    step_later_until(&store, &mut guard, 45.0, &BUSY, |_, _| !kept.exists());
-    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+/// Makes the store's next listing call rooted paths dead, as when builds
+/// root again what a listing found, so its batch is refused and the guard
+/// lists again.
+fn listed_stale(store: &Store) {
+    for n in 0..4 {
+        let revived = store.dead(&format!("{n}-revived"), 10.0 * DAY, 4096);
+        fs::write(revived.join("alive"), "").unwrap();
+    }
+    fs::write(store.root.join("listing-stale"), "").unwrap();
+}
+
+/// Steps `guard` until it has kept a listing begun now and heard 100 s on,
+/// so one that took 100 s. Gives garbage made since, which goes only with
+/// the next listing.
+fn listed_for_100_s(store: &Store, guard: &mut Guard) -> PathBuf {
+    guard.step(&tick(), &CALM).unwrap();
+    step_later_until(store, guard, 100.0, &CALM, |store, _| kept(store).is_some());
+    store.dead("zzz-later", 10.0 * DAY, 4096)
+}
+
+/// Steps `guard` 200 s on until Nix has been offered a batch, and then long
+/// enough for a listing begun to say so.
+fn offered_at_200_s(store: &Store, guard: &mut Guard) {
+    step_later_until(store, guard, 200.0, &CALM, |store, _| {
+        store.log().iter().any(|line| line.starts_with("delete"))
+    });
+    step_later(guard, 200.0, &CALM);
 }
 
 #[test]
 fn a_healthy_store_spends_at_most_a_tenth_of_its_time_listing() {
-    // On a busy machine a root leaves every few seconds, and a listing of a
-    // large store takes its CPU for a minute or two: listed again as soon as
-    // each ended, it was never not listing.
+    // Builds root again what a listing called dead, and a listing of a
+    // large store takes a core for minutes: listed again as soon as each
+    // ended, it was never not listing.
     let store = Store::new();
-    let built = store.dead("aaa-built", 2.0 * 3600.0, 4096);
-    fs::write(built.join("alive"), "").unwrap();
-    let result = store.root.join("result");
-    fs::write(&result, "").unwrap();
-    fs::create_dir_all(store.root.join("gcroots/auto")).unwrap();
-    std::os::unix::fs::symlink(&result, store.root.join("gcroots/auto/1")).unwrap();
+    listed_stale(&store);
     let mut guard = store.guard(store.config_as_given("0%", "0%"));
-    // A listing begun now is heard 100 s on, so it took 100 s.
-    guard.step(&tick(), &CALM).unwrap();
-    step_later_until(&store, &mut guard, 100.0, &CALM, |store, _| {
-        kept(store).is_some()
-    });
-    fs::remove_file(&result).unwrap();
-    fs::remove_file(built.join("alive")).unwrap();
-    step_later(&mut guard, 200.0, &BUSY);
+    let later = listed_for_100_s(&store, &mut guard);
+    offered_at_200_s(&store, &mut guard);
     assert_eq!(
         lists(&store),
         1,
-        "a root left 100 s after a listing of 100 s"
+        "found stale 100 s after a listing of 100 s"
     );
-    assert!(built.exists());
-    step_later_until(&store, &mut guard, 1001.0, &BUSY, |_, _| !built.exists());
+    assert!(later.exists());
+    // Nine times its length after it ended, with room for the seconds the
+    // listing really took, which the rest counts nine times over too.
+    step_later_until(&store, &mut guard, 1100.0, &CALM, |_, _| !later.exists());
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
+fn a_listings_rest_holds_for_the_next_guard() {
+    // Each switch that changes the guard restarts it, four times on the
+    // afternoon of 7 November, and a guard with new rules upkeeps at once,
+    // expiring the generation the switch left behind. One that forgot the
+    // last listing's length listed again for it at once.
+    let store = Store::new();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    let later = listed_for_100_s(&store, &mut guard);
+    drop(guard);
+    generations(&store);
+    store.upkeep_due();
+    let mut next = store.guard(store.config_as_given("0%", "0%"));
+    step_later_until(&store, &mut next, 200.0, &CALM, |store, _| {
+        !store.expired().is_empty()
+    });
+    step_later(&mut next, 200.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "generations expired 100 s after a listing of 100 s, by a guard new since"
+    );
+    step_later_until(&store, &mut next, 1100.0, &CALM, |_, _| !later.exists());
     assert_eq!(lists(&store), 2, "{:?}", store.log());
 }
 
