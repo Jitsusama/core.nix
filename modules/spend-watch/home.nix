@@ -14,6 +14,13 @@
 #     command = [ (lib.getExe feed) ];
 #   };
 #
+# One for a Claude plan is kept here, as claudePlanFeed (feeds/claude/):
+#
+#   jitsusama.spend-watch.feeds.claude = {
+#     label = "Claude";
+#     command = [ (lib.getExe config.jitsusama.spend-watch.claudePlanFeed) ];
+#   };
+#
 # With none, every figure is pi's own at list prices, and says so.
 {
   config,
@@ -120,6 +127,18 @@ in
           };
         }
       );
+    };
+
+    claudePlanFeed = lib.mkOption {
+      description = ''
+        The feed for a Claude plan, for a machine on one to name in `feeds`: how
+        much of the plan's five hours and week is used, read with the sign-in
+        pi-claude keeps (feeds/claude/README.md).
+      '';
+      type = lib.types.package;
+      readOnly = true;
+      default = pkgs.callPackage ./feeds/claude/package.nix { };
+      defaultText = lib.literalMD "feeds/claude, built";
     };
 
     paths = {

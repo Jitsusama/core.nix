@@ -123,5 +123,11 @@ The crate is a library with a thin `main.rs`. Its tests run as it builds;
 by `show` or `report` tries it on the account's own logs without the daemon,
 with a config whose state lies elsewhere.
 
+`feeds/` holds the feeds kept beside the watch, each a crate of its own
+with its tests and checks: [`feeds/claude/`][3] speaks for a Claude plan,
+its five hours and its week, and the module gives it to a machine as
+`claudePlanFeed`.
+
 [1]: home.nix
 [2]: contract/README.md
+[3]: feeds/claude/README.md

@@ -1,0 +1,18 @@
+{
+  "five_hour": null,
+  "seven_day": { "utilization": 0.0, "resets_at": "2026-11-09T16:59:59.902585+00:00" },
+  "seven_day_oauth_apps": null,
+  "seven_day_opus": null,
+  "seven_day_sonnet": null,
+  "extra_usage": { "is_enabled": false, "monthly_limit": null, "used_credits": null },
+  "limits": [
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "percent": 0,
+      "resets_at": "2026-11-09T16:59:59.902585+00:00",
+      "scope": null,
+      "is_active": true
+    }
+  ]
+}

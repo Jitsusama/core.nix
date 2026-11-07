@@ -269,6 +269,16 @@
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
   '';
+  claude-plan-feed-passes-clippy = ''
+    clippy finds nothing in spend-watch's feed for a Claude plan or its tests
+  '';
+  claude-plan-feed-says-how-the-plan-stands = ''
+    spend-watch's feed for a Claude plan says each window the plan has as a cap of a share used,
+    with its reset, labelled with the plan's name, as its contract example says; says nothing
+    signed in as no fault, an expired sign-in as stalled without asking, and an answer with no
+    usable window as an error; and reads at the watch's pace, backing off while the endpoint fails
+    or asks it to wait
+  '';
   claude-shows-its-status-line = ''
     Claude Code is told of its status line on Linux and macOS, in settings it can still write
   '';
