@@ -237,12 +237,38 @@ pub struct Offered {
     pub now: bool,
 }
 
+/// What the last survey offered, kept in order of path. Everything beneath
+/// a place then lies in one run starting at the place itself, found by
+/// halving: the status matched each holder against every offer, three
+/// times a step, and that held 44% of the guard's processor on 7 November.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Offers(Vec<Offered>);
+
+impl Offers {
+    pub fn new(mut offered: Vec<Offered>) -> Self {
+        offered.sort_by(|one, other| one.path.cmp(&other.path));
+        Self(offered)
+    }
+
+    /// Forgets what was offered at `path`, once it's gone.
+    pub fn forget(&mut self, path: &Path) {
+        self.0.retain(|offer| offer.path != path);
+    }
+
+    /// The offers at `place` or beneath it.
+    fn beneath(&self, place: &Path) -> &[Offered] {
+        let start = self.0.partition_point(|offer| offer.path.as_path() < place);
+        let length = self.0[start..].partition_point(|offer| offer.path.starts_with(place));
+        &self.0[start..start + length]
+    }
+}
+
 /// The biggest holders, and any that grew fast, from what was measured,
 /// what the last survey offered, none before the first, the trees it kept
 /// for their use, and how much each grew in the last day.
 pub fn holders(
     measured: &[(Place, u64)],
-    offered: Option<&[Offered]>,
+    offered: Option<&Offers>,
     kept: &[(PathBuf, Use)],
     grew: &Grown,
     home: Option<&Path>,
@@ -264,11 +290,7 @@ pub fn holders(
                     .is_some_and(|grew| grew.bytes >= GROWING)
         })
         .map(|(_, (place, bytes))| {
-            let inside: Vec<&Offered> = offered
-                .unwrap_or_default()
-                .iter()
-                .filter(|offer| offer.path.starts_with(&place.path))
-                .collect();
+            let inside = offered.map_or(&[][..], |offers| offers.beneath(&place.path));
             let clears: u64 = inside
                 .iter()
                 .filter(|offer| offer.now)
