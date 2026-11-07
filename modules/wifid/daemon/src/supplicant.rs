@@ -44,6 +44,12 @@ const CHALLENGE_FAILED: i32 = 15;
 /// key. wpa_supplicant goes on with the join after each.
 const NEGOTIATING: [i32; 4] = [76, 77, 126, 127];
 
+/// The status an access point started afresh refuses the key the card
+/// kept from it with, `INVALID_PMKID`. wpa_supplicant forgets the key and
+/// joins again at once, so it's no trouble: a router just restarted would
+/// otherwise turn every first join away.
+const STALE_KEY: i32 = 53;
+
 /// Which of a join's steps a status code came from.
 #[derive(Clone, Copy, Debug)]
 pub enum Step {
@@ -58,7 +64,7 @@ impl Trouble {
     /// which is how hostapd answers it.
     pub fn from_status(step: Step, code: i32, security: Security) -> Option<Trouble> {
         match (step, code, security) {
-            (_, 0, _) => None,
+            (_, 0, _) | (Step::Association, STALE_KEY, _) => None,
             (Step::Authentication, CHALLENGE_FAILED, Security::Personal) => {
                 Some(Trouble::WrongPassword)
             }
@@ -211,6 +217,29 @@ pub fn marked(
 fn low_u32(length: usize) -> u32 {
     let [first, second, third, fourth, ..] = length.to_le_bytes();
     u32::from_le_bytes([first, second, third, fourth])
+}
+
+/// Whether a card at this step, as wpa_supplicant's `State` says it, is
+/// on a network or on its way to one. A network Joel picks in the launcher
+/// is joined with the card's others off, and they stay off while it holds
+/// one: on again beside it, at the same rank, the card's next look could
+/// move it to whichever wpa_supplicant ranks first.
+pub fn holds_a_network(step: &str) -> bool {
+    matches!(
+        step,
+        "authenticating"
+            | "associating"
+            | "associated"
+            | "4way_handshake"
+            | "group_handshake"
+            | "completed"
+    )
+}
+
+/// Whether the card has just come off a network, so the others a join from
+/// the launcher left off are turned on again and it can join one of them.
+pub fn left_its_network(before: &str, step: &str) -> bool {
+    holds_a_network(before) && !holds_a_network(step)
 }
 
 /// A text field as wpa_supplicant gives it back, quoted.
@@ -529,6 +558,15 @@ mod tests {
     }
 
     #[test]
+    fn a_kept_key_an_access_point_no_longer_knows_is_no_trouble() {
+        let stale = Trouble::from_status(Step::Association, 53, Security::Personal);
+        assert_eq!(
+            stale, None,
+            "wpa_supplicant forgets the key and joins again"
+        );
+    }
+
+    #[test]
     fn any_other_status_is_the_network_refusing_the_machine() {
         let open = Trouble::from_status(Step::Authentication, 15, Security::Open);
         let full = Trouble::from_status(Step::Association, 17, Security::Personal);
@@ -631,5 +669,38 @@ mod tests {
 
         assert_eq!(shown_the_card.last(), Some(&("mac_addr", Value::Number(0))));
         assert_eq!(shown_another.last(), Some(&("mac_addr", Value::Number(1))));
+    }
+
+    #[test]
+    fn a_card_joining_or_joined_holds_a_network_and_one_looking_or_off_doesnt() {
+        for step in [
+            "authenticating",
+            "associating",
+            "4way_handshake",
+            "completed",
+        ] {
+            assert!(holds_a_network(step), "{step}");
+        }
+        for step in [
+            "disconnected",
+            "inactive",
+            "scanning",
+            "interface_disabled",
+            "",
+        ] {
+            assert!(!holds_a_network(step), "{step}");
+        }
+    }
+
+    #[test]
+    fn a_card_leaves_its_network_only_coming_off_one() {
+        assert!(left_its_network("completed", "disconnected"));
+        assert!(left_its_network("associating", "scanning"));
+        assert!(
+            !left_its_network("completed", "authenticating"),
+            "moving to another access point of its network isn't leaving it"
+        );
+        assert!(!left_its_network("scanning", "disconnected"));
+        assert!(!left_its_network("", "disconnected"));
     }
 }
