@@ -201,6 +201,77 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         desktop.as_account(f"rm -f {jobs}/queue.json")
 
 
+def test_an_act_shows_on_the_frame_after_its_key_with_another_source_changing(
+    desktop: Desktop,
+) -> None:
+    """Return on Do Not Disturb shows on its row at once, with the queue changing too.
+
+    Joel, 2026-11-07: "when i modify something in the launcher, like marking read, snoozing,
+    ignore, whatever, it should show right away." A change an act made waited behind the
+    quarter second the launcher paces other sources' changes by, as Agents' are on Joel's
+    laptop, so the queue lists another job here ten times a second. And a place's row
+    whose source no word names, as Desktop's Do Not Disturb is the session's, never showed
+    what its act changed while the place was held.
+    """
+    jobs = "$XDG_RUNTIME_DIR/jobs"
+
+    def lined(at: int) -> str:
+        job = {"id": f"pacing-{at}", "class": "bulk", "kind": "build", "state": "waiting",
+               "owner": {"session": "elsewhere", "pid": 1}, "what": "nix build .#lighthouse",
+               "name": f"lighthouse {at}", "memoryGib": 1}  # fmt: skip
+        return json.dumps({"v": 1, "heartbeat": 0.0, "jobs": [job]})
+
+    burst = f"echo $$ > {jobs}/pid; " + "; ".join(
+        f"echo '{lined(at)}' > {jobs}/.q && mv {jobs}/.q {jobs}/queue.json; sleep 0.1"
+        for at in range(1, 301)
+    )
+    desktop.as_account(f"mkdir -p {jobs}")
+    desktop.as_account(f"setsid bash -c {shlex.quote(burst)} > /dev/null 2>&1 < /dev/null &")
+    took: list[tuple[int, int]] = []
+
+    # The session's, whose Do Not Disturb it is, not another source a key lands beside.
+    def timed(rest: str) -> bool:
+        found = re.fullmatch(
+            r"session after (\d+) ms, refreshed (-?\d+) ms after the key's work", rest
+        )
+        if found:
+            took.append((int(found[1]), int(found[2])))
+        return found is not None
+
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.machine.send_chars("desktop ")
+        desktop.launcher_until(
+            lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
+        )
+        desktop.down_to("Do Not Disturb")
+        desktop.normal()
+        # Four presses, on and off twice, each waited for before the next, so each is a
+        # fresh press, and Do Not Disturb is left as it was. The refresh is said once
+        # its frame is drawn, so the row says what changed by then.
+        for named in ["Let Notices Show", "Do Not Disturb"] * 2:
+            since = desktop.mark()
+            desktop.machine.send_key("ret")
+            desktop.reported("act shown in ", timed, since)
+            assert took[-1][1] <= FRAME, f"its refresh waited behind the queue's: {took}"
+            selected = desktop.showing()["selected"]
+            assert selected["name"] == named, (named, selected)
+    finally:
+        desktop.as_account(f"kill $(cat {jobs}/pid) || true")
+        desktop.close_launcher()
+        desktop.as_account(f"rm -f {jobs}/queue.json {jobs}/pid")
+    # The frame's time is the VM's, drawn without a graphics card, so it's said, not held
+    # to the laptop's budget.
+    print(f"each act's frame after its key, and its refresh after the key's work, in ms: {took}")
+
+
+# A frame at 60 Hz, in whole ms: what an act's refresh may wait once the key's own work is
+# done. Held behind a queue changing ten times a second, it waits anywhere up to the quarter
+# second the launcher paces changes by, so four presses all within a frame by chance come
+# about once in 47,000 runs.
+FRAME = 17
+
 # How many rows the launcher's card shows at once.
 ROWS_SHOWN = 8
 

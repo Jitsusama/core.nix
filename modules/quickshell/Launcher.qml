@@ -3942,6 +3942,13 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
+        const byKey = open && KeyTimes.now() - keyHeardAt < keyedWithin;
+        if (byKey && !keyedActs.some(one => one.source === source && one.heard === keyHeardAt)) {
+            const act = { source: source, heard: keyHeardAt, done: Infinity };
+            keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
+            // When the key's own work is done, and the change could be shown.
+            Qt.callLater(() => act.done = KeyTimes.now());
+        }
         if (refreshing.includes(source))
             return;
         refreshing = refreshing.concat([source]);
@@ -3965,6 +3972,59 @@ Scope {
     Timer {
         id: refreshPacing
         onTriggered: root.refreshDue()
+    }
+
+    // What a key changed, timed from the key to the frame that shows it
+    // (Joel, 2026-11-07: "when i modify something in the launcher, like
+    // marking read, snoozing, ignore, whatever, it should show right
+    // away"). A source saying it changed within a frame or two of a key
+    // changed by what the key did, as Read or Not Now does it; each is
+    // kept with when that key was heard and when its work was done, until
+    // the refresh that shows it is drawn.
+    readonly property int keyedWithin: 50
+    property real keyHeardAt: -Infinity
+    property var keyedActs: []
+    property var actsDrawing: []
+    property bool actsBegun: false
+
+    Connections {
+        target: prompt
+
+        function onKeysTakenChanged() {
+            root.keyHeardAt = KeyTimes.now();
+        }
+    }
+
+    // The acts whose refresh has run, begun at `begun`, to be timed by the
+    // frame after it.
+    function actsRefreshed(due, begun) {
+        const shown = keyedActs.filter(one => due.includes(one.source));
+        if (shown.length === 0)
+            return;
+        keyedActs = keyedActs.filter(one => !due.includes(one.source));
+        for (const one of shown)
+            one.begun = begun;
+        actsDrawing = actsDrawing.concat(shown);
+        actsBegun = false;
+    }
+
+    // Each act's time to its frame, said for the test and, slow enough to
+    // feel, in the journal, as a key's is (Trials.qml). Only the last key's:
+    // one an earlier key changed, whose refresh drew nothing new, had no
+    // frame of its own, and the one now drawn is another key's.
+    function actsDrawn() {
+        const drawn = KeyTimes.now();
+        for (const one of actsDrawing.filter(each => each.heard === keyHeardAt)) {
+            const took = Math.round(drawn - one.heard);
+            const waited = Math.round(one.begun - one.done);
+            const name = one.source.settings.name;
+            Report.say(`act shown in ${name} after ${took} ms, `
+                + `refreshed ${waited} ms after the key's work`);
+            if (took >= 50)
+                console.info(
+                    `launcher: what a key changed in ${name} took ${took} ms to its frame`);
+        }
+        actsDrawing = [];
     }
     // A condition a shown place names has moved, as when the charger goes
     // in: its rows are made again, so what it held stays dimmed and says
@@ -4006,6 +4066,7 @@ Scope {
         if (refreshing.length === 0)
             return;
         refreshedAt = Date.now();
+        const begun = KeyTimes.now();
         if (open)
             freshen();
         const due = refreshing;
@@ -4017,6 +4078,7 @@ Scope {
         refreshing = [];
         for (const source of due)
             refreshNow(source);
+        actsRefreshed(due, begun);
     }
     function refreshNow(source) {
         if (!open || asking)
@@ -6576,6 +6638,22 @@ Scope {
 
             function onFrameSwapped() {
                 root.keyDrawn();
+            }
+        }
+
+        // An act's refresh is drawn by a frame begun after it, so a swap
+        // of one already under way when it ran isn't taken for it.
+        Connections {
+            target: card.Window.window
+            enabled: root.actsDrawing.length > 0
+
+            function onAfterAnimating() {
+                root.actsBegun = true;
+            }
+
+            function onFrameSwapped() {
+                if (root.actsBegun)
+                    root.actsDrawn();
             }
         }
 
