@@ -5373,7 +5373,7 @@ Scope {
         const selection = !picked.visible || !chosen ? null : {
             y: Math.round(ground.y),
             x: Math.round(ground.x), width: Math.round(picked.width),
-            height: Math.round(picked.height),
+            height: Math.round(picked.height), ink: String(picked.color),
             // Where its row's ground would stand, its band's top.
             row: Math.round(chosen.mapToItem(card, 0, chosen.height - root.rowTall).y)
         };
@@ -5393,7 +5393,8 @@ Scope {
             inside: { x: Math.round(inside.x), width: Math.round(listBox.width),
                 y: Math.round(inside.y), height: Math.round(listBox.height) },
             hairlines: [headLine, footLine].map(line => ({
-                y: Math.round(line.mapToItem(card, 0, 0).y), height: line.height })),
+                y: Math.round(line.mapToItem(card, 0, 0).y), height: line.height,
+                ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
             drawn: root.rowsDrawn, firstAt, line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });

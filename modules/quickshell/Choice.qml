@@ -188,8 +188,11 @@ Rectangle {
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph
+        // A row holding more is quieter than one that acts, muted as a
+        // place's mark is in the head: never the frame's edge, which the
+        // cursor's ground all but hides (VKCF3Z, 2026-11-06).
         color: row.flashed && !row.swatch ? row.flashInk
-            : row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
+            : row.sort === "holds" && !row.swatch ? Theme.muted : row.hue
     }
 
     // Selected, a name too long for its room reads on (ReadsOn.qml), and
