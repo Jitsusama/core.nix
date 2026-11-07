@@ -239,3 +239,44 @@ function opensAt(where, beside) {
     const next = beside.find(one => one.id === (where.after ?? where.before));
     return where.after !== undefined ? next.column + 1 : next.column;
 }
+
+// How long before a boot began its reboot's list may have been taken, and
+// still be the list of that reboot.
+const rebootListLasts = 60 * 60 * 1000;
+const safeId = /^[A-Za-z0-9._-]+$/;
+
+// The sessions a reboot's list names to reopen as the next boot begins,
+// each {id, cwd, title} with its place, from the list as the reboot's hold
+// writes it ({v, boot, taken, sessions: [{id, cwd, title, output,
+// workspace, column}]}). Only a list taken in another boot, at most an hour
+// before this one began, names any: one from this boot, or from long ago,
+// is no reboot's, so a shell restarted, as a switch restarts it, never
+// reopens anything (2026-11-07, when a switch's restart reopened 36
+// sessions a boot four days old had left). `bootedAt` is when this boot
+// began, in milliseconds since the epoch.
+function rebootList(text, boot, bootedAt) {
+    let read = null;
+    try {
+        read = JSON.parse(text);
+    } catch (_error) {
+        read = null;
+    }
+    const taken = Date.parse(read?.taken ?? "");
+    const fresh = taken < bootedAt && bootedAt - taken <= rebootListLasts;
+    if (read?.v !== 1 || typeof read.boot !== "string" || read.boot === ""
+        || read.boot === boot || !fresh || !Array.isArray(read.sessions)) {
+        return { taken: "", sessions: [] };
+    }
+    const whole = one => one !== null && typeof one === "object"
+        && safeId.test(String(one.id ?? "")) && typeof one.cwd === "string"
+        && one.cwd.startsWith("/");
+    const at = one => Number.isInteger(one.workspace) && Number.isInteger(one.column)
+        && typeof one.output === "string" && one.output !== ""
+        ? { output: one.output, workspace: one.workspace, column: one.column, tile: 1 }
+        : null;
+    return {
+        taken: read.taken,
+        sessions: read.sessions.filter(whole).map(one => ({ id: String(one.id), cwd: one.cwd,
+            title: String(one.title ?? ""), at: at(one) }))
+    };
+}

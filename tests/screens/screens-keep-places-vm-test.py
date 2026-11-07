@@ -227,6 +227,83 @@ def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they
             booted.outputs_say(screen, there=True)
 
 
+def test_a_shell_starting_after_a_reboot_reopens_only_what_its_list_names(
+    booted: Screens,
+) -> None:
+    """A shell starting after a reboot reopens the reboot's list, each where it sat, and no more.
+
+    After a reboot Joel types only his disk's PIN and signs in (2026-11-07), so the shell
+    starting reopens the sessions the reboot's hold listed. Never what a boot's end left in
+    restore.json, and never on a restart alone: at 09:08 that day a switch restarting the
+    shell reopened 36 sessions a boot four days old had left.
+    """
+    machine = booted.machine
+    where = {
+        "01c7-there": kept_on("Virtual-1", 1, 1),
+        "01c7-left": kept_on("Virtual-2", 1, 1),
+        "01c7-right": kept_on("Virtual-2", 1, 2),
+        "01c7-up": kept_on("Virtual-2", 2, 1),
+    }
+    # Each the shell began, by the word it says as it begins one.
+    begun = (
+        "journalctl --user -u quickshell -o cat"
+        " | grep -o 'report\\[resumed session 01c7-[a-z]*' | sort | uniq -c"
+    )
+    restart = (
+        "systemctl --user restart quickshell && until"
+        " [ $(ps -o etimes= -p $(systemctl --user show -p MainPID --value quickshell)) -ge 10 ];"
+        " do sleep 1; done"
+    )
+
+    def counted() -> dict[str, str]:
+        """Give how many times the shell began each, by its session."""
+        lines = machine.succeed(booted.in_niri(begun)).splitlines()
+        return {line.split()[-1]: line.split()[0] for line in lines}
+
+    def home(now: dict[str, tuple[str, int, int]]) -> bool:
+        """Whether each listed is on its own screen, its workspace and its order there."""
+        if not all(one in now for one in where):
+            return False
+        left, right = now["01c7-left"], now["01c7-right"]
+        return (
+            now["01c7-there"][:2] == ("Virtual-1", 1)
+            and left[:2] == right[:2] == ("Virtual-2", 1)
+            and left[2] < right[2]
+            and now["01c7-up"][:2] == ("Virtual-2", 2)
+        )
+
+    # restore.json holds the listed and one a boot's end left besides.
+    boot = booted.hand_over({**where, "01c7-stale": kept_on("Virtual-1", 2, 1)})
+    try:
+        # A restart with only what a boot's end left reopens nothing.
+        machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
+        assert counted() == {}, counted()
+        # The reboot's list, taken a minute before this boot began.
+        now, up = machine.succeed("date +%s; cut -d. -f1 /proc/uptime").split()
+        taken = dt.datetime.fromtimestamp(int(now) - int(up) - 60, dt.UTC)
+        listed = {
+            "v": 1,
+            "boot": "a-boot-before",
+            "taken": taken.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "sessions": [
+                {"id": one, "cwd": f"/home/{booted.account}", "title": one, **at}
+                for one, at in where.items()
+            ],
+        }
+        booted.keep("~/.local/state/pi/reboot-reopen.json", listed)
+        machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
+        deadline = time.monotonic() + 180
+        while not home(now_sat := booted.sessions_sat("01c7-")):
+            assert time.monotonic() < deadline, f"not reopened where they sat: {now_sat}"
+            time.sleep(1)
+        # Started again, the shell reopens none twice, and never the one left.
+        machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
+        assert counted() == dict.fromkeys(where, "1"), counted()
+    finally:
+        booted.handed_back(boot)
+        machine.succeed(booted.in_niri("rm -f ~/.local/state/pi/reboot-reopen.json"))
+
+
 def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window(
     booted: Screens,
 ) -> None:
