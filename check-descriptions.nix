@@ -396,6 +396,11 @@
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';
+  every-card-is-the-one-card = ''
+    the launcher, the held notices and a notice take their frame from the one card and stand their
+    ink on its content, never drawing a frame or reading the inset themselves, but those listed
+    as not yet on it, and none is listed that no longer needs to be
+  '';
   every-check-says-what-it-proves = ''
     every check says here what it proves, and every description here names a check
   '';

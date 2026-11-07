@@ -50,12 +50,9 @@ Scope {
 
     // Wide enough that what a notice says holds about 44 letters of the
     // reading face at the launcher's size on a line, inside its room on
-    // each side: a short message in one or two lines.
+    // each side: a short message in one or two lines. Each card is the one
+    // card (Card.qml), its ink the inset from its frame on every side.
     readonly property int width: 440
-    // How far the ink of every card stands from its frame on every side,
-    // from the frame's inside edge: the inset rung, as every frame's
-    // (docs/design.md, The Ladder).
-    readonly property int room: Theme.space.rung.inset
     // How far the signature's capitals clear the message above them: a
     // beat more than Note's pitch from the message's last baseline, less
     // the capitals' own height, so the signature reads as a group of its
@@ -345,7 +342,7 @@ Scope {
         // the glyph it wears and that glyph's hue.
         function front(): string {
             const card = cards.itemAt(server.trackedNotifications.values
-                .findIndex(one => one.id === root.shown[0])) as Floating;
+                .findIndex(one => one.id === root.shown[0])) as Card;
             const screen = window.screen;
             if (!card || !screen || !root.front)
                 return "{}";
@@ -470,7 +467,7 @@ Scope {
             if (root.holding)
                 found.push(held.area);
             for (let i = 0; i < cards.count; i++) {
-                const card = cards.itemAt(i) as Floating;
+                const card = cards.itemAt(i) as Card;
                 if (card)
                     found.push(card.area);
             }
@@ -545,7 +542,7 @@ Scope {
             // Cards are floating frames that belong together.
             spacing: Theme.space.rung.frames
 
-            Floating {
+            Card {
                 id: track
 
                 width: stack.width
@@ -558,9 +555,8 @@ Scope {
                 // in the track.
                 Item {
                     id: said
-                    x: root.room
-                    width: parent.width - 2 * x
-                    implicitHeight: playedBy.y + playedBy.height + root.room
+                    width: parent.width
+                    implicitHeight: playedBy.y + playedBy.height
 
                     Item {
                         id: song
@@ -570,7 +566,7 @@ Scope {
                         readonly property real ends: Math.max(y + cover.y + cover.height,
                             y + lines.lastBaseline)
 
-                        y: root.room - title.baselineOffset - capital.tightBoundingRect.y
+                        y: -title.baselineOffset - capital.tightBoundingRect.y
                         width: parent.width
                         height: Math.max(cover.y + cover.height, lines.height)
 
@@ -672,9 +668,8 @@ Scope {
                     }
                 }
 
-                MouseArea {
-                    width: parent.width
-                    height: said.height
+                whole: MouseArea {
+                    anchors.fill: parent
                     onClicked: Music.shown = false
                 }
             }
@@ -713,7 +708,7 @@ Scope {
                 onItemAdded: Qt.callLater(window.gather)
                 onItemRemoved: Qt.callLater(window.gather)
 
-                delegate: Floating {
+                delegate: Card {
                     id: card
 
                     required property Notification modelData
@@ -752,12 +747,10 @@ Scope {
                     // A click anywhere on the front card opens what it's
                     // about, or puts it away when it's about nothing to
                     // open, and one on an edge behind brings it to the
-                    // front. What else it offers the keys reach (Joel
-                    // wants keys first), and an act's own area, drawn
-                    // later, takes a click on it.
-                    MouseArea {
-                        width: parent.width
-                        height: card.front ? words.height : parent.height
+                    // front, edge to edge inside its frame. What else it
+                    // offers the keys reach (Joel wants keys first).
+                    whole: MouseArea {
+                        anchors.fill: parent
                         onClicked: {
                             if (!card.front) {
                                 root.order = Stack.forward(root.shown, card.modelData.id);
@@ -793,13 +786,12 @@ Scope {
                                 + (who.lineCount - 1) * Theme.level.name.pitch
 
                         visible: card.front
-                        x: root.room
-                        width: parent.width - 2 * x
-                        implicitHeight: signature.y + signature.height + root.room
+                        width: parent.width
+                        implicitHeight: signature.y + signature.height
 
                         Text {
                             id: who
-                            y: root.room - baselineOffset - capital.tightBoundingRect.y
+                            y: -baselineOffset - capital.tightBoundingRect.y
                             width: parent.width
                             text: card.modelData.summary
                             // Plain, as the spec has a summary: only the

@@ -182,6 +182,7 @@ let
     "Calendars.qml"
     "SignIn.qml"
     "Floating.qml"
+    "Card.qml"
     "Signature.qml"
     "Fuzzy.js"
     "Picks.qml"
