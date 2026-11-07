@@ -11,7 +11,7 @@
 //!   eero devices                    what's connected now
 //!   eero speedtest                  start the eero's own speed test
 //!   eero sqm on|off                 optimize for conferencing and gaming, or not
-//!   eero daemon                     keep the home network for the shell (daemon.rs)
+//!   eero daemon                     keep the home network for the shell
 
 mod api;
 mod cloud;

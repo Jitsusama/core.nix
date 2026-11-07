@@ -391,7 +391,7 @@ fn device(record: &Value) -> Option<Device> {
         node: text(record, "/source/url").and_then(|url| id_of(&url)),
         ethernet: flag(record, "/wireless").map_or_else(
             || text(record, "/connection_type").as_deref() == Some("wired"),
-            |wireless| !wireless,
+            |wifi| !wifi,
         ),
         ssid: text(record, "/ssid"),
         auth: text(record, "/auth"),
@@ -739,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wired_device_names_its_port_and_speed() {
+    fn an_ethernet_device_names_its_port_and_speed() {
         let record = json!({
             "mac": "02:00:00:00:00:40", "connected": true, "wireless": false,
             "connectivity": {"ethernet_status": {"port_name": "2", "speed": "P1000"}}
