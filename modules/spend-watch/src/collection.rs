@@ -122,6 +122,11 @@ pub struct Collection {
     /// launcher's Agents to say beside it. While the screen is shared the
     /// shell shows none of it.
     pub sessions: BTreeMap<String, String>,
+    /// What every pi session together spent today, said as each of
+    /// `sessions` is and empty when nothing was, for the launcher's Agents
+    /// to say on its home row. While the screen is shared the shell shows
+    /// none of it.
+    pub agents_today: String,
     /// What each pi session's councils, judges and fleets cost today, by
     /// its whole id, costliest first; part of what it spent.
     pub helpers: BTreeMap<String, Vec<report::Helper>>,
@@ -832,46 +837,18 @@ pub fn collection(
         made.report = "outliers".into();
         more.push(made);
     }
-    let mut today = line(
-        "quiet:today",
-        "Today",
-        if picture.standing.word.is_empty() {
-            "amounts hidden".to_owned()
-        } else {
-            picture.standing.word.clone()
-        },
-    );
-    today.note = "amounts are hidden while the screen is shared".into();
-    // The first screen's rows, since nothing is behind a quiet one: a
-    // day's cap that matters is among the findings.
-    let mut quiet = vec![today];
-    for view in widest_first(&picture.caps) {
-        if view.cap.window_hours <= 24 {
-            continue;
-        }
-        let share = view
-            .used
-            .or_else(|| view.cap.allowance.map(|allowance| view.spent / allowance));
-        if let Some(share) = share {
-            quiet.push(line(
-                format!("quiet:cap:{}", view.cap.name),
-                capitalized(&view.cap.label),
-                percent(share),
-            ));
-        }
-    }
-    quiet.extend(findings.iter().map(quiet_finding));
     Collection {
         v: VERSION,
         now,
         findings: findings.iter().map(finding_line).collect(),
         more,
-        quiet,
+        quiet: quiet(picture, findings),
         reports: reports
             .into_iter()
             .map(|(id, (_, shown))| (id, shown))
             .collect(),
         sessions: report::by_session(picture, Period::Today),
+        agents_today: report::by_sessions(picture, Period::Today),
         helpers: report::helpers_by_session(picture, Period::Today),
         families: report::by_family(picture, Period::Today),
         periods: Period::ALL
@@ -898,6 +875,40 @@ pub fn collection(
         .map(str::to_owned)
         .to_vec(),
     }
+}
+
+/// The first screen's rows, since nothing is behind a quiet one: today's
+/// standing, each window longer than a day, then the findings, where a
+/// day's cap that matters is.
+fn quiet(picture: &Picture, findings: &[Finding]) -> Vec<Line> {
+    let mut today = line(
+        "quiet:today",
+        "Today",
+        if picture.standing.word.is_empty() {
+            "amounts hidden".to_owned()
+        } else {
+            picture.standing.word.clone()
+        },
+    );
+    today.note = "amounts are hidden while the screen is shared".into();
+    let mut quiet = vec![today];
+    for view in widest_first(&picture.caps) {
+        if view.cap.window_hours <= 24 {
+            continue;
+        }
+        let share = view
+            .used
+            .or_else(|| view.cap.allowance.map(|allowance| view.spent / allowance));
+        if let Some(share) = share {
+            quiet.push(line(
+                format!("quiet:cap:{}", view.cap.name),
+                capitalized(&view.cap.label),
+                percent(share),
+            ));
+        }
+    }
+    quiet.extend(findings.iter().map(quiet_finding));
+    quiet
 }
 
 /// The collection while a newer spend-watch keeps the history: one row
@@ -929,6 +940,7 @@ pub fn held(shape: i64) -> Collection {
         quiet: vec![made],
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
+        agents_today: String::new(),
         helpers: BTreeMap::new(),
         families: BTreeMap::new(),
         periods: Vec::new(),
@@ -1251,6 +1263,17 @@ mod tests {
                 ("01a1271f-bbbb".to_owned(), crate::money::dollars(3.25)),
             ])
         );
+        // Every session's together, from the same sum, so it agrees.
+        assert_eq!(collected.agents_today, crate::money::dollars(15.75));
+    }
+
+    // A day no session has spent on says nothing, rather than "$0.00".
+    #[test]
+    fn no_session_spending_says_nothing() {
+        let config = config();
+        let picture = Picture::read(&History::memory(), &config, NOW).unwrap();
+        let collected = collection(&picture, &[], &config);
+        assert_eq!(collected.agents_today, "");
     }
 
     // A quest's family is what it spent today and what every quest under it
