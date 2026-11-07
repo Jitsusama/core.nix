@@ -1205,10 +1205,13 @@ works the same way everywhere.
   figure kept longest while room runs short and the money giving way
   before how it stands, since its drawer says the spend. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
-  2026-11-07): Doing (how it stands and its step, "working · edit
-  Drawer.qml"), Needs You For, its Quest and how that stands, its Last
-  Landing and what it spent, then its figures, and Working On last, as
-  words, without the title the drawer already says. Its figures go by
+  2026-11-07): Doing, its step alone ("edit Drawer.qml"), since how it
+  stands is its row's, and none where it has no step; Needs You For;
+  its Last Landing; what it spent; its figures; Context Rebuilt; its
+  Quest, how that stands said only where it isn't active; its Machine;
+  and Working On last, as words, without the title the drawer already
+  says (VKCF3Z, 2026-11-07). A row's note says no title again either,
+  and gives way at a whole word, never a letter and an ellipsis. Its figures go by
   OpenTelemetry's gen_ai names: Context ("142k of 200k") and Last Turn
   first, then Model, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.

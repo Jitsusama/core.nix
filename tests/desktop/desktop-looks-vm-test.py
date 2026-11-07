@@ -1941,14 +1941,16 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
 def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     """Photograph a session past 80% full, its drawer giving its figures by gen_ai's names."""
     desktop.down_to(title)
-    # What it's doing and its quest lead, its figures follow what it spent, and what its
-    # quest is about, long, comes last, so the first screen holds the rest (Joel, 2026-11-07).
-    first = ["Doing", "Quest", "Spent Today", "Context", "Last Turn", "Model"]
+    # Its step leads, its figures follow what it spent, then its quest and machine, and what
+    # its quest is about, long, comes last, so the first screen holds the rest (Joel and
+    # VKCF3Z, 2026-11-07).
+    first = ["Doing", "Spent Today", "Context", "Last Turn", "Model"]
+    later = ["Context Rebuilt", "Quest", "Machine", "Working On"]
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["shown"]
             and shown["drawer"]["facts"][: len(first)] == first
-            and shown["drawer"]["facts"][-1] == "Working On"
+            and shown["drawer"]["facts"][-len(later) :] == later
         )
     )
     side = desktop.showing()["selected"]["side"]
@@ -1963,9 +1965,11 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     # Its spend today carries its hours as Graph's spark.
     assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
     assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
-    assert drawer["values"][0] == "working \u00b7 edit Drawer.qml", f"at {shot}: {drawer}"
-    # What it's doing, its quest, its spend and how full it is are on its first screen, even
-    # this short one's, before any it says are more.
+    # How it stands is its row's, so Doing says its step alone, and its quest, active, its id.
+    assert drawer["values"][0] == "edit Drawer.qml", f"at {shot}: {drawer}"
+    assert drawer["values"][-3] == "QEST-20261022-TESTQD", f"at {shot}: {drawer}"
+    # What it's doing, its spend and how full it is are on its first screen, even this
+    # short one's, before any it says are more.
     said = str(drawer.get("moreSays") or "")
     hidden = int(said.split(maxsplit=1)[0]) if said else 0
     led = first[: first.index("Context") + 1]

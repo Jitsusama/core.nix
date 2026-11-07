@@ -729,11 +729,19 @@ ShellRoot {
             && textItem(sayingAlone, "\u00b7") === null, said(drawn(sayingAlone, [])));
         const named = readsOn(sayingLong, root.long);
         const unsaid = readsOn(sayingNot, root.long);
-        const longSay = drawn(sayingLong, []).find(t => t.text === root.sentence);
+        // What's drawn of it, whole or cut: none of the name's or the side's.
+        const longSays = drawn(sayingLong, []).filter(t => t.text !== ""
+            && root.sentence.startsWith(t.text.replace(/\u2026$/, "")));
         expect("a long say gives way, from its end, and never the name",
             named !== null && unsaid !== null && Math.abs(named.width - unsaid.width) <= 0.5
-                && (longSay === undefined || longSay.truncated),
+                && longSays.every(t => t.text !== root.sentence),
             `${named?.width} against ${unsaid?.width}, ${said(drawn(sayingLong, []))}`);
+        // And it gives way at a whole word, or whole, never through a word nor
+        // down to its first alone (VKCF3Z, 2026-11-07: "A b\u2026 84% full").
+        expect("a long say gives way at a whole word, never a letter",
+            longSays.every(t => !t.truncated && t.text.endsWith("\u2026")
+                && t.text.includes(" ")),
+            said(drawn(sayingLong, [])));
     }
 
     // The gutter, as his Neovim's number, relativenumber and

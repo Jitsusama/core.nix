@@ -316,22 +316,28 @@ def shown_first(drawer: Json) -> list[str]:
 def test_a_sessions_drawer_shows_what_matters_first_and_what_its_quest_is_about_last(
     shell: Shell,
 ) -> None:
-    """Its first screen holds how it stands, its quest, what it landed and its figures.
+    """Its first screen holds what it landed, what it spent and its figures.
 
-    What its quest is about runs long, as every real session's does, so it comes last and
-    leaves out the title the drawer already says; it once came first and hid all the rest.
+    How it stands is its row's, so with no step it says no Doing; its quest, nearly always
+    active, comes after its figures. What its quest is about runs long, as every real
+    session's does, so it comes last and leaves out the title the drawer already says; it
+    once came first and hid all the rest.
     """
     found(shell, "listening quest", "Listening Quest")
-    wanted = ["Doing", "Quest", "Context", "Last Turn", "Model"]
+    wanted = "Context, Last Turn, Model"
     shell.launcher_until(
         lambda shown: (
             shown["drawer"]["shown"]
-            and shown_first(shown["drawer"])[: len(wanted)] == wanted
+            and wanted in ", ".join(shown_first(shown["drawer"]))
             and shown["drawer"]["facts"][-1] == "Working On"
         )
     )
     drawer = shell.showing()["drawer"]
-    assert drawer["values"][:2] == ["listening", "QEST-20261107-LISTEN \u00b7 active"], drawer
+    facts = drawer["facts"]
+    assert "Doing" not in facts, drawer
+    assert facts.index("Quest") > facts.index("Cache"), drawer
+    # Its quest is active, which goes unsaid.
+    assert drawer["values"][facts.index("Quest")] == "QEST-20261107-LISTEN", drawer
     summary = WORKS_ON.removeprefix("Listening Quest: ")
     assert drawer["values"][-1] == summary, drawer
     # Nor does its row's note, under the same title; found by typing, whom it's under leads.
@@ -342,8 +348,8 @@ def test_a_sessions_drawer_shows_what_matters_first_and_what_its_quest_is_about_
     shell.launcher_until(
         lambda shown: (
             shown["drawer"]["shown"]
-            and shown_first(shown["drawer"])[:3] == ["Doing", "Quest", "Last Landing"]
-            and shown["drawer"]["values"][2].startswith(f"{STOPPED} \u00b7 core.nix#2140 \u00b7 ")
+            and shown_first(shown["drawer"])[:1] == ["Last Landing"]
+            and shown["drawer"]["values"][0].startswith(f"{STOPPED} \u00b7 core.nix#2140 \u00b7 ")
         )
     )
 

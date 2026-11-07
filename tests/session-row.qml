@@ -342,24 +342,32 @@ QtObject {
         if (facts !== "spent works:words")
             failures.push(`the drawer's facts: "${facts}", not "spent works:words"`);
         // Its first screen holds what matters, in this order: what it's
-        // doing, what it needs Joel for, its quest, what it landed last, what
-        // it spent, its figures, then its machine and what its quest is about,
-        // that without the title the drawer already says (Joel, 2026-11-07:
-        // "the agents side panel generally just shows its title").
+        // doing, its step alone, what it needs Joel for, what it landed last,
+        // what it spent, its figures, then its quest, its machine and what its
+        // quest is about, that without the title the drawer already says
+        // (Joel, 2026-11-07: "the agents side panel generally just shows its
+        // title"; VKCF3Z, 2026-11-07).
         const full = SessionDrawer.drawer("A Quest", {
             worksOn: "A Quest: what it's for, at length",
             stepDetail: { kind: "tool", name: "edit", detail: "/src/core.nix/Drawer.qml" },
             wants: { said: "which way?" },
             questInfo: { id: "QEST-1", title: "A Quest", status: "active" }
         }, Object.assign({}, told, {
-            doing: "working", needs: "Sign In", landed: "core.nix#1 \u00b7 15:44",
+            needs: "Sign In", landed: "core.nix#1 \u00b7 15:44",
             machine: "there", figures: [{ label: "context", value: "84k of 200k" }]
         })).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
-        const fullWant = "step=working \u00b7 edit Drawer.qml; wants=which way? \u00b7 Sign In; "
-            + "task=QEST-1 \u00b7 active; last-landing=core.nix#1 \u00b7 15:44; spent=$4.20; "
-            + "context=84k of 200k; machine=there; works=what it's for, at length";
+        const fullWant = "step=edit Drawer.qml; wants=which way? \u00b7 Sign In; "
+            + "last-landing=core.nix#1 \u00b7 15:44; spent=$4.20; context=84k of 200k; "
+            + "task=QEST-1; machine=there; works=what it's for, at length";
         if (full !== fullWant)
             failures.push(`the drawer's first screen: "${full}", not "${fullWant}"`);
+        // One with no step says no Doing, and a quest that isn't active says
+        // how it stands.
+        const still = SessionDrawer.drawer("A Quest", {
+            questInfo: { id: "QEST-1", title: "A Quest", status: "paused" }
+        }, told).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
+        if (still !== "spent=$4.20; task=QEST-1 \u00b7 paused")
+            failures.push(`a drawer with no step, its quest paused: "${still}"`);
         // A step says its tool and what it's on, a file by its name, and
         // nothing the harness cut short.
         const steps = [{ kind: "thinking" }, { kind: "tool", name: "bash", detail: "cd ~/a; f\u2026" },

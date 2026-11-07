@@ -356,7 +356,6 @@ Provider {
         const needs = (presence.quest ?? "") === "" ? []
             : WaitingOnYou.items.filter(item => item.quest === presence.quest);
         return SessionDrawer.drawer(session.title, presence, {
-            doing: standingOf(session).doing,
             needs: needs.map(item => item.title).join(" \u00b7 "),
             landed: last ? [last.what ?? "", last.ref ?? "", last.at ? started(last.at) : ""]
                 .filter(part => part !== "").join(" \u00b7 ") : "",

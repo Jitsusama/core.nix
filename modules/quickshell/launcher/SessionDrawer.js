@@ -1,8 +1,9 @@
 .pragma library
 // What a pi session's drawer says, wherever the launcher shows one
-// (Agents.qml), laid so its first screen holds what matters of it: how it
-// stands and what it's doing, what it needs Joel for, its quest, what it
-// landed last, then its figures, and what its quest is about last of all.
+// (Agents.qml), laid so its first screen holds what matters of it: what
+// it's doing, what it needs Joel for, what it landed last, what it spent
+// and its figures, then its quest and machine, and what its quest is about
+// last of all.
 // The drawer shows only whole facts, so a long one ahead of the rest left
 // the title and "13 more" alone on every session (Joel, 2026-11-07: "the
 // agents side panel generally just shows its title. i have to ctrl-w h
@@ -42,26 +43,23 @@ function about(works, titles) {
 
 // Its address, where it works and since when it's run are the eyebrow over
 // its title, "8IDU4E \u00b7 core.nix \u00b7 since 21:52" (VKCF3Z,
-// 2026-11-06), and aren't said again. Then, each as a name and a value:
-// what it's doing (`said.doing`, its row's word for how it stands, with its
-// step), what it needs Joel for (its want, then its quest's Needs You
-// items, `said.needs`), its quest and how that stands, what it landed last
-// (`said.landed`), what it's spent today (an orchestrator's whole
-// orchestration, then its own and its sessions'), its figures
-// (`said.figures`, SessionRow.figures), what rebuilding its context cost,
-// its machine, and what its quest is about, as words. Nothing it hasn't
-// said is guessed. The eyebrow names things, so the drawer sets it as
-// they're written, never in capitals (Drawer.qml).
+// 2026-11-06), and how it stands is its row's, on the same line, so none
+// is said again. Then, each as a name and a value: what it's doing, its
+// step alone, and nothing where it has none; what it needs Joel for (its
+// want, then its quest's Needs You items, `said.needs`); what it landed
+// last (`said.landed`); what it's spent today (an orchestrator's whole
+// orchestration, then its own and its sessions'); its figures
+// (`said.figures`, SessionRow.figures); what rebuilding its context cost;
+// its quest, how that stands said only where it isn't active; its
+// machine; and what its quest is about, as words (VKCF3Z, 2026-11-07).
+// Nothing it hasn't said is guessed. The eyebrow names things, so the
+// drawer sets it as they're written, never in capitals (Drawer.qml).
 function drawer(title, presence, said) {
     const quest = presence?.questInfo ?? null;
     const known = [
-        ["step", [said.doing ?? "", step(presence?.stepDetail)]
-            .filter((part, at, all) => part !== "" && all.indexOf(part) === at)
-            .join(" \u00b7 ")],
+        ["step", step(presence?.stepDetail)],
         ["wants", [presence?.wants?.said ?? "", said.needs ?? ""]
             .filter(part => part !== "").join(" \u00b7 ")],
-        ["task", quest?.id ? [quest.id, quest.status ?? ""]
-            .filter(part => part !== "").join(" \u00b7 ") : ""],
         ["last-landing", said.landed ?? ""],
         ["spent", said.spent ?? ""],
         ["own", said.own ?? ""],
@@ -73,8 +71,14 @@ function drawer(title, presence, said) {
     const facts = known.filter(([, value]) => value !== "")
         .map(([id, value]) => Object.assign({ label: said.named(id), value },
             id === hoursOn && said.hours ? { figure: said.hours } : {}));
-    const after = [["rebuilt", said.rebuilt ?? ""], ["machine", said.machine ?? ""]]
-        .filter(([, value]) => value !== "")
+    const stands = quest?.status && quest.status !== "active" ? quest.status : "";
+    const task = quest?.id ? [quest.id, stands].filter(part => part !== "").join(" \u00b7 ")
+        : "";
+    const after = [
+        ["rebuilt", said.rebuilt ?? ""],
+        ["task", task],
+        ["machine", said.machine ?? ""]
+    ].filter(([, value]) => value !== "")
         .map(([id, value]) => ({ label: said.named(id), value }));
     const works = about(presence?.worksOn, [title, quest?.title]);
     const words = works === "" ? [] : [{ label: said.named("works"), value: works, words: true }];
