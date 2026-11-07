@@ -109,7 +109,6 @@
       "what": "agent",
       "glyph": "agent",
       "parts": [
-        "orchestrators",
         "quests",
         "jobs",
         "runs",
@@ -129,6 +128,7 @@
         "listening": "listening",
         "paused": "paused",
         "parked": "parked",
+        "closed": "closed",
         "allOf": "{spent} in all",
         "since": "since {at}",
         "under": "under {address}"
@@ -203,20 +203,6 @@
       "id": "agents:start",
       "in": "agents",
       "name": "Start a Session",
-      "verb": "more",
-      "glyph": "agent"
-    },
-    {
-      "id": "agents:start:quest",
-      "in": "agents:start",
-      "name": "On a Quest",
-      "verb": "more",
-      "glyph": "agent"
-    },
-    {
-      "id": "agents:start:orchestrator",
-      "in": "agents:start",
-      "name": "As an Orchestrator",
       "verb": "more",
       "glyph": "agent"
     },
@@ -6462,13 +6448,8 @@
       "in": "agents",
       "name": "Orchestrators",
       "term": "Agents/orchestrator",
-      "noun": "orchestrators",
-      "what": "orchestrator",
       "glyph": "agent",
-      "ask": "which orchestrator?",
-      "empty": "No orchestrators.",
       "said": {
-        "off": "not running",
         "sent": "talked to {name}"
       }
     },
@@ -6503,7 +6484,7 @@
     {
       "id": "verb:orchestrator:reopen",
       "command": "reopen",
-      "in": "orchestrators",
+      "in": "agents",
       "name": "Reopen",
       "verb": "reopen",
       "glyph": "resume",
@@ -6516,7 +6497,7 @@
     {
       "id": "verb:orchestrator:afresh",
       "command": "new",
-      "in": "orchestrators",
+      "in": "agents",
       "name": "Start Afresh",
       "verb": "start afresh",
       "glyph": "resume",
@@ -6545,8 +6526,16 @@
       "id": "verb:quest:open",
       "command": "new",
       "in": "quests",
-      "name": "Start a Session",
+      "name": "Start Here",
       "verb": "start",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:quest:orchestrate",
+      "command": "orchestrate",
+      "in": "quests",
+      "name": "Orchestrate",
+      "verb": "orchestrate",
       "glyph": "agent"
     },
     {

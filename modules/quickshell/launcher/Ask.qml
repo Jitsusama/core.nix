@@ -31,6 +31,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
@@ -169,31 +170,36 @@ Provider {
 
     // Talking it over with an orchestrator (P9R1KI, 2026-10-26: a row
     // under Ask's answer sending the question on to it): the first one
-    // running, in Orchestrators' own order, so one waiting on Joel comes
-    // first. Its words go to its inbox as Talk's do, and the launcher lands
-    // inside it, where the talk says how it went as its session replies.
-    // With none running, there's no row.
+    // running in the one order of how sessions stand (SessionRow.js), so
+    // one waiting on Joel comes first. Its words go to its inbox as Talk's
+    // do, and the launcher lands inside its row in Agents, where the talk
+    // says how it went as its session replies. With none running, there's
+    // no row.
     function talkOn(question, answered) {
-        const source = (launcher?.sources ?? []).find(one => one.settings.name
-            === "orchestrators") ?? null;
-        const row = source ? source.all.find(one => one.stands !== "off") ?? null : null;
-        const one = row ? source.listed.find(listed => `orchestrator:${listed.address}`
-            === row.key) ?? null : null;
-        if (one === null)
+        const named = name => (launcher?.sources ?? []).find(one => one.settings.name
+            === name) ?? null;
+        const agents = named("agents");
+        const running = agents ? (named("orchestrators")?.listed ?? [])
+            .map(one => Sessions.running.find(session => session.address === one.address))
+            .filter(session => session !== undefined) : [];
+        const session = running.map((one, at) => ({ one, at, stands: agents.stateOf(one) }))
+            .sort((a, b) => SessionRow.rank(a.stands) - SessionRow.rank(b.stands)
+                || a.at - b.at)[0]?.one ?? null;
+        if (session === null)
             return [];
+        const row = agents.made(session, { orchestrates: true });
         return [thing({
             key: "verb:ask:talk",
             verb: Words.verb("verb:ask:talk"),
-            name: Words.name("verb:ask:talk").replace("{name}", row.name),
+            name: Words.name("verb:ask:talk").replace("{name}", session.title),
             glyph: Words.glyph("verb:ask:talk"),
             hue: "action",
             stays: true,
             run: () => {
-                Sessions.talk(one.address, carried(question, answered));
-                // By the id the launcher holds it by, which for a running
-                // one is its session's, not its key.
-                launcher.goTo({ trail: ["collection:agents", "collection:orchestrators",
-                    launcher.steadyId(row)], spot: "" });
+                Sessions.talk(session.address, carried(question, answered));
+                // By the id the launcher holds it by, its session's.
+                launcher.goTo({ trail: ["collection:agents", launcher.steadyId(row)],
+                    spot: "" });
             }
         })];
     }

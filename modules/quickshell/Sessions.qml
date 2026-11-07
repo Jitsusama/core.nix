@@ -116,14 +116,18 @@ Singleton {
     // so the session has the account's whole environment, with the quest
     // loaded as it starts. Quests, Orchestrators and Agents' Start a
     // Session all start one this way, so a session started anywhere is the
-    // same.
+    // same. One that `orchestrates` marks its quest as orchestrating once
+    // the quest loads, as the quest tool's orchestrate does, which the
+    // harness does for it, since the shell never writes a quest.
     // pi run without a login shell can't reach its model, and exits at
     // once, so a window started that way blinked and went (Joel,
     // 2026-10-28).
-    function start(quest, folder) {
+    function start(quest, folder, orchestrates) {
+        const told = orchestrates ? ["QUEST_WORKFLOW_ORCHESTRATE=1"] : [];
         root.inSessions("kitty", ["--directory", folder,
-            "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "zsh", "-lic", held("pi")]);
-        Report.say(`started a session on ${quest}`);
+            "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`].concat(told,
+            ["zsh", "-lic", held("pi")]));
+        Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`);
     }
 
     // Starts a session told `words` as it opens, as Google's sign-in is

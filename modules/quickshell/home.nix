@@ -1322,8 +1322,9 @@ in
         source = "agents";
         weight = 0.9;
       };
-      # The orchestrators, each talked to, paused or stopped through its
-      # session's steer inbox.
+      # What Agents knows of the orchestrators: who they are, the talks
+      # Joel has had with them and how a closed one reopens, no place of
+      # its own, since each is a row of Agents' tree.
       orchestrators = {
         order = 110;
         source = "orchestrators";

@@ -1100,6 +1100,14 @@ command = "talk"
 short = "tal"
 kinds = ["list"]
 
+# A session started on a quest that orchestrates it and every quest under
+# it, beside :new, which starts one that only works on it: a quest's
+# Orchestrate.
+[acts.orchestrate]
+command = "orchestrate"
+short = "orch"
+kinds = ["list"]
+
 # Words to someone in a new message, a mail's or Slack's, opened to write:
 # Write a Mail, Write in Slack and Write to the Guests, since :write is
 # Vim's.

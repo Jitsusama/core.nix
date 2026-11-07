@@ -188,6 +188,23 @@ Provider {
         // Return goes to its session, wakes the one parked, or starts one.
         const first = !session ? "verb:quest:open"
             : session.parked ? "verb:quest:wake" : "verb:quest:switch";
+        // One with no session, that orchestrates nothing yet, can start one
+        // that orchestrates it and the quests under it, as an act beside
+        // Start Here rather than a question asked first (VKCF3Z,
+        // 2026-11-07 [9a4b1dd0]). One listed as orchestrating reopens on
+        // its own row in Agents.
+        const orchestrating = (provider.launcher?.sources ?? [])
+            .find(one => one.settings.name === "orchestrators")?.listed ?? [];
+        const orchestrate = !session && !orchestrating.some(one => one.quest === quest.id)
+            ? thing({
+                key: "verb:quest:orchestrate",
+                verb: Words.verb("verb:quest:orchestrate"),
+                name: Words.name("verb:quest:orchestrate"),
+                glyph: Words.glyph("verb:quest:orchestrate"),
+                hue: "action",
+                later: true,
+                run: () => Sessions.start(quest.id, quest.folder, true)
+            }) : null;
         return [thing({
             key: first,
             verb: Words.verb(first),
@@ -198,14 +215,14 @@ Provider {
             later: true,
             verbs: choosing ? () => provider.machines(quest) : null,
             run: () => provider.go(quest)
-        })].concat([
+        }), orchestrate,
             fact("id", quest.id),
             fact("status", [quest.status, isOpen(quest) ? quest.priority : ""]
                 .filter(part => part !== "").join(" \u00b7 ")),
             quest.updated ? fact("updated", day(quest.updated)) : null,
             parent ? fact("parent", parent.title || parent.id, parent.id) : null,
             fact("folder", homely, "where a session starts", quest.folder)
-        ].filter(row => row !== null));
+        ].filter(row => row !== null);
     }
 
     // Where a session on `quest` may start, as Start a Session's right
