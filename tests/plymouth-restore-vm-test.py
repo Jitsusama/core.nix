@@ -43,8 +43,9 @@ GOES_OFF = dt.timedelta(minutes=3)
 LOADING = re.compile(r"PM: Loading (and decompressing )?image data")
 READS = "PM: Image loading progress:"
 READ = "PM: Image loading done"
-# The theme's words for a restore, read as the ask's are.
-RESTORING = r"restoring from\s+hibernation"
+# The theme's words for a restore, read as the ask's are. OCR can run the serif's r and n
+# together into an m, and has read "hibemation".
+RESTORING = r"restoring from\s+hibe(rn|m)ation"
 # What the hook says once the machine is back.
 TOOK = (
     r"hibernate-unlock: the image was read and the machine back \d+\.\d s after the disk "
