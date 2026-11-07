@@ -234,6 +234,132 @@ pub fn quest(readme: &str) -> Quest {
     quest
 }
 
+/// A holder the machine's node keeps a session in, as a line of
+/// `mycelium held` says: the command it holds, the pi it runs (0 while
+/// parked or gone), and the windows it shows in.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Holder {
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub pid: u32,
+    #[serde(default)]
+    pub parked: bool,
+    #[serde(default)]
+    pub windows: Vec<HeldWindow>,
+}
+
+/// A window a holder shows its session in: its terminal, its id there,
+/// and the socket that terminal listens on.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct HeldWindow {
+    pub terminal: String,
+    pub id: String,
+    pub within: String,
+}
+
+/// How the node holds a session.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Held {
+    /// A holder runs its pi.
+    Running,
+    /// A holder keeps it parked, to start again on a key in its window.
+    Parked,
+    /// Only holders whose pi is gone, each window of theirs left showing
+    /// a dead session.
+    Dead(Vec<HeldWindow>),
+    /// No holder names it.
+    Not,
+}
+
+/// The holders in `mycelium held`'s output, a JSON line each, skipping
+/// lines that aren't one.
+#[must_use]
+pub fn holders(said: &str) -> Vec<Holder> {
+    said.lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
+/// The session a command opens, after `--session` or `--session-id`,
+/// given as its id or as its log's path, whose name ends `_<id>.jsonl`.
+#[must_use]
+pub fn session_of(command: &[String]) -> Option<&str> {
+    let at = command
+        .iter()
+        .position(|w| w == "--session" || w == "--session-id")?;
+    let named = command.get(at + 1)?;
+    Some(
+        named
+            .strip_suffix(".jsonl")
+            .and_then(|stem| stem.rsplit_once('_'))
+            .map_or(named.as_str(), |(_, id)| id),
+    )
+}
+
+/// How the node holds `session`, given whether a pid is a live pi. A
+/// holder whose pi is gone and isn't parked, its record left behind,
+/// holds nothing, and mustn't keep the session from being started again;
+/// its windows are what a restart closes first.
+#[must_use]
+pub fn held(holders: &[Holder], session: &str, runs: impl Fn(u32) -> bool) -> Held {
+    let its: Vec<&Holder> = holders
+        .iter()
+        .filter(|h| session_of(&h.command) == Some(session))
+        .collect();
+    if its.is_empty() {
+        Held::Not
+    } else if its.iter().any(|h| h.pid > 0 && runs(h.pid)) {
+        Held::Running
+    } else if its.iter().any(|h| h.parked) {
+        Held::Parked
+    } else {
+        Held::Dead(its.iter().flat_map(|h| h.windows.clone()).collect())
+    }
+}
+
+/// The realm the restart words hold a session in, after `--realm`.
+#[must_use]
+pub fn realm_of(restart: &str) -> Option<&str> {
+    let mut words = restart.split_whitespace();
+    words.find(|w| *w == "--realm")?;
+    words.next()
+}
+
+/// The kitty user variable the harness marks a session's window with.
+pub const SESSION_MARK: &str = "pi_session";
+
+/// The windows in a `kitty @ ls` listing marked as `session`'s, each
+/// with the process kitty started in it.
+#[must_use]
+pub fn marked(listing: &serde_json::Value, session: &str) -> Vec<(String, Option<u32>)> {
+    let each = |v: &serde_json::Value, key: &str| -> Vec<serde_json::Value> {
+        v.get(key)
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let mut found = Vec::new();
+    for os_window in listing.as_array().into_iter().flatten() {
+        for tab in each(os_window, "tabs") {
+            for window in each(&tab, "windows") {
+                let mark = window
+                    .pointer(&format!("/user_vars/{SESSION_MARK}"))
+                    .and_then(serde_json::Value::as_str);
+                if mark == Some(session)
+                    && let Some(id) = window.get("id").and_then(serde_json::Value::as_u64)
+                {
+                    let pid = window
+                        .get("pid")
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|p| u32::try_from(p).ok());
+                    found.push((id.to_string(), pid));
+                }
+            }
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +389,52 @@ mod tests {
 
     fn strings(all: &[&str]) -> Vec<String> {
         all.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_holder_whose_pi_died_leaves_its_windows_to_close() {
+        let said = [
+            r#"{"command":["pi","--session","a"],"pid":7,"windows":[]}"#,
+            "not a holder",
+            r#"{"command":["pi","--session","/s/2026_b.jsonl"],"pid":0,"parked":true}"#,
+            r#"{"command":["pi","--session","c"],"pid":9,"windows":"#,
+            r#"[{"terminal":"kitty","id":"2","within":"unix:@kitty-1"}]}"#,
+        ];
+        let said = format!(
+            "{}\n{}\n{}\n{}{}",
+            said[0], said[1], said[2], said[3], said[4]
+        );
+        let all = holders(&said);
+        assert_eq!(all.len(), 3, "a line that isn't a holder is skipped");
+        let runs = |pid: u32| pid == 7;
+        assert_eq!(held(&all, "a", runs), Held::Running);
+        assert_eq!(held(&all, "b", runs), Held::Parked, "named by its log");
+        assert_eq!(
+            held(&all, "c", runs),
+            Held::Dead(vec![HeldWindow {
+                terminal: "kitty".into(),
+                id: "2".into(),
+                within: "unix:@kitty-1".into(),
+            }]),
+            "its pi 9 is gone, so its window shows a dead session"
+        );
+        assert_eq!(held(&all, "d", runs), Held::Not);
+    }
+
+    #[test]
+    fn the_realm_is_read_from_the_restart_words() {
+        assert_eq!(realm_of("mycelium --realm work hold -- pi"), Some("work"));
+        assert_eq!(realm_of("mycelium hold -- pi"), None);
+    }
+
+    #[test]
+    fn a_kitty_window_marked_as_the_session_is_found() {
+        let listing = serde_json::json!([{ "tabs": [{ "windows": [
+            { "id": 4, "pid": 40, "user_vars": { "pi_session": "s" } },
+            { "id": 5, "pid": 50, "user_vars": { "pi_session": "t" } },
+            { "id": 6, "user_vars": {} },
+        ] }] }]);
+        assert_eq!(marked(&listing, "s"), vec![("4".to_owned(), Some(40))]);
     }
 
     #[test]

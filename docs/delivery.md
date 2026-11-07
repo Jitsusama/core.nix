@@ -49,7 +49,10 @@ install killed 22 sessions as they reloaded between 01:09 and 01:52, and
 each was started again by the next tick or sooner. One started three times in an hour is
 left down and reported, since something kills it as it starts. A session a
 holder still holds, its pi parked, is left to wake in its own window, since
-one started beside it would write the same log. Nothing is started until
+one started beside it would write the same log. Before a session is
+started again, every kitty window left showing it dead is closed, its gone
+holder's or one the harness marked as the session's with no pi under it,
+so a restart replaces a window rather than adding one. Nothing is started until
 the desktop has been up 15 minutes: before sign-in there is nowhere to open
 a window, and just after it the sessions Joel had are reopened together.
 
