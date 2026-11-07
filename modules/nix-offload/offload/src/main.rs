@@ -1981,7 +1981,7 @@ const GRACE: Duration = Duration::from_secs(2);
 /// everything it started, and gives nothing. The call runs in a process
 /// group of its own, since the unit's stop signals the service alone: on
 /// 7 November a stop came while the helper deleted a builder, and its
-/// gcloud, with the network going, ran on until systemd killed it all
+/// cloud client, with the network going, ran on until systemd killed it all
 /// 10 s later, holding the reboot. The builder goes either way, and one
 /// still there is the next start's to take back.
 fn call_helper(settings: &Settings, arguments: &[&str]) -> Option<Vec<u8>> {
@@ -2223,8 +2223,8 @@ mod tests {
         ENDING.store(false, Ordering::SeqCst);
     }
 
-    /// A helper whose give-back ignores a stop, as a gcloud waiting on a
-    /// network that's gone can.
+    /// A helper whose give-back ignores a stop, as a cloud client waiting
+    /// on a network that's gone can.
     const DELETES_ON: &str = r#"#!/bin/sh
 trap '' TERM
 [ "$1" = down ] && sleep 60
