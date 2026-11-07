@@ -235,7 +235,9 @@ def test_a_shell_starting_after_a_reboot_reopens_only_what_its_list_names(
     After a reboot Joel types only his disk's PIN and signs in (2026-11-07), so the shell
     starting reopens the sessions the reboot's hold listed. Never what a boot's end left in
     restore.json, and never on a restart alone: at 09:08 that day a switch restarting the
-    shell reopened 36 sessions a boot four days old had left.
+    shell reopened 36 sessions a boot four days old had left. A window Joel opens as he
+    signs in takes no session's workspace from it: at 10:33 his browser's, alone on the
+    first, left every session one workspace along.
     """
     machine = booted.machine
     where = {
@@ -291,6 +293,14 @@ def test_a_shell_starting_after_a_reboot_reopens_only_what_its_list_names(
             ],
         }
         booted.keep("~/.local/state/pi/reboot-reopen.json", listed)
+        # Joel's own window, opened as he signs in, where two of them sat.
+        machine.succeed(booted.in_niri("niri msg action focus-monitor Virtual-2"))
+        machine.succeed(booted.in_niri("niri msg action focus-workspace 1"))
+        machine.succeed(booted.in_niri("niri msg action spawn -- kitty --title Lantern"))
+        machine.wait_until_succeeds(
+            booted.in_niri('niri msg --json windows | grep -qF \'"title":"Lantern"\''),
+            timeout=dt.timedelta(seconds=120),
+        )
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
         deadline = time.monotonic() + 180
         while not home(now_sat := booted.sessions_sat("01c7-")):
@@ -302,6 +312,7 @@ def test_a_shell_starting_after_a_reboot_reopens_only_what_its_list_names(
     finally:
         booted.handed_back(boot)
         machine.succeed(booted.in_niri("rm -f ~/.local/state/pi/reboot-reopen.json"))
+        machine.succeed(booted.in_niri("pkill -f '[k]itty --title Lantern' || true"))
 
 
 def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window(
