@@ -280,8 +280,9 @@ def test_a_shell_starting_on_a_last_boots_sessions_reopens_them_where_they_sat(
             ),
             timeout=dt.timedelta(seconds=60),
         )
-        counted = machine.succeed(booted.in_niri(begun)).split()
-        assert counted[0::2] == ["1"] * len(where), counted
+        lines = machine.succeed(booted.in_niri(begun)).splitlines()
+        counted = {line.split()[-1]: line.split()[0] for line in lines}
+        assert counted == dict.fromkeys(where, "1"), counted
     finally:
         booted.handed_back(boot)
 
