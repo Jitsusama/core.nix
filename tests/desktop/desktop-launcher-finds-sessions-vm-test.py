@@ -1213,6 +1213,7 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         " niri msg action focus-workspace 1; sleep 0.05; done"
     )
     desktop.as_account(f"setsid sh -c {shlex.quote(pulling)} > /dev/null 2>&1 &")
+    watch_the_focus(desktop)
     since = desktop.mark()
     machine.send_key("ret")
     opening = "niri msg --json windows | grep -o 'pi --session 01c3-' | wc -l"
@@ -1229,10 +1230,15 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     assert back["01c3-west"][0] == back["01c3-east"][0] == 1, back
     assert back["01c3-west"][1] < back["01c3-east"][1], back
     assert back["01c3-north"][0] == 2, back  # noqa: PLR2004
+    # Each opened there, never on the workspace focused and moved after,
+    # though the focus was on the first while north opened.
+    for one in where:
+        window = desktop.window_titled(f"pi --session {one}")
+        assert first_on(desktop, f"pi --session {one}") == window["workspace_id"], one
     # Nothing's left to reopen once this boot is the one kept.
     desktop.as_account("rm $XDG_RUNTIME_DIR/pi-stays && pkill -f 'sleep 600'")
     kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
-    desktop.as_account("rm -rf ~/east ~/north ~/west")
+    desktop.as_account("rm -rf ~/east ~/north ~/west ~/focus-events")
 
 
 def test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile(

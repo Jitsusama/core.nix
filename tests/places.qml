@@ -197,6 +197,14 @@ QtObject {
         expect("or just left of the one it goes before",
             [Places.columnTo({ join: 24, before: 4 }, 1, beside),
                 Places.columnTo({ join: 24, before: 4 }, 5, beside)], [2, 3]);
+        expect("a window opening on the workspace it joins opens just right of the one it follows",
+            Places.opensAt(after4, beside), 4);
+        expect("or in the column of the one it goes before, which moves right",
+            Places.opensAt({ join: 24, before: 4 }, beside), 3);
+        expect("one going under another opens just right of it, to be taken in after",
+            Places.opensAt({ join: 24, after: 4, under: true }, beside), 4);
+        expect("one given a workspace of its own opens at none", Places.opensAt(made, beside),
+            null);
 
         if (failures.length > 0) {
             for (const failure of failures)
