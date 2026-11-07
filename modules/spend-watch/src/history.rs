@@ -16,6 +16,11 @@ use std::time::Duration;
 /// Bumped whenever a table's shape or meaning changes.
 pub const SCHEMA: i64 = 7;
 
+/// The most the write-ahead log keeps on disk once checkpointed. SQLite
+/// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
+/// beside a 400 MB history, every frame of it already checkpointed.
+const WAL_LIMIT: i64 = 32 * 1024 * 1024;
+
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
 /// the turns again each time cost most of a pass once they were counted
@@ -369,6 +374,8 @@ impl History {
         let db = Connection::open(path).map_err(sql)?;
         db.busy_timeout(Duration::from_secs(10)).map_err(sql)?;
         db.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
+        db.pragma_update(None, "journal_size_limit", WAL_LIMIT)
+            .map_err(sql)?;
         db.pragma_update(None, "synchronous", "NORMAL")
             .map_err(sql)?;
         // A pass's picture sorts and groups more turns than SQLite keeps in
@@ -567,6 +574,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn a_history_sorts_in_memory() {
@@ -578,6 +586,29 @@ mod tests {
             .unwrap();
         // 2 is MEMORY.
         assert_eq!(store, 2);
+    }
+
+    #[test]
+    fn the_log_shrinks_back_once_a_large_write_is_checkpointed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        let history = History::open(&path).unwrap();
+        let large = 2 * WAL_LIMIT;
+        history
+            .db
+            .execute_batch(&format!(
+                "CREATE TABLE big (b BLOB); INSERT INTO big VALUES (zeroblob({large}));"
+            ))
+            .unwrap();
+        let log = dir.path().join("history.db-wal");
+        let size = |limit: i64| u64::try_from(limit).unwrap();
+        assert!(fs::metadata(&log).unwrap().len() > size(large));
+        history
+            .db
+            .query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |_| Ok(()))
+            .unwrap();
+        history.set_meta("after", "a small write").unwrap();
+        assert!(fs::metadata(&log).unwrap().len() <= size(WAL_LIMIT));
     }
 
     #[test]
