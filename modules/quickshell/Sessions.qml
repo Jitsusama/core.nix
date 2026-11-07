@@ -721,6 +721,7 @@ Singleton {
             return;
         const late = going.late[0];
         if (late && !late.known.includes(key)) {
+            console.info(`sessions: window ${key} came late, taken as ${late.id}'s`);
             going.taken.push(key);
             going.late = going.late.slice(1);
             root.besideKept(id, late.kept);
@@ -781,6 +782,11 @@ Singleton {
             reopenPatience.stop();
             reopenSoon();
             return;
+        }
+        if (!waiting.said) {
+            waiting.said = true;
+            console.info(`sessions: ${waiting.id} opened as window ${entry.id} at `
+                + root.sitsSaid(entry.id));
         }
         if (entry.at !== null) {
             if (root.placeSession(entry, root.besideOf(reopening.placed)) === "waiting")
@@ -909,6 +915,9 @@ Singleton {
             : root.moveTo(window, where, workspace, column, beside);
         if (into === null)
             return "waiting";
+        console.info(`sessions: window ${entry.id} moved from ${workspace.output} `
+            + `${workspace.idx}/${column} toward ${JSON.stringify(where)}, kept at `
+            + root.keptSaid(entry.at));
         root.noteAway(entry.away, into);
         return "moved";
     }
@@ -957,6 +966,24 @@ Singleton {
             Niri.act({ ConsumeOrExpelWindowLeft: { id } });
         return where.join;
     }
+    // Where a session was kept, a workspace and a window sit, as the
+    // placement log says them, so a reopen on Joel's machine says what it
+    // asked and what niri did: on 2026-11-07 five of 57 came back misplaced
+    // after the reboot, and nothing said why.
+    function keptSaid(at) {
+        return at ? `${at.output} ${at.workspace}/${at.column}` : "nowhere";
+    }
+    function spaceSaid(id) {
+        const workspace = Niri.workspace(id);
+        return workspace ? `${workspace.output} ${workspace.idx}` : `workspace ${id}`;
+    }
+    function sitsSaid(id) {
+        const window = Niri.windows[id];
+        const workspace = window ? Niri.workspace(window.workspace_id) : null;
+        return workspace ? `${workspace.output} ${workspace.idx}/`
+            + `${window.layout?.pos_in_scrolling_layout?.[0] ?? "?"}` : "nowhere yet";
+    }
+
     // Says Reopen Them All moved the focus to put a window in place, so
     // Joel's window is focused again once every one is placed. A session
     // that opened where it goes (opensOn) never moves it.
@@ -1043,6 +1070,7 @@ Singleton {
     // kin's window, to place it.
     function reopenDone() {
         const going = reopening;
+        console.info(`sessions: reopening settled after ${going.rounds} rounds of moves`);
         going.settling = false;
         reopenSettling.stop();
         // Sessions handed over meanwhile are reopened first, and this is
@@ -1248,6 +1276,10 @@ Singleton {
             const into = quiet || at !== null
                 ? root.opensOn(next.one, at, root.besideOf(reopening.placed)) : null;
             const focuses = !quiet && into === null;
+            console.info(`sessions: reopening ${next.one.id}, kept at ${root.keptSaid(at)}, `
+                + (into !== null
+                    ? `asked on ${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`
+                    : focuses ? "its place focused" : "beside Joel"));
             if (focuses)
                 reopening.focused = true;
             if (focuses && next.at) {
@@ -1260,7 +1292,7 @@ Singleton {
             } else if (focuses && reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
-            reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null,
+            reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null, said: false,
                 away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
                 quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
             // The pace is counted from once it's begun and said, so the next
@@ -1507,6 +1539,9 @@ Singleton {
         interval: 30000
         onTriggered: {
             const waiting = root.reopening?.waiting;
+            if (waiting)
+                console.info(`sessions: ${waiting.id} ${waiting.opened === null
+                    ? "opened no window" : "wasn't placed"} in 30 s`);
             if (waiting && waiting.opened === null)
                 root.reopening.late.push(waiting);
             else if (waiting && waiting.at !== null)
