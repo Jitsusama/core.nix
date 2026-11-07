@@ -640,15 +640,11 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     let quarantined = world.quarantined(&head);
     let on_hold = |test: &str| hold.as_ref().is_some_and(|hold| hold["test"] == test);
     let owner_in = |test: &str| owner_of(world, &base, &head, test, &tests);
-    let breaking = Breaking {
-        world,
-        state,
-        base: &base,
-        head: &head,
-        left_be: |test: &str| quarantined.iter().any(|kept| kept == test) || on_hold(test),
-        done: Mutex::new(Ok(())),
-    };
-    let outcomes = attempt_all(world, state, &head, &tests, &|test, ran| breaking.heard(test, ran));
+    let left_be = |test: &str| quarantined.iter().any(|kept| kept == test) || on_hold(test);
+    let breaking = Breaking::new(world, state, &base, &head, left_be);
+    let outcomes = attempt_all(world, state, &head, &tests, &|test, ran| {
+        breaking.heard(test, ran);
+    });
     breaking.done()?;
     let mut failed = false;
     let mut unfinished = false;
@@ -734,16 +730,38 @@ struct Breaking<'a, F> {
     done: Mutex<Result<(), String>>,
 }
 
-impl<F: Fn(&str) -> bool> Breaking<'_, F> {
-    fn heard(&self, test: &str, outcome: Outcome) {
-        if outcome != Outcome::Failed || (self.left_be)(test) {
-            return;
+impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
+    fn new(
+        world: &'a dyn World,
+        state: &'a State,
+        base: &'a str,
+        head: &'a str,
+        left_be: F,
+    ) -> Self {
+        Self {
+            world,
+            state,
+            base,
+            head,
+            left_be,
+            done: Mutex::new(Ok(())),
         }
+    }
+
+    /// Each test's end also clears a hold whose revert is on main, since a
+    /// round can run long past it: on 7 November the revert merged at
+    /// 13:48, and eight merges waited off the machine behind the hold while
+    /// the round it was found in ran on.
+    fn heard(&self, test: &str, outcome: Outcome) {
         let mut done = self
             .done
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if done.is_ok() {
+        if done.is_err() {
+            return;
+        }
+        *done = clear_if_reverted(self.world, self.state);
+        if done.is_ok() && outcome == Outcome::Failed && !(self.left_be)(test) {
             *done = broke(self.world, self.state, self.base, self.head, test);
         }
     }
@@ -924,6 +942,7 @@ mod tests {
         after_revert: Vec<String>,
         revert_seen: Condvar,
         waited_out: Mutex<Vec<String>>,
+        reaches_main_after: usize,
         put_in_quarantine: Mutex<Vec<String>>,
         held: Option<String>,
     }
@@ -1032,8 +1051,10 @@ mod tests {
                 commit: None,
             })
         }
+        /// A revert is on main once `reaches_main_after` runs have been
+        /// built, and never when it's zero.
         fn on_main(&self, _: &str) -> bool {
-            false
+            self.reaches_main_after > 0 && self.built().len() >= self.reaches_main_after
         }
         fn wait(&self, _: u64) {}
     }
@@ -1257,6 +1278,29 @@ mod tests {
         assert!(
             world.waited_out.lock().unwrap().is_empty(),
             "the slow test was still running when its round reverted the merge"
+        );
+    }
+
+    #[test]
+    fn a_hold_is_cleared_as_its_revert_reaches_main_mid_round() {
+        let state = state("cleared-mid-round");
+        state
+            .set_hold(&json!({"test": "vm-x", "bad": "b", "revert_commit": "r"}))
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            reaches_main_after: 1,
+            ..Stand::default()
+        };
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        assert!(
+            state.hold().is_none(),
+            "the revert reached main as the round's test ran"
         );
     }
 
