@@ -93,6 +93,14 @@ fraction of the allowance, and `state`: `ok`, `notified` or `refused`.
 `endsKnown` says whether the feed could know the end at all. Every change in
 allowance or state is kept as the cap's history.
 
+`label` is the window's name, as the launcher shows it and a sentence says
+it ("near the Premium Day allowance"): its length in words, in Title Case,
+with what it's for in front when it covers only part of the budget:
+"Five Hours", "Week", "Premium Day". It never opens with a figure and
+never says cap, limit or quota, since the glossary's words are budget,
+allowance and window. A figure says the window short itself ("62% of
+5 h"), whatever the label.
+
 `budget` is optional, as a bill's is: the budget it caps, the feed's own
 when absent. A cap's outlook, chances and warnings count only its budget's
 spend, and a feed may give two budgets' caps of the same name.

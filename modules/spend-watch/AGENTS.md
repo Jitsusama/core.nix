@@ -127,9 +127,12 @@ feed speaks.
   allowances stepping in to each. The periods sit in the collection itself, so no path goes
   deeper than three (Joel, 2026-10-26). A row of the budgets names the
   theme's mark it wears, AI spend's for a budget and a clock for a window,
-  and a day's row a day's; its role colours it, muted at rest, and a
-  window's row gives its hours, which the launcher names it by from its
-  vocabulary (VKCF3Z, 2026-11-07).
+  and a day's row a day's; its role colours it, muted at rest. A window
+  is named by its feed's label, written in Title Case at the source as
+  the contract's README says, or for its length when no feed reads it
+  ("Five Hours", "Week", "Premium Day"); its figure says the window short
+  ("85% of 5 h"), and a sentence names it with the glossary's word after
+  it, "near the Week allowance" (VKCF3Z, 2026-11-07).
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and

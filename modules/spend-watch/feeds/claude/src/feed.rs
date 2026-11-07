@@ -169,11 +169,12 @@ fn said(body: &str, plan: &Plan, now: Timestamp, cost: Vec<String>) -> Read {
         window.filter(|window| window.resets.is_none_or(|resets| resets > now))
     };
     let title = plan.title();
-    // Each allowance is labelled with its window in words, as a standing
-    // says it ("62% of 5 h"); the plan's name is its budget's label.
+    // Each allowance is named for its window's length in words, in Title
+    // Case, as the contract has a window named; the plan's name is its
+    // budget's label, and a figure says the window short itself.
     let caps: Vec<String> = [
-        ("five-hours", "5 h", 5, current(usage.five_hours)),
-        ("week", "the week", 168, current(usage.week)),
+        ("five-hours", "Five Hours", 5, current(usage.five_hours)),
+        ("week", "Week", 168, current(usage.week)),
     ]
     .into_iter()
     .filter_map(|(name, label, window_hours, window)| {
