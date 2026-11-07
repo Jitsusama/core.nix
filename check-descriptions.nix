@@ -802,9 +802,10 @@
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its quests, the sessions to
-    restore and its runs of subagents and reviews, from the realm's own folders, and the home realm's alone the machine's waiting,
-    verdicts and queue, the queue's jobs and the queue whole from the login's runtime folder,
-    each keyed as the launcher reads it
+    restore and its runs of subagents and reviews, from the realm's own folders, and the home
+    realm's alone the machine's waiting, verdicts and queue, the queue's jobs and the queue whole
+    from the login's runtime folder, each keyed as the launcher reads it; and each node restarts
+    when what it serves changes, since it reads that only as it starts
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session

@@ -337,11 +337,15 @@ let
   furtherNodes = lib.mapAttrs (
     realm: joined: nodeIn realm joined.links (apartIn realm)
   ) cfg.alsoJoins;
-  linuxNode = description: words: key: {
+  linuxNode = description: words: key: realm: {
     Unit = {
       Description = description;
       Wants = lib.optional (key != null) "${key}.socket";
       After = lib.optional (key != null) "${key}.socket";
+      # The node reads what it serves only as it starts, so a switch that
+      # changes it restarts the node, which the sessions outlive: on
+      # 2026-11-06 a switch added the runs and the node served none.
+      X-Restart-Triggers = [ (builtins.hashString "sha256" (builtins.toJSON (servesIn realm))) ];
     };
     Service = {
       ExecStart = lib.escapeShellArgs words;
@@ -544,12 +548,12 @@ in
     })
     (lib.mkIf (isLinux && serving) {
       systemd.user.services = {
-        mycelium = linuxNode (describe cfg.realm) node cfg.signsInWith;
+        mycelium = linuxNode (describe cfg.realm) node cfg.signsInWith cfg.realm;
       }
       // lib.mapAttrs' (
         realm: words:
         lib.nameValuePair "mycelium-${realm}" (
-          linuxNode (describe realm) words cfg.alsoJoins.${realm}.signsInWith
+          linuxNode (describe realm) words cfg.alsoJoins.${realm}.signsInWith realm
         )
       ) furtherNodes;
     })
