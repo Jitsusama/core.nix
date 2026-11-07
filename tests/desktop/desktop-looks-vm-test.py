@@ -1680,15 +1680,16 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
 # leading its note; and an orchestrator says what its whole orchestration spent today
 # (QEST-20261026-15J7N3's agents-tree-look.md). The orchestrator listens while an owner under it
 # runs a builder that works, so the orchestration stands with those working, the owner and its
-# builder before the other, listening, session under it.
+# builder before the other, listening, session under it, and one paused after that.
 ORCHESTRATION = [
-    # address, title, whom it's under, whether it works
-    ("TESTQA", "A quest of its own & whole", None, False),
-    ("TESTQB", "The Other One Under It", "TESTQA", False),
-    ("TESTQC", "An Owner Under It", "TESTQA", False),
-    ("TESTQD", "A Builder Under the Owner", "TESTQC", True),
+    # address, title, whom it's under, how it stands
+    ("TESTQA", "A quest of its own & whole", None, "listening"),
+    ("TESTQB", "The Other One Under It", "TESTQA", "listening"),
+    ("TESTQC", "An Owner Under It", "TESTQA", "listening"),
+    ("TESTQD", "A Builder Under the Owner", "TESTQC", "working"),
+    ("TESTQE", "One Put Down Under It", "TESTQA", "paused"),
 ]
-TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQB": 1}
+TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQB": 1, "TESTQE": 1}
 SPENT = {
     "v": 2,
     "sessions": {"01a1face-test": "$3.10", "01a1face-qd": "$5.10"},
@@ -1707,7 +1708,7 @@ def window_of(address: str, title: str) -> str:
 def orchestrated(desktop: Desktop) -> None:
     """Start the orchestration's sessions, each in a window of its own, saying whom it's under."""
     desktop.pi_session()
-    for address, title, under, works in ORCHESTRATION:
+    for address, title, under, stands in ORCHESTRATION:
         if address != "TESTQA":
             desktop.pi_window(address, window_of(address, title))
         desktop.presence_says(
@@ -1716,9 +1717,13 @@ def orchestrated(desktop: Desktop) -> None:
                     "01a1face-test" if address == "TESTQA" else f"01a1face-{address[-2:].lower()}"
                 ),
                 "addresses": [address],
-                "busy": works,
+                "busy": stands == "working",
+                "state": "busy" if stands == "working" else stands,
                 "owns": [f"QEST-20261022-{address}"],
                 "orchestratedBy": under,
+                # The orchestrator's record names its repository, which its drawer's eyebrow
+                # says as it's written.
+                **({"repo": "core.nix"} if address == "TESTQA" else {}),
             },
             address,
         )
@@ -1792,6 +1797,40 @@ def into_agents(desktop: Desktop) -> None:
     )
 
 
+def orchestrator_says_whose_spend_is_whose(desktop: Desktop) -> None:
+    """Inside the orchestrator, what all of it spent, then its own and its sessions'."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("testqa", selecting="A quest of its own & whole")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
+    for name, side in [
+        ("Spent Today", "$14.20 in all"),
+        ("Its Own", "$3.10"),
+        ("Its Sessions", "$11.10"),
+    ]:
+        desktop.down_to(name)
+        assert desktop.showing()["selected"]["side"] == side, desktop.showing()["selected"]
+    desktop.close_launcher()
+
+
+def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str) -> None:
+    """Photograph the orchestrator's drawer, its eyebrow naming its repository as written.
+
+    The eyebrow says its address, its repository and when it started, set as they're written,
+    never in capitals, since they're names from the world (VKCF3Z, 2026-11-06).
+    """
+    desktop.down_to(title)
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["shown"]
+            and shown["drawer"]["eyebrow"].startswith("TESTQA \u00b7 core.nix \u00b7 ")
+            and shown["drawer"]["eyebrowNames"]
+        )
+    )
+    desktop.photograph(f"launcher-agents-drawer-at-{shot}")
+
+
 def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -1810,7 +1849,8 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             # its glyph.
             words = {address_of(row): row["words"] for row in rows}
             titles = {address: title for address, title, _, _ in ORCHESTRATION}
-            for one, above in [("TESTQC", "TESTQA"), ("TESTQB", "TESTQA"), ("TESTQD", "TESTQC")]:
+            under = [("TESTQC", "TESTQA"), ("TESTQB", "TESTQA"), ("TESTQD", "TESTQC")]
+            for one, above in [*under, ("TESTQE", "TESTQA")]:
                 glyph = words[one][0]["starts"]
                 name = next(w["starts"] for w in words[above] if w["text"] == titles[above])
                 assert abs(glyph - name) <= 1, (
@@ -1829,23 +1869,13 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             assert "$5.10" in reads["TESTQD"], reads
             assert "in all" not in reads["TESTQD"], reads
             assert "listening" in reads["TESTQB"], reads
+            assert "paused" in reads["TESTQE"], reads
             assert "waiting" not in " ".join(reads.values()), reads
-            desktop.photograph(f"launcher-agents-tree-at-{scale.replace('.', '-')}")
+            shot = scale.replace(".", "-")
+            desktop.photograph(f"launcher-agents-tree-at-{shot}")
+            orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
             desktop.close_launcher()
-        # Inside the orchestrator, what all of it spent, then its own and its sessions'.
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        desktop.type_in("testqa", selecting="A quest of its own & whole")
-        desktop.follow()
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
-        for name, side in [
-            ("Spent Today", "$14.20 in all"),
-            ("Its Own", "$3.10"),
-            ("Its Sessions", "$11.10"),
-        ]:
-            desktop.down_to(name)
-            assert desktop.showing()["selected"]["side"] == side, desktop.showing()["selected"]
-        desktop.close_launcher()
+        orchestrator_says_whose_spend_is_whose(desktop)
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
         # which the foot says for the row selected.
         desktop.as_account("qs ipc call launcher toggle")

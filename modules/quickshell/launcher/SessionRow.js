@@ -171,7 +171,8 @@ function side(doing, spent) {
 // waits on Joel for, what it's spent today (an orchestrator's whole
 // orchestration, then its own and its sessions') and the machine it runs
 // on, each as a name and a figure. Nothing it hasn't said is guessed, and
-// what the eyebrow says isn't said again.
+// what the eyebrow says isn't said again. The eyebrow names things, so the
+// drawer sets it as they're written, never in capitals (Drawer.qml).
 function drawer(title, presence, said) {
     const known = {
         works: presence?.worksOn,
@@ -186,5 +187,5 @@ function drawer(title, presence, said) {
         .map(id => ({ label: said.named(id), value: known[id] }));
     const eyebrow = [said.address, said.place, said.since]
         .filter(part => (part ?? "") !== "").join(" \u00b7 ");
-    return { eyebrow, title, facts, body: "" };
+    return { eyebrow, eyebrowNames: true, title, facts, body: "" };
 }

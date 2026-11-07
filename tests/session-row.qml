@@ -158,6 +158,9 @@ QtObject {
         const drawn = SessionRow.drawer("A Quest", { worksOn: "the row" }, told);
         if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
             failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
+        // It names things from the world, so it's set as they're written.
+        if (drawn.eyebrowNames !== true)
+            failures.push("the drawer's eyebrow isn't said to name things");
         const facts = drawn.facts.map(fact => fact.label).join(" ");
         if (facts !== "works spent")
             failures.push(`the drawer's facts: "${facts}", not "works spent"`);

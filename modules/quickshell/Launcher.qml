@@ -5869,6 +5869,8 @@ Scope {
                     .map(fact => fact.label ?? ""),
                 body: root.drawerShows?.body ?? "",
                 eyebrow: root.drawerShows?.eyebrow ?? "",
+                // Whether it's set as written, naming things, or in capitals.
+                eyebrowNames: !!root.drawerShows?.eyebrowNames,
                 // Where its lines' baselines are and the card's they're
                 // set on, down from the top the two share, to a hundredth.
                 lines: {
