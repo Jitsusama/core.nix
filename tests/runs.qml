@@ -128,8 +128,8 @@ ShellRoot {
 
             const members = led.verbs();
             expect("stepping in", names(members) === "Go To, a, b", names(members));
-            expect("one at work says so and its model", members[1].side === "running · opus",
-                members[1].side);
+            expect("one at work says so, its model and how long so far",
+                /^running · opus · 1[01] min$/.test(members[1].side), members[1].side);
             expect("one done says its model, cost and time", members[2].side === "opus · $1.25 · 10 min",
                 members[2].side);
             expect("one at work has no answer to read", members[1].verb === "close", members[1].verb);
