@@ -172,7 +172,7 @@ Provider {
             thing: true,
             key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
             is: `window:${window.id}`,
-            verb: "go",
+            verb: "go to",
             name: titled(window, entry),
             glyph: programGlyph(entry.id),
             hue: "program",
@@ -1115,7 +1115,7 @@ Provider {
             // the row is read, never kept.
             const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
             Object.defineProperties(row, {
-                verb: { enumerable: true, get: () => latest() ? "go" : "start" },
+                verb: { enumerable: true, get: () => latest() ? "go to" : "start" },
                 // What it is, then how many windows it has open, after its
                 // name.
                 count: {

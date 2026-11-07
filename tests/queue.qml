@@ -141,7 +141,7 @@ ShellRoot {
             expect("how many more a list runs with",
                 theme.note === "and 57 more \u00b7 VM check", theme.note);
 
-            expect("Return goes to its session's window", house.verb === "go", house.verb);
+            expect("Return goes to its session's window", house.verb === "go to", house.verb);
             house.run();
             expect("that window", JSON.stringify(Niri.acted) === "{\"FocusWindow\":{\"id\":7}}",
                 JSON.stringify(Niri.acted));

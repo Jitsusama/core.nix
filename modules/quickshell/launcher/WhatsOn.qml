@@ -422,7 +422,7 @@ Provider {
         const row = member({
             thing: true,
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
-            verb: does === null ? "more" : "go",
+            verb: does === null ? "more" : "go to",
             stays: does === null,
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,

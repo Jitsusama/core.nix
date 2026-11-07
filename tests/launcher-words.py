@@ -261,10 +261,10 @@ STRAY_UNITS = [
 ]
 
 # A verb of two words is a turn, which says the way it goes, or one whose
-# second word is part of it ("log out"), as the launcher's foot keeps it
-# whole (Launcher.qml's `phrasal`).
+# second word is part of it ("log out", "go to"), as the launcher's foot
+# keeps it whole (Launcher.qml's `phrasal`).
 TURN = "turn"
-PHRASAL = {"in", "out", "back"}
+PHRASAL = {"in", "out", "back", "to"}
 FORGET = "forget"
 FORGETTING = {"forget", "dismiss"}
 

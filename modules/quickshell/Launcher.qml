@@ -781,7 +781,9 @@ Scope {
             graph: part.graph,
             side: above.concat(trail.map(row => row.name)).join(" \u203a "),
             chord: [],
-            verb: "go",
+            // Go To, as a window's is, since both take Joel to where it
+            // is, and its side already names where (VKCF3Z, 2026-11-07).
+            verb: "go to",
             // Where it is, and so where Return goes, by what each step is.
             trail: trail.map(row => steadyId(row)),
             spot: steadyId(part),
@@ -2047,11 +2049,13 @@ Scope {
         // carries it at once (VKCF3Z, 2026-11-05).
         if (endsSomething(choice))
             return endingKeys(choice);
-        // One Return lands on from the find says Return with no act, since
-        // Return there does nothing of its own, and no arrow, since the
-        // find's arrows move the caret.
+        // One Return lands on from the find says the act Return leads to,
+        // though its first press only lands, since a glyph with no word
+        // tells Joel nothing where every other key says what it does
+        // (VKCF3Z, 2026-11-07; design.md's Return table), and no arrow,
+        // since the find's arrows move the caret.
         if (lands(choice))
-            return [["\u21b5", ""]];
+            return [["\u21b5", verbOf(choice)]];
         // Going elsewhere keeps Return's own word, where it takes him.
         // Return going in says open, on the find and in normal alike, as
         // oil's Return opens a folder, it being the one way in: stepping in
@@ -2462,10 +2466,11 @@ Scope {
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
     // one with the way it goes whole ("log out", "put back", whose first
-    // word alone says nothing), a verb with how many it takes whole (the
-    // file picker's "open 2", which said "open" while it would answer two
-    // gathered files), anything else by its first word.
-    readonly property var phrasal: ["in", "out", "back"]
+    // word alone says nothing, and Go To's "go to", so the foot names the
+    // act by its name, as VKCF3Z ruled on 2026-11-07), a verb with how many
+    // it takes whole (the file picker's "open 2", which said "open" while
+    // it would answer two gathered files), anything else by its first word.
+    readonly property var phrasal: ["in", "out", "back", "to"]
 
     function oneWord(verb) {
         const said = verb.split(" ");

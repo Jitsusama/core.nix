@@ -388,7 +388,7 @@
       "command": "buffer",
       "in": "jobs",
       "name": "Go To",
-      "verb": "go"
+      "verb": "go to"
     },
     {
       "id": "jobs:vm-test",
@@ -3843,7 +3843,7 @@
       "id": "on:waiting",
       "in": "on",
       "name": "Needs You",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "waitsOnJoel",
       "empty": "Nothing needs you.",
       "tells": {
@@ -3882,7 +3882,7 @@
       "command": "buffer",
       "in": "on",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -4064,7 +4064,7 @@
       "command": "buffer",
       "in": "notices",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -5792,7 +5792,7 @@
       "command": "buffer",
       "in": "windows",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -5873,7 +5873,7 @@
       "command": "buffer",
       "in": "applications",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -6029,7 +6029,7 @@
       "command": "buffer",
       "in": "recent:site",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -6094,7 +6094,7 @@
       "command": "buffer",
       "in": "path:file",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -6405,7 +6405,7 @@
       "command": "buffer",
       "in": "agents",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -6510,7 +6510,7 @@
       "command": "buffer",
       "in": "quests",
       "name": "Go To Its Session",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {
@@ -6542,7 +6542,7 @@
       "command": "buffer",
       "in": "runs",
       "name": "Go To",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "windows"
     },
     {

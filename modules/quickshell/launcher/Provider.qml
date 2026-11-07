@@ -615,7 +615,7 @@ Scope {
         const made = Object.assign({
             // An act done to a thing (its key `verb:`) isn't of the
             // thing's kind: Return does what its name says, so the foot
-            // says "go" for Go To, not a thing's "open".
+            // says "go to" for Go To, not a thing's "open".
             what: String(fields.key ?? "").startsWith("verb:") ? "" : provider.what,
             chord: [],
             side: "",
