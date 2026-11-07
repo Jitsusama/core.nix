@@ -30,7 +30,7 @@ QtObject {
 
         const first = Pacing.heard(Pacing.rested(), 1000, every);
         check(failures, "the first change is taken at once", first.now, true);
-        const begun = Pacing.took(first.pace, 1000);
+        const begun = Pacing.took(1000);
 
         const soon = Pacing.heard(begun, 1100, every);
         check(failures, "one a tenth of a second after waits", soon.now, false);
@@ -42,7 +42,7 @@ QtObject {
 
         const rung = Pacing.rang(more.pace);
         check(failures, "once the timer rings nothing waits", rung.due, null);
-        const late = Pacing.heard(Pacing.took(rung, 1250), 1600, every);
+        const late = Pacing.heard(Pacing.took(1250), 1600, every);
         check(failures, "a change a pace after the last refresh is taken at once", late.now,
             true);
 
@@ -52,8 +52,9 @@ QtObject {
         // set, rang 37 ms after that for the next. A refresh taken another
         // way, as a key's own change or a daemon's answer is, takes the one
         // that waited with it.
-        const waiting = Pacing.heard(Pacing.took(Pacing.rested(), 1000), 1100, every);
-        const elsewhere = Pacing.took(waiting.pace, 1356);
+        const waiting = Pacing.heard(Pacing.took(1000), 1100, every);
+        check(failures, "one waits", waiting.pace.due, 1250);
+        const elsewhere = Pacing.took(1356);
         check(failures, "a refresh taken while one waits takes the one that waited",
             elsewhere.due, null);
         const next = Pacing.heard(elsewhere, 1393, every);

@@ -27,9 +27,12 @@ function heard(pace, now, every) {
     return { pace: { at: pace.at, due }, now: false };
 }
 
-// A refresh began at `now`, however it was asked for.
-function took(pace, now) {
-    return { at: now, due: pace.due };
+// A refresh began at `now`, however it was asked for, so it takes the one
+// that waited with it: a key's own change or a daemon's answer refreshed
+// at once, or the timer rang late and another change past the pace came
+// beside it, and a refresh left due would follow within the pace.
+function took(now) {
+    return { at: now, due: null };
 }
 
 // The timer rang: the refresh it waited for is taken.

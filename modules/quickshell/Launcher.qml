@@ -4126,7 +4126,7 @@ Scope {
     function refreshDue() {
         if (refreshing.length === 0)
             return;
-        keepPace(Pacing.took(pace, Date.now()));
+        keepPace(Pacing.took(Date.now()));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
         if (open)
