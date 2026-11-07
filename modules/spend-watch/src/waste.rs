@@ -35,6 +35,31 @@ pub fn share(history: &History, from: f64, to: f64) -> Result<Option<f64>, Strin
     Ok((spent >= 1.0).then(|| rebuilt / spent.max(rebuilt)))
 }
 
+/// What each session spent rebuilding context it already had in a span,
+/// by its whole id, counted as `waste` counts it: a session that rebuilt
+/// nothing isn't named.
+pub fn rebuilt_by_session(
+    history: &History,
+    from: f64,
+    to: f64,
+) -> Result<HashMap<String, f64>, String> {
+    let mut statement = history
+        .db
+        .prepare(
+            "SELECT session, SUM(rebuilt_cost) FROM turns WHERE at >= ?1 AND at < ?2
+             AND cause IS NOT NULL AND cause != 'fresh' GROUP BY session",
+        )
+        .map_err(fail)?;
+    statement
+        .query_map([from, to], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })
+        .map_err(fail)?
+        .filter(|row| row.as_ref().map_or(true, |(_, dollars)| *dollars > 0.0))
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(fail)
+}
+
 pub fn waste(history: &History, from: f64, to: f64) -> Result<Waste, String> {
     let db = &history.db;
     let (spent, cache_write, rebuilt): (f64, f64, f64) = db

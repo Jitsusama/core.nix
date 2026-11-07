@@ -123,6 +123,11 @@ pub struct Collection {
     /// to say on its home row. While the screen is shared the shell shows
     /// none of it.
     pub agents_today: String,
+    /// How each pi session's day has gone, by its whole id, for those in
+    /// `sessions`: its spend by hour as a spark the shell draws, which
+    /// says no amount, and what rebuilding its context cost, which the
+    /// shell hides while the screen is shared.
+    pub sessions_today: BTreeMap<String, report::SessionDay>,
     /// What each pi session's councils, judges and fleets cost today, by
     /// its whole id, costliest first; part of what it spent.
     pub helpers: BTreeMap<String, Vec<report::Helper>>,
@@ -845,6 +850,7 @@ pub fn collection(
             .collect(),
         sessions: report::by_session(picture, Period::Today),
         agents_today: report::by_sessions(picture, Period::Today),
+        sessions_today: report::today_by_session(picture),
         helpers: report::helpers_by_session(picture, Period::Today),
         families: report::by_family(picture, Period::Today),
         periods: Period::ALL
@@ -937,6 +943,7 @@ pub fn held(shape: i64) -> Collection {
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
         agents_today: String::new(),
+        sessions_today: BTreeMap::new(),
         helpers: BTreeMap::new(),
         families: BTreeMap::new(),
         periods: Vec::new(),
@@ -1270,6 +1277,108 @@ mod tests {
         let picture = Picture::read(&History::memory(), &config, NOW).unwrap();
         let collected = collection(&picture, &[], &config);
         assert_eq!(collected.agents_today, "");
+        assert!(collected.sessions_today.is_empty());
+    }
+
+    // Each session's day is a spark of its hours since midnight, each over
+    // the largest hour any session had, and what it rebuilt: a fresh
+    // start rebuilt nothing it had, and less than a cent says nothing.
+    #[test]
+    fn each_session_s_day_is_its_hours_and_what_it_rebuilt() {
+        use crate::logs::{Cause, Cost, Event, Kind, Tokens, Turn};
+        let history = History::memory();
+        let turns = [
+            ("01a1271f-aaaa", NOW - 3600.0, 12.0, 0.0, None),
+            ("01a1271f-aaaa", NOW - 1800.0, 0.5, 0.4, Some(Cause::Gap)),
+            ("01a1271f-bbbb", NOW - 600.0, 3.25, 0.004, Some(Cause::Gap)),
+            ("01a1271f-bbbb", NOW - 300.0, 0.0, 2.0, Some(Cause::Fresh)),
+            (
+                "01a1271f-cccc",
+                NOW - crate::time::DAY,
+                40.0,
+                9.0,
+                Some(Cause::Gap),
+            ),
+        ];
+        for (session, at, total, rebuilt_cost, cause) in turns {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: session.into(),
+                    at,
+                    model: "m".into(),
+                    provider: "p".into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total,
+                        ..Cost::default()
+                    },
+                    quest: None,
+                    budget: None,
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost,
+                    cause,
+                }))
+                .unwrap();
+        }
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let days = collection(&picture, &[], &config).sessions_today;
+        assert_eq!(
+            days.keys().collect::<Vec<_>>(),
+            ["01a1271f-aaaa", "01a1271f-bbbb"]
+        );
+        let hours = |rest: &[f64]| {
+            let mut values = vec![0.0; 15 - rest.len()];
+            values.extend_from_slice(rest);
+            values
+        };
+        let aaaa = &days["01a1271f-aaaa"];
+        assert_eq!(aaaa.graph.shape, "spark");
+        assert_eq!(aaaa.graph.values, hours(&[1.0, 0.5 / 12.0]));
+        assert_eq!(aaaa.rebuilt, crate::money::dollars(0.4));
+        let bbbb = &days["01a1271f-bbbb"];
+        assert_eq!(bbbb.graph.values, hours(&[3.25 / 12.0]));
+        assert_eq!(bbbb.rebuilt, "");
+        let json = serde_json::to_value(collection(&picture, &[], &config)).unwrap();
+        assert_eq!(
+            json["sessionsToday"]["01a1271f-aaaa"]["graph"]["shape"],
+            "spark"
+        );
+    }
+
+    // Late in the day a spark holds its last twenty hours, so a session
+    // that spent only before them reads as flat rather than as no graph.
+    #[test]
+    fn a_session_s_day_holds_its_last_twenty_hours() {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        let history = History::memory();
+        let late = NOW + 8.0 * 3600.0; // 22:30
+        history
+            .add_event(&Event::Turn(Turn {
+                session: "01a1271f-aaaa".into(),
+                at: NOW - 13.0 * 3600.0, // 01:30
+                model: "m".into(),
+                provider: "p".into(),
+                kind: Kind::Agent,
+                tokens: Tokens::default(),
+                cost: Cost {
+                    total: 5.0,
+                    ..Cost::default()
+                },
+                quest: None,
+                budget: None,
+                gap: None,
+                rebuilt: 0.0,
+                rebuilt_cost: 0.0,
+                cause: None,
+            }))
+            .unwrap();
+        let config = config();
+        let picture = Picture::read(&history, &config, late).unwrap();
+        let days = collection(&picture, &[], &config).sessions_today;
+        assert_eq!(days["01a1271f-aaaa"].graph.values, vec![0.0; 20]);
     }
 
     // A quest's family is what it spent today and what every quest under it
