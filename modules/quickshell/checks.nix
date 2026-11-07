@@ -1318,7 +1318,8 @@ onLinux {
   # asked (tests/daemon-source.sh) and one saying everyone unasked
   # (tests/daemon-roster.sh), started, stopped and started again by
   # tests/daemon.qml; and over one connection, records of two kinds from a
-  # daemon holding both (tests/daemon-kinds.py).
+  # daemon holding both, and kinds told as the mycelium node tells them
+  # (tests/daemon-kinds.py).
   the-shell-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../people/package.nix { };
@@ -3171,7 +3172,8 @@ onLinux {
 
   # Needs You holds only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
-  # tests/waiting-on-you.qml holds Waiting.js to the agents' own files.
+  # tests/waiting-on-you.qml holds Waiting.js to the agents' own files, as
+  # the mycelium node serves them.
   needs-you-is-true =
     let
       qt = pkgs.qt6.qtdeclarative;

@@ -52,6 +52,15 @@ Scope {
     // replacing it. A record first said, or said whole in answer to a
     // watch or a get, still replaces what was held.
     property bool changesDiffer: false
+    // Whether the watch's answer is the whole of its kind, as the node's
+    // is, so a record held that it doesn't hold went while the daemon
+    // wasn't answering, and is let go rather than kept as though it
+    // stood. A daemon whose watch is narrowed, and whose gets hold more,
+    // leaves it false.
+    property bool answersWhole: false
+    // Whether the watch of its kind has been answered once, so a kind with
+    // no records is known to hold none, rather than not yet said.
+    property bool answered: false
 
     // Every record held, by key: plain fields, read beside `revision`.
     readonly property var held: ({})
@@ -198,10 +207,16 @@ Scope {
         if (answer.sources !== null && typeof answer.sources === "object"
             && answer.records === undefined && answer.changed === undefined)
             sources = answer.sources;
+        const whole = answer.id === "all" && Array.isArray(answer.records);
         if (answer.id in apart)
             delete apart[answer.id];
-        else
+        else if (whole && answersWhole) {
+            const holds = new Set(answer.records.map(record => record?.key));
+            took(answer.records, Object.keys(held).filter(key => !holds.has(key)), false);
+        } else
             took(answer.records ?? answer.changed, answer.gone, answer.records === undefined);
+        if (whole)
+            answered = true;
         const then = awaited[answer.id];
         if (then) {
             delete awaited[answer.id];

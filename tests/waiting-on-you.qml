@@ -3,7 +3,8 @@
 // beside this file and runs `qml -platform offscreen waiting-on-you.qml`.
 // The files are those the agents kept on 2026-10-26, cut to what's read,
 // when Waiting on You counted eleven things and three were Joel's to do,
-// and one written as mesh_wait writes them since 2026-10-30 (v 2).
+// and one written as mesh_wait writes them since 2026-10-30 (v 2), each
+// given as the mycelium node serves it.
 import QtQuick
 import "Waiting.js" as Waiting
 
@@ -38,9 +39,10 @@ QtObject {
             updated: "2026-10-26T14:20:37.793Z",
             quest: "QEST-20261025-M4RL61",
             items: [
-                { id: "suspend-sitting", title: "Suspend sitting on battery", ready: false },
+                { id: "suspend-sitting", title: "Suspend sitting on battery", ready: false,
+                    raisedAt: "2026-10-26T14:20:00.000Z" },
                 { id: "reboot-sitting", title: "One laptop restart with the lid open",
-                    ready: false }
+                    ready: false, raisedAt: "2026-10-26T14:20:30.000Z" }
             ]
         },
         "/state/mission/waiting/QGB4ON.json": {
@@ -84,6 +86,24 @@ QtObject {
     readonly property var unsaid: ({})
     readonly property var unfound: ({ v: 1, items: {} })
 
+    // Files as the node serves them (mycelium's PROTOCOL.md, The Daemon
+    // Interface): each item a record keyed `waiting:<quest>:<id>` by its
+    // file's `quest`, saying its kind and when its file was heard, the
+    // node's keys in order.
+    function heldOf(files) {
+        const held = {};
+        for (const path in files) {
+            for (const item of files[path].items) {
+                const key = `waiting:${files[path].quest}:${item.id}`;
+                held[key] = Object.assign({ key: key, kind: "waiting", heard: at }, item);
+            }
+        }
+        return held;
+    }
+    function served(files) {
+        return Waiting.served(heldOf(files));
+    }
+
     function run() {
         const failures = [];
         const expect = (name, got, want) => {
@@ -97,21 +117,30 @@ QtObject {
         // then the quickest; the rest wait under Later, the quickest first
         // and those that say nothing of how long last, as their files list
         // them.
-        const today = Waiting.sorted(files, active, unsaid, unfound);
+        const today = Waiting.sorted(served(files), active, unsaid, unfound);
         expect("now is what Joel can do now, timed first, then quickest", ids(today.now),
             ["call", "publish-pp-1802", "deploy-v3"]);
         expect("later is what he can't yet, quickest first", ids(today.later),
             ["keys", "guest-mics", "suspend-sitting", "reboot-sitting", "tuple-pointer"]);
         expect("a when of now is ready where no ready is given",
-            Waiting.sorted({ "/w/OLD.json": { items: [{ title: "x", when: "now" }] } }, {},
-                unsaid, unfound).now.length, 1);
+            Waiting.sorted(served({ "/w/OLD.json": { quest: "QEST-X-OLDQA",
+                items: [{ id: "x", title: "x", when: "now" }] } }), {}, unsaid, unfound)
+                .now.length, 1);
         const publish = today.now[1];
         expect("an item is from who keeps it", publish.from, "19AMVE");
         expect("and its quest is its file's", publish.quest, "QEST-20260924-19AMVE");
         expect("its identity is its quest and id", Waiting.identity(publish),
             "QEST-20260924-19AMVE:publish-pp-1802");
-        expect("it's said since its file was", publish.since,
-            Date.parse("2026-10-26T20:26:12.665Z"));
+        expect("one not of a quest is from its own name",
+            Waiting.served({ "waiting:slack:sign-in": { id: "sign-in", title: "Sign In" } })[0]
+                .from, "SLACK");
+        expect("one an item names is its quest", Waiting.served({ "waiting:QEST-A-AAAAAA:x":
+            { id: "x", title: "X", quest: "QEST-B-BBBBBB" } })[0].quest, "QEST-B-BBBBBB");
+        expect("a record of another kind, or with no title, says nothing",
+            Waiting.served({ "quest:QEST-A-AAAAAA": { title: "A" },
+                "waiting:QEST-A-AAAAAA:y": { id: "y" } }), []);
+        expect("a quest's are as its owner raised them, whatever their ids",
+            ids(today.later).slice(2, 4), ["suspend-sitting", "reboot-sitting"]);
 
         // The to do daemon's word: a check that passed or a signal that came
         // takes an item away, and one found ready is for now.
@@ -119,7 +148,11 @@ QtObject {
             "QEST-20261030-WJATIN:keys": { state: "ready", at: at, how: { signal: "device:dock" } },
             "QEST-20261030-WJATIN:call": { state: "done", at: at, how: { signal: "switch" } }
         } };
-        const verdicted = Waiting.sorted(files, active, unsaid, found);
+        expect("as the node serves them", Waiting.verdictsOf(
+            Object.keys(found.items).reduce((held, identity) => Object.assign(held, {
+                [`verdict:${identity}`]: found.items[identity] }), { "quest:QEST-A": {} })),
+            { items: found.items });
+        const verdicted = Waiting.sorted(served(files), active, unsaid, found);
         expect("one found done is gone, one found ready is for now", ids(verdicted.now),
             ["publish-pp-1802", "deploy-v3", "keys"]);
         expect("and says what found it", verdicted.now[2].verdict.how, { signal: "device:dock" });
@@ -152,46 +185,60 @@ QtObject {
         expect("an older file's by its file's address",
             Waiting.watched(item("publish-pp-1802"), { "19AMVE": true }), true);
 
-        // A quest that's ended, or whose README is gone, keeps nothing
-        // waiting; one not read yet keeps all it had.
+        // A quest that's ended, or gone from the index, keeps nothing
+        // waiting; one not known yet keeps all it had.
         expect("a concluded quest's items go",
-            ids(Waiting.sorted(files, with_(active,
+            ids(Waiting.sorted(served(files), with_(active,
                 { "QEST-20261025-QGB4ON": { status: "concluded" } }), unsaid, unfound).later),
             ["keys", "guest-mics", "suspend-sitting", "reboot-sitting"]);
         expect("a retired one's too",
-            ids(Waiting.sorted(files, with_(active,
+            ids(Waiting.sorted(served(files), with_(active,
                 { "QEST-20260924-19AMVE": { status: "retired" } }), unsaid, unfound).now),
             ["call", "deploy-v3"]);
-        expect("and one whose README is gone",
-            ids(Waiting.sorted(files, with_(active,
+        expect("and one gone from the index",
+            ids(Waiting.sorted(served(files), with_(active,
                 { "QEST-20261011-2HN63P": null }), unsaid, unfound).later),
             ["keys", "suspend-sitting", "reboot-sitting", "tuple-pointer"]);
-        expect("a quest not read yet keeps its items",
-            Waiting.sorted(files, {}, unsaid, unfound).later.length, 5);
+        expect("a quest not known yet keeps its items",
+            Waiting.sorted(served(files), {}, unsaid, unfound).later.length, 5);
+
+        // The index's word on each quest named: its status and title while
+        // it's open, null once it's gone, and nothing before the node has
+        // answered.
+        const index = { "quest:QEST-20261025-M4RL61": { key: "quest:QEST-20261025-M4RL61",
+            kind: "quest", status: "active", title: "Hardware", address: "M4RL61" } };
+        expect("an open quest's status and title, a gone one's null",
+            Waiting.owners(index, ["QEST-20261025-M4RL61", "QEST-20261011-2HN63P"]),
+            { "QEST-20261025-M4RL61": { status: "active", title: "Hardware" },
+                "QEST-20261011-2HN63P": null });
+        expect("nothing is known before the node answers",
+            Waiting.owners(null, ["QEST-20261025-M4RL61"]), {});
 
         // Nothing goes by its age: a file not said again in days still
         // holds what it holds, until an event takes it.
         expect("an old file's ready item is still for now",
-            ids(Waiting.sorted({ "/w/OLD.json": { updated: "2026-10-01T00:00:00Z",
-                items: [{ id: "old", title: "Old", ready: true }] } }, {}, unsaid, unfound).now),
-            ["old"]);
+            ids(Waiting.sorted(served({ "/w/OLD.json": { quest: "QEST-X-OLDQA",
+                updated: "2026-10-01T00:00:00Z",
+                items: [{ id: "old", title: "Old", ready: true }] } }), {}, unsaid, unfound)
+                .now), ["old"]);
 
         // Joel's word stays: one done is gone, one put off waits under
         // Later until its owner says something new of it.
         const finished = Waiting.settle(unsaid, publish, "done", at);
         expect("done is kept by its identity", finished.done,
             { "QEST-20260924-19AMVE:publish-pp-1802": at });
-        expect("one done is gone", ids(Waiting.sorted(files, active, finished, unfound).now),
+        expect("one done is gone",
+            ids(Waiting.sorted(served(files), active, finished, unfound).now),
             ["call", "deploy-v3"]);
         expect("and stays gone when its file is said again",
-            ids(Waiting.sorted(with_(files, { "/state/mission/waiting/19AMVE.json":
+            ids(Waiting.sorted(served(with_(files, { "/state/mission/waiting/19AMVE.json":
                 with_(files["/state/mission/waiting/19AMVE.json"],
-                    { updated: "2026-10-26T21:00:00Z" }) }), active, finished, unfound).now),
+                    { updated: "2026-10-26T21:00:00Z" }) })), active, finished, unfound).now),
             ["call", "deploy-v3"]);
         const deploy = today.now[2];
         const putOff = Waiting.settle(finished, deploy, "notNow", at);
         expect("what's done before stays done", Object.keys(putOff.done).length, 1);
-        const off = Waiting.sorted(files, active, putOff, unfound);
+        const off = Waiting.sorted(served(files), active, putOff, unfound);
         expect("one put off leaves now", ids(off.now), ["call"]);
         expect("for Later, in its turn", ids(off.later).slice(0, 2), ["deploy-v3", "keys"]);
         expect("saying it was put off", off.later[0].putOff, true);
@@ -200,26 +247,15 @@ QtObject {
             with_(files[wjatin].items[0], { steps: ["Read it", "Fix it", "Send it"] })
         ] }) });
         expect("and comes back when its owner says something new of it",
-            ids(Waiting.sorted(resaid, active, putOff, unfound).now), ["deploy-v3"]);
+            ids(Waiting.sorted(served(resaid), active, putOff, unfound).now), ["deploy-v3"]);
+        expect("nothing served is nothing waiting",
+            Waiting.sorted(Waiting.served(null), active, null, null).now.length, 0);
 
-        // Files half written or of another shape say nothing, and break
-        // nothing else.
-        expect("a file that isn't an object adds nothing",
-            Waiting.sorted({ "/w/X.json": null, "/w/Y.json": { items: [{}] } },
-                active, unsaid, null).now.length, 0);
-        expect("a bare list is a file's items",
-            ids(Waiting.sorted({ "/w/ABC.json": [{ id: "a", title: "A", ready: true }] },
-                {}, null, null).now), ["a"]);
-
-        // The quests the files name, and a README's status.
-        expect("the quests named", Waiting.quests(files),
+        // The quests the items name, which the index says are open or not.
+        expect("the quests named", Waiting.quests(served(with_(files, { "/w/slack.json":
+            { quest: "slack", items: [{ id: "sign-in", title: "Sign In" }] } }))),
             ["QEST-20260924-19AMVE", "QEST-20261011-2HN63P", "QEST-20261025-M4RL61",
                 "QEST-20261025-QGB4ON", "QEST-20261030-WJATIN"]);
-        expect("a README's status and title",
-            Waiting.readme("---\nid: Q\nstatus: concluded\n---\n# The Title\n"),
-            { status: "concluded", title: "The Title" });
-        expect("one with no front matter says no status", Waiting.readme("# T\nstatus: x"),
-            { status: "", title: "T" });
 
         // A session's want is Joel's only while it's true. The presence
         // files as they stood: three quests mirrored items Joel can't do

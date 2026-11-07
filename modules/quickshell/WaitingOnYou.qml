@@ -7,9 +7,13 @@ pragma ComponentBehavior: Bound
 // where and by when, its steps, its quest and session, whether he can do it
 // now, and how it knows it's done and ready. The to do daemon alone writes
 // what it found of each, mission/verdicts.json: done once its check passed
-// or its signal came, or ready. Waiting.js decides what of them is true:
-// what Joel can do now and what waits until later, nothing of a quest
-// that's ended, as its README says, and nothing found or said done. His
+// or its signal came, or ready. The machine's mycelium node serves both,
+// and the harness's index of the quests still open, as records over the
+// daemon interface, so the shell reads no file of the agents' and runs
+// nothing to: it's told each change as the node hears it. Waiting.js
+// decides what of them is true: what Joel can do now and what waits until
+// later, nothing of a quest that's ended, as the index says by no longer
+// holding it, and nothing found or said done. His
 // word on each, done or not now, is kept in mission/settled.json, the
 // shell's own beside the agents' files, so it stays across restarts and an
 // agent can read what he said; the shell never writes the agents' files.
@@ -20,10 +24,10 @@ pragma ComponentBehavior: Bound
 // across restarts, so the agents never have to wait on a turn to tell him;
 // its notice goes, read, once it can't be done now any more.
 // All of it is heard rather than read on a clock, and nothing goes by its
-// age. Both folders are made at login (this module's home.nix), so the
-// watch hears the first file.
+// age. Nothing is said, or withdrawn, until the node has answered for
+// every kind, so nothing is said of an ended quest, or of one the to do
+// daemon found done, in the moment before the node says so.
 import qs
-import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -34,25 +38,82 @@ Singleton {
 
     readonly property string home: Quickshell.env("HOME")
     readonly property string state: Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`
-    readonly property string quests: `${state}/mission/waiting`
     readonly property string settledAt: `${state}/mission/settled.json`
-    readonly property string verdictsAt: `${state}/mission/verdicts.json`
 
-    // Each quest's file as written, by its path.
-    property var kept: ({})
-    // What the to do daemon found, or none while it has said nothing.
-    property var verdicts: null
+    // The node's records of each kind Needs You reads (mycelium's
+    // PROTOCOL.md, The Daemon Interface): each quest's items, the to do
+    // daemon's verdicts and the quests still open, each watched whole and
+    // then told each change as only what differs. What was held stays
+    // held while the node isn't answering, as while a switch restarts it,
+    // and what went in the gap goes once it answers again.
+    readonly property var waitingKind: waitingLink.item
+    readonly property var verdictKind: verdictLink.item
+    readonly property var questKind: questLink.item
+    LazyLoader {
+        id: waitingLink
+        active: Sessions.nodePath !== ""
 
-    // Each quest's status and title as its README says, by its id: null
-    // once its README is found missing, and absent until it's read.
-    property var owners: ({})
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "waiting"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+    LazyLoader {
+        id: verdictLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "verdict"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+    LazyLoader {
+        id: questLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "quest"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+    // Whether the node has answered for every kind, so all of it is known.
+    readonly property bool heardAll: waitingKind?.answered === true
+        && verdictKind?.answered === true && questKind?.answered === true
+
+    // Each item the quests keep, as the node serves them.
+    readonly property var asked: {
+        waitingKind?.revision;
+        return Waiting.served(waitingKind?.held ?? {});
+    }
+    // What the to do daemon found, or none while the node hasn't said.
+    readonly property var verdicts: {
+        verdictKind?.revision;
+        return verdictKind?.answered ? Waiting.verdictsOf(verdictKind.held) : null;
+    }
+    // The quests the items name, as one string, so the items heard again
+    // naming the same leave their owners as they were.
+    readonly property string named: Waiting.quests(asked).join(" ")
+    // Each named quest's status and title as the index says, by its id:
+    // null once the index no longer holds it, and absent until the node
+    // has answered.
+    readonly property var owners: {
+        questKind?.revision;
+        return Waiting.owners(questKind?.answered ? questKind.held : null,
+            named === "" ? [] : named.split(" "));
+    }
     // What Joel has said of each item: { done, notNow }, by identity.
     property var settled: ({})
 
     // What waits on Joel, as Waiting.js weighs it: `now`, what he can do
     // now, and `later`, what he can't yet or has put off, each anything for
     // a time first, then the quickest.
-    readonly property var weighed: Waiting.sorted(kept, owners, settled, verdicts)
+    readonly property var weighed: Waiting.sorted(asked, owners, settled, verdicts)
     readonly property var now: weighed.now
     readonly property var later: weighed.later
     readonly property var items: now.concat(later)
@@ -62,7 +123,7 @@ Singleton {
     // end is true (Sessions.qml).
     readonly property var standing: Waiting.standing(now)
 
-    // The quest an item is from, by its README's title, else its id.
+    // The quest an item is from, by its title in the index, else its id.
     function questOf(item) {
         return owners[item.quest]?.title || item.quest;
     }
@@ -155,10 +216,10 @@ Singleton {
     property bool remembered: false
     readonly property real forgetting: 7 * 24 * 3600 * 1000
 
-    // Nothing is said until every quest the files name has been read, so an
-    // ended quest's item is never said in the moment before its README is.
+    // Nothing is said until the node has answered for every kind, so an
+    // ended quest's item is never said in the moment before the index is.
     function notice() {
-        if (!remembered || named.split(" ").some(quest => quest !== "" && !(quest in owners)))
+        if (!remembered || !heardAll)
             return;
         const fresh = now.filter(item => !noticed[identity(item)]);
         if (fresh.length === 0)
@@ -175,7 +236,10 @@ Singleton {
         Qt.callLater(notice);
         withdrawing.restart();
     }
-    onOwnersChanged: Qt.callLater(notice)
+    onHeardAllChanged: {
+        Qt.callLater(notice);
+        withdrawing.restart();
+    }
     onRememberedChanged: Qt.callLater(notice)
 
     // A notice goes, marked read, a moment after its item stops being one
@@ -183,13 +247,14 @@ Singleton {
     // moment lets a file replaced by rename, which takes its items away
     // for an instant, pass. What's remembered as said forgets one that no
     // longer waits once it was said a week ago, so the memory never grows;
-    // a week, rather than at once, since the files are read a moment after
-    // the shell starts and every item would look gone until they are.
+    // a week, rather than at once, so one that went while the shell wasn't
+    // running is still known as said should it come back. Nothing is
+    // withdrawn before the node has answered, while every item looks gone.
     Timer {
         id: withdrawing
         interval: 1000
         onTriggered: {
-            if (!root.remembered)
+            if (!root.remembered || !root.heardAll)
                 return;
             const standing = {};
             for (const item of root.now)
@@ -273,114 +338,5 @@ Singleton {
             root.remembered = true;
         }
         onLoadFailed: root.remembered = true
-    }
-
-    // The quests' files, each written beside and renamed in, which the
-    // folder's one watch hears, so every change reads them all in one run.
-    FolderListModel {
-        id: folder
-        folder: `file://${root.quests}`
-        showDirs: false
-        nameFilters: ["*.json"]
-        onRowsInserted: root.read()
-        onRowsRemoved: root.read()
-        onDataChanged: root.read()
-        onModelReset: root.read()
-    }
-
-    // Every file read in one run, each after a record separator and its
-    // path on a line of its own, which JSON never holds unescaped.
-    Process {
-        id: reader
-        command: ["sh", "-c", "for file in \"$1\"/*.json; do [ -f \"$file\" ] || continue;"
-            + " printf '\\036%s\\n' \"$file\"; cat \"$file\"; done", "sh", root.quests]
-        onExited: {
-            if (root.again) {
-                root.again = false;
-                reader.running = true;
-            }
-        }
-        stdout: StdioCollector {
-            onStreamFinished: root.heard(text)
-        }
-    }
-
-    // Asked to read while reading, so the last change always counts.
-    property bool again: false
-
-    function read() {
-        if (reader.running)
-            again = true;
-        else
-            reader.running = true;
-    }
-
-    // The quests the files name, as one string, so a file heard again that
-    // names the same leaves their READMEs' watch as it was.
-    readonly property string named: Waiting.quests(kept).join(" ")
-    readonly property string readmes: `${Quickshell.env("XDG_DATA_HOME") || `${home}/.local/share`}/pi/agentic-harness.pi/quest-workflow/quests`
-
-    // Each named quest's README, watched, so one concluded or retired takes
-    // its items with it, and one whose folder goes does too. A status once
-    // read is kept as the watch is remade, so nothing ended stands again
-    // for the moment between.
-    Instantiator {
-        model: root.named === "" ? [] : root.named.split(" ")
-
-        FileView {
-            required property string modelData
-            path: `${root.readmes}/${modelData}/README.md`
-            watchChanges: true
-            printErrors: false
-            onFileChanged: reload()
-            onLoaded: root.owned(modelData, Waiting.readme(text()))
-            onLoadFailed: root.owned(modelData, null)
-        }
-    }
-
-    function owned(quest, readme) {
-        if (JSON.stringify(owners[quest]) === JSON.stringify(readme))
-            return;
-        const next = Object.assign({}, owners);
-        next[quest] = readme;
-        owners = next;
-    }
-
-    // Each file by its path, one that doesn't parse left out, and a quest
-    // whose file went has nothing waiting any more. Kept as it was when
-    // nothing changed, so nothing weighed from it is made again.
-    function heard(text) {
-        const next = {};
-        for (const part of text.split("\x1e")) {
-            const end = part.indexOf("\n");
-            if (end < 0)
-                continue;
-            try {
-                next[part.slice(0, end)] = JSON.parse(part.slice(end + 1));
-            } catch (error) {
-                continue;
-            }
-        }
-        if (JSON.stringify(next) !== JSON.stringify(kept))
-            kept = next;
-    }
-
-    // The to do daemon's file, replaced whole by rename and only when a
-    // verdict changes, so a change heard is news.
-    FileView {
-        id: found
-        path: root.verdictsAt
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: {
-            try {
-                const read = JSON.parse(found.text());
-                root.verdicts = typeof read === "object" && read !== null ? read : null;
-            } catch (error) {
-                root.verdicts = null;
-            }
-        }
-        onLoadFailed: root.verdicts = null
     }
 }
