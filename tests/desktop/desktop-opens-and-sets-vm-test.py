@@ -1115,7 +1115,12 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.photograph("launcher-wifi-password")
     with desktop.told("refused wifi Lantern", timeout=timedelta(seconds=60)):
         machine.send_key("ret")
-    machine.succeed('journalctl -u wifid | grep -q "couldn\'t join Lantern: WrongPassword"')
+    # wifid writes its journal after it answers, so the shell can hear the
+    # refusal first: a run read the journal 91 ms before wifid's line was in it.
+    machine.wait_until_succeeds(
+        'journalctl -u wifid | grep -q "couldn\'t join Lantern: WrongPassword"',
+        timeout=timedelta(seconds=10),
+    )
     desktop.photograph("launcher-wifi-refused")
     machine.succeed(desktop.in_session(LAUNCHER_OPEN))
     desktop.type_in("glowing in the dark")
