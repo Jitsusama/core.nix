@@ -106,9 +106,23 @@ Provider {
 
     onPlayingNowChanged: redrawHeld()
 
+    // And a program found from the top, which lists what it holds under
+    // it (`under`), is drawn again as that changes, as a Chrome's tabs
+    // read once it's found.
     function redrawHeld() {
-        if (launcher?.open && launcher.held.length > 0)
+        if (launcher?.open && (launcher.held.length > 0 || launcher.typed.trim() !== ""))
             changed();
+    }
+
+    // What a program found from the top by its name lists under it, so
+    // what it holds shows without a key (VKCF3Z, 2026-11-07: Return still
+    // switches at once): its Recent, in its own order, as Chrome's open
+    // tabs and then the sites it visited, kitty's folders or Docs'
+    // documents, of which the launcher shows the first few. The same rows
+    // its Recent holds, so Return does there what it does inside.
+    function under(entry) {
+        const held = recent(entry)[0];
+        return held ? held.targets() : [];
     }
 
     // The desktop's actions that run exactly this command.
@@ -1095,6 +1109,7 @@ Provider {
                 named: binds.length > 0,
                 below: below,
                 verbs: () => provider.controls(entry, start, below),
+                under: () => provider.under(entry),
                 operands: () => provider.operands(entry)
             });
             // What another provider says of it, read as the row is, so it's
