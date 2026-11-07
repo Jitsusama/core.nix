@@ -5,6 +5,7 @@ are the realm's own mycelium node's, which reads the presence records laid here 
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
+A drawer's eyebrow names the repo a record says, rather than the folder it works in.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import os
 import socket
 import subprocess
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -54,6 +56,9 @@ def lay(address: str, title: str, said: Json) -> None:
                       "status": "active"},
         "cwd": str(STATE / address.lower()),
         "owner": owner(),
+        # When it was written, which the node reads every record by: one
+        # without it isn't a session to the node.
+        "at": datetime.now(UTC).isoformat(),
         **said,
     }  # fmt: skip
     laid = PRESENCE / f"{address.lower()}.json.tmp"
@@ -81,7 +86,7 @@ def held_by_node() -> list[str]:
 def shell() -> Iterator[Shell]:
     """Give the shell, started once a run after the realm's node and the two sessions."""
     PRESENCE.mkdir(parents=True, exist_ok=True)
-    lay("LISTEN", "Listening Quest", {"busy": False, "state": "listening"})
+    lay("LISTEN", "Listening Quest", {"busy": False, "state": "listening", "repo": "core.nix"})
     lay("PAUSED", "Paused Quest", {"busy": False, "state": "paused"})
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
@@ -141,6 +146,16 @@ def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
     assert not shell.showing()["asking"], shell.showing()
 
 
+def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell: Shell) -> None:
+    """The drawer's eyebrow says the repo a record names, not the folder it works in."""
+    found(shell, "listening quest", "Listening Quest")
+    shell.launcher_until(
+        lambda shown: (
+            (shown["drawer"] or {}).get("eyebrow", "").startswith("LISTEN \u00b7 core.nix \u00b7")
+        )
+    )
+
+
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
     """A paused session's Return lands on Resume, which changes how it stands; a second resumes."""
     row = found(shell, "paused quest", "Paused Quest")
@@ -150,6 +165,9 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
         lambda shown: (
             shown["mode"] == "normal"
             and (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 resume"]
+            # A Return this soon after landing is taken for the same one
+            # doubled, and does nothing.
+            and not shown["landedFresh"]
         )
     )
     shell.send_key("ret")

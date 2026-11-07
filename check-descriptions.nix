@@ -1583,7 +1583,8 @@
   an-agents-return-does-its-harmless-act-on-niri = ''
     on the account's whole shell on niri, its sessions the realm's mycelium node's, a listening
     agent's Return asks what to say to it and a paused one's lands on Resume, which a second
-    Return sends, while Ctrl+] still steps into every act either has
+    Return sends, while Ctrl+] still steps into every act either has; a drawer names the repo
+    its record says over the folder it works in
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
