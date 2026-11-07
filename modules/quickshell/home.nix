@@ -206,6 +206,7 @@ let
     "WaitingOnYou.qml"
     "Waiting.js"
     "SpendWatch.qml"
+    "Eero.qml"
     "Jobs.qml"
     "Caffeinate.qml"
     "Recorder.qml"
@@ -232,6 +233,8 @@ let
     "launcher/Heat.js"
     "launcher/Power.js"
     "launcher/Traffic.js"
+    "launcher/HomeNetwork.js"
+    "launcher/HomeNetworkDrawers.js"
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Interfaces.js"
@@ -659,6 +662,7 @@ let
     notices = ./launcher/PastNotices.qml;
     on = ./launcher/WhatsOn.qml;
     wifi = ./launcher/Wireless.qml;
+    eero = ./launcher/HomeNetwork.qml;
     sound = ./launcher/Sound.qml;
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
@@ -1071,6 +1075,10 @@ in
         emoji = "emoji";
         key = "key";
         "Wi-Fi" = "network";
+        # The home network's own rows (docs/glossary.md, Network).
+        internet = "internet";
+        node = "node";
+        "eero device" = "device";
         Bluetooth = "device";
         sound = "device";
         display = "screen";
@@ -1266,6 +1274,16 @@ in
         order = 102;
         source = "wifi";
         weight = 0.9;
+      };
+      # The home network the eero daemon keeps (modules/eero): the
+      # internet, its nodes and the devices on them, only where the
+      # daemon runs, so a machine without it names no Home Network in
+      # Network. It holds nothing until the daemon has written its record.
+      eero = {
+        order = 102;
+        source = "eero";
+        weight = 0.9;
+        enable = config.systemd.user.services ? eero-watch;
       };
       # The devices sound goes out of and comes in through.
       sound = {

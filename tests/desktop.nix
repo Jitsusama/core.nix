@@ -795,6 +795,25 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # it; Search Slack is offered only while it runs, so no other
         # test's search ends with it.
         systemd.user.services.slack-stand-in.Service.ExecStart = "${standInSlack} %t/daemons/slack.sock";
+        # The eero daemon would ask eero's cloud, which the VM can't reach.
+        # Its record is written as the daemon writes it, the model the
+        # daemon's parsers are tested against (modules/eero), so the Home
+        # Network has a whole three-node network to show.
+        jitsusama.quickshell.launcher.providers.eero.enable = lib.mkForce true;
+        systemd.user.services.eero-stand-in = {
+          Service = {
+            Type = "oneshot";
+            ExecStart = lib.escapeShellArgs [
+              (lib.getExe' pkgs.coreutils "install")
+              "-D"
+              "-m"
+              "644"
+              "${../modules/eero/home-network.json}"
+              "%t/eero/home-network.json"
+            ];
+          };
+          Install.WantedBy = [ "default.target" ];
+        };
         # Firmware's fwupd isn't in the VM, and would have nothing to say.
         jitsusama.quickshell.launcher.providers.firmware = {
           enable = lib.mkForce true;
