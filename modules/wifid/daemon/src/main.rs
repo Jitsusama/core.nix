@@ -41,7 +41,7 @@ mod syntax;
 mod vault;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::future;
@@ -196,6 +196,7 @@ async fn serve(
         secrets,
         seen,
         state: &state,
+        picked: RefCell::default(),
     };
     wifid.add_cards().await;
 
@@ -212,6 +213,7 @@ async fn serve(
         cards: HashMap::new(),
         seen,
         stalls: Stalls::default(),
+        left: Vec::new(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -310,7 +312,18 @@ async fn follow(
                 wifid.owner_changed(&change, &mut air, &mut networks).await;
             }
             Some(Ok(message)) = links.recv() => wifid.link_changed(&message, &mut networks).await,
-            Some(Ok(message)) = signals.recv() => air.take_in(bus, &message).await,
+            Some(Ok(message)) = signals.recv() => {
+                air.take_in(bus, &message).await;
+                // A join the shell asked for turns the others back on as
+                // it ends, however it ends, so a card coming off its
+                // network meanwhile is left to it.
+                for card in std::mem::take(&mut air.left) {
+                    wifid.picked.borrow_mut().remove(&card);
+                    if joining.as_ref().is_none_or(|joining| joining.card != card) {
+                        wifid.turn_on_networks(&card).await;
+                    }
+                }
+            }
             Some(event) = switched.recv() => {
                 let was = radios.on();
                 radios.take_in(event);
@@ -563,6 +576,9 @@ struct Air<'a> {
     seen: &'a RefCell<Seen>,
     /// Which cards have been looking for networks too long.
     stalls: Stalls,
+    /// The cards that have just come off a network, by name, for their
+    /// other networks to be turned on again.
+    left: Vec<String>,
 }
 
 impl Air<'_> {
@@ -701,6 +717,7 @@ impl Air<'_> {
                 let before = before.map_or("", |(_, step)| step.as_str());
                 let begins = step == "authenticating"
                     || (step == "associating" && before != "authenticating");
+                let left = supplicant::left_its_network(before, &step);
                 if begins {
                     change(&self.state, |state| state.attempting(&card));
                 }
@@ -712,6 +729,9 @@ impl Air<'_> {
                     println!("<7>{card} is {step}");
                 }
                 self.stalls.step(&card, &step, Instant::now());
+                if left {
+                    self.left.push(card.clone());
+                }
                 self.cards.insert(path.to_string(), (card, step));
             }
         }
@@ -1094,6 +1114,9 @@ struct Wifid<'a> {
     secrets: &'a Secrets,
     seen: &'a RefCell<Seen>,
     state: &'a watch::Sender<State>,
+    /// The cards on a network Joel picked in the launcher, which keep
+    /// their others off until they come off it.
+    picked: RefCell<HashSet<String>>,
 }
 
 impl Wifid<'_> {
@@ -1284,11 +1307,33 @@ impl Wifid<'_> {
             joinable.extend(named(&mark).map(|name| (name, network)));
         }
         // Turning on one already on changes nothing. One left off, as a
-        // join from the launcher leaves the others for a moment, is on again.
-        for (_, network) in &joinable {
-            self.joinable(network).await?.set_enabled(true).await?;
+        // join from the launcher leaves the others, is on again once the
+        // card is off the network Joel picked; while it's on it, they stay
+        // off, or its next look could move it (supplicant::holds_a_network).
+        // wpa_supplicant adds a network off, so one newly saved is on.
+        let picked = self.picked.borrow().contains(&card.name);
+        if !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
+            for (_, network) in &joinable {
+                self.joinable(network).await?.set_enabled(true).await?;
+            }
         }
         Ok(joinable)
+    }
+
+    /// Turns on every network the card holds, the others a join from the
+    /// launcher left off among them, so a card come off its network can
+    /// join whichever it hears.
+    async fn turn_on_networks(&self, card: &str) {
+        let turned = async {
+            let at = self.supplicant.get_interface(card).await?;
+            for network in interface(self.bus, at).await?.networks().await? {
+                self.joinable(&network).await?.set_enabled(true).await?;
+            }
+            zbus::Result::Ok(())
+        };
+        if let Err(error) = turned.await {
+            eprintln!("<4>can't turn {card}'s networks on again: {error}");
+        }
     }
 
     /// Starts over with wpa_supplicant or networkd as either starts again.
@@ -1307,6 +1352,8 @@ impl Wifid<'_> {
             // as it hears it.
             "fi.w1.wpa_supplicant1" => {
                 air.gone_under("");
+                // It starts again on no network, Joel's pick or another.
+                self.picked.borrow_mut().clear();
                 self.add_cards().await;
             }
             "org.freedesktop.network1" => {
@@ -1677,28 +1724,37 @@ impl Wifid<'_> {
     }
 
     /// Ends the join: says why it couldn't, forgets a network it saved that
-    /// the card couldn't join, and turns the card's other networks back on.
+    /// the card couldn't join, and turns the card's other networks back on
+    /// when it couldn't. Joined, they stay off while the card is on it, and
+    /// come on again as it leaves.
     async fn settle(&self, joining: Joining, outcome: Result<(), Refused>) {
         let Joining {
             name, card, new, ..
         } = &joining;
         match outcome {
-            Ok(()) => println!("<6>joined {name} on {card}"),
+            Ok(()) => {
+                println!("<6>joined {name} on {card}");
+                self.picked.borrow_mut().insert(card.clone());
+                self.add_card_named(card).await;
+            }
             Err(refused) => {
                 println!("<5>{card} couldn't join {name}: {refused:?}");
+                self.picked.borrow_mut().remove(card);
                 let _ = joining.progress.send(Err(refused)).await;
                 if *new {
                     if let Err(error) = self.store.forget(name) {
                         eprintln!("<4>can't forget {name} again: {error:?}");
                     }
-                    // Taking it from networkd and wpa_supplicant turns the
-                    // others on with it.
                     let _ = self.given_everything().await;
-                    return;
+                } else {
+                    self.add_card_named(card).await;
                 }
+                // wpa_supplicant may still be trying the network it was
+                // asked to join, so the others are turned on whatever step
+                // the card is at.
+                self.turn_on_networks(card).await;
             }
         }
-        self.add_card_named(card).await;
     }
 
     /// Changes the saved networks as asked, and says how it went once
