@@ -418,8 +418,8 @@ ShellRoot {
                 && budgets.marked, JSON.stringify(budgets));
             const windows = budgets.verbs().slice(0, 3);
             expect("each window spelled out, its copy too",
-                windows.map(row => row.name).join(", ") === "5 Hours, Week, The day"
-                && windows[0].copies() === "5 Hours: 85%",
+                windows.map(row => row.name).join(", ") === "Five Hours, Week, The day"
+                && windows[0].copies() === "Five Hours: 85%",
                 windows.map(row => `${row.name}: ${row.copies()}`).join(", "));
             expect("a clock, muted at rest", windows.every(row => row.glyph === Theme.glyph.clock
                 && row.marked) && windows[0].hue === "warning" && windows[1].hue === "muted",

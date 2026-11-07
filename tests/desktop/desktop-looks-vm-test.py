@@ -2162,7 +2162,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             desktop.photograph(f"launcher-budgets-each-at-{named}")
             desktop.step_in()
             rows = desktop.showing()["rows"]
-            assert rows[:2] == ["5 Hours", "Week"], rows
+            assert rows[:2] == ["Five Hours", "Week"], rows
             desktop.photograph(f"launcher-budgets-windows-at-{named}")
             desktop.close_launcher()
     finally:

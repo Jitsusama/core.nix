@@ -340,14 +340,12 @@
     {
       "id": "spend:window:5",
       "in": "spend",
-      "name": "5 Hours",
-      "term": "Agents/window"
+      "name": "Five Hours"
     },
     {
       "id": "spend:window:168",
       "in": "spend",
-      "name": "Week",
-      "term": "Agents/window"
+      "name": "Week"
     },
     {
       "id": "jobs",

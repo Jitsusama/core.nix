@@ -1400,12 +1400,9 @@ mod tests {
             .unwrap_or(0)
     }
 
-    // With budgets declared, how things stand holds one more row: the
-    // month's whole in billed spend, the whole first behind it, then each
-    // budget nearest its allowance, a plan with two windows stepping in to
-    // each, and nothing deeper than three.
-    #[test]
-    fn the_budgets_stand_behind_one_row() {
+    /// What's collected with two budgets declared, the proxy cap the
+    /// default and a Claude plan with two windows, the nearer read at 85%.
+    fn budgeted() -> (Picture, Collection, crate::config::Config) {
         use crate::logs::{Cost, Event, Kind, Tokens, Turn};
         let config: crate::config::Config = serde_json::from_value(serde_json::json!({
             "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
@@ -1461,6 +1458,25 @@ mod tests {
         );
         let picture = Picture::read(&history, &config, NOW).unwrap();
         let collected = collection(&picture, &[], &config);
+        (picture, collected, config)
+    }
+
+    /// The Budgets row of what's collected.
+    fn budgets_of(collected: &Collection) -> &Line {
+        collected
+            .now
+            .iter()
+            .find(|line| line.name == "Budgets")
+            .unwrap()
+    }
+
+    // With budgets declared, how things stand holds one more row: the
+    // month's whole in billed spend, the whole first behind it, then each
+    // budget nearest its allowance, a plan with two windows stepping in to
+    // each, and nothing deeper than three.
+    #[test]
+    fn the_budgets_stand_behind_one_row() {
+        let (picture, collected, config) = budgeted();
         let names: Vec<&str> = collected
             .now
             .iter()
@@ -1500,7 +1516,16 @@ mod tests {
         assert_eq!(windows, [("5 h", "85%"), ("The week", "not read yet")]);
         assert!(plan.rows[1].copy.contains("nothing to copy"));
         assert_eq!(plan.rows[0].note, "resets 16:20");
-        // Each wears its mark, the launcher naming a window by its hours.
+        assert!(depth(&collected.now) <= 3);
+    }
+
+    // Each budget's row wears AI spend's mark and each window a clock, and
+    // a day's row a day's, the launcher naming a window by its hours.
+    #[test]
+    fn the_budgets_wear_their_marks() {
+        let (_, collected, _) = budgeted();
+        let budgets = budgets_of(&collected);
+        let plan = &budgets.rows[1];
         let marks: Vec<&str> = std::iter::once(budgets)
             .chain(&budgets.rows)
             .map(|row| row.mark.as_str())
@@ -1513,7 +1538,6 @@ mod tests {
             .collect();
         assert_eq!(windows, [("clock", Some(5)), ("clock", Some(168))]);
         assert_eq!(collected.now[0].mark, "date");
-        assert!(depth(&collected.now) <= 3);
     }
 
     // While the screen is shared nothing says an amount, at any depth.

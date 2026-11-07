@@ -70,7 +70,7 @@ Provider {
         return role === "alert" || role === "warning" ? role : "muted";
     }
 
-    // A window's row is named as the vocabulary names its window, "5 Hours"
+    // A window's row is named as the vocabulary names its window, "Five Hours"
     // or "Week", spelled out where its figure abbreviates; another, as the
     // daemon named it.
     function nameOf(given) {
