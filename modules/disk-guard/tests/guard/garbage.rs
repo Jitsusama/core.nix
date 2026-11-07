@@ -4,6 +4,11 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+/// How the guard asks `nix-store` for the dead: with no experimental
+/// features, so the trace doesn't parse and hash every derivation it meets
+/// to look up content-addressed outputs. The empty value leaves two spaces.
+pub(crate) const LISTING: &str = "--option experimental-features  --gc --print-dead";
+
 /// Writes an executable shell script and waits until it can be run. A test
 /// thread that forked while it was being written holds it open for writing
 /// until its child execs, and running it before then fails with "Text file
@@ -34,7 +39,7 @@ fn fake_nix(dir: &Path, count: usize) -> std::path::PathBuf {
     script(
         &dir.join("nix-store"),
         &format!(
-            "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
+            "[ \"$*\" = '{LISTING}' ] || exit 9\n\
              echo 'finding garbage collector roots...' >&2\n\
              i=0; while [ $i -lt {count} ]; do echo /nix/store/p$i; i=$((i+1)); done\n"
         ),
@@ -66,8 +71,10 @@ fn a_reference_into_a_later_chunk_is_held_by_place() {
     let nix = fake_nix(dir.path(), 0);
     script(
         &dir.path().join("nix-store"),
-        "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
-         i=0; while [ $i -lt 1500 ]; do echo /nix/store/p$i; i=$((i+1)); done\n",
+        &format!(
+            "[ \"$*\" = '{LISTING}' ] || exit 9\n\
+             i=0; while [ $i -lt 1500 ]; do echo /nix/store/p$i; i=$((i+1)); done\n"
+        ),
     );
     // The first path refers to the last, a chunk later, and to a live one;
     // the second went before it was described.
@@ -112,10 +119,12 @@ fn what_isnt_a_store_path_in_the_store_is_not_described() {
     let nix = fake_nix(dir.path(), 0);
     script(
         &dir.path().join("nix-store"),
-        "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
-         echo /nix/store/p0\n\
-         echo /nix/store/.tmp-link-2410616-37796915\n\
-         echo /nix/store/p1\n",
+        &format!(
+            "[ \"$*\" = '{LISTING}' ] || exit 9\n\
+             echo /nix/store/p0\n\
+             echo /nix/store/.tmp-link-2410616-37796915\n\
+             echo /nix/store/p1\n"
+        ),
     );
     let dead = list(&nix, false).unwrap();
     let paths: Vec<&str> = dead.iter().map(|dead| dead.path.as_str()).collect();
