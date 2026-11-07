@@ -633,7 +633,8 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
     desktop.as_account(
         f"rm -f {HARNESS}/quest-workflow/orchestrators.json {PI_PRESENCE}/testqa.json"
         f" && mkdir -p {PI_QUEST}"
-        f" && printf '%s\\n' '---' 'title: no' '---' '# {LIGHTHOUSE}' > {PI_QUEST}/README.md"
+        f" && printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
+        f" 'priority: driving' 'rank: 1' '---' '# {LIGHTHOUSE}' > {PI_QUEST}/README.md"
     )
     desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()

@@ -136,7 +136,10 @@ Provider {
             // its Agents row says more of (Launcher.qml's compose).
             is: session ? session.is : `quest:${quest.id}`,
             rich: 1,
-            verb: session ? (session.parked ? Words.verb("verb:quest:wake") : "go to") : "open",
+            // Return does the first of its acts (verbs), so it says that
+            // act's verb, and a step in lifts no second act before them.
+            verb: session ? (session.parked ? Words.verb("verb:quest:wake") : "go to")
+                : Words.verb("verb:quest:open"),
             name: quest.title || quest.id,
             unfinished: isOpen(quest),
             glyph: Theme.glyph[marks[quest.status] ?? "pending"],

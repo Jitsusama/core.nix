@@ -128,6 +128,10 @@ ShellRoot {
             expect("stepping in", names(facts)
                 === "Start Here, Orchestrate, ID, Status, Last Touched, Part Of, Folder",
                 names(facts));
+            // Return says the act that leads, so stepping in never lifts a
+            // second one before it (Catalogue.js's leading).
+            expect("Return says Start Here's verb", prompt.verb === facts[0].verb,
+                `${prompt.verb} and ${facts[0].verb}`);
             // Orchestrate starts one that orchestrates it, where Start Here
             // would start.
             facts[1].run();
