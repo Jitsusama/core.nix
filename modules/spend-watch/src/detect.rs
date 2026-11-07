@@ -99,10 +99,20 @@ fn go_to(session: &str) -> Action {
 }
 
 pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<Finding>, String> {
+    all_keeping(picture, history, config, &mut Minutes::default())
+}
+
+/// What's found, taking the minutes a running daemon kept.
+pub fn all_keeping(
+    picture: &Picture,
+    history: &History,
+    config: &Config,
+    minutes: &mut Minutes,
+) -> Result<Vec<Finding>, String> {
     let mut found = Vec::new();
     found.extend(caps(picture));
     found.extend(refusals(picture));
-    found.extend(burn(picture, history, config)?);
+    found.extend(burn(picture, history, config, minutes)?);
     found.extend(waste(picture, config));
     found.extend(peers(picture, config));
     found.extend(stalled(picture, config));
@@ -528,17 +538,94 @@ pub fn refusals(picture: &Picture) -> Vec<Finding> {
     vec![f]
 }
 
-/// Spend by minute from the logs, at list prices, since `from`.
-fn minutes(history: &History, from: f64) -> Result<BTreeMap<i64, (f64, String)>, String> {
+/// Each minute's spend, and the session that spent most of it.
+type ByMinute = BTreeMap<i64, (f64, String)>;
+
+/// Spend by minute from the logs, at list prices, kept between a running
+/// daemon's passes. Reading eight weeks of turns again took a sixth of each
+/// pass on 7 November, so the hour under way is read every time, and the
+/// hours gone only once their sums in `turn_hours`, which every turn added
+/// or forgotten moves, say one of them changed.
+#[derive(Debug, Default)]
+pub struct Minutes {
+    gone: Option<Gone>,
+    /// How many times the hours gone were read whole.
+    whole: usize,
+}
+
+#[derive(Debug)]
+struct Gone {
+    /// The hours read, from `first` to before `split`.
+    first: i64,
+    split: i64,
+    /// Their turns and cost, as `turn_hours` summed them when read.
+    sums: (i64, f64),
+    by_minute: ByMinute,
+}
+
+impl Minutes {
+    /// Spend by minute since the minute `from` falls in.
+    pub fn read(&mut self, history: &History, from: f64, now: f64) -> Result<ByMinute, String> {
+        let start = crate::time::minute_of(from);
+        let split = crate::time::hour_of(now);
+        let kept = match self.gone.take() {
+            Some(gone)
+                if gone.split == split
+                    && gone.first <= crate::time::hour_of(from)
+                    && hour_sums(history, gone.first, split)? == gone.sums =>
+            {
+                gone
+            }
+            _ => {
+                self.whole += 1;
+                let first = crate::time::hour_of(from);
+                Gone {
+                    first,
+                    split,
+                    sums: hour_sums(history, first, split)?,
+                    by_minute: minutes(
+                        history,
+                        crate::time::minute_start(start),
+                        crate::time::hour_start(split),
+                    )?,
+                }
+            }
+        };
+        let mut out: ByMinute = kept
+            .by_minute
+            .range(start..)
+            .map(|(minute, spent)| (*minute, spent.clone()))
+            .collect();
+        out.extend(minutes(history, crate::time::hour_start(split), f64::MAX)?);
+        self.gone = Some(kept);
+        Ok(out)
+    }
+}
+
+/// The turns and cost `turn_hours` holds from hour `first` to before `to`.
+fn hour_sums(history: &History, first: i64, to: i64) -> Result<(i64, f64), String> {
+    history
+        .db
+        .query_row(
+            "SELECT COALESCE(SUM(turns), 0), COALESCE(SUM(cost), 0.0) FROM turn_hours
+             WHERE hour >= ?1 AND hour < ?2",
+            [first, to],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(fail)
+}
+
+/// Spend by minute from the logs, at list prices, from `from` to before `to`.
+fn minutes(history: &History, from: f64, to: f64) -> Result<ByMinute, String> {
     let mut statement = history
         .db
         .prepare(
-            "SELECT CAST(at / 60 AS INTEGER), session, SUM(cost) FROM turns WHERE at >= ?1
-             GROUP BY 1, 2",
+            "SELECT CAST(at / 60 AS INTEGER), session, SUM(cost) FROM turns
+             WHERE at >= ?1 AND at < ?2 GROUP BY 1, 2",
         )
         .map_err(fail)?;
     let rows = statement
-        .query_map([from], |row| {
+        .query_map([from, to], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -546,8 +633,7 @@ fn minutes(history: &History, from: f64) -> Result<BTreeMap<i64, (f64, String)>,
             ))
         })
         .map_err(fail)?;
-    // Each minute's spend, and the session that spent most of it.
-    let mut out: BTreeMap<i64, (f64, String)> = BTreeMap::new();
+    let mut out = ByMinute::new();
     let mut most: HashMap<i64, f64> = HashMap::new();
     for row in rows {
         let (minute, session, spent) = row.map_err(fail)?;
@@ -570,10 +656,15 @@ fn minutes(history: &History, from: f64) -> Result<BTreeMap<i64, (f64, String)>,
 /// account's spend running hot, so it's one burn a day, whichever session
 /// leads it, and names the one spending most now. It's a note to look at,
 /// never told: the caps say when spending fast is about to cost access.
-pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec<Finding>, String> {
+pub fn burn(
+    picture: &Picture,
+    history: &History,
+    config: &Config,
+    minutes: &mut Minutes,
+) -> Result<Vec<Finding>, String> {
     let now = picture.now;
     let from = now - stats::count(BURN_DAYS) * DAY;
-    let by_minute = minutes(history, from)?;
+    let by_minute = minutes.read(history, from, now)?;
     if by_minute.is_empty() {
         return Ok(Vec::new());
     }
@@ -901,7 +992,7 @@ fn capitalized(text: &str) -> String {
 /// and no update to its record in five days.
 pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
     let mut by_root: HashMap<&str, f64> = HashMap::new();
-    for piece in &picture.pieces_week {
+    for piece in picture.pieces_week() {
         if let Some(quest) = &piece.quest {
             *by_root.entry(picture.root(quest)).or_default() += piece.dollars;
         }
@@ -1112,8 +1203,8 @@ fn elsewhere(picture: &Picture) -> Option<Finding> {
             .sum();
         (elsewhere, if pi > 0.0 { elsewhere / pi } else { 0.0 })
     };
-    let (week, week_share) = share(&picture.pieces_week);
-    let (_, month_share) = share(&picture.pieces_month);
+    let (week, week_share) = share(picture.pieces_week());
+    let (_, month_share) = share(picture.pieces_month());
     let past_usual = week >= 50.0 && week_share > (2.0 * month_share).max(0.1);
     if !past_usual {
         return None;
@@ -1508,7 +1599,7 @@ mod tests {
     fn burns_at(history: &History, now: f64) -> Vec<Finding> {
         let config = config();
         let picture = Picture::read(history, &config, now).unwrap();
-        burn(&picture, history, &config).unwrap()
+        burn(&picture, history, &config, &mut Minutes::default()).unwrap()
     }
 
     fn burns(history: &History) -> Vec<Finding> {
@@ -1586,6 +1677,33 @@ mod tests {
         premium(&history, at + 30.0, 1000.0);
         assert!(cap_titles(&history, at + 15.0).is_empty());
         assert!(cap_titles(&history, NOW).is_empty());
+    }
+
+    // A running daemon reads the hour under way on every pass, and the
+    // hours gone only once one of them gains or loses a turn, so what it
+    // has is what a fresh read finds.
+    #[test]
+    fn kept_minutes_are_read_whole_only_when_an_hour_gone_changes() {
+        let history = ordinary();
+        let from = NOW - 56.0 * DAY;
+        let fresh = |now: f64| Minutes::default().read(&history, from, now).unwrap();
+        let mut kept = Minutes::default();
+        assert_eq!(kept.read(&history, from, NOW).unwrap(), fresh(NOW));
+        turn(&history, "hot", NOW - 30.0, 10.0);
+        assert_eq!(
+            kept.read(&history, from, NOW + 1.0).unwrap(),
+            fresh(NOW + 1.0)
+        );
+        assert_eq!(kept.whole, 1, "a turn in the hour under way");
+        turn(&history, "late", NOW - 5.0 * HOUR, 7.0);
+        assert_eq!(
+            kept.read(&history, from, NOW + 2.0).unwrap(),
+            fresh(NOW + 2.0)
+        );
+        assert_eq!(kept.whole, 2, "a turn arriving late for an hour gone");
+        let next = crate::time::hour_start(crate::time::hour_of(NOW) + 1);
+        assert_eq!(kept.read(&history, from, next).unwrap(), fresh(next));
+        assert_eq!(kept.whole, 3, "the next hour");
     }
 
     #[test]

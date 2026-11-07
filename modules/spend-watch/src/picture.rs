@@ -23,12 +23,11 @@ pub struct Figure {
 }
 
 impl Figure {
-    fn of(pieces: &[&Piece]) -> Figure {
-        let owned: Vec<Piece> = pieces.iter().map(|piece| (*piece).clone()).collect();
+    fn of(pieces: &[Piece]) -> Figure {
         Figure {
-            dollars: series::total(&owned),
-            estimated: series::estimated(&owned),
-            source: series::weakest(&owned),
+            dollars: series::total(pieces),
+            estimated: series::estimated(pieces),
+            source: series::weakest(pieces),
         }
     }
 }
@@ -107,12 +106,10 @@ pub struct Picture {
     /// The same, each budget's apart, by its name.
     pub budget_hours: HashMap<String, BTreeMap<i64, f64>>,
     pub budgets: crate::budgets::Budgets,
-    /// Today's and the last week's pieces, for their cuts.
-    /// Every piece the history holds, for a report of any period.
+    /// Every piece the history holds, in hour order, for a report of any
+    /// period. A period's are a slice of these, never a copy: a piece
+    /// holds eight strings, and a pass reads some fifty periods.
     pub pieces: Vec<Piece>,
-    pub pieces_today: Vec<Piece>,
-    pub pieces_week: Vec<Piece>,
-    pub pieces_month: Vec<Piece>,
     pub ratios: Ratios,
     /// Models the bill now prices apart from how it did.
     pub shifts: Vec<Shift>,
@@ -138,8 +135,89 @@ pub struct Picture {
     pub lead: (u32, u32),
 }
 
+/// How long the windows a pass reads over weeks are kept between a running
+/// daemon's passes. Ten minutes moves a thirty-day window by 0.02%, while
+/// reading one again took a fifth of each pass on 7 November, when the
+/// history held 1.5 million turns.
+pub const SETTLED: f64 = 600.0;
+
+/// What a running daemon keeps from one pass to the next, so that a pass
+/// every thirty seconds reads again only what can have moved.
+#[derive(Debug, Default)]
+pub struct Kept {
+    /// The eight weeks before the last seven days, which are whole days
+    /// gone, by the day they were read on: exact until the day changes.
+    waste_before: Option<(i64, Vec<f64>)>,
+    /// The last seven days' waste and the last thirty days' work, by when
+    /// they were read and the week's start they were read from.
+    weeks: Option<Weeks>,
+    /// The eight weeks of spend by minute a burn is judged on.
+    pub minutes: crate::detect::Minutes,
+}
+
+#[derive(Debug)]
+struct Weeks {
+    at: f64,
+    week_start: f64,
+    waste: Waste,
+    work: Vec<waste::Work>,
+}
+
+impl Kept {
+    fn waste_before(
+        &mut self,
+        history: &History,
+        zone: &Zone,
+        today: i64,
+    ) -> Result<Vec<f64>, String> {
+        if let Some((day, shares)) = &self.waste_before
+            && *day == today
+        {
+            return Ok(shares.clone());
+        }
+        let shares = waste_before(history, zone, today)?;
+        self.waste_before = Some((today, shares.clone()));
+        Ok(shares)
+    }
+
+    fn weeks(
+        &mut self,
+        history: &History,
+        week_start: f64,
+        now: f64,
+    ) -> Result<(Waste, Vec<waste::Work>), String> {
+        if let Some(weeks) = &self.weeks
+            && weeks.week_start.total_cmp(&week_start).is_eq()
+            && (0.0..SETTLED).contains(&(now - weeks.at))
+        {
+            return Ok((weeks.waste.clone(), weeks.work.clone()));
+        }
+        let waste = waste::waste(history, week_start, now + 1.0)?;
+        let work = waste::work(history, now - 30.0 * DAY, now + 1.0)?;
+        self.weeks = Some(Weeks {
+            at: now,
+            week_start,
+            waste: waste.clone(),
+            work: work.clone(),
+        });
+        Ok((waste, work))
+    }
+}
+
 impl Picture {
+    /// How things stand now, read whole.
     pub fn read(history: &History, config: &Config, now: f64) -> Result<Picture, String> {
+        Picture::read_keeping(history, config, now, &mut Kept::default())
+    }
+
+    /// How things stand now, taking what `kept` holds that can't have moved
+    /// since it was read, and keeping what's read for the next pass.
+    pub fn read_keeping(
+        history: &History,
+        config: &Config,
+        now: f64,
+        kept: &mut Kept,
+    ) -> Result<Picture, String> {
         let zone = config.zone()?;
         let first_hour: i64 = history
             .db
@@ -160,10 +238,7 @@ impl Picture {
         let today = zone.day(now);
         let first_day = zone.day(crate::time::hour_start(first_hour)).min(today);
         let daily = daily(&zone, &hours, first_day, today);
-        let in_days =
-            |from: i64, to: i64| -> Vec<&Piece> { span(&pieces, &zone, from, to).iter().collect() };
-        let figure = |from: i64, to: i64| Figure::of(&in_days(from, to));
-        let owned = |from: i64, to: i64| in_days(from, to).into_iter().cloned().collect::<Vec<_>>();
+        let figure = |from: i64, to: i64| Figure::of(span(&pieces, &zone, from, to));
         let days = Days {
             first: first_day,
             dollars: daily.clone(),
@@ -194,6 +269,8 @@ impl Picture {
             .query_row("SELECT MAX(at) FROM turns", [], |row| row.get(0))
             .map_err(fail)?;
         let week_start = zone.day_start(today - 6);
+        let waste_before = kept.waste_before(history, &zone, today)?;
+        let (waste, work) = kept.weeks(history, week_start, now)?;
         let quests = read_quests(history)?;
         Ok(Picture {
             now,
@@ -205,10 +282,6 @@ impl Picture {
             paths,
             shape,
             days,
-            pieces_today: owned(today, today),
-            pieces: pieces.clone(),
-            pieces_week: owned(today - 6, today),
-            pieces_month: owned(today - 29, today),
             ratios,
             shifts,
             caps,
@@ -217,9 +290,9 @@ impl Picture {
             sources,
             actions,
             said,
-            waste: waste::waste(history, week_start, now + 1.0)?,
-            waste_before: waste_before(history, &zone, today)?,
-            work: waste::work(history, now - 30.0 * DAY, now + 1.0)?,
+            waste,
+            waste_before,
+            work,
             roots: roots(&quests),
             titles: quests
                 .iter()
@@ -236,6 +309,7 @@ impl Picture {
                 config.override_lead.iter().copied().max().unwrap_or(3),
                 config.override_lead.iter().copied().min().unwrap_or(1),
             ),
+            pieces,
         })
     }
 
@@ -253,8 +327,26 @@ impl Picture {
     }
 
     /// The pieces of local days `from` through `to`.
-    pub fn between(&self, from: i64, to: i64) -> Vec<Piece> {
-        span(&self.pieces, &self.zone, from, to).to_vec()
+    pub fn between(&self, from: i64, to: i64) -> &[Piece] {
+        span(&self.pieces, &self.zone, from, to)
+    }
+
+    /// Today's pieces.
+    pub fn pieces_today(&self) -> &[Piece] {
+        let today = self.zone.day(self.now);
+        self.between(today, today)
+    }
+
+    /// The last seven days' pieces, today's among them.
+    pub fn pieces_week(&self) -> &[Piece] {
+        let today = self.zone.day(self.now);
+        self.between(today - 6, today)
+    }
+
+    /// The last thirty days' pieces, today's among them.
+    pub fn pieces_month(&self) -> &[Piece] {
+        let today = self.zone.day(self.now);
+        self.between(today - 29, today)
     }
 
     /// The week ahead's spend: its 10th, 50th and 90th percentiles.
@@ -1039,6 +1131,34 @@ mod tests {
                 cause: None,
             }))
             .unwrap();
+    }
+
+    // A running daemon reads the windows that span weeks at most every
+    // SETTLED seconds, and today's spend on every pass.
+    #[test]
+    fn a_kept_picture_reads_the_weeks_again_only_once_they_could_have_moved() {
+        let history = History::memory();
+        let mut kept = Kept::default();
+        turn(&history, "one", "proxy", NOW - HOUR, 10.0);
+        let first = Picture::read_keeping(&history, &budgeted(), NOW, &mut kept).unwrap();
+        assert_eq!(first.work.len(), 1);
+        turn(&history, "two", "proxy", NOW - 60.0, 20.0);
+        let soon = Picture::read_keeping(&history, &budgeted(), NOW + 60.0, &mut kept).unwrap();
+        assert!(
+            soon.today.dollars > first.today.dollars,
+            "{} then {}",
+            first.today.dollars,
+            soon.today.dollars
+        );
+        assert_eq!(
+            soon.work.len(),
+            1,
+            "the month's work as it was a minute ago"
+        );
+        let later = Picture::read_keeping(&history, &budgeted(), NOW + SETTLED, &mut kept).unwrap();
+        assert_eq!(later.work.len(), 2);
+        let fresh = Picture::read(&history, &budgeted(), NOW + 60.0).unwrap();
+        assert_eq!(fresh.work.len(), 2, "a picture read alone keeps nothing");
     }
 
     fn store(history: &History, line: &serde_json::Value) {

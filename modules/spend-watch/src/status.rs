@@ -116,7 +116,7 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
     // prices, else where today is headed. Without a feed, list prices are
     // all there is, so saying so would say nothing. Everything else has
     // its home in the collection.
-    let degraded = match crate::series::weakest(&picture.pieces_today) {
+    let degraded = match crate::series::weakest(picture.pieces_today()) {
         Some(Source::List) if picture.fed => "at list prices: no bill read lately",
         _ => "",
     };
