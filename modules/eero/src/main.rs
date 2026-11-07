@@ -15,6 +15,7 @@
 
 mod api;
 mod cloud;
+mod model;
 mod session;
 mod status;
 
