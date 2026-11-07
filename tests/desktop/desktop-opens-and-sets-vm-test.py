@@ -1381,6 +1381,123 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     sets_wi_fi(desktop)
 
 
+def test_a_network_left_reads_so_on_its_key_and_wi_fi_off_unanswered_is_put_back(
+    desktop: Desktop,
+) -> None:
+    """A network left reads so before wifid answers, and Wi-Fi Off unanswered is put back.
+
+    Joel, 2026-11-07: "when i modify something in the launcher ... it should show right away.
+    the launcher needs to be as live as possible for good ux". wifid is stopped in its tracks,
+    so nothing it says can have changed the row: Lantern reads saved on the key alone, and stays
+    so once wifid wakes and leaves it. Wi-Fi Off that wifid doesn't answer within five seconds
+    is put back, the foot saying so, and shows what wifid did once it does.
+    """
+    machine = desktop.machine
+    machine.wait_for_unit("lantern.service")
+    machine.wait_for_unit("wifid.service")
+    joins_lantern(machine)
+
+    def lantern_reads(side: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            f"Lantern \u00b7 {side} \u00b7 network" in [thing["reads"] for thing in shown["things"]]
+        )
+
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.normal()
+    desktop.launcher_until(lantern_reads("connected"))
+    before = left_lantern(desktop)
+    machine.succeed(WIFID_STOPPED)
+    try:
+        machine.send_chars("d")
+        desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
+        with desktop.told("ended 1"):
+            machine.send_chars("d")
+        # Stopped, wifid can't have said so: only the act can.
+        desktop.launcher_until(lantern_reads("saved"))
+        assert left_lantern(desktop) == before, "wifid left Lantern while stopped"
+        # Woken, wifid leaves it, and the launcher lets go of what it drew.
+        with desktop.told("became wifi:Lantern"):
+            machine.succeed(WIFID_WOKEN)
+            machine.wait_until_succeeds(
+                f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+            )
+    finally:
+        machine.succeed(WIFID_WOKEN)
+    desktop.launcher_until(lantern_reads("saved"))
+    desktop.close_launcher()
+    puts_wi_fi_off_back_unanswered(desktop)
+    # Left as it was found, joined, for the tests after it.
+    joins_lantern(machine)
+
+
+def joins_lantern(machine: BaseMachine) -> None:
+    """Join Lantern through wifid unless the card already has, once wifid can see it."""
+    wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+    machine.wait_until_succeeds(
+        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'",
+        timeout=timedelta(seconds=60),
+    )
+    # The card's own address, which it holds only while joined: networkctl's
+    # status still named Lantern's 10.42.0 once the card had left it.
+    joined = "ip -4 address show wlan1 | grep -q 'inet 10.42.0.'"
+    if machine.execute(joined)[0] != 0:
+        join = '{"name":"Lantern","password":"glowing in the dark"}'
+        machine.succeed(f"varlinkctl call --more {wifi.split(' ', 2)[2]}.Join '{join}'")
+    machine.wait_until_succeeds(joined, timeout=timedelta(seconds=60))
+
+
+WIFID_STOPPED = "systemctl kill -s SIGSTOP wifid.service"
+WIFID_WOKEN = "systemctl kill -s SIGCONT wifid.service"
+
+
+def names(shown: Json) -> list[str]:
+    """Say the names of the rows shown."""
+    return cast("list[str]", shown["rows"])
+
+
+def puts_wi_fi_off_back_unanswered(desktop: Desktop) -> None:
+    """Turn Wi-Fi off with wifid stopped: it reads on at once, and is put back unanswered."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("wi-fi off", selecting="Wi-Fi Off")
+    desktop.normal()
+    machine.succeed(WIFID_STOPPED)
+    try:
+        machine.send_chars(":set nowifi\n", delay=KEY_PACE)
+        desktop.launcher_until(lambda shown: "Wi-Fi On" in names(shown))
+        with desktop.told("not become wifi:radio", timeout=timedelta(seconds=15)):
+            pass
+        desktop.launcher_until(
+            lambda shown: (
+                "Wi-Fi Off" in names(shown)
+                and any(
+                    hint.replace("\u00a0", " ").endswith("Wi-Fi not turned off yet")
+                    for hint in shown["hints"]
+                )
+                and "no answer " in [hint.replace("\u00a0", " ") for hint in shown["hints"]]
+                # Its why stands by what it's the why of, not a Return's
+                # room away, as Return's place held for keys would put it.
+                and shown["keysRoom"]["place"] == shown["keysRoom"]["placeSays"]
+            )
+        )
+        desktop.photograph("launcher-wifi-unanswered")
+    finally:
+        machine.succeed(WIFID_WOKEN)
+    # wifid, woken, does what it was asked, and the row says what it did.
+    machine.wait_until_succeeds(
+        "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
+    )
+    desktop.launcher_until(lambda shown: "Wi-Fi On" in names(shown))
+    machine.send_chars(":set wifi\n", delay=KEY_PACE)
+    machine.wait_until_succeeds(
+        "rfkill list wifi | grep -q 'Soft blocked: no'", timeout=timedelta(seconds=15)
+    )
+    desktop.close_launcher()
+
+
 def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop) -> None:
     """The addresses name each connection, its parts a step in."""
     machine = desktop.machine
