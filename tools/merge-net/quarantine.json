@@ -1,9 +1,1 @@
-[
-  {
-    "at": 1793972817,
-    "commit": "90154593060afac79c135fa34350fae45ecaf66d",
-    "owner_pr": 1984,
-    "reason": "failed, then passed, at 90154593060a",
-    "test": "vm-desktop-opens-and-sets"
-  }
-]
+[]
