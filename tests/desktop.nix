@@ -237,6 +237,22 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/keyboard.py);
 
+  # A stand-in ErgoDox, plugged in for as long as it runs
+  # (desktop/ergodox.py), and the layout its module describes for the
+  # shell, from the firmware the board runs.
+  ergodox = pkgs.writers.writePython3 "ergodox" {
+    libraries = [ pkgs.python3Packages.evdev ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/ergodox.py);
+  ergodoxLayout =
+    let
+      firmware = import ../modules/ergodox/firmware.nix pkgs {
+        firmware = self.inputs.qmk;
+        inherit (self.inputs) lufa printf;
+      };
+    in
+    "${firmware}/shell.json";
+
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
   page = import ./page.nix {
@@ -879,6 +895,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             asking
             touchscreen
             keyboard
+            ergodox
             picture
             page
             text
@@ -889,6 +906,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           ask_portal = askPortal;
           choose_a_file = chooseAFile;
           copilot_key = copilotKey;
+          ergodox_layout = ergodoxLayout;
           tuple_window = tupleWindow;
           inherit (pkgs)
             coreutils

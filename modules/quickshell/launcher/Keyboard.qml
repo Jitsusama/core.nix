@@ -8,8 +8,8 @@
 // keyboard's parts are, and so is flashing it, since only the ZSA board can
 // be; their choices, locking a layer or letting one go and lighting the
 // board, and Flash, are still found here from anywhere by what's typed.
-// With no layout, as on a machine without a keyboard's module, it holds
-// nothing. Every name, verb and word is the vocabulary's (Words.qml).
+// With no layout, as on a machine without a keyboard's module, or with the
+// board unplugged (KeyboardLayout.qml), it holds nothing. Every name, verb and word is the vocabulary's (Words.qml).
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -98,6 +98,8 @@ Provider {
     // a reduce that concatenates copies the list at every layer.
     readonly property var keys: {
         const rows = [];
+        if (!KeyboardLayout.present)
+            return rows;
         KeyboardLayout.layers.forEach((layer, number) => layer.keys.forEach((key, index) => {
             if (key.cap !== undefined)
                 rows.push(keyRow(layer, number, key, index));

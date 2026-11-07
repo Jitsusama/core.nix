@@ -77,8 +77,8 @@ Provider {
     })
 
     // A ZSA board that's plugged in and can be told things: its layout is
-    // known and its watcher says its layer.
-    readonly property bool boarded: KeyboardLayout.present && KeyboardLayer.present
+    // known and its watcher says its layer (KeyboardLayout.qml).
+    readonly property bool boarded: KeyboardLayout.present
     readonly property bool layered: boarded && KeyboardLayout.layers.length > 1
     // How lit the laptop keyboard's lights can be, or 0 without them, read
     // by a reader of its own, so a binding never moves the one parts share.

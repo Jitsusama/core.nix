@@ -4,7 +4,11 @@
 // words, what holding it does, and whether it falls through to the layer
 // below. With no file, as on a machine without the module, there's no
 // layout, and the overlay and the launcher's Keyboard collection have
-// nothing to show.
+// nothing to show. Nor do they while the board is unplugged, as its
+// watcher says (KeyboardLayer.qml), since a layout for keys that aren't
+// there only misleads (Joel, 2026-11-07: "seeing ergodox layouts and shit
+// when it isn't plugged in is weird as fuck"); an open overlay goes as the
+// board does.
 //
 // It also holds what the overlay (KeyboardMap.qml) shows: nothing, the
 // layer the board is on, or a layer and a key the launcher chose.
@@ -25,7 +29,11 @@ Singleton {
             return [];
         }
     }
-    readonly property bool present: layers.length > 0
+    readonly property bool present: layers.length > 0 && KeyboardLayer.present
+    onPresentChanged: {
+        if (!present)
+            hide();
+    }
 
     // The layer the board is on, by its place, or the first while the board
     // can't say.
