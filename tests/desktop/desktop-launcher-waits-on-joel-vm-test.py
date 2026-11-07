@@ -100,12 +100,12 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # Agents' one word for them finds them.
-    desktop.type_in("subagents")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Subagents")
+    desktop.type_in("runs")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["subagents"]
+            shown["held"] == ["runs"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
                 r"fleet \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
@@ -152,8 +152,8 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     # Return on the run itself goes to its session.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("subagents")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Subagents")
+    desktop.type_in("runs")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
     machine.send_key("ret")
@@ -338,7 +338,7 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     present(stays, {"addresses": [stays], "busy": False})
     desktop.launcher_until(
         lambda shown: (
-            "asks you" in (shown["selected"] or {}).get("side", "")
+            "needs you" in (shown["selected"] or {}).get("side", "")
             and any("listening" in thing["reads"] for thing in shown["things"])
         )
     )
@@ -380,10 +380,10 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     def name_of(row: Json) -> Json:
         return max(row["words"], key=lambda word: len(word["text"]))
 
-    retry(lambda _: its_row("asks you") is not None, timeout=dt.timedelta(seconds=20))
-    before = name_of(cast("Json", its_row("asks you")))
+    retry(lambda _: its_row("needs you") is not None, timeout=dt.timedelta(seconds=20))
+    before = name_of(cast("Json", its_row("needs you")))
     assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
-    # It goes back to work: "asks you" becomes the shorter "working", and
+    # It goes back to work: "needs you" becomes the shorter "working", and
     # the title is cut where it was rather than reaching one letter on:
     # its room holds, whether it's cut by an ellipsis or, selected, reads
     # on inside it.
@@ -864,13 +864,13 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         # A question after it is the session's to say, so once its card shows, the
         # action's would have shown before it.
         question = {"kind": "question", "since": since, "said": "Which way now?"}
-        with desktop.told("shows card A quest of its own & whole asks you"):
+        with desktop.told("shows card A quest of its own & whole needs you"):
             desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
         cards = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(begun)} | grep -o 'report\\[shows card [^]]*'"
         ).splitlines()
-        assert cards.count("report[shows card A quest of its own & whole asks you") == 1, cards
+        assert cards.count("report[shows card A quest of its own & whole needs you") == 1, cards
         desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
@@ -906,7 +906,7 @@ def test_a_wants_notice_goes_to_the_session_through_the_shell(desktop: Desktop) 
     since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
     question = {"kind": "question", "since": since, "said": "Which way now?"}
     try:
-        with desktop.told("shows card A quest of its own & whole asks you"):
+        with desktop.told("shows card A quest of its own & whole needs you"):
             desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
         with desktop.told("keys notices"):
             machine.send_key("meta_l-n")

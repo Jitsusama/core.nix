@@ -119,6 +119,10 @@
       "empty": "No sessions running.",
       "said": {
         "needs": "needs you",
+        "needCount": "{count} need you",
+        "needsCount": "1 needs you",
+        "running": "{count} running",
+        "workingCount": "{count} working",
         "working": "working",
         "inLine": "{place} in line",
         "listening": "listening",
@@ -260,7 +264,12 @@
     {
       "id": "agents:wants",
       "in": "agents",
-      "name": "Wants You For"
+      "name": "Needs You For",
+      "said": {
+        "question": "needs you",
+        "approval": "needs your yes",
+        "blocked": "needs you to unblock it"
+      }
     },
     {
       "id": "quests",
@@ -301,13 +310,13 @@
     {
       "id": "runs",
       "once": ["Helpers"],
-      "name": "Subagents",
-      "term": "Agents/subagent",
-      "noun": "subagents",
-      "what": "subagent",
+      "name": "Runs",
+      "term": "Agents/run",
+      "noun": "runs",
+      "what": "run",
       "glyph": "subagent",
-      "ask": "which subagent?",
-      "empty": "No subagents today."
+      "ask": "which run?",
+      "empty": "No runs today."
     },
     {
       "id": "spend",
@@ -6475,16 +6484,16 @@
       "name": "What Came of It"
     },
     {
-      "id": "verb:orchestrator:resume",
-      "command": "resume",
+      "id": "verb:orchestrator:reopen",
+      "command": "reopen",
       "in": "orchestrators",
-      "name": "Resume",
-      "verb": "resume",
+      "name": "Reopen",
+      "verb": "reopen",
       "glyph": "resume",
       "said": {
         "afresh": "started afresh in {folder}, since its last session's folder, {cwd}, is gone",
-        "nowhere": "not resumed, since its last session's folder, {cwd}, is gone and its quest names no folder to start in",
-        "unfound": "not resumed, since its last session's record wasn't found and its quest names no folder to start in"
+        "nowhere": "not reopened, since its last session's folder, {cwd}, is gone and its quest names no folder to start in",
+        "unfound": "not reopened, since its last session's record wasn't found and its quest names no folder to start in"
       }
     },
     {

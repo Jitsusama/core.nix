@@ -722,7 +722,7 @@ chord is taught in the foot instead, "next time" and the keys. Inside a
 collection the path in the field says the kind, so its rows don't. What
 the rows say at their right takes one column's room, as wide as the widest
 said there since the last key and growing only, within each row's share,
-so where a name is cut holds still as "working" becomes "asks you" and
+so where a name is cut holds still as "working" becomes "needs you" and
 back.
 
 **A long name reads on.** A name too long for its row ends in an ellipsis,
@@ -1096,8 +1096,8 @@ works the same way everywhere.
   Ending the session asks once more, saying what it closes ("Reboot now,
   closing 14 windows").
 - **Things hold their parts.** A thing is one place for all of it, and
-  what's part of it is inside: Agents holds the agents, then their Tasks,
-  Helpers and AI spend; the Keyboard holds its layout and keys, the
+  what's part of it is inside: Agents holds the agents, then their
+  Quests, Runs and AI spend; the Keyboard holds its layout and keys, the
   keyboards plugged in and every shortcut; Slack holds its theme, so
   "slack" is Slack and "slack theme" the theme. A part is still found
   from anywhere by its own name. A program holds what controls it, the

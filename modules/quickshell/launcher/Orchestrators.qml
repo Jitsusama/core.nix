@@ -12,8 +12,9 @@
 // SessionRow.js): Return goes to its window, and stepping in gives its acts,
 // Talk, Pause or Resume and Stop, each left in its steer inbox
 // (Sessions.qml), then what's known of it. One parked is its session too,
-// which Return wakes in its own window. One not running resumes where it
-// left off instead.
+// which Return wakes in its own window. One not running reopens where it
+// left off instead, as every closed session does (Reopen), Resume being a
+// paused one's alone (VKCF3Z, 2026-11-06).
 //
 // After those come the talks Joel has had with a session, newest first, as
 // it writes what became of each (the harness's talk files, one a talk,
@@ -145,10 +146,10 @@ Provider {
             stands: stands,
             verbs: () => provider.verbs(one, stands)
         });
-        // A closed one resumes on Return, its Resume leading the step in.
+        // A closed one reopens on Return, its Reopen leading the step in.
         if (stands === "off")
             Object.assign(row, {
-                verb: Words.verb("verb:orchestrator:resume"),
+                verb: Words.verb("verb:orchestrator:reopen"),
                 run: () => provider.start(one)
             });
         return row;
@@ -164,12 +165,12 @@ Provider {
         }, fields));
     }
 
-    // A closed one's only act is to resume it; a running one's are its
+    // A closed one's only act is to reopen it; a running one's are its
     // session's, as made() gives them, and one whose session isn't found
     // yet offers its talks alone.
     function verbs(one, stands) {
         if (stands === "off")
-            return [act("resume", { run: () => provider.start(one) })];
+            return [act("reopen", { run: () => provider.start(one) })];
         return talksOf(one.address);
     }
 
@@ -327,7 +328,7 @@ Provider {
         return listed.filter(one => standing(one.address) === "off")
             .map(one => thing({
                 key: `orchestrator:start:${one.address}`,
-                verb: Words.verb("verb:orchestrator:resume"),
+                verb: Words.verb("verb:orchestrator:reopen"),
                 name: one.short || one.title || one.address,
                 glyph: Theme.glyph.agent,
                 hue: "program",
@@ -336,7 +337,7 @@ Provider {
             }));
     }
 
-    // A closed orchestrator resumed where it left off: the session the
+    // A closed orchestrator reopened where it left off: the session the
     // quest index names to resume, in the folder
     // that session ran in (Joel, 2026-10-28: "i want to be able to easily
     // restart an orchestrator that is closed, continuing from where it
@@ -351,7 +352,7 @@ Provider {
             return;
         }
         const name = one.short || one.title || one.address;
-        const said = Words.of("verb:orchestrator:resume").said ?? {};
+        const said = Words.of("verb:orchestrator:reopen").said ?? {};
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;

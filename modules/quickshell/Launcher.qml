@@ -2343,7 +2343,7 @@ Scope {
     property int figuresWidest: 0
     property string figuresStep: ""
     // The same for what every row says at its right, so where a name is
-    // cut holds still as "working" becomes "asks you" and back: worked out
+    // cut holds still as "working" becomes "needs you" and back: worked out
     // afresh, each title's cut crept left and right as its side changed
     // (the launcher audit's finding 31, Joel's yes on 2026-10-26).
     property int sidesWidest: 0

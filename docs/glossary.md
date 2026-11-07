@@ -86,6 +86,7 @@ first in the queue and conclude.
 | research | a quest's document for finding something out: question, method, findings, verdict | | `RSCH-` ids |
 | brief | a quest's document asking someone for something: audience, ask, background, recommendation | | `BRIF-` ids |
 | report | a quest's document on what happened, its outcomes and lessons | | |
+| landing | what a session finished and handed Joel: a merged change, a built plan or a hand-off, at its ref, with a line saying what to try | | presence `landings` |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
@@ -129,7 +130,8 @@ first in the queue and conclude.
 | background command | a command a session runs without waiting on it | background job | the `jobs` tool |
 | background work | a session's background commands, fleets and review rounds together | | `/jobs` |
 | fleet | subagents run at once on one piece of work | fan-out, batch | the `subagent` tool |
-| subagent | a pi a session starts to do part of its work | helper, sub-agent, worker, lane | `runs` in the launcher |
+| subagent | a pi a session starts to do part of its work | helper, sub-agent, worker, lane | the `subagent` tool |
+| run | one running of subagents, a fleet, a council or a judge's round, as a whole | | `runs` in the launcher |
 | council | reviewing models each reading one change on their own | | `review_ask council` |
 | judge | the model that consolidates a council's findings | | |
 | finding | something a review or a peer found, for whoever owns what it's about | | `intent: finding` |
