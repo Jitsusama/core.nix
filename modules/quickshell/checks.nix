@@ -2875,6 +2875,7 @@ onLinux {
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${./Bands.js} Bands.js
+      cp ${./Confirm.js} Confirm.js
       cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Operators.js} Operators.js

@@ -2059,7 +2059,11 @@ visual tints it, and the mode word's room says what it will hit. Operators,
 | u, Ctrl+R | every change with an inverse, while the surface is open | the same | the cards back, still read | nothing | from the trash |
 
 What can't be undone asks once on the command line, as Vim's `confirm()`
-does ("Forget Home-5G and its password? (y/n)"). Only y answers yes, keys
+does ("Forget Home-5G and its password? (y/n)"), taking the whole head while
+it stands, the path giving way whole and back once it's answered. Where even
+the head can't hold it, what stays gives way from its end at a whole word,
+behind an ellipsis, never what it does, to what, or its keys. Only y answers
+yes, keys
 pressed in the first 300 ms are ignored, and ! skips the ask; what asks
 comes from the language's `undoable`, never a list kept by hand. An act
 the language marks guarded keeps its own work, so one doesn't ask, though it can't be

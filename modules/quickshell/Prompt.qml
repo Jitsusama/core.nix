@@ -35,6 +35,7 @@ import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
 import "Bands.js" as Bands
+import "Confirm.js" as Confirm
 
 Item {
     id: prompt
@@ -334,6 +335,9 @@ Item {
     // (y/n)", or "" while none is; the launcher's ask (Launcher.qml's
     // askOnce) answers it, by the keys `confirming` hands over.
     property string asking: ""
+    // The same ask in its parts (Confirm.questionParts), where it says what
+    // stays, so that clause alone gives way when the line can't hold it.
+    property var askingParts: null
     property double askedAt: 0
     onAskingChanged: askedAt = Date.now()
 
@@ -414,7 +418,7 @@ Item {
     }
     // Where the field starts in the line, after the path.
     readonly property real fieldX: Theme.space.rung.inset + ledWidth
-        + (chips.length > 0 ? held.width + pathGap : 0)
+        + (held.visible ? held.width + pathGap : 0)
 
     // Puts the caret at a place in what's typed, as a save's name puts it
     // before the extension.
@@ -1077,7 +1081,11 @@ Item {
     Item {
         id: held
         x: Theme.space.rung.inset + prompt.ledWidth
-        visible: prompt.chips.length > 0
+        // An ask takes the whole line while it stands, as the command line
+        // does, and the path comes back whole once it's answered, never
+        // cut to make room for it (VKCF3Z and Y2YBTS, 2026-11-07, after
+        // Close's ask was cut to its end beside a step-in's path).
+        visible: prompt.chips.length > 0 && prompt.asking === ""
         width: visible ? path.width : 0
         height: parent.height
 
@@ -1164,6 +1172,8 @@ Item {
 
     // Whether the question asked is drawn whole, for the launcher's report.
     readonly property bool askedWhole: askedText.implicitWidth <= askedText.width + 0.5
+    // And the words drawn, its clause given way where it had to.
+    readonly property string askedShown: askedText.visible ? askedText.text : ""
 
     // A question asked once, where the field's words were, in the field's
     // face and ink.
@@ -1173,7 +1183,9 @@ Item {
         width: input.width
         anchors.baseline: shown.baseline
         visible: prompt.asking !== ""
-        text: prompt.asking
+        text: prompt.askingParts === null ? prompt.asking
+            : Confirm.fitted(prompt.askingParts,
+                words => Math.ceil(figureFace.advanceWidth(words)) + 1 <= width)
         textFormat: Text.PlainText
         elide: Text.ElideLeft
         color: Theme.strong

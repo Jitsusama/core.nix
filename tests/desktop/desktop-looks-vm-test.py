@@ -1972,6 +1972,12 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     asked = f"Close {address}? Its folder stays. (y/n)"
     with desktop.told("ask ready"), desktop.told(f"asked {asked}"):
         desktop.machine.send_key("ret")
+    # The ask takes the whole head, so what it closes is read, its path given way.
+    shown = desktop.showing()
+    drawn = shown["questionShown"]
+    assert drawn.startswith(f"Close {address}?"), f"at {shot} the ask lost its subject: {drawn}"
+    assert drawn.endswith("(y/n)"), f"at {shot} the ask lost its keys: {drawn}"
+    assert shown["questionWhole"], f"at {shot} the ask was cut: {drawn}"
     desktop.photograph(f"launcher-agents-close-asks-at-{shot}")
     with desktop.told("answered no"):
         desktop.machine.send_chars("n")
