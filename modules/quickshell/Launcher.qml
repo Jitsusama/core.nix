@@ -3582,7 +3582,7 @@ Scope {
                 ? held[held.length - 1].row : one.thing;
             const question = asked.ask === "some" ? fill(words.some)
                 : Confirm.question(found.map(one => ({ ends: one.act.ends || verbOf(one.act),
-                    name: of(one)?.name ?? "", kind: kindOf(of(one)),
+                    name: one.act.askedAs || (of(one)?.name ?? ""), kind: kindOf(of(one)),
                     leaves: one.act.leaves ?? "" })),
                     Words.field.operators ?? {});
             askOnce(question, sure, () => {}, found.map(one => matches.indexOf(one.thing))
@@ -5000,7 +5000,8 @@ Scope {
         }
         const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
-            name: rowAt(ending.at)?.name ?? "", kind: kindOf(rowAt(ending.at)),
+            name: ending.action.askedAs || (rowAt(ending.at)?.name ?? ""),
+            kind: kindOf(rowAt(ending.at)),
             leaves: ending.action.leaves ?? "" }));
         askOnce(Confirm.question(named, words), doing, null, endings.map(ending => ending.at));
     }

@@ -390,9 +390,12 @@ Provider {
             resume: () => act("resume", { run: steered("resume") }),
             stop: () => act("stop", { run: steered("stop") }),
             // Close ends the session as /exit does, its window with it,
-            // asked first, saying what stays (Confirm.question).
+            // asked first, saying what stays (Confirm.question). The ask
+            // names it by its address, since the step-in's path above
+            // already says its title, which left no room for the ask.
             close: () => act("close", Object.assign({ run: steered("close"),
-                leaves: leaves(session) }, Words.ending("verb:agent:close")))
+                leaves: leaves(session), askedAs: session.address },
+                Words.ending("verb:agent:close")))
         };
         return made[id]();
     }

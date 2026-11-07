@@ -1956,11 +1956,12 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     desktop.photograph(f"launcher-agents-closed-at-{shot}")
 
 
-def close_asks_what_stays(desktop: Desktop, title: str, shot: str) -> None:
+def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str) -> None:
     """Photograph a session's Close on the cursor, then its ask, which says what stays.
 
     Close ends the session, so Return puts it on the command line and a fresh Return asks,
-    naming the session and what of it stays (VKCF3Z, 2026-11-06); n leaves it running.
+    naming the session by its address and what of it stays (VKCF3Z, 2026-11-06); n leaves
+    it running.
     """
     desktop.down_to(title)
     desktop.follow()
@@ -1968,7 +1969,7 @@ def close_asks_what_stays(desktop: Desktop, title: str, shot: str) -> None:
     desktop.down_to("Close")
     desktop.photograph(f"launcher-agents-close-at-{shot}")
     desktop.machine.send_key("ret")
-    asked = f"Close {title}? Its folder stays. (y/n)"
+    asked = f"Close {address}? Its folder stays. (y/n)"
     with desktop.told("ask ready"), desktop.told(f"asked {asked}"):
         desktop.machine.send_key("ret")
     desktop.photograph(f"launcher-agents-close-asks-at-{shot}")
@@ -2043,7 +2044,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
             returns_said_in_the_foot(desktop, titles, shot)
             fold_steps_in(desktop, shot)
-            close_asks_what_stays(desktop, titles["TESTQC"], shot)
+            close_asks_what_stays(desktop, titles["TESTQC"], "TESTQC", shot)
             closed_stand_last(desktop, shot)
             a_quest_offers_to_orchestrate(desktop, shot)
             desktop.close_launcher()

@@ -286,7 +286,7 @@ def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: S
     )
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["takesAnswer"])
-    asked = "Close Orchestrating Quest? Its folder stays. (y/n)"
+    asked = "Close BOSSES? Its folder stays. (y/n)"
     assert shell.showing()["question"] == asked, shell.showing()
     shell.send_chars("y")
     inbox = STEER / "BOSSES"
