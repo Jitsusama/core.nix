@@ -194,6 +194,11 @@ in
   config.xdg.configFile."kitty/theme.conf".text = ''
     font_family family="${font.mono.family}" features="-calt"
     font_size ${font.mono.size}
+    # The robot AI spend wears, which pi's footer marks a budget with:
+    # MonaspiceXe's proportional cut inks it 1.48 cells wide, and kitty
+    # would draw it over the space after it, where the footer holds every
+    # mark to one cell. Held to one, kitty scales it into its cell.
+    narrow_symbols U+F06A9 1
     # The inset less the cell's room beyond its letters, by MonaspiceXe's
     # metrics (0.265, 0.25 and 0.033 of an em): another face needs them
     # measured again.
