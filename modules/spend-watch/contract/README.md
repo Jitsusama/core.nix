@@ -86,18 +86,18 @@ source has settled are its exact bill; hours it hasn't, it may still change.
 
 ### cap
 
-A limit and where spend stands against it, as of `at`: `name`, `label`,
+An allowance and where spend stands against it, as of `at`: `name`, `label`,
 `allowance` in dollars, more than nothing (null for none), `windowHours`, `spent`, `warn` as a
 fraction of the allowance, and `state`: `ok`, `notified` or `refused`.
 `fallback` is the allowance that applies when a raised one ends, on `ends`;
 `endsKnown` says whether the feed could know the end at all. Every change in
 allowance or state is kept as the cap's history.
 
-`budget` is optional, as a bill's is: the budget it limits, the feed's own
+`budget` is optional, as a bill's is: the budget it caps, the feed's own
 when absent. A cap's outlook, chances and warnings count only its budget's
 spend, and a feed may give two budgets' caps of the same name.
 
-`unit` is `dollars` when absent, or `share`, for a subscription's window
+`unit` is `dollars` when absent, or `share`, for a plan's window
 (Claude's five hours, its week) whose use is a share: a share gives `used`,
 a fraction from 0 to 1, and `resets`, in place of `allowance`, `spent` and
 `fallback`. A share is never turned into dollars, so it has no forecast in

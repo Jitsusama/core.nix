@@ -108,11 +108,11 @@ impl Budgets {
         self.all.iter().find(|budget| budget.name == name)
     }
 
-    /// Whether a budget is a subscription, whose turns cost nothing past
-    /// its price.
-    pub fn subscription(&self, name: &str) -> bool {
+    /// Whether a budget is a plan, whose turns cost nothing past its
+    /// price.
+    pub fn is_plan(&self, name: &str) -> bool {
         self.declared(name)
-            .is_some_and(|budget| budget.kind == crate::config::BudgetKind::Subscription)
+            .is_some_and(|budget| budget.kind == crate::config::BudgetKind::Plan)
     }
 
     /// The budget a record names, or its feed's when it names none.
@@ -125,7 +125,7 @@ impl Budgets {
     }
 }
 
-/// A window as a limit's label says it, as in "the weekly limit".
+/// A window as an allowance's label says it, as in "the weekly allowance".
 pub fn window_adjective(hours: u32) -> String {
     match hours {
         24 => "daily".into(),
@@ -155,7 +155,7 @@ mod tests {
             "budgets": [
                 {"name": "proxy", "label": "Your proxy cap", "kind": "cap", "whose": "employer",
                  "default": true},
-                {"name": "claude", "label": "Claude Pro", "kind": "subscription", "whose": "own",
+                {"name": "claude", "label": "Claude Pro", "kind": "plan", "whose": "own",
                  "providers": ["claude-code"]},
                 {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team"},
             ],

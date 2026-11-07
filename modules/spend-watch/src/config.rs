@@ -47,7 +47,7 @@ pub struct Config {
     /// How many days before an override ends to warn, earliest first.
     #[serde(default = "default_lead")]
     pub override_lead: Vec<u32>,
-    /// The default budget's limit in dollars, for a machine no feed gives
+    /// The default budget's allowance in dollars, for a machine no feed gives
     /// that budget a cap.
     #[serde(default)]
     pub cap: Option<CapConfig>,
@@ -112,18 +112,18 @@ pub struct BudgetConfig {
     /// session's log says, since the provider is what's paid.
     #[serde(default)]
     pub providers: Vec<String>,
-    /// What a subscription costs, which is billed spend whether or not
+    /// What a plan costs, which is billed spend whether or not
     /// it's used.
     #[serde(default)]
     pub price: Option<Price>,
     #[serde(default)]
-    pub limits: Vec<LimitConfig>,
+    pub allowances: Vec<AllowanceConfig>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BudgetKind {
-    Subscription,
+    Plan,
     Key,
     Cap,
     Team,
@@ -132,7 +132,7 @@ pub enum BudgetKind {
 impl BudgetKind {
     pub fn name(self) -> &'static str {
         match self {
-            BudgetKind::Subscription => "subscription",
+            BudgetKind::Plan => "plan",
             BudgetKind::Key => "key",
             BudgetKind::Cap => "cap",
             BudgetKind::Team => "team",
@@ -159,7 +159,7 @@ impl Whose {
     }
 }
 
-/// A subscription's price: so many dollars a month.
+/// A plan's price: so many dollars a month.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Price {
@@ -174,14 +174,14 @@ pub enum Per {
 }
 
 /// What a budget may spend in a period: dollars, or a share of a
-/// subscription's window.
+/// plan's window.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LimitConfig {
+pub struct AllowanceConfig {
     pub name: String,
     #[serde(default)]
     pub unit: crate::caps::Unit,
-    /// Dollars allowed in the window, for a limit in dollars.
+    /// Dollars allowed in the window, for an allowance in dollars.
     #[serde(default)]
     pub allowance: Option<f64>,
     pub window_hours: u32,
@@ -264,7 +264,7 @@ pub const IMPLICIT: &str = "default";
 impl Config {
     /// Every budget, the default among them: those declared, or the one
     /// a machine that declares none has. The machine's `cap` is the
-    /// default budget's limit in dollars.
+    /// default budget's allowance in dollars.
     pub fn budgets(&self) -> Vec<BudgetConfig> {
         let mut budgets = if self.budgets.is_empty() {
             vec![BudgetConfig {
@@ -275,7 +275,7 @@ impl Config {
                 default: true,
                 providers: Vec::new(),
                 price: None,
-                limits: Vec::new(),
+                allowances: Vec::new(),
             }]
         } else {
             self.budgets.clone()
@@ -283,7 +283,7 @@ impl Config {
         if let Some(cap) = &self.cap
             && let Some(default) = budgets.iter_mut().find(|budget| budget.default)
         {
-            default.limits.push(LimitConfig {
+            default.allowances.push(AllowanceConfig {
                 name: "own".into(),
                 unit: crate::caps::Unit::Dollars,
                 allowance: Some(cap.allowance),
@@ -339,7 +339,7 @@ impl Config {
 
     /// What budgets can't mean: none or two to fall back on, a provider
     /// two budgets claim, a feed's bill for a budget nobody declared, or a
-    /// limit that can't be counted.
+    /// allowance that can't be counted.
     fn check_budgets(&self) -> Result<(), String> {
         let budgets = self.budgets();
         let defaults = budgets.iter().filter(|budget| budget.default).count();
@@ -361,11 +361,8 @@ impl Config {
                     ));
                 }
             }
-            if budget.price.is_some() && budget.kind != BudgetKind::Subscription {
-                return Err(format!(
-                    "{} has a price, but only a subscription does",
-                    budget.name
-                ));
+            if budget.price.is_some() && budget.kind != BudgetKind::Plan {
+                return Err(format!("{} has a price, but only a plan does", budget.name));
             }
             if budget.price.is_some_and(|price| price.dollars < 0.0) {
                 return Err(format!(
@@ -373,8 +370,8 @@ impl Config {
                     budget.name
                 ));
             }
-            for limit in &budget.limits {
-                limit_holds(&budget.name, limit)?;
+            for allowance in &budget.allowances {
+                allowance_holds(&budget.name, allowance)?;
             }
         }
         for feed in &self.feeds {
@@ -427,28 +424,28 @@ impl Config {
     }
 }
 
-/// Whether a budget's limit can be counted: dollars against an allowance,
+/// Whether a budget's allowance can be counted: so many dollars,
 /// or a share, each over a window of hours and warned at a fraction.
-fn limit_holds(budget: &str, limit: &LimitConfig) -> Result<(), String> {
-    let named = format!("{budget}'s limit {}", limit.name);
-    match (limit.unit, limit.allowance) {
+fn allowance_holds(budget: &str, allowance: &AllowanceConfig) -> Result<(), String> {
+    let named = format!("{budget}'s allowance {}", allowance.name);
+    match (allowance.unit, allowance.allowance) {
         (crate::caps::Unit::Dollars, None) => {
-            return Err(format!("{named} is in dollars, so it needs an allowance"));
+            return Err(format!("{named} is in dollars, so it says how many"));
         }
         (crate::caps::Unit::Dollars, Some(allowance)) if allowance <= 0.0 => {
             return Err(format!("{named} allows more than nothing"));
         }
         (crate::caps::Unit::Share, Some(_)) => {
-            return Err(format!("{named} is a share, so it has no allowance"));
+            return Err(format!("{named} is a share, so it says no dollars"));
         }
         _ => {}
     }
-    if limit.window_hours == 0 || !(0.0..=1.0).contains(&limit.warn) {
+    if allowance.window_hours == 0 || !(0.0..=1.0).contains(&allowance.warn) {
         return Err(format!(
             "{named}'s window is hours and its warning a fraction"
         ));
     }
-    if let Some(resets) = &limit.resets
+    if let Some(resets) = &allowance.resets
         && crate::time::parse(resets).is_none()
     {
         return Err(format!(
@@ -490,7 +487,7 @@ mod tests {
     }
 
     // A machine that declares no budget has one, the default, so it
-    // behaves as it did; its cap is that budget's limit in dollars.
+    // behaves as it did; its cap is that budget's allowance in dollars.
     #[test]
     fn no_budget_declared_is_one_default() {
         let mut config = with(serde_json::json!([]), serde_json::json!([])).unwrap();
@@ -506,7 +503,7 @@ mod tests {
             (IMPLICIT, "pi")
         );
         assert!(budgets[0].default);
-        let own = &budgets[0].limits[0];
+        let own = &budgets[0].allowances[0];
         assert_eq!(
             (own.allowance, own.window_hours, own.stands_in),
             (Some(4000.0), 168, true)
@@ -514,17 +511,17 @@ mod tests {
     }
 
     #[test]
-    fn budgets_are_declared_with_their_limits_and_feeds() {
+    fn budgets_are_declared_with_their_allowances_and_feeds() {
         let claude = serde_json::json!({
-            "name": "claude", "label": "Claude Pro", "kind": "subscription",
+            "name": "claude", "label": "Claude Pro", "kind": "plan",
             "whose": "own", "providers": ["claude-code"],
             "price": {"dollars": 20, "per": "month"},
-            "limits": [{"name": "week", "unit": "share", "windowHours": 168, "warn": 0.8}],
+            "allowances": [{"name": "week", "unit": "share", "windowHours": 168, "warn": 0.8}],
         });
         let proxy = serde_json::json!({
             "name": "proxy", "label": "Your proxy cap", "kind": "cap",
             "whose": "employer", "default": true,
-            "limits": [{"name": "weekly", "allowance": 40000, "windowHours": 168,
+            "allowances": [{"name": "weekly", "allowance": 40000, "windowHours": 168,
                         "warn": 0.9}],
         });
         let feed = serde_json::json!([
@@ -532,8 +529,8 @@ mod tests {
         ]);
         let config = with(serde_json::json!([claude, proxy]), feed).unwrap();
         let budgets = config.budgets();
-        assert_eq!(budgets[0].limits[0].unit, crate::caps::Unit::Share);
-        assert_eq!(budgets[1].limits[0].unit, crate::caps::Unit::Dollars);
+        assert_eq!(budgets[0].allowances[0].unit, crate::caps::Unit::Share);
+        assert_eq!(budgets[1].allowances[0].unit, crate::caps::Unit::Dollars);
         assert_eq!(config.feeds[0].budget.as_deref(), Some("proxy"));
     }
 
@@ -575,23 +572,23 @@ mod tests {
     }
 
     #[test]
-    fn a_limit_in_dollars_has_an_allowance() {
-        let limited = |limit: serde_json::Value| {
+    fn an_allowance_in_dollars_says_how_many() {
+        let declared = |allowance: serde_json::Value| {
             let mut budget = budget("a", true, &[]);
-            budget["limits"] = serde_json::json!([limit]);
+            budget["allowances"] = serde_json::json!([allowance]);
             with(serde_json::json!([budget]), serde_json::json!([]))
         };
-        let refused = limited(serde_json::json!({"name": "w", "windowHours": 168, "warn": 0.9}));
-        assert!(refused.unwrap_err().contains("needs an allowance"));
+        let refused = declared(serde_json::json!({"name": "w", "windowHours": 168, "warn": 0.9}));
+        assert!(refused.unwrap_err().contains("says how many"));
         let share = serde_json::json!({
             "name": "w", "unit": "share", "allowance": 5, "windowHours": 5, "warn": 0.9,
         });
-        assert!(limited(share).is_err());
+        assert!(declared(share).is_err());
         let held = serde_json::json!({
             "name": "w", "allowance": 400, "windowHours": 168, "warn": 0.9,
             "resets": "2026-11-09T05:00:00Z",
         });
-        assert!(limited(held).is_ok());
+        assert!(declared(held).is_ok());
     }
 
     // A pattern is a whole path whose each star is one name, so finding

@@ -86,7 +86,7 @@ pub struct Cap {
     /// The budget it limits; the feed's own when none is given.
     #[serde(default)]
     pub budget: Option<String>,
-    /// Dollars, or a share of a subscription's window.
+    /// Dollars, or a share of a plan's window.
     #[serde(default)]
     pub unit: crate::caps::Unit,
     /// Dollars allowed in the window; null means no limit.
@@ -96,7 +96,7 @@ pub struct Cap {
     /// What the provider counts against it in dollars, as of `at`.
     #[serde(default)]
     pub spent: Option<f64>,
-    /// The share of a subscription's window used, from nothing to all.
+    /// The share of a plan's window used, from nothing to all.
     #[serde(default)]
     pub used: Option<f64>,
     /// The fraction of the allowance it warns at.
@@ -613,7 +613,7 @@ mod tests {
         assert_eq!(kept[0].resets, crate::time::parse("2026-10-15T04:00:00Z"));
     }
 
-    // A share of a subscription's window says what's used and when it
+    // A share of a plan's window says what's used and when it
     // resets, and never an amount; a cap in dollars says what's spent.
     #[test]
     fn a_share_says_what_is_used_and_when_it_resets() {

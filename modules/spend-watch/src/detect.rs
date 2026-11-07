@@ -259,7 +259,7 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
     out
 }
 
-/// A share of a subscription's window used up, or past its warning: said
+/// A share of a plan's window used up, or past its warning: said
 /// in shares, since a share is never turned into dollars, and with when
 /// it resets.
 fn share_finding(

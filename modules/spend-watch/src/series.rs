@@ -27,7 +27,7 @@
 //! session drew on at that hour by its log, else the default. Each
 //! budget's hour is priced on its own: a feed's bill for a budget is
 //! shared only among that budget's pieces, a budget no feed bills is
-//! estimated from pi's logs, and a subscription's turns cost nothing more
+//! estimated from pi's logs, and a plan's turns cost nothing more
 //! than its price, their list prices kept as what they're worth.
 
 use crate::budgets::Budgets;
@@ -834,7 +834,7 @@ impl Inputs {
 
     /// One budget's pieces in an hour: from a feed's bill for it where
     /// there is one, else estimated from pi's logs, and nothing for a
-    /// subscription's turns no bill counts.
+    /// plan's turns no bill counts.
     fn budget_pieces(
         &self,
         hour: i64,
@@ -857,7 +857,7 @@ impl Inputs {
             Self::metered(hour, budget, known, &meter, estimate, out);
             return;
         }
-        if self.budgets.subscription(budget) {
+        if self.budgets.is_plan(budget) {
             out.extend(
                 known
                     .iter()
@@ -935,7 +935,7 @@ mod tests {
             "budgets": [
                 {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
                  "whose": "employer", "default": true},
-                {"name": "claude", "label": "Claude Pro", "kind": "subscription",
+                {"name": "claude", "label": "Claude Pro", "kind": "plan",
                  "whose": "own", "providers": ["claude-code"]},
                 {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team"},
             ],

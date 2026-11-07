@@ -547,15 +547,14 @@ fn budgets(picture: &Picture, config: &crate::config::Config) -> Option<Standing
 }
 
 /// The Budgets row: the month's whole in billed spend, and behind it that
-/// whole, then each budget nearest its limit first, standing in its own
-/// unit, with its limits behind it when it has more than one.
+/// whole, then each budget nearest its allowance first, standing in its
+/// own unit, with its allowances behind it when it has more than one.
 fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
-    let month =
-        |amounts: &BTreeMap<String, crate::standing::Amount>| amounts["this month"].shown.clone();
     let total = &standing.total.periods;
-    let mut made = line("budgets", "Budgets", format!("{} this month", month(total)));
+    let month = format!("{} this month", total["this month"].shown);
+    let mut made = line("budgets", "Budgets", month.clone());
     made.note = crate::standing::WORDS.into();
-    let mut all = line("budgets/all", "All AI Spend", month(total));
+    let mut all = line("budgets/all", "All AI Spend", month);
     all.note = joined(&[
         crate::standing::WORDS,
         &format!("{} today", total["today"].shown),
@@ -573,7 +572,7 @@ fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
 }
 
 /// A budget's row: its standing beside it, what it is below, and each of
-/// its limits behind it when it has more than one.
+/// its allowances behind it when it has more than one.
 fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
     let mut made = line(
         format!("budget:{}", budget.name),
@@ -581,29 +580,33 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         budget.standing.clone(),
     );
     let default = if budget.default { "the default" } else { "" };
-    let resets = match budget.limits.as_slice() {
-        [one] => limit_reset(picture, one),
+    let resets = match budget.allowances.as_slice() {
+        [one] => allowance_reset(picture, one),
         _ => String::new(),
     };
     made.note = joined(&[&budget.words, default, &resets]);
-    made.role = limit_role(budget.limits.iter().find(|limit| limit.nearest.is_some())).into();
-    if budget.limits.len() > 1 {
+    let nearest = budget
+        .allowances
+        .iter()
+        .find(|allowance| allowance.nearest.is_some());
+    made.role = allowance_role(nearest).into();
+    if budget.allowances.len() > 1 {
         made.rows = budget
-            .limits
+            .allowances
             .iter()
-            .map(|limit| {
-                let standing = if limit.standing.is_empty() {
+            .map(|allowance| {
+                let standing = if allowance.standing.is_empty() {
                     "not read yet".to_owned()
                 } else {
-                    limit.standing.clone()
+                    allowance.standing.clone()
                 };
                 let mut row = line(
-                    format!("budget:{}:{}", budget.name, limit.name),
-                    capitalized(&limit.label),
+                    format!("budget:{}:{}", budget.name, allowance.name),
+                    capitalized(&allowance.label),
                     standing,
                 );
-                row.note = limit_reset(picture, limit);
-                row.role = limit_role(Some(limit)).into();
+                row.note = allowance_reset(picture, allowance);
+                row.role = allowance_role(Some(allowance)).into();
                 row
             })
             .collect();
@@ -611,9 +614,9 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
     made
 }
 
-/// When a limit resets, as its footer says it.
-fn limit_reset(picture: &Picture, limit: &crate::standing::Limit) -> String {
-    limit
+/// When an allowance resets, as its footer says it.
+fn allowance_reset(picture: &Picture, allowance: &crate::standing::Allowance) -> String {
+    allowance
         .resets
         .as_deref()
         .and_then(crate::time::parse)
@@ -622,16 +625,16 @@ fn limit_reset(picture: &Picture, limit: &crate::standing::Limit) -> String {
         })
 }
 
-/// A limit's glyph is coloured only past its warning: a warning there, an
-/// alert once it's reached or refusing.
-fn limit_role(limit: Option<&crate::standing::Limit>) -> &'static str {
-    let Some(limit) = limit else {
+/// An allowance's glyph is coloured only past its warning: a warning
+/// there, an alert once it's reached or refusing.
+fn allowance_role(allowance: Option<&crate::standing::Allowance>) -> &'static str {
+    let Some(allowance) = allowance else {
         return "text";
     };
-    let near = limit.nearest.unwrap_or(0.0);
-    if near >= 1.0 || limit.state.as_deref() == Some("refused") {
+    let near = allowance.nearest.unwrap_or(0.0);
+    if near >= 1.0 || allowance.state.as_deref() == Some("refused") {
         "alert"
-    } else if near >= limit.warn {
+    } else if near >= allowance.warn {
         "warning"
     } else {
         "text"
@@ -1349,7 +1352,7 @@ mod tests {
 
     // With budgets declared, how things stand holds one more row: the
     // month's whole in billed spend, the whole first behind it, then each
-    // budget nearest its limit, a plan with two windows stepping in to
+    // budget nearest its allowance, a plan with two windows stepping in to
     // each, and nothing deeper than three.
     #[test]
     fn the_budgets_stand_behind_one_row() {
@@ -1360,13 +1363,13 @@ mod tests {
             "budgets": [
                 {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
                  "whose": "employer", "default": true},
-                {"name": "claude", "label": "Claude Pro", "kind": "subscription",
+                {"name": "claude", "label": "Claude Pro", "kind": "plan",
                  "whose": "own", "providers": ["claude-code"],
                  "price": {"dollars": 20, "per": "month"},
-                 "limits": [{"name": "five-hours", "unit": "share", "windowHours": 5,
-                             "warn": 0.8},
-                            {"name": "week", "unit": "share", "windowHours": 168,
-                             "warn": 0.8}]},
+                 "allowances": [{"name": "five-hours", "unit": "share", "windowHours": 5,
+                                 "warn": 0.8},
+                                {"name": "week", "unit": "share", "windowHours": 168,
+                                 "warn": 0.8}]},
             ],
         }))
         .unwrap();
@@ -1425,14 +1428,14 @@ mod tests {
         assert_eq!(
             behind,
             [
-                ("All AI Spend", "$100"),
+                ("All AI Spend", "$100 this month"),
                 ("Claude Pro", "85% of 5 h"),
                 ("Your proxy cap", "$80 this month"),
             ]
         );
         let plan = &budgets.rows[1];
         assert_eq!(plan.role, "warning");
-        assert_eq!(plan.note, "your own subscription");
+        assert_eq!(plan.note, "your own plan");
         let windows: Vec<(&str, &str)> = plan
             .rows
             .iter()

@@ -81,15 +81,15 @@ let
           default
           providers
           ;
-        limits = lib.mapAttrsToList (
-          name: limit:
+        allowances = lib.mapAttrsToList (
+          name: allowance:
           {
             inherit name;
-            inherit (limit) unit windowHours warn;
+            inherit (allowance) unit windowHours warn;
           }
-          // lib.optionalAttrs (limit.allowance != null) { inherit (limit) allowance; }
-          // lib.optionalAttrs (limit.resets != null) { inherit (limit) resets; }
-        ) budget.limits;
+          // lib.optionalAttrs (allowance.allowance != null) { inherit (allowance) allowance; }
+          // lib.optionalAttrs (allowance.resets != null) { inherit (allowance) resets; }
+        ) budget.allowances;
       }
       // lib.optionalAttrs (budget.price != null) { inherit (budget) price; }
     ) cfg.budgets;
@@ -190,9 +190,9 @@ in
               type = lib.types.str;
             };
             kind = lib.mkOption {
-              description = "What it is: a subscription, a key, a cap or a team's token.";
+              description = "What it is: a Claude plan, a key, a cap or a team's token.";
               type = lib.types.enum [
-                "subscription"
+                "plan"
                 "key"
                 "cap"
                 "team"
@@ -220,7 +220,7 @@ in
               default = [ ];
             };
             price = lib.mkOption {
-              description = "What a subscription costs, billed whether it's used or not.";
+              description = "What a plan costs, billed whether it's used or not.";
               default = null;
               type = lib.types.nullOr (
                 lib.types.submodule {
@@ -238,11 +238,11 @@ in
                 }
               );
             };
-            limits = lib.mkOption {
+            allowances = lib.mkOption {
               description = ''
                 What it may spend in a period, by name: dollars against an allowance,
-                or a share of a subscription's window. A feed's cap of the same name
-                for this budget is the same limit, read.
+                or a share of a plan's window. A feed's cap of the same name for this
+                budget is the same allowance, read.
               '';
               default = { };
               type = lib.types.attrsOf (
@@ -257,7 +257,7 @@ in
                       default = "dollars";
                     };
                     allowance = lib.mkOption {
-                      description = "Dollars allowed in the window, for a limit in dollars.";
+                      description = "Dollars allowed in the window, for an allowance in dollars.";
                       type = lib.types.nullOr lib.types.numbers.positive;
                       default = null;
                     };
@@ -416,7 +416,7 @@ in
 
     cap = lib.mkOption {
       description = ''
-        The default budget's limit in dollars, held where no feed gives that
+        The default budget's allowance in dollars, held where no feed gives that
         budget a cap.
       '';
       default = null;

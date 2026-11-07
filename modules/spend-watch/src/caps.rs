@@ -11,8 +11,8 @@ use crate::history::{History, sql as fail};
 use crate::stats::{count, signed};
 use crate::time::{HOUR, Zone};
 
-/// What a limit counts in: dollars against an allowance, or the share of
-/// a subscription's window used, which is never turned into dollars.
+/// What an allowance counts in: so many dollars, or the share of a
+/// plan's window used, which is never turned into dollars.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
@@ -48,7 +48,7 @@ pub struct Cap {
     pub ends_known: bool,
     /// When a cap counted over periods next resets; none for a rolling one.
     pub resets: Option<f64>,
-    /// The share of a subscription's window used, for a share.
+    /// The share of a plan's window used, for a share.
     pub used: Option<f64>,
     pub at: f64,
 }
@@ -96,7 +96,7 @@ fn cap(row: &rusqlite::Row) -> rusqlite::Result<Cap> {
 
 /// Whose a cap is, as its findings' keys say: its feed's for its own
 /// budget, its feed's and the budget's for one a record named, and for a
-/// limit of the machine's own, its budget's, or nobody's for the
+/// cap of the machine's own, its budget's, or nobody's for the
 /// default's, as the machine's cap always was.
 pub fn owner(cap: &Cap, default: &str) -> String {
     match (cap.feed.is_empty(), cap.budget.is_empty()) {

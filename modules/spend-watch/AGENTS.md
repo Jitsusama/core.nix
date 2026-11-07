@@ -50,12 +50,12 @@ feed speaks.
   hour. A name nobody declared counts as itself, shown as undeclared, so
   the budgets always sum to the whole. A feed's bill and caps are its
   budget's unless a record names another; a budget no feed bills is
-  estimated from the logs; a subscription's turns cost nothing but its
-  price, their list prices kept as what they were worth. Each limit
+  estimated from the logs; a plan's turns cost nothing but its price,
+  their list prices kept as what they were worth. Each allowance
   counts only its budget's spend, and so do its outlook, its warnings and
   the tokens warning. A share of a window is never turned into dollars,
   so the whole across budgets is billed dollars only: metered spend and
-  each subscription's price over the days it covers. `src/budgets.rs`
+  each plan's price over the days it covers. `src/budgets.rs`
   attributes, `src/standing.rs` says how each stands.
 - **Waste.** Each cache write gets a cause: a compaction, a pause longer
   than the cache lives, a fresh session, a model change. Rebuilt context is
@@ -122,8 +122,8 @@ feed speaks.
   each cap longer than a day, the budgets where there's more than one,
   then each period before, Yesterday to the last 30 days: a day's cap is
   behind today, the week ahead behind the widest cap, and behind Budgets
-  the whole, then each budget nearest its limit, a budget with several
-  limits stepping in to each. The periods sit in the collection itself, so no path goes
+  the whole, then each budget nearest its allowance, a budget with several
+  allowances stepping in to each. The periods sit in the collection itself, so no path goes
   deeper than three (Joel, 2026-10-26).
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when

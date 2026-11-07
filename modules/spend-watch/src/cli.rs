@@ -18,7 +18,7 @@ spend-watch: what AI use costs
   spend-watch report waste|caps|quests|outliers|forecast
   spend-watch budgets [--session <id>] [--json]
                                     how each budget stands against its
-                                    limits, and the whole in billed spend
+                                    allowances, and the whole in billed spend
   spend-watch findings              what holds now
   spend-watch findings expect <key> mark one expected
   spend-watch backtest              the forecast and the notices, replayed
@@ -242,10 +242,10 @@ fn budgets(
     if let Some(session) = &standing.session {
         _ = writeln!(
             out,
-            "\nSession {} draws on {}: {} today.",
+            "\nSession {} draws on {}: {} in all.",
             session.id,
             session.budget.as_deref().unwrap_or("nothing yet"),
-            session.spent["today"].shown
+            session.spent.shown
         );
     }
     Ok(out)

@@ -1,10 +1,10 @@
 //! How each budget stands, as `spend-watch budgets --json` says it and the
 //! collection's Budgets row shows it: what each spent today, in the last
-//! seven days and this month; each of its limits in its own unit, the
-//! nearest first; what a subscription's turns were worth at list; and the
-//! whole, in billed dollars only, which is metered spend plus each
-//! subscription's price over the days it covers. A share is never turned
-//! into dollars, so it's never in the whole.
+//! seven days and this month; each of its allowances in its own unit, the
+//! nearest first; what a plan's turns were worth at list; and the whole,
+//! in billed dollars only, which is metered spend plus each plan's price
+//! over the days it covers. A share is never turned into dollars, so it's
+//! never in the whole.
 
 use crate::budgets::{Budgets, window_label};
 use crate::caps::Unit;
@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 
 pub const VERSION: u32 = 1;
 
-/// What the whole says it is, since it holds no subscription's use.
+/// What the whole says it is, since it holds no plan's use.
 pub const WORDS: &str = "billed spend";
 
 /// The periods each budget's spend is said for, by the names they're
@@ -29,6 +29,10 @@ const PERIODS: [&str; 3] = ["today", "7 days", "this month"];
 pub struct Amount {
     pub dollars: f64,
     pub shown: String,
+    /// Whether any of it is pi's own estimate rather than a bill, which
+    /// `shown` says as "about".
+    #[serde(skip)]
+    pub estimated: bool,
 }
 
 impl Amount {
@@ -37,7 +41,23 @@ impl Amount {
             // An empty sum is negative zero, which would read as -0.
             dollars: dollars + 0.0,
             shown: maybe_about(whole(dollars), estimated),
+            estimated,
         }
+    }
+
+    /// What some pieces cost together, an estimate if any piece that
+    /// counts for anything is one.
+    fn of_pieces<'a>(pieces: impl IntoIterator<Item = &'a Piece>) -> Amount {
+        let (dollars, estimated) =
+            pieces
+                .into_iter()
+                .fold((0.0, false), |(dollars, estimated), piece| {
+                    (
+                        dollars + piece.dollars,
+                        estimated || (piece.source.estimated() && piece.dollars > 0.005),
+                    )
+                });
+        Amount::of(dollars, estimated)
     }
 }
 
@@ -48,15 +68,16 @@ pub struct Total {
     pub words: String,
 }
 
-/// One limit as it stands, in its own unit.
+/// One allowance as it stands, in its own unit.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Limit {
+pub struct Allowance {
     pub name: String,
     pub label: String,
     pub unit: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub used: Option<f64>,
+    /// The dollars it allows, for one in dollars.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowance: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,7 +88,7 @@ pub struct Limit {
     pub resets: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
-    /// Whose reading it is: a feed's label, for a limit a feed reads.
+    /// Whose reading it is: a feed's label, for an allowance a feed reads.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,11 +111,14 @@ pub struct Budget {
     /// shown, never dropped, so the budgets sum to the whole.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub undeclared: bool,
+    /// pi's providers whose turns are always this budget's, so pi can
+    /// tell which budget a session on one of them draws on.
+    pub providers: Vec<String>,
     pub spent: BTreeMap<String, Amount>,
-    /// What a subscription's turns were worth at list prices.
+    /// What a plan's turns were worth at list prices.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<BTreeMap<String, Amount>>,
-    pub limits: Vec<Limit>,
+    pub allowances: Vec<Allowance>,
     pub standing: String,
     pub nearest: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -109,7 +133,8 @@ pub struct Budget {
 pub struct Session {
     pub id: String,
     pub budget: Option<String>,
-    pub spent: BTreeMap<String, Amount>,
+    /// All it has spent, over every day it ran.
+    pub spent: Amount,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -134,7 +159,8 @@ pub fn standing(picture: &Picture, config: &Config, session: Option<&str>) -> St
         .into_iter()
         .map(|name| budget(picture, config, &spans, &name))
         .collect();
-    // Nearest its limit first; those with none after, as they're declared.
+    // Nearest its allowance first; those with none after, as they're
+    // declared.
     all.sort_by(|one, other| {
         other
             .nearest
@@ -157,7 +183,7 @@ pub fn standing(picture: &Picture, config: &Config, session: Option<&str>) -> St
         Session {
             id: id.to_owned(),
             budget,
-            spent: spent(&spans, |piece| piece.session == id),
+            spent: Amount::of_pieces(&pieces),
         }
     });
     Standing {
@@ -212,28 +238,23 @@ fn spent(spans: &Spans, belongs: impl Fn(&Piece) -> bool) -> BTreeMap<String, Am
     spans
         .iter()
         .map(|(name, _, pieces)| {
-            let mine: Vec<&Piece> = pieces.iter().filter(|piece| belongs(piece)).collect();
-            let dollars = mine.iter().map(|piece| piece.dollars).sum();
-            let estimated = mine
-                .iter()
-                .any(|piece| piece.source.estimated() && piece.dollars > 0.005);
-            ((*name).to_owned(), Amount::of(dollars, estimated))
+            let mine = pieces.iter().filter(|piece| belongs(piece));
+            ((*name).to_owned(), Amount::of_pieces(mine))
         })
         .collect()
 }
 
 fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budget {
     let declared = picture.budgets.declared(name);
-    let mut limits = limits(picture, config, name, declared);
-    limits.sort_by(|one, other| {
+    let mut allowances = allowances(picture, config, name, declared);
+    allowances.sort_by(|one, other| {
         other
             .nearest
             .unwrap_or(-1.0)
             .total_cmp(&one.nearest.unwrap_or(-1.0))
     });
     let spent = spent(spans, |piece| piece.budget == name);
-    let subscription = picture.budgets.subscription(name);
-    let value = subscription.then(|| {
+    let value = picture.budgets.is_plan(name).then(|| {
         spans
             .iter()
             .map(|(period, _, pieces)| {
@@ -246,8 +267,11 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
             })
             .collect::<BTreeMap<_, _>>()
     });
-    let standing = match (limits.iter().find(|limit| limit.nearest.is_some()), &value) {
-        (Some(limit), _) => limit.standing.clone(),
+    let read = allowances
+        .iter()
+        .find(|allowance| allowance.nearest.is_some());
+    let standing = match (read, &value) {
+        (Some(allowance), _) => allowance.standing.clone(),
         (None, Some(value)) => format!("{} at list this month", value["this month"].shown),
         (None, None) => format!("{} this month", spent["this month"].shown),
     };
@@ -258,12 +282,13 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
         whose: declared.map(|budget| budget.whose.name()),
         default: picture.budgets.default == name,
         undeclared: declared.is_none(),
-        nearest: limits.iter().find_map(|limit| limit.nearest),
+        providers: declared.map_or_else(Vec::new, |budget| budget.providers.clone()),
+        nearest: allowances.iter().find_map(|allowance| allowance.nearest),
         health: health(picture, &picture.budgets, name),
         words: words(declared),
         spent,
         value,
-        limits,
+        allowances,
         standing,
     }
 }
@@ -280,7 +305,7 @@ fn words(declared: Option<&BudgetConfig>) -> String {
         Whose::Team => "a team's",
     };
     let kind = match budget.kind {
-        BudgetKind::Subscription => "subscription",
+        BudgetKind::Plan => "plan",
         BudgetKind::Key => "key",
         BudgetKind::Cap => "cap",
         BudgetKind::Team => "token",
@@ -288,26 +313,26 @@ fn words(declared: Option<&BudgetConfig>) -> String {
     format!("{whose} {kind}")
 }
 
-/// A budget's limits: each one read or counted, and each declared share
-/// no feed has read yet.
-fn limits(
+/// A budget's allowances: each one read or counted, and each declared
+/// share no feed has read yet.
+fn allowances(
     picture: &Picture,
     config: &Config,
     name: &str,
     declared: Option<&BudgetConfig>,
-) -> Vec<Limit> {
-    let mut limits: Vec<Limit> = picture
+) -> Vec<Allowance> {
+    let mut allowances: Vec<Allowance> = picture
         .caps
         .iter()
         .filter(|view| view.budget == name)
-        .map(|view| limit(config, view))
+        .map(|view| allowance(config, view))
         .collect();
     let unread = declared
         .into_iter()
-        .flat_map(|budget| &budget.limits)
-        .filter(|declared| !limits.iter().any(|limit| limit.name == declared.name))
+        .flat_map(|budget| &budget.allowances)
+        .filter(|declared| !allowances.iter().any(|read| read.name == declared.name))
         .filter(|declared| !declared.stands_in)
-        .map(|declared| Limit {
+        .map(|declared| Allowance {
             name: declared.name.clone(),
             label: window_label(declared.window_hours),
             unit: declared.unit.name(),
@@ -324,11 +349,11 @@ fn limits(
             nearest: None,
         })
         .collect::<Vec<_>>();
-    limits.extend(unread);
-    limits
+    allowances.extend(unread);
+    allowances
 }
 
-fn limit(config: &Config, view: &CapView) -> Limit {
+fn allowance(config: &Config, view: &CapView) -> Allowance {
     let cap = &view.cap;
     let fed = !cap.feed.is_empty();
     let label = if fed {
@@ -350,7 +375,7 @@ fn limit(config: &Config, view: &CapView) -> Limit {
         .find(|feed| feed.name == cap.feed)
         .map_or_else(|| cap.feed.clone(), |feed| feed.label.clone());
     let share = cap.unit == Unit::Share;
-    Limit {
+    Allowance {
         name: cap.name.clone(),
         label,
         unit: cap.unit.name(),
@@ -388,9 +413,8 @@ fn health(picture: &Picture, budgets: &Budgets, name: &str) -> Option<String> {
 }
 
 /// The whole in billed dollars: what every budget spent, which counts a
-/// subscription's turns as nothing, and each subscription's price over
-/// the period, its month's price in the month and a day's share of it in
-/// a day.
+/// plan's turns as nothing, and each plan's price over the period, its
+/// month's price in the month and a day's share of it in a day.
 fn total(picture: &Picture, spans: &Spans) -> BTreeMap<String, Amount> {
     let metered = spent(spans, |_| true);
     let monthly: f64 = picture
@@ -408,10 +432,9 @@ fn total(picture: &Picture, spans: &Spans) -> BTreeMap<String, Amount> {
                 (*from..=*to).map(|day| monthly / days_in_month(day)).sum()
             };
             let spent = &metered[*name];
-            let estimated = spent.shown.starts_with("about");
             (
                 (*name).to_owned(),
-                Amount::of(spent.dollars + plans, estimated),
+                Amount::of(spent.dollars + plans, spent.estimated),
             )
         })
         .collect()
@@ -455,15 +478,15 @@ mod tests {
             "budgets": [
                 {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
                  "whose": "employer", "default": true,
-                 "limits": [{"name": "weekly", "allowance": 40000, "windowHours": 168,
-                             "warn": 0.9}]},
-                {"name": "claude", "label": "Claude Pro", "kind": "subscription",
+                 "allowances": [{"name": "weekly", "allowance": 40000, "windowHours": 168,
+                                 "warn": 0.9}]},
+                {"name": "claude", "label": "Claude Pro", "kind": "plan",
                  "whose": "own", "providers": ["claude-code"],
                  "price": {"dollars": 31, "per": "month"},
-                 "limits": [{"name": "five-hours", "unit": "share", "windowHours": 5,
-                             "warn": 0.8},
-                            {"name": "week", "unit": "share", "windowHours": 168,
-                             "warn": 0.8}]},
+                 "allowances": [{"name": "five-hours", "unit": "share", "windowHours": 5,
+                                 "warn": 0.8},
+                                {"name": "week", "unit": "share", "windowHours": 168,
+                                 "warn": 0.8}]},
                 {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team"},
             ],
             "feeds": [{"name": "plan", "label": "Claude", "command": ["f"],
@@ -517,8 +540,8 @@ mod tests {
         standing(&picture, &config, session)
     }
 
-    // Each budget stands in its own unit, the nearest its limit first, and
-    // one nobody declared is shown rather than dropped.
+    // Each budget stands in its own unit, the nearest its allowance first,
+    // and one nobody declared is shown rather than dropped.
     #[test]
     fn each_budget_stands_in_its_own_unit_nearest_first() {
         let standing = standing_now(None);
@@ -538,17 +561,18 @@ mod tests {
         );
         assert_eq!(standing.default, "proxy");
         let probe = &standing.budgets[3];
-        assert!(probe.undeclared && probe.kind.is_none());
-        // The plan's week has no reading yet, and is still a limit.
+        assert!(probe.undeclared && probe.kind.is_none() && probe.providers.is_empty());
+        // The plan's week has no reading yet, and is still an allowance.
         let claude = &standing.budgets[0];
-        let limits: Vec<&str> = claude
-            .limits
+        let allowances: Vec<&str> = claude
+            .allowances
             .iter()
-            .map(|limit| limit.name.as_str())
+            .map(|allowance| allowance.name.as_str())
             .collect();
-        assert_eq!(limits, ["five-hours", "week"]);
-        assert_eq!(claude.limits[0].from.as_deref(), Some("Claude"));
+        assert_eq!(allowances, ["five-hours", "week"]);
+        assert_eq!(claude.allowances[0].from.as_deref(), Some("Claude"));
         assert_eq!(claude.health, None);
+        assert_eq!(claude.providers, ["claude-code"]);
     }
 
     // The whole is billed dollars: the plan's turns cost nothing but its
@@ -567,16 +591,22 @@ mod tests {
         assert!((total.periods["this month"].dollars - (18_711.0 + 31.0)).abs() < 1e-9);
         let json = serde_json::to_value(&standing).unwrap();
         assert_eq!(json["total"]["today"]["shown"], "$18,712");
-        assert_eq!(json["budgets"][1]["limits"][0]["unit"], "dollars");
-        assert!(json["budgets"][0]["limits"][0].get("spent").is_none());
+        assert_eq!(json["budgets"][1]["allowances"][0]["unit"], "dollars");
+        assert!(json["budgets"][0]["allowances"][0].get("spent").is_none());
+        assert_eq!(json["budgets"][0]["kind"], "plan");
+        assert_eq!(json["budgets"][0]["providers"][0], "claude-code");
     }
 
+    // A session's spend is one amount, all of it, under the budget it
+    // drew on last, as pi's footer and /budget say it.
     #[test]
     fn a_session_says_its_spend_under_its_budget() {
         let standing = standing_now(Some("team"));
-        let session = standing.session.unwrap();
+        let session = standing.session.as_ref().unwrap();
         assert_eq!(session.budget.as_deref(), Some("delta"));
-        assert_eq!(session.spent["today"].shown, "$310");
+        assert_eq!(session.spent.shown, "$310");
         assert_eq!(standing.sessions["plan"], "claude");
+        let json = serde_json::to_value(&standing).unwrap();
+        assert_eq!(json["session"]["spent"]["dollars"], 310.0);
     }
 }

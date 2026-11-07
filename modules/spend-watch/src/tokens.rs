@@ -142,12 +142,12 @@ pub struct Inputs {
 
 /// What a cap is read against: the budget it limits, and every budget's
 /// word on which that is.
-struct Limited<'a> {
+struct Capped<'a> {
     budgets: &'a Budgets,
     budget: String,
 }
 
-impl Limited<'_> {
+impl Capped<'_> {
     fn is(&self, budget: &str) -> bool {
         budget == self.budget
     }
@@ -163,12 +163,7 @@ impl Limited<'_> {
 /// past, of a session drawing on the cap's budget as it was refused: the
 /// tokens have run out whatever the forecast says, since the cap's next
 /// reading is up to an hour off.
-fn refused(
-    history: &History,
-    limited: &Limited,
-    cap: &Cap,
-    now: f64,
-) -> Result<Option<f64>, String> {
+fn refused(history: &History, capped: &Capped, cap: &Cap, now: f64) -> Result<Option<f64>, String> {
     let mut statement = history
         .db
         .prepare(
@@ -193,7 +188,7 @@ fn refused(
     let mut last: Option<f64> = None;
     for row in rows {
         let (at, provider, logged) = row.map_err(fail)?;
-        if limited.spent_by(provider.as_deref().unwrap_or(""), logged.as_deref()) {
+        if capped.spent_by(provider.as_deref().unwrap_or(""), logged.as_deref()) {
             last = Some(last.map_or(at, |last| last.max(at)));
         }
     }
@@ -241,7 +236,7 @@ fn watched(caps: Vec<Cap>) -> Option<Cap> {
 /// `to`.
 fn billed(
     history: &History,
-    limited: &Limited,
+    capped: &Capped,
     source: &str,
     from: i64,
     to: i64,
@@ -266,7 +261,7 @@ fn billed(
         .map_err(fail)?;
     for row in rows {
         let (hour, feed, budget, dollars) = row.map_err(fail)?;
-        if !limited.is(&limited.budgets.of_record(&feed, &budget)) {
+        if !capped.is(&capped.budgets.of_record(&feed, &budget)) {
             continue;
         }
         if let Some(slot) = usize::try_from(hour - from)
@@ -283,7 +278,7 @@ fn billed(
 /// and its quest.
 fn top(
     history: &History,
-    limited: &Limited,
+    capped: &Capped,
     hour: i64,
 ) -> Result<Option<(String, Option<String>)>, String> {
     let mut statement = history
@@ -308,7 +303,7 @@ fn top(
         std::collections::BTreeMap::new();
     for row in rows {
         let (session, quest, provider, logged, cost) = row.map_err(fail)?;
-        if limited.spent_by(&provider, logged.as_deref()) {
+        if capped.spent_by(&provider, logged.as_deref()) {
             let entry = spent.entry(session).or_insert((0.0, None));
             entry.0 += cost;
             entry.1 = entry.1.take().or(quest);
@@ -347,11 +342,11 @@ pub fn read(
     let Some(cap) = watched(caps) else {
         return Ok(None);
     };
-    let limited = Limited {
+    let capped = Capped {
         budgets,
         budget: budgets.of_record(&cap.feed, &cap.budget),
     };
-    let billed = |source: &str, from: i64, to: i64| billed(history, &limited, source, from, to);
+    let billed = |source: &str, from: i64, to: i64| billed(history, &capped, source, from, to);
     let hour = hour_of(now);
     let into = (now - hour_start(hour)) / HOUR;
     let rate = match rate {
@@ -379,9 +374,9 @@ pub fn read(
         hour - window,
         hour - window + i64::try_from(AHEAD).unwrap_or(0) + 1,
     )?;
-    let top = top(history, &limited, hour)?;
+    let top = top(history, &capped, hour)?;
     let rises = rises(history, &cap, now)?;
-    let refused = refused(history, &limited, &cap, now)?;
+    let refused = refused(history, &capped, &cap, now)?;
     let counter = cap.feed.clone();
     Ok(Some(Inputs {
         cap,

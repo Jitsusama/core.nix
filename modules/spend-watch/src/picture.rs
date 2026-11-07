@@ -53,12 +53,12 @@ pub struct CapView {
     /// The budget it limits, by name.
     pub budget: String,
     /// Whose it is, as its findings' keys say: its feed's, or its budget's
-    /// for a limit of the machine's own.
+    /// for a cap of the machine's own.
     pub owner: String,
     /// The window's spend now: the feed's figure plus what's been billed
     /// since it was given. Nothing, for a share.
     pub spent: f64,
-    /// The share of a subscription's window used now, for a share: none
+    /// The share of a plan's window used now, for a share: none
     /// since a reset nobody has read past.
     pub used: Option<f64>,
     pub clock: Option<Clock>,
@@ -635,7 +635,7 @@ struct Forecast<'a> {
     hours: &'a BTreeMap<i64, f64>,
 }
 
-/// Each limit read, the feeds' and the machine's own, each against only
+/// Each cap read, the feeds' and the machine's own, each against only
 /// its own budget's hours.
 fn cap_views(
     history: &History,
@@ -670,7 +670,7 @@ fn cap_views(
     Ok(out)
 }
 
-/// A share of a subscription's window as its feed read it, or none used
+/// A share of a plan's window as its feed read it, or none used
 /// once it has reset since. A share is never turned into dollars, so it
 /// has no forecast of its own.
 fn share_view(cap: Cap, now: f64) -> CapView {
@@ -692,7 +692,7 @@ fn share_view(cap: Cap, now: f64) -> CapView {
     }
 }
 
-/// A limit in dollars: its spend now, from the feed's figure and what its
+/// A cap in dollars: its spend now, from the feed's figure and what its
 /// budget has billed since, and its clock, from the forecast at the
 /// budget's share of all spend and the cap's share of its budget's.
 fn dollars_view(
@@ -771,7 +771,7 @@ fn dollars_view(
 }
 
 /// How much of all spend a budget's was over the last four weeks, which
-/// the forecast of all of it is scaled by for the budget's limits; all of
+/// the forecast of all of it is scaled by for the budget's caps; all of
 /// it while nothing was spent.
 fn budget_share(budget: &BTreeMap<i64, f64>, all: &BTreeMap<i64, f64>, now_hour: i64) -> f64 {
     let recent = now_hour - 28 * 24..=now_hour;
@@ -782,7 +782,7 @@ fn budget_share(budget: &BTreeMap<i64, f64>, all: &BTreeMap<i64, f64>, now_hour:
     (budget.range(recent).map(|(_, d)| d).sum::<f64>() / total).clamp(0.0, 1.0)
 }
 
-/// The limits in dollars the config declares, counted here from each
+/// The allowances in dollars the config declares, counted here from each
 /// budget's hours: each unless a feed reads its budget's of the same
 /// name, and the machine's own cap only while no feed gives its budget
 /// one, as it always has.
@@ -802,25 +802,30 @@ fn own_caps(
     budgets
         .all
         .iter()
-        .flat_map(|budget| budget.limits.iter().map(move |limit| (budget, limit)))
-        .filter(|(_, limit)| limit.unit == caps::Unit::Dollars)
-        .filter(|(budget, limit)| {
+        .flat_map(|budget| {
+            budget
+                .allowances
+                .iter()
+                .map(move |allowance| (budget, allowance))
+        })
+        .filter(|(_, allowance)| allowance.unit == caps::Unit::Dollars)
+        .filter(|(budget, allowance)| {
             !read(
                 &budget.name,
-                (!limit.stands_in).then_some(limit.name.as_str()),
+                (!allowance.stands_in).then_some(allowance.name.as_str()),
             )
         })
-        .map(|(budget, limit)| {
+        .map(|(budget, allowance)| {
             let hours = budget_hours.get(&budget.name).unwrap_or(&none);
-            own_cap(&budget.name, limit, hours, now)
+            own_cap(&budget.name, allowance, hours, now)
         })
         .collect()
 }
 
-/// A limit of the machine's own, read from what its budget has billed.
+/// An allowance of the machine's own, read from what its budget has billed.
 fn own_cap(
     budget: &str,
-    limit: &crate::config::LimitConfig,
+    declared: &crate::config::AllowanceConfig,
     hours: &BTreeMap<i64, f64>,
     now: f64,
 ) -> Cap {
@@ -828,32 +833,32 @@ fn own_cap(
     let mut cap = Cap {
         feed: String::new(),
         budget: budget.to_owned(),
-        name: limit.name.clone(),
-        label: if limit.stands_in {
-            format!("{}-hour cap", limit.window_hours)
+        name: declared.name.clone(),
+        label: if declared.stands_in {
+            format!("{}-hour cap", declared.window_hours)
         } else {
             format!(
-                "{} limit",
-                crate::budgets::window_adjective(limit.window_hours)
+                "{} allowance",
+                crate::budgets::window_adjective(declared.window_hours)
             )
         },
         unit: caps::Unit::Dollars,
-        allowance: limit.allowance,
-        window_hours: limit.window_hours,
+        allowance: declared.allowance,
+        window_hours: declared.window_hours,
         spent: 0.0,
-        warn: limit.warn,
+        warn: declared.warn,
         fallback: None,
         state: "ok".into(),
         ends: None,
         ends_known: true,
-        resets: limit.resets.as_deref().and_then(crate::time::parse),
+        resets: declared.resets.as_deref().and_then(crate::time::parse),
         used: None,
         at: now,
     };
     // A period counts from its start; a rolling window, its last hours.
     let first = match next_reset(&cap, now) {
-        Some(next) => crate::time::hour_of(next - f64::from(limit.window_hours) * HOUR),
-        None => now_hour - i64::from(limit.window_hours) + 1,
+        Some(next) => crate::time::hour_of(next - f64::from(declared.window_hours) * HOUR),
+        None => now_hour - i64::from(declared.window_hours) + 1,
     };
     cap.spent = hours.range(first..=now_hour).map(|(_, d)| d).sum();
     cap
@@ -974,8 +979,9 @@ mod tests {
 
     const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z
 
-    /// The proxy's cap the default, a team's token with a limit of the
-    /// machine's own, and a Claude plan the proxy's feed reads a share of.
+    /// The proxy's cap the default, a team's token with an allowance of
+    /// the machine's own, and a Claude plan the proxy's feed reads a share
+    /// of.
     fn budgeted() -> Config {
         serde_json::from_value(serde_json::json!({
             "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
@@ -984,9 +990,9 @@ mod tests {
                 {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
                  "whose": "employer", "default": true},
                 {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team",
-                 "limits": [{"name": "week", "allowance": 400, "windowHours": 168,
-                             "warn": 0.9}]},
-                {"name": "claude", "label": "Claude Pro", "kind": "subscription",
+                 "allowances": [{"name": "week", "allowance": 400, "windowHours": 168,
+                                 "warn": 0.9}]},
+                {"name": "claude", "label": "Claude Pro", "kind": "plan",
                  "whose": "own", "providers": ["claude-code"]},
             ],
             "feeds": [{"name": "proxy", "label": "the AI proxy", "command": ["f"]}],
@@ -1023,9 +1029,9 @@ mod tests {
         crate::feed::store(history, "proxy", &record, NOW).unwrap();
     }
 
-    // A team's token spending fast moves only its own limit: the proxy's
-    // cap counts what the proxy's budget spent since its reading, and a
-    // limit of the machine's own counts only its budget's hours.
+    // A team's token spending fast moves only its own cap: the proxy's
+    // cap counts what the proxy's budget spent since its reading, and an
+    // allowance of the machine's own counts only its budget's hours.
     #[test]
     fn each_cap_counts_only_its_budget_s_spend() {
         let history = History::memory();
@@ -1052,13 +1058,13 @@ mod tests {
         assert_eq!((weekly.budget.as_str(), weekly.spent), ("proxy", 150.0));
         let week = view("week");
         assert_eq!((week.budget.as_str(), week.spent), ("delta", 500.0));
-        assert_eq!(week.cap.label, "weekly limit");
+        assert_eq!(week.cap.label, "weekly allowance");
         let found = crate::detect::caps(&picture);
         let keys: Vec<&str> = found.iter().map(|finding| finding.key.as_str()).collect();
         assert_eq!(keys, ["cap:/delta:week:over"]);
     }
 
-    // A share of a subscription's window is its used share, never dollars,
+    // A share of a plan's window is its used share, never dollars,
     // warned at its warning, and nothing used once it has reset unread.
     #[test]
     fn a_share_is_its_used_share_until_it_resets() {
