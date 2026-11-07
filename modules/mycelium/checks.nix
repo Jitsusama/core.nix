@@ -295,7 +295,7 @@ in
 
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's quests, restore list and runs from that realm's folders, or the machine's waiting, verdicts and queue aren't served by the home realm's node alone."
+      "A realm's node doesn't serve its realm's quests, restore list and runs from that realm's folders, the machine's waiting, verdicts and queue aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
       (
         let
           state = "/home/someone/.local/state";
@@ -359,6 +359,26 @@ in
           }
         && lib.hasSuffix "--serves /home/someone/.config/mycelium/serves-other.json" otherNode
         && !(apart.xdg.configFile ? "mycelium/serves-home.json")
+        # The node reads its serves file only as it starts, so a switch
+        # changing what it serves restarts it.
+        &&
+          lib.all
+            (
+              one:
+              one.node.Unit.X-Restart-Triggers == [
+                (builtins.hashString "sha256" (linux both).xdg.configFile."mycelium/serves-${one.realm}.json".text)
+              ]
+            )
+            [
+              {
+                node = bothLinux.mycelium;
+                realm = "home";
+              }
+              {
+                node = bothLinux.mycelium-other;
+                realm = "other";
+              }
+            ]
       );
 
   # A machine that declares what its node can't measure has it written where
