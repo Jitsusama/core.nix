@@ -1067,7 +1067,7 @@ Floating {
             value: fact.value === null || fact.value === undefined ? 0
                 : faceOf(fact).advanceWidth(unbroken(fact.value)) + figureLeast(fact)
         });
-        const named = facts.filter(fact => fact && fact.heading === undefined && !prose(fact))
+        const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact))
             .map(measured);
         const moment = [].concat(...groups.map(group => group.facts)).map(measured);
         const widest = Math.max(0, ...named.concat(moment).map(one => one.name));
@@ -1083,7 +1083,8 @@ Floating {
     // Whether its facts stand beside their names, a table, else under them.
     readonly property bool besideAll: laying.beside
     // Whether a fact's value is prose, which stands under its name always.
-    function prose(fact) {
+    // (The drawer's own prose, above, is whether its body reads as prose.)
+    function proseFact(fact) {
         return fact?.words === true;
     }
     // The least room a fact's figure takes after its value, two runs of one
@@ -1148,7 +1149,7 @@ Floating {
     // every one under, prose aside, for the launcher to report.
     function laidOneWay() {
         const laid = Array.from({ length: factRows.count }, (_, at) => factRows.itemAt(at))
-            .filter(row => row && !row.heading && !prose(row.modelData))
+            .filter(row => row && !row.heading && !proseFact(row.modelData))
             .map(row => row.under);
         return laid.every(under => under) || laid.every(under => !under);
     }
@@ -1917,7 +1918,7 @@ Floating {
                             // however many lines, so each key heads its own
                             // (VKCF3Z, 2026-11-04).
                             readonly property bool under: !drawer.listsKeys
-                                && (!drawer.besideAll || drawer.prose(modelData))
+                                && (!drawer.besideAll || drawer.proseFact(modelData))
                             // A key's name, drawn as runs of its own.
                             readonly property var runs: drawer.runsOf(modelData)
                             readonly property real valueFrom: under ? 0
