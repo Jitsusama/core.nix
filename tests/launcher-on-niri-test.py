@@ -923,6 +923,41 @@ def test_what_comes_after_the_words_are_typed_is_found_and_comes_last(shell: She
             shell.close(second)
 
 
+def test_returns_place_is_weighed_for_the_rows_whats_typed_lists_now(shell: Shell) -> None:
+    """Return's place on the find is as wide as the rows what's typed lists now need.
+
+    A row no longer listed can't be named, so it holds no room: held from a letter passed,
+    Sleep's ":suspend" on "s" left a gap before "\u21b5 more" once "swayimg" was typed
+    (VKCF3Z, 2026-11-07). Typed on from "s", the foot leaves what typed at once leaves.
+    """
+
+    def spare(shown: Json) -> int:
+        """Give how much wider Return's place is than what it says."""
+        room = shown["keysRoom"]
+        return cast("int", room["place"]) - cast("int", room["placeSays"])
+
+    def on_it(shown: Json) -> bool:
+        """Say whether the window is selected."""
+        return (shown["selected"] or {}).get("name") == "Sandpiper Notes"
+
+    window = shell.opened("Sandpiper Notes")
+    try:
+        shell.answer("sandpiper")
+        shell.launcher_until(on_it)
+        at_once = shell.showing()
+        shell.close_launcher()
+        shell.answer("s")
+        passed = shell.showing()["keysRoom"]["place"]
+        shell.type_in("andpiper")
+        shell.launcher_until(on_it)
+        typed_on = shell.showing()
+        # Else no row "s" lists says a wider Return, and this proves nothing.
+        assert passed > at_once["keysRoom"]["place"], (passed, at_once["keysRoom"])
+        assert spare(typed_on) == spare(at_once), (at_once["keysRoom"], typed_on["keysRoom"])
+    finally:
+        shell.close(window)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()
