@@ -397,6 +397,7 @@ pub fn pass(
         &config.runtime()?,
         &shown,
         &crate::collection::collection(&picture, &findings, config),
+        Some(&crate::standing::standing(&picture, config, None)),
     )?;
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.
@@ -497,6 +498,7 @@ fn hold(config: &Config) -> Result<(), String> {
             &config.runtime()?,
             &status::held(time::now()),
             &crate::collection::held(shape),
+            None,
         )?;
         std::thread::sleep(HEARTBEAT);
     }
