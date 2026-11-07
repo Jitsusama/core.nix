@@ -122,7 +122,12 @@ The theme module writes the theme for the web on every machine, at
 <link rel="stylesheet" href="kit/base.css">
 <link rel="stylesheet" href="site.css">
 <link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
 ```
+
+Preload the faces the first screen draws: the heading's italic turn and a
+label put all three on most of them.
 
 - `theme.css` is written from the theme, so it's never edited: every colour
   role (`--background`, `--text`, `--muted`, `--strong`, `--accent`, the glyph

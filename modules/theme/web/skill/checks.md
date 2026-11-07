@@ -91,14 +91,18 @@ On a throttled middling phone (4 times slower CPU, a fast 4G network):
 | Largest paint | 1.5 s | 1.0 s at 1512 px, 2.5 s at 390 px |
 | Layout shift | 0.02 | 0 |
 | Response to input | 100 ms | a key drawn in 50 ms, 100 ms at most |
-| Fonts for the first view | 200 KB | 200 KB |
+| Fonts for the first view | 350 KB | 350 KB |
 | Script for the first view | none needed | 100 KB compressed |
 | A quiet tab | | under 1% CPU and 60 MB |
 
 - **No request leaves the site.** List every request's origin on a load; there
   is one.
-- **The first view's fonts** are Fraunces upright and, when the first view
-  uses it, the mono; the italic loads only when italic is drawn.
+- **The first view's fonts** are the kit's three faces: Fraunces upright,
+  its italic, which the heading's turn draws on most first screens, and the
+  mono, about 340 KB together. Any further cut costs an axis the type system
+  sets, or the kerning around an accented letter, so a site adds no face of
+  its own to the first view rather than cutting these. Each swaps in over a
+  stand-in matched to its metrics, so none holds the first paint.
 
 ## Words and Facts
 

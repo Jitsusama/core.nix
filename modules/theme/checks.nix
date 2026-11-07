@@ -125,9 +125,10 @@
   # The web kit a site copies holds every role of both looks at the theme's
   # own values, the machine's in its own scheme and core's other theme in the
   # other, so a site that names the properties can never drift from the
-  # theme as the hand-copied sites did; and it sends a first view's two
-  # faces in under 200 KB, the budget the web-design skill sets, so cutting
-  # them can't silently grow back to the 1.5 MB of whole font files.
+  # theme as the hand-copied sites did; and it sends a first view's three
+  # faces, the upright, the italic a heading's turn draws and the mono, in
+  # under 350 KB, the budget the web-design skill sets, so cutting them can't
+  # silently grow back to the 1.5 MB of whole font files.
   the-web-kit-carries-the-theme =
     let
       home = account workstation;
@@ -152,9 +153,11 @@
       for line in ${declares flexoki}; do
         grep -qF -- "$line" <<<"$light" || { echo "The light look lacks $line"; exit 1; }
       done
-      first=$(( $(stat -c %s ${kit}/fonts/fraunces.woff2) + $(stat -c %s ${kit}/fonts/monaspace.woff2) ))
-      if [ "$first" -gt 204800 ]; then
-        echo "A first view's faces come to $first bytes, past 200 KB."
+      first=$(( $(stat -c %s ${kit}/fonts/fraunces.woff2) \
+        + $(stat -c %s ${kit}/fonts/fraunces-italic.woff2) \
+        + $(stat -c %s ${kit}/fonts/monaspace.woff2) ))
+      if [ "$first" -gt 358400 ]; then
+        echo "A first view's faces come to $first bytes, past 350 KB."
         exit 1
       fi
       touch $out

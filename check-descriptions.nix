@@ -2075,7 +2075,7 @@
   '';
   the-web-kit-carries-the-theme = ''
     the web kit's CSS holds every role of the machine's theme as its dark look and of core's light
-    theme as its light one, and a first view's two faces come in under 200 KB
+    theme as its light one, and a first view's three faces come in under 350 KB
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

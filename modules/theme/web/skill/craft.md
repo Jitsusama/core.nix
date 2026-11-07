@@ -177,7 +177,27 @@ arrives, and the reader's choice before the first paint:
 The switch: three icon buttons in a `role="radiogroup"` labelled "Theme",
 each a `role="radio"` with its accessible name ("Match System", "Light",
 "Dark") and a visible name on hover and focus; arrow keys move between them,
-and one tab stop reaches the group. Choosing "Match System" removes the stored
+and one tab stop reaches the group. An icon names nothing to a screen reader,
+so every button carries its name, or the switch reads as three blank radios:
+
+```html
+<div class="switch" role="radiogroup" aria-label="Theme">
+  <button type="button" role="radio" aria-checked="false" tabindex="-1"
+          data-choice="light" aria-label="Light">
+    <svg viewBox="0 0 24 24" aria-hidden="true">...</svg>
+  </button>
+  <button type="button" role="radio" aria-checked="true" tabindex="0"
+          data-choice="system" aria-label="Match System">
+    <svg viewBox="0 0 24 24" aria-hidden="true">...</svg>
+  </button>
+  <button type="button" role="radio" aria-checked="false" tabindex="-1"
+          data-choice="dark" aria-label="Dark">
+    <svg viewBox="0 0 24 24" aria-hidden="true">...</svg>
+  </button>
+</div>
+```
+
+Choosing "Match System" removes the stored
 key and `data-theme`. The thumb slides between them on the theme's spring, and
 the change may sweep in with a View Transition, both still when less motion is
 asked for. The last one Joel kept: auto in the middle, the thumb on
