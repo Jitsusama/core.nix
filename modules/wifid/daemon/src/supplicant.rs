@@ -45,7 +45,7 @@ const CHALLENGE_FAILED: i32 = 15;
 const NEGOTIATING: [i32; 4] = [76, 77, 126, 127];
 
 /// The status an access point started afresh refuses the key the card
-/// kept from it with, INVALID_PMKID. wpa_supplicant forgets the key and
+/// kept from it with, `INVALID_PMKID`. wpa_supplicant forgets the key and
 /// joins again at once, so it's no trouble: a router just restarted would
 /// otherwise turn every first join away.
 const STALE_KEY: i32 = 53;
@@ -64,12 +64,11 @@ impl Trouble {
     /// which is how hostapd answers it.
     pub fn from_status(step: Step, code: i32, security: Security) -> Option<Trouble> {
         match (step, code, security) {
-            (_, 0, _) => None,
+            (_, 0, _) | (Step::Association, STALE_KEY, _) => None,
             (Step::Authentication, CHALLENGE_FAILED, Security::Personal) => {
                 Some(Trouble::WrongPassword)
             }
             (Step::Authentication, code, _) if NEGOTIATING.contains(&code) => None,
-            (Step::Association, STALE_KEY, _) => None,
             (_, code, _) => Some(Trouble::Refused(code)),
         }
     }
