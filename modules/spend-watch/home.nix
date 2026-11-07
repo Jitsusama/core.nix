@@ -328,26 +328,24 @@ in
           };
         }
       );
-      # A swarm's agents each keep a home in their quest's workspace, at its
-      # top or in a trial under its tmp; a review's reviewers and judges
-      # keep theirs with its transcripts.
-      default =
-        map
-          (home: {
-            pattern = "${workspaces}/*/${home}agents/*/session/*.jsonl";
-            kind = "swarm";
-          })
-          [
-            "*/"
-            "tmp/*/"
-            "tmp/*/*/"
-          ]
-        ++ [
-          {
-            pattern = "${harness.state}/review/transcripts/runs/*/reviewers/*/session/*.jsonl";
-            kind = "review";
-          }
-        ];
+      # A swarm's agents each keep a home at the top of their quest's
+      # workspace; a review's reviewers and judges keep theirs with its
+      # transcripts. A pattern never reaches into a workspace's tmp: on 7
+      # November it held 46,272 folders of others' scratch, which the walks
+      # opened 1.5 million times in 150 s, and no agent had written a log
+      # there since a swarm's trials of 14 October.
+      default = [
+        {
+          pattern = "${workspaces}/*/*/agents/*/session/*.jsonl";
+          kind = "swarm";
+        }
+      ]
+      ++ [
+        {
+          pattern = "${harness.state}/review/transcripts/runs/*/reviewers/*/session/*.jsonl";
+          kind = "review";
+        }
+      ];
       defaultText = lib.literalMD "a swarm's homes in each quest's workspace, and review transcripts";
     };
 
