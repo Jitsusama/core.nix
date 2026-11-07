@@ -52,6 +52,7 @@ import KeyTimes
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
 import "Bands.js" as Bands
+import "Columns.js" as Columns
 import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
@@ -2577,7 +2578,7 @@ Scope {
     // while it's open, so nothing moves under him.
     // How many characters a row's name and what it holds have room for.
     function rowRoom() {
-        return Math.floor((list.width - 2 * Theme.space.rung.inset - glyphColumn
+        return Math.floor((list.width - 2 * card.inset - glyphColumn
             - Theme.space.rung.groups - Theme.space.rung.apart)
             / Math.max(1, rowFace.advanceWidth("0")));
     }
@@ -5534,22 +5535,26 @@ Scope {
     // How tall a row is, four beats; its middle is a centre, half of it,
     // rather than a space of its own.
     readonly property real rowTall: 4 * Theme.space.beat
-    // The card's columns and lines, from its frame's inside edge, each a
-    // rung of the ladder (docs/design.md, The Ladder): all its text an
-    // inset from the frame on every side, to the ink, the gutter's numbers
-    // on that inset too, the rows' text area a mark past the numbers' room
-    // (the gutter keeps it), their glyphs an inset into it, their names a
-    // glyph's column on, and the flush-right edge an inset from the frame.
+    // The card's columns, from its content's edge, the inset in from the
+    // frame (Card.qml), as the held notices' and a notice's are
+    // (Columns.js): the gutter's numbers on the content's edge, as wide as
+    // the room they hold for the place's list (the gutter keeps it) and a
+    // mark after, the glyphs' column, and the text column a mark past a
+    // glyph's square cell, so a launcher row differs from a held notice by
+    // its gutter's width alone (Joel, 2026-11-06: "they need to share more
+    // code and UI/UX design to stop them from constantly drifting").
+    readonly property var columns: Columns.across(card.contentWidth,
+        Columns.gutterOf(rowsGutter.room, Theme.space.rung),
+        Columns.ofMark(Theme.level.name.pitch), Theme.space.rung)
     // A glyph's column is a mark's square cell, a line pitch wide, and the
     // mark rung before its text (VKCF3Z, 2026-11-05).
-    readonly property real glyphColumn: Theme.level.name.pitch + Theme.space.rung.mark
-    // Where the rows, the field and the command line stand. Counted from the
-    // gutter's numbers' end (roles.md rule 3): a row's ground starts a mark
-    // past them, where the gutter's room ends, and its glyph a mark into
-    // the ground; each keeps its own inset inside, so each stands its inset
-    // less a mark before the gutter's end.
-    readonly property real textAreaAt: rowsGutter.x + rowsGutter.room
-        - (Theme.space.rung.inset - Theme.space.rung.mark)
+    readonly property real glyphColumn: columns.text - columns.mark
+    // Where the rows stand, from the frame's inside edge: a row (Choice.qml)
+    // keeps the card's inset inside itself, as the card's content does, so
+    // it starts the inset before its glyph, which then stands on the mark
+    // column, and the mark column's place counted from the frame is where
+    // the row starts.
+    readonly property real textAreaAt: columns.mark
     // Where the field's baseline stands, down from the card's top: centred
     // by eye in the head's band, the frame's inside to its hairline, which
     // the field fills (docs/design.md: text in a band centres in it).
@@ -5781,7 +5786,7 @@ Scope {
             keysAt: Math.round(foot.returnAt),
             // Where the status line's last ink should end: the inset in
             // from the frame, as its first starts.
-            footEnd: Math.round(foot.mapToItem(card, foot.width - Theme.space.rung.inset, 0).x),
+            footEnd: Math.round(foot.mapToItem(card, foot.width - card.inset, 0).x),
             // How far in the keys may reach, room held for keys a row
             // may say included, which the facts are fitted short of.
             keysFrom: Math.round(foot.keysFrom),
@@ -6377,11 +6382,14 @@ Scope {
             }
         }
 
-        Floating {
+        Card {
             id: card
             x: reach
             y: reach
             width: root.width
+            // Laid in bands, its head, rows and foot each reaching from the
+            // frame's inside edge and centring its own line.
+            bands: true
             // Its frame says the keys are here, unless the drawer holds them.
             keys: !QueryKeys.paged(prompt.mode)
             // Clear rather than hidden while closed, since a hidden field
@@ -6400,8 +6408,11 @@ Scope {
                 }
             }
 
+            // From the frame's inside edge to its other, since every band
+            // reaches it, each standing its ink on the card's columns.
             Column {
-                width: parent.width
+                x: -card.inset
+                width: card.contentWidth + 2 * card.inset
 
                 // The faces whose capitals set the rows' and the foot's
                 // lines (root.rowCaps, root.footBase): TextMetrics rather
@@ -6813,7 +6824,7 @@ Scope {
                             // Its : in the place glyph's cell, as the find's
                             // / stands, and nothing in the gutter's column.
                             markMiddle: prompt.cellMiddle
-                            typedAt: root.textAreaAt + Theme.space.rung.inset + root.glyphColumn
+                            typedAt: card.inset + root.columns.text
                             menu: root.commanding?.menu ?? []
                             argued: (entry, arg) => root.commandArguments(entry, arg)
                             onRan: read => root.commandRan(read)
@@ -6837,7 +6848,7 @@ Scope {
                         visible: root.commandSays
 
                         Text {
-                            x: Theme.space.rung.inset
+                            x: card.inset
                             anchors.baseline: commandSaidText.baseline
                             visible: root.commandFailed
                             text: Theme.glyph.failed
@@ -6848,8 +6859,8 @@ Scope {
 
                         Text {
                             id: commandSaidText
-                            x: root.textAreaAt + Theme.space.rung.inset + root.glyphColumn
-                            width: parent.width - x - Theme.space.rung.inset
+                            x: card.inset + root.columns.text
+                            width: parent.width - x - card.inset
                             y: Bands.baseline(parent.height, saidCaps.tightBoundingRect.height,
                                 saidSmalls.tightBoundingRect.height) - baselineOffset
                             text: root.commandSaid
@@ -6880,7 +6891,7 @@ Scope {
                 // card into boxes against the frame (VKCF3Z, 2026-11-05).
                 Rectangle {
                     id: headLine
-                    x: Theme.space.rung.inset
+                    x: card.inset
                     width: parent.width - 2 * x
                     height: Theme.border
                     color: Theme.edge
@@ -6982,7 +6993,7 @@ Scope {
                         // moves on a mode change or a letter.
                         Gutter {
                             id: rowsGutter
-                            x: Theme.space.rung.inset
+                            x: card.inset
                             // Over the rows' grounds, which reach under it.
                             z: 1
                             height: parent.height
@@ -7457,7 +7468,7 @@ Scope {
                     // inset to inset, as the head's is.
                     Rectangle {
                         id: footLine
-                        x: Theme.space.rung.inset
+                        x: card.inset
                         width: parent.width - 2 * x
                         height: Theme.border
                         color: Theme.edge
@@ -7524,7 +7535,7 @@ Scope {
                         // too, as it is the facts' (room, below): held for
                         // it, the find's Ctrl+] cut the opening's room short,
                         // and the first letter moved the keys.
-                        readonly property real keysRoom: width - Theme.space.rung.inset
+                        readonly property real keysRoom: width - card.inset
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
                             - (prompt.mode === "find" ? 0 : modeWord.room)
                         readonly property var kept: Standing.keysFitted(told,
@@ -7532,7 +7543,7 @@ Scope {
                         readonly property real returnPlace: told.length === 0 ? 0
                             : root.returnPlace(told[0])
                         // Where Return's place starts, which holds still.
-                        readonly property real returnAt: width - Theme.space.rung.inset - returnPlace
+                        readonly property real returnAt: width - card.inset - returnPlace
                         // How far in the keys may reach: as far as the
                         // widest of them has needed since the launcher
                         // opened, so the left's room holds still too. The
@@ -7544,7 +7555,7 @@ Scope {
                         // Only the keys drawn are measured, and the room held
                         // for any never passes theirs, or visual's would run
                         // over "1 new" again.
-                        readonly property real keysFrom: width - Theme.space.rung.inset
+                        readonly property real keysFrom: width - card.inset
                             - Math.max(Math.min(root.footKeysWidest, keysRoom),
                                 root.keysWide(kept))
                         // The room the left has, short of the keys and the
@@ -7691,9 +7702,9 @@ Scope {
                             // A group after the facts, since it says the line's
                             // state rather than one more fact, past the room
                             // the facts have held.
-                            x: standing.x + standing.held + Theme.space.rung.groups
+                            x: standing.after
                             width: Math.max(0, root.pendingSaid !== ""
-                                ? foot.width - Theme.space.rung.inset - x
+                                ? foot.width - card.inset - x
                                 : room - Theme.space.rung.groups)
                             anchors.baseline: parent.top
                             anchors.baselineOffset: statusLine.base
@@ -7838,6 +7849,10 @@ Scope {
                             readonly property real held: Math.max(width, kept.reduce(
                                 (sum, fact) => sum + place(fact), 0)
                                 + Math.max(0, kept.length - 1) * spacing)
+                            // Where a group after the facts starts, past the
+                            // room they've held, as the facts start a group
+                            // past the mark (StatusLine.qml's factsAt).
+                            readonly property real after: x + held + Theme.space.rung.groups
 
                             // Where the status line says the facts start, a
                             // group past the mark.
