@@ -5551,6 +5551,13 @@ Scope {
             return;
         }
         learn(row);
+        // One that changes something where Joel is, as a session's Wake does,
+        // keeps the launcher, the row saying how it stands now, as it would
+        // from its step in.
+        if (act.stays) {
+            act.run();
+            return;
+        }
         open = false;
         if (act.later)
             runOnceGone(act, true);
