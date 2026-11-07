@@ -247,7 +247,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     find_rotation()
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
-    assert told[0] == "\u21b5 go", told
+    assert told[0] == "\u21b5 go to", told
     assert not any(said.startswith(("l ", "h ")) for said in told), told
     machine.send_key("l")
     desktop.launcher_until(

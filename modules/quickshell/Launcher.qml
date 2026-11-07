@@ -781,7 +781,9 @@ Scope {
             graph: part.graph,
             side: above.concat(trail.map(row => row.name)).join(" \u203a "),
             chord: [],
-            verb: "go",
+            // Go To, as a window's is, since both take Joel to where it
+            // is, and its side already names where (VKCF3Z, 2026-11-07).
+            verb: "go to",
             // Where it is, and so where Return goes, by what each step is.
             trail: trail.map(row => steadyId(row)),
             spot: steadyId(part),
