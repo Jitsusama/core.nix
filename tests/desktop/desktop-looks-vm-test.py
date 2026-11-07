@@ -2295,45 +2295,81 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
 ERGODOX = "ZSA Technology Labs ErgoDox EZ"
 ITS_KEY = "7 keypad 7"
 LOCKED = "Numb locked"
+# The laptop's own layout's one layer, as keyd's module describes it (modules/keyd/layout.nix).
+LAPTOPS = "Colemak"
 # How far, as the mean of every pixel's change in light, the screen moves once the layout's
 # card stands on it: measured at 2, the card moves it by ten, and a still screen by nothing.
 LAYOUT_CHANGES = 3.0
+# How far it moves as one keyboard's card turns to the other's in place, which is less, since
+# the two cards overlap.
+CARD_TURNS = 1.0
 
 
 def plug_in_the_ergodox(desktop: Desktop) -> None:
     """Plug the stand-in ErgoDox in, and say its layer as its watcher does once it's there.
 
-    Locked, the layer's mark stands in the margin, where a mode Joel can forget is held.
+    keyboard-lights hears it come, so the shell lists it, and locked, the layer's mark stands
+    in the margin, where a mode Joel can forget is held.
     """
     machine = desktop.machine
-    machine.succeed(f"systemd-run --unit=ergodox {desktop.values['ergodox']}")
-    machine.wait_for_file("/run/ergodox.device", timeout=timedelta(seconds=30))
     since = desktop.mark()
     desktop.as_account(f"echo {shlex.quote(LOCKED)} > $XDG_RUNTIME_DIR/keyboard-layer")
+    machine.succeed(f"systemd-run --unit=ergodox {desktop.values['ergodox']}")
+    machine.wait_for_file("/run/ergodox.device", timeout=timedelta(seconds=30))
     desktop.reported("holds margin ", lambda rest: "layer" in rest.split(), since)
 
 
 def unplug_the_ergodox(desktop: Desktop) -> None:
-    """Unplug the stand-in ErgoDox, and say so as its watcher does, its mark going with it."""
-    desktop.machine.succeed("systemctl stop ergodox")
+    """Unplug the stand-in ErgoDox, its layer's mark going with it.
+
+    Its watcher's last word is left standing, so only the keyboards connected now can say it's
+    gone, as keyboard-lights hears it go.
+    """
     since = desktop.mark()
-    desktop.as_account("echo - > $XDG_RUNTIME_DIR/keyboard-layer")
+    desktop.machine.succeed("systemctl stop ergodox")
     desktop.reported("holds margin ", lambda rest: "layer" not in rest.split(), since)
 
 
-def the_layout_drawn(desktop: Desktop) -> None:
-    """Bring the layout up by Super+K's call, and wait until its card is on the screen.
+def the_card_showing(desktop: Desktop, layer: str, since: str) -> int:
+    """Wait for the map to say it shows the layer, and give how tall its card stands."""
+    heights: list[int] = []
+
+    def showing(rest: str) -> bool:
+        shown, _, height = rest.rpartition(" ")
+        if shown == layer:
+            heights.append(int(height))
+        return shown == layer
+
+    desktop.reported("keyboard layer ", showing, since)
+    return heights[-1]
+
+
+def the_layout_drawn(desktop: Desktop, layer: str) -> int:
+    """Bring the layout up by Super+K's call, wait until its card is on the screen, its height.
 
     The shell says it's drawn as its surface is mapped, but in a guest drawing in software its
     76 keys reach the screen a second or more later, so its pixels are waited on instead.
     """
     bare = desktop.screen_now()
+    since = desktop.mark()
     with desktop.told("drawn keyboard"):
         desktop.as_account("qs ipc call keyboard toggle")
+    height = the_card_showing(desktop, layer, since)
     desktop_session.retry(
         lambda _: changed_from(bare, desktop.screen_now()) > LAYOUT_CHANGES,
         timeout=timedelta(seconds=30),
     )
+    return height
+
+
+def the_card_turned(desktop: Desktop, since: str, before: Image.Image, layer: str) -> int:
+    """Wait for the open card to turn in place to another keyboard's layout, its height."""
+    height = the_card_showing(desktop, layer, since)
+    desktop_session.retry(
+        lambda _: changed_from(before, desktop.screen_now()) > CARD_TURNS,
+        timeout=timedelta(seconds=30),
+    )
+    return height
 
 
 def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
@@ -2355,38 +2391,52 @@ def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
 
 
 # A keyboard that isn't plugged in is shown nowhere (Joel, 2026-11-07: "we shouldn't be showing
-# keyboard shortcuts for keyboards that are not plugged in"): unplugging the ErgoDox puts its
-# open layout away, the margin lets its layer's mark go, and the launcher neither finds its keys
-# nor lists it among the keyboards, until it's plugged back in.
+# keyboard shortcuts for keyboards that are not plugged in"): unplugging the ErgoDox turns its
+# open layout to the laptop's own in place, the margin lets its layer's mark go, and the
+# launcher neither finds its keys nor lists it among the keyboards; Super+K then shows the
+# laptop's, and plugging it back in turns the open card to the board's again (VKCF3Z,
+# 2026-11-07).
 
 
 def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Unplugging the ErgoDox puts its layout away and leaves it out of the launcher."""
+    """Unplugging the ErgoDox shows the laptop's layout and leaves it out of the launcher."""
     scale = at_each_scale[-1]
     at_scale(desktop, scale)
     desktop.as_account(
         f"mkdir -p ~/.config/ergodox && cp {desktop.values['ergodox_layout']} ~/.config/ergodox/.l"
         " && mv ~/.config/ergodox/.l ~/.config/ergodox/layout.json"
     )
+    named = scale.replace(".", "-")
     try:
         plug_in_the_ergodox(desktop)
         assert ERGODOX in keyboards_listed(desktop, scale, "plugged")
-        the_layout_drawn(desktop)
-        desktop.photograph(f"keyboard-layout-plugged-at-{scale.replace('.', '-')}")
-        with desktop.told("gone keyboard"):
-            unplug_the_ergodox(desktop)
-        rows = keyboards_listed(desktop, scale, "unplugged")
-        assert ERGODOX not in rows, rows
-        # Super+K shows nothing while the board is away, so once it's back the next one
-        # shows its layout rather than putting it away.
-        desktop.as_account("qs ipc call keyboard toggle")
-        plug_in_the_ergodox(desktop)
-        assert ERGODOX in keyboards_listed(desktop, scale, "back")
-        the_layout_drawn(desktop)
+        boards = the_layout_drawn(desktop, "Numb")
+        desktop.photograph(f"keyboard-layout-plugged-at-{named}")
+        # The open card stays as the board goes, turned to the laptop's own.
+        before = desktop.screen_now()
+        since = desktop.mark()
+        unplug_the_ergodox(desktop)
+        turned = the_card_turned(desktop, since, before, LAPTOPS)
+        desktop.photograph(f"keyboard-layout-unplugged-at-{named}")
         with desktop.told("gone keyboard"):
             desktop.as_account("qs ipc call keyboard toggle")
+        rows = keyboards_listed(desktop, scale, "unplugged")
+        assert ERGODOX not in rows, rows
+        # The laptop's six rows stand shorter than the board's eight, with no band left of the
+        # board's taller card, turned to or opened on.
+        assert turned < boards, f"turned to the laptop's at {turned}, the board's at {boards}"
+        # Super+K with the laptop alone shows the laptop's, never nothing.
+        fresh = the_layout_drawn(desktop, LAPTOPS)
+        assert fresh == turned, f"opened on the laptop's at {fresh}, turned to it at {turned}"
+        before = desktop.screen_now()
+        since = desktop.mark()
+        plug_in_the_ergodox(desktop)
+        the_card_turned(desktop, since, before, "Numb")
+        with desktop.told("gone keyboard"):
+            desktop.as_account("qs ipc call keyboard toggle")
+        assert ERGODOX in keyboards_listed(desktop, scale, "back")
     finally:
         desktop.machine.succeed("systemctl stop ergodox || true")
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")

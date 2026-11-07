@@ -65,7 +65,24 @@ PanelWindow {
     }
 
     Reported {
+        id: reported
         name: "keyboard"
+    }
+
+    // Another layer, or another keyboard's layout as a board comes or goes,
+    // is drawn in place, and its frame said for the desktop test, with
+    // which layer it is and how tall its card stands, as it is each time
+    // the map is shown. It's said once the card has taken the new keys'
+    // measure.
+    onShownChanged: {
+        reported.changed();
+        Qt.callLater(sayLayer);
+    }
+    onVisibleChanged: Qt.callLater(sayLayer)
+
+    function sayLayer(): void {
+        if (Options.reports && visible)
+            Report.say(`keyboard layer ${shown.name} ${Math.round(card.height)}`);
     }
 
     Floating {
@@ -76,8 +93,13 @@ PanelWindow {
         // the frame to the ink on every side: the names' capitals under its
         // top, the keys' caps from its sides and bottom.
         width: map.across * map.unit - map.gap + 2 * map.inset + 2 * Theme.border
+        // Said outright, since the frame's own measure of what it holds
+        // grew with the ErgoDox's keys and kept that as the laptop's
+        // fewer rows turned in, leaving an empty band under them.
+        height: inside.implicitHeight + 2 * Theme.border
 
         Item {
+            id: inside
             x: map.inset
             width: parent.width - 2 * x
             implicitHeight: keys.y + keys.height + map.inset
@@ -98,7 +120,9 @@ PanelWindow {
                         required property int index
 
                         readonly property bool here: index === KeyboardLayout.layer
-                        text: here && KeyboardLayout.chosen < 0 && KeyboardLayer.locked
+                        // Only the board locks a layer; the laptop's one never is.
+                        text: here && KeyboardLayout.chosen < 0 && KeyboardLayout.boarded
+                            && KeyboardLayer.locked
                             ? `${modelData.name} locked` : modelData.name
                         color: !here ? Theme.muted : KeyboardLayout.marked < 0 ? Theme.accent
                             : Theme.strong

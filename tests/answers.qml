@@ -1654,6 +1654,20 @@ QtObject {
         machine("the laptop's light with no keyboard port",
             Keyboards.lightHolder([keyboardsErgodox, keyboardsInside]).name, "Inside keyboard");
         machine("no light with only a board", Keyboards.lightHolder([keyboardsErgodox]), null);
+        // Super+K shows the layout of a keyboard connected now: the board's
+        // while it's connected, the laptop's own with it alone, and the
+        // laptop's too for a board whose layout isn't known.
+        const boardLayers = [{ name: "Coal" }, { name: "Punk" }];
+        const laptopLayers = [{ name: "Colemak" }];
+        machine("the laptop's layout with it alone",
+            Keyboards.layout([keyboardsLaptop], boardLayers, laptopLayers), laptopLayers);
+        machine("the board's layout with both connected",
+            Keyboards.layout(keyboardsFound, boardLayers, laptopLayers), boardLayers);
+        machine("the laptop's layout for a board without one",
+            Keyboards.layout(keyboardsFound, [], laptopLayers), laptopLayers);
+        machine("the board's acts only while it's connected", [[keyboardsLaptop], keyboardsFound,
+            [keyboardsErgodox], []].map(listed => Keyboards.boarded(listed, boardLayers)),
+            [false, true, true, false]);
         machine("the laptop's locks", Keyboards.locks(keyboardsLaptop), [
             { id: "caps", light: "input0::capslock" },
             { id: "num", light: "input0::numlock" },

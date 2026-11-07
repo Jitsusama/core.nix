@@ -9,10 +9,12 @@
 // shows what the launcher chose. Among the keyboards plugged in, the
 // board's parts hold its Layer, saying where it's locked, and its Light,
 // each a setting whose choices a step in run the board's own command.
-// Then the board is unplugged, as its watcher says with "-", and the open
-// layout goes, with every key, act and choice of the board, until it's
-// plugged back in. It exits 0 once every case holds, and otherwise 1,
-// saying which case didn't.
+// Then the board is unplugged, leaving the kernel's list of input devices
+// as keyboard-lights says (ConnectedKeyboards.qml), though its watcher
+// still says its layer: the open layout turns to the laptop's own in place,
+// and every key, act and choice of the board goes, as does its row among
+// the keyboards, until it's plugged back in. It exits 0 once every case
+// holds, and otherwise 1, saying which case didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -59,18 +61,62 @@ ShellRoot {
         }).join("; ");
     }
 
-    // Where the board's watcher says its layer, written here as the watcher
-    // would as the board is unplugged and plugged back in.
+    // The kernel's list of input devices, the laptop's keyboard alone or
+    // the ErgoDox beside it, and keyboard-lights' list of the keyboards it
+    // holds, written here as they'd change as the board is unplugged and
+    // plugged back in.
+    readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
+    readonly property string laptopListed: [
+        "I: Bus=0011 Vendor=0001 Product=0001 Version=ab83",
+        "N: Name=\"AT Translated Set 2 keyboard\"",
+        "P: Phys=isa0060/serio0/input0",
+        "S: Sysfs=/devices/platform/i8042/serio0/input/input0",
+        "H: Handlers=sysrq kbd event0 leds ",
+        "B: LED=7",
+        ""
+    ].join("\n")
+    readonly property string boardListed: [
+        "I: Bus=0003 Vendor=3297 Product=1307 Version=0111",
+        "N: Name=\"ZSA Technology Labs ErgoDox EZ\"",
+        "P: Phys=usb-0000:00:14.0-2/input0",
+        "S: Sysfs=/devices/virtual/input/input9",
+        "H: Handlers=sysrq kbd leds event9 ",
+        "B: LED=7",
+        ""
+    ].join("\n")
+
     FileView {
-        id: layerFile
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/keyboard-layer`
+        id: devicesFile
+        path: `${root.runtime}/devices`
+        blockWrites: true
         printErrors: false
     }
 
-    // The board's rows the launcher would list or find.
+    FileView {
+        id: heldFile
+        path: `${root.runtime}/keyboards`
+        blockWrites: true
+        printErrors: false
+    }
+
+    Component.onCompleted: {
+        devicesFile.setText(`${laptopListed}\n${boardListed}`);
+        ConnectedKeyboards.devices = `${runtime}/devices`;
+        ConnectedKeyboards.held = `${runtime}/keyboards`;
+        KeyboardLayout.laptopLayout = `${Quickshell.env("HOME")}/laptop.json`;
+    }
+
+    // The board's rows the launcher would list or find: its acts, its
+    // Layer's and Light's choices, and a key on one of its layers.
     function boardRows() {
-        return keyboard.everything().concat(keyboard.search("backslash").rows,
+        return keyboard.flash.concat(keyboard.layers, keyboard.lights,
+            keyboard.keys.filter(row => row.side !== "Colemak"),
             keyboard.search("lock punk").rows, keyboard.search("flash").rows);
+    }
+
+    // The keyboards connected, as the Keyboards answer lists them.
+    function listed() {
+        return keyboards.told().rows.map(row => row.name).join(", ");
     }
 
     // Waits for the watcher's word to reach the shell, for five seconds at
@@ -83,19 +129,20 @@ ShellRoot {
         property bool plugged: false
         property var next: () => {}
         onTriggered: {
-            if (KeyboardLayer.present === plugged) {
+            if (KeyboardLayout.boarded === plugged) {
                 stop();
                 root.guarded(next);
             } else if (--left === 0) {
                 stop();
-                console.warn(`FAIL the watcher's "${plugged ? "Numb locked" : "-"}" never came`);
+                console.warn(`FAIL the board never ${plugged ? "came" : "went"}`);
                 Qt.exit(1);
             }
         }
     }
 
     function plug(plugged, next) {
-        layerFile.setText(plugged ? "Numb locked\n" : "-\n");
+        devicesFile.setText(plugged ? `${laptopListed}\n${boardListed}` : laptopListed);
+        heldFile.setText(plugged ? "1\n9\n" : "1\n");
         plugging.plugged = plugged;
         plugging.next = next;
         plugging.left = 100;
@@ -111,27 +158,35 @@ ShellRoot {
         }
     }
 
-    // Unplugged, the open layout goes and nothing of the board is listed,
-    // found or shown, though its layout file stays; plugged back in, it all
-    // comes back.
+    // Unplugged, the open layout turns to the laptop's own in place, and
+    // nothing of the board is listed, found or shown, though its layout
+    // file stays and its watcher still says its layer; plugged back in, it
+    // all comes back.
     function unplugged() {
-        expect("the layout put away as the board goes", !KeyboardLayout.shown,
-            `${KeyboardLayout.shown}`);
-        expect("no board while it's unplugged", !KeyboardLayout.present,
-            `${KeyboardLayout.layers.length} layers`);
-        expect("none of its rows", boardRows().length === 0,
-            boardRows().map(row => row.name).join(", "));
-        KeyboardLayout.toggle();
-        expect("no layout to show", !KeyboardLayout.shown, `${KeyboardLayout.shown}`);
+        expect("the laptop's layout shown in place as the board goes", KeyboardLayout.shown
+            && KeyboardLayout.layers.map(layer => layer.name).join(", ") === "Colemak"
+            && KeyboardLayout.layer === 0 && KeyboardLayout.marked === -1,
+            `${KeyboardLayout.shown} ${KeyboardLayout.layers.map(layer => layer.name)} `
+            + `${KeyboardLayout.layer} ${KeyboardLayout.marked}`);
+        const where = cap => keyboard.keys.find(row => row.name === cap)?.note ?? "nowhere";
+        expect("the laptop's keys in Colemak", where("F") === "the top row"
+            && where("T") === "the home row", `${where("F")}, ${where("T")}`);
+        expect("none of the board's rows", boardRows().length === 0,
+            boardRows().map(row => `${row.name} ${row.side}`).join(", "));
+        expect("only the laptop's keyboard listed", listed() === "The Laptop's Keyboard",
+            listed());
         plug(true, pluggedBack);
     }
 
     function pluggedBack() {
-        expect("the board back", KeyboardLayout.present && first("backslash").name
-            === "\\ backslash", first("backslash").name);
-        KeyboardLayout.toggle();
-        expect("its layout shown again", KeyboardLayout.shown && KeyboardLayout.layer === 2,
-            `${KeyboardLayout.shown} ${KeyboardLayout.layer}`);
+        expect("the board back", KeyboardLayout.boarded && first("backslash").name
+            === "\\ backslash" && first("backslash").side === "Punk",
+            `${first("backslash").name}, ${first("backslash").side}`);
+        expect("its layout shown again in place", KeyboardLayout.shown
+            && KeyboardLayout.layers.length === 3 && KeyboardLayout.layer === 2,
+            `${KeyboardLayout.shown} ${KeyboardLayout.layers.length} ${KeyboardLayout.layer}`);
+        expect("both keyboards listed", listed()
+            === "The Laptop's Keyboard, ZSA Technology Labs ErgoDox EZ", listed());
         Qt.callLater(() => Qt.exit(0));
     }
 
@@ -144,7 +199,7 @@ ShellRoot {
         running: true
         property int left: 100
         onTriggered: {
-            if (KeyboardLayout.present && KeyboardLayer.present) {
+            if (KeyboardLayout.boarded && KeyboardLayer.present) {
                 stop();
                 root.run();
             } else if (--left === 0) {

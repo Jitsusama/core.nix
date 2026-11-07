@@ -43,7 +43,9 @@
 # keylogger needs, so it gets nothing else: an account of its own, the input
 # group, read access to input devices alone, no network and a read-only
 # system but for its directory. It asks the kernel for the caps lock light
-# and nothing more, so a keystroke never reaches it.
+# and nothing more, so a keystroke never reaches it. It says too which
+# keyboards it holds, so the shell hears one plugged in or out at once and
+# shows only those connected (Keyboards.qml).
 #
 # Its directory is made at boot and stays until shutdown. A runtime
 # directory of systemd's would go each time the watcher restarted, taking
@@ -173,7 +175,7 @@ in
     description = "Says whether caps lock is on, for Quickshell";
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
-      ExecStart = "${keyboardLights}/bin/keyboard-lights /run/keyboard-lights/capslock";
+      ExecStart = "${keyboardLights}/bin/keyboard-lights /run/keyboard-lights/capslock /run/keyboard-lights/keyboards";
       Restart = "on-failure";
       User = "keyboard-lights";
       Group = "keyboard-lights";

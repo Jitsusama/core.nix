@@ -2903,7 +2903,8 @@ onLinux {
   # keyboards plugged in hold its Layer and Lights, as tests/keyboard.qml
   # drives them through Quickshell itself, over the firmware's own
   # description of the board, locked on Numb, with niri, the shortcuts and
-  # the shell's lights stood in for.
+  # the shell's lights stood in for. Unplugged, as the kernel's list and
+  # keyboard-lights' say, the laptop's own layout, keyd's, takes its place.
   the-launcher-finds-the-keyboards-keys =
     let
       firmware = import ../ergodox/firmware.nix pkgs {
@@ -2922,11 +2923,18 @@ onLinux {
         property string backlight: ""
         signal turned
       '';
+      # The laptop's own layout, as keyd's module describes it.
+      laptop =
+        pkgs.writeText "laptop.json"
+          (import ../keyd/layout.nix { inherit lib; }).environment.etc."keyboard/layout.json".text;
     in
     pkgs.runCommandLocal "the-launcher-finds-the-keyboards-keys" { } ''
       mkdir -p runtime config/ergodox launcher && chmod 700 runtime
       echo "Numb locked" > runtime/keyboard-layer
+      printf '1\n9\n' > runtime/keyboards
       cp ${firmware}/shell.json config/ergodox/layout.json
+      cp ${laptop} laptop.json
+      cp ${./ConnectedKeyboards.qml} ConnectedKeyboards.qml
       cp ${../../tests/keyboard.qml} shell.qml
       cp ${./KeyboardLayout.qml} KeyboardLayout.qml
       cp ${./KeyboardLayer.qml} KeyboardLayer.qml
