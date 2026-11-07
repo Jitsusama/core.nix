@@ -59,40 +59,33 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     """The launcher finds pi's runs, going to the session that started one and reading an answer."""
     machine = desktop.machine
     desktop.pi_session()
-    # A fleet as the harness keeps one, started by the session's process:
-    # one member still at work, its process the other window's, and one
-    # done with its answer.
-    leader = desktop.pi_record("TESTQA")["owner"]["pid"]
-    crew = "~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/reviewers"
-
-    def keeps(path: str, said: Json) -> None:
-        """Write what the harness keeps of the fleet, at a path inside it."""
-        desktop.as_account(
-            f"mkdir -p {crew}/{path.split('/', maxsplit=1)[0]}"
-            f" && echo '{json.dumps(said)}' > {crew}/{path}"
-        )
-
-    asked = {"cwd": "/src/house", "args": ["cli.js", "--model", "anthropic/opus"]}
-    for member, child, stands in [
-        ("brush", desktop.window_titled("Elsewhere")["pid"], "running"),
-        ("roller", 1, "complete"),
-    ]:
-        keeps(f"{member}/request.json", asked)
-        keeps(f"{member}/lease.json", {"parentPid": leader, "childPid": child})
-        keeps(
-            f"{member}/progress.json",
-            {"state": stands, "activity": "painting the trim" if stands == "running" else ""},
-        )
+    # A fleet as the harness publishes it for the node, started by the session:
+    # one member still at work, and one done with its answer, which its result
+    # keeps.
+    leader = desktop.pi_record("TESTQA")["session"]
+    harness = "~/.local/state/pi/agentic-harness.pi"
+    answer = "$HOME/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/roller"
     stamp = machine.succeed("date -u +%FT%T.000Z").strip()
-    keeps(
-        "roller/result.json",
-        {
-            "state": "complete",
-            "startedAt": stamp,
-            "completedAt": stamp,
-            "usage": {"cost": {"total": 2.5}},
-            "finalAssistantText": "Two coats.",
-        },
+    desktop.as_account(
+        f"mkdir -p \"{answer}\" && echo '{json.dumps({'finalAssistantText': 'Two coats.'})}'"
+        f' > "{answer}/result.json"'
+    )
+    home = desktop.as_account("echo $HOME").strip()
+    member = {"model": "anthropic/opus", "since": stamp}
+    fleet = {
+        "id": "fleet.paint-crew", "kind": "fleet", "parent": leader, "about": "paint-crew",
+        "state": "running", "since": stamp, "at": stamp, "pi.cost.usd": 2.5,
+        "members": [
+            {**member, "id": "brush", "state": "running"},
+            {**member, "id": "roller", "state": "complete", "ended": stamp,
+             "pi.cost.usd": 2.5,
+             "answer": answer.replace("$HOME", home) + "/result.json"},
+        ],
+    }  # fmt: skip
+    desktop.as_account(
+        f"mkdir -p {harness}/mesh-workflow/runs"
+        f" && echo '{json.dumps({'v': 1, 'runs': [fleet]})}'"
+        f" > {harness}/mesh-workflow/runs/fleet.paint-crew.json"
     )
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
     desktop.as_account(
@@ -129,7 +122,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "brush"
-            and shown["selected"]["side"].startswith("painting the trim \u00b7 opus")
+            and shown["selected"]["side"].startswith("running \u00b7 opus")
         )
     )
     desktop.next_row()
