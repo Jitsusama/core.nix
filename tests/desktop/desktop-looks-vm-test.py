@@ -1969,7 +1969,9 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     desktop.down_to("Close")
     desktop.photograph(f"launcher-agents-close-at-{shot}")
-    desktop.machine.send_key("ret")
+    # The second Return waits out the first's, which the launcher takes for the same press
+    # doubled while it's fresh, and so runs nothing.
+    desktop.line("close")
     asked = f"Close {address}? Its folder stays. (y/n)"
     with desktop.told("ask ready"), desktop.told(f"asked {asked}"):
         desktop.machine.send_key("ret")
