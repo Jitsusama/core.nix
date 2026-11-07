@@ -344,6 +344,15 @@ QtObject {
         asked++;
         if (!plain || plain.rows.length !== 0 || plain.copy !== "1000000")
             failures.push(`"1000 * 1000" gave ${quoted(plain)}`);
+        // A sum past its patience is late, not refused, and isn't kept: asked
+        // again with time enough it's worked out, rather than late for good.
+        // This one takes tens of milliseconds, so a millisecond is too few.
+        const slow = "isprime(2^4423-1)";
+        const hurried = Maths.calculate(slow, 1);
+        const given = Maths.calculate(slow, 0);
+        asked++;
+        if (!hurried.late || given.late)
+            failures.push(`"${slow}" was late ${hurried.late} hurried, then ${given.late}`);
         for (const typed in addresses) {
             asked++;
             const got = Addresses.read(typed);
