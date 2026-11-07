@@ -339,8 +339,22 @@ Provider {
     // (SessionRow.js), each steering it through its inbox but Go To; an
     // orchestrator's row is its session's, with its talks after them.
     function sessionActs(session) {
-        return SessionRow.acts(stateOf(session), windowedOf(session))
+        return SessionRow.acts(stateOf(session), windowedOf(session), session.here)
             .map(id => sessionAct(session, id));
+    }
+
+    // What Close leaves of a session: its worktree, where it works in a
+    // folder under a trees folder, as the harness's and World's trees both
+    // are cut, else its folder, and its quest's Needs You items, which stay
+    // until each is done.
+    function leaves(session) {
+        const presence = session.presence ?? {};
+        const cwd = String(presence.cwd ?? "");
+        const inTree = cwd.includes("/trees/");
+        const quest = presence.quest ?? presence.questInfo?.id ?? "";
+        const needs = quest === "" ? 0
+            : WaitingOnYou.items.filter(item => item.quest === quest).length;
+        return SessionRow.leaves(inTree, needs, Words.of("agents").said ?? {});
     }
 
     // Whether a session has a window to go to: its own here, or one its
@@ -374,7 +388,11 @@ Provider {
             wake: () => act("wake", { run: () => Sessions.wake(session) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
-            stop: () => act("stop", { run: steered("stop") })
+            stop: () => act("stop", { run: steered("stop") }),
+            // Close ends the session as /exit does, its window with it,
+            // asked first, saying what stays (Confirm.question).
+            close: () => act("close", Object.assign({ run: steered("close"),
+                leaves: leaves(session) }, Words.ending("verb:agent:close")))
         };
         return made[id]();
     }

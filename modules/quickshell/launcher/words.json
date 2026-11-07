@@ -131,7 +131,14 @@
         "closed": "closed",
         "allOf": "{spent} in all",
         "since": "since {at}",
-        "under": "under {address}"
+        "under": "under {address}",
+        "stays": "its {kept} stays.",
+        "stay": "its {kept} stay.",
+        "tree": "worktree",
+        "folder": "folder",
+        "and": "and",
+        "needItem": "{count} Needs You item",
+        "needItems": "{count} Needs You items"
       }
     },
     {
@@ -6444,6 +6451,16 @@
       "glyph": "stopped"
     },
     {
+      "id": "verb:agent:close",
+      "command": "close",
+      "in": "agents",
+      "name": "Close",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
       "id": "orchestrators",
       "in": "agents",
       "name": "Orchestrators",
@@ -6843,6 +6860,7 @@
     },
     "operators": {
       "ask": "{ends} {name}? (y/n)",
+      "askLeaves": "{ends} {name}? {leaves} (y/n)",
       "asks": "{what}? (y/n)",
       "part": "{ends} {count} {kind}",
       "and": "and",

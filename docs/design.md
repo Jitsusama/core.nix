@@ -1338,8 +1338,11 @@ works the same way everywhere.
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"). **An act that ends or takes away
   never runs on Return**, from any mode: Disconnect It, Forget It, Close
-  It, Turn Off, Stop, Done, and the session's Lock, Sleep, Log Out, Reboot
-  and Power Off. Return on its row puts its command on the command line,
+  It, Turn Off, Stop, an agent's Close, Done, and the session's Lock,
+  Sleep, Log Out, Reboot and Power Off. An agent's Close always asks, and
+  its ask says what stays, "Close Lamplight? Its worktree and 1 Needs You
+  item stay. (y/n)", so ending one never reads as losing its work.
+  Return on its row puts its command on the command line,
   `:disconnect`, the menu saying what it acts on, and a fresh Return there
   runs it; the row and the foot name the key that carries it, "d
   disconnect" where d's table gives it, else ": disconnect", as Vim's
