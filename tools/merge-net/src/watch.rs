@@ -38,12 +38,15 @@ const FAILURES: usize = 2;
 /// there: a builder that hangs on it would hang again.
 const STALLS: usize = 2;
 
-/// How many VM tests run at once: the room a VM builder has for them,
-/// nix-offload's `VM_ROOM`. The net's runs go as bulk, which every other
-/// run goes before, so taking the whole room costs a session's run nothing,
-/// while on 6 November a round of 33 tests at two at a time held main for
-/// two hours after its fix forward had passed.
-pub const AT_ONCE: usize = 4;
+/// How many VM tests run at once: the room three VM builders have for
+/// them, at nix-offload's `VM_ROOM` each. The net's runs go as bulk, which
+/// every other run goes before, so taking the room costs a session's run
+/// nothing. On 6 November a round of 33 tests, about ten minutes each,
+/// took 85 minutes at four at once, filling only the first of six VM
+/// builders and sending every run without a wait, while 13 merges landed
+/// behind it untested; at twelve, a round lasts about as long as its
+/// longest test.
+pub const AT_ONCE: usize = 12;
 
 /// How many merges a bisect tries at once, spread evenly over what's left,
 /// so each step leaves a quarter of it rather than a half. A step waits on
