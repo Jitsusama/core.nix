@@ -66,8 +66,9 @@ let
   # While a hibernation's image is read, a meter's rule
   # (../quickshell/Meter.qml) lies under the words saying so: a stroke four
   # hairlines thick, as wide as the words' ink and under it, the apart
-  # rung below their descenders, its empty track muted. The kernel fills
-  # it in the words' colour as it reads the image
+  # rung below their descenders, its empty track the edge colour as a
+  # meter's is, so a cream fill reads against a darker groove on any ground.
+  # The kernel fills it in the words' colour as it reads the image
   # (../kernel/hibernate-progress.patch), so where it lies is measured with
   # the pictures and told the kernel too (imageBar).
   track.height = 4 * border;
@@ -235,7 +236,7 @@ let
         echo $wide > $out/rule-width-${toString scale}
         echo $left > $out/rule-left-${toString scale}
         echo $rise > $out/rule-rise-${toString scale}
-        magick -size ''${wide}x${at track.height} xc:'${colours.muted}' ${file "track"}
+        magick -size ''${wide}x${at track.height} xc:'${colours.edge}' ${file "track"}
       '';
       # The panel and its shadows, the farthest first, on a canvas with room
       # for them, the frame's hairline drawn on its own pixels.

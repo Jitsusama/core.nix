@@ -107,7 +107,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
 
   tests = ./plymouth-restore-vm-test.py;
-  # The track's colour and the bar's, the account's theme's muted and text
+  # The track's colour and the bar's, the account's theme's edge and text
   # (modules/plymouth/nixos.nix), and the words', which OCR reads alone.
   values =
     { nodes, ... }:
@@ -117,7 +117,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     pkgs.writeText "plymouth-restore-values.json" (
       builtins.toJSON {
         inherit passphrase small large;
-        track = colours.muted;
+        track = colours.edge;
         bar = colours.text;
         words = colours.text;
       }
