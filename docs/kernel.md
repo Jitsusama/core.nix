@@ -51,6 +51,7 @@ are fixes written here, kept until the kernel has its own:
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
 | `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
+| `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -104,6 +105,15 @@ pages. It draws nothing until told the bar's size and place through the
 `drm` module's parameters, which the boot screen sets as the read starts
 (`modules/plymouth/nixos.nix`), since its own pictures say where its empty
 track goes, under the words saying the machine is restoring.
+
+Drawing through the panic screen's hooks while the machine runs asks more of
+a driver than a panic does, where nothing is freed and every other processor
+has stopped. virtio-gpu, the virtual machines' screen, didn't hold up: its
+panic flush wrote one object past what it had allocated and added to its
+command queue without the queue's lock. The second patch gives that object
+room and takes the lock when no panic is in progress. The laptops' own
+drivers write the pixels straight into the screen's memory, with nothing
+allocated or queued.
 
 ### The Settings
 

@@ -1,0 +1,88 @@
+drm/virtio: Let the panic flush run outside a panic
+
+drm_panic_progress() (hibernate-progress.patch) draws through a
+driver's panic hooks while the machine runs, and virtio-gpu's flush
+assumed it ran only in a panic, where nothing is ever freed and every
+other CPU is stopped. Under KFENCE each restore in a virtual machine
+reported memory corruption in virtio_gpu_array_put_free_work(), and one
+read stalled partway.
+
+The panic's object array was allocated without room for the one object
+the flush adds to it, so that object was written past the allocation
+and the array freed with it once the host answered. Allocate it with
+room for one.
+
+The flush also adds to the control queue without its lock, racing the
+driver's own commands and the work that reclaims them. Take the lock
+when no panic is in progress; in a panic the flush stays as it was.
+
+--- a/drivers/gpu/drm/virtio/virtgpu_gem.c
++++ b/drivers/gpu/drm/virtio/virtgpu_gem.c
+@@ -156,7 +156,12 @@
+ {
+ 	struct virtio_gpu_object_array *objs;
+ 
+-	objs = kmalloc_obj(struct virtio_gpu_object_array, GFP_ATOMIC);
++	/*
++	 * Leave room for the one object the flush adds: it is written past
++	 * the array's header, and once the host answers, the array is freed
++	 * with what was written there.
++	 */
++	objs = kmalloc_flex(*objs, objs, 1, GFP_ATOMIC);
+ 	if (!objs)
+ 		return NULL;
+ 
+--- a/drivers/gpu/drm/virtio/virtgpu_plane.c
++++ b/drivers/gpu/drm/virtio/virtgpu_plane.c
+@@ -32,6 +32,7 @@
+ #include <drm/drm_managed.h>
+ #include <drm/drm_panic.h>
+ #include <drm/drm_print.h>
++#include <linux/panic.h>
+ 
+ #include "virtgpu_drv.h"
+ 
+@@ -543,6 +544,13 @@
+ 	struct drm_device *dev = plane->dev;
+ 	struct virtio_gpu_device *vgdev = dev->dev_private;
+ 	struct drm_rect rect;
++	/*
++	 * In a panic every other CPU is stopped, so nothing else touches the
++	 * queue. Drawn outside one, as a hibernation's progress is, the queue
++	 * is shared with the driver's own commands and the work that reclaims
++	 * them, so it is taken under their lock.
++	 */
++	bool shared = !panic_in_progress();
+ 
+ 	rect.x1 = 0;
+ 	rect.y1 = 0;
+@@ -551,17 +559,19 @@
+ 
+ 	bo = gem_to_virtio_gpu_obj(plane->state->fb->obj[0]);
+ 
+-	if (bo->dumb) {
+-		if (virtio_gpu_panic_update_dumb_bo(vgdev, plane->state,
+-						    &rect))
+-			return;
+-	}
++	if (shared)
++		spin_lock(&vgdev->ctrlq.qlock);
++
++	if (!bo->dumb ||
++	    !virtio_gpu_panic_update_dumb_bo(vgdev, plane->state, &rect))
++		virtio_gpu_panic_resource_flush(plane,
++						plane->state->src_x >> 16,
++						plane->state->src_y >> 16,
++						plane->state->src_w >> 16,
++						plane->state->src_h >> 16);
+ 
+-	virtio_gpu_panic_resource_flush(plane,
+-					plane->state->src_x >> 16,
+-					plane->state->src_y >> 16,
+-					plane->state->src_w >> 16,
+-					plane->state->src_h >> 16);
++	if (shared)
++		spin_unlock(&vgdev->ctrlq.qlock);
+ }
+ 
+ static const struct drm_plane_helper_funcs virtio_gpu_primary_helper_funcs = {

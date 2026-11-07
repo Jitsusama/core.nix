@@ -43,6 +43,9 @@ GOES_OFF = dt.timedelta(minutes=3)
 LOADING = re.compile(r"PM: Loading (and decompressing )?image data")
 READS = "PM: Image loading progress:"
 READ = "PM: Image loading done"
+# What the kernel says when it finds itself wrong: memory corrupted, as KFENCE finds it, a
+# warning or an oops.
+AMISS = re.compile(r"\b(BUG|WARNING):|\bOops\b")
 # The theme's words for a restore, read as the ask's are. OCR can run the serif's r and n
 # together into an m, and has read "hibemation".
 RESTORING = r"restoring from\s+hibe(rn|m)ation"
@@ -418,6 +421,12 @@ def test_the_machine_is_back_as_it_was(restored: Restore) -> None:
     """What was only in memory is there again once the machine starts from its image."""
     size = int(restored.machine.succeed("stat -c %s /run/held/bytes"))
     assert size == HELD * 1024 * 1024, f"the held bytes came back as {size}"
+
+
+def test_the_kernel_finds_nothing_amiss_as_it_draws(restored: Restore) -> None:
+    """Drawing through the panic screen's hooks while the machine runs corrupts nothing."""
+    amiss = [line for line in restored.machine.get_console_log().splitlines() if AMISS.search(line)]
+    assert not amiss, "the kernel said:\n" + "\n".join(amiss[:10])
 
 
 def test_the_hook_says_how_long_the_restore_took(restored: Restore) -> None:
