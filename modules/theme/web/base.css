@@ -347,11 +347,18 @@ video {
 
 /* Less motion asked for: nothing moves, and every change lands at once. A
    duration of zero, not one too short to see, so what measures the page
-   reads it where it ends. */
+   reads it where it ends. A star reaches no pseudo-element it doesn't name,
+   so a fold's content, a dialog's backdrop and a view transition are named
+   here too, or they would still move. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  *::details-content,
+  *::backdrop,
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
     transition-duration: 0s !important;
     animation-duration: 0s !important;
     animation-iteration-count: 1 !important;
