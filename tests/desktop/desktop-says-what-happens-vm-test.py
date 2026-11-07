@@ -941,7 +941,10 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
     with desktop.told("notice pending d"):
         machine.send_chars("d")
     desktop.photograph(f"notice-pending-at-{named}")
-    with desktop.told("notice mode command"):
+    # The : takes the head, where the find's / stands, and its completions are the list's rows
+    # on its columns, as the launcher's are (Joel, 2026-11-06: "they need to share more code
+    # and UI/UX design").
+    with desktop.told("notice mode command"), desktop.told("notice command stands in the head"):
         machine.send_key("esc")
         machine.send_chars(":")
     desktop.photograph(f"notice-menu-at-{named}")
