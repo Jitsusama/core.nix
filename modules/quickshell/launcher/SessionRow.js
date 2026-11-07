@@ -275,8 +275,10 @@ function hue(stands, warns) {
     if (["paused", "parked", "off"].includes(stands)) {
         return "muted";
     }
-    // A live one with a tier 2 figure asks for a look, in the action's hue.
-    return warns ? "action" : "program";
+    // A live one with a tier 2 figure is nearing a limit, in the warning's
+    // hue, as a budget near its allowance is; action would say a thing to do
+    // (VKCF3Z, 2026-11-07).
+    return warns ? "warning" : "program";
 }
 
 // When the session a quest resumes by was last live, in milliseconds, from
@@ -311,9 +313,13 @@ function lastLiveFirst(ones) {
 // more (VKCF3Z, 2026-11-06: "working \u00b7 $4.20"). Its address and
 // folder are its drawer's eyebrow, and typing its address still finds it.
 // A tier 2 figure leads while it's true, "84% full \u00b7 working \u00b7
-// $4.20", and is kept longest, since it's why the row asks for a look.
+// $4.20", and is kept longest, since it's why the row asks for a look;
+// beside it how the session stands outlasts the money, which gives way
+// first, since the drawer and Today say the spend (VKCF3Z, 2026-11-07).
 function side(doing, spent, filled) {
-    return [{ said: filled ?? "", keep: 5 }, { said: doing, keep: 3 }, { said: spent, keep: 4 }]
+    const tier = filled ?? "";
+    const [stands, costs] = tier !== "" ? [4, 3] : [3, 4];
+    return [{ said: tier, keep: 5 }, { said: doing, keep: stands }, { said: spent, keep: costs }]
         .filter(item => item.said !== "");
 }
 

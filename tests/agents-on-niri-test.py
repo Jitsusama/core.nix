@@ -7,7 +7,7 @@ from the node alone. A listening session's Return asks what to say to it, and a 
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
 A session's Close asks first, saying what of it stays, and y steers it a close from Joel.
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. One past
-80% of its context says how full first, in the action's hue, and its drawer its figures. Both
+80% of its context says how full first, in the warning's hue, and its drawer its figures. Both
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
 folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
@@ -262,11 +262,11 @@ def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell:
 def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures(
     shell: Shell,
 ) -> None:
-    """Past 80% of its context, a row says how full before how it stands, in the action's hue."""
+    """Past 80% of its context, a row says how full before how it stands, in the warning's hue."""
     row = found(shell, "listening quest", "Listening Quest")
     # Found by typing, whom it's under leads, before what's its own.
     assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
-    assert row["hue"] == "action", row
+    assert row["hue"] == "warning", row
     # Its drawer gives its figures by gen_ai's names after what's known of it.
     figures = ["Model", "Context", "Last Turn", "Turns Today", "Tokens", "Cache"]
     shell.launcher_until(lambda shown: shown["drawer"]["facts"][-6:] == figures)

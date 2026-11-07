@@ -191,8 +191,8 @@ QtObject {
             ["one that has spent nothing says its state alone", "listening", "",
                 "listening/3"],
             ["one off says only what it spent", "", "$1", "$1/4"],
-            ["a tier 2 figure leads, kept longest", "working", "$4.20",
-                "84% full/5 working/3 $4.20/4", "84% full"]
+            ["a tier 2 figure leads, kept longest, the state outlasting the money",
+                "working", "$4.20", "84% full/5 working/4 $4.20/3", "84% full"]
         ];
         for (const [what, doing, spent, want, full] of sides) {
             const got = side(SessionRow.side(doing, spent, full));
@@ -220,11 +220,11 @@ QtObject {
         if (hues !== "needs:program working:program inLine:program listening:program"
             + " paused:muted parked:muted off:muted")
             failures.push(`the glyphs' roles by state: "${hues}"`);
-        // A live one with a tier 2 figure takes the action's hue; one paused
+        // A live one with a tier 2 figure takes the warning's hue; one paused
         // stays muted, since it isn't live.
         const warned = ["working", "listening", "paused", "off"]
             .map(state => `${state}:${SessionRow.hue(state, true)}`).join(" ");
-        if (warned !== "working:action listening:action paused:muted off:muted")
+        if (warned !== "working:warning listening:warning paused:muted off:muted")
             failures.push(`the glyphs' roles warned: "${warned}"`);
 
         // Past 80% of its window its row says how full, in whole percent,

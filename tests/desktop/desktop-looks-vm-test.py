@@ -1922,7 +1922,7 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
         lambda shown: shown["drawer"]["shown"] and shown["drawer"]["facts"][-3:] == figures
     )
     side = desktop.showing()["selected"]["side"]
-    assert side.startswith("84% full \u00b7 "), f"at {shot}: {side}"
+    assert side.startswith("84% full \u00b7 working"), f"at {shot}: {side}"
     desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 
@@ -2108,8 +2108,9 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             titles[FOLD] = FOLD
             glyphs_stand_on_names(rows, titles, scale)
             # Short of room, a side gives way whole, the state first, before a name gives up
-            # a letter, and what it cost stays, never slid from its left.
-            costs = {"TESTQA": "$14.20 in all", "TESTQD": "$5.10"}
+            # a letter, and what it cost stays, never slid from its left. Beside a tier 2
+            # figure, as the builder's 84% full, how it stands outlasts the money instead.
+            costs = {"TESTQA": "$14.20 in all", "TESTQD": "84% full \u00b7 working"}
             for row in rows:
                 one = address_of(row)
                 side_gives_way_whole(row, titles[one], costs.get(one, ""), scale)
