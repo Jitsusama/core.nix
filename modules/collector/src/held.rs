@@ -8,7 +8,8 @@
 //! held over a day to say what they should be. Each reading says, in
 //! bytes, what the slice's memory.stat counts as anonymous memory and
 //! file cache, how much of each the kernel last found in use, what it
-//! holds in swap and the floor it has.
+//! holds in swap, and its floors: the hard one in memory.min and the soft
+//! one in memory.low, which is all agents.slice has.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,7 +37,11 @@ pub struct Held {
     pub file: u64,
     pub active_file: u64,
     pub swap: u64,
+    /// memory.min, the floor the kernel never reclaims below.
     pub floor: u64,
+    /// memory.low, the floor it reclaims below only when nothing else is
+    /// left, as agents.slice's is.
+    pub soft_floor: u64,
 }
 
 /// The places read, each by its name and folder: the account's manager,
@@ -74,6 +79,7 @@ pub fn held(dir: &Path) -> Option<Held> {
         active_file: count("active_file").unwrap_or(0),
         swap: bytes("memory.swap.current"),
         floor: bytes("memory.min"),
+        soft_floor: bytes("memory.low"),
     })
 }
 
@@ -95,6 +101,7 @@ pub fn span(place: &str, held: &Held, at: i64, ids: (String, String)) -> Span {
             ("active_file_bytes".into(), json!(held.active_file)),
             ("swap_bytes".into(), json!(held.swap)),
             ("floor_bytes".into(), json!(held.floor)),
+            ("soft_floor_bytes".into(), json!(held.soft_floor)),
         ]),
     }
 }
@@ -134,6 +141,7 @@ mod tests {
         fs::write(dir.path().join("memory.stat"), STAT).unwrap();
         fs::write(dir.path().join("memory.swap.current"), "21367615488\n").unwrap();
         fs::write(dir.path().join("memory.min"), "6690131968\n").unwrap();
+        fs::write(dir.path().join("memory.low"), "10035200000\n").unwrap();
         assert_eq!(
             held(dir.path()),
             Some(Held {
@@ -143,6 +151,7 @@ mod tests {
                 active_file: 214_622_208,
                 swap: 21_367_615_488,
                 floor: 6_690_131_968,
+                soft_floor: 10_035_200_000,
             })
         );
     }
@@ -157,7 +166,10 @@ mod tests {
         )
         .unwrap();
         let held = held(dir.path()).expect("a reading");
-        assert_eq!((held.anon, held.file, held.swap, held.floor), (5, 3, 0, 0));
+        assert_eq!(
+            (held.anon, held.file, held.swap, held.floor, held.soft_floor),
+            (5, 3, 0, 0, 0)
+        );
     }
 
     #[test]
@@ -191,6 +203,7 @@ mod tests {
             active_file: 4,
             swap: 5,
             floor: 6,
+            soft_floor: 7,
         };
         let kept = span("app.slice", &held, 42, ("t".into(), "s".into()));
         assert_eq!(kept.name, "memory held by app.slice");
@@ -198,5 +211,6 @@ mod tests {
         assert_eq!(kept.service, "kernel");
         assert_eq!(kept.attributes["swap_bytes"], json!(5));
         assert_eq!(kept.attributes["floor_bytes"], json!(6));
+        assert_eq!(kept.attributes["soft_floor_bytes"], json!(7));
     }
 }
