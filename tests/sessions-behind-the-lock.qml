@@ -1,8 +1,9 @@
 pragma ComponentBehavior: Bound
 // Drives a session handed over while the screen is locked, beside its
 // sender in the sessions' kitty (modules/quickshell/Sessions.qml), with
-// niri and kitty's kitten stood in over the record and process
-// tests/sessions-behind-the-lock-state.sh lays out. Its window opens in
+// the machine's node, niri and kitty's kitten stood in, the node telling of
+// the sender's session, in the second window of kitty 600, and the kitten
+// as tests/sessions-behind-the-lock-state.sh lays it out. Its window opens in
 // that kitty, which makes what kitty said of its windows stale, and the
 // lock is let go before kitty has said them again, so its sender's window
 // isn't known yet. It's held until kitty has, then goes to its sender's
@@ -133,6 +134,32 @@ ShellRoot {
         expect("nothing focused", !Niri.acts.some(act => act.FocusWindow
             || act.FocusWorkspace || act.FocusMonitor), JSON.stringify(Niri.acts));
         Qt.exit(0);
+    }
+
+    // A stand-in for the machine's node, over the daemon interface, holding
+    // the sender's session.
+    SocketServer {
+        active: true
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/harbour.sock`
+        handler: Socket {
+            id: asked
+            parser: SplitParser {
+                onRead: line => {
+                    const ask = JSON.parse(line);
+                    const terminal = { driverId: "kitty", kind: "kitty-window",
+                        hostId: "here", value: "4", scope: "unix:@kitty-600" };
+                    const sender = { key: "session:s-sender", kind: "session",
+                        heard: Date.now(), id: "s-sender", state: "idle", here: true,
+                        machine: Sessions.machine, at: new Date().toISOString(),
+                        window: null, held: null, presence: { session: "s-sender",
+                            addresses: ["SENDER"], terminal: terminal } };
+                    const answer = ask.ask === "watch" ? { id: ask.id, records: [sender] }
+                        : { id: ask.id, version: 1, domain: "node", state: "running" };
+                    asked.write(`${JSON.stringify(answer)}\n`);
+                    asked.flush();
+                }
+            }
+        }
     }
 
     Timer {

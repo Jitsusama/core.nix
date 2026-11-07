@@ -2422,10 +2422,10 @@ onLinux {
       touch $out
     '';
 
-  # pi's sessions are known by their own records and the processes those
-  # name, never by a window's title, and each one's window through the
-  # kitty it runs in (tests/sessions.qml), over real processes
-  # tests/sessions-state.sh starts, with niri and kitten stood in.
+  # pi's sessions are known by their own records as the machine's node
+  # holds them, never by a window's title, and each one's window through
+  # the kitty it runs in (tests/sessions.qml), with the node, niri and
+  # kitten stood in over what tests/sessions-state.sh lays out.
   a-session-is-known-by-its-own-record =
     let
       # Three windows of the same title, one of kitty 500's and two of 600's.
@@ -2469,8 +2469,9 @@ onLinux {
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
-      export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
+      export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
       cp ${waiting} WaitingOnYou.qml
@@ -2534,6 +2535,7 @@ onLinux {
       ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
       cp ${waiting} WaitingOnYou.qml
@@ -2548,7 +2550,6 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
-      kill $(cat $XDG_STATE_HOME/sender.pid)
       touch $out
     '';
 

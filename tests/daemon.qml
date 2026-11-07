@@ -14,7 +14,9 @@
 // again, and the one that let go holds again. A client of a daemon
 // holding two kinds, as Google's does, stood in for
 // (tests/daemon-kinds.py), holds records of both over one connection,
-// and names both in the watch ahead too. Each step waits on what the
+// and names both in the watch ahead too. A client of a daemon that says
+// only what differs, as mycelium's node does, lays a change over the
+// record it holds, letting go a field said as null. Each step waits on what the
 // client says, at most ten seconds. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import Quickshell
@@ -66,6 +68,15 @@ ShellRoot {
 
         command: [Quickshell.env("PYTHON"), Quickshell.env("KINDS"),
             `${root.runtime}/daemons/kinds.sock`]
+    }
+
+    // Watching sessions, told what differs, as mycelium's node tells it.
+    Daemon {
+        id: differing
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "session"
+        changesDiffer: true
     }
 
     // The kinds a record says its watch asked for, as one line.
@@ -198,6 +209,12 @@ ShellRoot {
                 kinds.ahead = ["mail:two"];
             },
             holds: () => root.askedOf("mail:two") === '["meeting","mail"]'
+        },
+        {
+            what: "a change saying only what differs is laid over what's held",
+            holds: () => differing.held["session:a"]?.state === "busy"
+                && differing.held["session:a"]?.heard === 1
+                && !("step" in differing.held["session:a"])
         }
     ]
 

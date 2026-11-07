@@ -46,6 +46,12 @@ Scope {
     // is shown as current, and none gone in the gap stays held once the
     // daemon answers again.
     property bool keptThroughGap: true
+    // Whether a change says only the fields that differ, one dropped as
+    // null, as mycelium's node sends them (its PROTOCOL.md, The Daemon
+    // Interface), so each is laid over the record held rather than
+    // replacing it. A record first said, or said whole in answer to a
+    // watch or a get, still replaces what was held.
+    property bool changesDiffer: false
 
     // Every record held, by key: plain fields, read beside `revision`.
     readonly property var held: ({})
@@ -131,7 +137,7 @@ Scope {
     // keys the daemon says are gone taken out, whether in a gone list or
     // as a record saying `gone`, as the people daemon tells of someone no
     // source knows any more.
-    function took(records, gone) {
+    function took(records, gone, changes) {
         const keys = [];
         for (const record of records ?? []) {
             if (typeof record?.key !== "string")
@@ -143,7 +149,8 @@ Scope {
                 }
                 continue;
             }
-            held[record.key] = record;
+            held[record.key] = changes && changesDiffer && record.key in held
+                ? mended(held[record.key], record) : record;
             keys.push(record.key);
         }
         for (const key of gone ?? []) {
@@ -156,6 +163,20 @@ Scope {
             return;
         revision += 1;
         heard(keys);
+    }
+
+    // A record held with a change laid over it: a new object, so a reader
+    // holding the old one still reads it as it was, each field the change
+    // says replacing the held one's, and each it says as null let go.
+    function mended(was, change) {
+        const now = Object.assign({}, was);
+        for (const field in change) {
+            if (change[field] === null)
+                delete now[field];
+            else
+                now[field] = change[field];
+        }
+        return now;
     }
 
     function said(line) {
@@ -180,7 +201,7 @@ Scope {
         if (answer.id in apart)
             delete apart[answer.id];
         else
-            took(answer.records ?? answer.changed, answer.gone);
+            took(answer.records ?? answer.changed, answer.gone, answer.records === undefined);
         const then = awaited[answer.id];
         if (then) {
             delete awaited[answer.id];
