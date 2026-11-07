@@ -108,21 +108,19 @@ QtObject {
             "eero unreachable");
         expect("the place's holding", Home.holding(model), "3 nodes \u00b7 15 devices");
 
-        // A node: its backhaul, and how it is.
+        // A node: its devices, its backhaul, and how it is.
         expect("the gateway node's row", Home.nodeRow(node("2003")), {
             name: "Hall",
-            side: "Ethernet",
-            note: "gateway node \u00b7 eero Pro 6 \u00b7 2 devices \u00b7 v7.17.4-5",
-            level: null
+            side: "2 devices",
+            note: "gateway node \u00b7 Ethernet \u00b7 eero Pro 6 \u00b7 v7.17.4-5"
         });
         expect("a node over Wi-Fi", Home.nodeRow(node("2002")), {
             name: "Study",
-            side: "Wi-Fi from Hall over 5 GHz high",
-            note: "eero Pro 6 \u00b7 9 devices \u00b7 v7.17.4-5",
-            level: 1
+            side: "9 devices",
+            note: "Wi-Fi from Hall over 5 GHz high, 5 of 5 bars \u00b7 eero Pro 6 \u00b7 v7.17.4-5"
         });
         expect("a node offline", Home.nodeRow(Object.assign({}, node("2001"),
-            { state: "OFFLINE" })).note, "offline \u00b7 eero Pro 6 \u00b7 4 devices \u00b7 v7.17.4-5");
+            { state: "OFFLINE" })).note.split(" \u00b7 ")[0], "offline");
 
         // A device: its signal, band and channel, rate each way, speed now.
         expect("a quiet device", Home.deviceRow(device("generic 2")), {
@@ -130,7 +128,6 @@ QtObject {
             side: "-37 dBm",
             note: "5 GHz, channel 52 \u00b7 1,200.9 Mb/s down, 1,080.6 Mb/s up \u00b7 idle \u00b7 "
                 + "10.0.0.45",
-            level: 0.8833333333333333,
             mark: "wireless"
         });
         expect("a busy computer", Home.deviceRow(device("unknown computer 1")).note,
@@ -158,7 +155,6 @@ QtObject {
             name: "generic 3",
             side: "Ethernet",
             note: "Ethernet \u00b7 98 b/s down, 154 b/s up \u00b7 10.0.0.99",
-            level: null,
             mark: "wired"
         });
         expect("a device named only by its address", Home.nameOf({ mac: "02:00:00:00:00:99" }),
@@ -278,7 +274,8 @@ QtObject {
             ["last-active", "22:49"]
         ])
             expect(`a device's ${id}`, value(facts, id), wanted);
-        expect("a device's eyebrow", generic.eyebrow, "generic \u00b7 on Den \u00b7 Wi-Fi");
+        expect("a device's eyebrow", [generic.eyebrow, generic.names], ["on Den \u00b7 Wi-Fi",
+            true]);
         expect("no hostname that only says its name again", facts.hostname, undefined);
         expect("no profile it isn't in", facts.profile, undefined);
         expect("its signal as a stroke", facts.signal.figure.shape, "stroke");

@@ -188,24 +188,35 @@ function counted(count, noun) {
     return `${count} ${count === 1 ? noun : `${noun}s`}`;
 }
 
-// What a node's row says: its backhaul at its side, and after its name
-// whether it's the gateway node and how it's doing, its model, its
-// devices and its firmware.
+// A backhaul with its bars over Wi-Fi: "Wi-Fi from Hall over 5 GHz high,
+// 5 of 5 bars".
+function backhaulSaid(node) {
+    const way = node.backhaul ?? {};
+    const bars = way.kind !== "ethernet" && way.bars !== null && way.bars !== undefined
+        ? `, ${way.bars} of ${BARS} bars`
+        : "";
+    return `${backhaulOf(node)}${bars}`;
+}
+
+// What a node's row says: how many devices are on it at its side, in the
+// column the devices under it say their signal in, and after its name
+// how it's doing where that isn't online, whether it's the gateway node,
+// its backhaul, its model and its firmware, the firmware giving way first
+// as the row narrows.
 function nodeRow(node) {
     const state = stateOf(node);
     const devices = node.devices?.all;
     const note = [
         state !== "" && state !== "online" ? state : "",
         node.gateway ? "gateway node" : "",
+        backhaulSaid(node),
         node.model ?? "",
-        devices === null || devices === undefined ? "" : counted(devices, "device"),
         node.firmware ?? "",
     ].filter((part) => part !== "");
     return {
         name: nodeName(node),
-        side: backhaulOf(node),
+        side: devices === null || devices === undefined ? "" : counted(devices, "device"),
         note: note.join(" \u00b7 "),
-        level: backhaulLevel(node),
     };
 }
 
@@ -274,9 +285,6 @@ function deviceRow(device, settings, profiles) {
         ]
             .filter((part) => part !== "")
             .join(" \u00b7 "),
-        level: device.signal_dbm === null || device.signal_dbm === undefined || device.ethernet
-            ? null
-            : Interfaces.level(device.signal_dbm),
         mark: markOf(device),
     };
 }

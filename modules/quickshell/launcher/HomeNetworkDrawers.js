@@ -84,6 +84,7 @@ function internet(model, now, settings) {
     const firmware = net.firmware ?? {};
     return {
         eyebrow: joined([net.isp, Home.stateWords(model)]),
+        names: known(net.isp),
         title: "Internet",
         facts: kept([
             fact("state", joined([net.state, net.isp_up === false ? "ISP down" : ""])),
@@ -340,8 +341,10 @@ function device(model, one, now, asked) {
     const packets = one.packets ?? {};
     const group = (model?.profiles ?? []).find((each) => each.id === one.profile) ?? null;
     return {
-        eyebrow: joined([Home.worded(one.kind), on ? `on ${Home.nodeName(on)}` : "",
-            one.ethernet ? "Ethernet" : "Wi-Fi"]),
+        // Where it is, short enough for a narrow drawer's one line: what it
+        // is starts its facts.
+        eyebrow: joined([on ? `on ${Home.nodeName(on)}` : "", one.ethernet ? "Ethernet" : "Wi-Fi"]),
+        names: on !== null,
         title: Home.nameOf(one),
         facts: kept([
             fact("kind", joined([Home.worded(one.kind), one.make, one.model, one.manufacturer])),

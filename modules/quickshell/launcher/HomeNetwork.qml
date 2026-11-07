@@ -3,10 +3,13 @@
 // stands, who carries it, the last speed test and when, whether it's
 // optimized for conferencing and gaming, its outages, the nodes by state
 // and the devices eero counts; then each node, the gateway node first and
-// each after the node it hangs from, saying its backhaul, as a bar of its
-// bars over Wi-Fi, its model, devices and firmware; and under each node
-// its devices, the strongest signal first, each saying its signal, as a
-// bar too, its band and channel, its rate each way and its speed now.
+// each after the node it hangs from, saying its devices, its backhaul
+// with its bars over Wi-Fi, its model and firmware; and under each node
+// its devices, the strongest signal first, each saying its signal, its
+// band and channel, its rate each way, its speed now and its address. No
+// row draws a graph, whose column would cut a device's name short: the
+// signal is a figure at the side, and its stroke and history are the
+// drawer's.
 //
 // After them come the profiles, each saying how it stands and how many of
 // its devices are on now.
@@ -61,6 +64,9 @@ Provider {
     function plate(scope, said) {
         return {
             eyebrow: said.eyebrow,
+            // An eyebrow naming a node or an ISP keeps its case, as a name
+            // from the world is never re-cased (Drawer.qml).
+            eyebrowNames: said.names === true,
             title: said.title,
             facts: said.facts.map(one => one.heading !== undefined
                 ? { heading: provider.named(scope, one.heading) }
@@ -102,10 +108,6 @@ Provider {
         return rows;
     }
 
-    function bar(level) {
-        return level === null ? undefined : { shape: "bar", values: [level], warn: false };
-    }
-
     // The internet, the place's head.
     function internetRow() {
         const said = Home.internetRow(model, now(), settings);
@@ -120,7 +122,14 @@ Provider {
             drawer: () => provider.plate("internet",
                 Drawers.internet(provider.model, provider.now(), provider.settings))
         }, () => provider.acts().concat(provider.parts("internet", "eero:internet",
-            Drawers.internet(provider.model, provider.now(), provider.settings))));
+            provider.withoutSwitch(Drawers.internet(provider.model, provider.now(),
+                provider.settings)))));
+    }
+
+    // The internet's figures less how conferencing and gaming stands, which
+    // its switch says a few rows above, so the step says it once.
+    function withoutSwitch(said) {
+        return Object.assign({}, said, { facts: said.facts.filter(one => one.id !== "sqm") });
     }
 
     // What can be done to the home network, a step into the internet: run
@@ -198,7 +207,6 @@ Provider {
             side: said.side,
             note: said.note,
             keywords: [node.model ?? "", node.serial ?? ""].join(" "),
-            graph: bar(said.level),
             glyph: Words.glyph(node.gateway ? "eero:gateway" : "eero:node"),
             gap: first,
             drawer: () => provider.plate("node", Drawers.node(node, provider.now(),
@@ -218,7 +226,6 @@ Provider {
             note: said.note,
             keywords: [device.mac, device.hostname ?? "", device.address ?? "",
                 Home.worded(device.kind)].join(" "),
-            graph: bar(said.level),
             glyph: Theme.glyph[said.mark] ?? "",
             depth: 1,
             drawer: () => provider.plate("device", provider.deviceDrawer(device))
