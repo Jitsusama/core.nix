@@ -1,12 +1,5 @@
 [
   {
-    "at": 1794025491,
-    "commit": "bebf965b8b6c22f43d0b820b9f5f0ffe23565a1e",
-    "owner_pr": 2061,
-    "reason": "failed, then passed, at bebf965b8b6c",
-    "test": "vm-desktop-opens-and-sets"
-  },
-  {
     "at": 1794037906,
     "commit": "5d4f5f331565874729a19ff6408b50a97241980c",
     "owner_pr": null,
