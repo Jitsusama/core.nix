@@ -1231,10 +1231,13 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     assert back["01c3-west"][1] < back["01c3-east"][1], back
     assert back["01c3-north"][0] == 2, back  # noqa: PLR2004
     # Each opened there, never on the workspace focused and moved after,
-    # though the focus was on the first while north opened.
+    # though the focus was on the first while north opened. A title goes on
+    # past its session with what it was told, so it's found by what it
+    # begins with.
     for one in where:
-        window = desktop.window_titled(f"pi --session {one}")
-        assert first_on(desktop, f"pi --session {one}") == window["workspace_id"], one
+        titled = f"pi --session {one}"
+        window = next(each for each in desktop.windows() if each["title"].startswith(titled))
+        assert first_on(desktop, titled) == window["workspace_id"], one
     # Nothing's left to reopen once this boot is the one kept.
     desktop.as_account("rm $XDG_RUNTIME_DIR/pi-stays && pkill -f 'sleep 600'")
     kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
