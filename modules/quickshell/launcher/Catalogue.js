@@ -403,30 +403,41 @@ function followsInto(row, depth, above) {
 // and the rows it holds inside the row above it (`holds`), as the launcher
 // makes them.
 function lives(rows, ways) {
-    const at = Object.create(null);
-    let level = rows.map(row => ({ row, path: [ways.idOf(row)], above: null }));
-    for (let depth = 0; level.length > 0; depth += 1) {
-        const next = [];
-        for (const one of level) {
-            const key = one.path[one.path.length - 1];
-            if (at[key] !== undefined) {
-                continue;
-            }
-            at[key] = one.path;
-            if (!followsInto(one.row, depth, one.above)) {
-                continue;
-            }
-            for (const inside of ways.holds(one.row, one.above)) {
-                next.push({
-                    row: inside,
-                    path: one.path.concat([ways.idOf(inside)]),
-                    above: one.row
-                });
-            }
+    const walk = livesBegun(rows, ways);
+    livesOn(walk, ways);
+    return walk.at;
+}
+
+// The same walk in slices, so no key waits on the whole of it: begun here,
+// then carried on by livesOn until `ways.spent()` says the slice's time is
+// spent, which gives false, or until it's done, which gives true and
+// leaves every row's place in `at`. One queue keeps it breadth first.
+function livesBegun(rows, ways) {
+    const queue = rows.map(row => ({ row, path: [ways.idOf(row)], above: null, depth: 0 }));
+    return { at: Object.create(null), queue, next: 0 };
+}
+
+function livesOn(walk, ways) {
+    while (walk.next < walk.queue.length) {
+        if (ways.spent?.()) {
+            return false;
         }
-        level = next;
+        const one = walk.queue[walk.next];
+        walk.next += 1;
+        const key = one.path[one.path.length - 1];
+        if (walk.at[key] !== undefined) {
+            continue;
+        }
+        walk.at[key] = one.path;
+        if (!followsInto(one.row, one.depth, one.above)) {
+            continue;
+        }
+        for (const inside of ways.holds(one.row, one.above)) {
+            walk.queue.push({ row: inside, path: one.path.concat([ways.idOf(inside)]),
+                above: one.row, depth: one.depth + 1 });
+        }
     }
-    return at;
+    return true;
 }
 
 // Where Ctrl+] goes for a row living at `path`, by steady ids, from where

@@ -2918,32 +2918,65 @@ Scope {
     // Where every row lives, by its steady id, so Ctrl+] only looks its
     // row up: the walk took 20 to 85 ms in the VM, against a key's 4 ms
     // (Y2YBTS, 2026-11-05). It's walked while the launcher is open, once
-    // the list has been quiet a moment, so neither a key nor the opening
-    // pays it, and kept until a provider's rows change. A press before
-    // then walks on its key, which its trace says (`indexed`).
+    // the list has been quiet a moment, and kept until a provider's rows
+    // change. Joel's rows change on most openings, so it's walked in
+    // slices of a few ms a frame apart: walked whole, it landed just as he
+    // typed his first letters, and keys 0.3 to 1 s after an opening took a
+    // median 33 to 51 ms, against 14 to 25 before it (2026-11-07, from his
+    // traces). A press before it's done walks the rest on its key, which
+    // its trace says (`indexed`).
     property var followIndex: null
-    // How long the last walk took, in ms, or null while it's to be made.
+    // The walk under way, or null.
+    property var livesWalk: null
+    // How long the last walk took, its slices together, and its longest
+    // slice, in ms, or null while it's to be made.
     property var livesWalked: null
+    property var livesLongest: null
+    // How long a slice of the walk may run, in ms, inside a key's 4.
+    readonly property int livesSlice: 3
 
     function livesFor(id) {
         if (followIndex === null)
-            walkLives();
+            walkLives(Infinity);
         return followIndex[id] ?? null;
     }
 
-    function walkLives() {
+    // Carries the walk on until `until`, in ms since the epoch, beginning
+    // it if none is under way; true once it's done.
+    function walkLives(until) {
         const walking = Date.now();
-        followIndex = Catalogue.lives(home(), {
+        const ways = {
             idOf: one => steadyId(one),
             holds: (one, above) => catalogueHolds(one,
-                above === null || collects({ row: above }))
-        });
-        livesWalked = Date.now() - walking;
+                above === null || collects({ row: above })),
+            spent: () => Date.now() >= until
+        };
+        if (livesWalk === null)
+            livesWalk = Object.assign(Catalogue.livesBegun(home(), ways), { took: 0, longest: 0 });
+        const walk = livesWalk;
+        const done = Catalogue.livesOn(walk, ways);
+        const took = Date.now() - walking;
+        walk.took += took;
+        walk.longest = Math.max(walk.longest, took);
+        if (done) {
+            followIndex = walk.at;
+            livesWalk = null;
+            livesWalked = walk.took;
+            livesLongest = walk.longest;
+        }
+        return done;
+    }
+
+    function walkSlice() {
+        if (open && followIndex === null && !walkLives(Date.now() + livesSlice))
+            livesSliced.restart();
     }
 
     function forgetLives() {
         followIndex = null;
+        livesWalk = null;
         livesWalked = null;
+        livesLongest = null;
         if (open)
             livesLater.restart();
     }
@@ -2952,10 +2985,15 @@ Scope {
         id: livesLater
 
         interval: 300
-        onTriggered: {
-            if (root.open && root.followIndex === null)
-                root.walkLives();
-        }
+        onTriggered: root.walkSlice()
+    }
+
+    // A frame between slices, so what's drawn and typed comes between.
+    Timer {
+        id: livesSliced
+
+        interval: 16
+        onTriggered: root.walkSlice()
     }
 
     // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
@@ -5728,8 +5766,10 @@ Scope {
             jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
             // And those Ctrl+] left, which Ctrl+T comes back through.
             tags: root.tagsBack.length,
-            // How long where every row lives took to walk, or null.
+            // How long where every row lives took to walk, and its longest
+            // slice, or null.
             livesWalked: root.livesWalked,
+            livesLongest: root.livesLongest,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
