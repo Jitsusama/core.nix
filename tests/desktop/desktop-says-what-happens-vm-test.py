@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -41,6 +42,10 @@ JOELS_SCALES = ("1.5", "2")
 # The theme's glyph for a call, a handset (modules/theme/glyphs.nix), as the shell's front card
 # says the glyph it wears.
 CALL_GLYPH = "\U000f03f2"
+
+# How much of the detail under a card must be left, below which niri blurs it. A band blurred
+# there kept about a fifth of what the card's shadow alone keeps (2026-11-06, at 2).
+UNBLURRED = 0.5
 
 # What a search says going round an end, and with nothing sought before, as Vim's do
 # (modules/quickshell/launcher/words.json, field.hints).
@@ -1010,7 +1015,7 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
     look 3's notice (2026-11-03), for a person to measure its room by. So are three notices as
     one stack, the front card whole and two edges beneath it, each starting on the hairline of
     the card before it, and what's playing the frames rung above them (docs/design.md, The
-    Ladder).
+    Ladder). Once what played has gone, niri blurs only under the next card.
     """
     machine = desktop.machine
     try:
@@ -1025,7 +1030,11 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
 
 
 def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
-    """Sign a notice and photograph it, held, as a stack, under what's playing, and that alone."""
+    """Sign a notice and photograph it, held, as a stack, under what's playing, and that alone.
+
+    Each scale's notice comes after the last scale's track played alone, so nothing is blurred
+    past the card.
+    """
     machine = desktop.machine
     desktop.as_account(f"niri msg output winit scale {scale}")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
@@ -1043,6 +1052,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     # name ends and its kind begins.
     named = scale.replace(".", "-")
     desktop.photograph(f"notice-at-{named}")
+    under, shown = under_the_card(desktop)
     # Held, a row is the toast's notice in a list: its number on the inset, and every line of it
     # a tie and a mark past the number, its glyph on the line that signs it (Joel, 2026-11-06:
     # "I don't like the indent when I'm in list view").
@@ -1062,6 +1072,10 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
         machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.held_still()
+    kept = shown / detail(desktop.screen_now().crop(under))
+    print(f"UNDER THE CARD at {under}, {kept:.2f} of the detail was left")
+    assert kept > UNBLURRED, f"under the card, at {under}, only {kept:.2f} of the detail was left"
     for summary, body in [
         ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
         ("Backup Finished", ""),
@@ -1089,6 +1103,42 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     )
     desktop.photograph(f"playing-at-{named}")
     desktop.as_account("systemctl --user stop player")
+
+
+def under_the_card(desktop: Desktop) -> tuple[tuple[int, int, int, int], float]:
+    """Give the room under the front card, in the screen's points, and how much detail it holds.
+
+    A card shown after what played alone, at a new scale, came in where it would stand under
+    the track, and the column moved it up a frame later, which its window's regions didn't
+    follow; left there, they blurred a band under the card to the window's foot (Y2YBTS,
+    2026-11-06). A blur takes the detail out of what's under it, where a shadow only darkens
+    it, so it's held to the same room once the card has gone. Read just after a new scale,
+    before the card came, the room once held no detail at all (2026-11-06).
+    """
+    desktop.held_still()
+    shown = desktop.screen_now()
+    card = json.loads(desktop.as_account("qs ipc call notices front"))
+    logical = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]
+    wide, high, scale = logical["width"], logical["height"], logical["scale"]
+    space = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))["space"]
+    inset, tie = space["rung"]["inset"], space["rung"]["tie"]
+    # The room under the card, as far as its shadow reaches, and inside its sides.
+    under = (
+        int((card["left"] * wide + inset) * scale),
+        int((card["bottom"] * high + tie) * scale),
+        int((card["right"] * wide - inset) * scale),
+        int((card["bottom"] * high + inset) * scale),
+    )
+    return under, detail(shown.crop(under))
+
+
+def detail(picture: Image.Image) -> float:
+    """Give how far, from 0 to 255, each of a picture's points is from the one beside it."""
+    grey = picture.convert("L")
+    beside = ImageChops.difference(
+        grey.crop((1, 0, grey.width, grey.height)), grey.crop((0, 0, grey.width - 1, grey.height))
+    )
+    return float(ImageStat.Stat(beside).mean[0])
 
 
 def test_a_notice_from_calls_is_signed_as_a_call_and_wears_a_calls_glyph(desktop: Desktop) -> None:
