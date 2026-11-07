@@ -101,8 +101,19 @@ struct Lineage {
 
 impl Ancestry {
     /// Learns what one line says of its entry; a line that isn't an entry
-    /// says nothing.
+    /// says nothing. Only a custom entry can be a budget entry, so of any
+    /// other just the start is read, where pi writes its id and parent:
+    /// most lines are messages, and a log is read whole this way.
     pub fn learn(&mut self, line: &[u8]) {
+        let head = &line[..line.len().min(HEAD)];
+        if !head.starts_with(br#"{"type":"custom""#)
+            && let Some((id, parent)) = head_ids(head)
+        {
+            if let Some(parent) = parent {
+                self.parents.insert(id.to_owned(), parent.to_owned());
+            }
+            return;
+        }
         let Ok(entry) = serde_json::from_slice::<Lineage>(line) else {
             return;
         };
@@ -135,6 +146,35 @@ impl Ancestry {
         }
         None
     }
+}
+
+/// How far into a line an entry's type, id and parent are looked for.
+const HEAD: usize = 256;
+
+/// An entry's id and parent where pi writes them, among the top-level
+/// fields that open its line: `"id"` as a string, then `"parentId"` as a
+/// string or null. None when they aren't there before any nested object, so the
+/// whole line is read instead.
+fn head_ids(head: &[u8]) -> Option<(&str, Option<&str>)> {
+    let text = match std::str::from_utf8(head) {
+        Ok(text) => text,
+        Err(cut) => std::str::from_utf8(&head[..cut.valid_up_to()]).ok()?,
+    };
+    let quoted = |key: &str| -> Option<Option<&str>> {
+        let at = text.find(key)?;
+        if text[1..at].contains('{') {
+            return None;
+        }
+        let rest = &text[at + key.len()..];
+        if rest.starts_with("null") {
+            return Some(None);
+        }
+        let rest = rest.strip_prefix('"')?;
+        Some(Some(&rest[..rest.find('"')?]))
+    };
+    let id = quoted("\"id\":")??;
+    let parent = quoted("\"parentId\":")?;
+    Some((id, parent.filter(|parent| !parent.is_empty())))
 }
 
 /// The ancestry of a log's lines, read one at a time.
@@ -278,6 +318,9 @@ pub fn read_after(
         .map_or(0, |at| at + 1);
     let mut events = Vec::new();
     let mut start = 0;
+    // Gathered at the first branch taken from further back, and then only
+    // added to, so a read with several pays for one.
+    let mut known: Option<(Ancestry, usize)> = None;
     for line in bytes[..used].split(|&byte| byte == b'\n') {
         let begins = start;
         start += line.len() + 1;
@@ -289,10 +332,11 @@ pub fn read_after(
             continue;
         };
         if let Some(parent) = branched_from(&entry, carry) {
-            let mut ancestry = earlier();
-            for before in bytes[..begins].split(|&byte| byte == b'\n') {
+            let (ancestry, learned) = known.get_or_insert_with(|| (earlier(), 0));
+            for before in bytes[*learned..begins].split(|&byte| byte == b'\n') {
                 ancestry.learn(before);
             }
+            *learned = begins;
             carry.budget = ancestry
                 .budget_of(parent)
                 .or_else(|| carry.named.then(String::new));
@@ -980,6 +1024,33 @@ mod tests {
         let earlier = || ancestry(first.as_slice());
         let (events, _) = read_after(&later, &mut carry, &refusals(), &earlier);
         assert_eq!(budgets(&events), [Some("delta"), Some("delta"), Some("")]);
+    }
+
+    // A message's id and parent are read from the start of its line alone,
+    // and a line laid out otherwise, or a budget entry, is read whole.
+    #[test]
+    fn an_ancestry_reads_a_line_s_start_where_it_can() {
+        let long = "x".repeat(4000);
+        let message = format!(
+            r#"{{"type":"message","id":"b","parentId":"a","message":{{"text":"{long}"}}}}"#
+        );
+        assert_eq!(head_ids(message.as_bytes()), Some(("b", Some("a"))));
+        let first = r#"{"type":"model_change","id":"a","parentId":null}"#;
+        assert_eq!(head_ids(first.as_bytes()), Some(("a", None)));
+        let nested = r#"{"type":"x","message":{"id":"n"},"id":"c","parentId":"b"}"#.to_owned();
+        assert_eq!(head_ids(nested.as_bytes()), None);
+        let mut ancestry = Ancestry::default();
+        for line in [
+            first.to_owned(),
+            message,
+            budget("d", "b", Some("delta")),
+            nested,
+        ] {
+            ancestry.learn(line.as_bytes());
+        }
+        assert_eq!(ancestry.budget_of("d").as_deref(), Some("delta"));
+        assert_eq!(ancestry.budget_of("c"), None);
+        assert_eq!(ancestry.parents.get("c").map(String::as_str), Some("b"));
     }
 
     // A branch from an entry no budget entry is above draws on the default
