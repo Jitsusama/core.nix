@@ -116,10 +116,17 @@ onLinux {
   # patch adding a setting leaves it refusing every change until the next
   # boot, as hold-first-frame.patch once did. A patch asks through niri's
   # environment or its command line instead. srgb-gamut.patch's setting is
-  # in every niri booted since it came in.
+  # in every niri booted since it came in. opens-next-window-on.patch adds to
+  # niri-config only an action marked knuffel(skip), which IPC alone takes
+  # and the config can't name, so the config a niri before it reads is the
+  # same; such a niri refuses the action, and the shell moves the window
+  # after, as it did before.
   niri-patches-add-no-settings =
     let
-      kept = [ "srgb-gamut.patch" ];
+      kept = [
+        "srgb-gamut.patch"
+        "opens-next-window-on.patch"
+      ];
       patches = lib.filter (
         patch: !lib.elem (baseNameOf (toString patch)) kept
       ) graphical.config.programs.niri.package.patches;
