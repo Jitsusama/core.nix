@@ -586,12 +586,13 @@ onLinux {
   # The launcher, the held notices and a notice are one card: each takes
   # its frame from Card.qml and stands its ink on the card's content, the
   # inset from its edge, and on its columns (Columns.js), never drawing a
-  # frame, reading the inset or placing ink across by hand itself, but in
-  # the files not-yet-on-the-card.txt lists, which only shrinks
-  # (every-card-is-the-one-card.py). So it can't pass by seeing nothing, a
-  # border, the whole thing's radius, a shadow, a frame from Floating, a read
-  # of the inset, an x or a margin from a rung or a pitch, and a listed file
-  # that's moved or isn't a card are each shown to fail first, while a card,
+  # frame, reading the inset, placing ink across by hand or tinting a row's
+  # ground itself, but in the files not-yet-on-the-card.txt lists, which
+  # only shrinks (every-card-is-the-one-card.py). So it can't pass by seeing
+  # nothing, a border, the whole thing's radius, a shadow, a frame from
+  # Floating, a read of the inset, an x or a margin from a rung or a pitch,
+  # a ground's tint, and a listed file that's moved or isn't a card are each
+  # shown to fail first, while a card,
   # a part's radius, a column, the card's own inset and a comment pass.
   every-card-is-the-one-card =
     let
@@ -634,6 +635,7 @@ onLinux {
       strays 'x: gutter + Theme.level.name.pitch' 'by hand'
       strays 'anchors.leftMargin: Theme.space.rung.apart' 'by hand'
       strays 'rightPadding: Theme.space.rung.items' 'by hand'
+      strays 'color: Qt.alpha(Theme.selection, Theme.floating.selection)' "a row's ground"
       strays $'Floating {\nborder.width: 1' 'a frame of their own' Surface.qml
       strays 'Card {' 'take it off' Surface.qml
       strays 'Card {' "isn't a card surface" Gone.qml
