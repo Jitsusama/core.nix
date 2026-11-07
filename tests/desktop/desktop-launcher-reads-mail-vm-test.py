@@ -356,7 +356,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
 def slack_program(desktop: Desktop) -> None:
     """Find Slack's program row, step into it, and wait until it holds Unread and Recent."""
     slack_program_says(desktop, answering, keep_open=True)
-    desktop.follow()
+    desktop.into_program()
     desktop.launcher_until(lambda shown: "Unread" in shown["rows"] and "Recent" in shown["rows"])
 
 
@@ -844,7 +844,7 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     # The stand-in's Quarterly Plan is Docs' alone; Team Budget is Sheets'.
     desktop.answer("docs")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Docs")
-    desktop.follow()
+    desktop.into_program()
     desktop.type_in("recent", selecting="Recent")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])

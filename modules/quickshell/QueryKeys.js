@@ -27,6 +27,12 @@ const table = [
     { act: "deleteBack", mode: "line", keys: ["Backspace", "Ctrl+h"] },
     { act: "deleteWord", mode: "line", keys: ["Ctrl+w"] },
     { act: "deleteToStart", mode: "line", keys: ["Ctrl+u"] },
+    // On the find, Tab goes into a row holding parts, as a program's page,
+    // and is the next row on any other (QueryKeys reads the first row a key
+    // is in, so this one comes before the next row's), since next only
+    // repeats Down and Ctrl+N there (Joel, 2026-11-07: "Tab opens its
+    // page"; VKCF3Z, 7f53e7b3).
+    { act: "into", mode: "find", keys: ["Tab"] },
     // The rows below are his completion menu's (modules/neovim/keys.nix):
     // the next and the one before, and Ctrl+Y takes the selected one into
     // the line, as the grey completion after what's typed shows it.
@@ -67,10 +73,15 @@ const table = [
     { act: "close", mode: "normal", keys: [["Z", "Z"], ["Space", "w"]] },
     { act: "quitSaid", mode: "normal", keys: ["q"] },
     // Ctrl+O and Ctrl+I go back and forward through the places stepped into,
-    // as Vim's jump list, Tab being Ctrl+I; Space Tab goes to the place used
-    // last, as his goes to the file used last.
+    // as Vim's jump list; Space Tab goes to the place used last, as his goes
+    // to the file used last. Tab is apart from Ctrl+I, as Neovim under
+    // kitty's keyboard protocol tells them apart, and goes into a row
+    // holding parts, a program's page or anything else Ctrl+] goes into,
+    // saying "not here" on any other (Joel, 2026-11-07: "keep", Return
+    // still switching; VKCF3Z, 7fd0aa50).
     { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
-    { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
+    { act: "jumpForward", mode: "normal", keys: ["Ctrl+i"] },
+    { act: "into", mode: "normal", keys: ["Tab"] },
     { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
     // Ctrl+] goes to the row's own place, as Vim follows a tag, from the find too; Ctrl+T back.
     { act: "follow", mode: "normal", keys: ["Ctrl+]"] },

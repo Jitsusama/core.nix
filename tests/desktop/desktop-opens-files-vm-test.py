@@ -1061,7 +1061,7 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
-    desktop.follow()
+    desktop.into_program()
     desktop.type_in("recent", selecting="Recent")
     desktop.follow()
     desktop.launcher_until(lambda shown: "tide" in shown["rows"])

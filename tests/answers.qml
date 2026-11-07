@@ -1031,7 +1031,7 @@ QtObject {
         // On the find they give way by need instead, the words named first
         // going first, in their order, wherever they're drawn: the
         // completion, whose ghost the line shows, then next time, and
-        // Ctrl+] in never, though it's drawn furthest from Return so nothing
+        // Tab in never, though it's drawn furthest from Return so nothing
         // slides as it comes and goes (VKCF3Z, 2026-11-06).
         const findKeys = [["\u21b5", "start"], ["Ctrl+]", "in"], ["Ctrl+Y", "complete"],
             ["Super+\u21b5", "next time"]];

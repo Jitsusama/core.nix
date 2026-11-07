@@ -257,11 +257,11 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.send_key("ret")
     desktop.launcher_until(at_rotation)
     # Its three steps are one jump, as Vim's :tag is: Ctrl+O goes straight back to the
-    # search it was found by, and Tab, which is Ctrl+I, forward to it again.
+    # search it was found by, and Ctrl+I forward to it again.
     desktop.normal()
     machine.send_key("ctrl-o")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "rotation")
-    machine.send_key("tab")
+    machine.send_key("ctrl-i")
     desktop.launcher_until(at_rotation)
     screen = desktop.showing()["path"][-1]
     # h goes nowhere either, saying -, which goes back up, onto the
@@ -484,7 +484,7 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
 ) -> None:
     """A program's acts are found from the top by their own names, saying where they live.
 
-    Return does the act, as it does inside the program, and Ctrl+] in normal
+    Return does the act, as it does inside the program, and Tab in normal
     goes into the program onto it, where it lives, so - climbs back out. Typing the program's
     name lists the program first, and only those acts whose own names it starts a word of.
     """
@@ -504,7 +504,7 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
     # saying so furthest from Return.
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
-    assert told[1:2] == ["Ctrl+] in"], told
+    assert told[1:2] == ["Tab in"], told
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (

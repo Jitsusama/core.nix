@@ -21,11 +21,13 @@ const normal = [
     // and l aren't listed, since on a row they only say so.
     { name: "openIn", acts: ["run"], firsts: true },
     { name: "up", acts: ["out"] },
+    // Tab into what a row holds, as a program's page.
+    { name: "into", acts: ["into"] },
     // Ctrl+] to the row's own place, where a row found elsewhere lives or
     // into what Return opens, as a mail's sender (VKCF3Z), and Ctrl+T back.
     { name: "follow", acts: ["follow", "tagBack"] },
     // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.
-    { name: "jumps", acts: ["jumpBack", "jumpForward"], without: ["Tab"] },
+    { name: "jumps", acts: ["jumpBack", "jumpForward"] },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
     { name: "own", acts: ["openOwn"] },
@@ -59,6 +61,7 @@ const find = [
     { name: "previousRow", acts: ["previous"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "run", acts: ["run"], firsts: true },
+    { name: "into", acts: ["into"] },
     { name: "follow", acts: ["follow"] },
     { name: "complete", acts: ["complete"] }
 ];

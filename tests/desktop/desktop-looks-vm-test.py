@@ -398,7 +398,7 @@ def finds_kitty(desktop: Desktop, scale: str) -> None:
     """Find kitty from its first letter, photographing the foot at k.
 
     The first letter tells the foot more keys than it holds, so the completion, whose ghost the
-    field shows, gives way, and Ctrl+] in stays, furthest from Return (VKCF3Z, 2026-11-06).
+    field shows, gives way, and Tab in stays, furthest from Return (VKCF3Z, 2026-11-06).
     """
     desktop.on_find()
     desktop.type_in("k")
@@ -432,7 +432,7 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     machine = desktop.machine
     at = scale.replace(".", "-")
     told = desktop.showing()["selected"]["told"]
-    assert told[1:2] == ["Ctrl+] in"], f"at {scale} kitty's foot: {told}"
+    assert told[1:2] == ["Tab in"], f"at {scale} kitty's foot: {told}"
     for chars, said, shot in [
         ("z", ["z not here"], "not-here"),
         ("l", ["l not here", "\u21b5 open"], "l-not-here"),

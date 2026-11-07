@@ -2128,7 +2128,7 @@ Scope {
         const hints = Words.field.hints ?? {};
         const taught = [];
         // A row Return opens that holds parts, as a program its commands
-        // and windows, says Ctrl+] goes into them, first, furthest from
+        // and windows, says Tab goes into them, first, furthest from
         // Return, as normal's foot does, so nothing slides as it comes and
         // goes with the row (Joel, 2026-11-05: "in programs i don't
         // understand how to go to sub commands on a program"). It's the
@@ -2136,7 +2136,7 @@ Scope {
         // (findYielding).
         const stepping = stepsIn(choice) || stepsThing(choice);
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
-            taught.push([hintKey("follow", "find"), hints.in ?? ""]);
+            taught.push([hintKey("into", "find"), hints.in ?? ""]);
         if (typed !== "" && prompt.ghost !== "")
             taught.push([prompt.completeKey, hints.complete ?? ""]);
         const shorter = enough(choice);
@@ -2156,9 +2156,10 @@ Scope {
 
     // The find's keys that give way first, short of room, in order of
     // need rather than as drawn: the completion, whose ghost the line
-    // already shows, then less to type or next time, so Ctrl+] in and
-    // Return never go (VKCF3Z, 2026-11-06: at "k", "Ctrl+] in \u00b7
-    // Super+\u21b5 next time \u00b7 \u21b5 start"). Other modes give way
+    // already shows, then less to type or next time, so Tab in and
+    // Return never go (VKCF3Z, 2026-11-06: at "k", "Tab in \u00b7
+    // Super+\u21b5 next time \u00b7 \u21b5 start", Tab being Ctrl+]'s
+    // named twin since 2026-11-07). Other modes give way
     // furthest from Return first.
     readonly property var findYielding: prompt.mode !== "find" ? [] : [
         (Words.field.hints ?? {}).complete, (Words.field.hints ?? {}).enough,
@@ -2187,12 +2188,12 @@ Scope {
     function normalKeys(choice, stepping, more) {
         const hints = Words.field.hints ?? {};
         const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
-        // A row that opens on Return but holds parts says Ctrl+] goes into
+        // A row that opens on Return but holds parts says Tab goes into
         // them, drawn first, furthest from Return, so it is the first to give
-        // way, and Space ? stays just before Return (VKCF3Z, 2026-11-05:
-        // "Ctrl+] in \u00b7 Space ? keys \u00b7 \u21b5 open").
+        // way, and Space ? stays just before Return (VKCF3Z, 2026-11-07:
+        // "Tab in \u00b7 Space ? keys \u00b7 \u21b5 go to").
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
-            keys.push([hintKey("follow"), hints.in ?? ""]);
+            keys.push([hintKey("into"), hints.in ?? ""]);
         if (canGoUp)
             keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
@@ -2340,18 +2341,18 @@ Scope {
     // Shift+Return's "below" and the right arrow too, which no foot on the
     // find draws, it cut the date at 1.5 beside an empty stretch; held for
     // Return alone, "Ctrl+Y complete" on the first letter cut it then and
-    // slid every fact after it. Ctrl+] in is drawn on the find beside a
+    // slid every fact after it. Tab in is drawn on the find beside a
     // row holding parts, so it's held too: left out, the first letter
     // picking a program slid the keys in by its width. A row's own keys
     // grow it as they come (noteKeys).
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        [hintKey("follow", "find"), (Words.field.hints ?? {}).in ?? ""],
+        [hintKey("into", "find"), (Words.field.hints ?? {}).in ?? ""],
         [prompt.completeKey, (Words.field.hints ?? {}).complete ?? ""]]
     // What normal says beside Return at home: the commands and the keys,
     // kept while normal is taken rather than from the opening. Kept from
     // the start, it cut the battery's charge from the glance on the find,
     // which never gives way; - up is said only once a step is held, and
-    // Ctrl+] in only on a row holding parts, whose rows grow the room as
+    // Tab in only on a row holding parts, whose rows grow the room as
     // any row does.
     readonly property var footNormalRoom: [["\u21b5", ""], [":", "commands"],
         ["Space ?", "keys"]]
@@ -2895,6 +2896,28 @@ Scope {
     function holdsParts(row) {
         return holdsMore(row) && kindOf(row) !== "notice";
     }
+    // Whether Tab goes into a row: one holding parts, as a program's page,
+    // or a found act, into its program, as the foot's "Tab in" says.
+    function goesIn(row) {
+        return !!row && !row.gone && !row.still && (holdsParts(row) || !!row.landsIn);
+    }
+    // Tab: into the selected row where it goes in, as Ctrl+] would, saying
+    // whether it did. Where it doesn't, normal says so, as l does, and the
+    // find leaves it to be its next row. On the find it goes in only where
+    // the foot says "Tab in", so never on a row Return already steps into,
+    // as an answer holding parts, where it stays the next row.
+    function into(mode) {
+        const row = matches[current] ?? null;
+        const stepping = !!row && (stepsIn(row) || stepsThing(row));
+        if (goesIn(row) && !(mode === "find" && stepping)) {
+            follow(row);
+            return true;
+        }
+        if (mode === "find")
+            return false;
+        say([[hintKey("into"), (Words.field.hints ?? {}).notHere ?? ""]]);
+        return true;
+    }
     // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
     // lost (Joel's rule): a found act into its program, a row into its
     // parts, a found place to where it sits, and a spot or a collection
@@ -3023,7 +3046,7 @@ Scope {
     // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
     // 2026-11-05): first wherever followed() takes it, as the old step in
     // by l did, so a row that holds more goes into its parts, as the
-    // foot's Ctrl+] in says. A row with no parts living in another place,
+    // foot's Tab in says. A row with no parts living in another place,
     // as a Now row, one found from home or a notice, whose acts are
     // commands, not parts (VKCF3Z, 13:07), goes to that place, onto it
     // there. A row Return takes elsewhere, a spot or a program's act found
@@ -6943,6 +6966,14 @@ Scope {
                             case "jumpForward":
                                 root.jump(1);
                                 return;
+                            // Tab goes into a row holding parts; on any other
+                            // the find's is its next row, and normal's says
+                            // it isn't here.
+                            case "into":
+                                if (root.into(mode))
+                                    return;
+                                act = "next";
+                                break;
                             case "follow":
                                 root.follow(root.matches[root.current] ?? null);
                                 return;

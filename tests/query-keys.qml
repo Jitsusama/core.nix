@@ -1306,8 +1306,12 @@ QtObject {
             ["the find's Backspace, Ctrl+W and Ctrl+U delete", ["Backspace", "Ctrl+w", "Ctrl+u"],
                 ["deleteBack", "deleteWord", "deleteToStart"]],
             ["Ctrl+H deletes back, as Backspace", ["Ctrl+h"], ["deleteBack"]],
-            ["the find's next row, as his completion menu's", ["Down", "Tab", "Ctrl+n"],
-                ["next", "next", "next"]],
+            ["the find's next row, as his completion menu's", ["Down", "Ctrl+n"],
+                ["next", "next"]],
+            // Tab on the find goes into a row holding parts, and is its next
+            // row on any other, as the launcher decides by the row (VKCF3Z,
+            // 7f53e7b3).
+            ["the find's Tab goes in, or else to the next row", ["Tab"], ["into"]],
             ["the find's row before", ["Up", "Shift+Tab", "Ctrl+p"],
                 ["previous", "previous", "previous"]],
             ["Ctrl+Y completes", ["Ctrl+y"], ["complete"]],
@@ -1338,11 +1342,12 @@ QtObject {
                 ["Escape", "Down", "Up", "j", "k"], ["normal", "next", "previous", "next", "previous"]],
             ["Space Tab goes to the place used last", ["Escape", "Space", "Tab"],
                 ["normal", "lastPlace"]],
-            // Tab is Ctrl+I, as a terminal can't tell them apart: forward
-            // through the places stepped into, Ctrl+O back.
+            // Ctrl+I alone goes forward through the places stepped into,
+            // Ctrl+O back, and Tab, which Neovim under kitty's keyboard
+            // protocol tells apart from it, goes in (VKCF3Z, 7fd0aa50).
             ["Ctrl+O and Ctrl+I go back and forward through the places stepped into",
-                ["Escape", "Ctrl+o", "Ctrl+i", "Tab"],
-                ["normal", "jumpBack", "jumpForward", "jumpForward"]],
+                ["Escape", "Ctrl+o", "Ctrl+i"], ["normal", "jumpBack", "jumpForward"]],
+            ["Tab goes into what a row holds", ["Escape", "Tab"], ["normal", "into"]],
             // Ctrl+] goes to the row's own place, as Vim follows a tag: where
             // a row found elsewhere lives, or into the parts of a row whose
             // Return opens it (VKCF3Z, 2026-11-05); Ctrl+T comes back through
@@ -1658,12 +1663,14 @@ QtObject {
         holds("the find's next row, Ctrl+N", keyed("next row"), "Ctrl+N");
         holds("the find's caret", keyed("caret"), "\u2190  \u2192");
         holds("the find's word deleted", keyed("word"), "Ctrl+W");
-        // The find's foot names Ctrl+] on a row holding parts, so its list
-        // names it too (MVL7F9, #1979).
-        holds("the find lists Ctrl+] into a row's parts", sections.Find.includes("Ctrl+]"),
+        // The find's foot names Tab on a row holding parts, so its list
+        // names it too, and Ctrl+] beside it (MVL7F9, #1979; VKCF3Z, 7f53e7b3).
+        holds("the find lists Tab into a row's parts", sections.Find.includes("Tab"), true);
+        holds("the find lists Ctrl+] to where a row lives", sections.Find.includes("Ctrl+]"),
             true);
+        holds("normal lists Tab into a row's parts", sections.Normal.includes("Tab"), true);
         holds("normal's keys aren't listed on the find, where they type",
-            ["j", "k", "gg", "ZZ", "Tab"].filter(key => sections.Find.includes(key)),
+            ["j", "k", "gg", "ZZ"].filter(key => sections.Find.includes(key)),
             []);
         holds("the find's keys aren't listed in normal, where they do nothing",
             ["Ctrl+W", "Ctrl+N", "Ctrl+Y", "Home"].filter(key => sections.Normal.includes(key)),
@@ -1709,7 +1716,8 @@ QtObject {
             "letterAgain", "letterAgainBack"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         for (const act of ["run", "intoSaid", "outSaid", "out", "close", "quitSaid",
-            "lastPlace", "follow", "tagBack", "jumpBack", "jumpForward", "freshFind", "keys",
+            "lastPlace", "into", "follow", "tagBack", "jumpBack", "jumpForward", "freshFind",
+            "keys",
             "numbers", "insert", "change", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 

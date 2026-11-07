@@ -1223,14 +1223,14 @@ def test_a_notices_commands_are_what_its_launcher_row_holds(
     # :e Notices hands on to the history, which opens on its first row,
     # the newest notice, as every place opens on its first. Its acts are
     # commands, not parts (VKCF3Z, 2026-11-05), so the foot offers no
-    # Ctrl+] into them, and Return opens it as its card's does.
+    # Tab into them, and Return opens it as its card's does.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
     )
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
-    assert "Ctrl+] in" not in told, f"a notice offers Ctrl+] into its acts: {told}"
+    assert "Tab in" not in told, f"a notice offers Tab into its acts: {told}"
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
 

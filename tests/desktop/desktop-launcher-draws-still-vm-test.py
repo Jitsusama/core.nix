@@ -316,11 +316,11 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
 def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
     """See the find's facts only shorten as kitty is typed, and read whole again in a new mode.
 
-    kitty's row brings Ctrl+Y's completion and Super+Return's next time beside Ctrl+] in, more
+    kitty's row brings Ctrl+Y's completion and Super+Return's next time beside Tab in, more
     than the room held from the opening, so the glance would give way; where even its least
     leaves too little, keys give way rather than run over it, by need: the completion, whose
-    ghost the field shows, goes first, and Ctrl+] in stays on every letter, as Joel asked of
-    a program's name (VKCF3Z, 2026-11-06: at "k", "Ctrl+] in \u00b7 Super+\u21b5 next time
+    ghost the field shows, goes first, and Tab in stays on every letter, as Joel asked of
+    a program's name (VKCF3Z, 2026-11-06: at "k", "Tab in \u00b7 Super+\u21b5 next time
     \u00b7 \u21b5 start"). Once kitty is whole and its
     completion goes, the room it took stays bare rather than the glance reading longer again,
     since the foot jumping with each letter was Joel's sharpest complaint about it; that room
@@ -341,7 +341,7 @@ def shortens_the_facts_only_within_a_find(desktop: Desktop) -> None:
         shown = desktop.showing()
         now = shown["glance"].split("  ")[1:]
         wanted = max(wanted, shown["keysRoom"]["told"])
-        assert "Ctrl+] in" in shown["hints"], (typed, shown["hints"])
+        assert "Tab in" in shown["hints"], (typed, shown["hints"])
         assert len("  ".join(now)) <= len("  ".join(said)), (typed, said, now)
         said = now
     # It measures something: kitty's keys asked for more room than the opening held.
@@ -536,7 +536,7 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     fewest = 4
     desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
     home = marks_in(desktop.showing()["glance"])
-    # A step's row with the most keys: Return, - and Ctrl+] in, and
+    # A step's row with the most keys: Return, - and Tab in, and
     # no other chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
     # "i want icons to be able to be there as much as possible").
     machine.send_chars("desktop ")
@@ -548,7 +548,7 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert told[1:2] == ["Ctrl+] in"], shown["selected"]
+    assert told[1:2] == ["Tab in"], shown["selected"]
     assert not any(key.startswith("Ctrl") for key in told[2:]), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()
