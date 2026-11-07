@@ -380,7 +380,8 @@ def test_a_closing_makes_again_only_the_details_whose_source_changed(
         said.append(json.loads(rest))
         return True
 
-    for _ in range(2):
+    def closing() -> dict[str, list[str]]:
+        """Open the launcher and close it, giving what that closing made and kept."""
         since = desktop.mark()
         desktop.answer("rotation")
         desktop.launcher_until(
@@ -388,7 +389,23 @@ def test_a_closing_makes_again_only_the_details_whose_source_changed(
         )
         desktop.close_launcher()
         desktop.reported("spots made while closed ", heard, since)
-    assert "computer/sound" in said[-1]["kept"], said[-1]
+        return said[-1]
+
+    closing()
+    assert "computer/sound" in closing()["kept"], said[-1]
+    # A battery coming or going is a change to Power, so the next closing
+    # makes Battery's details again. UPower can list it only after the
+    # details were first made, since a switch restarts both, and they were
+    # kept without Health from then on: the battery's Health was never
+    # found from the root (the net's run of this file, 2026-11-07).
+    machine = desktop.machine
+    battery = "upower --enumerate | grep -q test_battery"
+    machine.succeed("rmmod test_power")
+    machine.wait_until_fails(battery)
+    assert "energy/power" in closing()["made"], said[-1]
+    machine.succeed("modprobe test_power")
+    machine.wait_until_succeeds(battery)
+    assert "energy/power" in closing()["made"], said[-1]
 
 
 def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: Desktop) -> None:

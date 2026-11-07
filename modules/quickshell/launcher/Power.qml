@@ -33,6 +33,12 @@ Provider {
 
     readonly property var devices: UPower.devices.values
     readonly property UPowerDevice battery: devices.find(device => device.isLaptopBattery) ?? null
+    // A battery coming or going changes the answer, so it's said: the
+    // launcher keeps what's inside each place until its source says it
+    // changed, and UPower can list the battery only after that was first
+    // made, since a switch restarts both. Unsaid, Battery's Health was
+    // never found from the root (the net's goes-places run, 2026-11-07).
+    onBatteryChanged: provider.answered()
 
     // What a file says, or "" when it says nothing.
     function said(file) {
