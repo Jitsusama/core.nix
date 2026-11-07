@@ -138,7 +138,8 @@ the queue and conclude.
 | judge | the model that consolidates a council's findings | | |
 | finding | something a review or a peer found, for whoever owns what it's about | | `intent: finding` |
 | change | work put up for review | PR, pull request, proposal | |
-| AI spend | what agents have cost | cost, usage, tokens | spend-watch |
+| AI spend | what agents have cost | cost, usage | spend-watch |
+| tokens | what a model is sent and writes, counted as OpenTelemetry's gen_ai names them, never money | | `gen_ai.usage.*` |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
 | budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | |
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |

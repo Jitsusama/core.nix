@@ -190,10 +190,12 @@ QtObject {
                 "working/3 $4.20/4"],
             ["one that has spent nothing says its state alone", "listening", "",
                 "listening/3"],
-            ["one off says only what it spent", "", "$1", "$1/4"]
+            ["one off says only what it spent", "", "$1", "$1/4"],
+            ["a tier 2 figure leads, kept longest", "working", "$4.20",
+                "84% full/5 working/3 $4.20/4", "84% full"]
         ];
-        for (const [what, doing, spent, want] of sides) {
-            const got = side(SessionRow.side(doing, spent));
+        for (const [what, doing, spent, want, full] of sides) {
+            const got = side(SessionRow.side(doing, spent, full));
             if (got !== want)
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
@@ -218,6 +220,62 @@ QtObject {
         if (hues !== "needs:program working:program inLine:program listening:program"
             + " paused:muted parked:muted off:muted")
             failures.push(`the glyphs' roles by state: "${hues}"`);
+        // A live one with a tier 2 figure takes the action's hue; one paused
+        // stays muted, since it isn't live.
+        const warned = ["working", "listening", "paused", "off"]
+            .map(state => `${state}:${SessionRow.hue(state, true)}`).join(" ");
+        if (warned !== "working:action listening:action paused:muted off:muted")
+            failures.push(`the glyphs' roles warned: "${warned}"`);
+
+        // Past 80% of its window its row says how full, in whole percent,
+        // and nothing under it or where the record says no context.
+        const figureWords = { full: "{share}% full", contextOf: "{used} of {limit}",
+            turnTook: "{took} \u00b7 {out} out", firstToken: "{took} first token",
+            tokensOf: "{sent} in \u00b7 {out} out", cacheRead: "{share}% read" };
+        const fills = [[842, 1000, "84% full"], [799, 1000, ""], [null, 200000, ""],
+            [5, 0, ""]].map(([used, limit, want]) => {
+            const got = SessionRow.full({ context: { used, limit } }, figureWords);
+            return got === want ? "" : `${used} of ${limit}: "${got}", not "${want}"`;
+        }).filter(one => one !== "");
+        if (SessionRow.full(undefined, figureWords) !== "")
+            fills.push("one with no usage said it was full");
+        for (const fill of fills)
+            failures.push(`how full: ${fill}`);
+        // Counts read as figures do, and times as they're said.
+        const counts = [2, 999, 4100, 9999, 142400, 999600, 1000000, 1240000, 124620036]
+            .map(count => SessionRow.tokens(count)).join(" ");
+        if (counts !== "2 999 4.1k 10k 142k 1M 1M 1.2M 125M")
+            failures.push(`tokens as figures: "${counts}"`);
+        const times = [9284, 900, 38000, 125000].map(ms => SessionRow.took(ms)).join(", ");
+        if (times !== "9.3 s, 0.9 s, 38 s, 2 min")
+            failures.push(`turns' times: "${times}"`);
+        // The drawer's figures by gen_ai's names, today's only on its day.
+        const usage = {
+            day: "2026-11-07",
+            "gen_ai.request.model": "claude-opus-5-5",
+            last: { "gen_ai.usage.output_tokens": 4100 },
+            today: { "gen_ai.usage.input_tokens": 786, "gen_ai.usage.output_tokens": 272470,
+                "gen_ai.usage.cache_read.input_tokens": 124620036,
+                "gen_ai.usage.cache_creation.input_tokens": 1194960 },
+            context: { used: 142000, limit: 200000 },
+            turns: { today: 359, last: { duration_ms: 38000, first_token_ms: 900 } }
+        };
+        const figured = facts => facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
+        const onItsDay = figured(SessionRow.figures(usage, "2026-11-07", figureWords,
+            id => id));
+        const onItsDayWant = "model=claude-opus-5-5; context=142k of 200k; "
+            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token; turns=359; "
+            + "tokens=126M in \u00b7 272k out; cache=99.0% read";
+        if (onItsDay !== onItsDayWant)
+            failures.push(`the drawer's figures: "${onItsDay}", not "${onItsDayWant}"`);
+        const dayAfter = figured(SessionRow.figures(usage, "2026-11-08", figureWords,
+            id => id));
+        const dayAfterWant = "model=claude-opus-5-5; context=142k of 200k; "
+            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token";
+        if (dayAfter !== dayAfterWant)
+            failures.push(`the figures a day on: "${dayAfter}", not "${dayAfterWant}"`);
+        if (SessionRow.figures(undefined, "2026-11-07", figureWords, id => id).length !== 0)
+            failures.push("one with no usage had figures");
         // When a quest's session was last live: the harness's `at` where it
         // says one, else when a UUIDv7 id says it began, else never.
         const lives = [

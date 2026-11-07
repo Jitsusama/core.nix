@@ -265,7 +265,10 @@ Provider {
         const listedAs = place?.orchestrates ? (source("orchestrators")?.listed ?? [])
             .find(one => one.address === session.address) ?? null : null;
         const known = listedAs ? ` ${listedAs.short ?? ""} ${listedAs.title ?? ""}` : "";
-        const items = SessionRow.side(doing, figure);
+        // A tier 2 figure, while it's true: its context past 80% full.
+        const full = state === "off" ? ""
+            : SessionRow.full(presence?.usage, Words.of("agents").said ?? {});
+        const items = SessionRow.side(doing, figure, full);
         const row = member({
             thing: true,
             key: `agent:${session.address}`,
@@ -280,7 +283,7 @@ Provider {
             // a member keeps its words as given.
             also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}${known}`),
             glyph: Theme.glyph.agent,
-            hue: SessionRow.hue(state),
+            hue: SessionRow.hue(state, full !== ""),
             side: items.map(item => item.said).join(" \u00b7 "),
             sideItems: items,
             note: noted,
@@ -331,7 +334,11 @@ Provider {
             // else its folder.
             place: presence.repo || session.folder,
             machine: session.machine,
-            named: id => Words.name(`agents:${id}`)
+            named: id => Words.name(`agents:${id}`),
+            // Its model, context, last turn and today's figures, as its
+            // record's usage keeps them by gen_ai's names.
+            figures: SessionRow.figures(presence.usage, Qt.formatDate(new Date(), "yyyy-MM-dd"),
+                Words.of("agents").said ?? {}, id => Words.name(`agents:${id}`))
         });
     }
 

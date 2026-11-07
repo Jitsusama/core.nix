@@ -1727,6 +1727,14 @@ LANDINGS = [
     {"at": "2026-11-07T11:19:00Z", "ref": "core.nix#2138", "what": CLOSING,
      "person": "Press dd on a session to close it"},
 ]  # fmt: skip
+# How full the builder's context is and what its turns took, as the harness's usage keeps them
+# by gen_ai's names; today's counts show only on the day they're of.
+FULL = {
+    "gen_ai.response.model": "claude-opus-5-5",
+    "last": {"gen_ai.usage.output_tokens": 4100},
+    "context": {"used": 842000, "limit": 1000000},
+    "turns": {"last": {"duration_ms": 38000, "first_token_ms": 900}},
+}
 # A quest nothing orchestrates and no session has, whose step in offers to orchestrate it.
 UNSTARTED = "Chart the harbour"
 WORKFLOW = "~/.local/state/pi/agentic-harness.pi/quest-workflow"
@@ -1758,6 +1766,7 @@ def orchestrated(desktop: Desktop) -> None:
                 # says as it's written.
                 **({"repo": "core.nix"} if address == "TESTQA" else {}),
                 **({"landings": LANDINGS} if address == "TESTQC" else {}),
+                **({"usage": FULL} if address == "TESTQD" else {}),
             },
             address,
         )
@@ -1903,6 +1912,18 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
         f"at {shot} the eyebrow is cut mid-fact: {drawer}"
     )
     desktop.photograph(f"launcher-agents-drawer-at-{shot}")
+
+
+def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
+    """Photograph a session past 80% full, its drawer giving its figures by gen_ai's names."""
+    desktop.down_to(title)
+    figures = ["Model", "Context", "Last Turn"]
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["shown"] and shown["drawer"]["facts"][-3:] == figures
+    )
+    side = desktop.showing()["selected"]["side"]
+    assert side.startswith("84% full \u00b7 "), f"at {shot}: {side}"
+    desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 
 def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str) -> None:
@@ -2107,6 +2128,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             shot = scale.replace(".", "-")
             desktop.photograph(f"launcher-agents-tree-at-{shot}")
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
+            figures_in_the_drawer(desktop, titles["TESTQD"], shot)
             returns_said_in_the_foot(desktop, titles, shot)
             fold_steps_in(desktop, shot)
             close_asks_what_stays(desktop, titles["TESTQC"], "TESTQC", shot)

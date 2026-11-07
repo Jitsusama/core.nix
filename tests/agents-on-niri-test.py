@@ -6,7 +6,8 @@ them, each owned by this test's own process so the node judges it alive; the she
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
 A session's Close asks first, saying what of it stays, and y steers it a close from Joel.
-A drawer's eyebrow names the repo a record says, rather than the folder it works in. Both
+A drawer's eyebrow names the repo a record says, rather than the folder it works in. One past
+80% of its context says how full first, in the action's hue, and its drawer its figures. Both
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
 folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
@@ -96,6 +97,23 @@ LANDINGS = [
 ]
 
 
+# How full a session's context is, and its turns today, as the harness's usage keeps them by
+# gen_ai's names, counted on the day the sandbox's clock says.
+FULL = {
+    "day": datetime.now().astimezone().date().isoformat(),
+    "gen_ai.response.model": "claude-opus-5-5",
+    "last": {"gen_ai.usage.output_tokens": 4100},
+    "today": {
+        "gen_ai.usage.input_tokens": 786,
+        "gen_ai.usage.output_tokens": 272470,
+        "gen_ai.usage.cache_read.input_tokens": 124620036,
+        "gen_ai.usage.cache_creation.input_tokens": 1194960,
+    },
+    "context": {"used": 842000, "limit": 1000000},
+    "turns": {"today": 359, "last": {"duration_ms": 38000, "first_token_ms": 900}},
+}
+
+
 def owner() -> Json:
     """Give this process as pi's presence names its owner: its pid, the boot and its start."""
     stat = Path("/proc/self/stat").read_text()
@@ -150,7 +168,11 @@ def shell() -> Iterator[Shell]:
     PRESENCE.mkdir(parents=True, exist_ok=True)
     lay("BOSSES", "Orchestrating Quest", {"busy": True, "state": "busy"})
     under = {"orchestratedBy": "BOSSES", "busy": False}
-    lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
+    lay(
+        "LISTEN",
+        "Listening Quest",
+        {**under, "state": "listening", "repo": "core.nix", "usage": FULL},
+    )
     lay("PAUSED", "Paused Quest", {**under, "state": "paused", "landings": LANDINGS})
     lost_on_the_last_boot()
     orchestrators_listed()
@@ -235,6 +257,19 @@ def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell:
             (shown["drawer"] or {}).get("eyebrow", "").startswith("LISTEN \u00b7 core.nix \u00b7")
         )
     )
+
+
+def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures(
+    shell: Shell,
+) -> None:
+    """Past 80% of its context, a row says how full before how it stands, in the action's hue."""
+    row = found(shell, "listening quest", "Listening Quest")
+    # Found by typing, whom it's under leads, before what's its own.
+    assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
+    assert row["hue"] == "action", row
+    # Its drawer gives its figures by gen_ai's names after what's known of it.
+    figures = ["Model", "Context", "Last Turn", "Turns Today", "Tokens", "Cache"]
+    shell.launcher_until(lambda shown: shown["drawer"]["facts"][-6:] == figures)
 
 
 def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: Shell) -> None:

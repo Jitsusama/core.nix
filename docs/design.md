@@ -1181,7 +1181,12 @@ works the same way everywhere.
   while the list is open, stand at no depth, whom each is under leading
   its note ("under QX7RTA · ..."). An orchestrator's figure is its
   whole orchestration's ("$14 today in all"), its own and its sessions'
-  inside it.
+  inside it. A live session past 80% of its context says how full first
+  ("84% full · working · $4.20"), its glyph in the action's hue, the
+  figure kept longest while room runs short. Its drawer then gives its
+  figures by OpenTelemetry's gen_ai names: Model, Context ("142k of
+  200k"), Last Turn, Turns Today, Tokens and Cache, today's only on the
+  day the harness counts them; none is money, so sharing hides none.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,

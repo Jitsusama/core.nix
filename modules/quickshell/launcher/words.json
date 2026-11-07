@@ -138,7 +138,13 @@
         "folder": "folder",
         "and": "and",
         "needItem": "{count} Needs You item",
-        "needItems": "{count} Needs You items"
+        "needItems": "{count} Needs You items",
+        "full": "{share}% full",
+        "contextOf": "{used} of {limit}",
+        "turnTook": "{took} \u00b7 {out} out",
+        "firstToken": "{took} first token",
+        "tokensOf": "{sent} in \u00b7 {out} out",
+        "cacheRead": "{share}% read"
       }
     },
     {
@@ -309,6 +315,36 @@
       "id": "agents:works",
       "in": "agents",
       "name": "Working On"
+    },
+    {
+      "id": "agents:model",
+      "in": "agents",
+      "name": "Model"
+    },
+    {
+      "id": "agents:context",
+      "in": "agents",
+      "name": "Context"
+    },
+    {
+      "id": "agents:last-turn",
+      "in": "agents",
+      "name": "Last Turn"
+    },
+    {
+      "id": "agents:turns",
+      "in": "agents",
+      "name": "Turns Today"
+    },
+    {
+      "id": "agents:tokens",
+      "in": "agents",
+      "name": "Tokens"
+    },
+    {
+      "id": "agents:cache",
+      "in": "agents",
+      "name": "Cache"
     },
     {
       "id": "agents:session",
