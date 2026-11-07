@@ -286,7 +286,10 @@ impl Timekeeping {
     /// A day, as an ISO date, in the Chinese, Japanese, Hebrew and Islamic
     /// calendars, answered once: it's reckoned, so nothing is asked. Asked
     /// from a place, in degrees north and east, it says when the day ends
-    /// there for the calendars whose days begin at sunset.
+    /// there for the calendars whose days begin at sunset. The day is
+    /// needed, but taken as optional: zlink hangs up on a call whose
+    /// parameters it can't read, so `varlinkctl call ... '{}'` heard only
+    /// "Connection reset by peer", and asked for no day it says `NotADay`.
     #[expect(
         clippy::unused_async,
         clippy::unused_async_trait_impl,
@@ -294,10 +297,11 @@ impl Timekeeping {
     )]
     async fn calendars(
         &self,
-        day: String,
+        day: Option<String>,
         latitude: Option<f64>,
         longitude: Option<f64>,
     ) -> Result<Calendars, Unkept> {
+        let day = day.unwrap_or_default();
         calendar::on(&day, latitude.zip(longitude)).ok_or(Unkept::NotADay { day })
     }
 

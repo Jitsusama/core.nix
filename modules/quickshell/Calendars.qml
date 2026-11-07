@@ -1,20 +1,44 @@
 // What day it is in the Chinese, Japanese, Hebrew and Islamic calendars,
 // as timekeeping reckons it with ICU4X when asked (timekeeping/src/
-// calendar.rs), over varlink on the socket systemd holds for it. Date asks
-// for a day as it's shown, and the socket is held only until that day's
-// answer comes, so it's asked once a day it's looked at and nothing is
-// held at rest. A machine without the reader has no socket, and Date's
-// Calendars says it isn't answering. Asked from where the laptop is, the
-// answer says when that day's sunset begins the Hebrew and Islamic days
-// there, reckoned with the day, so nothing waits on the sun.
+// calendar.rs), over varlink on the socket systemd holds for it. Today is
+// asked for as the shell starts, again as the day turns and as the laptop
+// moves, so Date shows it on its first frame and never waits on the reader
+// (Joel, 2026-11-07: "calendars takes way too long to load, why?"): asked
+// only once Date was shown, a busy machine kept its row reading "..." for
+// over 2 s. The socket is held only until the answer comes, so nothing is
+// held open at rest, and the answer, a few hundred bytes, is kept. A
+// machine without the reader has no socket, and Date's Calendars says it
+// isn't answering, asking again each time Date is shown. Asked from where
+// the laptop is, the answer says when that day's sunset begins the Hebrew
+// and Islamic days there, reckoned with the day, so nothing waits on the
+// sun.
 pragma Singleton
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "launcher/Moment.js" as Moment
 
 Singleton {
     id: root
+
+    // The wall's clock by the hour, so today turns at midnight, a wakeup an
+    // hour, and follows the clock across a suspend or a change of zone.
+    SystemClock {
+        id: clock
+        precision: SystemClock.Hours
+    }
+
+    // Today, as an ISO date, and where the laptop is, each asked for as it
+    // changes, once the change is told, since asking sets two properties.
+    readonly property string today: Moment.iso(clock.date)
+    readonly property var here: Location.here
+    onTodayChanged: Qt.callLater(root.askToday)
+    onHereChanged: Qt.callLater(root.askToday)
+    Component.onCompleted: Qt.callLater(root.askToday)
+    function askToday() {
+        ask(today, here);
+    }
 
     // The day asked for, as an ISO date, or "" before any is.
     property string asked: ""
