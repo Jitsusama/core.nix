@@ -7538,7 +7538,7 @@ Scope {
 
                             readonly property var found: drawerCard.found
                             readonly property string ofAll: found === null ? ""
-                                : " \u00b7 " + String(Words.field.found ?? "")
+                                : " \u00b7 " + String(Words.field.matched ?? "")
                                     .replace("{at}", found.at).replace("{all}", found.of)
                             readonly property var sought: prompt.standing.seek
                                 ?? (prompt.mode === "page" && found !== null
