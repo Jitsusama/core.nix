@@ -406,10 +406,13 @@
     clippy finds nothing in eero or its tests
   '';
   eero-reads-what-eero-says = ''
-    eero reads a network's line, speed test, conferencing setting and connected devices from what
-    eero's cloud answers, a missing field as unknown, and tells an aged session from other refusals;
-    it sends the conferencing setting as a bare boolean, and counts it taken only once eero reads
-    it back
+    eero draws the home network from every answer in its contract exactly as home-network.json
+    holds it, its times in UTC and a read not yet made as unknown, and tells eero failing, refusing
+    and a session aged past refreshing apart; its daemon reads the network every 30 seconds while
+    anyone listens and every 5 minutes otherwise and the rest at their own paces, keeps the last
+    figures when eero can't be reached, saying since when and why, and writes each listener the
+    model on joining and on every change; and it sends the conferencing setting as a bare boolean,
+    counted taken only once eero reads it back
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux

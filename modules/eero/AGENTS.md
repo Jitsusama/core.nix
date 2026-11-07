@@ -40,5 +40,35 @@ never a guess.
 - `profiles[]`, `events[]`: who's in which profile, and the app's
   activity list.
 
+## How It Reads
+
+`eero daemon` (the `eero-daemon` user unit) keeps the model, drawn by
+[`src/read.rs`][read] from each read's answer and written whole, and
+only when it changes. It reads the account's first network, each part
+as often as its figures move ([`src/schedule.rs`][schedule]):
+
+| Read                                           | Requests        | Every                        |
+| ---------------------------------------------- | --------------- | ---------------------------- |
+| the network and its devices                    | 2               | 30 s listened to, else 5 min |
+| each node's connections                        | 1 a node        | 5 min                        |
+| the day's usage, the network's and each node's | 1, and 1 a node | 15 min                       |
+| speed tests, profiles, Thread, outages, events | 5               | 15 min                       |
+
+Its socket, `$XDG_RUNTIME_DIR/eero/socket`, writes whoever connects the
+model as one line of JSON, and another on every change. While anyone
+is connected the network is read at the fast pace, and a line `read`
+asks for it now, at most once every 5 seconds.
+
+The model's `cloud.state` says whether the figures are current:
+
+- `answering`: eero answered the last read.
+- `unreachable`: eero couldn't be reached or failed; the figures are the
+  last it gave, `since` says from when and `reason` why. Once it answers
+  again, every part is read at once.
+- `signed-out`: the session aged past refreshing; `reason` says to run
+  `eero sign-in`, and the next read opens the newly sealed session.
+
 [contract]: contract/README.md
 [model]: home-network.json
+[read]: src/read.rs
+[schedule]: src/schedule.rs
