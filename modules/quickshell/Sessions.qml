@@ -139,19 +139,19 @@ Singleton {
     }
 
     // Opens a window of the sessions' own kitty, running `rest`, classed
-    // `classed`: kitty for one Joel starts, pi-spawned (or pi-spawned.<n>,
-    // opened on a workspace asked for, openingOn) for one another
+    // `classed`: kitty for one Joel starts, pi-spawned for one another
     // session started, which niri opens without the focus
     // (modules/niri/config.kdl), and pi-session for one Reopen Them All
-    // opens (Niri.qml's heard). Every window of that kitty opens here, so
+    // opens (Niri.qml's heard); either with .<n> after it for one opened
+    // where it goes (openingOn). Every window of that kitty opens here, so
     // how it's started is said once. It starts in agents.slice
     // (modules/slices), weighed beside Joel's programs rather than among
     // them; kitty puts each window's scope in the slice it runs in, so
-    // every session goes with it. One opened aside goes without the
-    // activation token niri hands what it spawns, which kitty would spend
-    // on taking the focus once its window shows.
+    // every session goes with it. One opened aside, or where it goes, goes
+    // without the activation token niri hands what it spawns, which kitty
+    // would spend on taking the focus once its window shows.
     function inSessions(classed, rest) {
-        const untold = classed.startsWith("pi-spawned")
+        const untold = classed.startsWith("pi-spawned") || /^pi-session\.[0-9]+$/.test(classed)
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
         Niri.spawn(untold.concat(["systemd-run", "--user", "--scope", "--collect", "--quiet",
             "--slice=agents.slice", "--", "kitty", "-1", "--instance-group", "pi-sessions",
@@ -302,8 +302,8 @@ Singleton {
         // Classed as a session's either way, so a window Joel opens
         // meanwhile isn't taken for it; one another session started opens
         // aside.
-        root.inSessions(into !== null && into !== undefined ? root.openingOn(into)
-            : one.quiet === true ? "pi-spawned" : "pi-session",
+        const kind = one.quiet === true ? "pi-spawned" : "pi-session";
+        root.inSessions(into !== null && into !== undefined ? root.openingOn(kind, into) : kind,
             ["--directory", cwd].concat(quest,
                 ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []));
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
@@ -710,35 +710,55 @@ Singleton {
         return others.find(session => one.from !== "" && session.presence.session === one.from)
             ?? others.find(session => one.quest !== "" && session.presence.quest === one.quest);
     }
-    // The workspace a session another handed over opens on, by its id, or
-    // null to leave it to niri and placeQuietly: where it was kept, when
-    // that's a workspace there now, else its kin's. niri opens a window on
-    // a workspace asked for only by OpenNextWindowOn (core's
+    // Where a session reopened or handed over opens, { workspace, column }
+    // by the workspace's id and the column from 1, or null to leave it to
+    // niri and the moves after: where it was kept, as the column whereBack
+    // says on a workspace there now (Places.opensAt), or, for one given a
+    // workspace of its own, last on the one at its number on its screen,
+    // else on that screen's last, as focusing them by number did; else its kin's
+    // workspace, wherever niri puts it there. Each is opened once the one
+    // before it is laid out, so the screen's workspaces are as it left them. niri opens a window on a
+    // workspace asked for only by OpenNextWindowOn (core's
     // opens-next-window-on.patch), so it never shows where Joel is first
-    // and moves (Joel, 2026-11-07: sessions started in the wrong
-    // workspaces). A kin whose window isn't told apart from its kitty's yet
-    // gives none, and placeQuietly waits for it and moves the session after.
+    // and moves, and nothing takes his focus to put it in place (Joel,
+    // 2026-11-07: sessions started in the wrong workspaces). One kept on a
+    // workspace not there now, or with a kin whose window isn't told apart
+    // from its kitty's yet, gives none, and is moved after.
     function opensOn(one, at, beside) {
         if (at !== null) {
             const where = Places.whereBack(at, beside);
-            return where.make ? null : where.join ?? null;
+            if (!where.make)
+                return { workspace: where.join, column: Places.opensAt(where, beside) };
+            const its = Object.values(Niri.workspaces).filter(one => one.output === at.output)
+                .sort((a, b) => a.idx - b.idx);
+            const there = its.find(one => one.idx === at.workspace) ?? its[its.length - 1];
+            if (!there)
+                return null;
+            const columns = Object.values(Niri.windows)
+                .filter(one => one.workspace_id === there.id)
+                .map(one => one.layout?.pos_in_scrolling_layout?.[0] ?? 0);
+            return { workspace: there.id, column: Math.max(0, ...columns) + 1 };
         }
         const others = root.running.filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.presence.session !== one.id);
         const kin = root.kinOf(others, { from: one.from ?? "", quest: one.quest ?? "" });
         return kin?.window && Niri.workspace(kin.window.workspace_id)
-            ? kin.window.workspace_id : null;
+            ? { workspace: kin.window.workspace_id, column: null } : null;
     }
-    // The class a window opened on `into` is given, its own, and niri told
-    // to open the next window of it there. kitty opens each of its windows
-    // with the class it's asked for, so no two sessions opening at once
-    // share one; the IPC socket keeps the order the two are asked in.
+    // The class a window opened where opensOn says is given, `kind` and a
+    // number of its own, and niri told to open the next window of it there.
+    // kitty opens each of its windows with the class it's asked for, so no
+    // two sessions opening at once share one; the IPC socket keeps the
+    // order the two are asked in.
     property int openings: 0
-    function openingOn(into) {
+    function openingOn(kind, into) {
         openings++;
-        const classed = `pi-spawned.${openings}`;
-        Niri.act({ OpenNextWindowOn: { app_id: classed, reference: { Id: into } } });
+        const classed = `${kind}.${openings}`;
+        const asked = { app_id: classed, reference: { Id: into.workspace } };
+        if (into.column !== null)
+            asked.column = into.column;
+        Niri.act({ OpenNextWindowOn: asked });
         return classed;
     }
     function placeQuietly(id, waiting) {
@@ -801,23 +821,32 @@ Singleton {
     // goes beside is focused first; and one on that workspace already is
     // moved to its column by number, since a move to the workspace it's on
     // does nothing. These focus, so Joel's window is focused again once
-    // every window is placed.
+    // every window is placed (focusedToPlace).
     function moveTo(window, where, workspace, column, beside) {
         const id = window.id;
         if (where.make) {
             const into = root.madeFor(id, where, workspace);
             if (into === null)
                 return null;
-            if (into !== workspace.id)
+            if (into !== workspace.id) {
+                root.focusedToPlace();
                 Niri.act({ MoveWindowToWorkspace: { window_id: id, reference: { Id: into },
                     focus: true } });
+            }
             Niri.act({ MoveWorkspaceToIndex: { index: where.index, reference: { Id: into } } });
             return into;
         }
         if (workspace.id === where.join) {
-            Niri.act({ FocusWindow: { id } });
-            Niri.act({ MoveColumnToIndex: { index: Places.columnTo(where, column, beside) } });
+            // One opened in its column, as opensOn asks, is only taken into
+            // the column left of it when it goes under, which needs no focus.
+            const to = Places.columnTo(where, column, beside);
+            if (to !== column) {
+                root.focusedToPlace();
+                Niri.act({ FocusWindow: { id } });
+                Niri.act({ MoveColumnToIndex: { index: to } });
+            }
         } else {
+            root.focusedToPlace();
             Niri.act({ FocusWindow: { id: where.after ?? where.before } });
             Niri.act({ MoveWindowToWorkspace: { window_id: id, reference: { Id: where.join },
                 focus: true } });
@@ -829,6 +858,13 @@ Singleton {
         if (where.under)
             Niri.act({ ConsumeOrExpelWindowLeft: { id } });
         return where.join;
+    }
+    // Says Reopen Them All moved the focus to put a window in place, so
+    // Joel's window is focused again once every one is placed. A session
+    // that opened where it goes (opensOn) never moves it.
+    function focusedToPlace() {
+        if (reopening !== null)
+            reopening.focused = true;
     }
     // Moves a window to the workspace whereBack says without the focus,
     // answering it as moveTo does: Joel's window and workspace stay his.
@@ -1092,33 +1128,36 @@ Singleton {
                 reopenNext();
                 return;
             }
-            // Where it goes is focused first, so it most often opens there
-            // and is seldom seen to move, but for one another session
+            // Placed by its connector and the number it's given now, so it
+            // goes beside those given the same screen, a gone one's too.
+            const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
+                column: next.at.column, tile: next.at.tile ?? 1 } : null;
+            // It opens where it goes when that's a workspace there now.
+            // Else where it goes is focused first, so it most often opens
+            // there and is seldom seen to move, but for one another session
             // started, which never moves the focus.
             const quiet = next.one.quiet === true;
-            if (!quiet)
+            const into = quiet || at !== null
+                ? root.opensOn(next.one, at, root.besideOf(reopening.placed)) : null;
+            const focuses = !quiet && into === null;
+            if (focuses)
                 reopening.focused = true;
-            if (!quiet && next.at) {
+            if (focuses && next.at) {
                 // A screen gone was given the screen in use (Places.js);
                 // with none known, it stays on the one in use.
                 if (Object.values(Niri.workspaces).some(one => one.output === next.at.output))
                     Niri.act({ FocusMonitor: { output: next.at.output } });
                 Niri.act({ FocusWorkspace: { reference: { Index: next.at.workspace } } });
                 Niri.act({ FocusColumnLast: {} });
-            } else if (!quiet && reopening.back !== null) {
+            } else if (focuses && reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
-            // Placed by its connector and the number it's given now, so it
-            // goes beside those given the same screen, a gone one's too.
-            const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-                column: next.at.column, tile: next.at.tile ?? 1 } : null;
             reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null,
                 away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
                 quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
             // The pace is counted from once it's begun and said, so the next
             // is said two seconds after however long this one took to start.
-            reopened(next.one, next.one.cwd, next.told,
-                quiet ? root.opensOn(next.one, at, root.besideOf(reopening.placed)) : null);
+            reopened(next.one, next.one.cwd, next.told, into);
             reopenStartedAt = Date.now();
             reopenPatience.restart();
         });

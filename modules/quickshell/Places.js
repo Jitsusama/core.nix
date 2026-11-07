@@ -226,3 +226,16 @@ function columnTo(where, column, beside) {
     }
     return column < next.column ? next.column - 1 : next.column;
 }
+
+// The column, from 1, a window not open yet opens as on the workspace
+// whereBack joins: just right of the one it goes after, or where the one it
+// goes before is, which moves right. One going under another opens beside it
+// and is taken into its column after. null for one given a workspace of its
+// own, which isn't there to open on.
+function opensAt(where, beside) {
+    if (where.make) {
+        return null;
+    }
+    const next = beside.find(one => one.id === (where.after ?? where.before));
+    return where.after !== undefined ? next.column + 1 : next.column;
+}
