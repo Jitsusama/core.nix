@@ -297,6 +297,7 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
     assert "No sessions" not in reads["collection:agents"], reads
     assert "Bootstrap" not in reads["collection:agents"], reads
+    desktop.photograph("launcher-home-agents")
     desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")

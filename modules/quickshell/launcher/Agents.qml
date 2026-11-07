@@ -589,6 +589,12 @@ Provider {
     function counted() {
         return summary();
     }
+    // The found row and Home's are said again as it moves, since the day's
+    // dollars and sharing can change it while no session's row changes,
+    // and the launcher joins what a place says only when it says it
+    // changed (Y2YBTS, 2026-11-07).
+    readonly property string standing: summary()
+    onStandingChanged: changed()
     function homeSays() {
         return summary();
     }

@@ -3945,8 +3945,11 @@ Scope {
             // Agents makes its rows only once the launcher is open, after
             // home was first drawn from none, and a session can start while
             // home is shown.
+            // The collection found by name is said again too, since it can
+            // say how what it holds stands (homeSays), as Agents' row does.
             const home = typed.trim() === "" && collections.includes(source);
             if (home || typed.trim() !== "" && matches.some(row => row.endedBy === source
+                || row.key === `collection:${source.settings.name}`
                 || source.things.some(own => own.key === row.key))) {
                 reshow(0);
                 Report.say(`refreshed ${source.settings.name}`);

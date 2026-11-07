@@ -116,7 +116,7 @@ def shell() -> Iterator[Shell]:
     lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
     lost_on_the_last_boot()
     SPEND.parent.mkdir(parents=True, exist_ok=True)
-    SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214.10"}))
+    SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
     with (logs / "mycelium.log").open("w") as log:
@@ -312,8 +312,8 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
 def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell: Shell,
 ) -> None:
-    """Home's Agents row and the row "agents" finds read "1 working \u00b7 $214.10 today"."""
-    together = "1 working \u00b7 $214.10 today"
+    """Home's Agents row and the row "agents" finds read "1 working \u00b7 $214 today"."""
+    together = "1 working \u00b7 $214 today"
     shell.close_launcher()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -328,5 +328,8 @@ def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell.type_in("agents", selecting="Agents")
     row = shell.showing()["selected"]
     assert (row["name"], row["side"]) == ("Agents", together), row
+    # spend-watch's next sum reaches the open row, with no key pressed.
+    SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$215"}))
+    shell.launcher_until(lambda shown: shown["selected"]["side"] == "1 working \u00b7 $215 today")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["held"] == ["agents"])
