@@ -304,7 +304,8 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     )
     # And that's how they're drawn: the first key starts as far in from the status line's end
     # as they take, in the card's frame, where the foot's words are laid out.
-    first = next(word for word in foot if word["text"].startswith("Ctrl"))
+    # The first is Tab in on a row holding parts, or else the completion's Ctrl+Y.
+    first = next(word for word in foot if word["text"].startswith(("Tab", "Ctrl")))
     reach = shown["footEnd"] - first["starts"]
     assert abs(reach - shown["keysRoom"]["said"]) <= 1, (
         f"the keys take {shown['keysRoom']['said']} px and are drawn over {reach}"
