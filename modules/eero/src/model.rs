@@ -41,6 +41,9 @@ pub enum CloudState {
 }
 
 /// The home network's way out, and the settings that shape it.
+// Backup internet is eero's name for the switch, and the key the shell and the
+// command line read, so it keeps the word its struct is named for.
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Internet {
     /// eero's word for it: connected, disconnected.
@@ -261,7 +264,7 @@ pub struct Device {
     pub name: Option<String>,
     pub nickname: Option<String>,
     pub hostname: Option<String>,
-    /// eero's word for what it is: phone, laptop_computer, printer.
+    /// eero's word for what it is: `phone`, `laptop_computer`, `printer`.
     pub kind: Option<String>,
     pub make: Option<String>,
     pub model: Option<String>,
@@ -320,6 +323,8 @@ pub struct Rate {
     pub generation: Option<String>,
 }
 
+// The counts keep eero's names, which say which way each packet went.
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Packets {
     pub rx_drops: Option<u64>,
@@ -378,10 +383,10 @@ mod tests {
                         l.get(key).unwrap_or(&Value::Null),
                         r.get(key).unwrap_or(&Value::Null),
                     );
-                    if l.contains_key(key) != r.contains_key(key) {
-                        out.push(format!("{path}.{key}: only on one side"));
-                    } else {
+                    if l.contains_key(key) == r.contains_key(key) {
                         differences(&format!("{path}.{key}"), a, b, out);
+                    } else {
+                        out.push(format!("{path}.{key}: only on one side"));
                     }
                 }
             }
