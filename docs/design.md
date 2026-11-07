@@ -293,6 +293,18 @@ of each kind of line it sets, and a row's pitch is its height.
 - **Bare keys first.** What's done often ends on a key both keyboards have
   bare, as [The Keyboard][keyboard] lists them. **Check:** each key for
   something done often, and that both keyboards have it bare.
+- **Only the keyboards plugged in show** (Joel, 2026-11-07: "seeing ergodox
+  layouts and shit when it isn't plugged in is weird as fuck"). Every
+  surface that names or draws one keyboard's keys (the layout card, the
+  glance's layer mark, the Keyboards place, hints, key lists, the guide,
+  the greeter and the lock) reads one list of the keyboards connected now,
+  asked of the input stack rather than guessed from config, and the
+  laptop's own is always on it. A keyboard not plugged in is absent, never
+  listed as not connected; a key only it has is named only while it's
+  there, and keys are otherwise named as the laptop has them. Plugging one
+  in or out changes an open surface within a second, with no notice, so
+  Super+K shows the laptop's Colemak keys while the ErgoDox is away and the
+  ErgoDox's layers while it's in.
 
 ### Where Each Choice Came From
 
@@ -1150,8 +1162,15 @@ works the same way everywhere.
   except a program's own acts (Meet's New Meeting), each found by its
   name with the program's mark and its path (Programs › Meet), below the
   program itself and below anything else found as well, as a call's
-  copied link is. Return does the act, and Ctrl+] goes into the program
-  onto it.
+  copied link is. Return does the act, and Tab goes into the program
+  onto it. A program found by its name lists what it holds under it, a
+  few of each in its page's order: Chrome's open tabs and recent sites,
+  kitty's folders, Calendar's next meetings, Mail's newest. Each sits one
+  depth in under the program, as a session sits under its orchestration,
+  so the program stays first and Return still switches to it in one press
+  (Joel, 2026-11-07: "keep"). Its say counts what it holds by kind ("1 tab
+  · 2 recent", "3 today") and names one ("next 14:00 · Design Review") only
+  where none is listed under it, so it never says a row below it again.
 - **Acts in one order.** Every kind of thing lists what's inside it in
   the same order, so three anchors are all there is to learn: the top row
   does it, what ends it comes near the bottom, and Copy is last. Between
@@ -1258,7 +1277,10 @@ works the same way everywhere.
   60. What's on the right, a kind, a chord or a count, stays in the mono.
   Inside a place, things come by importance and relation, never A to Z,
   and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
-  Tab goes to the next row, as in his Neovim's completion menu.
+  Tab goes to the next row, as in his Neovim's completion menu, but into
+  a row that holds parts, a program or anything else with a page of its
+  own, since Down and Ctrl+N already go to the next row (VKCF3Z,
+  2026-11-07), so "chrome" and Tab reach Chrome's page.
 - **Needs You holds only what only Joel can do, and keeps itself
   true.** Each item is raised by the session that needs him, under its
   quest, through the one tool every session uses, and is never copied
@@ -1283,7 +1305,8 @@ works the same way everywhere.
   its count: "Needs You · 2".
 - **Ctrl+Y only completes.** It takes the grey completion the field shows,
   as his Neovim's completion menu takes its selection, and does nothing
-  while none shows; Tab moves through the rows, as that menu's does. The
+  while none shows; Tab moves through the rows, as that menu's does, but
+  for going into one that holds parts. The
   field says no keys of its own: it holds only the find and how far it
   narrows, and its hints are the foot's, by key and lowercase word
   (VKCF3Z, 2026-11-05). So the aside ends at the field's end, where the
@@ -1504,7 +1527,14 @@ works the same way everywhere.
   the thing's name at Title, strong; its facts as a name at Note and a
   figure at Figure, the names whole and the
   figures on one edge 24 (xl) beyond the longest, a figure wrapping with
-  each number kept to its unit, a fact still being read a fixed
+  each number kept to its unit and a run of items between them, never
+  inside one ("38 s · 4.1k out ·", then "0.9 s first token"). A drawer
+  lays its facts out one way: each beside its name while every one fits,
+  else each under its name, since a mix reads as neither a table nor a
+  list (VKCF3Z, 2026-11-07); a fact that's a sentence stands under its
+  name as a paragraph and doesn't decide which. A figure's spark or meter
+  draws in its text's ink on a muted track, in warning only past its
+  limit's warn, as Context's past 80%. A fact still being read a fixed
   placeholder, and none that only says the name again; then its words,
   a notice's in the serif upright its card reads them in; then its picture. Its
   text is as far from its frame as the card's (the inset, l and the
@@ -1911,8 +1941,15 @@ two never both read "of".
   into a place or a thing as oil's Return opens a folder; - goes up to
   what holds it, onto the row it came from, with its find; Ctrl+O and
   Ctrl+I go back and forward through the jump list, every place reached by
-  Return, -, :e, :b, Ctrl+] or a mark; Ctrl+] on a row that lives
+  Return, -, :e, :b, Tab, Ctrl+] or a mark; Ctrl+] on a row that lives
   elsewhere goes to it in its own place, and Ctrl+T comes back.
+- **Tab goes in** on any row that holds parts, where Return does the row's
+  own act, as switching to a program: Tab reaches the program's page, its
+  tabs, folders and recent files, with Go To first (Joel, 2026-11-07:
+  "keep"). Ctrl+] is its twin, for Vim's sake, and no hint names it. On a
+  row that holds nothing it says "Tab not here". Ctrl+I alone goes forward
+  through the jump list, beside Ctrl+O; the two keys are one in a terminal
+  Vim, but Neovim under kitty tells them apart, as the launcher does.
 - **h and l move along a line, and nothing else.** A row has no column to
   move along, so on a list they say "l not here · ↵ open" and "h not here
   · - up"; Backspace is h, as Vim's is. No surface steps in or out on h, l
@@ -1931,8 +1968,8 @@ two never both read "of".
 - **Only Return and - step a level,** on every surface (Joel, 2026-11-05:
   "enter and - should be the only level stepping keys in anything,
   right?"). Ctrl+O and Ctrl+I walk the jump list, which is history rather
-  than a level; Ctrl+W moves between windows; Ctrl+] and Ctrl+T follow a
-  link and come back.
+  than a level; Ctrl+W moves between windows; Tab and Ctrl+] follow a row
+  to its own page, as Ctrl+] follows a tag, and Ctrl+T comes back.
 - **Escape** does what Vim's does: it cancels a count, a pending operator
   or a waiting key, and leaves insert, visual, the find line or the command
   line, closing which-key or the menu with them. At rest it does nothing,
@@ -2199,11 +2236,13 @@ least, the keys drawn furthest from Return give way first, never Return
 nor Space ?: in visual the command line, then d, then y. A key that comes
 and goes with the row is drawn furthest from Return, so nothing else moves
 when it does, and which gives way follows need rather than place: on the
-find the completion first, then next time, and never Ctrl+] in. On held
+find the completion first, then next time, and never Tab in, which is
+named wherever Tab goes in and nowhere it doesn't, Ctrl+] never. On held
 notices d stays too, and the position gives way whole before any of them.
 Return's place holds the widest verb among the rows it may name: on the
 find those listed as it opens, growing once for a wider row found within
 that find; in normal and visual the place's own rows, ending lines and all.
+It's the only room held: a hint keeps none for a key it no longer draws.
 On the command line the foot names the line's own keys: "Tab choose" until
 a line is chosen or typed, then what Return runs. Its hints come from the
 table that handles the keys, filtered by mode and row, so none names a key
@@ -2329,6 +2368,10 @@ changes only through his config (Joel, 2026-11-05).
 18. Ctrl+] on the find goes into the chosen row's parts, as in normal,
     where Vim's command line would expand an abbreviation; there are none
     to expand.
+19. Tab goes into a row that holds parts, in normal and on the find, and
+    Ctrl+I alone goes forward through the jump list, where Vim's Tab is its
+    Ctrl+I: going in is done often, and Ctrl+] asks both hands and two
+    holds on the ErgoDox (Joel, 2026-11-07).
 
 **Where Vim's keys live.** Each act is named once in
 `modules/keys/language.toml`, with its keys in Neovim's notation, the
