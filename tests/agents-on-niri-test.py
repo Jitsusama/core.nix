@@ -175,8 +175,10 @@ def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell:
 
 def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: Shell) -> None:
     """A paused row's glyph is muted, never the listening row's colour (#2052)."""
-    shell.as_account(shell.ipc("collection", "agents"))
-    shell.launcher_ready()
+    # Both only wait under the orchestrator, so they're drawn inside its fold.
+    opened(shell)
+    shell.down_to("1 listening, 1 paused")
+    shell.step_in()
     names = ("Listening Quest", "Paused Quest")
     shell.launcher_until(lambda shown: all(name in shown["rows"] for name in names))
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
