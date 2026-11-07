@@ -357,7 +357,8 @@ def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shel
     shell.send_key("ret")
     shell.launcher_until(lambda shown: gone(shown) == [True, False])
     shell.down_to(CLOSING)
-    assert shell.showing()["selected"]["note"] == TRY, shell.showing()
+    # What to try is a sentence, so its drawer says it rather than the row beside its ref.
+    shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("body") == TRY)
     shell.send_chars("dd")
     shell.launcher_until(lambda shown: gone(shown) == [True, True])
     shell.send_chars("u")

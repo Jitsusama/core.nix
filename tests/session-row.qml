@@ -344,6 +344,21 @@ QtObject {
         const kept = SessionRow.stillRead(landers, [unread[1].key, "z gone#1 2026"]);
         if (kept.join() !== unread[1].key)
             failures.push(`what's kept read: ${JSON.stringify(kept)}`);
+        // A landing's drawer says who landed it and when, what it is, and
+        // what to try as its words, which the row's one line has no room
+        // for; a fact nobody knows isn't said.
+        const plate = SessionRow.landingDrawer(unread[2],
+            { at: "11:30", session: "A Quest", named: id => id });
+        const plateSays = `${plate.eyebrow} | ${plate.title} | `
+            + `${plate.facts.map(fact => `${fact.label}=${fact.value}`).join(" ")} | ${plate.body}`;
+        const plateWant = "A \u00b7 11:30 | PLAN-20261106-2ZPAI5#4 | landed=PLAN-20261106-2ZPAI5#4"
+            + " session=A Quest | try Stop twice";
+        if (plateSays !== plateWant)
+            failures.push(`a landing's drawer: "${plateSays}", not "${plateWant}"`);
+        const unsaid = SessionRow.landingDrawer(unread[3],
+            { at: "", session: "", named: id => id });
+        if (unsaid.eyebrow !== "B" || unsaid.facts.length !== 1 || unsaid.body !== "")
+            failures.push(`a bare landing's drawer: ${JSON.stringify(unsaid)}`);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

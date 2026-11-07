@@ -652,8 +652,9 @@ Provider {
     // one row while any is, Landed, its count at its side, which Now shows
     // among what wants him (VKCF3Z's design, tier 2) and Agents after the
     // sessions. A step in, each landing, newest first: what it is as its
-    // name, its ref at the right in the mono, and what to try as its note
-    // in the serif. Return goes to the change, or to its session where no
+    // name and its ref at the right in the mono; its drawer says who landed
+    // it and when, and what to try, a sentence the row has no room for
+    // beside its ref. Return goes to the change, or to its session where no
     // link to the change is known, and marks it read; its own step in holds
     // Open the Change, Go To the Session, Copy What to Try and Read, which
     // d does too and u takes back. Read only from the sessions there are,
@@ -707,7 +708,11 @@ Provider {
             key: `agents:landed:${one.key}`,
             name: one.what,
             side: one.ref,
-            note: one.person,
+            drawer: () => SessionRow.landingDrawer(one, {
+                at: one.at !== "" ? started(one.at) : "",
+                session: one.session.title ?? "",
+                named: id => Words.name(`agents:${id}`)
+            }),
             verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
             glyph: Words.glyph("agents:landed"),
             hue: "action",

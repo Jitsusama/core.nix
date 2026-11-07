@@ -228,6 +228,21 @@ function landed(sessions, read) {
     return rows.filter(one => !read.includes(one.key)).sort((a, b) => b.at.localeCompare(a.at));
 }
 
+// A landing's drawer: who landed it and when as its eyebrow, what landed
+// as its title, its ref and its session as facts, and what to try as its
+// words, since a sentence never fits beside the row's ref. `said` gives
+// when (`at`), the session's title and how a fact is named; what isn't
+// known isn't said.
+function landingDrawer(one, said) {
+    const eyebrow = [one.session.address, said.at]
+        .filter(part => (part ?? "") !== "").join(" \u00b7 ");
+    const facts = [
+        { label: said.named("landed"), value: one.ref },
+        { label: said.named("session"), value: said.session }
+    ].filter(fact => (fact.value ?? "") !== "");
+    return { eyebrow, eyebrowNames: true, title: one.what, facts, body: one.person };
+}
+
 // What of Joel's reading is still worth keeping: the keys of landings a
 // session still holds, the harness keeping each a day, so what's kept
 // never grows past what's there.

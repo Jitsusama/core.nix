@@ -2002,10 +2002,11 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
 
 
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
-    """Photograph Landed, its count at its side, then inside it, what to try its note.
+    """Photograph Landed, its count at its side, then inside it, a landing's drawer out.
 
-    Each says what landed as its name and its ref in the mono at its right; what to try is
-    its note, in the serif. Nothing is read, so the walk can come back to it.
+    Each says what landed as its name and its ref in the mono at its right; its drawer says
+    who landed it and when, and what to try, a sentence the row has no room for. Nothing is
+    read, so the walk can come back to it.
     """
     desktop.down_to("Landed")
     assert desktop.showing()["selected"]["side"] == "2", f"at {shot}: {desktop.showing()}"
@@ -2015,7 +2016,11 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     desktop.down_to(CLOSING)
     selected = desktop.showing()["selected"]
     assert selected["side"] == "core.nix#2138", f"at {shot}: {selected}"
-    assert selected["note"] == LANDINGS[2]["person"], f"at {shot}: {selected}"
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
+        )
+    )
     desktop.photograph(f"launcher-agents-landed-in-at-{shot}")
     desktop.step_out()
 

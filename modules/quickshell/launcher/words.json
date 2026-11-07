@@ -303,6 +303,11 @@
       "name": "Working On"
     },
     {
+      "id": "agents:session",
+      "in": "agents",
+      "name": "Session"
+    },
+    {
       "id": "agents:hears",
       "in": "agents",
       "name": "Hears"
