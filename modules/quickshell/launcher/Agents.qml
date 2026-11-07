@@ -655,10 +655,12 @@ Provider {
     // name and its ref at the right in the mono; its drawer says who landed
     // it and when, and what to try, a sentence the row has no room for
     // beside its ref. Return goes to the change, or to its session where no
-    // link to the change is known, and marks it read; its own step in holds
-    // Open the Change, Go To the Session, Copy What to Try and Read, which
-    // d does too and u takes back. Read only from the sessions there are,
-    // so one that ended takes what it landed with it.
+    // link to the change is known, and marks it read, as opening a notice or
+    // a mail does: a mark, never an ending, since no Return ends or takes
+    // away. Its own step in holds Open the Change, Go To the Session, Copy
+    // What to Try and Forget It, its ending, which d does and u takes back,
+    // as a notice's is. Read only from the sessions there are, so one that
+    // ended takes what it landed with it.
     readonly property var landed: {
         const sessions = Sessions.running.concat(Sessions.parked);
         const unread = SessionRow.landed(sessions, Sessions.landingsRead);
@@ -666,10 +668,7 @@ Provider {
         // the step in can be said again with every landing dimmed, as a
         // row gone from any list is, rather than lost from under it; it
         // goes once the launcher lets it go.
-        const launcher = provider.launcher;
-        const held = !!launcher && launcher.open
-            && (launcher.held ?? []).some(step => step.row.key === "agents:landed");
-        if (unread.length === 0 && !held)
+        if (unread.length === 0 && !holdsLanded)
             return null;
         const read = one => Sessions.readLandings([one.key],
             SessionRow.stillRead(sessions, Sessions.landingsRead));
@@ -697,11 +696,11 @@ Provider {
                 figure: false,
                 glyph: Words.glyph("verb:agents:landed:try")
             }) : null,
-            act("read", Object.assign({
+            act("forget", Object.assign({
                 stays: true,
                 run: () => read(one),
                 undo: () => Sessions.unreadLandings([one.key])
-            }, Words.ending("verb:agents:landed:read")))
+            }, Words.ending("verb:agents:landed:forget")))
         ].filter(row => row !== null);
         const landing = one => thing({
             thing: true,
@@ -737,6 +736,11 @@ Provider {
             hue: "action"
         }, () => unread.map(landing));
     }
+
+    // Whether the launcher holds Landed open, apart, so a step anywhere else
+    // remakes Landed only when this answer flips, never on every key.
+    readonly property bool holdsLanded: !!provider.launcher && provider.launcher.open
+        && (provider.launcher.held ?? []).some(step => step.row.key === "agents:landed")
 
     things: [toReopen, landed].filter(row => row !== null).concat([start])
 

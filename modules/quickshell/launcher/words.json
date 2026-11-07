@@ -239,11 +239,19 @@
     },
     {
       "id": "verb:agents:landed:read",
-      "command": "forget",
+      "command": "delete",
       "in": "agents:landed",
       "name": "Read",
       "verb": "mark",
-      "glyph": "read",
+      "glyph": "read"
+    },
+    {
+      "id": "verb:agents:landed:forget",
+      "command": "forget",
+      "in": "agents:landed",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
       "act": "ending",
       "ends": "forget"
     },

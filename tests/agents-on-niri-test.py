@@ -342,7 +342,10 @@ def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: S
 
 
 def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shell: Shell) -> None:
-    """Landed counts what's unread, but a plan item ticked alone; Return and d read; u unreads."""
+    """Landed counts what's unread, but a plan item ticked alone; Return and d read; u unreads.
+
+    Return's read is a mark, as a notice's is, never an ending; d's is Forget It, its ending.
+    """
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
@@ -359,6 +362,7 @@ def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shel
     shell.down_to(CLOSING)
     # What to try is a sentence, so its drawer says it rather than the row beside its ref.
     shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("body") == TRY)
+    assert "d forget" in shell.showing()["selected"]["told"], shell.showing()
     shell.send_chars("dd")
     shell.launcher_until(lambda shown: gone(shown) == [True, True])
     shell.send_chars("u")
