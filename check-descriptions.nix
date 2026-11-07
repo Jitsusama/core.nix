@@ -1585,8 +1585,9 @@
     on the account's whole shell on niri, its sessions the realm's mycelium node's, a listening
     agent's Return asks what to say to it and a paused one's lands on Resume, which a second
     Return sends, while Ctrl+] still steps into every act either has; a drawer names the repo
-    its record says over the folder it works in; and a paused one's glyph is never drawn in a
-    listening one's colour
+    its record says over the folder it works in; a paused one's glyph is never drawn in a
+    listening one's colour; and an orchestration's waiting sessions fold into one row after its
+    own, which Return steps into and typing still finds each in
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and

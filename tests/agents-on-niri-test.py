@@ -5,7 +5,9 @@ are the realm's own mycelium node's, which reads the presence records laid here 
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
-A drawer's eyebrow names the repo a record says, rather than the folder it works in.
+A drawer's eyebrow names the repo a record says, rather than the folder it works in. Both
+sit under an orchestrator at work, so they fold into one row after its own, which Return steps
+into, and typing still finds each.
 """
 
 from __future__ import annotations
@@ -86,8 +88,10 @@ def held_by_node() -> list[str]:
 def shell() -> Iterator[Shell]:
     """Give the shell, started once a run after the realm's node and the two sessions."""
     PRESENCE.mkdir(parents=True, exist_ok=True)
-    lay("LISTEN", "Listening Quest", {"busy": False, "state": "listening", "repo": "core.nix"})
-    lay("PAUSED", "Paused Quest", {"busy": False, "state": "paused"})
+    lay("BOSSES", "Orchestrating Quest", {"busy": True, "state": "busy"})
+    under = {"orchestratedBy": "BOSSES", "busy": False}
+    lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
+    lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
     with (logs / "mycelium.log").open("w") as log:
@@ -100,7 +104,7 @@ def shell() -> Iterator[Shell]:
         assert node.poll() is None, (logs / "mycelium.log").read_text()
         assert time.monotonic() < deadline, "the node never listened"
         time.sleep(0.1)
-    wanted = ["session:s-listen", "session:s-paused"]
+    wanted = ["session:s-bosses", "session:s-listen", "session:s-paused"]
     while held_by_node() != wanted:
         assert time.monotonic() < deadline, f"the node holds {held_by_node()}, not {wanted}"
         time.sleep(0.1)
@@ -118,11 +122,24 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
     shell.close_launcher()
 
 
-def found(shell: Shell, typed: str, name: str) -> Json:
-    """Open Agents, find a session's row there by its quest's name, and give the row."""
+def opened(shell: Shell) -> None:
+    """Open Agents, once it lists the orchestrator and, after its own rows, its fold."""
     shell.as_account(shell.ipc("collection", "agents"))
     shell.launcher_ready()
-    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and name in shown["rows"])
+    shell.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents"]
+            and shown["rows"][:2] == ["Orchestrating Quest", "1 listening, 1 paused"]
+        )
+    )
+
+
+def found(shell: Shell, typed: str, name: str) -> Json:
+    """Open Agents, find a session's row there by its quest's name, and give the row.
+
+    Typing finds it in its orchestration's fold as well.
+    """
+    opened(shell)
     shell.type_in(typed, selecting=name)
     return cast("Json", shell.showing()["selected"])
 
@@ -196,3 +213,14 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
         time.sleep(0.1)
     told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
     assert [one["act"] for one in told] == ["resume"], told
+
+
+def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
+    shell: Shell,
+) -> None:
+    """Those only waiting fold into one row saying each state it holds; Return steps in to them."""
+    opened(shell)
+    shell.down_to("1 listening, 1 paused")
+    assert shell.showing()["selected"]["told"][:1] == ["\u21b5 open"], shell.showing()
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][:2] == ["Listening Quest", "Paused Quest"])

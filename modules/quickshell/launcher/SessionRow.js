@@ -51,6 +51,9 @@ function rank(standing) {
 // more than two deep).
 const DEEPEST = 2;
 
+// The fewest waiting members an orchestration folds.
+const FOLDS_AT = 2;
+
 // Sessions laid out as Agents shows them, from [{ address, under, state }]
 // in the order Sessions keeps: each under the session its `under` names,
 // when that one's listed, as [{ at, depth, under, orchestrates }], `at` its
@@ -59,7 +62,15 @@ const DEEPEST = 2;
 // the order of how they stand, then the order given; one with rows under
 // it stands where its most urgent row would, so an orchestration moves as
 // one. Orchestrators naming each other are cut where the first is met.
-function tree(sessions) {
+//
+// With `folds`, the members of one orchestration that only wait, those
+// listening, paused or parked with nothing under them more urgent, fold
+// into one entry after its own rows (VKCF3Z, 2026-11-06), so a tree of
+// sixty sessions shows what moves: `{ fold: true, depth, under, members,
+// counts }`, `members` laid as the tree is, from depth 0, and `counts` how
+// many of each state it holds, in the one order, as [{ state, count }]. A
+// lone one stays a row, since folding it saves none and hides its name.
+function tree(sessions, folds) {
     const byAddress = {};
     for (const [at, one] of sessions.entries()) {
         if (byAddress[one.address] === undefined) {
@@ -104,20 +115,39 @@ function tree(sessions) {
         return best[at];
     };
     const inOrder = list => list.slice().sort((a, b) => compared(bestOf(a), bestOf(b)));
-    const laid = [];
-    const lay = (at, depth) => {
+    const waits = at => bestOf(at)[0] >= rank("listening");
+    // Every session a fold holds, one folded within it too.
+    const held = members => members.reduce((all, one) =>
+        all.concat(one.fold ? held(one.members) : [one.at]), []);
+    const counted = members => STATES.map(state => ({ state,
+        count: held(members).filter(at => sessions[at].state === state).length }))
+        .filter(one => one.count > 0);
+    const lay = (into, at, depth) => {
         const up = parent[at];
-        laid.push({ at, depth: Math.min(depth, DEEPEST),
+        into.push({ at, depth: Math.min(depth, DEEPEST),
             under: up >= 0 ? sessions[up].address : "", orchestrates: children[at].length > 0 });
-        for (const child of inOrder(children[at])) {
-            lay(child, depth + 1);
+        const under = inOrder(children[at]);
+        const waiting = folds ? under.filter(waits) : [];
+        const folded = waiting.length >= FOLDS_AT ? waiting : [];
+        for (const child of under.filter(child => !folded.includes(child))) {
+            lay(into, child, depth + 1);
+        }
+        if (folded.length > 0) {
+            const members = [];
+            for (const child of folded) {
+                lay(members, child, 0);
+            }
+            into.push({ fold: true, depth: Math.min(depth + 1, DEEPEST),
+                under: sessions[at].address, members, counts: counted(members) });
         }
     };
+    const laid = [];
     for (const at of inOrder([...parent.keys()].filter(root => parent[root] < 0))) {
-        lay(at, 0);
+        lay(laid, at, 0);
     }
     return laid;
 }
+
 
 // The acts a running session offers, by their vocabulary's ids, in the
 // order every kind keeps (docs/design.md, the order of actions): what

@@ -34,8 +34,12 @@ QtObject {
     }
 
     // The laid-out list as it reads: each address, a dot for each step in.
+    // A fold reads as how many of each state it holds, then its members.
     function read(list, laid) {
-        return laid.map(one => `${".".repeat(one.depth)}${list[one.at].address}`).join(" ");
+        return laid.map(one => `${".".repeat(one.depth)}${one.fold
+            ? `(${one.counts.map(c => `${c.count} ${c.state}`).join(", ")}: ${read(list,
+                one.members)})`
+            : list[one.at].address}`).join(" ");
     }
 
     function run() {
@@ -102,6 +106,30 @@ QtObject {
             const got = read(list, SessionRow.tree(list));
             if (got !== want)
                 failures.push(`${what}: "${got}", not "${want}"`);
+        }
+
+        // Folded, an orchestration's members that only wait fold into one
+        // entry after its own rows, saying each state it holds in the one
+        // order; a lone one stays a row, and sessions under none never fold.
+        const folds = [
+            ["the waiting fold after those that move",
+                "O:working A:listening>O B:working>O C:paused>O D:parked>O",
+                "O .B .(1 listening, 1 paused, 1 parked: A C D)"],
+            ["one waiting alone stays a row", "O:working A:listening>O B:working>O",
+                "O .B .A"],
+            ["one under it that moves keeps its orchestrator out of the fold",
+                "O:listening P:listening>O Q:listening>O R:listening>O B:working>P",
+                "O .P ..B .(2 listening: Q R)"],
+            ["one that waits with its own that wait folds whole",
+                "O:working P:listening>O Q:paused>O B:listening>P",
+                "O .(2 listening, 1 paused: P .B Q)"],
+            ["those under none never fold", "A:listening B:listening C:paused", "A B C"]
+        ];
+        for (const [what, said, want] of folds) {
+            const list = sessions(said);
+            const got = read(list, SessionRow.tree(list, true));
+            if (got !== want)
+                failures.push(`folded, ${what}: "${got}", not "${want}"`);
         }
 
         // Whom each row is under, and whether it orchestrates one listed.
