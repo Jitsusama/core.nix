@@ -1748,6 +1748,17 @@ FULL = {
     "context": {"used": 842000, "limit": 1000000},
     "turns": {"last": {"duration_ms": 38000, "first_token_ms": 900}},
 }
+# What the builder's record says of its work, as pi says it: its step, its quest, and what it
+# works on, the quest's title and then a summary as long as every real session's.
+BUILDER = {
+    "stepDetail": {"kind": "tool", "name": "edit", "detail": "/home/jitsusama/tree/Drawer.qml"},
+    "questInfo": {"id": "QEST-20261022-TESTQD", "title": "A Builder Under the Owner",
+                  "short": "TESTQD", "status": "active"},
+    "worksOn": "A Builder Under the Owner: A builder under the owner's plan, which keeps the"
+    " launcher's agents quiet, told and easy to read: every session says how it stands, what it"
+    " does, what it spent and what it needs from Joel, from the node, with nothing guessed and"
+    " nothing said twice.",
+}  # fmt: skip
 # A quest nothing orchestrates and no session has, whose step in offers to orchestrate it.
 UNSTARTED = "Chart the harbour"
 WORKFLOW = "~/.local/state/pi/agentic-harness.pi/quest-workflow"
@@ -1779,7 +1790,7 @@ def orchestrated(desktop: Desktop) -> None:
                 # says as it's written.
                 **({"repo": "core.nix"} if address == "TESTQA" else {}),
                 **({"landings": LANDINGS} if address == "TESTQC" else {}),
-                **({"usage": FULL} if address == "TESTQD" else {}),
+                **({"usage": FULL, **BUILDER} if address == "TESTQD" else {}),
             },
             address,
         )
@@ -1930,9 +1941,15 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
 def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     """Photograph a session past 80% full, its drawer giving its figures by gen_ai's names."""
     desktop.down_to(title)
-    figures = ["Model", "Context", "Last Turn"]
+    # What it's doing and its quest lead, its figures follow what it spent, and what its
+    # quest is about, long, comes last, so the first screen holds the rest (Joel, 2026-11-07).
+    first = ["Doing", "Quest", "Spent Today", "Context", "Last Turn", "Model"]
     desktop.launcher_until(
-        lambda shown: shown["drawer"]["shown"] and shown["drawer"]["facts"][-3:] == figures
+        lambda shown: (
+            shown["drawer"]["shown"]
+            and shown["drawer"]["facts"][: len(first)] == first
+            and shown["drawer"]["facts"][-1] == "Working On"
+        )
     )
     side = desktop.showing()["selected"]["side"]
     assert side.startswith("84% full \u00b7 working"), f"at {shot}: {side}"
@@ -1943,6 +1960,11 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     # Its spend today carries its hours as Graph's spark.
     assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
     assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
+    assert drawer["values"][0] == "working \u00b7 edit Drawer.qml", f"at {shot}: {drawer}"
+    # Those through its model are on its first screen, before any it says are more.
+    said = str(drawer.get("moreSays") or "")
+    hidden = int(said.split(maxsplit=1)[0]) if said else 0
+    assert len(drawer["facts"]) - hidden >= len(first), f"at {shot} it hides {said}: {drawer}"
     desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 
