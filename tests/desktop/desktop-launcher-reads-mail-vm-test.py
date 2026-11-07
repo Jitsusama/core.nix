@@ -842,6 +842,22 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     # The stand-in's Quarterly Plan is Docs' alone; Team Budget is Sheets'.
+    # Sheets typed lists its own a depth in under it, and Docs' never.
+    desktop.answer("sheets")
+
+    def under_sheets(shown: Json) -> bool:
+        """Say whether Sheets is selected, saying how many it keeps, Team Budget under it."""
+        rows = cast("list[str]", shown["rows"])
+        selected = shown["selected"] or {}
+        if selected.get("name") != "Sheets":
+            return False
+        at = rows.index("Sheets")
+        said = str(selected.get("note", ""))
+        listed = rows[at + 1 : at + 4]
+        return "Team Budget" in listed and "Quarterly Plan" not in listed and said == "1 recent"
+
+    desktop.launcher_until(under_sheets)
+    desktop.close_launcher()
     desktop.answer("docs")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Docs")
     desktop.into_program()

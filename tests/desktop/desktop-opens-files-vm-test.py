@@ -108,8 +108,9 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     # GIMP holds the newest screenshot among its own acts.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
+    # GIMP holds it on its page, which Tab opens from where its name is typed.
     desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
-    desktop.follow()
+    desktop.into_program()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -824,6 +825,123 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
             timeout=timedelta(seconds=30),
         )
         machine.succeed(f"rm -f {looked}")
+
+
+def test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in(
+    desktop: Desktop,
+) -> None:
+    """Swayimg, hidden by its own entry, is a program whose picture is listed under it typed."""
+    machine = desktop.machine
+    looked = f"/home/{desktop.account}/tidepool.png"
+    desktop.as_account(f"cp {desktop.values['picture']} {looked}")
+    desktop.opens_in(looked, "image/png", "swayimg")
+    try:
+        desktop.answer("swayimg")
+
+        def under_swayimg(shown: Json) -> bool:
+            """Say whether swayimg is selected, saying it has one open, the picture under it."""
+            rows = shown["rows"]
+            selected = shown["selected"] or {}
+            if selected.get("is") != "program:swayimg":
+                return False
+            at = rows.index(selected["name"])
+            note = str(selected.get("note", ""))
+            return "tidepool.png" in rows[at + 1 : at + 4] and note.startswith("1 open")
+
+        desktop.launcher_until(under_swayimg)
+        # The picture it shows is listed once, as open, and so never counted as recent too.
+        assert desktop.showing()["selected"]["note"] == "1 open", desktop.showing()["selected"]
+        desktop.photograph("launcher-swayimg-typed")
+        # Starting it would open nothing, so Return steps into its page,
+        # which holds its Recent and its keys, and never starts it.
+        desktop.step_in("ret")
+        desktop.launcher_until(
+            lambda shown: "Recent" in shown["rows"] and "Shortcuts" in shown["rows"]
+        )
+    finally:
+        desktop.close_launcher()
+        machine.succeed(f"pkill -KILL -u {desktop.account} -x swayimg || true")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=30)
+        )
+        machine.succeed(f"rm -f {looked}")
+
+
+def test_reader_typed_lists_the_page_it_shows_under_it_and_tab_opens_its_page(
+    desktop: Desktop,
+) -> None:
+    """The reader typed lists the page it shows a depth in under it; Tab opens its page."""
+    machine = desktop.machine
+    read = f"/home/{desktop.account}/tides.md"
+    desktop.as_account(f"printf '# Tides\\n\\nLow at noon.\\n' > {read}")
+    desktop.opens_in(read, "text/markdown", "reader")
+    try:
+        desktop.answer("reader")
+
+        def under_reader(shown: Json) -> bool:
+            """Say whether Reader is selected, saying it has one open, the page under it."""
+            rows = shown["rows"]
+            selected = shown["selected"] or {}
+            if selected.get("is") != "program:reader":
+                return False
+            at = rows.index(selected["name"])
+            note = str(selected.get("note", ""))
+            return "tides.md" in rows[at + 1 : at + 4] and note.startswith("1 open")
+
+        desktop.launcher_until(under_reader)
+        # Tab opens its page, Go To first, as Return goes to it, and its Recent there.
+        desktop.into_program()
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Go To" and "Recent" in shown["rows"]
+            )
+        )
+    finally:
+        desktop.close_launcher()
+        # Its wrapper names the process otherwise, so it's found by what it reads.
+        machine.succeed(f"pkill -KILL -u {desktop.account} -f '[r]eader.*{read}' || true")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -f '[r]eader.*{read}'", timeout=timedelta(seconds=30)
+        )
+        machine.succeed(f"rm -f {read}")
+
+
+def test_zathura_typed_lists_the_document_it_shows_under_it_and_tab_opens_its_page(
+    desktop: Desktop,
+) -> None:
+    """Zathura typed lists the document it shows a depth in under it; Tab opens its page."""
+    machine = desktop.machine
+    read = f"/home/{desktop.account}/charts.pdf"
+    desktop.as_account(f"cp {desktop.values['page']} {read}")
+    desktop.opens_in(read, "application/pdf", "org.pwmt.zathura")
+    try:
+        desktop.answer("zathura")
+
+        def under_zathura(shown: Json) -> bool:
+            """Say whether Zathura is selected, saying it has one open, the document under it."""
+            rows = shown["rows"]
+            selected = shown["selected"] or {}
+            if selected.get("is") != "program:org.pwmt.zathura":
+                return False
+            at = rows.index(selected["name"])
+            note = str(selected.get("note", ""))
+            return "charts.pdf" in rows[at + 1 : at + 4] and note.startswith("1 open")
+
+        desktop.launcher_until(under_zathura)
+        desktop.into_program()
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Go To" and "Recent" in shown["rows"]
+            )
+        )
+    finally:
+        desktop.close_launcher()
+        # Its wrapper names the process otherwise, so it's found by its command line.
+        machine.succeed(f"pkill -KILL -u {desktop.account} -f '[z]athura' || true")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -f '[z]athura'", timeout=timedelta(seconds=30)
+        )
+        machine.succeed(f"rm -f {read}")
 
 
 def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desktop) -> None:

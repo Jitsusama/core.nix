@@ -750,13 +750,18 @@ Provider {
         const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
         const open = provider.recents.openIn(entry.id);
         const site = source?.kind === "site";
-        const pages = new Set(open.map(line => line.split("\t")[4] ?? "")
-            .filter(address => address !== "")).size;
+        const addresses = new Set(open.map(line => line.split("\t")[4] ?? "")
+            .filter(address => address !== ""));
+        const pages = addresses.size;
+        // What's open is listed once, as Recent lists it, so a file just
+        // opened and so among the ones opened lately isn't counted again.
+        const held = site ? addresses
+            : new Set(open.map(line => line.split("\t")[1] ?? "").filter(path => path !== ""));
         // A closed browser's saved tabs are counted as recent, as listed.
         const live = isRunning(entry);
         const opened = site ? (live ? pages : 0) : open.length;
-        const kept = provider.recents.of(entry.id).length + givenRecent(entry.id).length
-            + (site && !live ? pages : 0);
+        const kept = provider.recents.of(entry.id).filter(path => !held.has(path)).length
+            + givenRecent(entry.id).length + (site && !live ? pages : 0);
         const parts = provider.launcher?.partsOfRows[`program:${entry.id}`] ?? [];
         const meetings = parts.filter(part => part.what === "meeting");
         const mail = parts.filter(part => part.what === "mail").length;
