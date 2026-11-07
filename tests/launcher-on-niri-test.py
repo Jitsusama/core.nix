@@ -637,6 +637,29 @@ def laid_out(shell: Shell) -> Json:
 TIE = 4
 
 
+def test_no_row_inks_its_marks_in_the_frames_colour(shell: Shell) -> None:
+    """No word or mark on Home's rows is drawn in the hairlines' ink or the cursor's ground.
+
+    A row holding more drew its glyph in the frame's edge, about 1.3:1 on the cursor's ground,
+    so Now's mark vanished just where the cursor stood on it (VKCF3Z, 2026-11-06).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.normal()
+    shell.down_to("Now")
+    laid = laid_out(shell)
+    # Its colour alone, since the ground is the selection's colour at a wash.
+    faint = {laid["hairlines"][0]["ink"][-6:], laid["selection"]["ink"][-6:]}
+    lost = [
+        (word["text"], word["ink"])
+        for row in laid["rows"]
+        for word in row["words"]
+        if word["ink"][-6:] in faint
+    ]
+    assert not lost, f"rows draw in the frame's ink {faint}: {lost}"
+    shell.close_launcher()
+
+
 def test_rows_tile_and_the_cursor_row_is_filled_edge_to_edge(shell: Shell) -> None:
     """Home's rows meet with no gap, and the cursor row's ground fills its band, gutter and all.
 
