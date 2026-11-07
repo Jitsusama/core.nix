@@ -160,16 +160,18 @@ fn said(body: &str, plan: &Plan, now: Timestamp, cost: Vec<String>) -> Read {
         window.filter(|window| window.resets.is_none_or(|resets| resets > now))
     };
     let title = plan.title();
+    // Each allowance is labelled with its window in words, as a standing
+    // says it ("62% of 5 h"); the plan's name is its budget's label.
     let caps: Vec<String> = [
-        ("five-hours", "five-hour", 5, current(usage.five_hours)),
-        ("week", "weekly", 168, current(usage.week)),
+        ("five-hours", "5 h", 5, current(usage.five_hours)),
+        ("week", "the week", 168, current(usage.week)),
     ]
     .into_iter()
-    .filter_map(|(name, kind, window_hours, window)| {
+    .filter_map(|(name, label, window_hours, window)| {
         let window = window?;
         Some(records::cap(&Cap {
             name,
-            label: format!("{title} {kind} allowance"),
+            label: label.to_owned(),
             window_hours,
             used: window.used,
             resets: window.resets,

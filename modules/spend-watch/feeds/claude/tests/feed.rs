@@ -47,7 +47,7 @@ fn a_plan_without_five_hours_says_only_its_week() {
     let caps = kinds(&read.lines, "cap");
     assert_eq!(caps.len(), 1, "only the week is said: {caps:?}");
     assert_eq!(caps[0]["name"], "week");
-    assert_eq!(caps[0]["label"], "Claude Ultra weekly allowance");
+    assert_eq!(caps[0]["label"], "the week");
     assert_eq!(caps[0]["used"], 0.0);
 }
 
