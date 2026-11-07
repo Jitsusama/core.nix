@@ -1,18 +1,20 @@
 // pi's runs, a collection: the fleets, councils, judges and other review
-// rounds of the last day, and any still running, as pi-runs reads them
-// (runs.rs), asked again each time the launcher opens. Those running come
-// first, then the newest. Each is named for what it read, if a review
-// round read a change, and otherwise by its id; it wears how it stands,
-// and says its kind, how far along it is or what it cost (never while the
-// screen is shared), how long it ran, and the session that started it,
-// while that one runs.
+// rounds of the last day, and any still running, as the realm's mycelium
+// node serves them (kind `run`, which the harness publishes as each
+// changes, and lets go a day after it ends), told every change as it
+// comes rather than read again as the launcher opens. Those running come
+// first, then the newest. A review round is named for the change it read,
+// a fleet for what it's about; each wears how it stands, and says its
+// kind, how far along it is or what it cost (never while the screen is
+// shared), how long it ran, and the session that started it, while that
+// one runs. One the node still says runs whose session has gone wears
+// failure's mark, since nothing is left to finish it.
 // Return goes to that session's window, or copies the run's id once it's
 // gone; the right arrow steps into its participants, each saying how it
 // stands, its model and its cost, whose Return reads its answer in a
 // terminal once it has one.
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -25,23 +27,74 @@ Provider {
 
     collection: Words.collection("runs")
 
-    // As pi-runs wrote them, and the text they were read from, so the same
-    // text read again changes nothing.
-    property var runs: []
-    property string written: ""
+    // The node's records of runs (mycelium's PROTOCOL.md, The Daemon
+    // Interface), watched whole and then told each change as only what
+    // differs. What was held stays held while the node isn't answering, as
+    // while a switch restarts it.
+    readonly property var runKind: runLink.item
+    LazyLoader {
+        id: runLink
+        active: Sessions.nodePath !== ""
 
-    // The session each pi process is, by its pid: its address and window.
-    // Said as text first, which changes only when they do.
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "run"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+    // Each run's record as the node serves it, by its key.
+    property var records: {
+        runKind?.revision;
+        return Object.values(runKind?.held ?? {});
+    }
+
+    // The session that started each, by its own id, which a run's record
+    // names as its `parent`: its address. Said as text first, which
+    // changes only when they do. A parked one is still its session.
     readonly property string holding: {
         const by = {};
-        for (const session of Sessions.running) {
-            const pid = session.presence.owner ? session.presence.owner.pid : null;
-            if (pid && !by[pid])
-                by[pid] = { address: session.address };
+        for (const session of Sessions.running)
+            by[session.presence.session ?? ""] = { address: session.address, live: true };
+        for (const session of Sessions.parked ?? []) {
+            const id = session.presence.session ?? "";
+            if (!by[id])
+                by[id] = { address: session.address, live: false };
         }
+        delete by[""];
         return JSON.stringify(by);
     }
     readonly property var started: JSON.parse(holding)
+
+    // The runs, each as the rows are made from it: its bare id, its kind,
+    // what it's about, the session it's of, and its participants. The
+    // node's record keeps its own `kind`, so a run's own is read from its
+    // id, which the harness writes as fleet.<id> or review.<round>-<time>.
+    // One the node says runs whose session is gone has nothing left to
+    // finish it, so its participants still at work are gone.
+    readonly property var runs: records.map(record => {
+        const id = String(record.id ?? "");
+        const bare = id.replace(/^[a-z]+\./, "");
+        const round = bare.replace(/-.*$/, "");
+        const gone = record.state === "running" && !started[record.parent ?? ""];
+        return {
+            id: bare,
+            key: record.key ?? `run:${id}`,
+            kind: id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review",
+            about: record.about ?? "",
+            parent: record.parent ?? "",
+            started: record.since ?? "",
+            participants: (record.members ?? []).map(member => ({
+                id: member.id ?? "",
+                state: gone && running(member.state) ? "gone" : member.state ?? "",
+                model: member.model ?? "",
+                cost: Number(member["pi.cost.usd"] ?? 0),
+                started: member.since ?? "",
+                ended: member.ended ?? "",
+                answer: member.answer ?? ""
+            }))
+        };
+    })
 
     // Each kind by Agents' own word for it: a fleet or a council is several
     // subagents at once.
@@ -55,11 +108,12 @@ Provider {
     })
 
     function running(state) {
-        return state === "starting" || state === "running" || state === "idle";
+        return ["queued", "starting", "running", "idle"].includes(state);
     }
 
     function failed(state) {
-        return state === "failed" || state === "timeout" || state === "idle-timeout" || state === "gone";
+        return ["failed", "errored", "timeout", "idle-timeout", "soft-deadline", "gone"]
+            .includes(state);
     }
 
     // How a run or participant stands, as a glyph's meaning.
@@ -121,7 +175,7 @@ Provider {
         const rows = sorted.map(run => {
             if (run.participants.some(p => running(p.state)))
                 return made(run);
-            const address = sessions[run.pid]?.address ?? "";
+            const address = sessions[run.parent]?.live ? sessions[run.parent].address : "";
             const from = [JSON.stringify(run), address, sharing].join("\n");
             const before = provider.kept[run.id];
             next[run.id] = before && before.from === from ? before : { from: from, row: made(run) };
@@ -134,19 +188,28 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
+    // A review round by the change it read, as "council on core.nix#380",
+    // and a fleet by what it's about, its kind beside it.
     function named(run) {
-        return run.about ? `${kinds[run.kind] ?? run.kind} on ${run.about}` : run.id;
+        return run.kind === "fleet" ? run.about || run.id
+            : run.about ? `${kinds[run.kind] ?? run.kind} on ${run.about}` : run.id;
+    }
+
+    // The session that started it, while that one runs.
+    function sessionOf(run) {
+        const session = started[run.parent];
+        return session?.live ? session : undefined;
     }
 
     function made(run) {
-        const session = started[run.pid];
+        const session = sessionOf(run);
         const states = run.participants.map(p => p.state);
         const live = states.some(running);
         const done = states.filter(state => !running(state)).length;
         const spent = cost(run.participants);
         const row = member({
             thing: true,
-            key: `run:${run.id}`,
+            key: run.key,
             verb: session ? "go to" : "copy",
             // With no session to go to, it copies its id for want of one, as
             // a job's row does, so Return goes into its parts instead
@@ -156,30 +219,30 @@ Provider {
             live: live,
             glyph: Theme.glyph[mark(states)],
             hue: "program",
-            side: [run.about ? "" : (kinds[run.kind] ?? run.kind),
+            side: [run.kind !== "fleet" && run.about ? "" : (kinds[run.kind] ?? run.kind),
                 live ? `${done} of ${states.length} done` : "",
                 !live && spent > 0 && !Quiet.sharing ? dollars(spent) : "",
                 lasted(run.started, live ? "" : ending(run)),
                 session ? session.address : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
-            note: run.about ? run.id : run.cwd,
+            note: run.kind !== "fleet" && run.about ? run.id : "",
             later: true,
             now: !session,
             run: () => provider.go(run),
             verbs: () => provider.verbs(run)
         });
-        // Its id, kind and folder, made ready to match when first searched,
-        // as its name is.
+        // Its id and kind, made ready to match when first searched, as its
+        // name is.
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.kept(`${run.id} ${run.kind} ${run.cwd}`))
+            get: () => also ?? (also = Fuzzy.kept(`${run.id} ${run.kind}`))
         });
         return row;
     }
 
     function go(run) {
-        const session = started[run.pid];
+        const session = sessionOf(run);
         const ongoing = session
             ? Sessions.running.find(one => one.address === session.address) : undefined;
         if (ongoing)
@@ -188,21 +251,22 @@ Provider {
             Quickshell.clipboardText = run.id;
     }
 
-    // A participant's answer, read in a terminal, in less by name, since
-    // an agent's PAGER is often cat, which would close it at once.
+    // A participant's answer, the last words of its result, read in a
+    // terminal, in less by name, since an agent's PAGER is often cat, which
+    // would close it at once.
     function showAnswer(run, participant) {
         Niri.spawn(["kitty", "--title", `${named(run)} \u00b7 ${participant.id}`, "sh", "-c",
-            "pi-runs answer \"$1\" | less", "sh", participant.answer]);
+            "jq -r '.finalAssistantText // \"\"' \"$1\" | less", "sh", participant.answer]);
     }
 
     function verbs(run) {
-        const session = started[run.pid];
+        const session = sessionOf(run);
         const rows = run.participants.map(p => thing({
             key: `participant:${run.id}:${p.id}`,
             name: p.id,
             glyph: Theme.glyph[mark([p.state])],
             hue: "program",
-            side: [running(p.state) ? (p.activity || p.state) : (p.state === "complete" ? "" : p.state),
+            side: [p.state === "complete" ? "" : p.state,
                 p.model.replace(/^.*\//, ""),
                 !running(p.state) && p.cost && !Quiet.sharing ? dollars(p.cost) : "",
                 lasted(p.started, running(p.state) ? "" : p.ended)]
@@ -257,41 +321,4 @@ Provider {
             .filter(part => part !== "").join(", ");
     }
 
-    Process {
-        id: reading
-        command: ["pi-runs", Sessions.state]
-        stdout: StdioCollector {
-            id: collected
-
-            onStreamFinished: {
-                const text = collected.text;
-                if (text === provider.written)
-                    return;
-                try {
-                    const said = JSON.parse(text);
-                    if (Array.isArray(said)) {
-                        provider.written = text;
-                        provider.runs = said;
-                    }
-                } catch (error) {
-                    // Half a reading, or none: what was read before stands.
-                }
-            }
-        }
-    }
-
-    function look() {
-        reading.running = true;
-    }
-
-    Connections {
-        target: provider.launcher
-
-        function onOpenChanged() {
-            if (provider.launcher.open)
-                provider.look();
-        }
-    }
-
-    Component.onCompleted: look()
 }

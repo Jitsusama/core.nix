@@ -46,8 +46,8 @@ machine, one path through each connection.
   `Stack.js` for the notices' order or `Picking.js` for the region picker,
   each held by a test in Qt's own engine, as its header says.
 - Programs the shell runs: `askpass.sh`, OpenSSH's askpass asked through
-  the shell; `quests.rs` and `runs.rs`, the launcher's quests and runs,
-  built by `pi-helper.nix`; `keyboard-lights.rs`, which says whether caps
+  the shell; `quests.rs`, the launcher's quests, built by
+  `pi-helper.nix`; `keyboard-lights.rs`, which says whether caps
   lock is on, run by `nixos.nix`; [`record-window/`][record], one
   window's recording for the recorder; and [`whereabouts/`][whereabouts],
   where the laptop is, from GeoClue, for the weather's here.

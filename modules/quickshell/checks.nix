@@ -2265,11 +2265,11 @@ onLinux {
       touch $out
     '';
 
-  # The launcher's runs find pi's fleets and review rounds in a harness's
-  # state written here (tests/runs-state.sh), as the real pi-runs reads it,
-  # and go to the session that started one or read a participant's answer
-  # (tests/runs.qml), with niri, pi's sessions and the screen's sharing
-  # stood in. pi-runs gives the answer whole, for the pager.
+  # The launcher's runs find pi's fleets and review rounds in their records
+  # as the realm's mycelium node serves them, and go to the session that
+  # started one or read a participant's answer (tests/runs.qml), with niri,
+  # pi's sessions and the screen's sharing stood in, and no node, so the
+  # case gives the records itself.
   the-launcher-finds-the-runs =
     let
       niri = singleton "Niri.qml" ''
@@ -2279,28 +2279,15 @@ onLinux {
         function act(request) { acted = request; }
       '';
       sessions = singleton "Sessions.qml" ''
-        readonly property string state: Quickshell.env("PI_STATE")
+        readonly property string nodePath: ""
         property var running: []
+        property var parked: []
         function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
       '';
-      runs = pkgs.callPackage ./pi-helper.nix {
-        name = "pi-runs";
-        source = ./runs.rs;
-      };
     in
     pkgs.runCommandLocal "the-launcher-finds-the-runs" { } ''
-      state=$PWD/state
-      # One still at work, its process this sleep.
-      sleep 300 &
-      live=$!
-      ${lib.getExe pkgs.bash} ${../../tests/runs-state.sh} $state $live
-
-      printf 'All good.\n\n- One "finding".\n' > expected
-      ${lib.getExe' runs "pi-runs"} answer $state/subagent-workflow/runs/fleet-live/reviewers/b/result.json \
-        > answered
-      cmp expected answered
-
       mkdir launcher
+      cp ${./Daemon.qml} Daemon.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -2314,12 +2301,10 @@ onLinux {
       cp ${sessions} Sessions.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PI_STATE=$state PATH=${runs}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
-      kill $live
       touch $out
     '';
 

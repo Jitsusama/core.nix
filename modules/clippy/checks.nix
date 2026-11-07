@@ -24,7 +24,6 @@ onLinux {
         ../mic-mute-light/mic-mute-light.rs
         ../quickshell/keyboard-lights.rs
         ../quickshell/quests.rs
-        ../quickshell/runs.rs
         ../touchpad/click-strength.rs
         ../tuple/people.rs
       ];
