@@ -82,6 +82,16 @@ for judging before it's been judged here first.
   the full refresh rate without a dropped frame, no CPU at rest, no process
   started where one isn't needed. Measured with the defaults and again with a
   heavily customised configuration.
+- **As deep as the deepest.** Every program, device and service the desktop
+  touches is integrated with the same care as the best of them (Joel,
+  2026-11-07: "every integration has an insanely high bar of nerdiness and
+  integration and each should be given the same care"). It shows every true
+  figure its source has, live and in its own units, in its place, its
+  drawer, its : commands and its command line; it's found by typing as the
+  rest are and laid out to this document, none a thinner cousin.
+  **Check:** every figure the source gives is shown or named as
+  left out with a reason, and it holds up against the deepest integration
+  of its kind, row for row.
 - **Whole.** A theme switch leaves nothing of the old theme behind, the
   legibility check passes, and its keys are in the map without a clash.
 - **Proven.** Every bug found gets a check before its fix, and the check is
@@ -2256,8 +2266,11 @@ find the completion first, then next time, and never Tab in, which is
 named wherever Tab goes in and nowhere it doesn't, Ctrl+] never. On held
 notices d stays too, and the position gives way whole before any of them.
 Return's place holds the widest verb among the rows it may name: on the
-find those listed as it opens, growing once for a wider row found within
-that find; in normal and visual the place's own rows, ending lines and all.
+find those the text typed now lists, measured again at each letter or
+erasure and growing only while the cursor moves among them, so a passing
+row leaves no gap; in normal and visual the place's own rows, ending lines
+and all. Arrows, n and nothing pressed move no key; a letter may, since it
+changes the rows.
 It's the only room held: a hint keeps none for a key it no longer draws.
 On the command line the foot names the line's own keys: "Tab choose" until
 a line is chosen or typed, then what Return runs. Its hints come from the
