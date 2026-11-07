@@ -34,10 +34,9 @@ const LOW: f64 = 0.8;
 const IDLE: f64 = 0.5;
 /// A spell held low counts once it lasts longer than this, in seconds.
 const SPELL_S: u64 = 60;
-/// A rate under this share of the base is starved, when it's full.
+/// A rate under this share of the base is starved, when the line, recorded
+/// unshaped, carried more than it with no queue of its own.
 const STARVED: f64 = 0.5;
-/// A direction carrying this share of its rate or more wants more.
-const FULL: f64 = 0.75;
 /// A direction's own delay over this, in ms, is cause for a cut.
 const CAUSE_MS: f64 = 15.0;
 
@@ -216,6 +215,9 @@ pub(crate) struct Reading {
     counted: Option<(u64, u64, u64)>,
     out: BTreeMap<Ipv4Addr, Least>,
     back: BTreeMap<Ipv4Addr, Least>,
+    /// Each reflector's round trip, out and back together, which a clock
+    /// stepping can't move, since it moves the two by opposite amounts.
+    round: BTreeMap<Ipv4Addr, Least>,
     seconds: Vec<Second>,
 }
 
@@ -229,6 +231,7 @@ impl Reading {
             counted: None,
             out: BTreeMap::new(),
             back: BTreeMap::new(),
+            round: BTreeMap::new(),
             seconds: Vec::new(),
         }
     }
@@ -258,8 +261,25 @@ impl Reading {
                 tx,
                 ..
             } => {
-                let up = self.out.entry(reflector).or_default().over(at, out);
-                let down = self.back.entry(reflector).or_default().over(at, back);
+                // No way's own delay is more than the round trip rose: a
+                // queue raises both, a clock stepping only the one.
+                let rose = self
+                    .round
+                    .entry(reflector)
+                    .or_default()
+                    .over(at, out + back);
+                let up = self
+                    .out
+                    .entry(reflector)
+                    .or_default()
+                    .over(at, out)
+                    .min(rose);
+                let down = self
+                    .back
+                    .entry(reflector)
+                    .or_default()
+                    .over(at, back)
+                    .min(rose);
                 tick.up.insert(reflector, up);
                 tick.down.insert(reflector, down);
                 self.count(at, rx, tx);
@@ -413,8 +433,11 @@ pub struct Score {
     pub cuts: u64,
     /// Those made with the direction's own delay not over 15 ms.
     pub unfounded: u64,
-    /// Seconds with the rate under half the base while the direction
-    /// carried 0.75 of the rate or more.
+    /// Seconds with the rate under half the base while the direction,
+    /// recorded unshaped, carried more than the rate with its own delay
+    /// not over 15 ms: what holding it there would have held back for no
+    /// queue. Past a queue, holding it is the cut's work, which a replay
+    /// can't weigh, since it can't show the queue a rate would drain.
     pub starved_s: u64,
 }
 
@@ -467,8 +490,8 @@ pub fn score(stay: &Stay, controller: &mut impl Controller, base: Option<Base>) 
     for s in &stay.seconds {
         let joined = last.is_some_and(|t| s.t_s - t < 1.5);
         last = Some(s.t_s);
-        up.carry(joined, s.up_kbit, holding.up);
-        down.carry(joined, s.down_kbit, holding.down);
+        up.carry(joined, s.up_kbit, holding.up, s.up_delay_ms);
+        down.carry(joined, s.down_kbit, holding.down, s.down_delay_ms);
         let now = controller.second(s);
         if let Some(before) = answered {
             unfounded_cuts.extend(up.cut(s.t_s, before.up, now.up, s.up_delay_ms));
@@ -525,9 +548,9 @@ impl Tally {
         }
     }
 
-    /// A second the direction carried `carried` kbit/s under `rate`, the
-    /// one before it `joined` to it or not.
-    fn carry(&mut self, joined: bool, carried: f64, rate: Option<u64>) {
+    /// A second the direction carried `carried` kbit/s under `rate` with
+    /// its own delay `delay_ms`, the one before it `joined` to it or not.
+    fn carry(&mut self, joined: bool, carried: f64, rate: Option<u64>, delay_ms: Option<f64>) {
         if !joined {
             self.end_spell();
         }
@@ -539,7 +562,10 @@ impl Tally {
         } else {
             self.end_spell();
         }
-        if rate < STARVED * self.base && carried >= FULL * rate {
+        if rate < STARVED * self.base
+            && carried > rate
+            && delay_ms.is_none_or(|delay| delay <= CAUSE_MS)
+        {
             self.score.starved_s += 1;
         }
     }
@@ -674,7 +700,8 @@ pub fn summary(report: &Report) -> String {
         out,
         "\nheld low: under {LOW} of the base for over a minute, carrying under {IDLE} of \
          the rate\nwithout cause: cut with the direction's own delay not over {CAUSE_MS} ms\n\
-         starved: under {STARVED} of the base, carrying {FULL} of the rate or more"
+         starved: under {STARVED} of the base, carrying more than the rate with the \
+         direction's own delay not over {CAUSE_MS} ms"
     );
     for s in &report.stays {
         let _ = writeln!(
@@ -987,6 +1014,26 @@ mod tests {
     }
 
     #[test]
+    fn a_clock_stepping_is_no_queue_either_way() {
+        // As the replay of 5 November found: a clock stepped 5.2 s a
+        // minute in, out shorter by it and back longer, the round trip
+        // unmoved. Read over the least before it, the download stood
+        // 5,213 ms late until the shaper gave up.
+        let queue = |t: u64, _| {
+            if t >= 60 {
+                (-5_200.0, 5_200.0)
+            } else {
+                (0.0, 0.0)
+            }
+        };
+        let seconds = &read_lines(&line(NOV3, 180, constant(0, 0), queue))[0].seconds;
+        for s in seconds {
+            assert!(near_some(s.up_delay_ms, 0.0), "{s:?}");
+            assert!(near_some(s.down_delay_ms, 0.0), "{s:?}");
+        }
+    }
+
+    #[test]
     fn one_reflector_s_spike_is_outvoted() {
         let queue = |_, reflector| {
             if reflector == 0 {
@@ -1234,13 +1281,25 @@ mod tests {
     }
 
     #[test]
-    fn a_rate_under_half_the_base_while_full_is_starved() {
-        let stays = read_lines(&line(NOV3, 60, constant(4_000, 0), quiet));
+    fn a_rate_under_half_the_base_the_line_carried_past_is_starved() {
+        let stays = read_lines(&line(NOV3, 60, constant(5_000, 0), quiet));
         let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(scored.up.starved_s, 59);
         assert_eq!(scored.up.held_idle_s, 0);
         let scored = score(&stays[0], &mut fixed(6_000), Some(BASE));
         assert_eq!(scored.up.starved_s, 0, "over half the base");
+
+        // As the replay of 3 to 7 November found, a rate the line never
+        // reached held nothing back, recorded unshaped.
+        let stays = read_lines(&line(NOV3, 60, constant(4_000, 0), quiet));
+        let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
+        assert_eq!(scored.up.starved_s, 0, "carried no more than the rate");
+
+        // Nor past a queue of its own, which holding it would drain.
+        let queue = |t: u64, _| if t >= 30 { (30.0, 0.0) } else { (0.0, 0.0) };
+        let stays = read_lines(&line(NOV3, 60, constant(5_000, 0), queue));
+        let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
+        assert_eq!(scored.up.starved_s, 29, "only before the queue");
     }
 
     #[test]
