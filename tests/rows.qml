@@ -357,6 +357,12 @@ ShellRoot {
                 keys: [["Tab", "choose"], ["\u21b5", "start"]]
                 widths: [0, 300]
             }
+            // Chords held together, as a home row teaches its own and a
+            // viewer names the + key held with Ctrl.
+            KeyHints {
+                id: chordHints
+                keys: [["Super+\u21b5", "next time"], ["Ctrl++", "larger"]]
+            }
         }
     }
 
@@ -1099,6 +1105,21 @@ ShellRoot {
                 Math.abs(footHints.advance("Space ?", "keys")
                     - (hints.find(t => t.text === "keys").to
                         - hints.find(t => t.text === "Space").from)) < 1, said(hints));
+            // A chord's + stands a tie from each of its keys, as a row's
+            // chord sets it (Chord.qml), so the foot's "Super + \u21b5"
+            // reads as the rows' does (VKCF3Z, 2026-11-07); a + that is
+            // the key itself, as Ctrl's +, is a key.
+            const chords = drawn(chordHints, []).sort((a, b) => a.from - b.from);
+            const chordTexts = chords.map(t => t.text);
+            expect("a chord's keys and its + are drawn apart",
+                JSON.stringify(chordTexts) === JSON.stringify(["Super", "+", "\u21b5", "next time",
+                    "Ctrl", "+", "+", "larger"]), said(chords));
+            expect("each + stands a tie from its keys",
+                [0, 1, 4, 5].every(at => Math.abs(chords[at + 1].from - chords[at].to
+                    - Theme.space.rung.tie) < 1), said(chords));
+            expect("a chord is measured as it's drawn",
+                Math.abs(chordHints.advance("Super+\u21b5", "next time")
+                    - (chords[3].to - chords[0].from)) < 1, said(chords));
             // Insert's caret is a bar a quarter of a letter wide, as his
             // Neovim's guicursor draws it. In normal the keys are on the
             // rows, so the field draws no caret at all: a block there sat
