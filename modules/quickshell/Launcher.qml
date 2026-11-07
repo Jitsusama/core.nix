@@ -3949,6 +3949,14 @@ Scope {
             // When the key's own work is done, and the change could be shown.
             Qt.callLater(() => act.done = KeyTimes.now());
         }
+        // What a key changed is shown at once, whatever else waits on the
+        // pacing below, so it's in the key's own frame or the next.
+        if (byKey) {
+            if (!refreshing.includes(source))
+                refreshing = refreshing.concat([source]);
+            Qt.callLater(refreshDue);
+            return;
+        }
         if (refreshing.includes(source))
             return;
         refreshing = refreshing.concat([source]);
@@ -3990,8 +3998,12 @@ Scope {
     Connections {
         target: prompt
 
+        // A letter typed into the find changes nothing, and a source
+        // changing beside one is left to the pacing, as Slack's answers
+        // arriving while Joel types are.
         function onKeysTakenChanged() {
-            root.keyHeardAt = KeyTimes.now();
+            if (!prompt.typingNow || prompt.keyTaken.length !== 1)
+                root.keyHeardAt = KeyTimes.now();
         }
     }
 
@@ -4243,9 +4255,14 @@ Scope {
     // Whether a category holds something of a source's, by the provider
     // each thing it holds comes from, so its members are made again only
     // when one of theirs changed.
+    // A place holds a source's row by its word's provider, by the source's
+    // own name, or as one of its things: Desktop's Do Not Disturb is the
+    // session's, and no word says so, so its act never showed while
+    // Desktop was held (2026-11-07).
     function holdsFrom(category, source) {
         const name = source.settings.name;
-        return holdings(category).some(id => (Words.of(id).provider ?? id) === name);
+        return holdings(category).some(id => (Words.of(id).provider ?? id) === name
+            || source.things.some(own => own.key === id));
     }
 
     // The place beside the one held deepest, the next (1) or the one before
