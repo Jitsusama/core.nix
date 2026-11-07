@@ -657,6 +657,10 @@
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
   '';
+  kitty-draws-the-budget-mark-in-one-cell = ''
+    kitty draws the robot pi's footer marks a budget with in one cell, the space after it left
+    blank, though the mono face inks it wider than a cell
+  '';
   kitty-draws-every-letter-whole = ''
     kitty draws each letter of limit and will as the letter alone, in regular, bold, italic and
     bold italic, so texture healing never gives one a glyph wider than its cell

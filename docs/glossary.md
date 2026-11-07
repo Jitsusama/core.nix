@@ -136,11 +136,13 @@ first in the queue and conclude.
 | judge | the model that consolidates a council's findings | | |
 | finding | something a review or a peer found, for whoever owns what it's about | | `intent: finding` |
 | change | work put up for review | PR, pull request, proposal | |
-| AI spend | what agents have cost | cost, usage, tokens, budget | spend-watch |
+| AI spend | what agents have cost | cost, usage, tokens | spend-watch |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
+| budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | |
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
-| allowance | how much of a Claude plan one window allows: five hours, or a week | limit | `5h`, `wk` |
+| allowance | how much of a budget one window allows: a share of a Claude plan's five hours or week, or dollars of the AI proxy's week | limit | `5h`, `wk` |
+| window | the stretch of time an allowance counts over, such as five hours or a week | | |
 | Joel | the human every session works for | user, human, operator | |
 | status line | the line under a session saying how it stands | status bar | |
 

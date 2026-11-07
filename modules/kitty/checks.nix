@@ -80,6 +80,25 @@ onLinux {
         touch $out
       '';
 
+  # kitty draws the robot pi's footer marks a budget with in its own cell,
+  # leaving the space after it blank, though the face inks it wider than a
+  # cell: without narrow_symbols holding it to one, the space is inked.
+  kitty-draws-the-budget-mark-in-one-cell =
+    pkgs.runCommandLocal "kitty-draws-the-budget-mark-in-one-cell"
+      { nativeBuildInputs = [ pkgs.kitty ]; }
+      ''
+        export HOME=$PWD
+        # U+F06A9 in UTF-8's bytes, since bash writes a \U escape only in a
+        # locale the build doesn't have.
+        cells=$(FONTCONFIG_FILE=${featured} kitty +launch ${./ink.py} \
+          ${configuration}/kitty.conf $'\xf3\xb0\x9a\xa9 d')
+        if [ "$cells" != "inked blank inked" ]; then
+          echo "the budget mark, a space and a letter are drawn as: $cells"
+          exit 1
+        fi
+        touch $out
+      '';
+
   # kitty draws every letter of a word as the letter alone, in each of its
   # four styles: texture healing, which gives the m of "limit" the room of
   # the narrow i on either side, would draw it in a glyph wider than its
