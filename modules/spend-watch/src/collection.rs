@@ -54,6 +54,15 @@ pub struct Line {
     /// What its glyph shows: text, a report, a sign-in, or a finding that's
     /// found, a warning, an alert or expected.
     pub role: String,
+    /// The theme's mark its glyph is, by name, for a row whose role colours
+    /// a mark of its own rather than choosing one: a budget's, a window's,
+    /// a day's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub mark: String,
+    /// For an allowance's row, the hours of its window, which the launcher
+    /// names it by (its words.json's `spend:window:<hours>`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window: Option<u32>,
     /// What Return runs instead of copying, and the footer's word for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Vec<String>>,
@@ -139,6 +148,8 @@ fn line(key: impl Into<String>, name: impl Into<String>, side: impl Into<String>
         side,
         note: String::new(),
         role: "text".into(),
+        mark: String::new(),
+        window: None,
         run: None,
         verb: String::new(),
         expect: None,
@@ -274,6 +285,11 @@ fn period_line(
         side,
     );
     made.note = note;
+    // A day's row wears a day's mark, so the first screen's glyph column
+    // has no hole beside the budgets' (VKCF3Z, 2026-11-07).
+    if matches!(period, Period::Today | Period::Yesterday) {
+        "date".clone_into(&mut made.mark);
+    }
     made.rows = cuts_for(period)
         .filter_map(|cut| {
             let id = format!("{}/{}", period.id(), cut.id());
@@ -546,6 +562,11 @@ fn budgets(picture: &Picture, config: &crate::config::Config) -> Option<Standing
         .filter(|standing| standing.budgets.len() > 1)
 }
 
+/// The theme's marks the budgets' rows wear: AI spend's, for a budget and
+/// the whole, and a clock, for a window.
+const AGENT: &str = "agent";
+const CLOCK: &str = "clock";
+
 /// The Budgets row: the month's whole in billed spend, and behind it that
 /// whole, then each budget nearest its allowance first, standing in its
 /// own unit, with its allowances behind it when it has more than one.
@@ -554,6 +575,9 @@ fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
     let month = format!("{} this month", total["this month"].shown);
     let mut made = line("budgets", "Budgets", month);
     made.note = crate::standing::WORDS.into();
+    // Every row of the budgets wears AI spend's own mark, a window a clock,
+    // its role colouring it (VKCF3Z, 2026-11-07).
+    AGENT.clone_into(&mut made.mark);
     // The month's whole is the Budgets row's own figure, so the whole's
     // row behind it says the nearer periods rather than saying it again.
     let mut all = line(
@@ -565,6 +589,7 @@ fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
         crate::standing::WORDS,
         &format!("{} in 7 days", total["7 days"].shown),
     ]);
+    AGENT.clone_into(&mut all.mark);
     let budgets: Vec<Line> = standing
         .budgets
         .iter()
@@ -591,6 +616,7 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         _ => String::new(),
     };
     made.note = joined(&[&budget.words, default, &resets]);
+    AGENT.clone_into(&mut made.mark);
     let nearest = budget
         .allowances
         .iter()
@@ -619,6 +645,8 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
                 }
                 row.note = allowance_reset(picture, allowance);
                 row.role = allowance_role(Some(allowance)).into();
+                CLOCK.clone_into(&mut row.mark);
+                row.window = Some(allowance.window_hours);
                 row
             })
             .collect();
@@ -1472,6 +1500,19 @@ mod tests {
         assert_eq!(windows, [("5 h", "85%"), ("The week", "not read yet")]);
         assert!(plan.rows[1].copy.contains("nothing to copy"));
         assert_eq!(plan.rows[0].note, "resets 16:20");
+        // Each wears its mark, the launcher naming a window by its hours.
+        let marks: Vec<&str> = std::iter::once(budgets)
+            .chain(&budgets.rows)
+            .map(|row| row.mark.as_str())
+            .collect();
+        assert_eq!(marks, ["agent", "agent", "agent", "agent"]);
+        let windows: Vec<(&str, Option<u32>)> = plan
+            .rows
+            .iter()
+            .map(|row| (row.mark.as_str(), row.window))
+            .collect();
+        assert_eq!(windows, [("clock", Some(5)), ("clock", Some(168))]);
+        assert_eq!(collected.now[0].mark, "date");
         assert!(depth(&collected.now) <= 3);
     }
 

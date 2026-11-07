@@ -2047,45 +2047,78 @@ def spend_line(key: str, name: str, side: str, note: str = "", role: str = "text
     return line
 
 
+def marked(
+    line: Json, mark: str, window: int | None = None, rows: list[Json] | None = None
+) -> Json:
+    """Give a row the theme's mark its role colours, its window's hours and what it holds."""
+    line = {**line, "mark": mark}
+    if window is not None:
+        line["window"] = window
+    if rows:
+        line["rows"] = rows
+    return line
+
+
 # How things stand with three budgets, as spend-watch writes it: today, then Budgets, the
-# month's whole in billed spend, its glyph its nearest budget's; behind it today's whole, then
-# each budget nearest its allowance first, the plan stepping into its two windows.
+# month's whole in billed spend, its mark its nearest budget's colour; behind it today's whole,
+# then each budget nearest its allowance first, the plan stepping into its two windows.
 BUDGETED = {
     "v": 2,
     "sessions": {},
     "helpers": {},
     "families": {},
     "now": [
-        spend_line("today", "Today", "$412"),
-        {
-            **spend_line("budgets", "Budgets", "$21,564 this month", "billed spend", "warning"),
-            "rows": [
-                spend_line(
-                    "budgets/all",
-                    "All AI Spend",
-                    "$412 today",
-                    "billed spend \u00b7 $3,163 in 7 days",
+        marked(spend_line("today", "Today", "$412"), "date"),
+        marked(
+            spend_line("budgets", "Budgets", "$21,564 this month", "billed spend", "warning"),
+            "agent",
+            rows=[
+                marked(
+                    spend_line(
+                        "budgets/all",
+                        "All AI Spend",
+                        "$412 today",
+                        "billed spend \u00b7 $3,163 in 7 days",
+                    ),
+                    "agent",
                 ),
-                {
-                    **spend_line(
+                marked(
+                    spend_line(
                         "budget:claude", "Claude Pro", "85% of 5 h", "your own plan", "warning"
                     ),
-                    "rows": [
-                        spend_line(
-                            "budget:claude:five-hours", "5 h", "85%", "resets 16:20", "warning"
+                    "agent",
+                    rows=[
+                        marked(
+                            spend_line(
+                                "budget:claude:five-hours", "5 h", "85%", "resets 16:20", "warning"
+                            ),
+                            "clock",
+                            5,
                         ),
-                        spend_line("budget:claude:week", "The week", "40%", "resets Mon 09:00"),
+                        marked(
+                            spend_line("budget:claude:week", "The week", "40%", "resets Mon 09:00"),
+                            "clock",
+                            168,
+                        ),
                     ],
-                },
-                spend_line(
-                    "budget:proxy",
-                    "Your proxy cap",
-                    "$27,570 of $40,000",
-                    "the employer's cap \u00b7 the default",
                 ),
-                spend_line("budget:delta", "Delta team token", "$310 this month", "a team's token"),
+                marked(
+                    spend_line(
+                        "budget:proxy",
+                        "Your proxy cap",
+                        "$27,570 of $40,000",
+                        "the employer's cap \u00b7 the default",
+                    ),
+                    "agent",
+                ),
+                marked(
+                    spend_line(
+                        "budget:delta", "Delta team token", "$310 this month", "a team's token"
+                    ),
+                    "agent",
+                ),
             ],
-        },
+        ),
     ],
     "quiet": [spend_line("today", "Today", "spending")],
 }
@@ -2129,7 +2162,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             desktop.photograph(f"launcher-budgets-each-at-{named}")
             desktop.step_in()
             rows = desktop.showing()["rows"]
-            assert rows[:2] == ["5 h", "The week"], rows
+            assert rows[:2] == ["5 Hours", "Week"], rows
             desktop.photograph(f"launcher-budgets-windows-at-{named}")
             desktop.close_launcher()
     finally:
