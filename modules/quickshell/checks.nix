@@ -1494,7 +1494,7 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         property var running: []
         property var wanting: []
-        function wanted(wants) { return "asks you"; }
+        function wanted(wants) { return "needs you"; }
       '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in

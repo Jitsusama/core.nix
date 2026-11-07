@@ -1689,10 +1689,12 @@ Singleton {
             && Waiting.asksJoel(session.presence, WaitingOnYou.standing);
     }
 
-    // What a want is, in words after the session's name.
+    // What a want is, in words after the session's name: "needs you",
+    // the one phrase for waiting on Joel everywhere, and a yes or a stuck
+    // run said within it (VKCF3Z, 2026-11-06), as the vocabulary has them.
     function wanted(wants) {
-        return wants.kind === "approval" ? "wants your yes"
-            : wants.kind === "blocked" ? "is stuck without you" : "asks you";
+        const said = Words.of("agents:wants").said ?? {};
+        return String(said[wants.kind] ?? said.question ?? "");
     }
 
     // The label a session's record gives its window, "π - ", its quest's

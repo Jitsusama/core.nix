@@ -19,7 +19,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    // Subagents, Agents' one word for them (Words.qml), a part of Agents.
+    // Runs, Agents' one word for them (Words.qml), a part of Agents: each
+    // a running of subagents, a fleet, a council or a judge's round.
     what: Words.of("runs").what
 
     collection: Words.collection("runs")

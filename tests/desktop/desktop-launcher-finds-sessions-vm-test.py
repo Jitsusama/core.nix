@@ -188,7 +188,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     question = {"kind": "question", "since": begun(), "said": "Which <way> & why?"}
     since = desktop.mark()
     # Said as written: the summary is plain, so its & isn't escaped.
-    with desktop.told("shows card A quest of its own & whole asks you"):
+    with desktop.told("shows card A quest of its own & whole needs you"):
         desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     # Its card goes by itself after ten seconds, which a busy host spends
     # on what follows, so Super+N takes the stack at once: held, it waits.
@@ -208,7 +208,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     time.sleep(3)
     cards = (
         "journalctl --user --unit=quickshell --no-pager --output=cat"
-        " | grep -c 'report\\[shows card A quest of its own & whole asks you'"
+        " | grep -c 'report\\[shows card A quest of its own & whole needs you'"
     )
     assert desktop.as_account(cards).strip() == "1", "the same want was said twice"
     since = desktop.mark()
@@ -239,7 +239,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
-    with desktop.told("shows card A quest of its own & whole wants your yes"):
+    with desktop.told("shows card A quest of its own & whole needs your yes"):
         desktop.presence_says(
             {
                 "addresses": ["TESTQA"],
@@ -256,7 +256,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     )
     # A third, left to time out while its want stands: it isn't
     # missed, since pi's mark says the want; ended, the mark goes.
-    with desktop.told("shows card A quest of its own & whole is stuck without you"):
+    with desktop.told("shows card A quest of its own & whole needs you to unblock it"):
         desktop.presence_says(
             {
                 "addresses": ["TESTQA"],
@@ -574,10 +574,10 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.down_to("As an Orchestrator")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Lighthouse"])
-    # Resuming changes how things stand (the key language's resume), so
+    # Reopening changes how things stand (the key language's reopen), so
     # Return from the find lands on it, saying what a second Return does.
     desktop.land()
-    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
     desktop.photograph("launcher-agents-start-orchestrator")
     # Return reopens its last session where it ran, as the harness
     # restores one, through a login shell so pi can reach its model.
@@ -589,14 +589,14 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     said = desktop.as_account(f"cat {opened}").split("\n")
     # Joel is there, so it's told nothing and waits for him.
     assert said[1:] == ["--session", "01a1-lighthouse", ""], said
-    # Resuming one takes Joel to it, so the launcher closes.
+    # Reopening one takes Joel to it, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
-    # Its own row under Orchestrators says the same, Resume its Return.
+    # Its own row under Orchestrators says the same, Reopen its Return.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     desktop.land()
-    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
     desktop.close_launcher()
     wakes_parked_orchestrator(desktop)
     desktop.as_account(

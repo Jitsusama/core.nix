@@ -19,14 +19,21 @@ Piece {
     app: "pi"
     // A program's, as the agents' glyph is on their notices and in Agents.
     hue: "program"
-    value: [`${Sessions.running.length} running`,
-        Sessions.working > 0 ? `${Sessions.working} working` : "",
-        wanting.length > 0 ? `${wanting.length} ${wanting.length === 1 ? "wants" : "want"} you` : ""]
+    // In the vocabulary's words, "needs you" as everywhere Joel is waited on.
+    readonly property var said: Words.of("agents").said ?? {}
+    function counted(key, count) {
+        return String(said[key] ?? "").replace("{count}", count);
+    }
+    readonly property string needing: wanting.length === 0 ? ""
+        : wanting.length === 1 ? String(said.needsCount ?? "")
+        : counted("needCount", wanting.length)
+    readonly property string working: Sessions.working > 0
+        ? counted("workingCount", Sessions.working) : ""
+    value: [counted("running", Sessions.running.length), working, needing]
         .filter(part => part !== "").join(", ")
-    // What's moving: those wanting Joel, else those working, else the
+    // What's moving: those needing Joel, else those working, else the
     // glyph alone while sessions sit idle.
-    glance: wanting.length > 0 ? `${wanting.length} ${wanting.length === 1 ? "wants" : "want"} you`
-        : Sessions.working > 0 ? `${Sessions.working} working` : ""
+    glance: needing !== "" ? needing : working
     title: "pi"
     hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
