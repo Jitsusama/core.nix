@@ -309,7 +309,7 @@
     },
     {
       "id": "runs",
-      "once": ["Helpers", "Subagents"],
+      "once": ["Helpers"],
       "name": "Runs",
       "term": "Agents/run",
       "noun": "runs",

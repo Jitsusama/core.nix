@@ -1365,6 +1365,7 @@ onLinux {
         readonly property string home: Quickshell.env("HOME")
         readonly property string quests: Quickshell.env("QUESTS")
         property var running: []
+        property var parked: []
         function isOf(session) { return `window:''${session.window.id}`; }
         function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
         property var started: null
@@ -1424,6 +1425,7 @@ onLinux {
         readonly property string inboxes: state + "/steer"
         property var running: Array.from({ length: 120 },
           (_, at) => ({ address: "A" + String(at).padStart(3, "0") }))
+        property var parked: []
         property var present: ({})
         function asks(session) { return false; }
         function resume(id, quest, folder, gone) {}
