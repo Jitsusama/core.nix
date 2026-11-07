@@ -47,6 +47,10 @@ pub struct Listing {
     /// When the listing began, in wall seconds: garbage made since isn't
     /// in it.
     pub listed_at: f64,
+    /// How long it took, in seconds, so the next guard rests after it as
+    /// this one would have. One kept before this was said has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub took: Option<f64>,
     pub dead: Vec<Listed>,
 }
 
@@ -87,7 +91,18 @@ impl Listing {
                 refers,
             })
             .collect();
-        Listing { listed_at, dead }
+        Listing {
+            listed_at,
+            took: None,
+            dead,
+        }
+    }
+
+    /// When it ended and how long it took, in wall seconds, if it says, so
+    /// a guard started since rests after it as the one that listed would
+    /// have.
+    pub fn ended(&self) -> Option<(f64, f64)> {
+        self.took.map(|took| (self.listed_at + took, took))
     }
 }
 
