@@ -5,9 +5,10 @@
 // strip a reading for each member from the left, and the warning colour at
 // 95% or when the row says it warns, never when it says it doesn't. Then
 // rows (Choice.qml) at a panel's width: their graphs stand in one column
-// clear of the words either side, and a figure wears no glyph while a row
-// holding more wears its glyph in the edge colour. It exits 0 once every
-// case holds, and otherwise 1, saying which didn't.
+// clear of the words either side, and a figure wears no glyph unless it's
+// marked, while a row holding more wears its glyph muted, but for a
+// warning's or an alert's hue, which it keeps. It exits 0 once every case
+// holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 
@@ -63,6 +64,17 @@ ShellRoot {
                 glyph: "$"
                 hue: Theme.action
             }
+            // Rows that say how they stand by their marks' hue, as a budget
+            // and its windows do: holding more past its warning, holding
+            // more over, and a figure marked, at rest and past its warning.
+            Choice { id: holdsWarning; name: "Claude Pro"; glyph: "$"; hue: Theme.warning
+                sort: "holds" }
+            Choice { id: holdsAlert; name: "Claude Pro"; glyph: "$"; hue: Theme.alert
+                sort: "holds" }
+            Choice { id: markedResting; name: "Week"; side: "40%"; glyph: "$"
+                hue: Theme.muted; sort: "figure"; marked: true }
+            Choice { id: markedWarning; name: "5 Hours"; side: "85%"; glyph: "$"
+                hue: Theme.warning; sort: "figure"; marked: true }
         }
     }
 
@@ -155,6 +167,17 @@ ShellRoot {
                 Qt.colorEqual(glyphOf(long).color, Theme.muted), glyphOf(long).color);
             expect("an act wears its hue", Qt.colorEqual(glyphOf(act).color, Theme.action),
                 glyphOf(act)?.color);
+            // A mark saying a warning or an alert keeps it, holding more or
+            // not, so the row's standing reads at a glance (VKCF3Z,
+            // 2026-11-07, on the budgets); a figure marked wears its mark.
+            for (const [row, hue, what] of [[holdsWarning, Theme.warning, "warning"],
+                [holdsAlert, Theme.alert, "alert"], [markedResting, Theme.muted, "muted"],
+                [markedWarning, Theme.warning, "warning"]]) {
+                const glyph = glyphOf(row);
+                expect(`${row.name} (${row.sort}) wears its mark in the ${what} colour`,
+                    glyph !== undefined && Qt.colorEqual(glyph.color, hue),
+                    glyph === undefined ? said(drawn(row, [])) : glyph.color);
+            }
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

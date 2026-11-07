@@ -338,6 +338,16 @@ QtObject {
         expect("a value holding only facts copies last", names(Catalogue.leading({
             name: "Battery", verb: "copy", run: does, verbs: opens, targets: opens },
             [{ name: "Charger", figure: true, run: does }])), "Charger, Copy");
+        // Return's own copy wears the copy mark, as every Copy row does,
+        // never its row's, which may be a caution's (VKCF3Z, 2026-11-07:
+        // Copy inside Budgets wore the budget's warning mark); any other
+        // act of Return's wears its row's.
+        const budget = { name: "Budgets", verb: "copy", glyph: "!", run: does, verbs: opens };
+        const copied = Catalogue.leading(budget, [{ name: "Claude Pro", run: does }], "c");
+        expect("Return's copy wears the copy mark", copied.map(one => [one.name, one.glyph]),
+            [["Claude Pro", undefined], ["Copy", "c"]]);
+        const opening = Catalogue.leading(notice, offers, "c");
+        expect("another of Return's acts wears its row's mark", opening[0].glyph, "n");
         expect("read without what it's done to", names(Catalogue.leading({ name: "Radio",
             verb: "turn off", run: does, verbs: opens }, [{ name: "Turn it off", run: does }])),
             "Turn it off");
