@@ -50,8 +50,9 @@
       );
 }
 // onLinux {
-  # clippy finds nothing in pi-packages, its tests included, which run as it
-  # builds: a live process keeps its version, files unchanged, through an
+  # clippy finds nothing in pi-packages, its tests included. This check only
+  # lints; the tests run when the package itself builds (package.nix), and
+  # prove a live process keeps its version, files unchanged, through an
   # update, and a build that fails or leaves a native module unbuilt is never
   # swapped in.
   pi-packages-passes-clippy = passesClippy "pi-packages-passes-clippy" (
