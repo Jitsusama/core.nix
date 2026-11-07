@@ -59,10 +59,6 @@ pub struct Line {
     /// a day's.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub mark: String,
-    /// For an allowance's row, the hours of its window, which the launcher
-    /// names it by (its words.json's `spend:window:<hours>`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window: Option<u32>,
     /// What Return runs instead of copying, and the footer's word for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Vec<String>>,
@@ -154,7 +150,6 @@ fn line(key: impl Into<String>, name: impl Into<String>, side: impl Into<String>
         note: String::new(),
         role: "text".into(),
         mark: String::new(),
-        window: None,
         run: None,
         verb: String::new(),
         expect: None,
@@ -436,7 +431,9 @@ fn sign_ins(picture: &Picture, feed: &str) -> Vec<Line> {
 
 fn verb(action: &crate::findings::Action) -> &'static str {
     match action_kind(action) {
-        "go" => "go",
+        // Return takes Joel to the session, so it says where it goes
+        // (VKCF3Z, 2026-11-07).
+        "go" => "go to",
         "sign-in" => "sign in",
         _ => "ask",
     }
@@ -651,7 +648,6 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
                 row.note = allowance_reset(picture, allowance);
                 row.role = allowance_role(Some(allowance)).into();
                 CLOCK.clone_into(&mut row.mark);
-                row.window = Some(allowance.window_hours);
                 row
             })
             .collect();
@@ -1473,9 +1469,10 @@ mod tests {
         store(
             &history,
             &serde_json::json!({
-                "v": 1, "kind": "cap", "name": "five-hours", "label": "5 h", "unit": "share",
-                "budget": "claude", "used": 0.85, "windowHours": 5, "warn": 0.8,
-                "state": "ok", "resets": "2026-10-14T16:20:00Z", "at": "2026-10-14T14:20:00Z",
+                "v": 1, "kind": "cap", "name": "five-hours", "label": "Five Hours",
+                "unit": "share", "budget": "claude", "used": 0.85, "windowHours": 5,
+                "warn": 0.8, "state": "ok", "resets": "2026-10-14T16:20:00Z",
+                "at": "2026-10-14T14:20:00Z",
             }),
             NOW,
         );
@@ -1536,14 +1533,15 @@ mod tests {
             .iter()
             .map(|row| (row.name.as_str(), row.side.as_str()))
             .collect();
-        assert_eq!(windows, [("5 h", "85%"), ("The week", "not read yet")]);
+        // A window no feed reads yet is named for its length.
+        assert_eq!(windows, [("Five Hours", "85%"), ("Week", "not read yet")]);
         assert!(plan.rows[1].copy.contains("nothing to copy"));
         assert_eq!(plan.rows[0].note, "resets 16:20");
         assert!(depth(&collected.now) <= 3);
     }
 
     // Each budget's row wears AI spend's mark and each window a clock, and
-    // a day's row a day's, the launcher naming a window by its hours.
+    // a day's row a day's, a window named as its feed names it.
     #[test]
     fn the_budgets_wear_their_marks() {
         let (_, collected, _) = budgeted();
@@ -1554,12 +1552,12 @@ mod tests {
             .map(|row| row.mark.as_str())
             .collect();
         assert_eq!(marks, ["agent", "agent", "agent", "agent"]);
-        let windows: Vec<(&str, Option<u32>)> = plan
+        let windows: Vec<(&str, &str)> = plan
             .rows
             .iter()
-            .map(|row| (row.mark.as_str(), row.window))
+            .map(|row| (row.mark.as_str(), row.name.as_str()))
             .collect();
-        assert_eq!(windows, [("clock", Some(5)), ("clock", Some(168))]);
+        assert_eq!(windows, [("clock", "Five Hours"), ("clock", "Week")]);
         assert_eq!(collected.now[0].mark, "date");
     }
 

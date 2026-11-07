@@ -73,8 +73,8 @@ shape are known from tools that read it in the open:
 ## What It Says
 
 Each read writes a `cap` for each window the answer gives, `five-hours` and
-`week`, each labelled with its window in words ("5 h", "the week"), as a
-standing says it, since the plan's name is its budget's label:
+`week`, each named for its window as the contract names one ("Five Hours",
+"Week"), since the plan's name is its budget's label:
 `unit` `share`, `used` from 0 to 1, `resets`, `windowHours` (5 and 168),
 `warn` at 0.8, `at`, and `state`, which is `refused` once all of it is used,
 `notified` past the warning and `ok` below. A window the answer doesn't

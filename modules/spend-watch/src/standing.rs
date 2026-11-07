@@ -6,7 +6,7 @@
 //! over the days it covers. A share is never turned into dollars, so it's
 //! never in the whole.
 
-use crate::budgets::{Budgets, window_label};
+use crate::budgets::{Budgets, window_label, window_name};
 use crate::caps::Unit;
 use crate::config::{BudgetConfig, Config};
 use crate::money::{maybe_about, percent, whole};
@@ -334,7 +334,7 @@ fn allowances(
         .filter(|declared| !declared.stands_in)
         .map(|declared| Allowance {
             name: declared.name.clone(),
-            label: window_label(declared.window_hours),
+            label: window_name(declared.window_hours),
             unit: declared.unit.name(),
             used: None,
             allowance: declared.allowance,
@@ -355,14 +355,15 @@ fn allowances(
 
 fn allowance(config: &Config, view: &CapView) -> Allowance {
     let cap = &view.cap;
+    // Its name is its feed's, or its window's for one of the watch's own;
+    // its figure says the window short ("62% of 5 h"), whatever it's named.
+    let label = cap.label.clone();
     let fed = !cap.feed.is_empty();
-    let label = if fed {
-        cap.label.clone()
-    } else {
-        window_label(cap.window_hours)
-    };
     let (standing, nearest) = match (cap.unit, view.used, cap.allowance) {
-        (Unit::Share, Some(used), _) => (format!("{} of {label}", percent(used)), Some(used)),
+        (Unit::Share, Some(used), _) => (
+            format!("{} of {}", percent(used), window_label(cap.window_hours)),
+            Some(used),
+        ),
         (Unit::Dollars, _, Some(allowance)) => (
             format!("{} of {}", whole(view.spent), whole(allowance)),
             Some(view.spent / allowance),

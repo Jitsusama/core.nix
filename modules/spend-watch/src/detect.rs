@@ -170,6 +170,12 @@ fn cap_key(view: &CapView, what: &str) -> String {
     format!("cap:{}:{}:{what}", view.owner, view.cap.name)
 }
 
+/// A cap as a sentence names it: its window's name, then the glossary's
+/// word for what it is, as in "near the Premium Day allowance".
+fn allowance_named(cap: &crate::caps::Cap) -> String {
+    format!("the {} allowance", cap.label)
+}
+
 /// What one cap with an allowance says now: over it, likely to reach it
 /// within a day, or near it, and its override ending.
 fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
@@ -219,7 +225,7 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
             } else {
                 Severity::Warning
             },
-            format!("may reach the {} within a day", cap.label),
+            format!("may reach {} within a day", allowance_named(cap)),
             format!(
                 "{} of {} spent{}; by the forecast's paths.",
                 whole(view.spent),
@@ -245,7 +251,7 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
             cap_key(view, "near"),
             "caps",
             Severity::Warning,
-            format!("near the {}", cap.label),
+            format!("near {}", allowance_named(cap)),
             format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
         );
         f.badge = percent(share);
@@ -277,16 +283,28 @@ fn share_finding(
         format!(", resetting at {}", picture.zone.clock(at, picture.now))
     });
     let (what, severity, title) = if over {
-        ("over", Severity::Alert, format!("over the {}", cap.label))
+        (
+            "over",
+            Severity::Alert,
+            format!("over {}", allowance_named(cap)),
+        )
     } else {
-        ("near", Severity::Warning, format!("near the {}", cap.label))
+        (
+            "near",
+            Severity::Warning,
+            format!("near {}", allowance_named(cap)),
+        )
     };
     let mut f = finding(
         cap_key(view, what),
         "caps",
         severity,
         title,
-        format!("{} of the {} used{resets}.", percent(used), cap.label),
+        format!(
+            "{} of {} used{resets}.",
+            percent(used),
+            allowance_named(cap)
+        ),
     );
     f.badge = view.resets.map_or_else(
         || percent(used),
@@ -324,7 +342,7 @@ fn over_finding(
         cap_key(view, "over"),
         "caps",
         Severity::Alert,
-        format!("over the {}", view.cap.label),
+        format!("over {}", allowance_named(&view.cap)),
         format!(
             "{} of {}{counted}.{frees}",
             whole(view.spent),
@@ -372,7 +390,7 @@ fn ending_finding(
         } else {
             Severity::Warning
         },
-        format!("the {} override is ending", view.cap.label),
+        format!("{} override is ending", allowance_named(&view.cap)),
         format!(
             "The {} override ends {day}. At this pace, a {} chance the spend \
              is over the {} that follows the moment it does.",
@@ -1514,6 +1532,33 @@ mod tests {
             .into_iter()
             .map(|found| found.title)
             .collect()
+    }
+
+    // A window is named in a sentence as its feed names it, with the
+    // glossary's word for what it is after it.
+    #[test]
+    fn a_window_s_name_is_said_with_its_allowance() {
+        let history = History::memory();
+        let line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "five-hours", "label": "Five Hours",
+            "unit": "share", "used": 0.85, "windowHours": 5, "warn": 0.8, "state": "ok",
+            "resets": crate::time::rfc3339(NOW + 2.0 * HOUR),
+            "at": crate::time::rfc3339(NOW - 60.0),
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW - 60.0).unwrap();
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        let found = caps(&picture);
+        assert_eq!(
+            found
+                .iter()
+                .map(|found| (found.title.as_str(), found.detail.split(',').next()))
+                .collect::<Vec<_>>(),
+            [(
+                "near the Five Hours allowance",
+                Some("85% of the Five Hours allowance used")
+            )]
+        );
     }
 
     // A fall is told once it has stood, and only while the cap stays down:

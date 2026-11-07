@@ -395,20 +395,20 @@ ShellRoot {
 
             // A budget wears AI spend's mark and a window a clock, muted at
             // rest and the warning's colour past it, drawn on a figure row
-            // too; a window is named as the vocabulary spells it out.
+            // too; a window is named and copied as its feed names it.
             const budgeted = JSON.parse(root.collected);
             budgeted.now = [{
                 key: "budgets", name: "Budgets", side: "$100 this month",
                 copy: "Budgets: $100 this month", role: "warning", mark: "agent",
                 rows: [{
-                    key: "budget:claude:five-hours", name: "5 h", side: "85%",
-                    copy: "5 h: 85%", role: "warning", mark: "clock", window: 5
+                    key: "budget:claude:five-hours", name: "Five Hours", side: "85%",
+                    copy: "Five Hours: 85%", role: "warning", mark: "clock"
                 }, {
-                    key: "budget:claude:week", name: "The week", side: "40%",
-                    copy: "The week: 40%", role: "text", mark: "clock", window: 168
+                    key: "budget:claude:week", name: "Week", side: "40%",
+                    copy: "Week: 40%", role: "text", mark: "clock"
                 }, {
-                    key: "budget:claude:day", name: "The day", side: "1%",
-                    copy: "The day: 1%", role: "text", mark: "clock", window: 24
+                    key: "budget:proxy:premium", name: "Premium Day", side: "$0 of $300",
+                    copy: "Premium Day: $0 of $300", role: "text", mark: "clock"
                 }]
             }];
             SpendWatch.said = budgeted;
@@ -417,9 +417,9 @@ ShellRoot {
                 budgets.glyph === Theme.glyph.agent && budgets.hue === "warning"
                 && budgets.marked, JSON.stringify(budgets));
             const windows = budgets.verbs().slice(0, 3);
-            expect("each window spelled out, its copy too",
-                windows.map(row => row.name).join(", ") === "Five Hours, Week, The day"
-                && windows[0].copies() === "Five Hours: 85%",
+            expect("each window as its feed names it, its copy too",
+                windows.map(row => row.name).join(", ") === "Five Hours, Week, Premium Day"
+                && windows[2].copies() === "Premium Day: $0 of $300",
                 windows.map(row => `${row.name}: ${row.copies()}`).join(", "));
             expect("a clock, muted at rest", windows.every(row => row.glyph === Theme.glyph.clock
                 && row.marked) && windows[0].hue === "warning" && windows[1].hue === "muted",
@@ -431,12 +431,12 @@ ShellRoot {
             shown.findings = [{
                 key: "finding:burn:s1", name: "A burn in Aquifer", side: "alert",
                 copy: "A burn in Aquifer.", role: "alert",
-                run: ["spend-watch", "go", "s1"], verb: "go",
+                run: ["spend-watch", "go", "s1"], verb: "go to",
                 expect: ["spend-watch", "findings", "expect", "burn:s1"]
             }];
             SpendWatch.said = shown;
             const burn = spend.everything()[0];
-            expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go"
+            expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go to"
                 && burn.hue === "alert", burn.name);
             // The answer for "spend" leads with it too, as the collection
             // does, before the rows of how things stand.

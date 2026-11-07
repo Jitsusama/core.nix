@@ -858,14 +858,7 @@ fn own_cap(
         feed: String::new(),
         budget: budget.to_owned(),
         name: declared.name.clone(),
-        label: if declared.stands_in {
-            format!("{}-hour cap", declared.window_hours)
-        } else {
-            format!(
-                "{} allowance",
-                crate::budgets::window_adjective(declared.window_hours)
-            )
-        },
+        label: crate::budgets::window_name(declared.window_hours),
         unit: caps::Unit::Dollars,
         allowance: declared.allowance,
         window_hours: declared.window_hours,
@@ -1103,7 +1096,7 @@ mod tests {
         assert_eq!((weekly.budget.as_str(), weekly.spent), ("proxy", 150.0));
         let week = view("week");
         assert_eq!((week.budget.as_str(), week.spent), ("delta", 500.0));
-        assert_eq!(week.cap.label, "weekly allowance");
+        assert_eq!(week.cap.label, "Week");
         let found = crate::detect::caps(&picture);
         let keys: Vec<&str> = found.iter().map(|finding| finding.key.as_str()).collect();
         assert_eq!(keys, ["cap:/delta:week:over"]);

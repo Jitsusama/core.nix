@@ -2051,13 +2051,9 @@ def spend_line(key: str, name: str, side: str, note: str = "", role: str = "text
     return line
 
 
-def marked(
-    line: Json, mark: str, window: int | None = None, rows: list[Json] | None = None
-) -> Json:
-    """Give a row the theme's mark its role colours, its window's hours and what it holds."""
+def marked(line: Json, mark: str, rows: list[Json] | None = None) -> Json:
+    """Give a row the theme's mark its role colours, and what it holds."""
     line = {**line, "mark": mark}
-    if window is not None:
-        line["window"] = window
     if rows:
         line["rows"] = rows
     return line
@@ -2094,15 +2090,17 @@ BUDGETED = {
                     rows=[
                         marked(
                             spend_line(
-                                "budget:claude:five-hours", "5 h", "85%", "resets 16:20", "warning"
+                                "budget:claude:five-hours",
+                                "Five Hours",
+                                "85%",
+                                "resets 16:20",
+                                "warning",
                             ),
                             "clock",
-                            5,
                         ),
                         marked(
-                            spend_line("budget:claude:week", "The week", "40%", "resets Mon 09:00"),
+                            spend_line("budget:claude:week", "Week", "40%", "resets Mon 09:00"),
                             "clock",
-                            168,
                         ),
                     ],
                 ),

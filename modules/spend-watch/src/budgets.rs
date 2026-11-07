@@ -125,13 +125,53 @@ impl Budgets {
     }
 }
 
-/// A window as an allowance's label says it, as in "the weekly allowance".
-pub fn window_adjective(hours: u32) -> String {
+/// A window's name, its length in words in Title Case, as an allowance
+/// no feed names is called: "Five Hours", "Day", "Week", "Ten Days".
+pub fn window_name(hours: u32) -> String {
     match hours {
-        24 => "daily".into(),
-        168 => "weekly".into(),
-        hours if hours % 24 == 0 => format!("{}-day", hours / 24),
-        hours => format!("{hours}-hour"),
+        1 => "Hour".into(),
+        24 => "Day".into(),
+        168 => "Week".into(),
+        hours if hours % 168 == 0 => format!("{} Weeks", counted(hours / 168)),
+        hours if hours % 24 == 0 => format!("{} Days", counted(hours / 24)),
+        hours => format!("{} Hours", counted(hours)),
+    }
+}
+
+/// A count in words in Title Case, since a name never opens with its
+/// figure; past what a window is ever counted in, the figure itself.
+fn counted(count: u32) -> String {
+    const ONES: [&str; 20] = [
+        "Zero",
+        "One",
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "Seven",
+        "Eight",
+        "Nine",
+        "Ten",
+        "Eleven",
+        "Twelve",
+        "Thirteen",
+        "Fourteen",
+        "Fifteen",
+        "Sixteen",
+        "Seventeen",
+        "Eighteen",
+        "Nineteen",
+    ];
+    const TENS: [&str; 10] = [
+        "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+    ];
+    let index = |value: u32| usize::try_from(value).unwrap_or(0);
+    match count {
+        0..20 => ONES[index(count)].into(),
+        20..100 if count.is_multiple_of(10) => TENS[index(count / 10)].into(),
+        20..100 => format!("{}-{}", TENS[index(count / 10)], ONES[index(count % 10)]),
+        _ => count.to_string(),
     }
 }
 
@@ -195,5 +235,28 @@ mod tests {
     fn a_feed_without_a_budget_is_the_default_s() {
         assert_eq!(declared().of_feed("meter"), "proxy");
         assert_eq!(Budgets::implicit().default, "default");
+    }
+
+    #[test]
+    fn a_window_is_named_for_its_length_in_words() {
+        let named: Vec<String> = [1, 5, 24, 48, 168, 336, 720, 45]
+            .into_iter()
+            .map(window_name)
+            .collect();
+        assert_eq!(
+            named,
+            [
+                "Hour",
+                "Five Hours",
+                "Day",
+                "Two Days",
+                "Week",
+                "Two Weeks",
+                "Thirty Days",
+                "Forty-Five Hours"
+            ]
+        );
+        // Its figure stays short.
+        assert_eq!(window_label(5), "5 h");
     }
 }
