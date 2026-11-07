@@ -24,8 +24,8 @@ pragma ComponentBehavior: Bound
 // of sessions on the realm's other machines is held too: each says its
 // machine, after this machine's; Go To joins one by the words its node
 // gives; one out of reach stays, saying so, and isn't joined; one last
-// heard of before this boot is passed over; and a steer to one goes
-// through the node, its refusal said. One the node says is gone goes; a
+// heard of before this boot is passed over; and a steer to one is asked
+// of the node, its refusal said. One the node says is gone goes; a
 // change saying only what differs keeps the rest of what the node said;
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
@@ -190,7 +190,8 @@ ShellRoot {
 
     // One parked is listed apart, never running, and only while its marker
     // stands; Wake writes the file the marker names, whole, in place, and
-    // talking to it steers its inbox, then wakes it to read it.
+    // talking to it asks the node to steer its inbox, then, once the node
+    // has, wakes it to read it.
     function parks() {
         expect("only the one parked whose marker stands is parked", parkedAs() === "NAPPER",
             parkedAs());
@@ -203,12 +204,30 @@ ShellRoot {
             woken.slice(0, 5).join(" ")
                 === `sh -c printf "%s\\n" "$2" > "$1" wake ${root.state}/napper.wake`
             && JSON.parse(woken[5]).session === "s-NAPPER", woken.join(" "));
-        const spawns = Niri.spawns.length;
+        talkedAt = Niri.spawns.length;
         Sessions.talk("napper", "what now?");
-        const said = Niri.spawns.slice(spawns);
-        expect("talking to one parked steers its inbox, then wakes it", said.length === 2
-            && said[0].includes("/steer/NAPPER ") && said[1].includes("/napper.wake "),
-            said.join(" | "));
+        expect("a talk writes no inbox itself, nor wakes before the node has it",
+            Niri.spawns.length === talkedAt, Niri.spawns.slice(talkedAt).join(" | "));
+    }
+
+    // What the shell ran since the talk to the one parked, and whether the
+    // talk has been steered and woken it, its wake after the node's answer.
+    property int talkedAt: -1
+    function wokenSinceTalk() {
+        return talkedAt >= 0
+            && Niri.spawns.slice(talkedAt).some(one => one.includes("/napper.wake "));
+    }
+    function talked() {
+        const told = steers.find(one => one.ask.address === "NAPPER");
+        if (!told || !wokenSinceTalk())
+            return false;
+        expect("talking to one parked asks the node to steer it, then wakes it",
+            told.ask.steer.text === "what now?" && told.ask.steer.from === "joel"
+            && !told.wokenBefore, JSON.stringify(told));
+        expect("a talk writes no inbox itself",
+            !Niri.spawns.slice(talkedAt).some(one => one.includes("/steer/")),
+            Niri.spawns.slice(talkedAt).join(" | "));
+        return true;
     }
 
     // The marker of the one parked, naming its wake file, laid once the
@@ -284,7 +303,7 @@ ShellRoot {
     function reopening() {
         const kitties = Niri.spawns.map(command => inSessions(command))
             .filter(command => command.startsWith("kitty ") && !command.includes("attach r-far"));
-        if (kitties.length < 6 || unopened.length < 3 || !steered)
+        if (kitties.length < 6 || unopened.length < 3 || !steered || !talked())
             return;
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
@@ -386,8 +405,11 @@ ShellRoot {
 
     property string unjoined: ""
     property bool steered: false
+    // Each steer the node was asked, and whether the one parked had been
+    // woken by then.
+    property var steers: []
 
-    // A steer elsewhere goes through the node, whose refusal is said.
+    // A steer is asked of the node, whose refusal is said.
     Connections {
         target: Sessions
 
@@ -398,28 +420,16 @@ ShellRoot {
         function onUnsteered(session, why) {
             try {
                 root.expect("a steer elsewhere is refused by the node, saying why",
-                    session.address === "FARAWY"
+                    session.address === "FARAWY" && session.machine === "lighthouse"
                     && why === "lighthouse is out of reach, so FARAWY can't be told now", why);
-                steerSaid.running = true;
+                const asked = root.steers.find(one => one.ask.address === "FARAWY")?.ask;
+                root.expect("the node is asked with the steer, its address as the mesh writes it",
+                    asked?.steer?.act === "pause" && asked?.steer?.from === "joel",
+                    JSON.stringify(asked));
+                root.steered = true;
+                Qt.callLater(root.check);
             } catch (error) {
                 root.fail(error.message);
-            }
-        }
-    }
-    Process {
-        id: steerSaid
-        command: ["cat", `${root.state}/steered`]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    root.expect("the node is asked with the steer",
-                        text.startsWith("--realm harbour steer FARAWY\n{")
-                        && text.includes('"act":"pause"'), text);
-                    root.steered = true;
-                    Qt.callLater(root.check);
-                } catch (error) {
-                    root.fail(error.message);
-                }
             }
         }
     }
@@ -437,8 +447,9 @@ ShellRoot {
 
     // A stand-in for the machine's node, listening only once asked, which
     // speaks the daemon interface as mycelium's does (its PROTOCOL.md, The
-    // Daemon Interface): hello, and a watch of sessions answered with each
-    // whole, then each change saying only what differs.
+    // Daemon Interface): hello, a watch of sessions answered with each
+    // whole, then each change saying only what differs, and a steer, which
+    // it refuses for the one elsewhere, as for a machine out of reach.
     SocketServer {
         id: node
         active: false
@@ -456,6 +467,14 @@ ShellRoot {
                         && ask.keys === undefined) {
                         root.watchId = ask.id;
                         answer = { id: ask.id, records: root.sessions() };
+                    } else if (ask.ask === "steer") {
+                        root.steers = root.steers.concat([
+                            { ask: ask, wokenBefore: root.wokenSinceTalk() }]);
+                        answer = ask.address === "FARAWY" ? { id: ask.id, error: {
+                            code: "refused",
+                            message: "lighthouse is out of reach, so FARAWY can't be told now"
+                        } } : { id: ask.id, steered: { machine: Sessions.machine } };
+                        Qt.callLater(root.check);
                     } else {
                         root.fail(`an ask the shell has no need of: ${line}`);
                         answer = { id: ask.id, error: { code: "unknown-ask", message: line } };

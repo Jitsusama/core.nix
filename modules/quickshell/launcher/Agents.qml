@@ -194,8 +194,8 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
-    // A session elsewhere that couldn't be joined or told is said in the
-    // foot, by its address in the alert colour, where the act was pressed:
+    // A session elsewhere that couldn't be joined, or any the node couldn't
+    // tell, is said in the foot, by its address in the alert colour, where the act was pressed:
     // at once while the launcher's open, or else once it opens next, never
     // as a notice (VKCF3Z, 2026-11-07 [4a00987e]).
     Connections {

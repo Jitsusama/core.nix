@@ -1754,71 +1754,37 @@ Singleton {
     // orchestrator or not (mesh-workflow's steer()).
     readonly property string inboxes: `${state}/steer`
 
-    // Leaves a steer in a session's inbox, under a name it skips until it's
-    // whole: `{ text, id }` talks to it, `{ act }` pauses, resumes or stops
-    // it.
-    // A session on another machine is told through the realm's node,
-    // which carries it over the link to that machine's inbox; one here is
-    // told by its file alone, so it never waits on the node.
-    function steer(address, fields) {
-        const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
-        const body = JSON.stringify(Object.assign({ at: new Date().toISOString(), from: "joel" },
-            fields));
-        const upper = String(address).toUpperCase();
-        const session = running.find(one => String(one.address).toUpperCase() === upper);
-        if (session && !session.here) {
-            steering = steering.concat([{ session: session, body: body }]);
-            steerNext();
-            return;
-        }
-        Niri.spawn(["sh", "-c",
-            'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
-            "steer", `${inboxes}/${String(address).toUpperCase()}`, name, body]);
-    }
-
-    // The steers waiting for the node, in turn, since one process answers
-    // one at a time; one it refuses, or that never reaches the node, is
-    // said by `unsteered` with the node's reason, or none.
-    property var steering: []
+    // Puts a steer in a session's inbox: `{ text, id }` talks to it,
+    // `{ act }` pauses, resumes or stops it. The realm's node is asked on
+    // the connection the shell keeps to it, here or elsewhere alike: it
+    // writes the inbox of the machine running the session, one parked
+    // included, carrying it over the link when that's another machine's
+    // (mycelium's PROTOCOL.md, The Daemon Interface). One it refuses, or
+    // that finds no node to ask, is said by `unsteered` with the node's
+    // reason, or none; `then`, when given, is told whether it was put.
     signal unsteered(var session, string why)
-    function steerNext() {
-        if (steerer.running || steerer.asked !== null || steering.length === 0)
-            return;
-        const next = steering[0];
-        steering = steering.slice(1);
-        steerer.asked = next;
-        steerer.command = ["sh", "-c", 'printf %s "$3" | mycelium --realm "$1" steer "$2"',
-            "steer", realm, String(next.session.address).toUpperCase(), next.body];
-        steerer.running = true;
-    }
-    function steered(asked, text) {
-        let answer = null;
-        try {
-            answer = JSON.parse(text.trim().split("\n").pop() ?? "");
-        } catch (error) {
-            answer = null;
-        }
-        if (answer?.Ok?.Steered) {
-            Report.say(`steered ${asked.session.address} on ${answer.Ok.Steered.machine}`);
-            return;
-        }
-        const why = typeof answer?.Err === "string" ? answer.Err : "";
-        Report.say(`unsteered ${asked.session.address}: ${why}`);
-        unsteered(asked.session, why);
-    }
-    Process {
-        id: steerer
-        property var asked: null
-        onRunningChanged: Qt.callLater(root.steerNext)
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const one = steerer.asked;
-                steerer.asked = null;
-                if (one)
-                    root.steered(one, text);
-                Qt.callLater(root.steerNext);
+    function steer(address, fields, then) {
+        const upper = String(address).toUpperCase();
+        const said = Object.assign({ at: new Date().toISOString(), from: "joel" }, fields);
+        const told = answer => {
+            const machine = answer?.steered?.machine;
+            if (machine) {
+                Report.say(`steered ${upper} on ${machine}`);
+            } else {
+                const why = String(answer?.error?.message ?? "");
+                Report.say(`unsteered ${upper}: ${why}`);
+                unsteered(running.find(one => String(one.address).toUpperCase() === upper)
+                    ?? parkedAs(upper) ?? { address: upper }, why);
             }
+            if (then)
+                then(Boolean(machine));
+        };
+        if (!node) {
+            told(null);
+            return;
         }
+        // Its answer is for this steer alone, so nothing of it is held.
+        node.find({ ask: "steer", address: upper, steer: said }, told);
     }
 
     // Talks to a session: the words go with an id, so the session writes
@@ -1827,12 +1793,13 @@ Singleton {
         const text = words.trim();
         if (text === "")
             return false;
-        steer(address, { text: text, id: `talk-${Date.now()}` });
         // Talk gives a parked session a turn, as a question would, so it's
-        // woken to read it.
+        // woken to read it, once its words are in its inbox.
         const resting = parkedAs(address);
-        if (resting)
-            wake(resting);
+        steer(address, { text: text, id: `talk-${Date.now()}` }, put => {
+            if (put && resting)
+                wake(resting);
+        });
         return true;
     }
 

@@ -2,9 +2,9 @@
 # Lays out what pi's sessions leave beside what the machine's node says of
 # them, for tests/sessions.qml, under the folder given: the realm the node
 # keeps, what the last boot's end took away, closed sessions' own records,
-# a stand-in kitten listing one kitty's windows, and a stand-in mycelium
-# refusing a steer. The sessions themselves are the node's, which the test
-# stands in for, so no presence record is laid out and no process started.
+# and a stand-in kitten listing one kitty's windows. The sessions themselves
+# are the node's, which the test stands in for, so no presence record is
+# laid out and no process started.
 set -euo pipefail
 
 state=$1
@@ -58,13 +58,3 @@ if [ "\$3" = unix:@kitty-600 ] && [ "\$4" = ls ]; then
 fi
 EOF
 chmod +x "$state/bin/kitten"
-
-# The realm's node refuses a steer to a machine out of reach, as mycelium
-# says it, after keeping what it was asked.
-cat >"$state/bin/mycelium" <<EOF
-#!$BASH
-[ "\$3" = steer ] || exit 1
-{ echo "\$*"; cat; } >"$state/steered"
-echo '{"Err":"lighthouse is out of reach, so FARAWY can'"'"'t be told now"}'
-EOF
-chmod +x "$state/bin/mycelium"
