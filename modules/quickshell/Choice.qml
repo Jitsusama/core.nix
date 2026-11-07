@@ -142,6 +142,9 @@ Rectangle {
     // at its right takes the warning colour, and its graph all of it, one
     // flag for both so they never disagree (docs/design.md, Kinds).
     property bool warns: false
+    // Whether what it says needs him now, as a session's folder gone: what
+    // it says at its right takes the alert colour (VKCF3Z, 2026-11-07).
+    property bool alerts: false
     // How many characters the widest of what the list's graphed rows say
     // at their right runs to, so every graph in the list stands in one
     // column clear of them all.
@@ -478,6 +481,7 @@ Rectangle {
             // Muted reads under the Lc 60 any text needs on the selection.
             color: row.flashed ? row.flashInk
                 : row.landed !== "" ? Theme.accent
+                : row.alerts && row.kind === "" ? Theme.alert
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth

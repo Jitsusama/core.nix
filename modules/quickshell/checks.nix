@@ -1454,7 +1454,8 @@ onLinux {
         function asks(session) { return false; }
         function resume(id, quest, folder, gone) {}
         function start(quest, folder) {}
-        function sayUnopened(title, body) {}
+        function lookForFolders(cwds) {}
+        function folderGone(cwd) { return false; }
       '';
       waiting = singleton "WaitingOnYou.qml" "readonly property var standing: ({})";
       jobs = singleton "Jobs.qml" "readonly property var jobs: []";
