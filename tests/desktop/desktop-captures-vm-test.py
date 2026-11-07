@@ -123,7 +123,7 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     with desktop.told("holds margin recording", timeout=WAKING):
         machine.send_key("ctrl-sysrq")
     still_shown(desktop, shown)
-    marked = desktop.settled_screen("recording-the-launcher")
+    marked = the_mark_drawn(desktop, seen)
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Something recorded before it's stopped, so the video holds a frame.
     machine.wait_until_succeeds(
@@ -146,6 +146,30 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
         taken = kept(desktop, frame)
         box = the_card_in(taken, seen, bare)
         the_mark_in(taken, marked.crop(box), seen.crop(box))
+
+
+def the_mark_drawn(desktop: Desktop, unmarked: Image.Image) -> Image.Image:
+    """Give the screen once its top edge holds the margin's recording mark.
+
+    The shell says it holds the mark before niri shows the frame, and a guest stalled for a
+    moment holds still as well, so a screen taken once it's still can come before the mark
+    (the net's run at e6b9c86c). It's taken again until the mark is in its pixels.
+    """
+    screens: list[Image.Image] = []
+
+    def drawn(_: bool) -> bool:
+        screens.append(desktop.settled_screen("recording-the-launcher"))
+        return the_mark_between(screens[-1], unmarked).getbbox() is not None
+
+    retry(drawn, timeout=WAKING)
+    return screens[-1]
+
+
+def the_mark_between(marked: Image.Image, unmarked: Image.Image) -> Image.Image:
+    """Give where two screens differ along the top edge, above the card, as a mask."""
+    top = (0, 0, marked.width, MARGIN_HIGH)
+    differs = ImageChops.difference(marked.crop(top), unmarked.crop(top)).convert("L")
+    return differs.point(lambda v: 255 if v > CARD_APART else 0)
 
 
 def the_launcher_on_a_row(desktop: Desktop) -> tuple[Image.Image, Image.Image, Json]:
@@ -201,8 +225,7 @@ def the_mark_in(frame: Image.Image, marked: Image.Image, unmarked: Image.Image) 
     """
     top = (0, 0, frame.width, MARGIN_HIGH)
     frame, marked, unmarked = frame.crop(top), marked.crop(top), unmarked.crop(top)
-    differs = ImageChops.difference(marked, unmarked).convert("L")
-    mark = differs.point(lambda v: 255 if v > CARD_APART else 0)
+    mark = the_mark_between(marked, unmarked)
     assert mark.getbbox() is not None, "the screen while recording holds no mark along the top"
     near, far = apart(frame, marked, mark), apart(frame, unmarked, mark)
     print(f"on the mark, at {mark.getbbox()}: {near:.1f} from marked, {far:.1f} from before")
