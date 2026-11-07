@@ -250,6 +250,7 @@ let
     "launcher/Asking.js"
     "launcher/Catalogue.js"
     "launcher/Rank.js"
+    "launcher/Pacing.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
     "launcher/Becoming.js"

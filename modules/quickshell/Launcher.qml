@@ -70,6 +70,7 @@ import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Becoming.js" as Becoming
+import "launcher/Pacing.js" as Pacing
 
 Scope {
     id: root
@@ -4012,25 +4013,35 @@ Scope {
             return;
         refreshing = refreshing.concat([source]);
         // The first change is taken at once, and those after it within a
-        // quarter second together, since each joins the whole corpus again
-        // and searches what's shown: 86 of Slack's answers, one a tenth of
-        // a second just after a restart, held the open launcher for a
-        // minute (2026-10-30, 19:14).
-        const wait = refreshedAt + refreshPace - Date.now();
-        if (open && wait > 0) {
-            if (!refreshPacing.running) {
-                refreshPacing.interval = wait;
-                refreshPacing.start();
-            }
-        } else {
+        // quarter second together (launcher/Pacing.js).
+        if (!open) {
             Qt.callLater(refreshDue);
+            return;
         }
+        const heard = Pacing.heard(pace, Date.now(), refreshPace);
+        keepPace(heard.pace);
+        if (heard.now)
+            Qt.callLater(refreshDue);
     }
     readonly property int refreshPace: 250
-    property real refreshedAt: 0
+    property var pace: Pacing.rested()
+    // The timer rings when the pace says a refresh is due, and is stopped
+    // once none waits.
+    function keepPace(now) {
+        pace = now;
+        if (now.due === null) {
+            refreshPacing.stop();
+        } else if (!refreshPacing.running) {
+            refreshPacing.interval = Math.max(0, now.due - Date.now());
+            refreshPacing.start();
+        }
+    }
     Timer {
         id: refreshPacing
-        onTriggered: root.refreshDue()
+        onTriggered: {
+            root.keepPace(Pacing.rang(root.pace));
+            root.refreshDue();
+        }
     }
 
     // What a key changed, timed from the key to the frame that shows it
@@ -4128,7 +4139,8 @@ Scope {
     function refreshDue() {
         if (refreshing.length === 0)
             return;
-        refreshedAt = Date.now();
+        keepPace(Pacing.took(Date.now()));
+        const refreshedAt = pace.at;
         const begun = KeyTimes.now();
         if (open)
             freshen();

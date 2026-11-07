@@ -933,6 +933,23 @@ onLinux {
       touch $out
     '';
 
+  # An open launcher takes a burst of its sources' changes a pace apart, and
+  # never two refreshes closer than that however the first was asked for, as
+  # tests/pacing.qml holds launcher/Pacing.js to it in Qt's own engine.
+  the-launcher-paces-its-refreshes =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
+      cp ${../../tests/pacing.qml} pacing.qml
+      cp ${./launcher/Pacing.js} Pacing.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml pacing.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
