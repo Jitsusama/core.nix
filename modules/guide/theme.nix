@@ -23,15 +23,22 @@ let
   ];
   names = eight ++ map (name: "bright_${name}") eight;
 
-  # The SGR number of the terminal colour holding the role's pigment, or
-  # the terminal's own foreground when none does.
+  # The SGR number of the terminal colour holding the role's pigment or
+  # near it (../theme/nearest.nix), or the terminal's own foreground when
+  # it is the foreground, none is, or the theme doesn't colour the role.
   slot =
     role:
     let
+      hex = name: read.palette.${name};
       pigment = read.colours.${role} or null;
-      at = lib.lists.findFirstIndex (name: (read.terminal.${name} or null) == pigment) null names;
+      at = import ../theme/nearest.nix { inherit lib; } (hex pigment) (
+        map (name: hex read.terminal.${name}) (names ++ [ "foreground" ])
+      );
     in
-    if pigment == null || at == null then "39" else toString (if at < 8 then 30 + at else 82 + at);
+    if pigment == null || at == null || at == 16 then
+      "39"
+    else
+      toString (if at < 8 then 30 + at else 82 + at);
 
   # The roles the guide draws in: text in its three, the accent where the
   # keys go, the states, and the hues its marks wear.

@@ -7,7 +7,10 @@
 # the background by APCA (Lc 67.6, where body text needs 75), and muted is
 # reed, linen's own hue and chroma made just dark enough to stay Lc 60
 # on the background, oklch(0.77 0.034 105.2), so rank reads as lightness
-# alone rather than as a change of hue.
+# alone rather than as a change of hue. Ember is ours as well: the alert
+# is vermilion's hue made just light enough to reach Lc 45 as a mark on a
+# selected row, oklch(0.715 0.179 28.7), its chroma the most sRGB holds
+# there, so a problem never reads fainter than the rows around it.
 
 name = "Osaka Jade"
 appearance = "dark"
@@ -40,6 +43,7 @@ mist = "#ACD4CF"        # bright_blue
 celadon = "#75bbb3"     # bright_magenta
 orchid = "#DF88B3"      # magenta, lightened from #D2689C to read as a mark, on a selected row too
 vermilion = "#FF5345"   # red
+ember = "#FF6F5F"       # ours: vermilion lightened to read as a mark on a selected row
 rose = "#db9f9c"        # bright_red
 gold = "#E5C736"        # bright_yellow
 bronze = "#a2734b"      # orange
@@ -59,7 +63,7 @@ edge = "moss"
 shadow = "night"
 accent = "jade"
 on_accent = "night"
-alert = "vermilion"
+alert = "ember"
 warning = "gold"
 success = "leaf"
 # The hues glyphs wear, one per kind of thing.

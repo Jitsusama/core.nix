@@ -50,6 +50,11 @@
       # Reads on the ground but not on a selected row, as floating surfaces
       # draw one.
       faintSelected = refused { person = "#D77AA8"; };
+      # A warning's and an alert's marks are held as every mark is, Osaka
+      # Jade's old red among them, so a problem never reads fainter than
+      # the rows around it.
+      faintAlert = refused { alert = "#FF5345"; };
+      faintWarning = refused { warning = "#FF5345"; };
     in
     holds "a-faint-theme-is-refused" "A theme with text too faint to read wasn't refused." (
       contrast.show (contrast.ratio "#000000" "#ffffff") == "21.00"
@@ -62,6 +67,9 @@
       && lib.any (lib.hasInfix "person on background: Lc 39.5, under 45") faintMark
       && lib.any (lib.hasInfix "person on a selected row: Lc 42.1, under 45") faintSelected
       && !lib.any (lib.hasInfix "person on background") faintSelected
+      && lib.any (lib.hasInfix "alert on background: Lc 42.5, under 45") faintAlert
+      && lib.any (lib.hasInfix "alert on a selected row: Lc 39.2, under 45") faintAlert
+      && lib.any (lib.hasInfix "warning on a selected row: Lc 39.2, under 45") faintWarning
       && refused { } == [ ]
     );
 

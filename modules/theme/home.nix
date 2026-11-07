@@ -246,7 +246,9 @@ let
   # light the background is, finds too dim for reading. Text and strong are
   # body text, which APCA asks Lc 75 of; muted gives context in labels and
   # hints, held to the 60 it asks of any text. A mark's hue is a glyph, not
-  # words, held to the 45 APCA asks of a fine mark. A row's marks are read
+  # words, held to the 45 APCA asks of a fine mark, a warning's and an
+  # alert's as much as any, since a row needing Joel wears them on its mark
+  # (VKCF3Z, 2026-11-07: a problem never reads fainter). A row's marks are read
   # on the selection too, as a floating surface draws it: the selection at
   # its opacity over the deepest shade. Its text stays with WCAG alone, since
   # the raised surface and the terminal's selection are drawn translucent
@@ -267,6 +269,8 @@ let
         "machine"
         "person"
         "voice"
+        "alert"
+        "warning"
       ];
       selected = mix (builtins.fromJSON cfg.floating.selection) cfg.colours.selection cfg.colours.deepest;
     in
