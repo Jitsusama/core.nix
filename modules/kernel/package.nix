@@ -119,5 +119,12 @@ linux_7_2.override {
       name = "hibernate-progress";
       patch = ./hibernate-progress.patch;
     }
+    {
+      # Lets virtio-gpu's panic flush, which that bar draws through, run
+      # while the machine runs, so a virtual machine's restore corrupts
+      # nothing. Written here; docs/kernel.md has the cause.
+      name = "virtio-gpu-panic-outside-panic";
+      patch = ./virtio-gpu-panic-outside-panic.patch;
+    }
   ];
 }
