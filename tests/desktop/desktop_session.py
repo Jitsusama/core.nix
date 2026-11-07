@@ -873,13 +873,28 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Give what a session's record says of its process and window, as pi's presence does.
 
         That's the process pi_window's program wrote, on this boot, since its start, the kitty
-        window it's in, and the window's title as its label.
+        window it's in, and the window's title as its label; and for TESTQA, the quest
+        pi_session lays out, that quest whole and its folder, as the harness says them.
         """
         name = address.lower()
         pid, scope, window = self.as_account(f"cat $XDG_RUNTIME_DIR/{name}-owner").split()
         title = self.as_account(f"cat $XDG_RUNTIME_DIR/{name}-title").strip()
         ticks = self.as_account(f"awk '{{sub(/.*\\) /, \"\"); print $20}}' /proc/{pid}/stat")
+        told = (
+            {
+                "questInfo": {
+                    "id": "QEST-20261022-TESTQA",
+                    "title": "A quest of its own & whole",
+                    "short": "TESTQA",
+                    "status": "active",
+                },
+                "cwd": "/home/jitsusama/my-tree",
+            }
+            if address == "TESTQA"
+            else {}
+        )
         return {
+            **told,
             "title": title,
             "owner": {
                 "pid": int(pid),

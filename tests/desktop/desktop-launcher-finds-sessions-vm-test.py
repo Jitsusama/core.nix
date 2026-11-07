@@ -105,7 +105,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.reported("stands ", lambda rest: "\U000f06a9" in rest, since)
     desktop.launcher_ready()
     # Its collection by what it's called, then the session named
-    # whole, as its README is, not as its window's title.
+    # whole, as its record says it, not as its window's title cuts it.
     desktop.type_in("agents")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
     machine.send_key("ret")

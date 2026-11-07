@@ -49,7 +49,7 @@ wait "$ended"
 record live LIVE01 "$live" "$boot" "$(ticks "$live")" \
   ',"busy":true,"title":"\u03c0 - Live One - core.nix"'
 record other OTHER2 "$other" "$boot" "$(ticks "$other")" \
-  ',"title":"\u03c0 - Lighthouse","terminal":{"driverId":"kitty","kind":"kitty-window","hostId":"here","value":"4","scope":"unix:@kitty-600"}'
+  ',"title":"\u03c0 - Lighth\u2026 - wrong","questInfo":{"id":"QEST-20261106-OTHER2","title":"Lighthouse - Keep It Lit","short":"OTHER2","status":"active"},"cwd":"/home/me/lamp/","terminal":{"driverId":"kitty","kind":"kitty-window","hostId":"here","value":"4","scope":"unix:@kitty-600"}'
 record unseen NOWIN6 "$unseen" "$boot" "$(ticks "$unseen")" ''
 record ended ENDED3 "$ended" "$boot" 1 ''
 record old OLD004 "$live" another-boot "$(ticks "$live")" ''
