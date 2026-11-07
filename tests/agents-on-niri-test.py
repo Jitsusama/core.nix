@@ -7,7 +7,9 @@ from the node alone. A listening session's Return asks what to say to it, and a 
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
 A session's Close asks first, saying what of it stays, and y steers it a close from Joel.
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. One past
-80% of its context says how full first, in the warning's hue, and its drawer its figures. Both
+80% of its context says how full first, in the warning's hue, and its drawer its figures. A
+drawer's first screen says how a session stands, its quest, what it landed last and its
+figures, and what its quest is about, which runs long, comes last. Both
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
 folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
@@ -90,6 +92,14 @@ def orchestrators_listed() -> None:
 STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 TRY = "press d on a session"
+# What a session works on, as pi says it: its quest's title, then its summary, which runs to
+# about 290 letters on every real session.
+WORKS_ON = (
+    "Listening Quest: A builder under the owner's plan, which keeps the launcher's agents"
+    " quiet, told and easy to read: every session says how it stands, what it does, what it"
+    " spent and what it needs from Joel, from the node, with nothing guessed and nothing"
+    " said twice, held to the launcher's family and its keys."
+)
 LANDINGS = [
     {"at": "2026-11-07T11:31:00Z", "ref": "core.nix#2140", "what": STOPPED},
     {"at": "2026-11-07T11:25:00Z", "ref": "PLAN-20261107-PAUSED#2", "what": "Ticked alone"},
@@ -171,7 +181,13 @@ def shell() -> Iterator[Shell]:
     lay(
         "LISTEN",
         "Listening Quest",
-        {**under, "state": "listening", "repo": "core.nix", "usage": FULL},
+        {
+            **under,
+            "state": "listening",
+            "repo": "core.nix",
+            "usage": FULL,
+            "worksOn": WORKS_ON,
+        },
     )
     lay("PAUSED", "Paused Quest", {**under, "state": "paused", "landings": LANDINGS})
     lost_on_the_last_boot()
@@ -267,9 +283,10 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
     # Found by typing, whom it's under leads, before what's its own.
     assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
     assert row["hue"] == "warning", row
-    # Its drawer gives its figures by gen_ai's names after what's known of it.
-    figures = ["Model", "Context", "Last Turn", "Turns Today", "Tokens", "Cache"]
-    shell.launcher_until(lambda shown: shown["drawer"]["facts"][-6:] == figures)
+    # Its drawer gives its figures by gen_ai's names after what's known of it, how full
+    # its context is and its last turn first.
+    figures = ["Context", "Last Turn", "Model", "Turns Today", "Tokens", "Cache"]
+    shell.launcher_until(lambda shown: ", ".join(figures) in ", ".join(shown["drawer"]["facts"]))
     # Context alone draws a figure beside its value, Meter's stroke of how full.
     shell.launcher_until(lambda shown: drawn_figures(shown) == {"Context": "stroke"})
     # Once spend-watch says how its day went, its spend today carries its hours as a
@@ -286,6 +303,45 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
         )
     finally:
         SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
+
+
+def shown_first(drawer: Json) -> list[str]:
+    """Give the facts a drawer's first screen shows, before any it says are more."""
+    said = str(drawer.get("moreSays") or "")
+    hidden = int(said.split(maxsplit=1)[0]) if said else 0
+    facts = cast("list[str]", drawer["facts"])
+    return facts[: len(facts) - hidden]
+
+
+def test_a_sessions_drawer_shows_what_matters_first_and_what_its_quest_is_about_last(
+    shell: Shell,
+) -> None:
+    """Its first screen holds how it stands, its quest, what it landed and its figures.
+
+    What its quest is about runs long, as every real session's does, so it comes last and
+    leaves out the title the drawer already says; it once came first and hid all the rest.
+    """
+    found(shell, "listening quest", "Listening Quest")
+    wanted = ["Doing", "Quest", "Context", "Last Turn", "Model"]
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["shown"]
+            and shown_first(shown["drawer"])[: len(wanted)] == wanted
+            and shown["drawer"]["facts"][-1] == "Working On"
+        )
+    )
+    drawer = shell.showing()["drawer"]
+    assert drawer["values"][:2] == ["listening", "QEST-20261107-LISTEN \u00b7 active"], drawer
+    assert drawer["values"][-1] == WORKS_ON.removeprefix("Listening Quest: "), drawer
+    # One that landed something says what it landed last on its first screen too.
+    found(shell, "paused quest", "Paused Quest")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["shown"]
+            and shown_first(shown["drawer"])[:3] == ["Doing", "Quest", "Last Landing"]
+            and shown["drawer"]["values"][2].startswith(f"{STOPPED} \u00b7 core.nix#2140 \u00b7 ")
+        )
+    )
 
 
 def drawn_figures(shown: dict[str, Any]) -> dict[str, str]:

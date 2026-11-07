@@ -39,6 +39,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 
 Provider {
@@ -236,18 +237,24 @@ Provider {
 
     // A session's row, `depth` steps in under its orchestrator, and saying
     // what its whole orchestration spent when it `orchestrates`.
-    function made(session, place) {
-        const depth = place?.depth ?? 0;
+    // How a session stands, and its word for it: a want that isn't truly
+    // Joel's (Sessions.asks) reads as what the session does meanwhile.
+    function standingOf(session) {
         const presence = session.presence;
         const queued = inLine(presence);
-        // A want that isn't truly Joel's (Sessions.asks) reads as what the
-        // session does meanwhile.
         const asks = Sessions.asks(session);
         const state = SessionRow.state(presence, asks, queued !== "");
         const doing = state === "off" ? ""
             : state === "needs" ? Sessions.wanted(presence.wants)
             : state === "inLine" ? queued
             : word(state);
+        return { asks, state, doing };
+    }
+
+    function made(session, place) {
+        const depth = place?.depth ?? 0;
+        const presence = session.presence;
+        const { asks, state, doing } = standingOf(session);
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const { spent, family } = spendOf(presence, quest, place);
@@ -338,7 +345,17 @@ Provider {
         // spark never wears the warning, which is for a budget past its
         // warning once the launcher reads budgets (VKCF3Z, 2026-11-07).
         const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
-        return SessionRow.drawer(session.title, presence, {
+        // What it landed last, newest by when, with its ref and its time.
+        const last = (presence.landings ?? []).slice()
+            .sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")))[0];
+        // What its quest waits on Joel for, in the order Needs You says it.
+        const needs = (presence.quest ?? "") === "" ? []
+            : WaitingOnYou.items.filter(item => item.quest === presence.quest);
+        return SessionDrawer.drawer(session.title, presence, {
+            doing: standingOf(session).doing,
+            needs: needs.map(item => item.title).join(" \u00b7 "),
+            landed: last ? [last.what ?? "", last.ref ?? "", last.at ? started(last.at) : ""]
+                .filter(part => part !== "").join(" \u00b7 ") : "",
             hours: day?.graph ? Object.assign({}, day.graph, { warn: false }) : null,
             rebuilt: Quiet.sharing ? "" : String(day?.rebuilt ?? ""),
             spent: family ? word("allOf", { spent: family.all }) : spent,

@@ -1,8 +1,8 @@
 .pragma library
 // A pi session as the launcher shows it, said once, and named apart from
 // Session.qml, which is the desktop session: how it stands, the acts it
-// offers in their order, and what its drawer says, wherever the launcher
-// shows it (Agents, an orchestrator's row, a quest's Go To Its Session).
+// offers in their order, and its drawer's figures (SessionDrawer.js says
+// the rest of its drawer), wherever the launcher shows it (Agents, an orchestrator's row, a quest's Go To Its Session).
 // Joel, 2026-10-28: "we need to not have different versions of these sort
 // of elements. they need to be treated the same everywhere." The providers
 // turn what this says into rows, each through its own `thing`.
@@ -377,9 +377,9 @@ function took(ms) {
 }
 
 // The drawer's figures for a session, by OpenTelemetry's gen_ai names as
-// its record's `usage` keeps them (the design's figures, tier 3): its
-// model, how full its context is, its last turn, and today's turns, tokens
-// and cache, those only while the record's day is `today`, since the
+// its record's `usage` keeps them (the design's figures, tier 3): how
+// full its context is and its last turn first, the two that move as it
+// works, then its model and today's turns, tokens and cache, those only while the record's day is `today`, since the
 // harness starts them over each day. No amount is among them, so sharing
 // the screen hides none; what it spent is spend-watch's, said beside them.
 // `said` is the vocabulary's agents words, `named` names each figure.
@@ -407,9 +407,9 @@ function figures(usage, today, said, named) {
         + used(day, "cache_creation.input_tokens");
     const read = sent > 0 ? used(day, "cache_read.input_tokens") / sent * PERCENT : 0;
     const known = {
-        model,
         context,
         "last-turn": turn,
+        model,
         turns: usage.day === today && usage.turns?.today > 0 ? String(usage.turns.today) : "",
         tokens: day && sent > 0 ? fill("tokensOf", {
             sent: tokens(sent), out: tokens(used(day, "output_tokens"))
@@ -452,48 +452,4 @@ function summary(states, spent, said) {
         spent !== "" ? String(said.today ?? "").replace("{spent}", spent) : ""
     ];
     return parts.filter(part => part !== "").join(" \u00b7 ");
-}
-
-// What its drawer says: its address, where it works and since when it's
-// run as the eyebrow over its title, "8IDU4E \u00b7 core.nix \u00b7 since
-// 21:52" (VKCF3Z, 2026-11-06); then what it works on, its step, what it
-// waits on Joel for, what it's spent today (an orchestrator's whole
-// orchestration, then its own and its sessions'), what rebuilding its
-// context cost today, and the machine it runs
-// on, each as a name and a figure. Nothing it hasn't said is guessed, and
-// what the eyebrow says isn't said again. The eyebrow names things, so the
-// drawer sets it as they're written, never in capitals (Drawer.qml).
-function drawer(title, presence, said) {
-    const known = {
-        works: presence?.worksOn,
-        step: presence?.step,
-        wants: presence?.wants?.said,
-        spent: said.spent,
-        own: said.own,
-        under: said.under,
-        rebuilt: said.rebuilt,
-        machine: said.machine
-    };
-    // Its own spend today carries its hours as Graph's spark (`said.hours`,
-    // spend-watch's): an orchestrator's Its Own, any other's Spent Today.
-    const hoursOn = (said.own ?? "") !== "" ? "own" : "spent";
-    const facts = Object.keys(known).filter(id => (known[id] ?? "") !== "")
-        .map(id => Object.assign({ label: said.named(id), value: known[id] },
-            id === hoursOn && said.hours ? { figure: said.hours } : {}));
-    const eyebrow = [said.address, said.place, said.since]
-        .filter(part => (part ?? "") !== "").join(" \u00b7 ");
-    // Short of room, it gives way by whole items from its end, as the
-    // held foot gives its position way whole: when it started goes first,
-    // then where it works, and its address never (VKCF3Z, 2026-11-07:
-    // "since 0\u2026" tells nothing).
-    const eyebrowItems = [
-        { said: said.address ?? "", keep: 3 },
-        { said: said.place ?? "", keep: 2 },
-        { said: said.since ?? "", keep: 1 }
-    ];
-    // Its figures follow what's known of it (`said.figures`, figures()).
-    return {
-        eyebrow, eyebrowItems, eyebrowNames: true, title,
-        facts: facts.concat(said.figures ?? []), body: ""
-    };
 }

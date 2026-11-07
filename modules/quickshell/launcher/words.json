@@ -364,7 +364,12 @@
     {
       "id": "agents:step",
       "in": "agents",
-      "name": "Step"
+      "name": "Doing"
+    },
+    {
+      "id": "agents:last-landing",
+      "in": "agents",
+      "name": "Last Landing"
     },
     {
       "id": "agents:wants",
