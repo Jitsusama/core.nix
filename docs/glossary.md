@@ -201,6 +201,7 @@ or a copy, can be opened, copied or forgotten.
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `overview.pieces` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
+| card | the one frame the launcher, held notices and a notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
