@@ -1007,6 +1007,7 @@ gather (
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix
     ./modules/btrfs/checks.nix
+    ./modules/cadence/checks.nix
     ./modules/call-transcripts/checks.nix
     ./modules/calls/checks.nix
     ./modules/camera/checks.nix

@@ -134,6 +134,7 @@
         bat = ./modules/bat/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
+        cadence = ./modules/cadence/home.nix;
         call-transcripts = moduleFrom ./modules/call-transcripts/home.nix {
           inherit (self.homeModules) people quickshell;
         };
