@@ -71,10 +71,10 @@ fault "stretched and grotesque" names.
 - **axe-core finds nothing** at each width, in both looks, with folds open.
 - **A keyboard walk.** Tab from the top: the skip link shows, designed; every
   control is reached once, in reading order, and shows the one ring; every
-  scroll container is reachable; nothing traps focus; Escape closes only what
-  floats and returns focus. On an interface, j, k, /, ? and Ctrl+K (⌘K on a
-  Mac) do what the skill says on every page, and single letters do nothing in
-  a text field.
+  scroll container is reachable; nothing traps focus; Escape closes only a
+  popup and returns focus, never a drawer or work. On an interface, j, k, /,
+  :, ?, Space ? and Ctrl+K (Cmd+K on a Mac) do what the skill says on every
+  page, and single letters do nothing in a text field.
 - **A screen reader pass** on the landmarks, headings and one fold, a figure
   and a table: each says what it is.
 - **Forced colours and more contrast**: every control keeps an edge, focus

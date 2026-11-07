@@ -171,7 +171,10 @@ Each rule says why, in his words where he said it.
 ### Type
 
 - **Fraunces for every word to read and every heading; the theme's Monaspace
-  for figures that are data, code, keys, paths and labels; no sans.** "I
+  for names that are identifiers (a file, a branch, a host, a command), figures
+  that are data, code, keys and labels; no sans.** A row's name is Monaspace at
+  the Name level's weight when it's an identifier, and Fraunces when it's a
+  title written in words. "I
   don't like seeing sans-serif fonts ... generally, not a fan of sans-serif"
   (2026-11-04). A sans earns a place only by beating these two side by side.
   Figures that are data are Monaspace because Fraunces has no tabular or
@@ -259,6 +262,20 @@ Each rule says why, in his words where he said it.
   on the screen" (2026-09-08); "The footer at the bottom of every page adds
   nothing" (2026-09-28); a masthead that doesn't eat the fold.
 
+### Marks
+
+- **A mark for each kind of thing, wherever there's room for one.** Of the
+  desktop's bar he said "i want icons to be able to be there as much as
+  possible" (2026-10-28), and the same holds on a site: a person, a place, a
+  state, a kind of item each has its mark, from one set (the theme's icon
+  font, or one drawn set), never mixed.
+- **One optical size**: every mark's width times height, square-rooted, is
+  the same (15 px at the desktop's scale, about 1.1em of the text beside it),
+  so a wide mark and a tall one look equal.
+- **In its kind's glyph hue** (`--program`, `--person`, `--machine` and the
+  rest), centred on the capitals of its words, and a row's mark in a column of
+  its own, so the words all start on one edge.
+
 ### Disclosure
 
 - **A fold is the reader's question, where they'd ask it, worth opening.** Its
@@ -301,16 +318,25 @@ Each rule says why, in his words where he said it.
 - **Everything works from the keyboard, and a Vim user feels at home.** "we
   need to think about insane accessibility, mobile support, and vi support
   together" (2026-09-05). Tab reaches each list once, and j and k move in it;
-  Enter goes in and - goes up; / finds; ? opens the keys; Ctrl+K (Cmd+K on a
-  Mac) opens the one palette of everything, each with its key. On a page to
-  read, j and k step section to section.
-- **Escape dismisses what floats over the page and was opened by the reader**:
-  a dialog, the palette, a drawer, a menu, a hover card. It never leaves a
-  page, steps a level, clears work or quits. That's what Vim does with a
-  popup and what browsers and screen readers expect, and WCAG 1.4.13 asks for
-  it. It isn't the desktop's "fuck escape quitting" (2026-11-05), which was
-  about a whole surface he works in closing under his hands; a site's pages
-  are that surface, so Escape never closes or leaves them.
+  Enter goes in and - goes up; / finds. On an interface, : opens the one
+  palette of everything, each with its key, as the desktop's command line,
+  and Ctrl+K (Cmd+K on a Mac) opens the same palette, the web's own key for
+  it.
+  Space ? and F1 open the keys, as on the desktop. On a page to read, j and k
+  step section to section.
+- **? opens the keys too, a departure from Vim**, where it finds upward: a
+  site's / narrows without a direction, which leaves ? free, and he reaches
+  for it there: "? doesn't seem to work on every page and works differently
+  on both systems" (2026-11-05). On a page to read, where Space scrolls, ? is
+  the key.
+- **Escape closes what a mode opened, as Vim's closes its completion menu**:
+  the palette, a menu, a hover card, and a question it answers "no" to. It
+  never closes a drawer or a dialog holding work, which close with their own
+  control or :q; it never leaves a page, steps a level, clears work or quits.
+  That's the desktop's rule ("fuck escape quitting", 2026-11-05), and it
+  meets WCAG 1.4.13, which asks only that hover and focus content can be
+  dismissed. It departs from the many web apps whose side panel closes on
+  Escape, on purpose: work held in a panel is never lost to a stray key.
 - **Single letters never fire in a text field, and can be switched off**, for
   screen readers and speech input (WCAG 2.1.4).
 - **Keycaps follow the platform**: Ctrl off a Mac, ⌘ on one. "it should detect
@@ -410,8 +436,13 @@ Each rule says why, in his words where he said it.
   content: "hovering on anything puts shit on top of other UI elements"
   (2026-11-04). The heading you're in always shows. Every view links to every
   other, and the way back names where it goes.
-- **One palette, one meaning per key.** Ctrl+K is the only popup, and ? opens
-  it at its help, on every page; a key means the same in every view.
+- **One palette, one meaning per key.** The palette (: or Ctrl+K) is the only
+  popup, and the keys (? or Space ?) open on every page; a key means the same
+  in every view.
+- **Acts in one order, and nothing assumed.** In every list of acts, the one
+  that does the thing is at the top, what ends something near the bottom, and
+  Copy last. No state is assumed at load (a filter, a selection, a scroll),
+  and every place opens on its first row.
 - **Live and present, gently.** Who is here and what they're editing, with
   nothing flashing: presence that arrives on the first beat and leaves after
   missed ones; an edit of someone else's never overwrites yours. "showing who
@@ -419,7 +450,8 @@ Each rule says why, in his words where he said it.
   (2026-11-02).
 - **Words that work.** A domain word keeps its character and its meaning is a
   hover, focus or tap away, in clear space; every number leads to what it
-  counts; people are shown as people, with full names a step away. Nothing
+  counts; people are shown as people, with full names a step away. One name
+  for each thing, never a synonym, from a glossary the site keeps. Nothing
   waits on a person visiting a page: "I never want to poke users to do
   things, that is horrific" (2026-11-07).
 - **Whimsy in marks and thresholds**: an empty list, a landing, someone

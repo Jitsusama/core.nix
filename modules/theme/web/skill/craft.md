@@ -155,7 +155,8 @@ coincidence:
   `html { scroll-padding-block-start: <the header's height> }`.
 - **Centring on the ink, not the line box.** Flex and grid centre a line's box,
   which sits a little low or high against capitals. A mark beside words
-  centres on their x-height: `vertical-align: calc(0.5ex - <mark height> / 2)`,
+  centres on their capitals, as the desktop's do: `vertical-align: calc(0.5cap -
+  <mark height> / 2)` raises its foot so its middle meets the capitals' middle,
   or the mark is `1cap` tall on the baseline.
 
 ## Dark, Light and the Switch
@@ -270,11 +271,14 @@ addEventListener("keydown", (e) => {
 });
 ```
 
-- **Ctrl+K or Cmd+K opens the palette** from anywhere, text fields included,
-  with every command and its key; `?` opens it at its help.
-- **Escape** closes the topmost thing the reader opened (the palette, a dialog,
-  a drawer, a menu, a hover card) and returns focus to what opened it; with
-  nothing open it does nothing.
+- **: opens the palette** outside a text field, and **Ctrl+K or Cmd+K** opens
+  it from anywhere, text fields included, with every command and its key. ?,
+  Space ? and F1 open it at its list of keys.
+- **Escape** closes the topmost popup the reader opened (the palette, a menu,
+  a hover card, a question it answers "no" to) and returns focus to what
+  opened it; with nothing open it does nothing. A native `<dialog>` closes on
+  Escape by itself, so one holding work cancels its `cancel` event. A drawer
+  closes with its own control or :q.
 - **Keycaps follow the platform**, and chords are drawn as keys in Monaspace,
   joined by + with `--tie` either side:
 
