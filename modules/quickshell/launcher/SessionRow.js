@@ -119,8 +119,8 @@ function tree(sessions, folds) {
     // Every session a fold holds, one folded within it too.
     const held = members => members.reduce((all, one) =>
         all.concat(one.fold ? held(one.members) : [one.at]), []);
-    const counted = members => STATES.map(state => ({ state,
-        count: held(members).filter(at => sessions[at].state === state).length }))
+    const counted = members => STATES.map(each => ({ state: each,
+        count: held(members).filter(at => sessions[at].state === each).length }))
         .filter(one => one.count > 0);
     const lay = (into, at, depth) => {
         const up = parent[at];
@@ -129,7 +129,7 @@ function tree(sessions, folds) {
         const under = inOrder(children[at]);
         const waiting = folds ? under.filter(waits) : [];
         const folded = waiting.length >= FOLDS_AT ? waiting : [];
-        for (const child of under.filter(child => !folded.includes(child))) {
+        for (const child of under.filter(one => !folded.includes(one))) {
             lay(into, child, depth + 1);
         }
         if (folded.length > 0) {

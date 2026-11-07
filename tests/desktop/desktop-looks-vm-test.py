@@ -1679,17 +1679,23 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
 # name starts, with no line, box or fold; typed, every row is at no depth, whom it's under
 # leading its note; and an orchestrator says what its whole orchestration spent today
 # (QEST-20261026-15J7N3's agents-tree-look.md). The orchestrator listens while an owner under it
-# runs a builder that works, so the orchestration stands with those working, the owner and its
-# builder before the other, listening, session under it, and one paused after that.
+# runs a builder that works, so the orchestration stands with those working: the owner, its
+# builder, and one paused beside the builder. The two others under the orchestrator only listen,
+# so they fold into one row after its own (VKCF3Z, 2026-11-06), while the owner's one paused
+# stays a row, since folding one saves none.
 ORCHESTRATION = [
     # address, title, whom it's under, how it stands
     ("TESTQA", "A quest of its own & whole", None, "listening"),
     ("TESTQB", "The Other One Under It", "TESTQA", "listening"),
     ("TESTQC", "An Owner Under It", "TESTQA", "listening"),
     ("TESTQD", "A Builder Under the Owner", "TESTQC", "working"),
-    ("TESTQE", "One Put Down Under It", "TESTQA", "paused"),
+    ("TESTQE", "One Put Down Under It", "TESTQC", "paused"),
+    ("TESTQF", "One More Under It", "TESTQA", "listening"),
 ]
-TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQB": 1, "TESTQE": 1}
+# The fold's row, by what it says, and the sessions it holds.
+FOLD = "2 listening"
+FOLDED = ["The Other One Under It", "One More Under It"]
+TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQE": 2, FOLD: 1}
 SPENT = {
     "v": 2,
     "sessions": {"01a1face-test": "$3.10", "01a1face-qd": "$5.10"},
@@ -1748,14 +1754,17 @@ def address_of(row: Json) -> str:
     """Say which of the orchestration's sessions a drawn row is, by its title.
 
     A session's row says its title, how it stands and what it spent; its address is its
-    drawer's.
+    drawer's. The fold's row is named by what it says.
     """
+    if FOLD in row["reads"]:
+        return FOLD
     return next(address for address, title, _, _ in ORCHESTRATION if title in row["reads"])
 
 
 def in_orchestration(row: Json) -> bool:
-    """Say whether a drawn row is one of the orchestration's sessions."""
-    return any(title in row["reads"] for _, title, _, _ in ORCHESTRATION)
+    """Say whether a drawn row is one of the orchestration's sessions, or its fold."""
+    reads = row["reads"]
+    return FOLD in reads or any(title in reads for _, title, _, _ in ORCHESTRATION)
 
 
 def orchestration_drawn(desktop: Desktop) -> list[Json]:
@@ -1849,7 +1858,7 @@ def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str
     desktop.down_to(titles["TESTQE"])
     desktop.photograph(f"launcher-agents-returns-paused-found-at-{shot}")
     desktop.normal()
-    feet = [("TESTQD", "working", "\u21b5 "), ("TESTQB", "listening", "\u21b5 talk")]
+    feet = [("TESTQD", "working", "\u21b5 "), ("TESTQC", "listening", "\u21b5 talk")]
     for address, stands, said in [*feet, ("TESTQE", "paused", "\u21b5 resume")]:
         desktop.down_to(titles[address])
 
@@ -1860,11 +1869,37 @@ def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str
 
         desktop.launcher_until(foot_says)
         desktop.photograph(f"launcher-agents-returns-{stands}-at-{shot}")
-    desktop.down_to(titles["TESTQB"])
+    desktop.down_to(titles["TESTQC"])
     desktop.follow()
     desktop.launcher_until(lambda shown: "Talk" in shown["rows"][:2])
     desktop.photograph(f"launcher-agents-acts-at-{shot}")
     desktop.step_out()
+
+
+def fold_steps_in(desktop: Desktop, shot: str) -> None:
+    """Photograph the fold's row, then what Return steps in to: each session it holds."""
+    desktop.down_to(FOLD)
+    desktop.photograph(f"launcher-agents-fold-at-{shot}")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == [FOLD] and all(title in shown["rows"] for title in FOLDED)
+        )
+    )
+    desktop.photograph(f"launcher-agents-fold-inside-at-{shot}")
+    desktop.step_out()
+
+
+def glyphs_stand_on_names(rows: list[Json], titles: dict[str, str], scale: str) -> None:
+    """Hold each row's glyph where the name above it starts, the first word a row draws."""
+    words = {address_of(row): row["words"] for row in rows}
+    under = [("TESTQC", "TESTQA"), ("TESTQD", "TESTQC"), ("TESTQE", "TESTQC"), (FOLD, "TESTQA")]
+    for one, above in under:
+        glyph = words[one][0]["starts"]
+        name = next(w["starts"] for w in words[above] if w["text"] == titles[above])
+        assert abs(glyph - name) <= 1, (
+            f"at {scale} {one}'s glyph is at {glyph}, not on {above}'s name at {name}"
+        )
 
 
 def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent(
@@ -1881,17 +1916,9 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             assert order == list(TREE), f"at {scale} the orchestration reads {order}"
             depths = {address_of(row): row["depth"] for row in rows}
             assert depths == TREE, f"at {scale} the steps in are {depths}"
-            # Its glyph stands where the name above it starts: the first word a row draws is
-            # its glyph.
-            words = {address_of(row): row["words"] for row in rows}
             titles = {address: title for address, title, _, _ in ORCHESTRATION}
-            under = [("TESTQC", "TESTQA"), ("TESTQB", "TESTQA"), ("TESTQD", "TESTQC")]
-            for one, above in [*under, ("TESTQE", "TESTQA")]:
-                glyph = words[one][0]["starts"]
-                name = next(w["starts"] for w in words[above] if w["text"] == titles[above])
-                assert abs(glyph - name) <= 1, (
-                    f"at {scale} {one}'s glyph is at {glyph}, not on {above}'s name at {name}"
-                )
+            titles[FOLD] = FOLD
+            glyphs_stand_on_names(rows, titles, scale)
             # Short of room, a side gives way whole, the state first, before a name gives up
             # a letter, and what it cost stays, never slid from its left.
             costs = {"TESTQA": "$14.20 in all", "TESTQD": "$5.10"}
@@ -1904,16 +1931,17 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             assert "$14.20 in all" in reads["TESTQA"], reads
             assert "$5.10" in reads["TESTQD"], reads
             assert "in all" not in reads["TESTQD"], reads
-            assert "listening" in reads["TESTQB"], reads
+            assert "listening" in reads["TESTQC"], reads
             assert "paused" in reads["TESTQE"], reads
             # And its glyph is muted, never the live rows' colour (#2052), its name in text.
             inks = {address_of(row): row["words"][0]["ink"] for row in rows}
-            assert inks["TESTQE"] != inks["TESTQB"], f"at {scale} paused looks live: {inks}"
+            assert inks["TESTQE"] != inks["TESTQC"], f"at {scale} paused looks live: {inks}"
             assert "waiting" not in " ".join(reads.values()), reads
             shot = scale.replace(".", "-")
             desktop.photograph(f"launcher-agents-tree-at-{shot}")
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
             returns_said_in_the_foot(desktop, titles, shot)
+            fold_steps_in(desktop, shot)
             desktop.close_launcher()
         orchestrator_says_whose_spend_is_whose(desktop)
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
