@@ -12,5 +12,12 @@
     "owner_pr": 2142,
     "reason": "failed, then passed, at b6ef1e9bfefe",
     "test": "vm-desktop-looks"
+  },
+  {
+    "at": 1794072403,
+    "commit": "b6ef1e9bfefe84bceee9ae657c1e57a5a7dccc2e",
+    "owner_pr": 2142,
+    "reason": "failed, then passed, at b6ef1e9bfefe",
+    "test": "vm-desktop-opens-files"
   }
 ]
