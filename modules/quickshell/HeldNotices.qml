@@ -429,6 +429,14 @@ Card {
         said = `${ids.length} taken again`;
     }
 
+    // Whether the cursor's card has somewhere to go: what it offers, or
+    // its sender's window.
+    function opensCurrent() {
+        const one = current;
+        return one !== null && (stack.opens(one) !== null
+            || Notices.senderWindow(one.appName) !== null);
+    }
+
     // Goes to whoever sent the cursor card: what it's about, by its
     // sender's own act, or else the sender's window, giving the keys back
     // so what's typed next reaches it.
@@ -792,7 +800,12 @@ Card {
         case "open":
             found = findLine.text;
             mode = "normal";
-            open();
+            // Where what it found opens nothing, it lands on it, as Vim's
+            // / lands on its match (VKCF3Z, 2026-11-06).
+            if (opensCurrent())
+                open();
+            else
+                Report.say(`notice lands on ${found}`);
             break;
         case "choose":
         case "chooseBack":
@@ -1134,10 +1147,7 @@ Card {
         }
         const hintMode = listing ? "listing" : pending ? "pending" : mode;
         const ids = mode === "visual" ? selected : [listed[cursor]];
-        const one = current;
-        const opens = one !== null && (stack.opens(one) !== null
-            || Notices.senderWindow(one.appName) !== null);
-        return NoticeKeys.hints(hintMode, { open: opens }, { done: doneWord(ids) });
+        return NoticeKeys.hints(hintMode, { open: opensCurrent() }, { done: doneWord(ids) });
     }
 
     // A held notice is a notice row of the launcher's (VKCF3Z,
