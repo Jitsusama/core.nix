@@ -338,6 +338,16 @@
       "verb": "expect"
     },
     {
+      "id": "spend:window:5",
+      "in": "spend",
+      "name": "Five Hours"
+    },
+    {
+      "id": "spend:window:168",
+      "in": "spend",
+      "name": "Week"
+    },
+    {
       "id": "jobs",
       "name": "Queue",
       "term": "Machine/queue",

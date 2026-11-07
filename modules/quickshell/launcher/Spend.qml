@@ -63,17 +63,39 @@ Provider {
             : role === "expected" ? "muted" : "voice";
     }
 
+    // A row whose role colours a mark of its own, a budget's, a window's or
+    // a day's: muted at rest, the warning or the alert past them, and drawn
+    // on a figure row too (VKCF3Z, 2026-11-07).
+    function markedHue(role) {
+        return role === "alert" || role === "warning" ? role : "muted";
+    }
+
+    // A window's row is named as the vocabulary names its window, "Five Hours"
+    // or "Week", spelled out where its figure abbreviates; another, as the
+    // daemon named it.
+    function nameOf(given) {
+        const id = `spend:window:${given.window}`;
+        const said = given.window === undefined ? id : Words.name(id);
+        return said === id ? given.name : said;
+    }
+
     // A row as the daemon gave it, with what's behind it made only when
     // it's stepped into, since a month's cuts are hundreds of rows.
     function build(given) {
         const report = given.report ? reports[given.report] ?? null : null;
+        const marked = (given.mark ?? "") !== "";
+        const name = nameOf(given);
+        // A copy saying the row's name says the name it's shown by.
+        const copy = given.copy === `${given.name}: ${given.side}`
+            ? `${name}: ${given.side}` : given.copy;
         const fields = {
             key: `spend:${given.key}`,
-            name: given.name,
+            name: name,
             side: given.side,
             note: given.note ?? "",
-            glyph: glyph(given.role),
-            hue: hue(given.role)
+            glyph: marked ? Theme.glyph[given.mark] ?? glyph(given.role) : glyph(given.role),
+            hue: marked ? markedHue(given.role) : hue(given.role),
+            marked: marked
         };
         const row = given.run
             ? thing(Object.assign(fields, {
@@ -81,7 +103,7 @@ Provider {
                 later: true,
                 run: () => Niri.spawn(given.run)
             }))
-            : copyRow(Object.assign(fields, { copy: report ? report.markdown : given.copy }));
+            : copyRow(Object.assign(fields, { copy: report ? report.markdown : copy }));
         const nested = given.rows ?? [];
         const inside = report ? report.rows : [];
         // A finding Return acts on can still be copied, and one not yet

@@ -54,6 +54,15 @@ pub struct Line {
     /// What its glyph shows: text, a report, a sign-in, or a finding that's
     /// found, a warning, an alert or expected.
     pub role: String,
+    /// The theme's mark its glyph is, by name, for a row whose role colours
+    /// a mark of its own rather than choosing one: a budget's, a window's,
+    /// a day's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub mark: String,
+    /// For an allowance's row, the hours of its window, which the launcher
+    /// names it by (its words.json's `spend:window:<hours>`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window: Option<u32>,
     /// What Return runs instead of copying, and the footer's word for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Vec<String>>,
@@ -139,6 +148,8 @@ fn line(key: impl Into<String>, name: impl Into<String>, side: impl Into<String>
         side,
         note: String::new(),
         role: "text".into(),
+        mark: String::new(),
+        window: None,
         run: None,
         verb: String::new(),
         expect: None,
@@ -274,6 +285,11 @@ fn period_line(
         side,
     );
     made.note = note;
+    // A day's row wears a day's mark, so the first screen's glyph column
+    // has no hole beside the budgets' (VKCF3Z, 2026-11-07).
+    if matches!(period, Period::Today | Period::Yesterday) {
+        "date".clone_into(&mut made.mark);
+    }
     made.rows = cuts_for(period)
         .filter_map(|cut| {
             let id = format!("{}/{}", period.id(), cut.id());
@@ -546,28 +562,43 @@ fn budgets(picture: &Picture, config: &crate::config::Config) -> Option<Standing
         .filter(|standing| standing.budgets.len() > 1)
 }
 
+/// The theme's marks the budgets' rows wear: AI spend's, for a budget and
+/// the whole, and a clock, for a window.
+const AGENT: &str = "agent";
+const CLOCK: &str = "clock";
+
 /// The Budgets row: the month's whole in billed spend, and behind it that
 /// whole, then each budget nearest its allowance first, standing in its
 /// own unit, with its allowances behind it when it has more than one.
 fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
     let total = &standing.total.periods;
     let month = format!("{} this month", total["this month"].shown);
-    let mut made = line("budgets", "Budgets", month.clone());
+    let mut made = line("budgets", "Budgets", month);
     made.note = crate::standing::WORDS.into();
-    let mut all = line("budgets/all", "All AI Spend", month);
+    // Every row of the budgets wears AI spend's own mark, a window a clock,
+    // its role colouring it (VKCF3Z, 2026-11-07).
+    AGENT.clone_into(&mut made.mark);
+    // The month's whole is the Budgets row's own figure, so the whole's
+    // row behind it says the nearer periods rather than saying it again.
+    let mut all = line(
+        "budgets/all",
+        "All AI Spend",
+        format!("{} today", total["today"].shown),
+    );
     all.note = joined(&[
         crate::standing::WORDS,
-        &format!("{} today", total["today"].shown),
         &format!("{} in 7 days", total["7 days"].shown),
     ]);
-    made.rows = std::iter::once(all)
-        .chain(
-            standing
-                .budgets
-                .iter()
-                .map(|budget| budget_line(picture, budget)),
-        )
+    AGENT.clone_into(&mut all.mark);
+    let budgets: Vec<Line> = standing
+        .budgets
+        .iter()
+        .map(|budget| budget_line(picture, budget))
         .collect();
+    // The row's glyph is its nearest budget's, so the first screen shows a
+    // budget past its warning without stepping in.
+    made.role = worst_role(budgets.iter().map(|row| row.role.as_str())).into();
+    made.rows = std::iter::once(all).chain(budgets).collect();
     made
 }
 
@@ -585,6 +616,7 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         _ => String::new(),
     };
     made.note = joined(&[&budget.words, default, &resets]);
+    AGENT.clone_into(&mut made.mark);
     let nearest = budget
         .allowances
         .iter()
@@ -595,18 +627,26 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
             .allowances
             .iter()
             .map(|allowance| {
-                let standing = if allowance.standing.is_empty() {
-                    "not read yet".to_owned()
-                } else {
-                    allowance.standing.clone()
+                let name = capitalized(&allowance.label);
+                // Behind its budget a share's row is named for its window,
+                // so its figure is the share alone.
+                let (standing, read) = match (allowance.unit, allowance.used) {
+                    ("share", Some(used)) => (percent(used), true),
+                    _ if allowance.standing.is_empty() => ("not read yet".to_owned(), false),
+                    _ => (allowance.standing.clone(), true),
                 };
                 let mut row = line(
                     format!("budget:{}:{}", budget.name, allowance.name),
-                    capitalized(&allowance.label),
+                    name.clone(),
                     standing,
                 );
+                if !read {
+                    row.copy = format!("{name} has no reading yet, so there's nothing to copy");
+                }
                 row.note = allowance_reset(picture, allowance);
                 row.role = allowance_role(Some(allowance)).into();
+                CLOCK.clone_into(&mut row.mark);
+                row.window = Some(allowance.window_hours);
                 row
             })
             .collect();
@@ -623,6 +663,16 @@ fn allowance_reset(picture: &Picture, allowance: &crate::standing::Allowance) ->
         .map_or_else(String::new, |at| {
             format!("resets {}", picture.zone.clock(at, picture.now))
         })
+}
+
+/// The most urgent of some rows' roles: an alert over a warning over
+/// plain text.
+fn worst_role<'a>(roles: impl Iterator<Item = &'a str>) -> &'static str {
+    roles.fold("text", |worst, role| match (worst, role) {
+        ("alert", _) | (_, "alert") => "alert",
+        ("warning", _) | (_, "warning") => "warning",
+        _ => "text",
+    })
 }
 
 /// An allowance's glyph is coloured only past its warning: a warning
@@ -1350,12 +1400,9 @@ mod tests {
             .unwrap_or(0)
     }
 
-    // With budgets declared, how things stand holds one more row: the
-    // month's whole in billed spend, the whole first behind it, then each
-    // budget nearest its allowance, a plan with two windows stepping in to
-    // each, and nothing deeper than three.
-    #[test]
-    fn the_budgets_stand_behind_one_row() {
+    /// What's collected with two budgets declared, the proxy cap the
+    /// default and a Claude plan with two windows, the nearer read at 85%.
+    fn budgeted() -> (Picture, Collection, crate::config::Config) {
         use crate::logs::{Cost, Event, Kind, Tokens, Turn};
         let config: crate::config::Config = serde_json::from_value(serde_json::json!({
             "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
@@ -1411,6 +1458,25 @@ mod tests {
         );
         let picture = Picture::read(&history, &config, NOW).unwrap();
         let collected = collection(&picture, &[], &config);
+        (picture, collected, config)
+    }
+
+    /// The Budgets row of what's collected.
+    fn budgets_of(collected: &Collection) -> &Line {
+        collected
+            .now
+            .iter()
+            .find(|line| line.name == "Budgets")
+            .unwrap()
+    }
+
+    // With budgets declared, how things stand holds one more row: the
+    // month's whole in billed spend, the whole first behind it, then each
+    // budget nearest its allowance, a plan with two windows stepping in to
+    // each, and nothing deeper than three.
+    #[test]
+    fn the_budgets_stand_behind_one_row() {
+        let (picture, collected, config) = budgeted();
         let names: Vec<&str> = collected
             .now
             .iter()
@@ -1420,6 +1486,10 @@ mod tests {
         assert_eq!(names[at + 1], "Yesterday", "{names:?}");
         let budgets = &collected.now[at];
         assert_eq!(budgets.side, format!("{} this month", whole(80.0 + 20.0)));
+        // The whole's row says today's whole, which its parent doesn't.
+        let standing = crate::standing::standing(&picture, &config, None);
+        let today = format!("{} today", standing.total.periods["today"].shown);
+        assert_ne!(today, budgets.side);
         let behind: Vec<(&str, &str)> = budgets
             .rows
             .iter()
@@ -1428,11 +1498,13 @@ mod tests {
         assert_eq!(
             behind,
             [
-                ("All AI Spend", "$100 this month"),
+                ("All AI Spend", today.as_str()),
                 ("Claude Pro", "85% of 5 h"),
                 ("Your proxy cap", "$80 this month"),
             ]
         );
+        // The Budgets row takes its nearest budget's warning.
+        assert_eq!(budgets.role, "warning");
         let plan = &budgets.rows[1];
         assert_eq!(plan.role, "warning");
         assert_eq!(plan.note, "your own plan");
@@ -1441,12 +1513,31 @@ mod tests {
             .iter()
             .map(|row| (row.name.as_str(), row.side.as_str()))
             .collect();
-        assert_eq!(
-            windows,
-            [("5 h", "85% of 5 h"), ("The week", "not read yet")]
-        );
+        assert_eq!(windows, [("5 h", "85%"), ("The week", "not read yet")]);
+        assert!(plan.rows[1].copy.contains("nothing to copy"));
         assert_eq!(plan.rows[0].note, "resets 16:20");
         assert!(depth(&collected.now) <= 3);
+    }
+
+    // Each budget's row wears AI spend's mark and each window a clock, and
+    // a day's row a day's, the launcher naming a window by its hours.
+    #[test]
+    fn the_budgets_wear_their_marks() {
+        let (_, collected, _) = budgeted();
+        let budgets = budgets_of(&collected);
+        let plan = &budgets.rows[1];
+        let marks: Vec<&str> = std::iter::once(budgets)
+            .chain(&budgets.rows)
+            .map(|row| row.mark.as_str())
+            .collect();
+        assert_eq!(marks, ["agent", "agent", "agent", "agent"]);
+        let windows: Vec<(&str, Option<u32>)> = plan
+            .rows
+            .iter()
+            .map(|row| (row.mark.as_str(), row.window))
+            .collect();
+        assert_eq!(windows, [("clock", Some(5)), ("clock", Some(168))]);
+        assert_eq!(collected.now[0].mark, "date");
     }
 
     // While the screen is shared nothing says an amount, at any depth.

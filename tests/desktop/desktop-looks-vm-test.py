@@ -14,6 +14,7 @@ it as it found it.
 from __future__ import annotations
 
 import json
+import shlex
 import tarfile
 import time
 from datetime import timedelta
@@ -2036,3 +2037,133 @@ def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
             metered("1", f"meter-most-at-{named}")
     finally:
         desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {was}")
+
+
+def spend_line(key: str, name: str, side: str, note: str = "", role: str = "text") -> Json:
+    """Give one of AI spend's rows as spend-watch writes it (its collection.rs's Line)."""
+    line: Json = {"key": key, "name": name, "side": side, "copy": f"{name}: {side}", "role": role}
+    if note:
+        line["note"] = note
+    return line
+
+
+def marked(
+    line: Json, mark: str, window: int | None = None, rows: list[Json] | None = None
+) -> Json:
+    """Give a row the theme's mark its role colours, its window's hours and what it holds."""
+    line = {**line, "mark": mark}
+    if window is not None:
+        line["window"] = window
+    if rows:
+        line["rows"] = rows
+    return line
+
+
+# How things stand with three budgets, as spend-watch writes it: today, then Budgets, the
+# month's whole in billed spend, its mark its nearest budget's colour; behind it today's whole,
+# then each budget nearest its allowance first, the plan stepping into its two windows.
+BUDGETED = {
+    "v": 2,
+    "sessions": {},
+    "helpers": {},
+    "families": {},
+    "now": [
+        marked(spend_line("today", "Today", "$412"), "date"),
+        marked(
+            spend_line("budgets", "Budgets", "$21,564 this month", "billed spend", "warning"),
+            "agent",
+            rows=[
+                marked(
+                    spend_line(
+                        "budgets/all",
+                        "All AI Spend",
+                        "$412 today",
+                        "billed spend \u00b7 $3,163 in 7 days",
+                    ),
+                    "agent",
+                ),
+                marked(
+                    spend_line(
+                        "budget:claude", "Claude Pro", "85% of 5 h", "your own plan", "warning"
+                    ),
+                    "agent",
+                    rows=[
+                        marked(
+                            spend_line(
+                                "budget:claude:five-hours", "5 h", "85%", "resets 16:20", "warning"
+                            ),
+                            "clock",
+                            5,
+                        ),
+                        marked(
+                            spend_line("budget:claude:week", "The week", "40%", "resets Mon 09:00"),
+                            "clock",
+                            168,
+                        ),
+                    ],
+                ),
+                marked(
+                    spend_line(
+                        "budget:proxy",
+                        "Your proxy cap",
+                        "$27,570 of $40,000",
+                        "the employer's cap \u00b7 the default",
+                    ),
+                    "agent",
+                ),
+                marked(
+                    spend_line(
+                        "budget:delta", "Delta team token", "$310 this month", "a team's token"
+                    ),
+                    "agent",
+                ),
+            ],
+        ),
+    ],
+    "quiet": [spend_line("today", "Today", "spending")],
+}
+
+
+def test_the_budgets_stand_behind_one_row_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Photograph AI spend's Budgets row, the budgets behind it, and a plan's windows.
+
+    One row stands for every budget, the month's whole beside it; behind it the whole first,
+    then each budget nearest its allowance first, each standing in its own unit, and a plan
+    steps into its windows (docs/design.md; VKCF3Z, 2026-11-06). Each is kept for the
+    design's look at Joel's scales.
+    """
+    # Its words have apostrophes, so the JSON is quoted for the shell whole.
+    desktop.as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo {shlex.quote(json.dumps(BUDGETED))}"
+        " > $XDG_RUNTIME_DIR/spend-watch/.c"
+        " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
+    )
+    try:
+        for scale in at_each_scale:
+            named = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            desktop.as_account("qs ipc call launcher collection spend")
+            desktop.launcher_ready()
+            desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+            desktop.down_to("Budgets")
+            assert desktop.showing()["selected"]["side"] == "$21,564 this month"
+            desktop.photograph(f"launcher-budgets-at-{named}")
+            desktop.step_in()
+            rows = desktop.showing()["rows"]
+            assert rows[:4] == [
+                "All AI Spend",
+                "Claude Pro",
+                "Your proxy cap",
+                "Delta team token",
+            ], rows
+            desktop.down_to("Claude Pro")
+            desktop.photograph(f"launcher-budgets-each-at-{named}")
+            desktop.step_in()
+            rows = desktop.showing()["rows"]
+            assert rows[:2] == ["Five Hours", "Week"], rows
+            desktop.photograph(f"launcher-budgets-windows-at-{named}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")

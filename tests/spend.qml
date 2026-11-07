@@ -393,6 +393,38 @@ ShellRoot {
                 JSON.stringify(hidden));
             Quiet.sharing = false;
 
+            // A budget wears AI spend's mark and a window a clock, muted at
+            // rest and the warning's colour past it, drawn on a figure row
+            // too; a window is named as the vocabulary spells it out.
+            const budgeted = JSON.parse(root.collected);
+            budgeted.now = [{
+                key: "budgets", name: "Budgets", side: "$100 this month",
+                copy: "Budgets: $100 this month", role: "warning", mark: "agent",
+                rows: [{
+                    key: "budget:claude:five-hours", name: "5 h", side: "85%",
+                    copy: "5 h: 85%", role: "warning", mark: "clock", window: 5
+                }, {
+                    key: "budget:claude:week", name: "The week", side: "40%",
+                    copy: "The week: 40%", role: "text", mark: "clock", window: 168
+                }, {
+                    key: "budget:claude:day", name: "The day", side: "1%",
+                    copy: "The day: 1%", role: "text", mark: "clock", window: 24
+                }]
+            }];
+            SpendWatch.said = budgeted;
+            const budgets = spend.everything()[0];
+            expect("a budget's mark in the warning's colour",
+                budgets.glyph === Theme.glyph.agent && budgets.hue === "warning"
+                && budgets.marked, JSON.stringify(budgets));
+            const windows = budgets.verbs().slice(0, 3);
+            expect("each window spelled out, its copy too",
+                windows.map(row => row.name).join(", ") === "Five Hours, Week, The day"
+                && windows[0].copies() === "Five Hours: 85%",
+                windows.map(row => `${row.name}: ${row.copies()}`).join(", "));
+            expect("a clock, muted at rest", windows.every(row => row.glyph === Theme.glyph.clock
+                && row.marked) && windows[0].hue === "warning" && windows[1].hue === "muted",
+                windows.map(row => row.hue).join(", "));
+
             // A finding with an action goes to its session, and steps into
             // marking it expected.
             const shown = JSON.parse(root.collected);
