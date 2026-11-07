@@ -3,9 +3,10 @@
 // the reason it doesn't fit. Qt's engine (QV4) parses neither an object
 // spread nor a catch with no binding, so the rules asking for those are off.
 // It lints Chrome's open-tabs extension too, as it is (treefmt.nix), which
-// runs in Chrome with its `chrome` object. Qt's engine gives every library
-// its `Qt` object, whose locale names the days and months. Nothing here is
-// formatted by biome.
+// runs in Chrome with its `chrome` object, and the web kit's CSS
+// (modules/theme/web), which keeps every colour in theme.css's roles. Qt's
+// engine gives every library its `Qt` object, whose locale names the days and
+// months. Nothing here is formatted by biome.
 {
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
@@ -39,6 +40,18 @@
     {
       "includes": ["modules/chrome/open-tabs/extension/**"],
       "javascript": { "globals": ["chrome"] }
+    },
+    {
+      "includes": ["**/*.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            // A reader asking for less motion stills every rule a site adds
+            // after the kit, which only !important can promise.
+            "noImportantStyles": "off"
+          }
+        }
+      }
     }
   ]
 }

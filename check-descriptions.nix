@@ -106,7 +106,7 @@
     single stream until the sink goes away, so the monitor behind it still lights
   '';
   a-theme-changes-everything = ''
-    another theme leaves none of the first's colours behind
+    another theme leaves none of the first's colours behind, but in the web kit's other look
   '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
@@ -2070,6 +2070,10 @@
   the-viewfinder-keeps-its-own-keys = ''
     ZZ closes the camera's viewfinder, and Escape and q leave it open, even where a script in
     mpv's own folder binds Z, as the player's vi keys do, since the viewfinder loads none of them
+  '';
+  the-web-kit-carries-the-theme = ''
+    the web kit's CSS holds every role of the machine's theme as its dark look and of core's light
+    theme as its light one, and a first view's two faces come in under 200 KB
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

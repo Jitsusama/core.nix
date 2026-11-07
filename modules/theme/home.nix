@@ -5,7 +5,12 @@
 # and picking another theme changes them all. Surfaces name what a colour
 # means (its colours), never the colour itself, and the theme is checked for
 # legibility as the machine is evaluated.
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.jitsusama.theme;
   contrast = import ./contrast.nix { inherit lib; };
@@ -1431,14 +1436,20 @@ in
     marks = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
   };
 
+  # The theme for a website, which a site copies whole rather than retyping
+  # the theme's values (web/web.nix).
+  config.xdg.dataFile."jitsusama/web".source = import ./web/web.nix { inherit pkgs cfg themes; };
+
   # Joel's aesthetic, for every agent on the machine, so one designing
   # anything in any repository builds to it rather than to its own taste,
-  # with the design document beside it for the system built from it.
+  # with the design document beside it for the system built from it; and
+  # how a website is built to it, with its references.
   config.home.file = lib.listToAttrs (
     lib.concatMap
       (skills: [
         (lib.nameValuePair "${skills}/aesthetic/SKILL.md" { source = ./SKILL.md; })
         (lib.nameValuePair "${skills}/aesthetic/design.md" { source = ../../docs/design.md; })
+        (lib.nameValuePair "${skills}/web-design" { source = ./web/skill; })
       ])
       [
         ".pi/agent/skills"

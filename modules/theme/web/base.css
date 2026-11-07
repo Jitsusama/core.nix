@@ -1,0 +1,383 @@
+/* What every page of Joel's sets before its own rules, on theme.css's
+   properties: the type set as a typesetter would set it, one focus ring and
+   one selection, links, code, tables, disclosures and fields, and what a
+   reader's system asks for (less motion, more contrast, forced colours).
+   The web-design skill says why each is so; a site adds to these rules and
+   overrides them only for a reason it can name. */
+
+:root {
+  /* Fraunces' zero is a third wider than its average letter, so a measure
+     in ch runs long: 30em holds about 66 characters, and 20em, the least a
+     column of sentences may have, about 45. */
+  --measure: 30em;
+  --measure-least: 20em;
+  /* A field's edge has to show at 3:1 against its ground, which the
+     theme's edge, drawn for windows, doesn't. */
+  --field: color-mix(in srgb, var(--muted) 70%, var(--background));
+  --ring: 2px;
+  /* The theme's spring (stiffness 1600, critically damped), sampled for a
+     transition of 200ms: it settles without a wobble. */
+  --spring: linear(
+    0,
+    0.062,
+    0.191,
+    0.337,
+    0.475,
+    0.594,
+    0.692,
+    0.769,
+    0.829,
+    0.874,
+    0.908,
+    0.934,
+    0.952,
+    0.966,
+    0.976,
+    0.983,
+    0.988,
+    0.991,
+    0.994,
+    0.996,
+    1
+  );
+
+  interpolate-size: allow-keywords;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: var(--step-body);
+  font-weight: var(--words-weight);
+  font-optical-sizing: auto;
+  font-variation-settings:
+    "SOFT" var(--soft, var(--words-soft)),
+    "WONK" var(--wonk, var(--words-wonk));
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures contextual;
+  font-synthesis: none;
+  line-height: 1.55;
+  text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+  hanging-punctuation: first allow-end last;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-kind="interface"] {
+  line-height: 1.4;
+}
+
+body {
+  margin: 0;
+}
+
+/* Headings rank by weight and the face's display axes before size, and
+   wear the strong role. Each leans (WONK) only at display sizes, by the
+   font's own rule. */
+h1,
+h2,
+h3,
+h4 {
+  --soft: var(--title-soft);
+  --wonk: var(--title-wonk);
+
+  margin: 0;
+  color: var(--strong);
+  font-weight: var(--title-weight);
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--step-display);
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+h2 {
+  font-size: var(--step-title);
+}
+
+h3 {
+  font-size: var(--step-section);
+}
+
+h4 {
+  font-size: var(--step-large);
+}
+
+/* The voice: an italic turn of phrase, in a heading or a lede. */
+em,
+.voice {
+  --soft: var(--voice-soft);
+  --wonk: var(--voice-wonk);
+
+  font-style: italic;
+}
+
+:is(h1, h2, h3) em {
+  color: var(--tint);
+  font-weight: 400;
+}
+
+p,
+li,
+dd,
+blockquote,
+figcaption {
+  text-wrap: pretty;
+}
+
+p,
+ul,
+ol,
+dl,
+blockquote,
+figure {
+  margin: 0;
+}
+
+strong,
+b {
+  color: var(--strong);
+  font-weight: var(--words-strong, 600);
+}
+
+@media (width < 34rem) {
+  p,
+  li,
+  dd {
+    hyphens: auto;
+    hyphenate-limit-chars: 7 3 3;
+  }
+}
+
+/* Links are words with a line under them, in the rule's colour, which takes
+   the site's tint when pointed at. Colour stays off the words themselves. */
+a {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: var(--rule);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color var(--arrive) var(--ease);
+}
+
+a:hover {
+  color: var(--strong);
+  text-decoration-color: var(--tint);
+}
+
+/* One ring for everything that takes focus, in the accent, the only place
+   the accent is drawn. */
+:focus-visible {
+  outline: var(--ring) solid var(--accent);
+  outline-offset: var(--ring);
+  border-radius: var(--radius);
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--strong);
+}
+
+/* Monaspace wherever characters line up: code, keys, and figures that are
+   data, since Fraunces has no tabular or old-style figures to switch to. */
+code,
+kbd,
+samp,
+pre,
+.mono,
+.figure {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-variation-settings: normal;
+}
+
+code,
+kbd,
+samp {
+  font-size: 0.85em;
+}
+
+pre {
+  overflow-x: auto;
+  font-size: var(--step-small);
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+kbd {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.figure {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The label: a group's name or a section's eyebrow, in capitals. Its
+   tracking runs past the last letter too, which the end margin takes back. */
+.label {
+  color: var(--label-colour);
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features), "case";
+  font-size: var(--step-small);
+  font-variation-settings: normal;
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  margin-inline-end: calc(var(--label-tracking) * -1);
+  text-transform: uppercase;
+}
+
+.note {
+  color: var(--note-colour);
+  font-size: var(--step-small);
+}
+
+hr {
+  margin: 0;
+  border: 0;
+  border-block-start: 1px solid var(--rule);
+}
+
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 400;
+  text-align: start;
+}
+
+th,
+td {
+  padding-block: var(--mark);
+  padding-inline: 0 var(--groups);
+  border-block-end: 1px solid var(--rule);
+  vertical-align: baseline;
+}
+
+:is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+/* A disclosure grows open rather than jumping, and its summary looks like
+   something to press. */
+summary {
+  cursor: pointer;
+}
+
+details::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition:
+    block-size var(--arrive) var(--ease),
+    content-visibility var(--arrive) allow-discrete;
+}
+
+details[open]::details-content {
+  block-size: auto;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+textarea,
+select {
+  padding: var(--mark) var(--apart);
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  background: var(--sunken);
+}
+
+textarea {
+  resize: none;
+  field-sizing: content;
+}
+
+button {
+  cursor: pointer;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+/* Hidden from the eye and kept for a screen reader. */
+.sr:not(:focus, :focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A target a finger can hit, where the pointer is one. */
+@media (pointer: coarse) {
+  button,
+  summary,
+  input,
+  select {
+    min-block-size: 44px;
+  }
+}
+
+/* Less motion asked for: nothing moves, and every change lands at once. A
+   duration of zero, not one too short to see, so what measures the page
+   reads it where it ends. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --muted: var(--text);
+    --rule: var(--muted);
+    --field: var(--text);
+  }
+}
+
+/* The system's own colours replace the theme's; every control keeps an
+   edge, and the ring is the system's highlight. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    border: 1px solid ButtonText;
+  }
+}

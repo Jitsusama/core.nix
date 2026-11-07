@@ -49,4 +49,16 @@
     ];
     includes = [ "modules/chrome/open-tabs/extension/*.js" ];
   };
+
+  # The web kit's CSS, read by biome as a browser reads it.
+  settings.formatter.css-lint = {
+    command = pkgs.lib.getExe pkgs.biome;
+    options = [
+      "lint"
+      "--error-on-warnings"
+      "--max-diagnostics=none"
+      "--config-path=biome.jsonc"
+    ];
+    includes = [ "*.css" ];
+  };
 }
