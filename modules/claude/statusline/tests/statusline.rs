@@ -37,12 +37,21 @@ fn run(arguments: &[&str], session: &str) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the status line starts");
-    child
+    let written = child
         .stdin
         .take()
         .expect("its standard input")
-        .write_all(session.as_bytes())
-        .expect("the session is written");
+        .write_all(session.as_bytes());
+    // A run that ends before it reads the session, as one refusing its
+    // colours does, closes the pipe first, which is how it's meant to end,
+    // so what it printed is the test's to judge.
+    if let Err(error) = written {
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::BrokenPipe,
+            "the session is written"
+        );
+    }
     child.wait_with_output().expect("the status line ends")
 }
 
