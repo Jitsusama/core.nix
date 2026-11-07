@@ -10,6 +10,11 @@ import QtQuick
 Provider {
     id: provider
 
+    // Swayimg's desktop entry hides itself, as it opens nothing without a
+    // picture, so Programs lists it for its gallery and its Recent, stepping
+    // in on Return rather than starting.
+    hiddenPrograms: ["swayimg"]
+
     // How many pictures the folder holds, as the one reader of what was
     // taken says (Taken.qml), which is read as the launcher opens.
     readonly property int count: Taken.countIn(settings.folder, /\.png$/i)
