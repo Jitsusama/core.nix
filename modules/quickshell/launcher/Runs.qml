@@ -68,8 +68,9 @@ Provider {
 
     // The runs, each as the rows are made from it: its bare id, its kind,
     // what it's about, the session it's of, and its participants. The
-    // node's record keeps its own `kind`, so a run's own is read from its
-    // id, which the harness writes as fleet.<id> or review.<round>-<time>.
+    // node's record keeps its own `kind`, so a run's own is its `run.kind`,
+    // which the harness writes beside it from 2026-11-07, or else read from
+    // its id, which the harness writes as fleet.<id> or review.<round>-<time>.
     readonly property var runs: records.map(record => {
         const id = String(record.id ?? "");
         const bare = id.replace(/^[a-z]+\./, "");
@@ -77,7 +78,8 @@ Provider {
         return {
             id: bare,
             key: record.key ?? `run:${id}`,
-            kind: id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review",
+            kind: record["run.kind"]
+                ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
             about: record.about ?? "",
             parent: record.parent ?? "",
             started: record.since ?? "",

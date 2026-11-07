@@ -3,7 +3,8 @@
 // node serves them, with niri, pi's sessions and the screen's sharing
 // stood in. It lists the running fleet first, then the newest; a council
 // is named for the change it read, its kind read from its id since the
-// node's record keeps its own; one the node says runs whose session has
+// node's record keeps its own, unless the harness wrote it beside as
+// run.kind; one the node says runs whose session has
 // gone wears failure's mark; a run says how far along it is or what it
 // cost, and how long it ran; the session that started one is named beside
 // it, and Return goes to its window; stepping in lists its participants,
@@ -161,6 +162,13 @@ ShellRoot {
                 hidden.every(row => !row.side.includes("$"))
                     && hidden[0].verbs().every(row => !row.side.includes("$")),
                 hidden.map(row => row.side).join(", "));
+
+            // A run's own kind, where the harness wrote it beside the node's.
+            runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",
+                id: "review.r7-1", about: "core.nix#381", parent: "s-gone", state: "done" }];
+            const judged = runs.everything();
+            expect("its kind as the harness wrote it", names(judged) === "judge on core.nix#381",
+                names(judged));
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
