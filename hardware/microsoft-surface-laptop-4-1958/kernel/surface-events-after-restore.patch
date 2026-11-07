@@ -178,7 +178,7 @@ diff --git a/drivers/platform/surface/aggregator/core.c b/drivers/platform/surfa
 +	}
 +
 +	if (ssam_restore_events_tries < SSAM_RESTORE_EVENTS_TRIES) {
-+		queue_delayed_work(system_unbound_wq, &ssam_restore_events_work,
++		queue_delayed_work(system_dfl_wq, &ssam_restore_events_work,
 +				   SSAM_RESTORE_EVENTS_DELAY);
 +		return;
 +	}
@@ -210,7 +210,7 @@ diff --git a/drivers/platform/surface/aggregator/core.c b/drivers/platform/surfa
  		ssam_err(c, "pm: display-on notification failed: %d\n", status);
 +
 +	if (READ_ONCE(ssam_restore_events_pending))
-+		queue_delayed_work(system_unbound_wq, &ssam_restore_events_work, 0);
++		queue_delayed_work(system_dfl_wq, &ssam_restore_events_work, 0);
  }
  
  static int ssam_serial_hub_pm_suspend(struct device *dev)

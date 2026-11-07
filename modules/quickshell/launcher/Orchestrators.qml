@@ -4,15 +4,16 @@
 // one and talk to it (Joel, 2026-10-25: "it needs a good name and should
 // allow me to pick an orchestrator"), in the one order every list of
 // sessions keeps (SessionRow.js): those needing him, then those working,
-// in line, listening and paused, then those not running, each saying so
+// in line, listening, paused and parked, then those not running, each saying so
 // beside its name, as its session says, and what its whole orchestration
 // spent today, as Agents says it.
 //
 // One running is its session, drawn as every session is (Agents.qml,
 // SessionRow.js): Return goes to its window, and stepping in gives its acts,
 // Talk, Pause or Resume and Stop, each left in its steer inbox
-// (Sessions.qml), then what's known of it. One not running resumes where
-// it left off instead.
+// (Sessions.qml), then what's known of it. One parked is its session too,
+// which Return wakes in its own window. One not running resumes where it
+// left off instead.
 //
 // After those come the talks Joel has had with a session, newest first, as
 // it writes what became of each (the harness's talk files, one a talk,
@@ -74,9 +75,11 @@ Provider {
         return SessionRow.state(presence, Sessions.asks({ presence: presence }), false);
     }
 
-    // Its running session, by its address, or null.
+    // Its session, running or parked, by its address, or null: one parked
+    // is woken, never resumed in a second window beside its own.
     function sessionOf(address) {
-        return Sessions.running.find(one => one.address === address) ?? null;
+        return Sessions.running.find(one => one.address === address)
+            ?? Sessions.parked.find(one => one.address === address) ?? null;
     }
 
     readonly property var all: {

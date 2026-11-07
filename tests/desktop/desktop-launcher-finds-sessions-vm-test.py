@@ -598,10 +598,42 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
     desktop.close_launcher()
+    wakes_parked_orchestrator(desktop)
     desktop.as_account(
         f"rm -rf {opened} {sessions} ~/lighthouse {HARNESS}/quest-workflow/orchestrators.json"
         f" {HARNESS}/quest-workflow/quests.json"
     )
+
+
+def wakes_parked_orchestrator(desktop: Desktop) -> None:
+    """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it."""
+    machine = desktop.machine
+    # Parked as the harness parks one: its process ended, its record saying
+    # so, and the marker naming the file that wakes it.
+    parked = f"{HARNESS}/park-workflow/parked"
+    record = {
+        "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
+        "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": "gone", "startTicks": 1},
+    }  # fmt: skip
+    desktop.as_account(
+        f"mkdir -p {parked} && echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json"
+        ' && printf \'{"session":"s-testqa","wake":"%s/testqa.wake"}\' "$XDG_RUNTIME_DIR"'
+        f" > {parked}/s-testqa.json"
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    # Its row is its parked session's, which Return wakes, where a closed
+    # one's Return resumes it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "wake")
+    desktop.land()
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 wake"], desktop.showing()
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session('grep -q \'"session":"s-testqa"\' "$XDG_RUNTIME_DIR/testqa.wake"')
+    )
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm -rf {parked} {PI_PRESENCE}/testqa.json $XDG_RUNTIME_DIR/testqa.wake")
 
 
 def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:

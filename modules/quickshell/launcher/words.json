@@ -123,6 +123,7 @@
         "inLine": "{place} in line",
         "listening": "listening",
         "paused": "paused",
+        "parked": "parked",
         "today": "{spent} today",
         "inAll": "{spent} today in all",
         "allOf": "{spent} in all",
@@ -6414,6 +6415,14 @@
       "glyph": "resume"
     },
     {
+      "id": "verb:agent:wake",
+      "command": "wake",
+      "in": "agents",
+      "name": "Wake",
+      "verb": "wake",
+      "glyph": "resume"
+    },
+    {
       "id": "verb:agent:stop",
       "command": "interrupt",
       "in": "agents",
@@ -6484,6 +6493,14 @@
       "name": "Go To Its Session",
       "verb": "go",
       "glyph": "windows"
+    },
+    {
+      "id": "verb:quest:wake",
+      "command": "wake",
+      "in": "quests",
+      "name": "Wake Its Session",
+      "verb": "wake",
+      "glyph": "resume"
     },
     {
       "id": "verb:quest:open",

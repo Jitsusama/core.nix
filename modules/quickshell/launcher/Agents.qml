@@ -15,9 +15,12 @@
 // same, their machine leading the note (VKCF3Z, 2026-10-29, G8 of
 // mycelium's plan), in the one order every list of sessions keeps
 // (SessionRow.js): those needing Joel, then those working, in line,
-// listening and paused, this machine's first in each, then the others by
-// when each last changed. Go To joins one elsewhere through its node; one
-// on a machine out of reach stays, dimmed, saying so, and does nothing.
+// listening and paused, then those parked, this machine's first in each,
+// then the others by when each last changed. Go To joins one elsewhere
+// through its node; one on a machine out of reach stays, dimmed, saying
+// so, and does nothing. One parked has given its memory back until it's
+// wanted (Sessions.parked), so Return wakes it in its own window, and
+// talking to it wakes it too.
 //
 // Each session sits under the one orchestrating it, a step in, and two
 // under that one's orchestrator, with no line or box: the step alone says
@@ -56,7 +59,9 @@ Provider {
         const launcher = provider.launcher;
         if (!launcher || !(launcher.open || launcher.cataloguing))
             return [];
-        const running = Sessions.running;
+        // Those parked after, standing last in the one order, under their
+        // orchestrators as the rest are.
+        const running = Sessions.running.concat(Sessions.parked);
         // The orchestrators the harness lists, which say what their whole
         // orchestration spent even with none of theirs running.
         const listed = (source("orchestrators")?.listed ?? []).map(one => one.address);
@@ -168,7 +173,7 @@ Provider {
             // one row left of them (Launcher.qml's compose).
             is: Sessions.isOf(session),
             rich: 2,
-            verb: "go",
+            verb: state === "parked" ? Words.verb("verb:agent:wake") : "go",
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since
             // a member keeps its words as given.
@@ -181,7 +186,8 @@ Provider {
             depth: depth,
             gone: !session.reachable,
             later: true,
-            run: () => Sessions.goTo(session),
+            // One parked wakes in its window, which nothing here can go to.
+            run: state === "parked" ? () => Sessions.wake(session) : () => Sessions.goTo(session),
             verbs: () => provider.verbs(session, quest, spent, family),
             // What y takes: the first of its facts, as its verbs list them.
             operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
@@ -250,6 +256,7 @@ Provider {
                             ?.replace("{name}", session.title) ?? "";
                 }
             }),
+            wake: () => act("wake", { run: () => Sessions.wake(session) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
             stop: () => act("stop", { run: steered("stop") })

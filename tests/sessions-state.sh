@@ -5,7 +5,10 @@
 # so in its record and one only in its environment; one runs where niri
 # shows no window of its kitty; one's process has ended; one is from an
 # earlier boot; and one names a running pid that started at another time,
-# as a pid used again does. A stand-in kitten lists one kitty's windows,
+# as a pid used again does. Two say they're parked, their processes ended
+# as a parked one's has; tests/sessions.qml writes the marker one keeps
+# while it's parked once the shell has started, as the harness makes its
+# park folder only then. A stand-in kitten lists one kitty's windows,
 # and a stand-in mycelium refuses a steer.
 # The running processes' pids are written beside them, for the test to end.
 set -euo pipefail
@@ -51,6 +54,9 @@ record unseen NOWIN6 "$unseen" "$boot" "$(ticks "$unseen")" ''
 record ended ENDED3 "$ended" "$boot" 1 ''
 record old OLD004 "$live" another-boot "$(ticks "$live")" ''
 record reused REUSE5 "$live" "$boot" "$(($(ticks "$live") + 1))" ''
+record napper NAPPER "$ended" "$boot" 1 \
+  ',"state":"parked","title":"\u03c0 - Napper - core.nix"'
+record woken WOKEN8 "$ended" "$boot" 1 ',"state":"parked"'
 echo "$live" >"$state/live.pid"
 
 # What the last boot's end took away, as the harness keeps it: one whole,

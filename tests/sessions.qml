@@ -8,7 +8,10 @@ pragma ComponentBehavior: Bound
 // record's terminal or its process's environment, and among a kitty's
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
-// ends, takes its session with it. What an earlier boot's end took away
+// ends, takes its session with it. One parked is held apart from those
+// running while its marker stands, and only then, however its record
+// reads; Wake, or talking to it, writes the file its marker names, as the
+// node's parked one is held too. What an earlier boot's end took away
 // is offered whole, reopened held in its own folder, until put off, one
 // pi never saved started under its own id with its quest, and Reopen Them
 // All reopens even when niri never answers its ask for the screens; what
@@ -61,6 +64,13 @@ ShellRoot {
         function onRunningChanged() {
             Qt.callLater(root.check);
         }
+        function onParkedChanged() {
+            Qt.callLater(root.check);
+        }
+    }
+
+    function parkedAs() {
+        return Sessions.parked.map(session => session.address).sort().join(" ");
     }
 
     // Reopen Them All opens each on a timer of its own, which nothing else
@@ -99,6 +109,10 @@ ShellRoot {
         const other = find("OTHER2");
         if (addresses() !== "LIVE01 NOWIN6 OTHER2" || !other || !other.window)
             return;
+        if (parkedAs() === "") {
+            parking.running = true;
+            return;
+        }
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
             JSON.stringify(live.window));
@@ -129,8 +143,44 @@ ShellRoot {
         Sessions.goTo(unseen);
         expect("Go To asks its kitty", Niri.spawned.join(" ")
             === "kitten @ --to unix:@kitty-700 focus-window --match id:2", Niri.spawned.join(" "));
+        parks();
         lastBoot();
         stage = "reopening";
+    }
+
+    // One parked is listed apart, never running, and only while its marker
+    // stands; Wake writes the file the marker names, whole, in place, and
+    // talking to it steers its inbox, then wakes it to read it.
+    function parks() {
+        expect("only the one parked whose marker stands is parked", parkedAs() === "NAPPER",
+            parkedAs());
+        const napper = Sessions.parked[0];
+        expect("one parked is named by its record, with no window",
+            napper.title === "Napper" && napper.window === null, JSON.stringify(napper));
+        Sessions.wake(napper);
+        const woken = Niri.spawned;
+        expect("Wake writes the file its marker names, in place",
+            woken.slice(0, 5).join(" ")
+                === `sh -c printf "%s\\n" "$2" > "$1" wake ${root.state}/napper.wake`
+            && JSON.parse(woken[5]).session === "s-NAPPER", woken.join(" "));
+        const spawns = Niri.spawns.length;
+        Sessions.talk("napper", "what now?");
+        const said = Niri.spawns.slice(spawns);
+        expect("talking to one parked steers its inbox, then wakes it", said.length === 2
+            && said[0].includes("/steer/NAPPER ") && said[1].includes("/napper.wake "),
+            said.join(" | "));
+    }
+
+    // The markers of the one parked in the folder and the one the node
+    // tells of, each naming its wake file, laid once the shell has listed
+    // its sessions, in a park folder that wasn't there till then, as the
+    // harness makes it only as a session first parks.
+    Process {
+        id: parking
+        command: ["sh", "-c", 'p="$1/pi/agentic-harness.pi/park-workflow/parked"; mkdir -p "$p"'
+            + ' && for one in napper parked; do'
+            + ' printf \'{"session":"s-%s","wake":"%s/%s.wake"}\' "$(echo "$one" | tr a-z A-Z)"'
+            + ' "$1" "$one" > "$p/s-$(echo "$one" | tr a-z A-Z).json"; done', "park", root.state]
     }
 
     // Why each that didn't open as asked didn't, as its caller is told:
@@ -255,7 +305,7 @@ ShellRoot {
     // The node's sessions are heard once it listens: asked again, the
     // shell watches it, and what it tells is held.
     function watched() {
-        if (Sessions.node === null || addresses() !== "FARAWY OUTRCH")
+        if (Sessions.node === null || addresses() !== "FARAWY OUTRCH" || parkedAs() !== "PARKED")
             return;
         const far = find("FARAWY");
         const out = find("OUTRCH");
@@ -420,10 +470,20 @@ ShellRoot {
             attach: attach, window: null, groups: [], title: "",
             presence: { addresses: [address], title: `\u03c0 - ${address} - /far`, busy: true }
         });
+        // One parked here, as the node tells of it: ended, its record
+        // saying it's parked, and its marker standing; and one ended whose
+        // record says so with no marker.
+        const here = (address, session) => ({
+            id: `r-${address}`, address: address, machine: Sessions.machine, state: "ended",
+            at: now, groups: [], title: "", presence: { addresses: [address], session: session,
+                state: "parked", busy: false, title: `\u03c0 - ${address} - core.nix` }
+        });
         return [
             one("r-far", "FARAWY", "busy", now, "mycelium attach r-far"),
             one("r-out", "OUTRCH", "unreachable", now, null),
-            one("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old")
+            one("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old"),
+            here("PARKED", "s-PARKED"),
+            here("GONE09", "s-GONE09")
         ];
     }
 
