@@ -42,6 +42,9 @@ pub fn revive(
     now: i64,
     send: &dyn Fn(&str, &str, String) -> io::Result<()>,
 ) -> io::Result<Vec<String>> {
+    if !revive::settled(signed_in(), now) {
+        return Ok(Vec::new());
+    }
     let path = folder.join("revive.json");
     let mut memory: Memory = fs::read(&path)
         .ok()
@@ -66,7 +69,7 @@ pub fn revive(
             .as_ref()
             .and_then(|q| fs::read_to_string(reviving.quests.join(q).join("README.md")).ok())
             .map(|readme| revive::quest(&readme));
-        let Verdict::Died { cwd } = revive::judge(s, quest.as_ref(), is_pi, named(&s.session))
+        let Verdict::Died { cwd } = revive::judge(s, quest.as_ref(), is_pi, held(&s.session))
         else {
             continue;
         };
@@ -206,29 +209,49 @@ fn is_pi(pid: u32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "pi")
 }
 
-/// Whether a pi runs whose parent names `session` on its command line,
-/// as a holder does, so one started by hand isn't started twice.
-fn named(session: &str) -> bool {
+/// Whether a process other than a pi holds `session`, naming it after
+/// `--session` on its command line, as a holder does. A holder whose pi
+/// parked has no pi under it, and waits for a key in its own window to
+/// start it, so a second one started elsewhere would write the same log.
+fn held(session: &str) -> bool {
     let Ok(procs) = fs::read_dir("/proc") else {
         return false;
     };
     procs
         .filter_map(Result::ok)
         .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        .filter(|&pid| is_pi(pid))
-        .any(|pid| {
-            parent(pid)
-                .and_then(|pp| fs::read(format!("/proc/{pp}/cmdline")).ok())
-                .is_some_and(|c| String::from_utf8_lossy(&c).contains(session))
+        .filter(|&pid| !is_pi(pid))
+        .filter_map(|pid| fs::read(format!("/proc/{pid}/cmdline")).ok())
+        .any(|line| {
+            let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();
+            words.windows(2).any(|pair| {
+                matches!(pair[0], b"--session" | b"--session-id")
+                    && String::from_utf8_lossy(pair[1]).contains(session)
+            })
         })
 }
 
-fn parent(pid: u32) -> Option<u32> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    stat.rsplit_once(')')?
-        .1
-        .split_whitespace()
-        .nth(1)?
+/// When the graphical session began, if it has: until then there is no
+/// desktop to open a window on.
+fn signed_in() -> Option<i64> {
+    let out = Command::new("systemctl")
+        .args([
+            "--user",
+            "show",
+            "--timestamp=unix",
+            "graphical-session.target",
+        ])
+        .args(["-p", "ActiveState", "-p", "ActiveEnterTimestamp"])
+        .output()
+        .ok()?;
+    let shown = String::from_utf8_lossy(&out.stdout).into_owned();
+    if !shown.lines().any(|l| l == "ActiveState=active") {
+        return None;
+    }
+    shown
+        .lines()
+        .find_map(|l| l.strip_prefix("ActiveEnterTimestamp=@"))?
+        .trim()
         .parse()
         .ok()
 }

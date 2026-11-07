@@ -14,6 +14,18 @@ pub const QUIET_FOR: i64 = 10 * 60;
 /// Past this many starts of one session in an hour, something kills it
 /// as it starts, and starting it again only repeats that.
 pub const PER_HOUR: usize = 3;
+/// How long after sign-in nothing is started. The user's manager lingers,
+/// so cadence ticks from boot, before there is a desktop to open a window
+/// on; and once there is one, the sessions Joel had are reopened together,
+/// which a revive would race into a second window each.
+pub const SETTLING: i64 = 15 * 60;
+
+/// Whether the desktop has been up long enough, since `since` (when the
+/// graphical session began, if it has), to start sessions at `now`.
+#[must_use]
+pub fn settled(since: Option<i64>, now: i64) -> bool {
+    since.is_some_and(|since| now - since >= SETTLING)
+}
 
 /// A session as its presence describes it, and whether its process runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,6 +237,16 @@ pub fn quest(readme: &str) -> Quest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nothing_starts_before_sign_in_or_while_the_desktop_settles() {
+        assert!(!settled(None, 10_000), "with no desktop, nothing starts");
+        assert!(
+            !settled(Some(10_000), 10_000 + SETTLING - 1),
+            "sessions are still being reopened"
+        );
+        assert!(settled(Some(10_000), 10_000 + SETTLING));
+    }
 
     fn seen(address: &str, by: Option<&str>, running: bool, at: &str) -> Seen {
         Seen {
