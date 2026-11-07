@@ -57,8 +57,10 @@ pub enum Outcome {
     Unasked,
     /// The sign-in or the endpoint failed.
     Failed,
-    /// The endpoint asked not to be asked again before then.
+    /// The endpoint, asked, said not to ask again before then.
     Paused(Timestamp),
+    /// A pause the endpoint asked for still held, so it wasn't asked.
+    Waiting(Timestamp),
 }
 
 /// The plan's feed, reading the sign-in kept in one file.
@@ -87,7 +89,10 @@ impl Feed {
     /// and the read says so.
     pub fn read(&mut self, endpoint: &mut impl Endpoint, now: Timestamp) -> Read {
         if let Some(until) = self.paused.filter(|until| *until > now) {
-            return paused(until, now, Vec::new());
+            return Read {
+                outcome: Outcome::Waiting(until),
+                ..paused(until, now, Vec::new())
+            };
         }
         self.paused = None;
         match login::read(&self.credentials, now) {
@@ -96,9 +101,13 @@ impl Feed {
                 Health::Optional,
                 "no Claude plan is signed in for pi-claude",
             ),
+            // Only Claude Code renews its sign-in, and only while it runs, so
+            // an expired one is a plan not in use, whose windows can't move
+            // until it is: nothing is wrong, and the last caps stand.
             Ok(Login::Expired) => unasked(
-                Health::Stalled,
-                "Claude Code's sign-in has expired; it renews it the next time it runs",
+                Health::Fine,
+                "the plan hasn't been used since its sign-in expired; \
+                 Claude Code renews it the next time it runs",
             ),
             Ok(Login::Unscoped) => failed(
                 Vec::new(),

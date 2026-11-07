@@ -31,9 +31,10 @@ Linux too.
 
 The feed reads only the access token, and never renews it. Claude Code's
 refresh tokens are good for one use, so a renewal here would leave Claude
-Code holding a spent one and sign it out. While the access token has
-expired, the feed says the plan is stalled and asks nothing; Claude Code
-renews it the next time it runs.
+Code holding a spent one and sign it out. Claude Code renews it only while
+it runs, so an expired access token is a plan not in use, whose windows
+can't move until it is: the feed says it's fine, asks nothing, and leaves
+the last caps standing.
 
 With the token, it asks the OAuth usage endpoint Claude Code's `/usage`
 asks:
@@ -85,7 +86,7 @@ an `action`, `sign-in`, running `pi-claude login` in a terminal.
 | -------------------------------------- | ------------ |
 | an answer with a window in it          | `fine`       |
 | no `.credentials.json`, or no plan in it | `optional`, with `sign-in` |
-| an expired access token                | `stalled`, nothing asked |
+| an expired access token                | `fine`, nothing asked    |
 | a 429                                  | `stalled`, nothing asked until it's over |
 | a 401                                  | `signed-out`, with `sign-in` |
 | no `user:profile` scope                | `error`, nothing asked |

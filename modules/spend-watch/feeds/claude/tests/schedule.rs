@@ -131,6 +131,32 @@ fn a_short_wait_still_backs_off() {
 }
 
 #[test]
+fn a_refresh_during_a_wait_leaves_the_backing_off_as_it_was() {
+    let mut schedule = Schedule::new(at(START));
+    schedule.pace(Pace::Active);
+    schedule.read(&Outcome::Paused(later(5)), at(START));
+
+    schedule.refresh(later(10));
+    schedule.read(&Outcome::Waiting(later(20)), later(10));
+    schedule.read(&Outcome::Paused(later(125)), later(120));
+
+    assert_eq!(
+        schedule.due(),
+        later(360),
+        "only the asks it was told to wait after count, so the second waits four minutes"
+    );
+}
+
+#[test]
+fn a_wait_kept_without_asking_reads_when_it_ends() {
+    let mut schedule = Schedule::new(at(START));
+
+    schedule.read(&Outcome::Waiting(later(200)), at(START));
+
+    assert_eq!(schedule.due(), later(200));
+}
+
+#[test]
 fn the_wait_until_a_read_is_never_less_than_none() {
     let schedule = Schedule::new(at(START));
 

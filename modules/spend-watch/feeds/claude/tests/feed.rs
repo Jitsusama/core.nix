@@ -129,13 +129,14 @@ fn a_login_with_no_plan_in_it_is_nothing_signed_in() {
 }
 
 #[test]
-fn an_expired_sign_in_stalls_until_claude_code_renews_it() {
+fn an_expired_sign_in_is_a_plan_not_in_use_and_fine() {
     let mut feed = Feed::new(login("expired"));
     let mut endpoint = Recorded::answering(200, &answer("pro"));
 
     let read = feed.read(&mut endpoint, at(NOW));
 
-    assert_eq!(health(&read.lines)["state"], "stalled");
+    assert_eq!(health(&read.lines)["state"], "fine");
+    assert!(kinds(&read.lines, "cap").is_empty(), "the last caps stand");
     assert_eq!(read.outcome, Outcome::Unasked);
     assert!(endpoint.tokens.is_empty(), "an expired token isn't sent");
 }
@@ -244,7 +245,11 @@ fn being_asked_to_wait_stalls_and_asks_nothing_until_the_wait_is_over() {
 
     assert_eq!(first.outcome, Outcome::Paused(at("2026-11-06T15:05:00Z")));
     assert_eq!(health(&meanwhile.lines)["state"], "stalled");
-    assert_eq!(meanwhile.outcome, first.outcome);
+    assert_eq!(
+        meanwhile.outcome,
+        Outcome::Waiting(at("2026-11-06T15:05:00Z")),
+        "a wait kept without asking isn't another ask told to wait"
+    );
     assert_eq!(endpoint.tokens.len(), 1, "it waited as it was asked to");
 }
 

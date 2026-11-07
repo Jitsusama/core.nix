@@ -85,6 +85,9 @@ impl Schedule {
             }
             Outcome::Failed => now + self.backed_off(),
             Outcome::Paused(until) => (*until).max(now + self.backed_off()),
+            // Nothing was asked, so nothing failed: a refresh pressed while
+            // waiting leaves the backing off as it was.
+            Outcome::Waiting(until) => *until,
         };
     }
 
