@@ -2002,7 +2002,7 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
 
 
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
-    """Photograph Landed, its count at its side, then inside it, a landing's Try line its note.
+    """Photograph Landed, its count at its side, then inside it, what to try its note.
 
     Each says what landed as its name and its ref in the mono at its right; what to try is
     its note, in the serif. Nothing is read, so the walk can come back to it.

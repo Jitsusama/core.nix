@@ -215,10 +215,10 @@
     },
     {
       "id": "verb:agents:landed:change",
-      "command": "buffer",
+      "command": "open",
       "in": "agents:landed",
-      "name": "Go To the Change",
-      "verb": "go to",
+      "name": "Open the Change",
+      "verb": "open",
       "glyph": "link"
     },
     {
@@ -233,7 +233,7 @@
       "id": "verb:agents:landed:try",
       "command": "yank",
       "in": "agents:landed",
-      "name": "Copy the Try Line",
+      "name": "Copy What to Try",
       "verb": "copy",
       "glyph": "copy"
     },

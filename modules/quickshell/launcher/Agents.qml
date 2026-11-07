@@ -655,7 +655,7 @@ Provider {
     // name, its ref at the right in the mono, and what to try as its note
     // in the serif. Return goes to the change, or to its session where no
     // link to the change is known, and marks it read; its own step in holds
-    // Go To the Change, Go To the Session, Copy the Try Line and Read, which
+    // Open the Change, Go To the Session, Copy What to Try and Read, which
     // d does too and u takes back. Read only from the sessions there are,
     // so one that ended takes what it landed with it.
     readonly property var landed: {
