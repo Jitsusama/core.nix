@@ -1596,10 +1596,10 @@ in
     # The recorder's tools (Recorder.qml): wf-recorder records the screen
     # and record-window a window, grim takes a region's picture and wl-copy
     # copies it, and notify-send says where the file went. The launcher's
-    # quests and runs read pi through pi-quests and pi-runs
-    # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
-    # run's answer through pi-runs too. The clipboard's Paste presses its
-    # window's paste keys through wtype (launcher/Copies.qml).
+    # quests read pi through pi-quests (launcher/Quests.qml), and a
+    # terminal shows a run's answer through jq (launcher/Runs.qml). The
+    # clipboard's Paste presses its window's paste keys through wtype
+    # (launcher/Copies.qml).
     home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
       launcherSay
@@ -1611,10 +1611,7 @@ in
         name = "pi-quests";
         source = ./quests.rs;
       })
-      (pkgs.callPackage ./pi-helper.nix {
-        name = "pi-runs";
-        source = ./runs.rs;
-      })
+      pkgs.jq
       pkgs.grim
       pkgs.wl-clipboard
       pkgs.wtype
@@ -1954,13 +1951,15 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders of what waits on Joel, and of the harness's index of quests,
-    # which the mycelium node serves WaitingOnYou.qml: the node watches a
-    # folder made after it starts only once a minute has passed.
+    # folders of what waits on Joel, of the harness's index of quests, and
+    # of its runs, which the mycelium node serves WaitingOnYou.qml and
+    # launcher/Runs.qml: the node watches a folder made after it starts
+    # only once a minute has passed.
     systemd.user.tmpfiles.rules = [
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
+      "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/runs - - - -"
       "d ${config.xdg.stateHome}/mission - - - -"
       "d ${config.xdg.stateHome}/mission/waiting - - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow - - - -"
