@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from test_driver.machine import QemuMachine
-from test_driver.machine.ocr import perform_ocr_variants_on_screenshot
+from test_driver.machine.ocr import perform_ocr_on_screenshot
 
 if TYPE_CHECKING:
     from test_driver.machine import BaseMachine
@@ -30,9 +30,12 @@ READING = dt.timedelta(seconds=300)
 # How long the ask may take to show: the disk waits two minutes for its passphrase, and the
 # boot goes on without it after.
 ASKING = dt.timedelta(seconds=90)
-# The ask, as OCR reads it over the wallpaper at this screen's size: it has read it as "he
-# disk is locke", so only the words' middle is asked for.
-ASKED = "disk is lock"
+# The ask's words. They're read with only the pixels near their colour kept, since over the
+# whole screen OCR reads the wallpaper's shapes as letters and loses theirs among them.
+ASKED = "disk is locked"
+# How near each of a pixel's channels must be to the words' colour to be read as theirs: their
+# edges blend into what's behind them, their strokes' middles don't.
+NEAR = 48
 # How long a hibernation may take to make its image and power off.
 GOES_OFF = dt.timedelta(minutes=3)
 # What the kernel says once every program is frozen and it's about to read the image, as it
@@ -40,9 +43,8 @@ GOES_OFF = dt.timedelta(minutes=3)
 LOADING = re.compile(r"PM: Loading (and decompressing )?image data")
 READS = "PM: Image loading progress:"
 READ = "PM: Image loading done"
-# The theme's words for a restore, as OCR reads them: either half, since over the wallpaper
-# at this screen's size it can lose a word's end, as it does the ask's.
-RESTORING = r"restoring from|from\s+hibernation"
+# The theme's words for a restore, read as the ask's are.
+RESTORING = r"restoring from\s+hibernation"
 # What the hook says once the machine is back.
 TOOK = (
     r"hibernate-unlock: the image was read and the machine back \d+\.\d s after the disk "
@@ -88,6 +90,20 @@ class Picture:
         assert magic == b"P6", f"{path.name} isn't a binary PPM"
         assert largest == b"255", f"{path.name} has {largest!r} levels a channel"
         return cls(int(width), int(height), pixels)
+
+    def words(self, ink: bytes, path: Path) -> Path:
+        """Write the picture as black on white, black only where a pixel is near ink's colour."""
+        # Each byte is 1 where every channel so far is near, 0 where one isn't, so the
+        # channels are put together a whole picture at a time rather than a pixel.
+        inked = -1
+        for channel, value in enumerate(ink):
+            near = bytes(int(abs(level - value) <= NEAR) for level in range(256))
+            inked &= int.from_bytes(self.pixels[channel::3].translate(near), "big")
+        grey = inked.to_bytes(self.width * self.height, "big").translate(
+            bytes([255, 0]) + bytes(254)
+        )
+        path.write_bytes(b"P5 %d %d 255\n" % (self.width, self.height) + grey)
+        return path
 
     def run(self, y: int, left: int, width: int) -> bytes:
         """Give width pixels of row y, from left on."""
@@ -240,9 +256,21 @@ def the_disk(machine: QemuMachine) -> str:
     pytest.fail(f"QEMU named no drive on empty0.qcow2: {said}")
 
 
-def says_restoring(shot: Shot) -> bool:
-    """Whether a photograph shows the theme's words for a restore."""
-    return any(re.search(RESTORING, text) for text in perform_ocr_variants_on_screenshot(shot.path))
+def says(path: Path, words: str, ink: bytes) -> bool:
+    """Whether a photograph shows words in ink's colour."""
+    read = Picture.read(path).words(ink, path.with_suffix(".pgm"))
+    return re.search(words, perform_ocr_on_screenshot(read)) is not None
+
+
+def shown(machine: QemuMachine, words: str, ink: bytes) -> bool:
+    """Whether the first screen comes to show words in ink's colour while the ask may take."""
+    path = Path(tempfile.mkdtemp()) / "asking.ppm"
+    began = time.monotonic()
+    while time.monotonic() - began < ASKING.total_seconds():
+        machine.send_monitor_command(f"screendump {path}")
+        if says(path, words, ink):
+            return True
+    return False
 
 
 def kept(machine: QemuMachine, path: Path, name: str) -> None:
@@ -294,15 +322,13 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     except subprocess.TimeoutExpired:
         pytest.fail("the machine never went off to hibernate")
     machine.start()
-    try:
-        machine.wait_for_text(ASKED, timeout=ASKING)
-    except Exception:
+    if not shown(machine, ASKED, colour(values["words"])):
         # What the screens showed instead, while the disk still waits, for whoever reads
         # the failure.
         shot = photographed(machine, Path(tempfile.mkdtemp()), "unasked")
         kept(machine, shot.path, "unasked")
         kept(machine, shot.large, "unasked-large")
-        raise
+        pytest.fail(f"the screen never said {ASKED}")
     disk = the_disk(machine)
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 {CRAWL} 0 0 0 0")
     machine.send_chars(f"{values['passphrase']}\n")
@@ -316,7 +342,9 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     return Restore(machine, before, shots, after)
 
 
-def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) -> None:
+def test_the_screen_says_it_restores_while_the_image_is_read(
+    restored: Restore, values: dict[str, Any]
+) -> None:
     """The photographs taken while the kernel read the image say the machine is restoring.
 
     The first, the middle and the last are read, since each reading takes seconds.
@@ -325,7 +353,9 @@ def test_the_screen_says_it_restores_while_the_image_is_read(restored: Restore) 
     assert reading, f"none of {len(restored.shots)} photographs was taken as the image was read"
     middle = reading[len(reading) // 2]
     for shot in dict.fromkeys([reading[0], middle, reading[-1]]):
-        assert says_restoring(shot), f"photograph {shot.path.name}, taken as it read, doesn't"
+        assert says(shot.path, RESTORING, colour(values["words"])), (
+            f"photograph {shot.path.name}, taken as it read, doesn't"
+        )
     kept(restored.machine, middle.path, "restoring")
 
 
