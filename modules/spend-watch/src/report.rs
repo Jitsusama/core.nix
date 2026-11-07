@@ -504,6 +504,91 @@ pub struct Helper {
     pub spent: String,
 }
 
+/// How a pi session's day has gone, for the launcher's Agents: its spend
+/// hour by hour as a graph the shell draws, and what rebuilding its
+/// context cost.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SessionDay {
+    pub graph: Spark,
+    /// At list, empty when under a cent.
+    pub rebuilt: String,
+}
+
+/// A history as the shell's Graph draws it: values from nothing to one,
+/// the oldest first.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Spark {
+    pub shape: &'static str,
+    pub values: Vec<f64>,
+}
+
+/// The most hours a spark holds, which is what the shell's Graph shows.
+const SPARKED: usize = 20;
+
+/// Each pi session's day so far, by its whole id, for those that spent a
+/// cent or more today. Each hour is said over the largest hour any session
+/// had today, so sparks side by side compare, and none says an amount.
+pub fn today_by_session(picture: &Picture) -> std::collections::BTreeMap<String, SessionDay> {
+    let today = picture.zone.day(picture.now);
+    let first = crate::time::hour_of(picture.zone.day_start(today));
+    let last = crate::time::hour_of(picture.now).max(first);
+    let first = first.max(last + 1 - i64::try_from(SPARKED).unwrap_or(i64::MAX));
+    let shown = usize::try_from(last + 1 - first).unwrap_or(0);
+    let mut hours: HashMap<&str, Vec<f64>> = HashMap::new();
+    for piece in picture.pieces_today() {
+        if piece.session.is_empty() || piece.session == "elsewhere" {
+            continue;
+        }
+        let Ok(at) = usize::try_from(piece.hour - first) else {
+            continue;
+        };
+        let spent = hours
+            .entry(piece.session.as_str())
+            .or_insert_with(|| vec![0.0; shown]);
+        if let Some(hour) = spent.get_mut(at) {
+            *hour += piece.dollars;
+        }
+    }
+    let spent = by_session(picture, Period::Today);
+    let top = hours.values().flatten().copied().fold(0.0_f64, f64::max);
+    spent
+        .into_keys()
+        .map(|session| {
+            // A session whose spend today came before the hours shown reads
+            // as flat, not as no graph.
+            let values = hours.get(session.as_str()).map_or_else(
+                || vec![0.0; shown],
+                |spent| {
+                    spent
+                        .iter()
+                        .map(|hour| {
+                            if top > 0.0 {
+                                (hour / top).clamp(0.0, 1.0)
+                            } else {
+                                0.0
+                            }
+                        })
+                        .collect()
+                },
+            );
+            let rebuilt = picture
+                .rebuilt_today
+                .get(&session)
+                .copied()
+                .filter(|rebuilt| *rebuilt >= 0.005)
+                .map_or_else(String::new, dollars);
+            let day = SessionDay {
+                graph: Spark {
+                    shape: "spark",
+                    values,
+                },
+                rebuilt,
+            };
+            (session, day)
+        })
+        .collect()
+}
+
 /// The week at a glance: where it stands, the forecast, the caps, the
 /// findings and where money went to waste.
 pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {

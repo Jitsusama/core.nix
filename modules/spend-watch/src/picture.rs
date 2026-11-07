@@ -124,6 +124,9 @@ pub struct Picture {
     /// days, of those that spent anything.
     pub waste_before: Vec<f64>,
     pub work: Vec<waste::Work>,
+    /// What each session spent rebuilding its context today, at list, by
+    /// its whole id; read each pass, since today's turns are few.
+    pub rebuilt_today: HashMap<String, f64>,
     pub quests: Vec<crate::quests::Quest>,
     /// Each quest's root, the quest at the top of its family, by id.
     pub roots: HashMap<String, String>,
@@ -271,6 +274,7 @@ impl Picture {
         let week_start = zone.day_start(today - 6);
         let waste_before = kept.waste_before(history, &zone, today)?;
         let (waste, work) = kept.weeks(history, week_start, now)?;
+        let rebuilt_today = waste::rebuilt_by_session(history, zone.day_start(today), now + 1.0)?;
         let quests = read_quests(history)?;
         Ok(Picture {
             now,
@@ -293,6 +297,7 @@ impl Picture {
             waste,
             waste_before,
             work,
+            rebuilt_today,
             roots: roots(&quests),
             titles: quests
                 .iter()
