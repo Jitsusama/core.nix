@@ -125,7 +125,11 @@ feed speaks.
   behind today, the week ahead behind the widest cap, and behind Budgets
   the whole, then each budget nearest its allowance, a budget with several
   allowances stepping in to each. The periods sit in the collection itself, so no path goes
-  deeper than three (Joel, 2026-10-26).
+  deeper than three (Joel, 2026-10-26). A row of the budgets names the
+  theme's mark it wears, AI spend's for a budget and a clock for a window,
+  and a day's row a day's; its role colours it, muted at rest, and a
+  window's row gives its hours, which the launcher names it by from its
+  vocabulary (VKCF3Z, 2026-11-07).
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and
