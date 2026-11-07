@@ -171,9 +171,10 @@ window-rule {
 // A session another session started, as a quest's spawn does: the harness
 // and the shell open its kitty window classed so. Only Joel's own presses
 // focus a window, since he'd otherwise go on typing into the new one by
-// accident (Joel, 2026-11-02). The shell then moves it to its quest's
-// workspace.
+// accident (Joel, 2026-11-02). One the shell opens is classed
+// pi-spawned.<n>, a class of its own, and asks niri to open it on the
+// workspace of the session that asked for it (Sessions.qml's opensOn).
 window-rule {
-    match app-id="^pi-spawned$"
+    match app-id="^pi-spawned(\\.[0-9]+)?$"
     open-focused false
 }

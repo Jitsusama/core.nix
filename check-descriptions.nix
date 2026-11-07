@@ -893,7 +893,8 @@
   '';
   niri-patches-add-no-settings = ''
     no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
-    settings with it, but srgb-gamut's, in every niri booted since
+    settings with it, but srgb-gamut's, in every niri booted since, and opens-next-window-on's
+    action, which only IPC takes
   '';
   niri-says-what-the-gpu-gave-it = ''
     the session's niri lets smithay say which GPU priority niri got, keeping the rest of niri's own

@@ -989,13 +989,13 @@ def test_a_session_another_starts_goes_to_its_senders_workspace_from_the_session
                 if "pi --session 01ce-spawned" in (window["title"] or "")
             )
 
-        deadline = time.monotonic() + 60
-        while where() != sender["workspace_id"] and time.monotonic() < deadline:
-            time.sleep(1)
-        assert where() == sender["workspace_id"], (
-            f"not on its sender's workspace {sender['workspace_id']} but {where()},"
+        # Opened there, rather than where Joel is and moved after (Joel, 2026-11-07).
+        assert first_on(desktop, "pi --session 01ce-spawned") == sender["workspace_id"], (
+            f"not opened on its sender's workspace {sender['workspace_id']}"
+            f" but {first_on(desktop, 'pi --session 01ce-spawned')},"
             f" Notes' being {notes['workspace_id']}"
         )
+        assert where() == sender["workspace_id"], where()
         windows, workspaces = focus_given(desktop)
         assert set(windows) <= {notes["id"]}, windows
         assert set(workspaces) <= {notes["workspace_id"]}, workspaces
@@ -1119,6 +1119,20 @@ def focus_given(desktop: Desktop) -> tuple[list[int | None], list[int]]:
         if one.get("WorkspaceActivated", {}).get("focused")
     ]
     return windows, workspaces
+
+
+def first_on(desktop: Desktop, titled: str) -> int | None:
+    """Give the workspace niri first said a window titled so was on, since watch_the_focus."""
+    ids = {window["id"] for window in desktop.windows() if titled in (window["title"] or "")}
+    said = [json.loads(line) for line in desktop.as_account("cat ~/focus-events").splitlines()]
+    return next(
+        (
+            one["WindowOpenedOrChanged"]["window"]["workspace_id"]
+            for one in said
+            if one.get("WindowOpenedOrChanged", {}).get("window", {}).get("id") in ids
+        ),
+        None,
+    )
 
 
 def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
