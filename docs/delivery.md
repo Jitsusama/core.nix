@@ -32,6 +32,14 @@ tokens per landing, the sessions open and the memory they hold, and the
 top bottleneck with its owner and fix. A missed target raises an alarm the
 moment it is missed, not at the next card.
 
+The watch runs outside every session, so it outlives the one keeping the
+cycle fast: [cadence][5] writes the hour's card to
+`~/.local/state/cadence/card.txt` every five minutes, asks that session
+once about each missed target or overdue card, and asks the steward above
+it when the session doesn't answer within twenty minutes or is gone for
+ten. `jitsusama.cadence.watcher` and `jitsusama.cadence.steward` name
+them by their mesh addresses; with neither, it writes the card alone.
+
 On 2026-11-05 the last commit to merge took a median 41 minutes from 17:00
 to 21:00 against 6 from 06:00 to 12:00, and a subtests run that takes 3
 minutes on a quiet builder took 30. The builders were full, and most of what
@@ -96,3 +104,4 @@ the measurement that shows it. A rule that no longer holds a number goes.
 [2]: ../tools/merge-net/must-run.txt
 [3]: ../tools/merge-net/quarantine.json
 [4]: ../modules/cargo/dependencies.nix
+[5]: ../modules/cadence/home.nix
