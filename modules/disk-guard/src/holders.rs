@@ -13,6 +13,7 @@ use crate::ledger::{Grown, Growth};
 use crate::units::shown;
 use crate::words::{span, tilde};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -235,6 +236,55 @@ pub struct Offered {
     pub path: PathBuf,
     pub size: u64,
     pub now: bool,
+}
+
+/// The soonest what holds the disks is measured again, in seconds. Sizing
+/// every folder the sources name reads millions of entries, so it's done on
+/// a thread at idle priority, and not often.
+pub const MEASURED_EVERY: f64 = 1800.0;
+
+/// The longest a measure stands while the disks hold still, in seconds, so
+/// the ledger still has one a few hours old to read a day's growth from.
+pub const MEASURED_AT_LEAST: f64 = 6.0 * 3600.0;
+
+/// How far the disks' use must move, in bytes, for a measure to be due
+/// before `MEASURED_AT_LEAST`. Nothing a measure finds can have grown by
+/// more than the disks it lies on have.
+pub const MOVED: u64 = 1 << 30;
+
+/// When what holds the disks was last measured, and the bytes used on each
+/// disk then, by device.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LastMeasure {
+    pub at: f64,
+    pub used: BTreeMap<u64, u64>,
+}
+
+/// Whether what holds the disks is due a measure at `now`, with `used` the
+/// bytes on each disk now. At rest the disks hold still, and a walk of
+/// every holder that finds what the last one did costs a minute of a core.
+pub fn due(last: Option<&LastMeasure>, now: f64, used: &BTreeMap<u64, u64>) -> bool {
+    let Some(last) = last else {
+        return true;
+    };
+    let since = now - last.at;
+    if since < MEASURED_EVERY {
+        return false;
+    }
+    // Each disk's move counts apart, so one filling as another empties
+    // doesn't read as stillness.
+    let moved: u64 = last
+        .used
+        .keys()
+        .chain(used.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|disk| {
+            let then = last.used.get(disk).copied().unwrap_or(0);
+            then.abs_diff(used.get(disk).copied().unwrap_or(0))
+        })
+        .sum();
+    moved >= MOVED || since >= MEASURED_AT_LEAST
 }
 
 /// What the last survey offered, kept in order of path. Everything beneath

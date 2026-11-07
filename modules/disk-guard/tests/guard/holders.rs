@@ -1,8 +1,11 @@
 use disk_guard::activity::Use;
 use disk_guard::config::Config;
-use disk_guard::holders::{Kind, Offered, Offers, Place, holders, mark, measure, places};
+use disk_guard::holders::{
+    Kind, LastMeasure, MOVED, Offered, Offers, Place, due, holders, mark, measure, places,
+};
 use disk_guard::keeps::{Keep, Keeps};
 use disk_guard::ledger::{Grown, Growth};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -430,5 +433,70 @@ fn each_folder_in_a_holders_root_is_a_holder_unless_a_source_says_more() {
             (at("share/versions"), Kind::Other, "versions".to_owned()),
         ],
         "the containers folder holds podman's storage, so it isn't one"
+    );
+}
+
+const HOUR: f64 = 3600.0;
+
+/// Bytes used on each disk, by device.
+fn used(disks: &[(u64, u64)]) -> BTreeMap<u64, u64> {
+    disks.iter().copied().collect()
+}
+
+/// A measure taken at hour zero, with 500 GiB used on disk 1.
+fn last() -> LastMeasure {
+    LastMeasure {
+        at: 0.0,
+        used: used(&[(1, 500 * GIB)]),
+    }
+}
+
+#[test]
+fn a_first_measure_is_due_at_once() {
+    assert!(due(None, 0.0, &used(&[(1, 500 * GIB)])));
+}
+
+#[test]
+fn no_measure_is_taken_within_half_an_hour_of_the_last_however_the_disk_moves() {
+    assert!(!due(Some(&last()), 0.4 * HOUR, &used(&[(1, 600 * GIB)])));
+}
+
+#[test]
+fn after_half_an_hour_a_disk_moved_by_a_gibibyte_is_measured_again() {
+    assert!(due(
+        Some(&last()),
+        0.5 * HOUR,
+        &used(&[(1, 500 * GIB + MOVED)])
+    ));
+    assert!(due(
+        Some(&last()),
+        0.5 * HOUR,
+        &used(&[(1, 500 * GIB - MOVED)])
+    ));
+}
+
+#[test]
+fn a_disk_that_held_still_is_measured_again_only_after_six_hours() {
+    let still = used(&[(1, 500 * GIB + MOVED - 1)]);
+    assert!(!due(Some(&last()), 5.9 * HOUR, &still));
+    assert!(due(Some(&last()), 6.0 * HOUR, &still));
+}
+
+#[test]
+fn what_moved_on_each_disk_counts_together_and_a_new_disk_counts_whole() {
+    let half = MOVED / 2;
+    let both = LastMeasure {
+        at: 0.0,
+        used: used(&[(1, 500 * GIB), (2, 100 * GIB)]),
+    };
+    let opposite = used(&[(1, 500 * GIB + half), (2, 100 * GIB - half)]);
+    assert!(
+        due(Some(&both), HOUR, &opposite),
+        "one filling as another empties"
+    );
+    let added = used(&[(1, 500 * GIB), (2, 100 * GIB), (3, MOVED)]);
+    assert!(
+        due(Some(&both), HOUR, &added),
+        "a disk the last measure didn't see"
     );
 }
