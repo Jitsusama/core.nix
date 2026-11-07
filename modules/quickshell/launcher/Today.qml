@@ -9,10 +9,10 @@
 // them. It's all reckoned from the clock (Moment.js), the season where the
 // laptop is, so nothing is asked, but for Calendars: the day in the
 // Chinese, Japanese, Hebrew and Islamic calendars, which timekeeping
-// reckons with ICU4X (Calendars.qml), asked once a day while Date is
-// shown. Each is a thing, its side in Latin letters and its drawer in its
-// own script, in that script's cut of the theme's faces (VKCF3Z's design,
-// 2026-10-30).
+// reckons with ICU4X (Calendars.qml), held ready from the shell's start,
+// and asked again as Date is shown only if it went unanswered. Each is a
+// thing, its side in Latin letters and its drawer in its own script, in
+// that script's cut of the theme's faces (VKCF3Z's design, 2026-10-30).
 import qs
 import QtQuick
 import "Moment.js" as Moment
@@ -106,8 +106,9 @@ Provider {
     }
 
     // While the date is shown, as the answer or a step held in it, today's
-    // calendars are asked for, once, from where the laptop is, as the
-    // weather's here reads it, and the date is answered again as they come.
+    // calendars are asked for from where the laptop is, as the weather's
+    // here reads it, which is nothing unless the answer held went missing
+    // or the reader refused, and the date is answered again as they come.
     readonly property bool shown: launcher !== null && launcher.open
         && (launcher.answer?.live === provider
             || (launcher.held ?? []).some(step => step.row?.live === provider))

@@ -286,7 +286,10 @@ impl Timekeeping {
     /// A day, as an ISO date, in the Chinese, Japanese, Hebrew and Islamic
     /// calendars, answered once: it's reckoned, so nothing is asked. Asked
     /// from a place, in degrees north and east, it says when the day ends
-    /// there for the calendars whose days begin at sunset.
+    /// there for the calendars whose days begin at sunset. The day is
+    /// needed, but taken as optional: zlink hangs up on a call whose
+    /// parameters it can't read, so `varlinkctl call ... '{}'` heard only
+    /// "Connection reset by peer", and asked for no day it says `NotADay`.
     #[expect(
         clippy::unused_async,
         clippy::unused_async_trait_impl,
@@ -294,10 +297,11 @@ impl Timekeeping {
     )]
     async fn calendars(
         &self,
-        day: String,
+        day: Option<String>,
         latitude: Option<f64>,
         longitude: Option<f64>,
     ) -> Result<Calendars, Unkept> {
+        let day = day.unwrap_or_default();
         calendar::on(&day, latitude.zip(longitude)).ok_or(Unkept::NotADay { day })
     }
 
@@ -406,5 +410,49 @@ mod tests {
             Some(Err(Unkept::NotAnswering { .. }))
         ));
         assert!(replies.next().await.is_none());
+    }
+
+    /// Everything said on a connection until its first reply ends, or
+    /// until it's hung up.
+    async fn said_to(stream: &tokio::net::UnixStream) -> io::Result<String> {
+        let mut said = Vec::new();
+        while !said.ends_with(&[0]) {
+            stream.readable().await?;
+            let mut read = [0; 4096];
+            match stream.try_read(&mut read) {
+                Ok(0) => break,
+                Ok(count) => said.extend_from_slice(&read[..count]),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(String::from_utf8_lossy(&said).into_owned())
+    }
+
+    #[tokio::test]
+    async fn asked_for_no_day_it_says_so_rather_than_hanging_up() {
+        let path = env::temp_dir().join(format!("timekeeping-{}.socket", process::id()));
+        let _gone = std::fs::remove_file(&path);
+        let listener = zlink::tokio::unix::bind(&path).unwrap_or_else(|error| panic!("{error}"));
+        let timekeeping = Timekeeping {
+            chrony: SocketAddr::from(([127, 0, 0, 1], 0)),
+        };
+        let served = zlink::Server::new(listener, timekeeping).run();
+        let asked = async {
+            let stream = tokio::net::UnixStream::connect(&path).await?;
+            let call = b"{\"method\":\"io.jitsusama.Timekeeping.Calendars\",\"parameters\":{}}\0";
+            stream.writable().await?;
+            assert_eq!(stream.try_write(call)?, call.len());
+            said_to(&stream).await
+        };
+        let said = tokio::select! {
+            ended = served => panic!("the reader stopped serving: {ended:?}"),
+            said = asked => said.unwrap_or_else(|error| panic!("{error}")),
+        };
+        let _gone = std::fs::remove_file(&path);
+        assert!(
+            said.contains("\"io.jitsusama.Timekeeping.NotADay\""),
+            "the reader said {said:?}"
+        );
     }
 }
