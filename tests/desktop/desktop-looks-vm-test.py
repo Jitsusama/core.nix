@@ -1818,7 +1818,9 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
     """Photograph the orchestrator's drawer, its eyebrow naming its repository as written.
 
     The eyebrow says its address, its repository and when it started, set as they're written,
-    never in capitals, since they're names from the world (VKCF3Z, 2026-11-06).
+    never in capitals, since they're names from the world (VKCF3Z, 2026-11-06). Short of room,
+    as the drawer is at its least width, it gives way by whole items from its end, never cut
+    mid-fact (VKCF3Z, 2026-11-07).
     """
     desktop.down_to(title)
     desktop.launcher_until(
@@ -1827,6 +1829,11 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
             and shown["drawer"]["eyebrow"].startswith("TESTQA \u00b7 core.nix \u00b7 ")
             and shown["drawer"]["eyebrowNames"]
         )
+    )
+    drawer = desktop.showing()["drawer"]
+    whole = drawer["eyebrow"]
+    assert drawer["eyebrowDrawn"] in {whole, "TESTQA \u00b7 core.nix", "TESTQA"}, (
+        f"at {shot} the eyebrow is cut mid-fact: {drawer}"
     )
     desktop.photograph(f"launcher-agents-drawer-at-{shot}")
 
@@ -1870,6 +1877,9 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             assert "in all" not in reads["TESTQD"], reads
             assert "listening" in reads["TESTQB"], reads
             assert "paused" in reads["TESTQE"], reads
+            # And its glyph is muted, never the live rows' colour (#2052), its name in text.
+            inks = {address_of(row): row["words"][0]["ink"] for row in rows}
+            assert inks["TESTQE"] != inks["TESTQB"], f"at {scale} paused looks live: {inks}"
             assert "waiting" not in " ".join(reads.values()), reads
             shot = scale.replace(".", "-")
             desktop.photograph(f"launcher-agents-tree-at-{shot}")

@@ -5871,6 +5871,8 @@ Scope {
                 eyebrow: root.drawerShows?.eyebrow ?? "",
                 // Whether it's set as written, naming things, or in capitals.
                 eyebrowNames: !!root.drawerShows?.eyebrowNames,
+                // What of it is drawn in the room it has.
+                eyebrowDrawn: drawerCard.eyebrowSaid,
                 // Where its lines' baselines are and the card's they're
                 // set on, down from the top the two share, to a hundredth.
                 lines: {
