@@ -54,8 +54,10 @@ Singleton {
     }
 
     function unanswered() {
-        if (waiting)
+        if (waiting) {
             refused = true;
+            Report.say("calendars refused");
+        }
     }
 
     // The reader's one reply to a question. A line that isn't JSON is
@@ -74,6 +76,7 @@ Singleton {
         }
         reading = reply.parameters;
         answered = question;
+        Report.say(`calendars held ${reading.day}`);
     }
 
     // A refusal is said once the loader has made its Socket, never while
