@@ -648,6 +648,13 @@ fn cap_views(
     let fed = caps::latest(history)?;
     let own = own_caps(budgets, &fed, budget_hours, now);
     let none = BTreeMap::new();
+    // Until the first hour a budget other than the default spent, every
+    // turn was the default's because nothing told them apart.
+    let told = budget_hours
+        .iter()
+        .filter(|(name, _)| **name != budgets.default)
+        .filter_map(|(_, hours)| hours.keys().next().copied())
+        .min();
     let mut out = Vec::new();
     for cap in fed.into_iter().chain(own) {
         let budget = budgets.of_record(&cap.feed, &cap.budget);
@@ -657,7 +664,9 @@ fn cap_views(
             caps::Unit::Share => share_view(cap, now),
             caps::Unit::Dollars => {
                 let earlier = caps::earlier(history, &cap, EARLIER_PERIODS)?;
-                let of_all = budget_share(hours, forecast.hours, crate::time::hour_of(now));
+                let now_hour = crate::time::hour_of(now);
+                let from = share_from(told, i64::from(cap.window_hours), now_hour);
+                let of_all = budget_share(hours, forecast.hours, from, now_hour);
                 dollars_view(cap, &earlier, hours, of_all, forecast, zone, now)
             }
         };
@@ -770,11 +779,26 @@ fn dollars_view(
     }
 }
 
-/// How much of all spend a budget's was over the last four weeks, which
-/// the forecast of all of it is scaled by for the budget's caps; all of
-/// it while nothing was spent.
-fn budget_share(budget: &BTreeMap<i64, f64>, all: &BTreeMap<i64, f64>, now_hour: i64) -> f64 {
-    let recent = now_hour - 28 * 24..=now_hour;
+/// The first hour a budget's share of all spend is measured from: the
+/// last four weeks, but none from before budgets were first told apart,
+/// when every turn was the default's, unless that leaves less than the
+/// cap's own window.
+fn share_from(told: Option<i64>, window: i64, now_hour: i64) -> i64 {
+    let weeks = now_hour - 28 * 24 + 1;
+    let window = now_hour - window + 1;
+    told.map_or(weeks, |told| told.max(weeks).min(window))
+}
+
+/// How much of all spend a budget's was from an hour on, which the
+/// forecast of all of it is scaled by for the budget's caps; all of it
+/// while nothing was spent.
+fn budget_share(
+    budget: &BTreeMap<i64, f64>,
+    all: &BTreeMap<i64, f64>,
+    from: i64,
+    now_hour: i64,
+) -> f64 {
+    let recent = from..=now_hour;
     let total: f64 = all.range(recent.clone()).map(|(_, d)| d).sum();
     if total <= 0.0 {
         return 1.0;
@@ -1027,6 +1051,27 @@ mod tests {
     fn store(history: &History, line: &serde_json::Value) {
         let record = crate::feed::parse(&line.to_string()).unwrap();
         crate::feed::store(history, "proxy", &record, NOW).unwrap();
+    }
+
+    // A budget's share of all spend counts no hour from before budgets
+    // were told apart, when every turn was the default's, but never less
+    // than the cap's window, nor more than four weeks.
+    #[test]
+    fn a_budget_s_share_counts_from_when_budgets_were_told_apart() {
+        let now = 10_000;
+        assert_eq!(share_from(None, 168, now), now - 28 * 24 + 1);
+        assert_eq!(share_from(Some(now - 400), 168, now), now - 400);
+        assert_eq!(share_from(Some(now - 2), 168, now), now - 167);
+        assert_eq!(share_from(Some(now - 5000), 168, now), now - 28 * 24 + 1);
+        // Four weeks of the default alone, then a day that was half a
+        // team's: from the day budgets were told apart, the default's
+        // share is half, not nearly all.
+        let all: BTreeMap<i64, f64> = (now - 671..=now).map(|hour| (hour, 2.0)).collect();
+        let default: BTreeMap<i64, f64> = (now - 671..=now)
+            .map(|hour| (hour, if hour > now - 24 { 1.0 } else { 2.0 }))
+            .collect();
+        let from = share_from(Some(now - 23), 24, now);
+        assert!((budget_share(&default, &all, from, now) - 0.5).abs() < 1e-9);
     }
 
     // A team's token spending fast moves only its own cap: the proxy's
