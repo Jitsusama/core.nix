@@ -388,7 +388,12 @@ Provider {
             wake: () => act("wake", { run: () => Sessions.wake(session) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
-            stop: () => act("stop", { run: steered("stop") }),
+            // Stop ends the turn under way, which nothing puts back, so it's
+            // an ending: Return writes :interrupt and a second runs it, as d
+            // does. It doesn't ask, as :interrupt is guarded, since the turn
+            // lost is the one stopped for going wrong.
+            stop: () => act("stop", Object.assign({ run: steered("stop"),
+                askedAs: session.address }, Words.ending("verb:agent:stop"))),
             // Close ends the session as /exit does, its window with it,
             // asked first, saying what stays (Confirm.question). The ask
             // names it by its address, since the step-in's path above
