@@ -196,28 +196,9 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
         }
         // Every run before was a failure, so the next is one past them; a
         // stall's log is the next run's to write over.
-        let log = state.log(commit, check, u32::try_from(failures + 1).unwrap_or(0));
-        let mut sends = 0;
-        let code = loop {
-            let code = world.build(commit, check, &log);
-            if code != Some(UNSENT) {
-                break code;
-            }
-            sends += 1;
-            if sends >= SENDS {
-                state.say(&format!("no builder took {check} at {}", short(commit)));
-                return Outcome::Unsent;
-            }
-            world.wait(120);
+        let Some(ran) = run_once(world, state, commit, check, failures + 1) else {
+            return Outcome::Unsent;
         };
-        let ran = match code {
-            Some(0) => Ran::Passed,
-            Some(_) => Ran::Failed,
-            None => Ran::Stalled,
-        };
-        if let Err(why) = state.record(commit, check, ran, code, &log) {
-            state.say(&why);
-        }
         if ran == Ran::Passed {
             return if failures > 0 {
                 Outcome::Flaky
@@ -241,6 +222,76 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
         ));
     }
     Outcome::Failed
+}
+
+/// Run `check` once at `commit`, its log numbered `run`, sending it again
+/// while no builder takes it, and record how it ended; none when no
+/// builder ever took it.
+fn run_once(
+    world: &dyn World,
+    state: &State,
+    commit: &str,
+    check: &str,
+    run: usize,
+) -> Option<Ran> {
+    let log = state.log(commit, check, u32::try_from(run).unwrap_or(0));
+    let mut sends = 0;
+    let code = loop {
+        let code = world.build(commit, check, &log);
+        if code != Some(UNSENT) {
+            break code;
+        }
+        sends += 1;
+        if sends >= SENDS {
+            state.say(&format!("no builder took {check} at {}", short(commit)));
+            return None;
+        }
+        world.wait(120);
+    };
+    let ran = match code {
+        Some(0) => Ran::Passed,
+        Some(_) => Ran::Failed,
+        None => Ran::Stalled,
+    };
+    if let Err(why) = state.record(commit, check, ran, code, &log) {
+        state.say(&why);
+    }
+    Some(ran)
+}
+
+/// Like `attempt`, but every run still needed to call `check` broken at
+/// `commit` starts at once, for a search and a fix-forward check, where
+/// a failure is likely and the search waits on it. A failure is then
+/// confirmed in one run's time rather than two in a row, which on
+/// 7 November was about five minutes of each step; the cost is a run
+/// beside the first where the first passes. A stall leaves the rest to
+/// `attempt`, one at a time.
+fn attempt_together(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
+    let before = state.runs(commit, check);
+    let failures = before.iter().filter(|ran| **ran == Ran::Failed).count();
+    if !before.contains(&Ran::Passed) && failures + 1 < FAILURES {
+        let ended: Vec<Option<Ran>> = std::thread::scope(|scope| {
+            let runs: Vec<_> = (failures + 1..=FAILURES)
+                .map(|run| scope.spawn(move || run_once(world, state, commit, check, run)))
+                .collect();
+            runs.into_iter()
+                .map(|run| run.join().unwrap_or(None))
+                .collect()
+        });
+        if ended.contains(&None) {
+            return Outcome::Unsent;
+        }
+        let failed = ended
+            .iter()
+            .filter(|ran| **ran == Some(Ran::Failed))
+            .count();
+        state.say(&format!(
+            "{check} failed {failed} of the {} runs at once at {}",
+            ended.len(),
+            short(commit)
+        ));
+    }
+    attempt(world, state, commit, check)
 }
 
 /// Run each check at `commit`, `AT_ONCE` at a time, and give each outcome
@@ -352,7 +403,7 @@ fn spread(good: usize, bad: usize, splits: usize) -> Vec<usize> {
 fn passes(world: &dyn World, state: &State, commit: &str, check: &str) -> Option<bool> {
     match world.has_check(commit, check) {
         Ok(false) => Some(true),
-        Ok(true) => match attempt(world, state, commit, check) {
+        Ok(true) => match attempt_together(world, state, commit, check) {
             Outcome::Passed | Outcome::Flaky => Some(true),
             Outcome::Failed => Some(false),
             Outcome::Unsent | Outcome::Stalled => None,
@@ -495,7 +546,7 @@ fn fixed_forward(
     if newest == head
         || same_drv(world, &newest, head, test)
         || !matches!(
-            attempt(world, state, &newest, test),
+            attempt_together(world, state, &newest, test),
             Outcome::Passed | Outcome::Flaky
         )
     {
@@ -1038,6 +1089,9 @@ mod tests {
         /// has run one at an older merge, or after a while without, when
         /// it's put in `waited_out`.
         newest_waits_for_search: bool,
+        /// Commits whose each run waits for a second run there to start,
+        /// or after a while without, when it's put in `waited_out`.
+        pairs: Vec<String>,
         build_seen: Condvar,
         waited_out: Mutex<Vec<String>>,
         reaches_main_after: usize,
@@ -1126,6 +1180,20 @@ mod tests {
                 drop(built);
                 if waited.timed_out() {
                     self.waited_out.lock().unwrap().push(check.to_owned());
+                }
+            }
+            if self.pairs.iter().any(|paired| paired == commit) {
+                let alone = |built: &mut Vec<(String, String)>| {
+                    built.iter().filter(|(at, _)| at == commit).count() < 2
+                };
+                let built = self.built.lock().unwrap();
+                let (built, waited) = self
+                    .build_seen
+                    .wait_timeout_while(built, Duration::from_secs(10), alone)
+                    .unwrap();
+                drop(built);
+                if waited.timed_out() {
+                    self.waited_out.lock().unwrap().push(commit.to_owned());
                 }
             }
             if self.after_revert.iter().any(|waits| waits == check) {
@@ -1526,14 +1594,19 @@ mod tests {
             built,
             [
                 ("b", "vm-a"),
+                ("b", "vm-a"),
                 ("d", "vm-a"),
+                ("d", "vm-a"),
+                ("f", "vm-a"),
                 ("f", "vm-a"),
                 ("h", "vm-a"),
                 ("h", "vm-a"),
                 ("n", "vm-a"),
+                ("n", "vm-a"),
             ]
             .map(|(commit, check)| (commit.to_owned(), check.to_owned())),
-            "the search stops after its first step once main's head passes"
+            "the search stops after its first step once main's head passes, each of its \
+             commits and main's head run twice at once"
         );
         assert_eq!(
             state.heads(),
@@ -1748,6 +1821,32 @@ mod tests {
         assert!(
             !world.built().contains(&("n".into(), "vm-a".into())),
             "main's newest head builds vm-a as h does, so it fails there too"
+        );
+    }
+
+    #[test]
+    fn a_merge_s_two_runs_in_a_search_start_together() {
+        let state = state("together");
+        let world = Stand {
+            head: "m5".into(),
+            merges: names("m1 m2 m3 m4 m5"),
+            changed: changed("vm-a"),
+            missing: vec![("s".into(), "vm-a".into())],
+            pairs: names("m2"),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1])
+        .exits("m3", "vm-a", &[1])
+        .exits("m4", "vm-a", &[1])
+        .exits("m5", "vm-a", &[1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m5".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("m2"));
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "m2's second run starts beside its first, not after it fails"
         );
     }
 

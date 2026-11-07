@@ -151,7 +151,8 @@ a head changed since the last head it passed, on the VM builders, twelve
 at once. A test that fails twice at one commit is broken: the net finds
 which merge broke it the moment it does, while the round's other tests
 run on, searching only the merges that changed the test's derivation,
-since a derivation fails wherever it does, checks that the merge changed the test and that the
+since a derivation fails wherever it does, and running a searched merge's
+two runs at once, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, reverts it through a PR merged on its own checks, clears
 the hold as that PR merges, or as a test ends once it's on main, and writes a
