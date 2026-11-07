@@ -11,6 +11,25 @@ use crate::history::{History, sql as fail};
 use crate::stats::{count, signed};
 use crate::time::{HOUR, Zone};
 
+/// What a limit counts in: dollars against an allowance, or the share of
+/// a subscription's window used, which is never turned into dollars.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Unit {
+    #[default]
+    Dollars,
+    Share,
+}
+
+impl Unit {
+    pub fn name(self) -> &'static str {
+        match self {
+            Unit::Dollars => "dollars",
+            Unit::Share => "share",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cap {
     pub feed: String,
