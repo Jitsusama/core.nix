@@ -6875,7 +6875,11 @@ Scope {
         BackgroundEffect.blurRegion: !root.open ? nowhere
             : root.drawerOut ? cardAndDrawer : card.area
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        // Asked for on demand, never exclusively, so the newest surface Joel
+        // opened has the keys and a click on a window takes them, the
+        // launcher left open without them (modules/niri's
+        // on-demand-when-asked.patch gives them as it asks).
+        WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
 
         Connections {
