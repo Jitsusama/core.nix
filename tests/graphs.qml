@@ -146,12 +146,13 @@ ShellRoot {
                 expect(`${row.name}'s words clear of its graph`, clear && inside, said(texts));
             }
 
-            // A figure wears no glyph, a row holding more its glyph in the
-            // edge colour, and an act its glyph in its hue.
+            // A figure wears no glyph, a row holding more its glyph muted,
+            // never the edge colour the cursor's ground hides, and an act its
+            // glyph in its hue.
             const glyphOf = row => drawn(row, []).find(t => t.text === "$");
             expect("a figure wears no glyph", glyphOf(short) === undefined, said(drawn(short, [])));
-            expect("a row holding more wears the edge colour",
-                Qt.colorEqual(glyphOf(long).color, Theme.edge), glyphOf(long).color);
+            expect("a row holding more wears the muted colour",
+                Qt.colorEqual(glyphOf(long).color, Theme.muted), glyphOf(long).color);
             expect("an act wears its hue", Qt.colorEqual(glyphOf(act).color, Theme.action),
                 glyphOf(act)?.color);
             Qt.callLater(() => Qt.exit(0));
