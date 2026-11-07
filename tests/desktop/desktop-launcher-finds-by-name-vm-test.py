@@ -123,7 +123,7 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # after it; the key list's stays just before Return.
     told = desktop.showing()["selected"]["told"]
     assert told[:2] == ["\u21b5 open", "y copy"], told
-    assert "Ctrl+] in" not in told, told
+    assert "Tab in" not in told, told
     assert told[-2:] == [": commands", "Space ? keys"], told
     assert not any("\u2192" in text for text in told), told
     assert not any(word["text"].endswith(" clear") for word in laid["field"]), laid["field"]
@@ -952,8 +952,8 @@ def every_hint_changes(desktop: Desktop, depth: int) -> None:
 
     told = opened()
     assert told[0].startswith("\u21b5"), told
-    # Ctrl+] in comes first after Return, on a row Return opens that holds parts, as an emoji.
-    assert ("Ctrl+] in" in told[1:2]) == bool(depth), told
+    # Tab in comes first after Return, on a row Return opens that holds parts, as an emoji.
+    assert ("Tab in" in told[1:2]) == bool(depth), told
     assert told[-1] == "Space ? keys", told
     for at, hint in enumerate(told):
         mark = hint.rsplit(" ", 1)[0]
@@ -996,7 +996,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
     machine.send_key("ctrl-o")
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
-    machine.send_key("tab")
+    machine.send_key("ctrl-i")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
 
     # What the drawer draws, since its facts keep the last plate as it goes back in.
@@ -1036,11 +1036,12 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
 
 
 def follows_from_the_find(desktop: Desktop) -> None:
-    """See the find's foot name Ctrl+] in on a row holding parts, and Ctrl+] go in from there.
+    """See the find's foot name Tab in on a row holding parts, and Tab go in from there.
 
     A program's commands and windows are its parts, and the find is where Joel types its name,
     so the find goes in by the key normal does and says so (Joel, 2026-11-05: "in programs i
-    don't understand how to go to sub commands on a program").
+    don't understand how to go to sub commands on a program"; 2026-11-07: "Tab opens its
+    page"), its first row the program's own Return.
     """
     desktop.answer("kitty")
     desktop.launcher_until(
@@ -1049,11 +1050,18 @@ def follows_from_the_find(desktop: Desktop) -> None:
         )
     )
     told = desktop.showing()["selected"]["told"]
-    assert "Ctrl+] in" in told, told
-    desktop.machine.send_key("ctrl-bracket_right")
-    # A step in, the find starts empty, so kitty's commands aren't narrowed to "kitty".
+    assert "Tab in" in told, told
+    assert "Ctrl+] in" not in told, told
+    desktop.machine.send_key("tab")
+    # A step in, the find starts empty, so kitty's commands aren't narrowed to "kitty", and
+    # the cursor is on the first, Go To or Start, as Return on kitty would have done.
     desktop.launcher_until(
-        lambda shown: len(shown["held"]) == 1 and shown["mode"] == "find" and shown["typed"] == ""
+        lambda shown: (
+            len(shown["held"]) == 1
+            and shown["mode"] == "find"
+            and shown["typed"] == ""
+            and shown["current"] == 0
+        )
     )
     desktop.close_launcher()
 
@@ -1093,7 +1101,7 @@ def escape_at_rest_stays(desktop: Desktop) -> None:
 
 
 def walk_the_rows_follows(desktop: Desktop) -> None:
-    """Press Ctrl+] on a row found from home, and Ctrl+T, Ctrl+O and Tab over it, through niri.
+    """Press Ctrl+] on a row found from home, and Ctrl+T, Ctrl+O, Ctrl+I and Tab, through niri.
 
     Lock holds no parts: no verbs, and its Return closes the launcher, where Keep Awake's keeps
     it and so holds its own act. So Ctrl+] goes to the place it lives, the cursor on it there,
@@ -1105,11 +1113,10 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
     desktop.answer("lock")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "session:Lock")
     desktop.normal()
-    # A row whose foot says Ctrl+] in holds parts, and Ctrl+] would go into them instead.
+    # A row whose foot says Tab in holds parts, and Ctrl+] would go into them instead.
     desktop.launcher_until(
         lambda shown: (
-            ": commands" in shown["selected"]["told"]
-            and "Ctrl+] in" not in shown["selected"]["told"]
+            ": commands" in shown["selected"]["told"] and "Tab in" not in shown["selected"]["told"]
         )
     )
     # Where every row lives is walked once the launcher is quiet, off every key, and kept
@@ -1155,10 +1162,15 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
         ("ctrl-t", came_back),
         ("ctrl-bracket_right", followed),
         ("ctrl-o", came_back),
-        ("tab", followed),
+        ("ctrl-i", followed),
     ]:
         machine.send_key(key)
         then()
+    # Lock holds nothing, so Tab, which goes into what a row holds, says it isn't here, as l
+    # does, and moves nothing.
+    machine.send_key("tab")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["Tab not here"])
+    followed()
     machine.send_key("ctrl-bracket_right")
     desktop.launcher_until(lambda shown: shown["saying"] == ["Ctrl+] not here"])
     machine.send_key("ctrl-t")
@@ -1191,7 +1203,7 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
 def walk_a_found_program_follows(desktop: Desktop) -> None:
     """Press Ctrl+] on kitty found from home, and Ctrl+T, through niri.
 
-    A row that holds more goes into its parts, as the foot's Ctrl+] in says, before where it
+    A row that holds more goes into its parts, as the foot's Tab in says, before where it
     lives, and Ctrl+T comes back from there to what was typed, as from any place followed.
     """
     machine = desktop.machine

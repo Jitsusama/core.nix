@@ -365,7 +365,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("mpv", selecting="mpv Media Player")
-        desktop.follow()
+        desktop.into_program()
         desktop.launcher_until(lambda shown: {"Media", "Sound"} <= set(shown["rows"]))
         if part:
             desktop.type_in(part.lower(), selecting=part)
@@ -554,7 +554,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         # In normal, where Ctrl+] goes in; on the find letters type, so it names none.
         desktop.normal()
         desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("told", [])[1:2] == ["Ctrl+] in"]
+            lambda shown: (shown["selected"] or {}).get("told", [])[1:2] == ["Tab in"]
         )
         told = desktop.showing()["selected"]["told"]
         assert not any(key.startswith("Ctrl") for key in told[2:]), told

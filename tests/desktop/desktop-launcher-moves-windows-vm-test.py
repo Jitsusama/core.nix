@@ -252,7 +252,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     # find letters type, so it names none.
     desktop.normal()
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "Ctrl+] in" in told, told
+    assert "Tab in" in told, told
     desktop.follow()
     desktop.launcher_until(lambda shown: {"Size", "Float"} <= set(shown["rows"]))
     desktop.close_launcher()

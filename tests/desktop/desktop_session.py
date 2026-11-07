@@ -687,6 +687,17 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_key("ctrl-bracket_right")
         self.launcher_until(lambda shown: len(shown["held"]) > before)
 
+    def into_program(self) -> None:
+        """Open the selected program's page by Tab, as Joel does, and wait until it's held.
+
+        Every walk to what a program holds goes in here, so they all go by the one key Joel
+        keeps for it (2026-11-07: "keep", Return still switching): from the find, where he
+        types its name, Tab goes into a row holding parts.
+        """
+        before = len(self.showing()["held"])
+        self.machine.send_key("tab")
+        self.launcher_until(lambda shown: len(shown["held"]) > before)
+
     def step_out(self) -> None:
         """Go up a level by - from normal, and wait until the launcher holds less.
 
