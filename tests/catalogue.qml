@@ -462,5 +462,18 @@ QtObject {
         expect("a place at home, from home, goes nowhere",
             Catalogue.followed(["category:desktop"], []), null);
         expect("nor does what lives nowhere", Catalogue.followed(null, []), null);
+        // Walked in slices, so no key waits on the whole walk: a slice
+        // ends once its time is spent, here after each place it asks, and
+        // the slices together come to what one whole walk does.
+        asked.length = 0;
+        const sliced = Object.assign({ spent: () => asked.length > 0 }, ways);
+        const walk = Catalogue.livesBegun(home, sliced);
+        let slices = 0;
+        for (let done = false; !done && slices < 20; slices += 1) {
+            asked.length = 0;
+            done = Catalogue.livesOn(walk, sliced);
+        }
+        expect("a slice asks one place once its time is spent", slices > 3, true);
+        expect("the slices come to the whole walk", walk.at, lived);
     }
 }
