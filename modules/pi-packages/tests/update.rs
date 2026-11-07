@@ -104,7 +104,12 @@ impl Fixture {
             .collect();
         let config = Config::from_json(&json!({
             "root": scratch.path().join("packages"),
-            "packages": [{ "url": format!("file://{}", upstream.display()), "branch": "main" }],
+            // A neighbour too, never updated here: a pi says what it loaded of
+            // one package, as it does of the harness, and loads others.
+            "packages": [
+                { "url": format!("file://{}", upstream.display()), "branch": "main" },
+                { "url": "https://example.com/neighbour", "branch": "main" },
+            ],
             "git": gitter,
             "node": node,
             "pnpm": pnpm,
@@ -153,6 +158,11 @@ impl Fixture {
         Place::of(&self.config, &self.config.packages[0])
     }
 
+    /// Where the neighbouring package would be.
+    fn neighbour(&self) -> Place {
+        Place::of(&self.config, &self.config.packages[1])
+    }
+
     fn update(&self) -> run::Outcome {
         run::update_one(&self.config, &self.config.packages[0], SystemTime::now())
             .expect("an update")
@@ -173,8 +183,8 @@ impl Fixture {
 
     /// Remove what nothing uses, as a pi starting or ending has it done.
     fn sweep(&self) -> usize {
-        let mut swept = run::sweep(&self.config);
-        let (_, removed) = swept.pop().expect("the package");
+        let swept = run::sweep(&self.config);
+        let (_, removed) = swept.into_iter().next().expect("the package");
         removed.expect("a sweep").expect("not held")
     }
 
@@ -345,6 +355,84 @@ fn a_version_a_live_pi_says_it_loaded_is_kept_until_it_ends() {
     assert_eq!(fixture.sweep(), 1);
     assert!(!old.exists(), "a version no pi runs was kept");
     assert!(!file.exists(), "an ended pi's file was kept");
+}
+
+#[test]
+fn every_version_retired_while_a_pi_runs_is_kept_until_it_ends() {
+    // O38FUO [317b309a], 7 November: node keeps where `current` led when a
+    // pi first looked, so pis started days before resolved one package's
+    // imports through versions a sweep had removed, and failed to load the
+    // extension at their next reload.
+    let fixture = Fixture::new();
+    let place = fixture.place();
+    fixture.update();
+    let first = fs::canonicalize(place.current()).expect("current resolves");
+    let (pi, file) = saying(&place, &first);
+    fixture.advance("second");
+    // It reloads onto the second and says so, as a pi does.
+    let second = fs::canonicalize(place.current()).expect("current resolves");
+    fs::write(&file, json!({ "root": second }).to_string()).expect("what it loaded");
+    fixture.advance("third");
+    fixture.advance("fourth");
+
+    assert!(
+        first.exists(),
+        "a version a running pi resolves through went"
+    );
+
+    drop(pi);
+    assert_eq!(
+        fixture.sweep(),
+        2,
+        "the first and second stayed past the pi"
+    );
+    assert!(!first.exists(), "a version no pi resolves through was kept");
+}
+
+#[test]
+fn a_pi_said_of_one_package_keeps_what_it_resolved_of_another() {
+    let fixture = Fixture::new();
+    let place = fixture.place();
+    fixture.update();
+    let first = fs::canonicalize(place.current()).expect("current resolves");
+    let neighbour = fixture.neighbour();
+    let (pi, _file) = saying(&neighbour, &neighbour.dir);
+    fixture.advance("second");
+    fixture.advance("third");
+
+    assert!(
+        first.exists(),
+        "a version a running pi resolves through went"
+    );
+
+    drop(pi);
+    assert_eq!(fixture.sweep(), 1);
+}
+
+#[test]
+fn a_version_retired_before_every_pi_started_goes() {
+    let fixture = Fixture::new();
+    let place = fixture.place();
+    fixture.update();
+    let commit = place.current_commit().expect("a commit");
+    let first = fs::canonicalize(place.current()).expect("current resolves");
+    fixture.advance("second");
+    let hour_ago = SystemTime::now() - Duration::from_secs(3_600);
+    File::options()
+        .write(true)
+        .open(place.retired().join(&commit))
+        .and_then(|open| open.set_modified(hour_ago))
+        .expect("retired an hour ago");
+    let second = fs::canonicalize(place.current()).expect("current resolves");
+    let (_pi, _file) = saying(&place, &second);
+
+    let third = fixture.advance("third");
+
+    assert_eq!(third.removed, 1, "{third:?}");
+    assert!(
+        !first.exists(),
+        "a version retired before any pi started was kept"
+    );
 }
 
 #[test]

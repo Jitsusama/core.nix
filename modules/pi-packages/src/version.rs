@@ -334,10 +334,21 @@ fn retire(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> {
 /// A version goes with the pis running it, not with its age: a cache of
 /// code kept past them is only disk.
 ///
+/// A version retired after `first_pi` started, the start of the
+/// longest-running pi that says what it loaded of any package, stays too.
+/// Node keeps where each module it found lives for as long as the process
+/// does, so a pi that resolved through `current` while it led to this
+/// version goes on resolving there after it reloads, whichever version
+/// it says it runs. In November sweeps removed versions that pis started
+/// days before still resolved one package's imports through, so the
+/// extension importing it failed to load at their next reload. A version retired
+/// before that pi started was never where `current` led for any pi
+/// running now.
+///
 /// # Errors
 ///
 /// Says which version could not be read or removed.
-pub fn sweep(place: &Place) -> Result<usize, String> {
+pub fn sweep(place: &Place, first_pi: Option<SystemTime>) -> Result<usize, String> {
     // By where `current` leads rather than its commit's name, since one
     // commit can sit in both folders.
     let current = fs::canonicalize(place.current()).ok();
@@ -352,7 +363,8 @@ pub fn sweep(place: &Place) -> Result<usize, String> {
     let said = loaded::read(place);
     let mut removed = 0;
     for version in left {
-        if Some(&version.path) == last.as_ref() || inuse::in_use(&version.path, &said) {
+        let resolved = first_pi.is_some_and(|started| version.since > started);
+        if Some(&version.path) == last.as_ref() || resolved || inuse::in_use(&version.path, &said) {
             continue;
         }
         let path = &version.path;
