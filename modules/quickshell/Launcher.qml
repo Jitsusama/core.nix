@@ -3986,10 +3986,15 @@ Scope {
             // home is shown.
             // The collection found by name is said again too, since it can
             // say how what it holds stands (homeSays), as Agents' row does.
+            // And what's typed is searched again when the source now holds
+            // a thing it finds, though none was shown: a document Drive
+            // sent once its daemon answered, after the words were typed,
+            // never showed until they changed (2026-11-07, the picker's
+            // Drive save in vm-desktop-opens-files, core #2148).
             const home = typed.trim() === "" && collections.includes(source);
-            if (home || typed.trim() !== "" && matches.some(row => row.endedBy === source
+            if (home || typed.trim() !== "" && (matches.some(row => row.endedBy === source
                 || row.key === `collection:${source.settings.name}`
-                || source.things.some(own => own.key === row.key))) {
+                || source.things.some(own => own.key === row.key)) || reaches(source))) {
                 reshow(0);
                 Report.say(`refreshed ${source.settings.name}`);
             }
@@ -4219,6 +4224,25 @@ Scope {
     // kept: a longer query can only find fewer, so it searches these.
     property var words: []
     property var candidates: []
+    // Which joining of the choices the candidates were taken from: a
+    // search said again in place looks through them all once they were
+    // joined again since, so a thing that came after the words were
+    // typed is found, and comes in at the end (Steady.js).
+    property int candidatesJoined: 0
+
+    // Whether what's typed at the top finds one of a source's things, by
+    // its name or its words, as the search does. Asked only as a source
+    // refreshes, never on a key, so typing keeps within its budget.
+    function reaches(source) {
+        const need = Fuzzy.letters(words);
+        const finds = item => (item.mask & need) === need
+            && Fuzzy.match(item, words, false).score >= 0;
+        return source.things.some(thing => {
+            const choice = keyed[thing.key];
+            return !!choice && (finds(choice.prepared)
+                || !!choice.keywords && finds(choice.keywords));
+        });
+    }
 
     // What was picked for what was typed, which the ranking leans on.
     Picks {
@@ -4403,8 +4427,11 @@ Scope {
             // What the next letter narrows from: everything found, and a
             // collection held back only for being too short yet.
             const early = [];
-            // Said again in place, what was found is each row as it is now.
-            const looked = !narrowing ? choices : !steadying ? candidates
+            // Said again in place, what was found is each row as it is now,
+            // or, the choices joined again since it was found, every choice,
+            // so what came since is found too.
+            const widened = steadying && candidatesJoined !== choicesJoined;
+            const looked = !narrowing || widened ? choices : !steadying ? candidates
                 : candidates.map(choice => onOffer(choice.key)).filter(choice => !!choice);
             for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
@@ -4446,6 +4473,8 @@ Scope {
                     });
             }
             candidates = found.map(f => f.choice).concat(early);
+            if (looked === choices)
+                candidatesJoined = choicesJoined;
             const matchedAll = Date.now();
             const learned = picks.weights(letters);
             const here = {};

@@ -894,6 +894,35 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
     shell.notices_gone()
 
 
+def test_what_comes_after_the_words_are_typed_is_found_and_comes_last(shell: Shell) -> None:
+    """A thing that comes after the words are typed is found, after the row selected.
+
+    A document Drive sent once its daemon answered, after the words were typed, never showed
+    until they changed: a refresh searched again only for a source whose row was shown, and
+    then only among what was found before.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("quokka")
+    first = shell.opened("Quokka Notes")
+    second = None
+    try:
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Quokka Notes")
+        second = shell.opened("Quokka Sketches")
+        # The selection stays on its row, and what came since comes after it.
+        shell.launcher_until(
+            lambda shown: (
+                [row for row in shown["rows"] if row.startswith("Quokka")]
+                == ["Quokka Notes", "Quokka Sketches"]
+                and (shown["selected"] or {}).get("name") == "Quokka Notes"
+            )
+        )
+    finally:
+        shell.close(first)
+        if second is not None:
+            shell.close(second)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()
