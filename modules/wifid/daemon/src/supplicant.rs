@@ -44,6 +44,12 @@ const CHALLENGE_FAILED: i32 = 15;
 /// key. wpa_supplicant goes on with the join after each.
 const NEGOTIATING: [i32; 4] = [76, 77, 126, 127];
 
+/// The status an access point started afresh refuses the key the card
+/// kept from it with, INVALID_PMKID. wpa_supplicant forgets the key and
+/// joins again at once, so it's no trouble: a router just restarted would
+/// otherwise turn every first join away.
+const STALE_KEY: i32 = 53;
+
 /// Which of a join's steps a status code came from.
 #[derive(Clone, Copy, Debug)]
 pub enum Step {
@@ -63,6 +69,7 @@ impl Trouble {
                 Some(Trouble::WrongPassword)
             }
             (Step::Authentication, code, _) if NEGOTIATING.contains(&code) => None,
+            (Step::Association, STALE_KEY, _) => None,
             (_, code, _) => Some(Trouble::Refused(code)),
         }
     }
@@ -549,6 +556,15 @@ mod tests {
             codes.map(|code| Trouble::from_status(Step::Authentication, code, Security::Personal));
 
         assert_eq!(troubles, [None, None, None, None, None]);
+    }
+
+    #[test]
+    fn a_kept_key_an_access_point_no_longer_knows_is_no_trouble() {
+        let stale = Trouble::from_status(Step::Association, 53, Security::Personal);
+        assert_eq!(
+            stale, None,
+            "wpa_supplicant forgets the key and joins again"
+        );
     }
 
     #[test]
