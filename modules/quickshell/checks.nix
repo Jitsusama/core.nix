@@ -585,12 +585,14 @@ onLinux {
 
   # The launcher, the held notices and a notice are one card: each takes
   # its frame from Card.qml and stands its ink on the card's content, the
-  # inset from its edge, never drawing a frame or reading the inset itself,
-  # but in the files not-yet-on-the-card.txt lists, which only shrinks
+  # inset from its edge, and on its columns (Columns.js), never drawing a
+  # frame, reading the inset or placing ink across by hand itself, but in
+  # the files not-yet-on-the-card.txt lists, which only shrinks
   # (every-card-is-the-one-card.py). So it can't pass by seeing nothing, a
   # border, the whole thing's radius, a shadow, a frame from Floating, a read
-  # of the inset and a listed file that's moved or isn't a card are each
-  # shown to fail first, while a card, a part's radius and a comment pass.
+  # of the inset, an x or a margin from a rung or a pitch, and a listed file
+  # that's moved or isn't a card are each shown to fail first, while a card,
+  # a part's radius, a column, the card's own inset and a comment pass.
   every-card-is-the-one-card =
     let
       check = "${lib.getExe pkgs.python3} ${./every-card-is-the-one-card.py}";
@@ -627,18 +629,24 @@ onLinux {
       strays 'RectangularShadow {}' 'a frame of their own'
       strays 'Floating {' 'take Card'
       strays 'x: Theme.space.rung.inset' 'read the inset'
+      strays 'x: Theme.space.rung.mark' 'Surface.qml:1: x: Theme.space.rung.mark'
+      strays 'x: gutter + Theme.level.name.pitch' 'by hand'
+      strays 'anchors.leftMargin: Theme.space.rung.apart' 'by hand'
+      strays 'rightPadding: Theme.space.rung.items' 'by hand'
       strays $'Floating {\nborder.width: 1' 'a frame of their own' Surface.qml
       strays 'Card {' 'take it off' Surface.qml
       strays 'Card {' "isn't a card surface" Gone.qml
-      # A card, a part's radius, the inset said in a comment and a file
-      # listed while it still takes Floating pass.
+      # A card, a part's radius, a column, the card's own inset, the inset
+      # said in a comment, and files listed while they still take Floating
+      # or place by hand pass.
       rm -rf shell
       mkdir shell
-      printf '%s\n' 'Card {' 'radius: Theme.inner' '// once at Theme.space.rung.inset' \
-        > shell/Surface.qml
+      printf '%s\n' 'Card {' 'radius: Theme.inner' 'x: row.columns.text' 'x: -card.inset' \
+        '// once at Theme.space.rung.inset' > shell/Surface.qml
       printf '%s\n' 'Floating {' 'x: Theme.space.rung.inset' > shell/Unmoved.qml
-      printf '%s\n' Unmoved.qml > unmoved.txt
-      ${check} shell unmoved.txt Surface.qml Unmoved.qml
+      printf '%s\n' 'Card {' 'x: Theme.space.rung.mark' > shell/Placed.qml
+      printf '%s\n' Unmoved.qml Placed.qml > unmoved.txt
+      ${check} shell unmoved.txt Surface.qml Unmoved.qml Placed.qml
       ${check} ${surfaces} ${./not-yet-on-the-card.txt} ${lib.concatStringsSep " " cards}
       touch $out
     '';
