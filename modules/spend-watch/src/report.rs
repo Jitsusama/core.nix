@@ -336,27 +336,49 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
 /// spend no log knows have no session, and a session that spent less than
 /// a cent says nothing.
 pub fn by_session(picture: &Picture, period: Period) -> std::collections::BTreeMap<String, String> {
-    let (from, to) = period.days(&picture.zone, picture.now);
-    let mut spent: HashMap<&str, (f64, bool)> = HashMap::new();
-    let pieces = picture.between(from, to);
-    for piece in &pieces {
-        if piece.session.is_empty() || piece.session == "elsewhere" {
-            continue;
-        }
-        let entry = spent.entry(piece.session.as_str()).or_insert((0.0, false));
-        entry.0 += piece.dollars;
-        entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
-    }
-    spent
+    sessions_spent(picture, period)
         .into_iter()
         .filter(|(_, (dollars_spent, _))| *dollars_spent >= 0.005)
         .map(|(session, (dollars_spent, estimated))| {
             (
-                session.to_owned(),
+                session,
                 crate::money::maybe_about(dollars(dollars_spent), estimated),
             )
         })
         .collect()
+}
+
+/// What every pi session together spent in a period, said as each of
+/// `by_session`'s is, and empty when it's under a cent: the same sum, so
+/// the launcher's Agents says it without adding up strings, and it agrees
+/// with its rows.
+pub fn by_sessions(picture: &Picture, period: Period) -> String {
+    let (total, estimated) = sessions_spent(picture, period)
+        .into_values()
+        .fold((0.0, false), |(total, estimated), (dollars_spent, its)| {
+            (total + dollars_spent, estimated || its)
+        });
+    if total < 0.005 {
+        return String::new();
+    }
+    crate::money::maybe_about(dollars(total), estimated)
+}
+
+/// Each pi session's spend in a period, by its whole id, and whether any
+/// of it was estimated; spend that came from no session, or from another
+/// machine, is no session's.
+fn sessions_spent(picture: &Picture, period: Period) -> HashMap<String, (f64, bool)> {
+    let (from, to) = period.days(&picture.zone, picture.now);
+    let mut spent: HashMap<String, (f64, bool)> = HashMap::new();
+    for piece in &picture.between(from, to) {
+        if piece.session.is_empty() || piece.session == "elsewhere" {
+            continue;
+        }
+        let entry = spent.entry(piece.session.clone()).or_insert((0.0, false));
+        entry.0 += piece.dollars;
+        entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
+    }
+    spent
 }
 
 /// What a pi session's helpers cost in a period: each kind of run it
