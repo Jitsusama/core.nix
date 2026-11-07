@@ -197,13 +197,17 @@ function hue(stands) {
 // what the quest index says of it ({ id, cwd, at }): its `at`, the harness's
 // own word for it, else the start its id holds as a UUIDv7's first 48
 // bits, which is when it began rather than when it was last live, else 0.
+const DASHES = /-/g;
+const UUID_V7 = /^[0-9a-f]{12}7/i;
+const STAMP_DIGITS = 12;
+const HEX = 16;
 function liveAt(resume) {
     const said = Date.parse(resume?.at ?? "");
     if (!Number.isNaN(said)) {
         return said;
     }
-    const hex = String(resume?.id ?? "").replace(/-/g, "");
-    return /^[0-9a-f]{12}7/i.test(hex) ? parseInt(hex.slice(0, 12), 16) : 0;
+    const hex = String(resume?.id ?? "").replace(DASHES, "");
+    return UUID_V7.test(hex) ? Number.parseInt(hex.slice(0, STAMP_DIGITS), HEX) : 0;
 }
 
 // Addresses from [{ address, at }], the one last live first, those

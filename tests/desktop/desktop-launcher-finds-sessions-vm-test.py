@@ -448,9 +448,7 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     assert said["text"].startswith("what is a fjord?\n\nThe launcher answered: "), said
     assert said["from"] == "joel", said
     desktop.launcher_until(
-        lambda shown: (
-            shown["path"] == ["Agents", LIGHTHOUSE] and "Talk" in shown["rows"]
-        )
+        lambda shown: shown["path"] == ["Agents", LIGHTHOUSE] and "Talk" in shown["rows"]
     )
     desktop.close_launcher()
 
@@ -551,23 +549,8 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     # Lighthouse orchestrates a quest, and no session runs it; the quest
     # index names the session to resume, which ran in ~/lighthouse, as
     # pi's file for it says, never the index's sessions, which can hold
-    # one long dead. Before it's listed, its quest's step in holds Start
-    # Here, then Orchestrate, never a question asked first.
-    desktop.as_account(
-        f"rm -f {HARNESS}/quest-workflow/orchestrators.json {PI_PRESENCE}/testqa.json"
-        f" && mkdir -p {PI_QUEST}"
-        f" && printf '%s\\n' '---' 'title: no' '---' '# {LIGHTHOUSE}' > {PI_QUEST}/README.md"
-    )
-    desktop.as_account("qs ipc call launcher collection agents")
-    desktop.launcher_ready()
-    desktop.down_to("Start a Session")
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: LIGHTHOUSE in shown["rows"])
-    desktop.down_to(LIGHTHOUSE)
-    desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
-    desktop.photograph("launcher-agents-start-quest")
-    desktop.close_launcher()
+    # one long dead.
+    a_quest_offers_to_orchestrate(desktop)
     lighthouse_listed(desktop)
     index = {
         "quests": [
@@ -640,6 +623,28 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
         f"rm -rf {opened} {sessions} ~/lighthouse {HARNESS}/quest-workflow/orchestrators.json"
         f" {HARNESS}/quest-workflow/quests.json"
     )
+
+
+def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
+    """Start a Session lists a quest nothing orchestrates, whose step in offers Orchestrate.
+
+    It holds Start Here, then Orchestrate, never a question asked first.
+    """
+    desktop.as_account(
+        f"rm -f {HARNESS}/quest-workflow/orchestrators.json {PI_PRESENCE}/testqa.json"
+        f" && mkdir -p {PI_QUEST}"
+        f" && printf '%s\\n' '---' 'title: no' '---' '# {LIGHTHOUSE}' > {PI_QUEST}/README.md"
+    )
+    desktop.as_account("qs ipc call launcher collection agents")
+    desktop.launcher_ready()
+    desktop.down_to("Start a Session")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: LIGHTHOUSE in shown["rows"])
+    desktop.down_to(LIGHTHOUSE)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
+    desktop.photograph("launcher-agents-start-quest")
+    desktop.close_launcher()
 
 
 def wakes_parked_orchestrator(desktop: Desktop) -> None:
