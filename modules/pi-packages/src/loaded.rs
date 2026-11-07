@@ -11,11 +11,17 @@
 //! process that started after the one that wrote the file had ended, so
 //! it can't keep a version that process said it ran. A file that doesn't
 //! count is removed.
+//!
+//! Each file that counts also says when its pi started, which the sweep
+//! needs for every package at once: node keeps where it found a module
+//! for as long as the process lives, so a pi resolves through `current`
+//! to the version it led to when it first looked, in any package it
+//! loads, whichever version it says it runs now (version.rs).
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde_json::Value;
 
@@ -26,10 +32,12 @@ use crate::version::Place;
 /// boot time Linux reckons a start from is whole seconds.
 const CLOCK_SLACK: Duration = Duration::from_secs(2);
 
-/// The version each live process said it runs, by pid, links resolved.
+/// The version each live process said it runs, by pid, links resolved,
+/// and when the first of them started.
 #[derive(Debug, Clone, Default)]
 pub struct Said {
     runs: HashMap<u32, PathBuf>,
+    earliest: Option<SystemTime>,
 }
 
 impl Said {
@@ -45,6 +53,12 @@ impl Said {
     pub fn names(&self, dir: &Path) -> bool {
         self.runs.values().any(|runs| runs == dir)
     }
+
+    /// When the longest-running of the processes that said started.
+    #[must_use]
+    pub fn earliest(&self) -> Option<SystemTime> {
+        self.earliest
+    }
 }
 
 /// What the live processes said they loaded of the package at `place`,
@@ -56,6 +70,7 @@ pub fn read(place: &Place) -> Said {
         return Said::default();
     };
     let mut runs = HashMap::new();
+    let mut earliest: Option<SystemTime> = None;
     for entry in entries.flatten() {
         let path = entry.path();
         let Some(pid) = entry
@@ -66,26 +81,29 @@ pub fn read(place: &Place) -> Said {
             // A file being written, `.<pid>.new`, or not one of these.
             continue;
         };
-        match runs_of(&path, pid) {
-            Some(root) => {
-                runs.insert(pid, root);
-            }
-            None => {
-                // Gone already is as good as removed.
-                let _ = fs::remove_file(&path);
-            }
+        let Some(started) = started_by(&path, pid) else {
+            // Gone already is as good as removed.
+            let _ = fs::remove_file(&path);
+            continue;
+        };
+        earliest = Some(earliest.map_or(started, |earliest| earliest.min(started)));
+        if let Some(root) = runs_of(&path) {
+            runs.insert(pid, root);
         }
     }
-    Said { runs }
+    Said { runs, earliest }
 }
 
-/// The version the file at `path` names for `pid`, when it counts.
-fn runs_of(path: &Path, pid: u32) -> Option<PathBuf> {
+/// When `pid` started, when it is the process that wrote the file at
+/// `path`.
+fn started_by(path: &Path, pid: u32) -> Option<SystemTime> {
     let written = fs::metadata(path).and_then(|meta| meta.modified()).ok()?;
     let started = inuse::started(pid)?;
-    if started > written + CLOCK_SLACK {
-        return None;
-    }
+    (started <= written + CLOCK_SLACK).then_some(started)
+}
+
+/// The version the file at `path` names, while it is there.
+fn runs_of(path: &Path) -> Option<PathBuf> {
     let text = fs::read_to_string(path).ok()?;
     let value: Value = serde_json::from_str(&text).ok()?;
     // A version since removed can't be run from.

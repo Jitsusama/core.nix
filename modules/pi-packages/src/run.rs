@@ -4,6 +4,7 @@ use std::fs::{self, File, TryLockError};
 use std::time::SystemTime;
 
 use crate::config::{Config, Package};
+use crate::loaded;
 use crate::version::{self, Place};
 
 /// What an update did for one package.
@@ -71,7 +72,7 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
             Err(why) => Done::Failed { commit, why },
         }
     };
-    let removed = version::sweep(&place)?;
+    let removed = version::sweep(&place, first_pi_started(config))?;
     Ok(Outcome {
         done,
         removed,
@@ -85,18 +86,30 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
 /// too: `None`.
 #[must_use]
 pub fn sweep(config: &Config) -> Vec<(Package, Result<Option<usize>, String>)> {
+    let first_pi = first_pi_started(config);
     config
         .packages
         .iter()
         .map(|package| {
             let place = Place::of(config, package);
             let removed = hold(&place).and_then(|held| match held {
-                Some(_held) => version::sweep(&place).map(Some),
+                Some(_held) => version::sweep(&place, first_pi).map(Some),
                 None => Ok(None),
             });
             (package.clone(), removed)
         })
         .collect()
+}
+
+/// When the longest-running pi started, of those that said what they
+/// loaded of any package: a pi that loads one package resolves through
+/// another's `current` too, though only some packages are said.
+fn first_pi_started(config: &Config) -> Option<SystemTime> {
+    config
+        .packages
+        .iter()
+        .filter_map(|package| loaded::read(&Place::of(config, package)).earliest())
+        .min()
 }
 
 /// The package's lock, or nothing when another run holds it.

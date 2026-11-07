@@ -25,7 +25,10 @@
 //! running it, until no process on the machine runs it, holds a file in it
 //! or stands in it (inuse/); what a pi runs is what it says it loaded
 //! (loaded.rs), or what it maps when it says nothing. The version
-//! `current` left last stays too, for a reload just made or a step back.
+//! `current` left last stays too, for a reload just made or a step back,
+//! and so does every version retired since the longest-running pi that
+//! says what it loaded started, since node goes on resolving through
+//! where `current` led when it first looked.
 //! `sweep` removes them alone, whenever a pi starts or ends. A build that
 //! fails its check is removed and `current` is left alone; the next run
 //! tries again. One update or sweep runs at a time for each package, under
