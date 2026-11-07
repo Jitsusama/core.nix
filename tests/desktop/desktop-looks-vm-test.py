@@ -1953,6 +1953,9 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     )
     side = desktop.showing()["selected"]["side"]
     assert side.startswith("84% full \u00b7 working"), f"at {shot}: {side}"
+    # Its note says what its quest is about, never its title, the row's own name, again.
+    note = desktop.showing()["selected"]["note"]
+    assert note.startswith("A builder under"), f"at {shot}: {note}"
     # Context draws Meter's stroke after its value, at Joel's scales both.
     drawer = desktop.showing()["drawer"]
     drawn = dict(zip(drawer["drawnFacts"], drawer["figures"], strict=True))

@@ -258,8 +258,12 @@ Provider {
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const { spent, family } = spendOf(presence, quest, place);
+        // What it works on leads with its quest's title, the row's own
+        // name, so the note says only the summary after it.
         const note = asks && presence.wants.said ? presence.wants.said
-            : presence && presence.worksOn ? presence.worksOn : "";
+            : presence && presence.worksOn
+            ? SessionDrawer.about(presence.worksOn, [session.title, presence.questInfo?.title])
+            : "";
         // Elsewhere, its machine leads the note; out of reach, it's all
         // the note says, and the row does nothing.
         const where = session.here ? ""

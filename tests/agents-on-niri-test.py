@@ -332,7 +332,11 @@ def test_a_sessions_drawer_shows_what_matters_first_and_what_its_quest_is_about_
     )
     drawer = shell.showing()["drawer"]
     assert drawer["values"][:2] == ["listening", "QEST-20261107-LISTEN \u00b7 active"], drawer
-    assert drawer["values"][-1] == WORKS_ON.removeprefix("Listening Quest: "), drawer
+    summary = WORKS_ON.removeprefix("Listening Quest: ")
+    assert drawer["values"][-1] == summary, drawer
+    # Nor does its row's note, under the same title; found by typing, whom it's under leads.
+    note = shell.showing()["selected"]["note"]
+    assert note == f"under BOSSES \u00b7 {summary}", note
     # One that landed something says what it landed last on its first screen too.
     found(shell, "paused quest", "Paused Quest")
     shell.launcher_until(
