@@ -41,10 +41,11 @@ pub enum CloudState {
 }
 
 /// The home network's way out, and the settings that shape it.
-// Backup internet is eero's name for the switch, and the key the shell and the
-// command line read, so it keeps the word its struct is named for.
-#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "the fields are the model's keys, and backup internet is eero's name for it"
+)]
 pub struct Internet {
     /// eero's word for it: connected, disconnected.
     pub state: Option<String>,
@@ -323,9 +324,11 @@ pub struct Rate {
     pub generation: Option<String>,
 }
 
-// The counts keep eero's names, which say which way each packet went.
-#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "the fields are the model's keys, eero's own names for its counts"
+)]
 pub struct Packets {
     pub rx_drops: Option<u64>,
     pub tx_retries: Option<u64>,
@@ -370,44 +373,16 @@ pub struct Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const MODEL: &str = include_str!("../home-network.json");
-
-    /// The paths where two values differ, so a failure names the figure
-    /// rather than printing the whole network.
-    fn differences(path: &str, left: &Value, right: &Value, out: &mut Vec<String>) {
-        match (left, right) {
-            (Value::Object(l), Value::Object(r)) => {
-                for key in l.keys().chain(r.keys().filter(|k| !l.contains_key(*k))) {
-                    let (a, b) = (
-                        l.get(key).unwrap_or(&Value::Null),
-                        r.get(key).unwrap_or(&Value::Null),
-                    );
-                    if l.contains_key(key) == r.contains_key(key) {
-                        differences(&format!("{path}.{key}"), a, b, out);
-                    } else {
-                        out.push(format!("{path}.{key}: only on one side"));
-                    }
-                }
-            }
-            (Value::Array(l), Value::Array(r)) if l.len() == r.len() => {
-                for (i, (a, b)) in l.iter().zip(r).enumerate() {
-                    differences(&format!("{path}[{i}]"), a, b, out);
-                }
-            }
-            (Value::Number(a), Value::Number(b)) if a.as_f64() == b.as_f64() => {}
-            (a, b) if a != b => out.push(format!("{path}: {a} against {b}")),
-            _ => {}
-        }
-    }
+    use crate::golden::{MODEL, differences};
 
     #[test]
     fn the_model_reads_and_writes_back_unchanged() {
         let model: HomeNetwork = serde_json::from_str(MODEL).expect("home-network.json reads");
         let again = serde_json::to_value(&model).unwrap();
         let read: Value = serde_json::from_str(MODEL).unwrap();
-        let mut out = Vec::new();
-        differences("", &again, &read, &mut out);
+
+        let out = differences(&again, &read);
+
         assert!(
             out.is_empty(),
             "written back differently:\n{}",

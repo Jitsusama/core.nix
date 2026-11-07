@@ -9,9 +9,9 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      # The model and the answers it's drawn from, which the tests read.
-      ./home-network.json
+      # The tests read eero's answers and the model drawn from them.
       ./contract
+      ./home-network.json
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;

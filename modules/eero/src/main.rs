@@ -15,9 +15,21 @@
 
 mod api;
 mod cloud;
+#[cfg(test)]
+mod golden;
 mod model;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "only the tests read the record so far")
+)]
+mod read;
 mod session;
 mod status;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "only the record's reader reads times so far")
+)]
+mod time;
 
 use std::fs;
 use std::io::{self, BufRead, Write};

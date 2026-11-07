@@ -372,7 +372,7 @@
       "gateway": true,
       "state": "ONLINE",
       "heartbeat_ok": true,
-      "last_heartbeat": "2026-11-07T22:54:06.658Z",
+      "last_heartbeat": "2026-11-07T22:53:51.606Z",
       "backhaul": {
         "kind": "ethernet",
         "bars": 5
@@ -388,8 +388,8 @@
       "support_ends": null,
       "joined": "2020-11-13T21:47:15Z",
       "last_reboot": "2026-11-07T07:22:42.035551983Z",
-      "up_s": 55897,
-      "cloud_s": 54432,
+      "up_s": 55878,
+      "cloud_s": 54413,
       "devices": {
         "all": 2,
         "ethernet": 0,
@@ -406,15 +406,6 @@
           "bssid": "02:00:00:00:00:0c"
         },
         {
-          "band": "5 GHz high",
-          "channel": 149,
-          "width_mhz": 80,
-          "power_dbm": 28,
-          "busy_pct": 41,
-          "devices": 1,
-          "bssid": "02:00:00:00:00:06"
-        },
-        {
           "band": "5 GHz low",
           "channel": 52,
           "width_mhz": 80,
@@ -422,6 +413,15 @@
           "busy_pct": 5,
           "devices": 0,
           "bssid": "02:00:00:00:00:24"
+        },
+        {
+          "band": "5 GHz high",
+          "channel": 149,
+          "width_mhz": 80,
+          "power_dbm": 28,
+          "busy_pct": 41,
+          "devices": 1,
+          "bssid": "02:00:00:00:00:06"
         }
       ],
       "ports": [
@@ -450,7 +450,7 @@
         "on": true,
         "brightness": 100
       },
-      "power": null,
+      "power": "USB",
       "usage": {
         "upload": {
           "total_bytes": 10083304,
@@ -673,7 +673,7 @@
       "gateway": false,
       "state": "ONLINE",
       "heartbeat_ok": true,
-      "last_heartbeat": "2026-11-07T22:54:16.689Z",
+      "last_heartbeat": "2026-11-07T22:53:46.694Z",
       "backhaul": {
         "kind": "wi-fi",
         "upstream": "Hall",
@@ -690,8 +690,8 @@
       "support_ends": null,
       "joined": "2020-11-13T21:50:49Z",
       "last_reboot": "2026-11-07T07:22:59.776783944Z",
-      "up_s": 55879,
-      "cloud_s": 1195,
+      "up_s": 55861,
+      "cloud_s": 1176,
       "devices": {
         "all": 9,
         "ethernet": 0,
@@ -708,15 +708,6 @@
           "bssid": "02:00:00:00:00:10"
         },
         {
-          "band": "5 GHz high",
-          "channel": 149,
-          "width_mhz": 80,
-          "power_dbm": 28,
-          "busy_pct": 39,
-          "devices": 4,
-          "bssid": "02:00:00:00:00:09"
-        },
-        {
           "band": "5 GHz low",
           "channel": 52,
           "width_mhz": 80,
@@ -724,6 +715,15 @@
           "busy_pct": 5,
           "devices": 3,
           "bssid": "02:00:00:00:00:04"
+        },
+        {
+          "band": "5 GHz high",
+          "channel": 149,
+          "width_mhz": 80,
+          "power_dbm": 28,
+          "busy_pct": 39,
+          "devices": 4,
+          "bssid": "02:00:00:00:00:09"
         }
       ],
       "ports": [
@@ -752,7 +752,7 @@
         "on": true,
         "brightness": 100
       },
-      "power": null,
+      "power": "USB",
       "usage": {
         "upload": {
           "total_bytes": 3680059,
@@ -975,7 +975,7 @@
       "gateway": false,
       "state": "ONLINE",
       "heartbeat_ok": true,
-      "last_heartbeat": "2026-11-07T22:54:15.594Z",
+      "last_heartbeat": "2026-11-07T22:54:00.584Z",
       "backhaul": {
         "kind": "wi-fi",
         "upstream": "Hall",
@@ -992,8 +992,8 @@
       "support_ends": null,
       "joined": "2020-11-13T21:54:36Z",
       "last_reboot": "2026-11-07T07:22:59.605522859Z",
-      "up_s": 55879,
-      "cloud_s": 1978,
+      "up_s": 55861,
+      "cloud_s": 1959,
       "devices": {
         "all": 4,
         "ethernet": 0,
@@ -1010,15 +1010,6 @@
           "bssid": "02:00:00:00:00:14"
         },
         {
-          "band": "5 GHz high",
-          "channel": 149,
-          "width_mhz": 80,
-          "power_dbm": 28,
-          "busy_pct": 37,
-          "devices": 1,
-          "bssid": "02:00:00:00:00:12"
-        },
-        {
           "band": "5 GHz low",
           "channel": 52,
           "width_mhz": 80,
@@ -1026,6 +1017,15 @@
           "busy_pct": 5,
           "devices": 2,
           "bssid": "02:00:00:00:00:02"
+        },
+        {
+          "band": "5 GHz high",
+          "channel": 149,
+          "width_mhz": 80,
+          "power_dbm": 28,
+          "busy_pct": 37,
+          "devices": 1,
+          "bssid": "02:00:00:00:00:12"
         }
       ],
       "ports": [
@@ -1054,7 +1054,7 @@
         "on": false,
         "brightness": 100
       },
-      "power": null,
+      "power": "USB",
       "usage": {
         "upload": {
           "total_bytes": 3644372,
