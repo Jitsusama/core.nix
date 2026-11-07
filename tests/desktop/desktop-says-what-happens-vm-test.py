@@ -1025,7 +1025,7 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
 
 
 def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
-    """Sign one notice and photograph it, held, as a stack of three, and under what's playing."""
+    """Sign a notice and photograph it, held, as a stack, under what's playing, and that alone."""
     machine = desktop.machine
     desktop.as_account(f"niri msg output winit scale {scale}")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
@@ -1080,8 +1080,15 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
             f" --loop {desktop.values['track']}"
         )
     desktop.photograph(f"notices-playing-at-{named}")
-    desktop.as_account("systemctl --user stop player")
+    # And alone, its player's mark in the mark column where a notice's
+    # stands (VKCF3Z, 2026-11-06).
     desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_succeeds(
+        desktop.in_session("test \"$(qs ipc call notices front)\" = '{}'"),
+        timeout=timedelta(seconds=30),
+    )
+    desktop.photograph(f"playing-at-{named}")
+    desktop.as_account("systemctl --user stop player")
 
 
 def test_a_notice_from_calls_is_signed_as_a_call_and_wears_a_calls_glyph(desktop: Desktop) -> None:
