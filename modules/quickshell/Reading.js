@@ -78,10 +78,16 @@ const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
 // Kept items as styled text, their dots in `dotColour` while the words
 // keep the side's own ink: the status line's facts are joined so, and an
 // agent row's "working \u00b7 $4.20" too, its dot muted on the cursor row
-// (VKCF3Z, 2026-11-06).
-function styledItems(said, dotColour) {
+// (VKCF3Z, 2026-11-06). An item `inks` gives a colour, by its place, is
+// drawn in that colour, as Reopen Them All's count of folders gone is in
+// the alert's (VKCF3Z, 2026-11-07).
+function styledItems(said, dotColour, inks) {
     const dot = ` <font color="${dotColour}">\u00b7</font> `;
-    return said.map(words => words.replace(MARKUP, mark => ENTITIES[mark])).join(dot);
+    return said.map((words, at) => {
+        const written = words.replace(MARKUP, mark => ENTITIES[mark]);
+        const ink = (inks ?? [])[at] ?? "";
+        return ink === "" ? written : `<font color="${ink}">${written}</font>`;
+    }).join(dot);
 }
 
 // What stands for whatever a crumb leaves out.

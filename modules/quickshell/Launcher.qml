@@ -5411,6 +5411,9 @@ Scope {
             const styled = item.textFormat === Text.StyledText
                 && typeof item.parent?.plain === "string";
             words.push({ text: styled ? item.parent.plain : item.text,
+                // And as it's marked up, so a test can say which ink each
+                // of its items wears.
+                styled: styled ? item.text : "",
                 x: Math.round(at.x), y: Math.round(at.y),
                 ink: item.color === undefined ? "" : String(item.color),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),

@@ -510,11 +510,15 @@ Provider {
             [String(outcome.gone), String(said[outcome.gone === 1 ? "folderGone"
                 : "foldersGone"] ?? ""), Theme.alert],
             [String(outcome.asked - outcome.gone), String(said.reopened ?? "")]]);
+        // Its count of what failed is drawn in the alert's colour, as the
+        // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
+        const there = String(said.there ?? "").replace("{there}", reopenable.length)
+            .replace("{count}", lost.length);
         const themAll = () => act("all", {
             later: true,
-            side: goneNow === 0 ? "" : String(said.there ?? "")
-                .replace("{there}", reopenable.length).replace("{count}", lost.length)
-                .replace("{gone}", goneCount(goneNow)),
+            side: goneNow === 0 ? "" : `${there} \u00b7 ${goneCount(goneNow)}`,
+            sideItems: goneNow === 0 ? [] : [{ said: there, keep: 2 },
+                { said: goneCount(goneNow), keep: 3, hue: "alert" }],
             // Each back where it sat (Sessions.qml's reopenThemAll), a
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to

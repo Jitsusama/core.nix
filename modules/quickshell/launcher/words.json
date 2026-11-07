@@ -151,7 +151,7 @@
         "carried": "carried from {machine}",
         "machines": "{count} machines",
         "both": "{boot} from the last boot, {carried} {from}",
-        "there": "{there} of {count} \u00b7 {gone}",
+        "there": "{there} of {count}",
         "goneOne": "1 folder gone",
         "goneMany": "{count} folders gone",
         "reopened": "reopened",

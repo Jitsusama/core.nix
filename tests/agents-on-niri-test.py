@@ -271,6 +271,14 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     row = shell.showing()["selected"]
     gone = (row["side"], row["alerts"], row["hue"])
     assert gone == ("~/trees/given-back is gone", True, "alert"), row
+    # The count of what failed wears the ink the row that failed says it in,
+    # and "1 of 2" the side's own.
+    words = [w for r in json.loads(shell.as_account(shell.ipc("laidOut")))["rows"]
+             for w in r["words"]]  # fmt: skip
+    alert = next(w["ink"] for w in words if w["text"] == "~/trees/given-back is gone")
+    count = next(w["styled"] for w in words if w["text"] == "1 of 2 \u00b7 1 folder gone")
+    assert f'<font color="{alert}">1 folder gone</font>' in count, (alert, count)
+    assert count.startswith("1 of 2 "), count
     # It holds no Reopen: Return steps in, to Forget It alone.
     assert row["told"][:1] == ["\u21b5 open"], row
     shell.step_in()
