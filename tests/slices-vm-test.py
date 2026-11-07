@@ -290,6 +290,12 @@ def test_each_piece_of_work_gets_a_scope_of_its_own(jobs: Account) -> None:
     unit = scope.rsplit("/", 1)[-1]
     collect = jobs.machine.succeed(f"systemctl -M alice@ --user show -P CollectMode {unit}")
     assert collect.strip() == "inactive-or-failed"
+    # Its stop hangs a shell up, and kills what ignores that in 5 s, well inside the minute
+    # a reboot waits.
+    stop = jobs.machine.succeed(
+        f"systemctl -M alice@ --user show --value -p SendSIGHUP -p TimeoutStopUSec {unit}"
+    )
+    assert sorted(stop.split()) == ["5s", "yes"], stop
     # The holder stays, so the next write still lands.
     holder = jobs.machine.succeed("systemctl -M alice@ --user show -P MainPID jobs.service")
     assert holder.strip() in jobs.read(f"{JOBS}/jobs.service/cgroup.procs").split()

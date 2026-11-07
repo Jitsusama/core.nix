@@ -29,7 +29,8 @@
 //! holds the most of it, so it would end every session's builds at once
 //! rather than the one that filled swap. Each `--split` cgroup's work, a
 //! process tree whose root was written there, goes into a scope of its own,
-//! work-<pid>-<start>.scope, which systemd drops once it empties. The scopes
+//! work-<pid>-<start>.scope, once it has run a second, as `SETTLE` says
+//! why. systemd drops the scope once it empties. The scopes
 //! go in the slice named after `=`, or else the one the unit sits in. Its
 //! scopes share that slice's weight, as the work shared the unit's, so a
 //! cgroup that sits beside slices of other weights names a slice of its own.
@@ -296,6 +297,23 @@ struct Piece {
     pids: Vec<u32>,
 }
 
+/// How long a tree runs in its unit's cgroup before it's given a scope of
+/// its own. Most commands an agent writes, a git call say, are done within
+/// it, and one that ends in the moment between this reading it and systemd
+/// making its scope leaves systemd logging that the scope failed to start:
+/// 7 did in the minutes after a boot on 7 November, as 57 sessions came
+/// back at once. A tree that runs on gets its scope at the next look,
+/// which is all the scope is for: oomd ending one tree's work rather than
+/// every session's.
+const SETTLE: Duration = Duration::from_secs(1);
+
+/// Whether a tree that started at `start` has run for `SETTLE` by `now`,
+/// both in ticks since boot. Without a clock, every tree has.
+fn settled(start: u64, now: Option<u64>) -> bool {
+    let ticks = u64::try_from(SETTLE.as_millis()).unwrap_or(u64::MAX) / MS_PER_TICK;
+    now.is_none_or(|now| now.saturating_sub(start) >= ticks)
+}
+
 /// The trees in a cgroup, one for each process whose parent is elsewhere,
 /// but the unit's own holder.
 fn pieces(procs: &[Sample], holder: Option<u32>) -> Vec<Piece> {
@@ -362,6 +380,14 @@ fn made_here(cgroup: &str) -> bool {
         .is_some_and(|name| name.starts_with("work-") && name.ends_with(".scope"))
 }
 
+/// How long a work scope's processes have to end once asked, before
+/// systemd kills what's left. They're asked with a hangup as well as
+/// SIGTERM, since an interactive shell ignores SIGTERM and ends on a
+/// hangup. Without either, a scope took the user manager's 90 s, longer
+/// than a reboot waits: on 7 November one bash kept the reboot waiting
+/// its whole 60 s, which systemd then forced.
+const WORK_STOP: Duration = Duration::from_secs(5);
+
 /// What busctl is given to start a scope named `name` in `slice` around
 /// `pids`: the user manager's `StartTransientUnit`, with its description.
 /// A command can exit between being read and being moved, and systemd
@@ -369,6 +395,8 @@ fn made_here(cgroup: &str) -> bool {
 /// a failed scope is unloaded as a finished one is. When only some have
 /// exited, systemd moves the rest and logs "PID ... vanished before we could
 /// move it" for each one gone: that is this race, and no fault.
+///
+/// A scope is stopped as `WORK_STOP` says.
 fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<String> {
     let mut args: Vec<String> = [
         "--user",
@@ -381,7 +409,7 @@ fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<S
         "ssa(sv)a(sa(sv))",
         name,
         "fail",
-        "4",
+        "6",
         "Slice",
         "s",
         slice,
@@ -391,12 +419,17 @@ fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<S
         "CollectMode",
         "s",
         "inactive-or-failed",
-        "PIDs",
-        "au",
+        "SendSIGHUP",
+        "b",
+        "true",
+        "TimeoutStopUSec",
+        "t",
     ]
     .iter()
     .map(|arg| (*arg).to_string())
     .collect();
+    args.push(WORK_STOP.as_micros().to_string());
+    args.extend(["PIDs".into(), "au".into()]);
     args.push(pids.len().to_string());
     args.extend(pids.iter().map(u32::to_string));
     args.push("0".into());
@@ -569,7 +602,11 @@ fn split(
     if holder.is_none_or(|pid| !procs.iter().any(|proc| proc.pid == pid)) {
         *holder = main_pid(unit);
     }
+    let now = uptime_ticks();
     for mut piece in pieces(&procs, *holder) {
+        if !settled(piece.start, now) {
+            continue;
+        }
         piece.pids = still_in(&piece.pids, cgroup, |pid| cgroup_of(pid, manager));
         if piece.pids.is_empty() {
             continue;
@@ -1199,6 +1236,14 @@ mod tests {
     }
 
     #[test]
+    fn a_tree_gets_its_scope_once_it_has_run_a_second() {
+        assert!(!settled(1000, Some(1000)));
+        assert!(!settled(1000, Some(1099)));
+        assert!(settled(1000, Some(1100)));
+        assert!(settled(1000, None));
+    }
+
+    #[test]
     fn the_holder_stays_however_it_looks() {
         let roots: Vec<u32> = pieces(&jobs_service(), Some(5))
             .iter()
@@ -1247,7 +1292,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scope_is_asked_for_with_its_slice_every_process_and_no_trace_if_it_fails() {
+    fn a_scope_is_asked_for_with_its_slice_every_process_a_short_stop_and_no_trace_if_it_fails() {
         let args = scope_call("work-40-7.scope", "jobs.slice", "bash (40)", &[40, 41, 42]);
         let tail: Vec<&str> = args[6..].iter().map(String::as_str).collect();
         assert_eq!(
@@ -1257,7 +1302,7 @@ mod tests {
                 "ssa(sv)a(sa(sv))",
                 "work-40-7.scope",
                 "fail",
-                "4",
+                "6",
                 "Slice",
                 "s",
                 "jobs.slice",
@@ -1267,6 +1312,12 @@ mod tests {
                 "CollectMode",
                 "s",
                 "inactive-or-failed",
+                "SendSIGHUP",
+                "b",
+                "true",
+                "TimeoutStopUSec",
+                "t",
+                "5000000",
                 "PIDs",
                 "au",
                 "3",
