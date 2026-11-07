@@ -69,13 +69,42 @@ Provider {
             address: session.address,
             under: session.presence?.orchestratedBy ?? "",
             state: stateOf(session)
-        })));
-        return laid.map(one => made(running[one.at], {
-            depth: one.depth,
-            orchestrates: one.orchestrates || listed.includes(running[one.at].address)
-        }));
+        })), true);
+        return rowsOf(laid, running, listed);
     }
     onAllChanged: changedTo(all)
+
+    // The rows of what SessionRow.tree laid out: a session's own, or the
+    // fold of an orchestration's members that only wait, which says how
+    // many of each state it holds, "22 listening, 3 paused", and whose
+    // Return steps in to them (VKCF3Z, 2026-11-06). It holds their rows,
+    // so typing still finds each.
+    function rowsOf(laid, running, listed) {
+        return laid.map(one => {
+            if (!one.fold)
+                return made(running[one.at], {
+                    depth: one.depth,
+                    orchestrates: one.orchestrates || listed.includes(running[one.at].address)
+                });
+            const held = rowsOf(one.members, running, listed);
+            const row = thingRow({
+                key: `agents:fold:${one.under}`,
+                name: one.counts.map(each => `${each.count} ${word(each.state)}`).join(", "),
+                glyph: Theme.glyph.agent,
+                hue: "program",
+                copiesNothing: true,
+                depth: one.depth
+            }, () => held);
+            row.held = held;
+            return row;
+        });
+    }
+
+    // Every session's row, those folded too, as typing searches them.
+    function sessionRows(rows) {
+        return rows.reduce((every, row) => every.concat(row.held ? sessionRows(row.held)
+            : [row]), []);
+    }
 
     // How a session stands (SessionRow.js), from its presence, whether its
     // want is truly Joel's and whether it waits its turn in line.
@@ -333,7 +362,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of all) {
+        for (const row of sessionRows(all)) {
             const byName = (row.prepared.mask & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
             const byWord = (row.also.mask & need) === need
