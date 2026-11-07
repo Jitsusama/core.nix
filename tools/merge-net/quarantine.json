@@ -14,13 +14,6 @@
     "test": "vm-desktop-takes-calls"
   },
   {
-    "at": 1794089051,
-    "commit": "5a9d3fa6c436fa00a77f25f1bce045699b222d09",
-    "owner_pr": 2178,
-    "reason": "failed, then passed, at 5a9d3fa6c436",
-    "test": "vm-desktop-captures"
-  },
-  {
     "at": 1794089648,
     "commit": "5a9d3fa6c436fa00a77f25f1bce045699b222d09",
     "owner_pr": 2178,
