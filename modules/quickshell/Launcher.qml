@@ -6086,6 +6086,8 @@ Scope {
                 labelsWhole: drawerCard.labelsWhole(),
                 factsWrapped: drawerCard.factsWrapped(),
                 factsUnder: drawerCard.factsUnder(),
+                // Whether its facts read as a table or a list, never a mix.
+                laidOneWay: drawerCard.laidOneWay(),
                 // Whether every value keeps its words whole where it's drawn.
                 valuesWhole: drawerCard.valuesWhole(),
                 // Whether every value beside its name takes one line there.

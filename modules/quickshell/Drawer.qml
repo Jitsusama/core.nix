@@ -1044,46 +1044,55 @@ Floating {
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
-    // The names' column ends at a name, the widest of those that keep their
-    // values beside them, chosen so the most do: a column as wide as the
-    // widest name pushed half a narrow plate's values under their names,
-    // its two columns lost (VKCF3Z, 2026-11-05). A name wider goes on its
-    // own line, its value under it, as one too wide always has. A key
-    // list's sayings stay beside every key, and the moment's beside every
-    // name, so the column is never narrower than the widest of those. A
-    // binding doesn't see what a call reads, so it reads every face, to be
-    // measured again as a key list's face comes and goes.
-    readonly property real labelsWide: {
+    // One drawer lays out one way (VKCF3Z, 2026-11-07): it reads as a table
+    // when every fact keeps its value beside its name, and as a list, each
+    // value on the line under its name, when one can't; a mix reads as
+    // neither. A value that's prose (`words: true`) always stands under its
+    // name as a paragraph and counts for neither, so a sentence never turns
+    // a table into a list. A key list's sayings stay beside every key, and
+    // the moment's beside every name, so its column is never narrower than
+    // the widest of those. A binding doesn't see what a call reads, so it
+    // reads every face, to be measured again as a key list's face comes and
+    // goes.
+    readonly property var laying: {
         void valueFace.font;
         void factFace.font;
         void wordsFace.font;
         void latinFace.font;
+        void figureInk.advanceWidth;
         const room = column.width - labelsGap;
         const most = room - valueFace.advanceWidth("00000000");
-        const named = allFacts.filter(fact => fact && fact.heading === undefined)
-            .map(fact => ({
-                name: Math.ceil(nameWidth(fact)),
-                value: fact.value === null || fact.value === undefined ? 0
-                    : faceOf(fact).advanceWidth(unbroken(fact.value))
-            }));
-        const widest = Math.max(0, ...named.map(one => one.name));
-        if (listsKeys || widest <= most && named.every(one => one.value <= room - widest))
-            return Math.min(most, widest);
-        const least = Math.max(0, ...[].concat(...groups.map(group => group.facts))
-            .map(fact => Math.ceil(factFace.advanceWidth(fact.label ?? ""))));
-        const ends = [...new Set(named.map(one => one.name))]
-            .filter(end => end <= most && end >= least).sort((one, other) => other - one);
-        let best = Math.min(most, Math.max(least, widest));
-        let kept = -1;
-        for (const end of ends) {
-            const beside = named.filter(one => one.name <= end && one.value <= room - end)
-                .length;
-            if (beside > kept) {
-                best = end;
-                kept = beside;
-            }
-        }
-        return best;
+        const measured = fact => ({
+            name: Math.ceil(nameWidth(fact)),
+            value: fact.value === null || fact.value === undefined ? 0
+                : faceOf(fact).advanceWidth(unbroken(fact.value)) + figureLeast(fact)
+        });
+        const named = facts.filter(fact => fact && fact.heading === undefined && !prose(fact))
+            .map(measured);
+        const moment = [].concat(...groups.map(group => group.facts)).map(measured);
+        const widest = Math.max(0, ...named.concat(moment).map(one => one.name));
+        const wide = Math.min(most, widest);
+        return {
+            wide,
+            beside: listsKeys || widest <= most && named.every(one => one.value <= room - wide)
+        };
+    }
+    // The names' column: as wide as the widest name, short of a value's
+    // eight figures.
+    readonly property real labelsWide: laying.wide
+    // Whether its facts stand beside their names, a table, else under them.
+    readonly property bool besideAll: laying.beside
+    // Whether a fact's value is prose, which stands under its name always.
+    function prose(fact) {
+        return fact?.words === true;
+    }
+    // The least room a fact's figure takes after its value, two runs of one
+    // thing apart as Meter's figure and stroke are: a spark Graph's ten
+    // cells, a stroke three of them, short of which a share no longer reads.
+    function figureLeast(fact) {
+        const figure = fact?.figure ?? null;
+        return figure === null ? 0 : Theme.space.rung.apart + figureInk.advanceWidth
+            * (figure.shape === "stroke" ? 0.3 : 1);
     }
     // A key's name as runs, { said, x }: each key of a chord a run of its
     // own, the tie rung from the next, so Space Tab reads as one key, and
@@ -1134,6 +1143,14 @@ Floating {
                 under += 1;
         }
         return under;
+    }
+    // Whether its facts are laid one way, every value beside its name or
+    // every one under, prose aside, for the launcher to report.
+    function laidOneWay() {
+        const laid = Array.from({ length: factRows.count }, (_, at) => factRows.itemAt(at))
+            .filter(row => row && !row.heading && !prose(row.modelData))
+            .map(row => row.under);
+        return laid.every(under => under) || laid.every(under => !under);
     }
     // Each fact's figure as drawn: its shape where it shows, "" where it
     // carries none or has given way, for the launcher to report.
@@ -1208,6 +1225,15 @@ Floating {
     // alone on the next (VKCF3Z, 2026-11-03).
     function unbroken(words) {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
+    }
+    // A value made of items, "38 s \u00b7 4.1k out \u00b7 0.9 s first token",
+    // wraps between them, never inside one, the dot ending the line it
+    // leaves (VKCF3Z, 2026-11-07); an item wider than its room still wraps
+    // by its words, never running past the edge.
+    function itemsKept(words, face, wide) {
+        const items = unbroken(words).split(" \u00b7 ");
+        return items.map(item => face.advanceWidth(item) <= wide ? item.replace(/ /g, "\u00a0")
+            : item).join("\u00a0\u00b7 ");
     }
 
     // The time, read as it turns each second while the moment shows.
@@ -1885,34 +1911,15 @@ Floating {
                                 + headingRoom + apart
                             // A name and its value share one line, or the
                             // value takes the plate's whole width on the
-                            // line under its name (VKCF3Z, 2026-11-04): a
-                            // value that won't fit beside it on one line, a
-                            // word too wide there among them, goes under,
-                            // as does the value of a name too wide for the
-                            // names' column, which then runs the width too.
+                            // line under its name, as the drawer lays every
+                            // fact (besideAll), and as prose always stands.
                             // A key list's sayings stay beside their keys,
                             // however many lines, so each key heads its own
                             // (VKCF3Z, 2026-11-04).
-                            readonly property bool nameFits: drawer.nameWidth(modelData)
-                                <= drawer.labelsWide
+                            readonly property bool under: !drawer.listsKeys
+                                && (!drawer.besideAll || drawer.prose(modelData))
                             // A key's name, drawn as runs of its own.
                             readonly property var runs: drawer.runsOf(modelData)
-                            // Whether its value fits beside its name on one
-                            // line, measured in the face it's drawn in: a
-                            // laid-out text can't tell, since a word too wide
-                            // for its line runs past the edge on that one.
-                            // A fact with a figure needs the figure's least
-                            // room after it too, or it's laid under its name
-                            // as a long value is, so the figure stays whole.
-                            readonly property bool fitsBeside: {
-                                const face = drawer.faceOf(modelData);
-                                void face.font;
-                                return !known || face.advanceWidth(drawer.unbroken(
-                                    modelData.value)) + figureLeast <= width
-                                    - drawer.labelsWide - drawer.labelsGap;
-                            }
-                            readonly property bool under: !drawer.listsKeys
-                                && (!nameFits || !fitsBeside)
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
                             // How wide its value may run where it's drawn.
@@ -1996,7 +2003,8 @@ Floating {
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
-                                plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
+                                plain: fact.known ? drawer.itemsKept(fact.modelData.value,
+                                    drawer.faceOf(fact.modelData), fact.valueWide) : "\u2026"
                                 leading: drawer.pitch
                                 ink: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
                                 font: drawer.faceOf(fact.modelData).font
@@ -2011,12 +2019,11 @@ Floating {
                             // for a share, as Context's is, or Graph's spark
                             // for a history, as Today's (VKCF3Z, 2026-11-07),
                             // as `figure: { shape, values, warn }`. It
-                            // follows its value on the value's line; where it
-                            // won't fit beside the name, the fact is laid
-                            // under its name, as a long value is, and where it
-                            // still won't, it gives way before the value. It
-                            // moves no other fact's value aside, and is no
-                            // line for the cursor, as a picture isn't.
+                            // follows its value on the value's line, its
+                            // least room counted in whether the drawer's facts
+                            // stand beside their names (laying); where it
+                            // still won't fit, it gives way before the value.
+                            // It's no line for the cursor, as a picture isn't.
                             readonly property var figure: !heading && known
                                 ? modelData.figure ?? null : null
                             readonly property real figureFrom: {
@@ -2037,9 +2044,7 @@ Floating {
                             readonly property real figureWide: figure?.shape === "stroke"
                                 ? Math.min(figureInk.advanceWidth, figureRoom)
                                 : figureInk.advanceWidth
-                            readonly property real figureLeast: figure === null ? 0
-                                : Theme.space.rung.apart + figureInk.advanceWidth
-                                    * (figure.shape === "stroke" ? 0.3 : 1)
+                            readonly property real figureLeast: drawer.figureLeast(modelData)
                             readonly property bool figureShown: figure !== null
                                 && value.lineCount <= 1 && figureWide <= figureRoom
                                 && figureWide + Theme.space.rung.apart >= figureLeast

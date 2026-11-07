@@ -1161,6 +1161,9 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # there or breaks a word.
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+        # One that must stand under its name, as an address, lays every one under: a table or
+        # a list, never a mix (VKCF3Z, 2026-11-07).
+        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
         assert drawer["more"] or facts[-1] < drawer["foot"], (
             f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
         )
@@ -1939,6 +1942,7 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     assert drawn["Context"] == "stroke", f"at {shot}: {drawer}"
     # Its spend today carries its hours as Graph's spark.
     assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
+    assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
     desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 

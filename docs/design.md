@@ -1193,10 +1193,9 @@ works the same way everywhere.
   to the day's busiest hour of any session, so a quiet one reads quiet;
   Context Rebuilt says what rebuilding its context cost today, an amount
   hidden while sharing and unsaid under a cent. A drawer's fact may carry a figure so, a stroke or Graph's
-  spark, after its value on the value's baseline. Where it won't fit
-  beside the name, the fact is laid under its name, as a long value is;
-  where it still won't, it gives way before the value. It moves no other
-  fact's value aside and is no line for the cursor.
+  spark, after its value on the value's baseline, its room counted in
+  how the drawer lays out; where it still won't fit, it gives way before
+  the value. It is no line for the cursor.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,

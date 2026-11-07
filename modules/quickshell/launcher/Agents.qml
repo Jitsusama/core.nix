@@ -334,10 +334,12 @@ Provider {
         const { spent, family } = spendOf(presence, quest, place);
         // How its day went, as spend-watch says: its hours carry no dollars,
         // but what rebuilding its context cost is an amount, hidden while
-        // the screen is shared.
+        // the screen is shared. Its busiest hour nears no limit, so the
+        // spark never wears the warning, which is for a budget past its
+        // warning once the launcher reads budgets (VKCF3Z, 2026-11-07).
         const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
         return SessionRow.drawer(session.title, presence, {
-            hours: day?.graph ?? null,
+            hours: day?.graph ? Object.assign({}, day.graph, { warn: false }) : null,
             rebuilt: Quiet.sharing ? "" : String(day?.rebuilt ?? ""),
             spent: family ? word("allOf", { spent: family.all }) : spent,
             own: family ? family.own : "",
