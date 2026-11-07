@@ -1,0 +1,7 @@
+# The card surfaces that still take their frame straight from Floating or
+# place their own ink from the inset, by path under modules/quickshell,
+# which every-card-is-the-one-card lets through. Each surface moved onto
+# Card.qml and its columns takes its file off, and the check fails on a
+# file listed here that no longer needs to be, so the list only shrinks.
+HeldNotices.qml
+Launcher.qml

@@ -583,6 +583,66 @@ onLinux {
       touch $out
     '';
 
+  # The launcher, the held notices and a notice are one card: each takes
+  # its frame from Card.qml and stands its ink on the card's content, the
+  # inset from its edge, never drawing a frame or reading the inset itself,
+  # but in the files not-yet-on-the-card.txt lists, which only shrinks
+  # (every-card-is-the-one-card.py). So it can't pass by seeing nothing, a
+  # border, the whole thing's radius, a shadow, a frame from Floating, a read
+  # of the inset and a listed file that's moved or isn't a card are each
+  # shown to fail first, while a card, a part's radius and a comment pass.
+  every-card-is-the-one-card =
+    let
+      check = "${lib.getExe pkgs.python3} ${./every-card-is-the-one-card.py}";
+      cards = [
+        "HeldNotices.qml"
+        "Launcher.qml"
+        "Notifications.qml"
+      ];
+      surfaces = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions (map (name: ./. + "/${name}") cards);
+      };
+    in
+    pkgs.runCommandLocal "every-card-is-the-one-card" { } ''
+      # A card surface drawn as given, what the check must say of it, and
+      # the files listed as not yet on the card.
+      strays() {
+        rm -rf shell
+        mkdir shell
+        printf '%s\n' "$1" > shell/Surface.qml
+        printf '%s\n' "''${@:3}" > unmoved.txt
+        if ${check} shell unmoved.txt Surface.qml > said; then
+          echo "The card check passed on: $1"
+          exit 1
+        fi
+        if ! grep -qF -- "$2" said; then
+          echo "Of $1 the card check didn't say: $2"
+          cat said
+          exit 1
+        fi
+      }
+      strays 'border.width: Theme.border' 'Surface.qml:1: border.width: Theme.border'
+      strays 'radius: Theme.radius' 'a frame of their own'
+      strays 'RectangularShadow {}' 'a frame of their own'
+      strays 'Floating {' 'take Card'
+      strays 'x: Theme.space.rung.inset' 'read the inset'
+      strays $'Floating {\nborder.width: 1' 'a frame of their own' Surface.qml
+      strays 'Card {' 'take it off' Surface.qml
+      strays 'Card {' "isn't a card surface" Gone.qml
+      # A card, a part's radius, the inset said in a comment and a file
+      # listed while it still takes Floating pass.
+      rm -rf shell
+      mkdir shell
+      printf '%s\n' 'Card {' 'radius: Theme.inner' '// once at Theme.space.rung.inset' \
+        > shell/Surface.qml
+      printf '%s\n' 'Floating {' 'x: Theme.space.rung.inset' > shell/Unmoved.qml
+      printf '%s\n' Unmoved.qml > unmoved.txt
+      ${check} shell unmoved.txt Surface.qml Unmoved.qml
+      ${check} ${surfaces} ${./not-yet-on-the-card.txt} ${lib.concatStringsSep " " cards}
+      touch $out
+    '';
+
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place
