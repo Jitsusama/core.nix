@@ -16,8 +16,10 @@
 // those figures as rows, each copied by Return. The internet holds what
 // can be done to the home network too: Run a Speed Test and Optimize for
 // Conferencing and Gaming, which `eero speedtest` and `eero sqm` do,
-// started through niri as every program the shell starts is; :set sqm
-// and :set nosqm turn the second. What each says and in what order is
+// started through niri as every program the shell starts is. A speed test
+// fills the internet for most of a minute, so Return puts :speedtest on
+// the command line and a second Return runs it; :set sqm and :set nosqm
+// turn the switch, which is an option, as every switch is. What each says and in what order is
 // worked out in HomeNetwork.js and HomeNetworkDrawers.js, held in Qt's
 // own engine (tests/home-network.qml); this only makes rows of it.
 pragma ComponentBehavior: Bound
@@ -131,7 +133,6 @@ Provider {
             name: Words.name("verb:eero:speedtest"),
             verb: Words.verb("verb:eero:speedtest"),
             glyph: Words.glyph("verb:eero:speedtest"),
-            command: Words.ending("verb:eero:speedtest").command,
             hue: "action",
             stays: true,
             note: "eero measures the internet from the gateway node",

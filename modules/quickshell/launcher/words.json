@@ -1924,7 +1924,7 @@
     },
     {
       "id": "verb:eero:speedtest",
-      "command": "retry",
+      "command": "speedtest",
       "in": "eero",
       "name": "Run a Speed Test",
       "verb": "run",
