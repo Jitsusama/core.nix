@@ -220,8 +220,12 @@ Provider {
                 facts: figures.map(each => ({ label: each.name, value: each.value,
                     latin: each.latin, words: each.words }))
             })
+        // Each figure copies what it says, when a day begins as words
+        // ("at sunset") too: that's its value, and copying nothing left
+        // Return nothing to do on it (Joel, 2026-10-26: every row has a
+        // Return act, and one that only shows a value copies it).
         }, () => figures.map(each => copyRow({ name: each.name, side: each.side,
-            copy: each.side, copiesNothing: each.words, note: "", glyph: "" })));
+            copy: each.side, note: "", glyph: "" })));
     }
 
     // Today in every calendar, stepping into each, once they're reckoned;

@@ -214,16 +214,18 @@ ShellRoot {
                 && unended[2].title === "\u05db\u05f4\u05d3 \u05d1\u05d7\u05e9\u05d5\u05d5\u05df "
                     + "\u05d4\u05f3\u05ea\u05e9\u05e4\u05f4\u05d6", JSON.stringify(unended[2]));
         const nowhere = dayEnds(undefined);
+        // Said as words, it copies them all the same, since every row has a
+        // Return act (Joel, 2026-10-26).
         expect("seen from nowhere, the day begins at sunset, the civil day kept",
             nowhere[2].side === "Hebrew 25 Heshvan 5787" && nowhere[3].fact
                 === `${Words.name("today:calendars:dayBegins")} ${said.atSunset}`
-                && nowhere[3].words && nowhere[3].row.endsWith(" true"),
+                && nowhere[3].words && nowhere[3].row.endsWith(" false"),
             JSON.stringify(nowhere[3]));
         const none = dayEnds(null);
         expect("on a day with no sunset, it says so, the civil day kept",
             none[3].side === "Islamic 25 Jumada I 1448 AH" && none[2].fact
                 === `${Words.name("today:calendars:dayBegins")} ${said.noSunset}`
-                && none[2].words && none[2].row.endsWith(" true"),
+                && none[2].words && none[2].row.endsWith(" false"),
             JSON.stringify(none[2]));
     }
 
