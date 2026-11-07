@@ -22,6 +22,20 @@ let
     name = "stand-in-compiler";
     text = "exec ${impostors}/bin/cc1 -c 'while :; do ${pkgs.coreutils}/bin/sleep 1; done'";
   };
+  # A quest's compiler, which writes a little every second, since vm-first
+  # says nothing of a stopped build that wrote nothing. A write at its start
+  # would go uncounted: vm-first hands a build its io controller only once
+  # the build is there to be found. It never waits for the disk, so being
+  # stopped never finds it in the middle of a write that holds its cgroup.
+  standInQuestCompiler = pkgs.writeShellApplication {
+    name = "stand-in-quest-compiler";
+    text = ''
+      exec ${impostors}/bin/cc1 -c 'while :; do
+        ${pkgs.coreutils}/bin/dd if=/dev/zero of=written bs=64K count=1 status=none
+        ${pkgs.coreutils}/bin/sleep 1
+      done'
+    '';
+  };
   # A container, as a check run in one starts it, with a service in it that
   # bears no name of its own to be known by.
   standInContainer = pkgs.writeShellApplication {
@@ -108,6 +122,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     system.extraDependencies = [
       standInVm
       standInCompiler
+      standInQuestCompiler
       standInContainer
       standInWriter
       standInLazyWriter
@@ -116,7 +131,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" standInVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" standInCompiler;
-    environment.etc."quest-build.nix".source = buildOf "quest-build" standInCompiler;
+    environment.etc."quest-build.nix".source = buildOf "quest-build" standInQuestCompiler;
     environment.etc."container-build.nix".source = buildOf "container-build" standInContainer;
     environment.etc."writer-build.nix".source = buildOf "writer-build" standInWriter;
     environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" standInLazyWriter;
