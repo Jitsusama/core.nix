@@ -322,8 +322,18 @@ fn measured(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Valu
 /// a builder with a core to spare, the measuring thread finished first,
 /// and every holder said nothing in it clears.
 fn surveyed(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Value {
+    // A pass can end, and its status carry a measure, before any survey
+    // has offered a thing: then every holder says the guard hasn't looked.
+    // Only a status whose holders have all been looked at has a survey in it.
     status_once(guard, dir, within, |status| {
-        status["holders_at"].is_number() && status["last"].is_object()
+        status["holders"].as_array().is_some_and(|holders| {
+            !holders.is_empty()
+                && holders.iter().all(|holder| {
+                    !holder["why"]
+                        .as_str()
+                        .is_some_and(|why| why.contains("hasn't yet looked"))
+                })
+        })
     })
 }
 
