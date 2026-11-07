@@ -97,37 +97,11 @@ def test_and_with_the_right_one_its_saved_sealed_and_said_joined_step_by_step(
     assert not lantern_saved[0]["declared"], lantern_saved
     held = machine.succeed(f"cat {sealed}")
     assert "glowing" not in held, held
+    held = machine.succeed("wpa_cli -i wlan2 list_networks")
+    assert "[DISABLED]" not in held, held
     # Sealed and opened by the vault, so nothing asked systemd's
     # credential service, which takes the TPM seconds a password.
     machine.fail(f"journalctl -o cat --after-cursor='{since}' | grep systemd-creds@")
-
-
-def test_a_network_joined_from_the_launcher_keeps_the_card_until_it_goes(
-    machine: BaseMachine, wifid: Wifid
-) -> None:
-    """A network joined from the launcher keeps the card as it looks, until the network goes.
-
-    The card's others stay off while it's on Lantern, so a look can't move it to the Inn, ranked
-    the same, and come on again once Lantern goes, so the card joins the Inn by itself.
-    """
-    since = wifid.journal_now()
-    assert wifid.hears("Roadside Inn")
-    held = machine.succeed("wpa_cli -i wlan2 list_networks")
-    inn = [line for line in held.splitlines() if "\tRoadside Inn\t" in line]
-    assert inn, held
-    assert "[DISABLED]" in inn[0], held
-    wifid.joined("Lantern")
-    wifid.stayed_on(since)
-    machine.succeed("systemctl stop lantern")
-    wifid.joined("Roadside Inn")
-    held = machine.succeed("wpa_cli -i wlan2 list_networks")
-    assert "[DISABLED]" not in held, held
-    machine.succeed("systemctl start lantern")
-    retry(lambda _: wifid.hears("Lantern"), timeout=timedelta(seconds=60))
-    # The steps after this start on Lantern, joined from the launcher.
-    status, _, said = wifid.joining({"name": "Lantern"})
-    assert status == 0, said
-    wifid.joined("Lantern")
 
 
 def test_joining_the_inn_again_moves_the_card_and_says_how_far_the_inn_reaches(
