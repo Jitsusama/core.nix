@@ -342,19 +342,37 @@ Scope {
     // names several lists one's.
     readonly property int underMost: 3
     function underFirst(rows) {
-        if (held.length > 0 || typed.trim() === "")
+        const at = held.length > 0 || typed.trim() === "" ? -1
+            : rows.findIndex(row => typeof row.under === "function" && !row.byWord
+                && (row.tier ?? 1) <= 1);
+        if (at < 0) {
+            underListed = "";
             return rows;
-        const at = rows.findIndex(row => typeof row.under === "function" && !row.byWord
-            && (row.tier ?? 1) <= 1);
-        if (at < 0)
-            return rows;
+        }
         // One found by itself as well stays where it was found, so nothing
         // is listed twice.
         const shown = new Set(rows.map(row => Rank.identity(row)));
         const parts = (partsOfRows[rows[at].key] ?? []).slice(0, underMost);
         const holds = rows[at].under().slice(0, underMost).concat(parts)
-            .filter(row => !shown.has(Rank.identity(row)));
+            .filter(row => !shown.has(Rank.identity(row)))
+            .map(row => underIt(row, (rows[at].depth ?? 0) + 1));
+        underListed = holds.length > 0 ? rows[at].key : "";
         return rows.slice(0, at + 1).concat(holds, rows.slice(at + 1));
+    }
+    // Which program lists what it holds under it now, by its key, so its
+    // own say counts by kind rather than naming a row shown under it
+    // (VKCF3Z, 2026-11-07: "a say never names what a row under it names").
+    property string underListed: ""
+    // A row listed under its program, a depth in, as a session sits under
+    // its orchestrator: that alone ties it to the program, with no rule or
+    // name repeated (VKCF3Z, 2026-11-07). A copy, so the row stays as it
+    // is wherever else it shows, kept on the row itself, so one a source
+    // keeps is copied once rather than at every key; a WeakMap crashed the
+    // shell once its rows were collected (hiddenWords).
+    function underIt(row, depth) {
+        if (row.underCopy?.depth !== depth)
+            row.underCopy = Object.assign({}, row, { depth: depth, underCopy: undefined });
+        return row.underCopy;
     }
 
     // The rows sources end a search with (Provider.qml's last), each
@@ -2373,15 +2391,18 @@ Scope {
     property int footFiguresWidest: 1
     onFootFiguresNowChanged: footFiguresWidest = Math.max(footFiguresWidest, footFiguresNow)
 
-    // Return's place starts as wide as the widest verb any row can say on
-    // the find, whose rows change with every letter, so typing never moves
-    // it. In normal and visual it starts from nothing and grows from the
-    // place's own rows, weighed again as the place changes, since room for
-    // a verb no row there can say ranks nothing, and over two windows in
-    // visual it cost the foot its y (VKCF3Z, 2026-11-06).
+    // Return's place starts from nothing and grows from the rows it may
+    // name, as design.md's foot says: on the find those listed as it opens,
+    // growing for a wider row found within that find; in normal and visual
+    // the place's own rows, weighed again as the place changes, since room
+    // for a verb no row there can say ranks nothing, and over two windows
+    // in visual it cost the foot its y (VKCF3Z, 2026-11-06). Held as wide
+    // as the widest verb words.json names, it left a gap before "\u21b5
+    // start" on "chrome" (VKCF3Z, 2026-11-07). The keys' room keeps that
+    // widest verb all the same (footKeysRoom), so the facts never slide
+    // as Return grows; only the keys move, toward it.
     function footReset() {
-        footReturnWidest = prompt.mode === "find"
-            ? statusLine.keys.advance("\u21b5", footVerbRoom) : 0;
+        footReturnWidest = 0;
         footKeysWidest = keysWide(footKeysRoom);
         footFiguresWidest = footFiguresNow;
     }
@@ -6086,7 +6107,13 @@ Scope {
             keysRoom: { held: Math.round(Math.min(root.footKeysWidest, foot.keysRoom)),
                 said: Math.round(root.keysWide(foot.kept)), left: Math.round(foot.keysRoom),
                 told: Math.round(root.keysWide(foot.told)),
-                mode: Math.round(modeWord.room), least: Math.round(standing.least) },
+                mode: Math.round(modeWord.room), least: Math.round(standing.least),
+                // How much wider the keys' room holds Return than its place
+                // draws it: the widest verb the words name, held so the
+                // facts never slide, against the rows' own (footReset).
+                returnSlack: Math.round(Math.max(0,
+                    statusLine.keys.advance("\u21b5", root.footVerbRoom)
+                    - root.returnPlace(foot.kept[0] ?? ["\u21b5", ""]))) },
             // The keys the foot says now, each its mark and its word.
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // And the keys it would say with room for all, before any give way.

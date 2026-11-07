@@ -193,6 +193,9 @@ Singleton {
             glyph: Words.glyph("calendar:meeting"),
             hue: "program",
             side: root.when(meeting),
+            // Whether it's today's, so Calendar's row counts today's
+            // meetings while they're listed under it (Applications.qml).
+            today: Said.dayOf(meeting.start, root.now) === "",
             note: root.about(meeting),
             drawer: Said.details(meeting, Words.name("calendar:meeting", "untitled")),
             later: joins,

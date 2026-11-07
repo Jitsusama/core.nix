@@ -51,6 +51,11 @@ let
     "launcher-reads-mail"
     "launcher-moves-windows"
   ];
+  # The area whose machine has a Chrome to say its tabs and sites, as the
+  # chrome module's recents give them: a desktop entry that starts nothing,
+  # and its two lists read from files the test writes, in chrome-recent-sites'
+  # form, since no browser runs here.
+  bringsChrome = area == "opens-files";
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
   # from the node alone. It links nothing, so it needs no key.
@@ -653,13 +658,36 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # And Slack's own desktop entry, as the machine's Slack brings it,
         # so Programs has the row whose note says why Slack can't be
         # checked. It starts nothing, since nothing here opens it.
-        xdg.desktopEntries = lib.optionalAttrs bringsSlack {
-          slack = {
-            name = "Slack";
-            genericName = "Messages";
-            exec = "true %U";
+        xdg.desktopEntries =
+          lib.optionalAttrs bringsSlack {
+            slack = {
+              name = "Slack";
+              genericName = "Messages";
+              exec = "true %U";
+            };
+          }
+          // lib.optionalAttrs bringsChrome {
+            google-chrome = {
+              name = "Google Chrome";
+              genericName = "Web Browser";
+              exec = "true %U";
+            };
           };
-        };
+        jitsusama.quickshell.launcher.recents = lib.optionals bringsChrome [
+          {
+            app = "google-chrome";
+            kind = "site";
+            asked = true;
+            list = [
+              "${pkgs.coreutils}/bin/cat"
+              "/run/user/1000/chrome-visited"
+            ];
+            opened = [
+              "${pkgs.coreutils}/bin/cat"
+              "/run/user/1000/chrome-open"
+            ];
+          }
+        ];
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs photograph kitty the same
         # rather than catching its fade wherever it happens to be.
