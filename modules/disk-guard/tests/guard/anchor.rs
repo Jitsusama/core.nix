@@ -305,6 +305,44 @@ fn read_only_directories_at_the_top_are_restored_as_they_were() {
     );
 }
 
+/// A folder copied out of the Nix store: read-only all through, itself
+/// included, so there's nowhere to make a trash until its owner may write.
+fn copied_from_the_store(root: &Path) -> std::path::PathBuf {
+    let copy = root.join("copy");
+    fs::create_dir_all(copy.join("shots")).unwrap();
+    fs::write(copy.join("first.png"), "png").unwrap();
+    fs::write(copy.join("shots/last.png"), "png").unwrap();
+    for path in ["first.png", "shots/last.png"] {
+        fs::set_permissions(copy.join(path), fs::Permissions::from_mode(0o444)).unwrap();
+    }
+    for path in ["shots", ""] {
+        fs::set_permissions(copy.join(path), fs::Permissions::from_mode(0o555)).unwrap();
+    }
+    copy
+}
+
+#[test]
+fn a_directory_read_only_itself_is_detached_and_emptied() {
+    let root = sandbox();
+    let copy = copied_from_the_store(root.path());
+    let dir = Dir::open(&copy).unwrap();
+    dir.detach(&[]).unwrap().empty().unwrap();
+    assert_eq!(listing(&copy), Vec::<String>::new());
+}
+
+#[test]
+fn a_directory_read_only_itself_is_restored_as_it_was() {
+    let root = sandbox();
+    let copy = copied_from_the_store(root.path());
+    let dir = Dir::open(&copy).unwrap();
+    dir.detach(&[]).unwrap().restore().unwrap();
+    assert_eq!(listing(&copy), ["first.png", "shots"]);
+    assert_eq!(mode(&copy), 0o555);
+    assert_eq!(mode(&copy.join("shots")), 0o555);
+    fs::set_permissions(&copy, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(copy.join("shots"), fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 #[test]
 fn a_directory_that_took_the_name_meanwhile_keeps_its_own_mode() {
     let root = sandbox();

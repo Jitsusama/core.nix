@@ -34,6 +34,9 @@ pub struct Detached<'a> {
     /// Directories whose owner was given write permission so they could
     /// move, with the modes they had, for a restore to give back.
     modes: Vec<(OsString, RawMode)>,
+    /// The mode the directory itself had, when its owner was given write
+    /// permission to make the trash in it.
+    own: Option<RawMode>,
 }
 
 /// The name every trash starts with, so one left by a crash is found and
@@ -96,14 +99,16 @@ impl Detached<'_> {
                 failed.get_or_insert(error);
             }
         }
-        match failed {
-            Some(error) => Err(error),
-            None => Ok(rustix::fs::unlinkat(
-                &self.dir.fd,
-                &self.name,
-                AtFlags::REMOVEDIR,
-            )?),
+        if failed.is_none()
+            && let Err(error) = rustix::fs::unlinkat(&self.dir.fd, &self.name, AtFlags::REMOVEDIR)
+        {
+            failed.get_or_insert(error.into());
         }
+        // Last, since taking the trash out needs the write permission.
+        if let Err(error) = self.dir.give_back(self.own) {
+            failed.get_or_insert(error);
+        }
+        failed.map_or(Ok(()), Err)
     }
 
     /// Removes the trash and everything in it. A symlink is removed, never
@@ -419,11 +424,25 @@ impl Dir {
             .filter(|name| !name.starts_with(TRASH))
             .filter(|name| !keep.iter().any(|kept| kept.as_bytes() == name.as_slice()))
             .collect();
-        let trash = self.make_trash()?;
+        // A folder copied out of the Nix store is read-only itself, and the
+        // trash is made inside it, so its owner is given write permission.
+        let mode = rustix::fs::fstat(&self.fd)?.st_mode & 0o7777;
+        let own = (mode & 0o700 != 0o700).then_some(mode);
+        if own.is_some() {
+            rustix::fs::fchmod(&self.fd, Mode::from_raw_mode(mode | 0o700))?;
+        }
+        let trash = match self.make_trash() {
+            Ok(trash) => trash,
+            Err(error) => {
+                let _ = self.give_back(own);
+                return Err(error);
+            }
+        };
         let mut detached = Detached {
             dir: self,
             name: trash,
             modes: Vec::new(),
+            own,
         };
         let into = self.writable(&detached.name)?;
         for (moved, name) in names.iter().enumerate() {
@@ -447,6 +466,7 @@ impl Dir {
                 }
                 drop(into);
                 let _ = rustix::fs::unlinkat(&self.fd, &detached.name, AtFlags::REMOVEDIR);
+                let _ = self.give_back(own);
                 return Err(error);
             }
         }
@@ -490,6 +510,7 @@ impl Dir {
                     dir: self,
                     name,
                     modes: Vec::new(),
+                    own: None,
                 });
             }
         }
@@ -518,6 +539,15 @@ impl Dir {
             rustix::fs::fchmod(&dir.fd, Mode::from_raw_mode(mode | 0o700))?;
         }
         Ok(dir)
+    }
+
+    /// Gives this directory back the mode it had before detaching, if that
+    /// changed it.
+    fn give_back(&self, own: Option<RawMode>) -> io::Result<()> {
+        match own {
+            Some(mode) => Ok(rustix::fs::fchmod(&self.fd, Mode::from_raw_mode(mode))?),
+            None => Ok(()),
+        }
     }
 
     /// Makes a directory its owner can't even open usable.
