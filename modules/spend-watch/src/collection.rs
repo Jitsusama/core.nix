@@ -1024,7 +1024,7 @@ mod tests {
         store(
             &history,
             &serde_json::json!({
-                "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+                "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
                 "allowance": 15000, "windowHours": 168, "spent": 14100, "warn": 0.9,
                 "state": "notified", "at": "2026-10-14T14:00:00Z",
             }),
@@ -1033,7 +1033,7 @@ mod tests {
         store(
             &history,
             &serde_json::json!({
-                "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+                "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
                 "allowance": 4000, "windowHours": 168, "spent": 14200, "warn": 0.9,
                 "fallback": 4000, "state": "refused", "at": "2026-10-14T14:25:00Z",
             }),
@@ -1042,7 +1042,7 @@ mod tests {
         store(
             &history,
             &serde_json::json!({
-                "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+                "v": 1, "kind": "cap", "name": "premium", "label": "Premium Day",
                 "allowance": 1000, "windowHours": 24, "spent": 600, "warn": 0.5,
                 "state": "notified", "resets": "2026-10-15T04:00:00Z",
                 "at": "2026-10-14T14:29:00Z",
@@ -1139,7 +1139,7 @@ mod tests {
             names,
             [
                 "Today",
-                "Weekly cap",
+                "Week",
                 "Yesterday",
                 "This week",
                 "Last week",
@@ -1168,7 +1168,7 @@ mod tests {
         );
         assert_eq!(weekly.rows[2].note, "with $14,200 spent");
         // The premium day leads what's behind today, before its cuts.
-        assert_eq!(collected.now[0].rows[0].name, "Premium day");
+        assert_eq!(collected.now[0].rows[0].name, "Premium Day");
         // While sharing there's nothing behind a row, so the quiet lines
         // are the first screen's, and a day's cap that matters is a
         // finding among them.
@@ -1178,7 +1178,7 @@ mod tests {
             .take_while(|line| !line.key.starts_with("quiet:finding:"))
             .map(|line| line.name.as_str())
             .collect();
-        assert_eq!(quiet, ["Today", "Weekly cap"]);
+        assert_eq!(quiet, ["Today", "Week"]);
         // A period's cuts are behind it, after a day's caps, each standing
         // for its report.
         let today = &collected.now[0];

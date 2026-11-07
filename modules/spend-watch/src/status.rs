@@ -426,7 +426,7 @@ mod tests {
         let history = History::memory();
         let now = crate::time::parse("2026-10-14T12:00:00Z").unwrap();
         let line = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
             "allowance": 4000, "windowHours": 168, "spent": 4100, "warn": 0.9,
             "state": "refused", "at": "2026-10-14T11:55:00Z",
         });
@@ -474,7 +474,7 @@ mod tests {
         let history = History::memory();
         let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
         let line = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+            "v": 1, "kind": "cap", "name": "premium", "label": "Premium Day",
             "allowance": 1000, "windowHours": 24, "spent": 600, "warn": 0.5,
             "state": "notified", "at": "2026-10-14T12:29:00Z",
         });
@@ -488,7 +488,7 @@ mod tests {
     fn premium_day(spent: f64, at: &str, resets: &str) -> History {
         let history = History::memory();
         let line = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+            "v": 1, "kind": "cap", "name": "premium", "label": "Premium Day",
             "allowance": 1000, "windowHours": 24, "spent": spent, "warn": 0.5,
             "state": "refused", "resets": resets, "at": at,
         });

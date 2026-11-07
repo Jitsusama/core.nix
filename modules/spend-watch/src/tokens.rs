@@ -651,7 +651,7 @@ mod tests {
             feed: "proxy".into(),
             budget: String::new(),
             name: "weekly".into(),
-            label: "weekly cap".into(),
+            label: "Week".into(),
             unit: crate::caps::Unit::Dollars,
             allowance: Some(15_000.0),
             window_hours: 168,
