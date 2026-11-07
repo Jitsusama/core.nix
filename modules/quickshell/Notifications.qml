@@ -42,17 +42,32 @@ import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
+import "Columns.js" as Columns
 import "Levels.js" as Levels
 import "Stack.js" as Stack
 
 Scope {
     id: root
 
-    // Wide enough that what a notice says holds about 44 letters of the
-    // reading face at the launcher's size on a line, inside its room on
-    // each side: a short message in one or two lines. Each card is the one
-    // card (Card.qml), its ink the inset from its frame on every side.
-    readonly property int width: 440
+    // Wide enough that what a notice says holds about 40 letters of the
+    // reading face at the launcher's size on a line, beside its mark: a
+    // short message in one or two lines (docs/design.md). A letter is the
+    // lowercase alphabet's average, as a measure is set in type, since the
+    // face's own average counts capitals and runs a fifth wide. Each card
+    // is the one card (Card.qml), its ink the inset from its frame on every
+    // side, and its columns are a notice's (Columns.js).
+    readonly property int letters: 40
+    readonly property int width: Math.ceil(Columns.cardFor(
+        letters * alphabet.advanceWidth / alphabet.text.length,
+        Columns.ofMark(Theme.level.name.pitch), Theme.space.rung, Theme.border))
+    TextMetrics {
+        id: alphabet
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.weight: Theme.level.words.weight
+        font.variableAxes: Theme.level.words.variableAxes
+        text: "abcdefghijklmnopqrstuvwxyz"
+    }
     // How far the signature's capitals clear the message above them: a
     // beat more than Note's pitch from the message's last baseline, less
     // the capitals' own height, so the signature reads as a group of its
@@ -148,7 +163,9 @@ Scope {
             root.settled++;
         }
     }
-    onInsideChanged: Report.say(`places notices ${inside.right} ${inside.top} ${inside.width}`)
+    // Led by how wide a card would be with room for it, which its words set.
+    onInsideChanged: Report.say(
+        `places notices ${root.width} ${inside.right} ${inside.top} ${inside.width}`)
 
     // The launcher, for the history the stack hands on to.
     property var launcher: null
@@ -471,6 +488,11 @@ Scope {
                 if (card)
                     found.push(card.area);
             }
+            // Emptied first, since Qt takes a list holding the same
+            // regions as no change at all, and a card that moved with its
+            // column would keep being blurred where it was. Both land in
+            // the one polish that builds what niri gets.
+            areas = [];
             areas = found;
         }
 
@@ -552,7 +574,15 @@ Scope {
 
                 // A notice's three groups and room, as its neighbours'
                 // are: the track, who plays it, and the player and where
-                // in the track.
+                // in the track. Its cover stands in the mark column, and
+                // the player's mark when there's no cover, so its lines
+                // start on the text column a picture leaves (VKCF3Z,
+                // 2026-11-06), with the player's name and where in the
+                // track on the signing line.
+                readonly property var columns: Columns.across(said.width, 0, cover.visible
+                    ? Columns.ofPicture(cover.width) : Columns.ofMark(Theme.level.name.pitch),
+                    Theme.space.rung)
+
                 Item {
                     id: said
                     width: parent.width
@@ -575,6 +605,7 @@ Scope {
                         // colour until it arrives.
                         Rectangle {
                             id: cover
+                            x: track.columns.mark
                             y: title.baselineOffset + capital.tightBoundingRect.y
                             width: 2 * Theme.level.name.pitch
                             height: width
@@ -615,9 +646,8 @@ Scope {
                                 : title.baselineOffset
                                     + (title.lineCount - 1) * Theme.level.name.pitch
 
-                            anchors.left: cover.visible ? cover.right : parent.left
-                            anchors.leftMargin: cover.visible ? Theme.space.rung.apart : 0
-                            anchors.right: parent.right
+                            x: track.columns.text
+                            width: track.columns.end - x
                             height: artist.visible ? artist.y + artist.height : title.height
 
                             Text {
@@ -657,12 +687,19 @@ Scope {
 
                     // The player and where in the track, as a notice's
                     // signature.
+                    Mark {
+                        x: track.columns.mark
+                        line: song.y + title.baselineOffset
+                        visible: !cover.visible
+                        text: root.song.mark
+                        color: Theme.program
+                    }
+
                     Signature {
                         id: playedBy
+                        x: track.columns.text
                         y: song.ends + root.signed
-                        width: parent.width
-                        mark: root.song.mark
-                        hue: Theme.program
+                        width: track.columns.end - x
                         name: root.song.from
                         side: root.song.where
                     }
@@ -685,6 +722,8 @@ Scope {
                 screenHeight: window.screen ? window.screen.height : 768
                 onVisibleChanged: Qt.callLater(window.gather)
                 onHeightChanged: Qt.callLater(window.gather)
+                // It moves as what's playing comes and goes above it.
+                onYChanged: Qt.callLater(window.gather)
             }
 
             // The notices, one stack: the front one whole, and behind it
@@ -701,6 +740,9 @@ Scope {
                 height: root.shown.length === 0 || root.holding ? 0 : Math.max(root.frontHeight,
                     root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
                 visible: root.shown.length > 0 && !root.holding
+                // The cards move with it as what's above them comes and
+                // goes, which their regions follow only when told.
+                onYChanged: Qt.callLater(window.gather)
 
             Repeater {
                 id: cards
@@ -763,88 +805,25 @@ Scope {
                         }
                     }
 
-                    // Three groups, as Joel reads a notice: who or what
-                    // it's about, what it says, and the signature of what
-                    // sent it with when, each at its level, so the sizes
-                    // rank rather than jostle: who and what at the
-                    // launcher's size, lines of one saying a pitch apart,
-                    // and the signature a step smaller, a group of its own
-                    // (Joel, 2026-10-24: "the differing font sizes, and too
-                    // much information on lines really felt gross and
-                    // unrefined"; 2026-11-04: "we are not levraging
-                    // different weights and sizes enough"). The frame
-                    // stands as far from the ink on every side, to the
-                    // capital's top and the signature's baseline (Joel,
-                    // 2026-11-03: "feeling quite cluttered").
-                    Item {
-                        id: words
-                        // The message's last baseline, who's or what's.
-                        readonly property real ends: body.visible
-                            ? body.y + body.baselineOffset
-                                + (body.lineCount - 1) * Theme.level.words.pitch
-                            : who.y + who.baselineOffset
-                                + (who.lineCount - 1) * Theme.level.name.pitch
+                    // The notice as a row of its card (NoticeRow.qml), with
+                    // no gutter, since one notice isn't a list; on the
+                    // right of its signing line how many wait behind it
+                    // and when it came. The frame stands as far from the
+                    // ink on every side (Joel, 2026-11-03: "feeling quite
+                    // cluttered").
+                    NoticeRow {
+                        readonly property real now: clock.date.getTime()
+                        readonly property int more: root.shown.length - 1
 
                         visible: card.front
                         width: parent.width
-                        implicitHeight: signature.y + signature.height
-
-                        Text {
-                            id: who
-                            y: -baselineOffset - capital.tightBoundingRect.y
-                            width: parent.width
-                            text: card.modelData.summary
-                            // Plain, as the spec has a summary: only the
-                            // body carries markup.
-                            textFormat: Text.PlainText
-                            color: Theme.strong
-                            wrapMode: Text.Wrap
-                            lineHeight: Theme.level.name.pitch
-                            lineHeightMode: Text.FixedHeight
-                            font.family: Theme.level.name.family
-                            font.pointSize: Theme.level.name.pointSize
-                            font.weight: Theme.level.name.weight
-                        }
-
-                        // What it says, its first line a pitch below who's
-                        // last, as lines of one saying.
-                        Text {
-                            id: body
-                            y: who.y + who.baselineOffset
-                                + (who.lineCount - 1) * Theme.level.name.pitch
-                                + Theme.level.words.pitch - baselineOffset
-                            width: parent.width
-                            text: card.modelData.body
-                            visible: card.modelData.body !== ""
-                            color: Theme.text
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 6
-                            elide: Text.ElideRight
-                            textFormat: Text.StyledText
-                            lineHeight: Theme.level.words.pitch
-                            lineHeightMode: Text.FixedHeight
-                            font.family: Theme.level.words.family
-                            font.pointSize: Theme.level.words.pointSize
-                            font.weight: Theme.level.words.weight
-                            font.variableAxes: Theme.level.words.variableAxes
-                        }
-
-                        // What sent it, a group below: its mark and the name
-                        // Joel knows it by, never its program's; on the
-                        // right how many wait behind it and when it came.
-                        Signature {
-                            id: signature
-                            readonly property real now: clock.date.getTime()
-                            readonly property int more: root.shown.length - 1
-
-                            y: words.ends + root.signed
-                            width: parent.width
-                            mark: String.fromCodePoint(card.from.glyph)
-                            hue: Theme[card.from.hue]
-                            name: card.from.name
-                            side: (more > 0 ? `${more} more \u00b7 ` : "")
-                                + root.since(root.arrived[card.modelData.id] ?? now, now)
-                        }
+                        mark: String.fromCodePoint(card.from.glyph)
+                        hue: Theme[card.from.hue]
+                        title: card.modelData.summary
+                        words: card.modelData.body
+                        from: card.from.name
+                        when: (more > 0 ? `${more} more \u00b7 ` : "")
+                            + root.since(root.arrived[card.modelData.id] ?? now, now)
                     }
 
                     // Five seconds when the sender doesn't say, and ten for

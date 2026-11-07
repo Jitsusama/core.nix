@@ -585,18 +585,21 @@ onLinux {
 
   # The launcher, the held notices and a notice are one card: each takes
   # its frame from Card.qml and stands its ink on the card's content, the
-  # inset from its edge, never drawing a frame or reading the inset itself,
-  # but in the files not-yet-on-the-card.txt lists, which only shrinks
+  # inset from its edge, and on its columns (Columns.js), never drawing a
+  # frame, reading the inset or placing ink across by hand itself, but in
+  # the files not-yet-on-the-card.txt lists, which only shrinks
   # (every-card-is-the-one-card.py). So it can't pass by seeing nothing, a
   # border, the whole thing's radius, a shadow, a frame from Floating, a read
-  # of the inset and a listed file that's moved or isn't a card are each
-  # shown to fail first, while a card, a part's radius and a comment pass.
+  # of the inset, an x or a margin from a rung or a pitch, and a listed file
+  # that's moved or isn't a card are each shown to fail first, while a card,
+  # a part's radius, a column, the card's own inset and a comment pass.
   every-card-is-the-one-card =
     let
       check = "${lib.getExe pkgs.python3} ${./every-card-is-the-one-card.py}";
       cards = [
         "HeldNotices.qml"
         "Launcher.qml"
+        "NoticeRow.qml"
         "Notifications.qml"
       ];
       surfaces = lib.fileset.toSource {
@@ -627,18 +630,24 @@ onLinux {
       strays 'RectangularShadow {}' 'a frame of their own'
       strays 'Floating {' 'take Card'
       strays 'x: Theme.space.rung.inset' 'read the inset'
+      strays 'x: Theme.space.rung.mark' 'Surface.qml:1: x: Theme.space.rung.mark'
+      strays 'x: gutter + Theme.level.name.pitch' 'by hand'
+      strays 'anchors.leftMargin: Theme.space.rung.apart' 'by hand'
+      strays 'rightPadding: Theme.space.rung.items' 'by hand'
       strays $'Floating {\nborder.width: 1' 'a frame of their own' Surface.qml
       strays 'Card {' 'take it off' Surface.qml
       strays 'Card {' "isn't a card surface" Gone.qml
-      # A card, a part's radius, the inset said in a comment and a file
-      # listed while it still takes Floating pass.
+      # A card, a part's radius, a column, the card's own inset, the inset
+      # said in a comment, and files listed while they still take Floating
+      # or place by hand pass.
       rm -rf shell
       mkdir shell
-      printf '%s\n' 'Card {' 'radius: Theme.inner' '// once at Theme.space.rung.inset' \
-        > shell/Surface.qml
+      printf '%s\n' 'Card {' 'radius: Theme.inner' 'x: row.columns.text' 'x: -card.inset' \
+        '// once at Theme.space.rung.inset' > shell/Surface.qml
       printf '%s\n' 'Floating {' 'x: Theme.space.rung.inset' > shell/Unmoved.qml
-      printf '%s\n' Unmoved.qml > unmoved.txt
-      ${check} shell unmoved.txt Surface.qml Unmoved.qml
+      printf '%s\n' 'Card {' 'x: Theme.space.rung.mark' > shell/Placed.qml
+      printf '%s\n' Unmoved.qml Placed.qml > unmoved.txt
+      ${check} shell unmoved.txt Surface.qml Unmoved.qml Placed.qml
       ${check} ${surfaces} ${./not-yet-on-the-card.txt} ${lib.concatStringsSep " " cards}
       touch $out
     '';
@@ -2739,6 +2748,8 @@ onLinux {
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
       cp ${./MarkSize.js} MarkSize.js
+      cp ${./Mark.qml} Mark.qml
+      cp ${./Columns.js} Columns.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${../../tests/graphs.qml} shell.qml
@@ -2768,6 +2779,40 @@ onLinux {
         touch $out
       '';
 
+  # A notice stands in its card's columns: drawn as the pop-up draws it and
+  # as the held list will, through the one card and row, at 2 and at 1.5,
+  # its ink stands the inset from the frame on every side, its mark centred
+  # on the title's capitals, and the two cards' text columns differ by the
+  # gutter alone, as tests/notice-columns.py reads the pictures back.
+  notices-stand-on-the-cards-columns =
+    let
+      machine = graphical.config;
+      measure = lib.getExe (pkgs.python3.withPackages (python: [ python.pillow ]));
+    in
+    pkgs.runCommandLocal "notices-stand-on-the-cards-columns" { } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      for scale in 2 1.5; do
+        mkdir at-$scale
+        cd at-$scale
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Floating.qml} Floating.qml
+        cp ${./Card.qml} Card.qml
+        cp ${./NoticeRow.qml} NoticeRow.qml
+        cp ${./Mark.qml} Mark.qml
+        cp ${./MarkSize.js} MarkSize.js
+        cp ${./Columns.js} Columns.js
+        cp ${./Signature.qml} Signature.qml
+        cp ${../../tests/notice-columns.qml} shell.qml
+        ${shellFolderLint}
+        QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
+        ${measure} ${../../tests/notice-columns.py} . said
+        cd ..
+      done
+      touch $out
+    '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
@@ -2790,6 +2835,8 @@ onLinux {
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
       cp ${./MarkSize.js} MarkSize.js
+      cp ${./Mark.qml} Mark.qml
+      cp ${./Columns.js} Columns.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml

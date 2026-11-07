@@ -17,9 +17,10 @@ Floating {
 
     // What it holds, at the inset on every side.
     default property alias inside: content.data
-    // What lies over the whole card, edge to edge inside its frame, above
-    // what it holds: a click that takes all of it.
-    property alias whole: over.data
+    // What lies under everything it holds, edge to edge inside its frame: a
+    // click that takes all of the card but what takes its own, as an act's
+    // button would, drawn over it.
+    property alias whole: under.data
     // How far its content stands in from the frame's inside edge, on every
     // side: the inset rung, for a piece that reaches past the content's edge
     // to the frame, as a row's ground hugging its ink does.
@@ -33,16 +34,16 @@ Floating {
         implicitHeight: content.implicitHeight + 2 * card.inset
 
         Item {
+            id: under
+            anchors.fill: parent
+        }
+
+        Item {
             id: content
             x: card.inset
             y: card.inset
             width: parent.width - 2 * x
             implicitHeight: childrenRect.height
-        }
-
-        Item {
-            id: over
-            anchors.fill: parent
         }
     }
 }

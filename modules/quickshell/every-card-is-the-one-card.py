@@ -14,9 +14,15 @@ naming each line, on:
 - a frame taken straight from Floating rather than through Card, outside the
   files listed as not yet on the card;
 - a read of the inset rung, which the card stands its content at, outside
-  the files listed as not yet on the card;
-- a listed file that neither takes Floating nor reads the inset any more, or
-  that isn't a card surface, so the list only ever shrinks.
+  the files listed as not yet on the card. The card's own `inset`, which a
+  ground reaching past the content to the frame reads, is the one read
+  meant to pass;
+- a mark, name or number placed across by hand, an x or a side's margin set
+  from a rung or a pitch, outside the files listed as not yet on the card,
+  since every column comes from Columns.js;
+- a listed file that neither takes Floating, reads the inset nor places
+  anything by hand any more, or that isn't a card surface, so the list only
+  ever shrinks.
 
 Usage: every-card-is-the-one-card.py FOLDER UNMOVED SURFACE...
 """
@@ -31,6 +37,11 @@ FRAME = re.compile(r"\bborder\.(?:width|color)\b|\bradius:\s*Theme\.radius\b|\bR
 FLOATING = re.compile(r"\bFloating\s*\{")
 # The inset, which only the card stands its content at.
 INSET = re.compile(r"\bTheme\.space\.rung\.inset\b")
+# Ink placed across by hand, from a rung or a pitch, rather than a column.
+HAND_SET = re.compile(
+    r"^\s*(?:x|anchors\.(?:left|right|horizontalCenter)Margin|anchors\.margins"
+    r"|leftPadding|rightPadding)\s*:.*\bTheme\.(?:space\.rung\.\w+|level\.\w+\.pitch)\b"
+)
 
 
 def code(line: str) -> str:
@@ -60,16 +71,19 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
     framed: list[str] = []
     floated: list[str] = []
     inset: list[str] = []
+    placed: list[str] = []
     stale: list[str] = []
     for name in surfaces:
         path = folder / name
         framed.extend(found(path, name, FRAME))
         floats = found(path, name, FLOATING)
         insets = found(path, name, INSET)
+        hands = found(path, name, HAND_SET)
         if name not in allowed:
             floated.extend(floats)
             inset.extend(insets)
-        elif not floats and not insets:
+            placed.extend(hands)
+        elif not floats and not insets and not hands:
             stale.append(
                 f"{name} is listed as not yet on the card but is on it; take it off {unmoved.name}."
             )
@@ -81,6 +95,7 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
         (framed, "The lines above draw a frame of their own; a card's frame is Card.qml's."),
         (floated, "The lines above take Floating for a card; take Card, whose frame it is."),
         (inset, "The lines above read the inset; stand them on the card's content, at the inset."),
+        (placed, "The lines above place ink across by hand; stand it on a column (Columns.js)."),
     ]
     for lines, why in said:
         for line in lines:
@@ -89,7 +104,7 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
             print(why)
     for line in stale:
         print(line)
-    return 1 if framed or floated or inset or stale else 0
+    return 1 if framed or floated or inset or placed or stale else 0
 
 
 if __name__ == "__main__":

@@ -2534,13 +2534,16 @@ What each studio round settled, newest first, with the reason.
   seeing some whitespace issues with the notifications, feeling quite
   cluttered" of 3 November). Who or what it's about, strong in monospace;
   a unit below, what it says, in the serif upright; a step below, the signature,
-  muted in monospace: the mark of what sent it in a column of its own, the
-  name Joel knows it by (AI Spend, never a process's name) and, on the
-  right, when. All three are at the large step, as the launcher is. The
+  muted in monospace: the name Joel knows it by (AI Spend, never a
+  process's name) and, on the right, when. The mark of what sent it stands
+  in the card's mark column beside who, centred on its capitals, as a
+  launcher row's mark does (2026-11-06, so the two can't drift apart). All
+  three are at the large step, as the launcher is. The
   frame stands an inset and a step from the ink on every side, to the
   capital's top, the first letter, the last and the signature's baseline,
-  as the launcher's card does. The card is 440 wide, so what it says holds
-  about 40 of the serif's letters on a line at that size inside its room. The
+  as the launcher's card does. The card is as wide as what it says needs to
+  hold about 40 of the serif's letters on a line at that size, beside its
+  mark and inside its room, worked out from the card's columns. The
   line of offers and the held card's key hints went, as the clutter he
   named: a click does what the card is about, and the keys reach every
   act. Held, the card shows its acts under a rule at once, each by its

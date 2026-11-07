@@ -1,10 +1,12 @@
 // A card's signature, as a notice's and what's playing sign theirs: the mark
-// of what sent it, the name Joel knows it by, and on the right when it came
-// or where it is, at Note. Its gaps are measured to the ink (docs/design.md,
-// The Ladder): the mark a mark rung from the name, the name at least an
-// items rung from what's on the right, which ends flush with the item. The
-// item is as tall as the line's capitals, its top their top and its bottom
-// their baseline, so whoever places it places the ink.
+// of what sent it, unless it stands in the card's mark column instead, the
+// name Joel knows it by, and on the right when it came or where it is, at
+// Note. Without a mark, the name's ink starts the line. Its gaps are
+// measured to the ink (docs/design.md, The Ladder): the mark a mark rung
+// from the name, the name at least an items rung from what's on the right,
+// which ends flush with the item. The item is as tall as the line's
+// capitals, its top their top and its bottom their baseline, so whoever
+// places it places the ink.
 import QtQuick
 
 Item {
@@ -15,10 +17,19 @@ Item {
     property string name
     property string side
 
-    readonly property rect capital: capitalInk.tightBoundingRect
-    readonly property rect marked: markInk.tightBoundingRect
-    readonly property rect named: nameInk.tightBoundingRect
-    readonly property rect sided: sideInk.tightBoundingRect
+    readonly property rect capital: drawn(capitalInk.tightBoundingRect)
+    readonly property rect marked: drawn(markInk.tightBoundingRect)
+    readonly property rect named: drawn(nameInk.tightBoundingRect)
+    readonly property rect sided: drawn(sideInk.tightBoundingRect)
+
+    // Each part's ink is measured at the size this screen draws it, and read
+    // back in the shell's own pixels: a face's bearings round differently at
+    // each size, so a measure at one put the right-hand item's ink a pixel
+    // short of the inset at 2 (notices-stand-on-the-cards-columns).
+    readonly property real ratio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    function drawn(ink: rect): rect {
+        return Qt.rect(ink.x / ratio, ink.y / ratio, ink.width / ratio, ink.height / ratio);
+    }
 
     implicitHeight: capital.height
 
@@ -32,24 +43,30 @@ Item {
         font.pointSize: Theme.level.note.pointSize
         font.weight: Theme.level.note.weight
     }
+    FontMetrics {
+        id: drawnFace
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize * signature.ratio
+        font.weight: Theme.level.note.weight
+    }
     TextMetrics {
         id: capitalInk
-        font: face.font
+        font: drawnFace.font
         text: "H"
     }
     TextMetrics {
         id: markInk
-        font: face.font
+        font: drawnFace.font
         text: signature.mark
     }
     TextMetrics {
         id: nameInk
-        font: face.font
+        font: drawnFace.font
         text: signature.name
     }
     TextMetrics {
         id: sideInk
-        font: face.font
+        font: drawnFace.font
         text: signature.side
     }
 
@@ -63,8 +80,9 @@ Item {
     }
 
     Text {
-        x: glyph.x + signature.marked.x + signature.marked.width + Theme.space.rung.mark
-            - signature.named.x
+        x: signature.mark === "" ? -signature.named.x
+            : glyph.x + signature.marked.x + signature.marked.width + Theme.space.rung.mark
+                - signature.named.x
         y: signature.capital.height - baselineOffset
         width: Math.max(0, at.x + signature.sided.x - Theme.space.rung.items - x)
         text: signature.name
