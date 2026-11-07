@@ -481,6 +481,61 @@ def test_the_head_holds_the_finds_mark_alone_and_no_bare_question(shell: Shell) 
     shell.close_launcher()
 
 
+def test_a_place_stands_its_head_and_rows_where_home_does(shell: Shell) -> None:
+    """Stepping in from home moves no column: a place's glyphs and names stand where home's do.
+
+    A place numbering only its own rows once held a narrower gutter than home's, so its head's
+    glyph and Title and its rows' glyphs and names stood a digit left of home's for each digit
+    fewer (Joel, 2026-11-06: "padding is different when on the home launcher screen and a
+    secondary screen"). Machine holds about ten rows and Now a few, so each once had its own.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    # A find at home reaches every thing, and stands where home does too.
+    shell.type_in("machine", selecting="Machine")
+    stood = {"a find": columns(shell, "Home")}
+    shell.normal()
+    stood["Home"] = columns(shell, "Home")
+    shell.close_launcher()
+    for place in ("Machine", "Now"):
+        stood[place] = stepped_into(shell, place)
+    assert len(set(stood.values())) == 1, f"glyphs and names stand apart: {stood}"
+
+
+def stepped_into(shell: Shell, place: str) -> tuple[int, int, int, int]:
+    """Open the launcher, step into a place from home, and give where its columns stand."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in(place.lower(), selecting=place)
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["path"][-1:] == [place])
+    shell.normal()
+    stood = columns(shell, place)
+    shell.close_launcher()
+    return stood
+
+
+def columns(shell: Shell, title: str) -> tuple[int, int, int, int]:
+    """Give where the head's glyph and Title and the cursor row's glyph and name stand."""
+    shell.launcher_until(lambda shown: shown["gutter"]["shown"] and shown["selected"])
+    name = shell.showing()["selected"]["name"]
+    laid = laid_out(shell)
+    head = before_and_at(laid["field"], title)
+    row = next(row for row in laid["rows"] if row["selected"])
+    named = before_and_at(row["words"], name)
+    assert head, (title, laid["field"])
+    assert named, (name, row["words"])
+    return (*head, *named)
+
+
+def before_and_at(words: list[Json], text: str) -> tuple[int, int] | None:
+    """Give where the glyph before a word and the word itself start, or None if it's not there."""
+    at = next((at for at, word in enumerate(words) if word["text"] == text), 0)
+    if at == 0:
+        return None
+    return (cast("int", words[at - 1]["x"]), cast("int", words[at]["x"]))
+
+
 def laid_out(shell: Shell) -> Json:
     """Give where the launcher draws each word, once two reads in a row agree."""
     was = None
