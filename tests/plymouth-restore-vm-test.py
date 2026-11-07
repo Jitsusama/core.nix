@@ -411,6 +411,7 @@ def test_each_track_is_full_once_the_image_is_read(
         reached = filled(Picture.read(getattr(restored.after, screen)), track, bar, ink)
         assert reached == track.width, f"{screen}: the bar reached {reached} of {track.width}"
     kept(restored.machine, restored.after.path, "restoring-full")
+    kept(restored.machine, restored.after.large, "restoring-full-large")
 
 
 def test_the_machine_is_back_as_it_was(restored: Restore) -> None:
