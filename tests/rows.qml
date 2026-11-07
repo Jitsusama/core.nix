@@ -28,7 +28,9 @@
 // many rows there are, and none at all off normal. A row's mark, whatever
 // its shape, stands at one optical size, its ink on the capitals' middle. A
 // status line's dot before Return goes with Return, the room held for a
-// wider word before it. It exits 0 once every case holds, and otherwise 1, saying which didn't.
+// wider word before it. A side of items on the cursor row says its words
+// in the row's ink and the dots between them muted. It exits 0 once every
+// case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import QtQuick.Shapes
@@ -47,6 +49,8 @@ ShellRoot {
         + " of $15,000, which resets on Monday at midnight"
     readonly property string asked: "Say which issue sources to read"
     readonly property string day: "Wednesday 4 November 2026"
+    // An agent row's side, as SessionRow.side gives it.
+    readonly property var agentSide: [{ said: "working", keep: 3 }, { said: "$4.20", keep: 4 }]
 
     FloatingWindow {
         visible: true
@@ -289,6 +293,12 @@ ShellRoot {
                 say: root.sentence; glyph: "$"; selected: true }
             Choice { id: sayingNot; width: root.panel; name: root.long; side: "79%"
                 glyph: "$"; selected: true }
+            // An agent's side of items, on the cursor row and off it: its
+            // words in the row's ink, the dots between them muted.
+            Choice { id: itemsChosen; width: root.panel; name: "A Quest"; glyph: "$"
+                sideItems: root.agentSide; selected: true }
+            Choice { id: itemsResting; width: root.panel; name: "A Quest"; glyph: "$"
+                sideItems: root.agentSide }
             // Home's house, a mark drawn small for its em, heading its
             // place as the launcher's head does, on the rows' glyph column,
             // and as a row wears it.
@@ -656,6 +666,40 @@ ShellRoot {
         expect("a place's mark heads its rows at their size", head !== null && row !== null
             && Math.abs(head.font.pointSize - row.font.pointSize) <= 0.01,
             `the head's at ${head?.font.pointSize}, the row's at ${row?.font.pointSize}`);
+    }
+
+    // The words a row's side draws: the Text holding them, however it's
+    // styled.
+    function sideText(item, words) {
+        for (const child of item.children) {
+            if (child.visible && typeof child.text === "string" && child.text.includes(words)
+                && typeof child.textFormat === "number")
+                return child;
+            const found = sideText(child, words);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+
+    // A side of items says its words in the row's ink and the dots between
+    // them muted, as the status line joins its facts (VKCF3Z, 2026-11-06:
+    // "working \u00b7 $4.20", the dot muted); off the cursor row all of it is
+    // muted already, so it's said plain.
+    function sideItemsHold() {
+        const chosen = sideText(itemsChosen, "working");
+        const dot = `<font color="${Theme.muted}">\u00b7</font>`;
+        expect("a chosen row's side of items, its words in the text, its dot muted",
+            chosen !== null && chosen.textFormat === Text.StyledText
+                && chosen.text === `working ${dot} $4.20`
+                && String(chosen.color) === String(Theme.text),
+            chosen === null ? "none" : `${chosen.text} in ${chosen.color}`);
+        const resting = sideText(itemsResting, "working");
+        expect("a resting row's side of items, all of it muted",
+            resting !== null && resting.textFormat === Text.PlainText
+                && resting.text === "working \u00b7 $4.20"
+                && String(resting.color) === String(Theme.muted),
+            resting === null ? "none" : `${resting.text} in ${resting.color}`);
     }
 
     function sayHolds() {
@@ -1086,6 +1130,7 @@ ShellRoot {
             root.marksHold();
             root.countBeforeChord();
             root.sayHolds();
+            root.sideItemsHold();
             root.headMarkHolds();
             turns.begin();
         } catch (error) {

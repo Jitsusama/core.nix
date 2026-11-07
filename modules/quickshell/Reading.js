@@ -45,6 +45,9 @@ function slide(over, pace) {
     };
 }
 
+// What's said between a side's items, as the status line joins its facts.
+const ITEMS_APART = " \u00b7 ";
+
 // What a row says at its right, as items, given way whole: the least
 // needed first, by each one's `keep`, until what's left fits `room`, and
 // the rest said in their own order between dots. The one needed most is
@@ -53,14 +56,32 @@ function slide(over, pace) {
 // (VKCF3Z, 2026-11-04: a session's tree goes, then its address, then
 // its state, and what it cost stays).
 function wholeItems(items, room, width) {
-    const said = items.filter(item => item.said !== "");
-    const kept = said.slice();
-    const joined = () => kept.map(item => item.said).join(" \u00b7 ");
+    return keptItems(items, room, width).join(ITEMS_APART);
+}
+
+// The items `wholeItems` keeps, each as it's said, in their own order.
+function keptItems(items, room, width) {
+    const kept = items.filter(item => item.said !== "");
+    const joined = () => kept.map(item => item.said).join(ITEMS_APART);
     while (kept.length > 1 && width(joined()) > room) {
         const least = kept.reduce((low, item) => (item.keep < low.keep ? item : low));
         kept.splice(kept.indexOf(least), 1);
     }
-    return joined();
+    return kept.map(item => item.said);
+}
+
+// What a styled text needs written as its entity, so a side's words are
+// drawn as they read.
+const MARKUP = /[&<>]/g;
+const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+
+// Kept items as styled text, their dots in `dotColour` while the words
+// keep the side's own ink: the status line's facts are joined so, and an
+// agent row's "working \u00b7 $4.20" too, its dot muted on the cursor row
+// (VKCF3Z, 2026-11-06).
+function styledItems(said, dotColour) {
+    const dot = ` <font color="${dotColour}">\u00b7</font> `;
+    return said.map(words => words.replace(MARKUP, mark => ENTITIES[mark])).join(dot);
 }
 
 // What stands for whatever a crumb leaves out.

@@ -163,6 +163,17 @@ QtObject {
         expect("the cost whole", kept(50) === "$5.10 today", kept(50));
         expect("no items, nothing", Reading.wholeItems([], 100, width) === "",
             Reading.wholeItems([], 100, width));
+        // Styled, the kept items keep their words and take a dot in the
+        // colour given between them, so a selected agent row reads
+        // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and
+        // a word that reads as markup is written as it reads. The colour
+        // is a stand-in, as the theme's role is given it in a row.
+        const styled = Reading.styledItems(Reading.keptItems(items, 290, width), "dots");
+        expect("kept items, styled, a muted dot between",
+            styled === "working <font color=\"dots\">\u00b7</font> $5.10 today", styled);
+        const marked = Reading.styledItems(["a<b", "c & d"], "dots");
+        expect("markup in the words written as it reads",
+            marked === "a&lt;b <font color=\"dots\">\u00b7</font> c &amp; d", marked);
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
