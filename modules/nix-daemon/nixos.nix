@@ -121,6 +121,12 @@ in
 
   nix.settings.min-free = 24 * gib;
   nix.settings.max-free = 64 * gib;
+  # A garbage collection keeps what built anything still installed, not only
+  # the result. Without it the disk guard, which deletes what
+  # `nix-store --gc --print-dead` lists every few minutes, threw away the
+  # reader's 329 crate tarballs, and the next switch spent most of 13 minutes
+  # fetching them again. On a workstation it kept 3.5 GiB more.
+  nix.settings.keep-outputs = true;
 
   systemd.slices.build.sliceConfig.CPUWeight = 10;
 
