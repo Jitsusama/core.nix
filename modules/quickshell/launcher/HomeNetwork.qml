@@ -8,6 +8,9 @@
 // its devices, the strongest signal first, each saying its signal, as a
 // bar too, its band and channel, its rate each way and its speed now.
 //
+// After them come the profiles, each saying how it stands and how many of
+// its devices are on now.
+//
 // Each is a thing with a drawer of every figure the eero contract places
 // there (modules/eero/contract/README.md), and stepping into one lists
 // those figures as rows, each copied by Return. The internet holds what
@@ -33,6 +36,12 @@ Provider {
     readonly property bool present: Eero.present
 
     collection: !present ? null : Words.collection("eero")
+
+    // While the place, or anything in it, is open, the daemon is held to
+    // read eero every 30 seconds (Eero.qml), and never otherwise.
+    readonly property bool looking: launcher !== null && launcher.open
+        && (launcher.held ?? []).some(step => step.row.from === provider)
+    onLookingChanged: Eero.watching = looking
 
     // A part's name, as the vocabulary says it within one of the place's
     // things: "eero:node:backhaul" is Backhaul.
@@ -126,7 +135,7 @@ Provider {
             hue: "action",
             stays: true,
             note: "eero measures the internet from the gateway node",
-            run: () => Niri.spawn(["eero", "speedtest"])
+            run: () => provider.speedTest()
         })];
         if (sqm !== null)
             rows.push(sqmRow(sqm));
@@ -150,8 +159,20 @@ Provider {
         });
     }
 
+    // eero's speed test takes it most of a minute, and the daemon says the
+    // new one once it reads it.
+    function speedTest() {
+        Niri.spawn(["eero", "speedtest"]);
+        Eero.readNow();
+    }
+
+    // The switch reads as it will at once, and goes back if eero hasn't
+    // agreed by the daemon's next two reads.
     function optimize(on) {
+        becomes("eero:sqm", sqmRow(on), Words.name("eero:sqm"), on ? "on" : "off",
+            { within: 75000 });
         Niri.spawn(["eero", "sqm", on ? "on" : "off"]);
+        Eero.readNow();
     }
 
     // :set sqm and :set nosqm, as the row turns it.
@@ -186,7 +207,7 @@ Provider {
     }
 
     function deviceRow(device) {
-        const said = Home.deviceRow(device, settings);
+        const said = Home.deviceRow(device, settings, model.profiles);
         return thingRow({
             thing: true,
             what: "eero device",
@@ -199,14 +220,37 @@ Provider {
             graph: bar(said.level),
             glyph: Theme.glyph[said.mark] ?? "",
             depth: 1,
-            drawer: () => provider.plate("device", Drawers.device(provider.model, device,
-                provider.now(), provider.settings))
+            drawer: () => provider.plate("device", provider.deviceDrawer(device))
         }, () => provider.parts("device", `eero:device:${device.mac}`,
-            Drawers.device(provider.model, device, provider.now(), provider.settings)));
+            provider.deviceDrawer(device)));
+    }
+
+    // A device's drawer, with its readings since the shell started.
+    function deviceDrawer(device) {
+        return Drawers.device(model, device, now(), {
+            settings: settings,
+            readings: Eero.history[device.mac]
+        });
+    }
+
+    function profileRow(profile, first) {
+        const said = Home.profileRow(model, profile);
+        return thingRow({
+            thing: true,
+            what: "profile",
+            key: `eero:profile:${profile.id}`,
+            name: said.name,
+            side: said.side,
+            note: said.note,
+            glyph: Words.glyph("eero:profile"),
+            gap: first,
+            drawer: () => provider.plate("profile", Drawers.profile(provider.model, profile))
+        }, () => provider.parts("profile", `eero:profile:${profile.id}`,
+            Drawers.profile(provider.model, profile)));
     }
 
     // Every row, made again as the record changes: the internet, then
-    // each node with its devices under it.
+    // each node with its devices under it, then the profiles.
     readonly property var all: {
         if (!present)
             return [];
@@ -217,6 +261,7 @@ Provider {
             for (const device of group.devices)
                 rows.push(deviceRow(device));
         });
+        (model.profiles ?? []).forEach((profile, at) => rows.push(profileRow(profile, at === 0)));
         return rows;
     }
     onAllChanged: changedTo(all)

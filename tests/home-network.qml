@@ -99,6 +99,10 @@ QtObject {
                 + "conferencing and gaming on \u00b7 no outages \u00b7 3 nodes online \u00b7 "
                 + "24 devices"
         });
+        expect("the home network's state where it isn't connected",
+            Home.internetRow(Object.assign({}, model, { internet: Object.assign({},
+                model.internet, { mesh: "degraded" }) }), now).note.split(" \u00b7 ")[0],
+            "home network degraded");
         expect("the internet unreachable", Home.internetRow(Object.assign({}, model,
             { cloud: { state: "unreachable", since: model.read } }), now).side,
             "eero unreachable");
@@ -124,18 +128,23 @@ QtObject {
         expect("a quiet device", Home.deviceRow(device("generic 2")), {
             name: "generic 2",
             side: "-37 dBm",
-            note: "5 GHz, channel 52 \u00b7 1,200.9 Mb/s down, 1,080.6 Mb/s up \u00b7 idle",
+            note: "5 GHz, channel 52 \u00b7 1,200.9 Mb/s down, 1,080.6 Mb/s up \u00b7 idle \u00b7 "
+                + "10.0.0.45",
             level: 0.8833333333333333,
             mark: "wireless"
         });
         expect("a busy computer", Home.deviceRow(device("unknown computer 1")).note,
             "5 GHz, channel 149 \u00b7 1,200.9 Mb/s down, 1,200.9 Mb/s up \u00b7 "
-            + "11 Mb/s down, 9.9 Mb/s up");
+            + "11 Mb/s down, 9.9 Mb/s up \u00b7 10.0.0.20");
         expect("a computer's mark", Home.deviceRow(device("unknown computer 1")).mark, "computer");
         expect("a device rated one way", Home.deviceRow(device("printer 1")).note,
-            "2.4 GHz, channel 6 \u00b7 72.2 Mb/s down \u00b7 idle");
+            "2.4 GHz, channel 6 \u00b7 72.2 Mb/s down \u00b7 idle \u00b7 10.0.0.31");
         expect("a trickle", Home.deviceRow(device("generic 3")).note,
-            "2.4 GHz, channel 6 \u00b7 72.2 Mb/s down \u00b7 98 b/s down, 154 b/s up");
+            "2.4 GHz, channel 6 \u00b7 72.2 Mb/s down \u00b7 98 b/s down, 154 b/s up \u00b7 "
+            + "10.0.0.99");
+        expect("a device in a profile", Home.deviceRow(Object.assign({}, device("printer 1"),
+            { profile: "3002" }), {}, model.profiles).note.split(" \u00b7 ").slice(-1)[0],
+            "profile 2");
         const cabled = Object.assign({}, device("generic 3"), {
             ethernet: true,
             band: null,
@@ -148,7 +157,7 @@ QtObject {
         expect("a device over Ethernet", Home.deviceRow(cabled), {
             name: "generic 3",
             side: "Ethernet",
-            note: "Ethernet \u00b7 98 b/s down, 154 b/s up",
+            note: "Ethernet \u00b7 98 b/s down, 154 b/s up \u00b7 10.0.0.99",
             level: null,
             mark: "wired"
         });
@@ -173,7 +182,7 @@ QtObject {
             ["down", "369.9 Mb/s"],
             ["up", "11.9 Mb/s"],
             ["kept", "15 since 24 Sep 09:53"],
-            ["sqm", "on"],
+            ["sqm", "optimized"],
             ["upnp", "on"],
             ["randomization", "off"],
             ["steering", "on"],
@@ -281,6 +290,69 @@ QtObject {
             profiles: [{ id: "3001", name: "profile 1", paused: true, devices: [] }]
         }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));
         expect("a device's profile", value(inProfile, "profile"), "profile 1 \u00b7 paused");
+
+        // What happened, newest first, in the internet's drawer, and each
+        // device's own in its.
+        const events = Drawers.internet(model, now).facts;
+        const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
+        expect("what happened, newest first", timeline.slice(0, 2), [
+            { label: "22:42", value: "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52." },
+            { label: "22:42", value: "tablet 1 disconnected from Study eero Pro 6." }
+        ]);
+        expect("every event", timeline.length, 5);
+        const tablet = Drawers.device(model, device("tablet 1"), now).facts;
+        expect("a device's own events", tablet.slice(tablet.findIndex(fact =>
+            fact.heading === "events") + 1).map(fact => fact.value), [
+            "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52.",
+            "tablet 1 disconnected from Study eero Pro 6."
+        ]);
+        expect("none of another's", Drawers.device(model, device("generic 2"), now).facts
+            .some(fact => fact.heading === "events"), false);
+
+        // Each device's readings kept as records come, the newest last, so its
+        // drawer sparks its signal and its speed.
+        const once = Home.remembered({}, model, 3);
+        expect("a first reading", once["02:00:00:00:00:0a"], { signal: [-37], speed: [0] });
+        const later = Object.assign({}, model, {
+            devices: [Object.assign({}, device("generic 2"), {
+                signal_dbm: -41,
+                speed: { down_mbps: 2, up_mbps: 0.5 }
+            })]
+        });
+        let kept = once;
+        for (let read = 0; read < 3; read++)
+            kept = Home.remembered(kept, later, 3);
+        expect("readings kept to the most", kept["02:00:00:00:00:0a"], {
+            signal: [-41, -41, -41], speed: [2.5, 2.5, 2.5]
+        });
+        expect("a device gone is let go", Object.keys(kept).length, 1);
+        const sparked = byId(Drawers.device(model, device("generic 2"), now, {
+            readings: Home.remembered(once, model, 20)["02:00:00:00:00:0a"]
+        }));
+        expect("a signal read twice, sparked", sparked.signal.figure.shape, "spark");
+        expect("a speed read twice, sparked", sparked.speed.figure.shape, "spark");
+
+        // A profile: how it stands, and each device in it.
+        expect("a profile's row", Home.profileRow(model, model.profiles[0]), {
+            name: "profile 1",
+            side: "active",
+            note: "10 devices \u00b7 none on now"
+        });
+        const held = Object.assign({}, model.profiles[1], {
+            paused: true,
+            devices: ["02:00:00:00:00:0a", "02:00:00:00:00:35"]
+        });
+        expect("a profile held off", Home.profileRow(model, held).side, "paused");
+        const plate = Drawers.profile(model, held);
+        expect("a profile's plate", [plate.eyebrow, plate.title], ["profile \u00b7 paused",
+            "profile 2"]);
+        expect("a profile's facts", plate.facts, [
+            { id: "state", value: "Active \u00b7 paused" },
+            { id: "devices", value: "2 \u00b7 1 on now" },
+            { heading: "listed" },
+            { label: "generic 2", value: "on Den" },
+            { label: "02:00:00:00:00:35", value: "not on now" }
+        ]);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

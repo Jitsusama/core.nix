@@ -1875,6 +1875,39 @@
       "term": "Network/device"
     },
     {
+      "id": "eero:profile",
+      "in": "eero",
+      "name": "Profile",
+      "term": "Network/profile",
+      "glyph": "people"
+    },
+    {
+      "id": "eero:profile:state",
+      "in": "eero:profile",
+      "name": "State"
+    },
+    {
+      "id": "eero:profile:devices",
+      "in": "eero:profile",
+      "name": "Devices",
+      "term": "Network/device"
+    },
+    {
+      "id": "eero:profile:listed",
+      "in": "eero:profile",
+      "name": "Devices in It"
+    },
+    {
+      "id": "eero:internet:events",
+      "in": "eero:internet",
+      "name": "What Happened"
+    },
+    {
+      "id": "eero:device:events",
+      "in": "eero:device",
+      "name": "What Happened"
+    },
+    {
       "id": "eero:sqm",
       "in": "eero",
       "command": "set",
@@ -1979,7 +2012,7 @@
     {
       "id": "eero:internet:sqm",
       "in": "eero:internet",
-      "name": "Optimize for Conferencing and Gaming"
+      "name": "Conferencing and Gaming"
     },
     {
       "id": "eero:internet:upnp",

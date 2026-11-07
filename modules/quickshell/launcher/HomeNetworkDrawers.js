@@ -111,7 +111,43 @@ function internet(model, now, settings) {
                 firmware.last_started ? `last ${Home.when(firmware.last_started, now)}` : ""])),
             trafficFact(net.usage, settings),
             fact("read", joined([Home.when(model?.read, now), model?.cloud?.state])),
-        ])),
+        ]), happened(model?.events ?? [], now)),
+    };
+}
+
+// What happened, newest first, each by when, as eero's activity list says
+// it.
+function happened(events, now) {
+    if (events.length === 0) {
+        return [];
+    }
+    return [{ heading: "events" }].concat(events.map((event) => ({
+        label: Home.when(event.at, now),
+        value: event.text,
+    })));
+}
+
+// A profile's drawer: how it stands, and each device in it, saying which
+// node it's on now or that it isn't on.
+function profile(model, one) {
+    const devices = model?.devices ?? [];
+    const listed = one.devices ?? [];
+    const nodes = model?.nodes ?? [];
+    const onNow = listed.filter((mac) => devices.some((each) => each.mac === mac)).length;
+    return {
+        eyebrow: joined(["profile", Home.profileState(one)]),
+        title: one.name ?? one.id,
+        facts: kept([
+            fact("state", joined([one.state, one.paused ? "paused" : ""])),
+            fact("devices", joined([listed.length, `${onNow} on now`])),
+        ]).concat(listed.length > 0 ? [{ heading: "listed" }] : [], listed.map((mac) => {
+            const on = devices.find((each) => each.mac === mac) ?? null;
+            const where = on ? nodes.find((each) => each.id === on.node) ?? null : null;
+            return {
+                label: on ? Home.nameOf(on) : mac,
+                value: where ? `on ${Home.nodeName(where)}` : "not on now",
+            };
+        })),
     };
 }
 
@@ -138,7 +174,9 @@ function switches(net) {
     const guest = net.guest ?? {};
     return kept([
         { heading: "settings" },
-        fact("sqm", onOff(net.sqm)),
+        // Its name is eero's long one less its verb, so it stays whole beside
+        // its value in a narrow drawer.
+        fact("sqm", optimized(net.sqm)),
         fact("upnp", onOff(net.upnp)),
         fact("randomization", onOff(net.nat_port_randomization)),
         fact("steering", onOff(net.band_steering)),
@@ -152,6 +190,13 @@ function switches(net) {
         fact("backup", onOff(net.backup_internet)),
         fact("power-saving", onOff(net.power_saving)),
     ]);
+}
+
+function optimized(on) {
+    if (!known(on)) {
+        return "";
+    }
+    return on ? "optimized" : "not optimized";
 }
 
 function outages(list) {
@@ -286,10 +331,14 @@ function rateOf(rate, settings) {
 // heard, each way's rate and how it's made, its speed now, what had to be
 // sent again, its network and addresses, when it was seen, and its
 // profile.
-function device(model, one, now, settings) {
+// `asked` gives the launcher's number settings and the device's readings
+// since the shell started, { settings, readings }, each optional.
+function device(model, one, now, asked) {
+    const settings = asked?.settings;
     const on = (model?.nodes ?? []).find((each) => each.id === one.node) ?? null;
+    const seen = asked?.readings ?? { signal: [], speed: [] };
     const packets = one.packets ?? {};
-    const profile = (model?.profiles ?? []).find((each) => each.id === one.profile) ?? null;
+    const group = (model?.profiles ?? []).find((each) => each.id === one.profile) ?? null;
     return {
         eyebrow: joined([Home.worded(one.kind), on ? `on ${Home.nodeName(on)}` : "",
             one.ethernet ? "Ethernet" : "Wi-Fi"]),
@@ -299,7 +348,7 @@ function device(model, one, now, settings) {
             fact("node", on ? joined([Home.nodeName(on), on.model]) : null),
             fact("signal", joined([Home.signalOf(one), known(one.snr_db)
                 ? `${one.snr_db} dB over the noise` : ""]), {
-                figure: known(one.signal_dbm) ? stroke(Interfaces.level(one.signal_dbm)) : null,
+                figure: signalFigure(one, seen.signal),
             }),
             fact("score", joined([known(one.score) ? Home.number(one.score, SCORE_PLACES, settings)
                 : "", known(one.bars) ? `${one.bars} of 5 bars` : ""])),
@@ -310,7 +359,7 @@ function device(model, one, now, settings) {
                 : null),
             fact("rx", rateOf(one.rx, settings)),
             fact("tx", rateOf(one.tx, settings)),
-            fact("speed", Home.speedOf(one, settings)),
+            fact("speed", Home.speedOf(one, settings), { figure: spark(seen.speed) }),
             fact("retries", joined([known(one.retry_pct) ? `${Home.number(one.retry_pct, 1,
                 settings)}%` : "", known(one.idle_ms) ? `quiet for ${Home.number(one.idle_ms, 0,
                 settings)} ms` : ""])),
@@ -334,11 +383,26 @@ function device(model, one, now, settings) {
             fact("first-seen", Home.when(one.first_seen, now)),
             fact("on-since", Home.when(one.first_active, now)),
             fact("last-active", Home.when(one.last_active, now)),
-            fact("profile", profile ? joined([profile.name, profile.paused ? "paused" : ""])
+            fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ]),
+        ]).concat(happened((model?.events ?? []).filter((event) => Home.about(event,
+            one)), now)),
     };
+}
+
+// A signal's figure: a spark of how it's read since the shell started,
+// each from the faintest heard to the strongest, once there are two
+// readings, else a stroke of how strong it is now.
+function signalFigure(one, readings) {
+    if (readings.length > 1) {
+        return {
+            shape: "spark",
+            values: readings.slice(-GRAPHED).map((dbm) => Interfaces.level(dbm)),
+            warn: false,
+        };
+    }
+    return known(one.signal_dbm) ? stroke(Interfaces.level(one.signal_dbm)) : null;
 }
 
 // A count grouped, with what it counts after.

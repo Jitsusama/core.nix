@@ -1079,6 +1079,7 @@ in
         internet = "internet";
         node = "node";
         "eero device" = "device";
+        profile = "profile";
         Bluetooth = "device";
         sound = "device";
         display = "screen";

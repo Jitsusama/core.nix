@@ -257,14 +257,21 @@ function signalOf(device) {
 }
 
 // What a device's row says: its signal at its side, as a bar too, and
-// after its name its band and channel, its rate each way and its speed
-// now.
-function deviceRow(device, settings) {
+// after its name its band and channel, its rate each way, its speed now,
+// its address and the profile it's in, given the profiles.
+function deviceRow(device, settings, profiles) {
     const signal = signalOf(device);
+    const profile = (profiles ?? []).find((one) => one.id === device.profile) ?? null;
     return {
         name: nameOf(device),
         side: device.ethernet ? "Ethernet" : signal,
-        note: [bandOf(device), ratesOf(device, settings), speedOf(device, settings)]
+        note: [
+            bandOf(device),
+            ratesOf(device, settings),
+            speedOf(device, settings),
+            device.address ?? "",
+            profile ? profile.name ?? "" : "",
+        ]
             .filter((part) => part !== "")
             .join(" \u00b7 "),
         level: device.signal_dbm === null || device.signal_dbm === undefined || device.ethernet
@@ -314,10 +321,14 @@ function internetRow(model, now, settings) {
     const devices = internet.devices === null || internet.devices === undefined
         ? ""
         : counted(internet.devices, "device");
+    // The nodes' network as a whole is said only once it isn't connected,
+    // as the internet's state is what the head is about.
+    const mesh = String(internet.mesh ?? "");
     return {
         name: "Internet",
         side: stateWords(model),
         note: [
+            mesh !== "" && mesh !== "connected" ? `home network ${mesh}` : "",
             internet.isp ?? "",
             tested === "" ? "" : `${tested}${day}`,
             optimized,
@@ -402,6 +413,54 @@ function agoMs(at, now) {
     return seconds < SECONDS_SAID
         ? `${seconds} s ago`
         : `${Interfaces.lasted(seconds)} ago`;
+}
+
+// How a profile stands, in lower case: "active", or "paused" while
+// it's held off.
+function profileState(profile) {
+    return profile.paused ? "paused" : String(profile.state ?? "").toLowerCase();
+}
+
+// What a profile's row says: how it stands at its side, and how many
+// devices it holds and how many of them are on now.
+function profileRow(model, profile) {
+    const listed = profile.devices ?? [];
+    const devices = model?.devices ?? [];
+    const onNow = listed.filter((mac) => devices.some((each) => each.mac === mac)).length;
+    return {
+        name: profile.name ?? profile.id,
+        side: profileState(profile),
+        note: `${counted(listed.length, "device")} \u00b7 ${onNow === 0 ? "none" : onNow} on now`,
+    };
+}
+
+// Whether something eero's activity list says is about a device: its
+// words start with the device's name, as "tablet 1 connected to Den".
+function about(event, device) {
+    const name = nameOf(device);
+    const text = String(event.text ?? "");
+    return text.startsWith(`${name} `);
+}
+
+// Each device's readings since the shell started, by hardware address,
+// with a new record's added: { signal, speed }, the signal in dBm and the
+// speed both ways together in Mb/s, each the newest last and at most
+// `most` long. A device gone from the record is let go, and one that
+// comes back starts afresh.
+function remembered(history, model, most) {
+    const kept = {};
+    for (const device of model?.devices ?? []) {
+        const was = history?.[device.mac] ?? { signal: [], speed: [] };
+        const now = device.speed ?? {};
+        const moving = (now.down_mbps ?? 0) + (now.up_mbps ?? 0);
+        kept[device.mac] = {
+            signal: device.signal_dbm === null || device.signal_dbm === undefined
+                ? was.signal
+                : was.signal.concat([device.signal_dbm]).slice(-most),
+            speed: was.speed.concat([moving]).slice(-most),
+        };
+    }
+    return kept;
 }
 
 // How many nodes and devices the place holds, as its row says at home.
