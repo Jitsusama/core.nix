@@ -970,8 +970,10 @@ def found_among_them(desktop: Desktop, named: str) -> None:
     with desktop.told("notice finds Deploy in 1"), desktop.told("notice cursor Deploy log"):
         machine.send_chars("/Deploy", delay=KEY_PACE)
     desktop.photograph(f"notice-find-at-{named}")
-    with desktop.told("notice mode normal"):
-        machine.send_key("esc")
+    # Where what it found opens nothing, Return lands on it in normal, as Vim's / lands on its
+    # match, rather than saying it isn't here (VKCF3Z, 2026-11-06).
+    with desktop.told("notice mode normal"), desktop.told("notice lands on Deploy"):
+        machine.send_key("ret")
     desktop.photograph(f"notice-found-at-{named}")
     with desktop.told("notice mode normal"):
         machine.send_chars("/")
