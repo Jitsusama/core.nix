@@ -96,8 +96,7 @@ mod tests {
 
     #[test]
     fn the_work_groups_pressure_is_read_beside_the_machines() {
-        let root =
-            std::env::temp_dir().join(format!("changed-checks-pressure-{}", std::process::id()));
+        let root = crate::scratch::Scratch::new("pressure");
         let proc = root.join("proc");
         let cgroups = root.join("cgroups");
         let group = cgroups.join("user.slice/jobs.slice/jobs-work.slice");
@@ -116,6 +115,5 @@ mod tests {
 
         assert_eq!(read, [CALM, PRESSED]);
         assert!(read.iter().any(|text| stalled(text)));
-        fs::remove_dir_all(&root).unwrap();
     }
 }

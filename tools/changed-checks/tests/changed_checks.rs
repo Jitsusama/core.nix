@@ -121,9 +121,17 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
   >> "$XDG_STATE_HOME/nix-offload/there.jsonl"
 "#;
 
-/// A folder holding the stand-ins and what they read, emptied first.
+/// A folder holding the stand-ins and what they read, emptied first and
+/// gone once the test ends, even when it fails: the tests' `$TMPDIR` is a
+/// quest's scratch, where a folder left behind stays until the quest ends.
 struct StandIn {
     folder: PathBuf,
+}
+
+impl Drop for StandIn {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.folder);
+    }
 }
 
 impl StandIn {

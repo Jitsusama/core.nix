@@ -110,15 +110,13 @@ mod tests {
 
     #[test]
     fn a_builder_is_lent_while_the_store_names_an_ssh_store() {
-        let folder = std::env::temp_dir().join(format!("there-lent-{}", std::process::id()));
+        let folder = crate::scratch::Scratch::new("there-lent");
         fs::create_dir_all(&folder).expect("a folder");
-        let _ = fs::remove_file(folder.join("store"));
         assert!(!lent(&folder));
         fs::write(folder.join("store"), "").expect("written");
         assert!(!lent(&folder));
         fs::write(folder.join("store"), "ssh-ng://far?ssh-key=/k\n").expect("written");
         assert!(lent(&folder));
-        fs::remove_dir_all(&folder).expect("removed");
     }
 
     #[test]
