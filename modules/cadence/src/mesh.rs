@@ -29,6 +29,12 @@ pub struct Presence {
     #[serde(default)]
     pub at: serde_json::Value,
     pub owner: Option<Owner>,
+    #[serde(default, rename = "orchestratedBy")]
+    pub orchestrated_by: Option<String>,
+    #[serde(default)]
+    pub quest: Option<String>,
+    #[serde(default)]
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -76,10 +82,24 @@ impl Mesh {
     /// The newest presence going by `address`, if any session does.
     #[must_use]
     pub fn presence(&self, address: &str) -> Option<Presence> {
-        json_files(&self.presences())
-            .filter_map(|path| read_json::<Presence>(&path))
+        self.all()
+            .into_iter()
             .filter(|p| p.addresses.iter().any(|a| a == address))
             .max_by_key(|p| p.at.to_string())
+    }
+
+    /// Every presence, living or left behind.
+    #[must_use]
+    pub fn all(&self) -> Vec<Presence> {
+        json_files(&self.presences())
+            .filter_map(|path| read_json::<Presence>(&path))
+            .collect()
+    }
+
+    /// Whether `session` is parked, its holder waiting to start it again.
+    #[must_use]
+    pub fn is_parked(&self, session: &str) -> bool {
+        !session.is_empty() && self.parked().join(format!("{session}.json")).exists()
     }
 
     /// Writes `message` into the messages folder whole, then asks the holder
@@ -240,6 +260,9 @@ mod tests {
             state: "parked".into(),
             at: serde_json::Value::Null,
             owner: None,
+            orchestrated_by: None,
+            quest: None,
+            title: String::new(),
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {
