@@ -8,8 +8,11 @@
 // keyboard's parts are, and so is flashing it, since only the ZSA board can
 // be; their choices, locking a layer or letting one go and lighting the
 // board, and Flash, are still found here from anywhere by what's typed.
-// With no layout, as on a machine without a keyboard's module, or with the
-// board unplugged (KeyboardLayout.qml), it holds nothing. Every name, verb and word is the vocabulary's (Words.qml).
+// Its keys are the board's while it's connected and the laptop's own
+// otherwise (KeyboardLayout.qml), and the board's acts are offered only
+// while it's connected, so nothing names a key or a hold that isn't there.
+// With no layout at all it holds nothing. Every name, verb and word is the
+// vocabulary's (Words.qml).
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -54,7 +57,7 @@ Provider {
 
     // Flashing the board, the ZSA board's own act (Keyboards.qml's
     // flashing), found here by what's typed.
-    readonly property var flash: !KeyboardLayout.present ? [] : [
+    readonly property var flash: !KeyboardLayout.boarded ? [] : [
         act("keyboard:flash", "keyboard:flash", {
             glyph: Theme.glyph.flash,
             later: true,
@@ -64,7 +67,7 @@ Provider {
 
     // Locking the board on a layer or letting it go, found from anywhere
     // by what's typed; listed, they're the board's Layer's choices.
-    readonly property var layers: !KeyboardLayout.present ? []
+    readonly property var layers: !KeyboardLayout.boarded ? []
         : Keyboards.layerChoices(KeyboardLayout.layers.map(layer => layer.name),
             KeyboardLayer.name, KeyboardLayer.locked)
             .map(choice => act(choice.id, choice.key, {
@@ -74,7 +77,7 @@ Provider {
 
     // What can be done to the board's lights, found from anywhere by its
     // own name; listed, they're the board's Lights' choices.
-    readonly property var lights: !KeyboardLayout.present ? [] : [
+    readonly property var lights: !KeyboardLayout.boarded ? [] : [
         act("keyboard:lights-off", "keyboard:lights-off", {
             glyph: Theme.glyph.brightness,
             run: () => KeyboardLayout.lights(false)

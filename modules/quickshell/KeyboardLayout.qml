@@ -1,14 +1,16 @@
-// The keyboard's layout, as a keyboard's module describes it in
-// ergodox/layout.json among the account's settings (modules/ergodox): each
-// layer's name and keys, each key where it sits in key widths, its cap, its
+// The keyboard's layout: the ErgoDox's while it's connected, as its module
+// describes it in ergodox/layout.json among the account's settings
+// (modules/ergodox), and otherwise the laptop's own, as keyd lays it out
+// (modules/keyd/layout.nix, in /etc/keyboard/layout.json). Each says its
+// layers' names and keys, each key where it sits in key widths, its cap, its
 // words, what holding it does, and whether it falls through to the layer
-// below. With no file, as on a machine without the module, there's no
-// layout, and the overlay and the launcher's Keyboard collection have
-// nothing to show. Nor do they while the board is unplugged, as its
-// watcher says (KeyboardLayer.qml), since a layout for keys that aren't
-// there only misleads (Joel, 2026-11-07: "seeing ergodox layouts and shit
-// when it isn't plugged in is weird as fuck"); an open overlay goes as the
-// board does.
+// below. A board that isn't connected is never shown, since a layout for
+// keys that aren't there only misleads (Joel, 2026-11-07: "seeing ergodox
+// layouts and shit when it isn't plugged in is weird as fuck"), so it's the
+// one list of keyboards connected now that says (ConnectedKeyboards.qml),
+// and an open overlay turns to the laptop's in place as the board goes, and
+// back as it comes (VKCF3Z, 2026-11-07). With neither, as on a machine with
+// no keyboard of its own and no board, there's nothing to show.
 //
 // It also holds what the overlay (KeyboardMap.qml) shows: nothing, the
 // layer the board is on, or a layer and a key the launcher chose.
@@ -16,28 +18,42 @@ pragma Singleton
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "launcher/Keyboards.js" as Keyboards
 
 Singleton {
     id: root
 
-    readonly property var layers: {
-        if (!file.loaded)
-            return [];
-        try {
-            return JSON.parse(file.text()).layers ?? [];
-        } catch (e) {
-            return [];
-        }
-    }
-    readonly property bool present: layers.length > 0 && KeyboardLayer.present
-    onPresentChanged: {
+    readonly property var boardLayers: layersIn(file)
+    readonly property var laptopLayers: layersIn(laptop)
+    // Whether the board is connected and its layout known, so what only
+    // the board can do (its layers, its lights, flashing it) is offered.
+    readonly property bool boarded: Keyboards.boarded(ConnectedKeyboards.listed, boardLayers)
+    readonly property var layers: Keyboards.layout(ConnectedKeyboards.listed, boardLayers,
+        laptopLayers)
+    readonly property bool present: layers.length > 0
+    // A layer or key chosen on one keyboard's layout means nothing on the
+    // other's, so the overlay follows the keyboard again as it changes.
+    onBoardedChanged: {
+        chosen = -1;
+        marked = -1;
         if (!present)
             hide();
     }
 
+    function layersIn(view) {
+        if (!view.loaded)
+            return [];
+        try {
+            return JSON.parse(view.text()).layers ?? [];
+        } catch (e) {
+            return [];
+        }
+    }
+
     // The layer the board is on, by its place, or the first while the board
-    // can't say.
-    readonly property int live: Math.max(0, layers.findIndex(layer => layer.name === KeyboardLayer.name))
+    // can't say, as the laptop's one layer is.
+    readonly property int live: !boarded ? 0
+        : Math.max(0, layers.findIndex(layer => layer.name === KeyboardLayer.name))
 
     property bool shown: false
     // A layer the launcher chose to show, or -1 to follow the board, and the
@@ -97,6 +113,17 @@ Singleton {
     FileView {
         id: file
         path: `${Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"}/ergodox/layout.json`
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    // Where keyd's module says the laptop's layout; a test says its own.
+    property string laptopLayout: "/etc/keyboard/layout.json"
+
+    FileView {
+        id: laptop
+        path: root.laptopLayout
         printErrors: false
         watchChanges: true
         onFileChanged: reload()

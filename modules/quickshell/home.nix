@@ -214,6 +214,7 @@ let
     "Quiet.qml"
     "Lights.qml"
     "DeskLight.qml"
+    "ConnectedKeyboards.qml"
     "KeyboardLayer.qml"
     "KeyboardLayout.qml"
     "KeyboardMap.qml"

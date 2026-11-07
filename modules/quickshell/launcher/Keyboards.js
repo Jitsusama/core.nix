@@ -125,6 +125,19 @@ function zsa(device) {
     return device.bus === USB && device.vendor === ZSA;
 }
 
+// Whether the board's layout is the one to show: only while a ZSA board is
+// among the keyboards connected now and its layout is known, since a
+// layout for keys that aren't there only misleads.
+function boarded(listed, board) {
+    return listed.some(zsa) && board.length > 0;
+}
+
+// Which layers Super+K shows of those connected now: the board's while
+// it's boarded, and otherwise the laptop's own, as its keyboard always is.
+function layout(listed, board, laptop) {
+    return boarded(listed, board) ? board : laptop;
+}
+
 // Which keyboard the laptop's own light is: the one on its keyboard port,
 // or, on a laptop whose keyboard is joined another way (I2C, or USB
 // inside), the first that's neither paired nor a board with its own

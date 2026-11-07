@@ -2,10 +2,14 @@
 # sends US key codes, as a YubiKey does, but a laptop's keyboard needs the
 # layout from the system. keyd remaps the built-in keyboard alone, below the
 # compositor, so the layout holds everywhere: the console, the session, and
-# the systemd initrd, where the disk's PIN is typed.
+# the systemd initrd, where the disk's PIN is typed. The layout it makes is
+# described for the shell's map of the keys too (layout.nix).
 { config, lib, ... }:
 {
-  imports = [ ../keyboard/nixos.nix ];
+  imports = [
+    ../keyboard/nixos.nix
+    ./layout.nix
+  ];
 
   services.keyd = {
     enable = true;

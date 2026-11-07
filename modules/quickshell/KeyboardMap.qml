@@ -93,8 +93,13 @@ PanelWindow {
         // the frame to the ink on every side: the names' capitals under its
         // top, the keys' caps from its sides and bottom.
         width: map.across * map.unit - map.gap + 2 * map.inset + 2 * Theme.border
+        // Said outright, since the frame's own measure of what it holds
+        // grew with the ErgoDox's keys and kept that as the laptop's
+        // fewer rows turned in, leaving an empty band under them.
+        height: inside.implicitHeight + 2 * Theme.border
 
         Item {
+            id: inside
             x: map.inset
             width: parent.width - 2 * x
             implicitHeight: keys.y + keys.height + map.inset
@@ -115,7 +120,9 @@ PanelWindow {
                         required property int index
 
                         readonly property bool here: index === KeyboardLayout.layer
-                        text: here && KeyboardLayout.chosen < 0 && KeyboardLayer.locked
+                        // Only the board locks a layer; the laptop's one never is.
+                        text: here && KeyboardLayout.chosen < 0 && KeyboardLayout.boarded
+                            && KeyboardLayer.locked
                             ? `${modelData.name} locked` : modelData.name
                         color: !here ? Theme.muted : KeyboardLayout.marked < 0 ? Theme.accent
                             : Theme.strong

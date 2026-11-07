@@ -11,10 +11,15 @@
 //! compositor sets the light on every keyboard it holds, so any one of them
 //! says what the lock is.
 //!
+//! Given a second file, it says there which keyboards it holds now, one
+//! device number to a line, written whole as each comes and goes, so the
+//! shell knows the moment one is plugged in or out and reads the kernel's
+//! list of them then, rather than asking on a timer.
+//!
 //! It needs only the standard library, which already links the C library
 //! these few calls come from.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::ffi::{CString, c_char, c_int, c_ulong, c_void};
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
@@ -101,15 +106,44 @@ impl Said {
     }
 }
 
-/// The keyboards held, by device number, and what's been said.
+/// The keyboards held, by device number, where they're said, and what's
+/// been said of caps lock.
 struct Shared {
-    held: Mutex<HashSet<u64>>,
+    held: Mutex<BTreeSet<u64>>,
+    listed: Option<String>,
     said: Mutex<Said>,
 }
 
 impl Shared {
     fn say(&self, on: bool) {
         self.said.lock().unwrap().say(on);
+    }
+
+    /// Takes a keyboard on or lets it go, and says which are held after,
+    /// whole, by a rename, so a reader never finds the list half written.
+    /// Whether it changed anything.
+    fn hold(&self, number: u64, held: bool) -> bool {
+        let mut all = self.held.lock().unwrap();
+        let changed = if held {
+            all.insert(number)
+        } else {
+            all.remove(&number)
+        };
+        if changed {
+            self.list(&all);
+        }
+        changed
+    }
+
+    fn list(&self, all: &BTreeSet<u64>) {
+        let Some(path) = &self.listed else {
+            return;
+        };
+        let text: String = all.iter().map(|number| number.to_string() + "\n").collect();
+        let fresh = format!("{path}.new");
+        if let Err(error) = fs::write(&fresh, text).and_then(|()| fs::rename(&fresh, path)) {
+            eprintln!("{path}: {error}");
+        }
     }
 }
 
@@ -158,7 +192,7 @@ fn take(name: &str, shared: &Arc<Shared>) {
     let Ok(number) = device.metadata().map(|data| data.rdev()) else {
         return;
     };
-    if !shared.held.lock().unwrap().insert(number) {
+    if !shared.hold(number, true) {
         return;
     }
     // SAFETY: as above.
@@ -168,7 +202,7 @@ fn take(name: &str, shared: &Arc<Shared>) {
     let shared = Arc::clone(shared);
     thread::spawn(move || {
         listen(device, &shared);
-        shared.held.lock().unwrap().remove(&number);
+        shared.hold(number, false);
     });
 }
 
@@ -192,9 +226,10 @@ fn listen(mut device: File, shared: &Shared) {
 
 fn main() -> ExitCode {
     let Some(path) = std::env::args().nth(1) else {
-        eprintln!("usage: keyboard-lights FILE");
+        eprintln!("usage: keyboard-lights FILE [KEYBOARDS]");
         return ExitCode::from(2);
     };
+    let listed = std::env::args().nth(2);
     // Kept rather than emptied, so a reader never finds it empty.
     let file = match OpenOptions::new()
         .write(true)
@@ -210,7 +245,8 @@ fn main() -> ExitCode {
         }
     };
     let shared = Arc::new(Shared {
-        held: Mutex::new(HashSet::new()),
+        held: Mutex::new(BTreeSet::new()),
+        listed,
         said: Mutex::new(Said { file, last: None }),
     });
 
@@ -243,6 +279,8 @@ fn main() -> ExitCode {
             said.say(false);
         }
     }
+    // Said once whatever was found, so a machine with no keyboard says so.
+    shared.list(&shared.held.lock().unwrap());
 
     let mut buffer = [0u8; 4096];
     loop {

@@ -18,10 +18,10 @@
 // the glossary names a keyboard's own light: one keyboard's choices are the
 // answer's rows, and of several, each keyboard holds its own.
 //
-// Read from the kernel's list of input devices when asked, caps lock from
-// the shell's own Lights, and a keyboard's parts from sysfs as it's stepped
-// into, so nothing is spawned, nothing is read for a key and nothing more is
-// watched.
+// The keyboards are those connected now (ConnectedKeyboards.qml), so an
+// open answer changes in place as one is plugged in or out; caps lock is
+// the shell's own Lights, and a keyboard's parts are read from sysfs as
+// it's stepped into, so nothing is spawned and nothing is read for a key.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -78,7 +78,7 @@ Provider {
 
     // A ZSA board that's plugged in and can be told things: its layout is
     // known and its watcher says its layer (KeyboardLayout.qml).
-    readonly property bool boarded: KeyboardLayout.present
+    readonly property bool boarded: KeyboardLayout.boarded
     readonly property bool layered: boarded && KeyboardLayout.layers.length > 1
     // How lit the laptop keyboard's lights can be, or 0 without them, read
     // by a reader of its own, so a binding never moves the one parts share.
@@ -165,7 +165,7 @@ Provider {
     }
 
     function told() {
-        const found = Keyboards.keyboards(read(devices));
+        const found = ConnectedKeyboards.listed;
         const caps = Lights.caps;
         const rows = found.map(device => thingRow({
             thing: true,
@@ -224,7 +224,7 @@ Provider {
     // since no other can be: last, so stepping in never lands on it, and
     // still found by name from anywhere (Keyboard.qml).
     function flashing(device) {
-        if (!Keyboards.zsa(device) || !KeyboardLayout.present)
+        if (!Keyboards.zsa(device) || !KeyboardLayout.boarded)
             return [];
         return [thing({
             key: "keyboard:flash",
@@ -261,7 +261,7 @@ Provider {
         if (!Keyboards.zsa(device) || !KeyboardLayer.present)
             return null;
         const side = KeyboardLayer.locked ? `${KeyboardLayer.name}, locked` : KeyboardLayer.name;
-        if (!KeyboardLayout.present)
+        if (!KeyboardLayout.boarded)
             return figure(key("layer"), "layer", side);
         return holderRow({
             key: key("layer"),
@@ -290,7 +290,7 @@ Provider {
     function lights(device, key, holder) {
         if (holder && device.phys === holder.phys && device.name === holder.name)
             return laptopLights(key);
-        if (Keyboards.zsa(device) && KeyboardLayout.present)
+        if (Keyboards.zsa(device) && KeyboardLayout.boarded)
             return [boardLights(key)];
         return [];
     }
@@ -382,7 +382,7 @@ Provider {
     // keyboard by name, saying how lit its lights are, holding the same.
     // Nothing where no keyboard has lights.
     function lightsTold() {
-        const found = Keyboards.keyboards(read(devices));
+        const found = ConnectedKeyboards.listed;
         const holder = Keyboards.lightHolder(found);
         const lit = found.map(device => {
             const key = id => `keyboards:${device.phys || device.name}:${id}`;
@@ -448,11 +448,18 @@ Provider {
         }
     }
 
-    FileView {
-        id: devices
-        path: "/proc/bus/input/devices"
-        blockLoading: true
-        printErrors: false
+    // A keyboard plugged in or out changes the open answer in place, or the
+    // keyboards stepped into, their rows kept by their keys, so the cursor
+    // stays on a row still there. It's asked whenever the launcher's open,
+    // stepped in or not, since that's rare and the launcher asks again only
+    // what's this answer's.
+    Connections {
+        target: ConnectedKeyboards
+
+        function onListedChanged() {
+            if (provider.launcher !== null && provider.launcher.open)
+                provider.answered();
+        }
     }
 
     FileView {

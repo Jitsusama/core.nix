@@ -356,6 +356,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The laptop role's Wi-Fi, which the shell's network piece and Wi-Fi
         # collection read.
         self.nixosModules.wifid
+        # The laptop role's keyd describes the built-in keyboard's layout for
+        # Super+K; its layout alone, since keyd itself would type Colemak
+        # for the test's US keys.
+        ../modules/keyd/layout.nix
       ]
       # The workstation role's builds, in build.slice at its weight, which
       # keeps-pace loads as a machine's builds do. Only there, since the
