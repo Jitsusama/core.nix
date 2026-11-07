@@ -178,15 +178,15 @@ fn told(build: std::process::Command, what: &str, pieces: &[String]) -> Result<(
 fn account(what: &str, pieces: usize, took: Duration, said: &str) -> String {
     const NAMED: usize = 12;
     let built: Vec<String> = said.lines().filter_map(built_where).collect();
-    let mut line = format!("{what}: {pieces} pieces in {}s", took.as_secs());
-    if !built.is_empty() {
-        line.push_str(&format!(", {} built: ", built.len()));
-        line.push_str(&built[..built.len().min(NAMED)].join(", "));
-        if built.len() > NAMED {
-            line.push_str(&format!(" and {} more", built.len() - NAMED));
+    let took = took.as_secs();
+    let named = built[..built.len().min(NAMED)].join(", ");
+    match (built.len(), built.len().saturating_sub(NAMED)) {
+        (0, _) => format!("{what}: {pieces} pieces in {took}s"),
+        (all, 0) => format!("{what}: {pieces} pieces in {took}s, {all} built: {named}"),
+        (all, more) => {
+            format!("{what}: {pieces} pieces in {took}s, {all} built: {named} and {more} more")
         }
     }
-    line
 }
 
 /// The derivation's name and its builder from a line in which Nix says it's
@@ -709,9 +709,10 @@ mod tests {
 
     #[test]
     fn a_long_build_names_its_first_pieces_and_counts_the_rest() {
-        let said: String = (0..14)
-            .map(|n| format!("building '/nix/store/0h-p{n}.drv'...\n"))
-            .collect();
+        let said = (0..14)
+            .map(|n| format!("building '/nix/store/0h-p{n}.drv'..."))
+            .collect::<Vec<_>>()
+            .join("\n");
         let line = account("building here", 14, Duration::from_secs(1), &said);
         assert!(line.ends_with("p11 on here and 2 more"), "{line}");
     }
