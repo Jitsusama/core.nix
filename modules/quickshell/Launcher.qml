@@ -3670,7 +3670,7 @@ Scope {
     // (Catalogue.js), that act's name prepared to be found as a
     // provider's rows are.
     function closingLed(row, made) {
-        const own = Catalogue.closingFirst(row, made);
+        const own = Catalogue.closingFirst(row, made, Theme.glyph.copy);
         // Its act leads, prepared for searching as the rows beside it are.
         if (!own[0].prepared)
             own[0].prepared = Fuzzy.prepare(own[0].name);
@@ -3678,7 +3678,7 @@ Scope {
     }
 
     function led(row, made) {
-        const own = Catalogue.leading(row, made);
+        const own = Catalogue.leading(row, made, Theme.glyph.copy);
         // Return's act leads, or a copy comes after the acts.
         const added = own === made ? undefined
             : own.find(one => String(one.key).startsWith("return:") && !one.prepared);
@@ -7430,6 +7430,7 @@ Scope {
                                     sort: entry.sort
                                     graph: entry.modelData.graph ?? null
                                     warns: !!entry.modelData.warns
+                                    marked: entry.modelData.marked === true
                                     figures: list.figures
                                     sides: list.sides
                                     // A quiet row's name is plain, so its
