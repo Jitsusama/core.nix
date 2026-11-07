@@ -1580,6 +1580,11 @@
     the guide's development shell holds the QEMU with canokey its VM tests boot under, so the
     shell's root keeps it from being collected and compiled again
   '';
+  the-home-network-says-each-figure = ''
+    the Home Network place lists the gateway node first and each node after the one it hangs
+    from, its devices under it, and says every figure the eero contract places in the internet's,
+    a node's and a device's drawer, each in its own unit, none eero didn't give
+  '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
