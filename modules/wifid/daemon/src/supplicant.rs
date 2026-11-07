@@ -213,6 +213,29 @@ fn low_u32(length: usize) -> u32 {
     u32::from_le_bytes([first, second, third, fourth])
 }
 
+/// Whether a card at this step, as wpa_supplicant's `State` says it, is
+/// on a network or on its way to one. A network Joel picks in the launcher
+/// is joined with the card's others off, and they stay off while it holds
+/// one: on again beside it, at the same rank, the card's next look could
+/// move it to whichever wpa_supplicant ranks first.
+pub fn holds_a_network(step: &str) -> bool {
+    matches!(
+        step,
+        "authenticating"
+            | "associating"
+            | "associated"
+            | "4way_handshake"
+            | "group_handshake"
+            | "completed"
+    )
+}
+
+/// Whether the card has just come off a network, so the others a join from
+/// the launcher left off are turned on again and it can join one of them.
+pub fn left_its_network(before: &str, step: &str) -> bool {
+    holds_a_network(before) && !holds_a_network(step)
+}
+
 /// A text field as wpa_supplicant gives it back, quoted.
 pub fn unquoted(field: &str) -> Option<&str> {
     field.strip_prefix('"')?.strip_suffix('"')
@@ -631,5 +654,38 @@ mod tests {
 
         assert_eq!(shown_the_card.last(), Some(&("mac_addr", Value::Number(0))));
         assert_eq!(shown_another.last(), Some(&("mac_addr", Value::Number(1))));
+    }
+
+    #[test]
+    fn a_card_joining_or_joined_holds_a_network_and_one_looking_or_off_doesnt() {
+        for step in [
+            "authenticating",
+            "associating",
+            "4way_handshake",
+            "completed",
+        ] {
+            assert!(holds_a_network(step), "{step}");
+        }
+        for step in [
+            "disconnected",
+            "inactive",
+            "scanning",
+            "interface_disabled",
+            "",
+        ] {
+            assert!(!holds_a_network(step), "{step}");
+        }
+    }
+
+    #[test]
+    fn a_card_leaves_its_network_only_coming_off_one() {
+        assert!(left_its_network("completed", "disconnected"));
+        assert!(left_its_network("associating", "scanning"));
+        assert!(
+            !left_its_network("completed", "authenticating"),
+            "moving to another access point of its network isn't leaving it"
+        );
+        assert!(!left_its_network("scanning", "disconnected"));
+        assert!(!left_its_network("", "disconnected"));
     }
 }
