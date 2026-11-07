@@ -4,6 +4,18 @@ spend-watch's feed for a Claude plan (Pro, Max or Ultra): how much of the
 plan's five-hour allowance and its weekly allowance is used, and when each
 resets. It speaks the [feed contract][contract] on stdout and hears the pace
 on stdin, so the watch can warn before a plan stops turns rather than after.
+A machine on a Claude plan names it beside its other feeds:
+
+```nix
+jitsusama.spend-watch.feeds.claude = {
+  label = "Claude";
+  command = [ (lib.getExe config.jitsusama.spend-watch.claudePlanFeed) ];
+};
+```
+
+`claudePlanFeed` is a read-only option of spend-watch's module
+([home.nix][home]), as nix-offload gives its own program, so the feed is
+reached wherever spend-watch is imported, with no flake output of its own.
 
 ## What It Reads
 
@@ -104,6 +116,7 @@ Two more say the same figures, and neither is built:
   Claude Code has no command that prints them.
 
 [contract]: ../../contract/README.md
+[home]: ../../home.nix
 [pi-claude]: ../../../pi/claude.sh
 [example]: tests/claude-plan.jsonl
 [99231]: https://github.com/anthropics/claude-code/issues/99231

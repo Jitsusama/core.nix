@@ -4,6 +4,7 @@
   account,
   bareNixos,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -35,7 +36,8 @@
       home = account workstation;
       file = home.xdg.configFile."spend-watch/config.json".source;
       # Every option set, so each shape the module renders is one the
-      # daemon reads: a feed, a cap of the account's own, a zone.
+      # daemon reads: a feed, the Claude plan's as a machine names it, a cap
+      # of the account's own, a zone.
       fed = account (bareNixos [
         self.nixosModules.workstation
         {
@@ -47,6 +49,10 @@
                 "run"
               ];
               environment.REGION = "north";
+            };
+            feeds.claude = {
+              label = "Claude";
+              command = [ (lib.getExe home.jitsusama.spend-watch.claudePlanFeed) ];
             };
             cap.allowance = 4000;
             zone = "America/Toronto";
