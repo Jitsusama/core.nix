@@ -678,19 +678,18 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "wake")
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 wake"], desktop.showing()
+    since = desktop.mark()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session('grep -q \'"session":"s-testqa"\' "$XDG_RUNTIME_DIR/testqa.wake"')
     )
     # It wakes in its own window, so the launcher stays, its row reading as it will be
     # from the key's own frame, though its record still says it's parked until pi is up.
-    desktop.launcher_until(
-        lambda shown: (
-            shown["open"]
-            and (shown["selected"] or {}).get("name") == "Lighthouse"
-            and shown["selected"]["side"].endswith("listening")
-        )
-    )
+    desktop.reported("becoming ", lambda rest: rest == "agent:TESTQA", since)
+    assert desktop.showing()["open"], desktop.showing()
+    desktop.as_account("qs ipc call launcher collection agents")
+    desktop.down_to("Lighthouse")
+    desktop.launcher_until(lambda shown: shown["selected"]["side"].endswith("listening"))
     desktop.close_launcher()
     desktop.as_account(f"rm -rf {parked} {PI_PRESENCE}/testqa.json $XDG_RUNTIME_DIR/testqa.wake")
 
