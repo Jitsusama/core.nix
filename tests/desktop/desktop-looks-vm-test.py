@@ -1228,6 +1228,61 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.close_launcher()
 
 
+def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
+    """Wait for a thing of the home network's plate, and hold its facts whole and one way."""
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == title
+            and len(shown["drawer"]["lines"]["facts"]) > 1
+        )
+    )
+    drawer = plate_shown(desktop, scale)
+    assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+    assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+    assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
+
+
+def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """The Home Network shows the eero daemon's record, and each thing's plate whole.
+
+    The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
+    then the gateway node with its devices under it, and each node after the one it hangs from.
+    A node's and a device's plates lay their facts out one way, every name and value whole, at
+    both of Joel's scales.
+    """
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session('test -s "$XDG_RUNTIME_DIR/eero/home-network.json"'),
+        timeout=timedelta(seconds=30),
+    )
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        at = scale.replace(".", "-")
+        desktop.answer("home network")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Home Network"
+        )
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][:4] == ["Internet", "Hall", "generic 3", "phone 1"]
+                and "Den" in shown["rows"]
+                and shown["rows"].index("Den") < shown["rows"].index("Study")
+            )
+        )
+        home_network_plate(desktop, scale, "Internet")
+        desktop.photograph(f"launcher-home-network-at-{at}")
+        desktop.down_to("Study")
+        home_network_plate(desktop, scale, "Study")
+        desktop.photograph(f"launcher-home-network-node-at-{at}")
+        desktop.down_to("unknown computer 1")
+        home_network_plate(desktop, scale, "unknown computer 1")
+        desktop.photograph(f"launcher-home-network-device-at-{at}")
+        desktop.close_launcher()
+
+
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
