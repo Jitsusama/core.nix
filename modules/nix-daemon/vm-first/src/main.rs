@@ -34,8 +34,8 @@
 //! A build whose client sits in no quest's slice, or has gone, stays as
 //! Nix made it.
 //!
-//! As each build goes, this says in its journal what the build read and
-//! wrote on the disks themselves, from its cgroup's io.stat, with its
+//! As each build that wrote anything goes, this says in its journal what
+//! the build read and wrote on the disks themselves, from its cgroup's io.stat, with its
 //! client's command and quest, so the builds that wear the disk most can
 //! be found. A build's own name sits in its environment, which only its
 //! user may read, so it's known by what asked for it.
@@ -215,6 +215,7 @@ struct Tally {
     read: u64,
     written: u64,
     unwritten: u64,
+    seen: bool,
     asked: Option<Asker>,
 }
 
@@ -306,7 +307,13 @@ fn command_of(cmdline: &[u8]) -> String {
 }
 
 /// The line vm-first says when a build has gone.
-fn told(tally: &Tally) -> String {
+/// A build that wrote nothing says nothing: what's said is for finding the
+/// builds that wear the disk, and on 7 November 180 of one `nix build`'s
+/// 186 lines were builds that wrote 0 B.
+fn told(tally: &Tally) -> Option<String> {
+    if tally.written == 0 && tally.unwritten == 0 {
+        return None;
+    }
     let left = if tally.unwritten == 0 {
         String::new()
     } else {
@@ -320,7 +327,7 @@ fn told(tally: &Tally) -> String {
         size(tally.written),
         size(tally.read)
     );
-    match &tally.asked {
+    Some(match &tally.asked {
         Some(asker) => {
             let quest = asker
                 .quest
@@ -328,8 +335,11 @@ fn told(tally: &Tally) -> String {
                 .map_or("no quest".to_string(), |quest| format!("quest {quest}"));
             format!("A build for `{}`, for {quest}, {did}", asker.command)
         }
-        None => format!("A build whose client had gone {did}"),
-    }
+        // A build that ended between two looks had no process to follow
+        // to its client, which says nothing about the client.
+        None if !tally.seen => format!("A build too short to see who asked for it {did}"),
+        None => format!("A build whose client couldn't be found {did}"),
+    })
 }
 
 /// The quest a quest's slice is for, from the slice's path.
@@ -340,6 +350,11 @@ fn quest_of(slice: &str) -> Option<&str> {
         .strip_prefix(QUEST_SLICE)?
         .strip_suffix(".slice")
         .filter(|quest| !quest.is_empty())
+}
+
+/// Whether a build's cgroup holds a process to follow to its client.
+fn has_a_process(build: &Path) -> bool {
+    fs::read_to_string(build.join("cgroup.procs")).is_ok_and(|procs| !procs.trim().is_empty())
 }
 
 /// Who asked for a build, while its client is still there to ask.
@@ -363,17 +378,20 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
             .get(build)
             .is_some_and(|known| known.cgroup != cgroup)
             && let Some(gone) = tallies.remove(build)
+            && let Some(said) = told(&gone)
         {
-            eprintln!("{}", told(&gone));
+            eprintln!("{said}");
         }
         let known = tallies.entry(build.clone()).or_insert_with(|| Tally {
             cgroup,
             read: 0,
             written: 0,
             unwritten: 0,
+            seen: false,
             asked: None,
         });
         if known.asked.is_none() {
+            known.seen |= has_a_process(build);
             known.asked = asker_of(build);
         }
         if let Ok(stat) = fs::read_to_string(build.join("io.stat")) {
@@ -386,8 +404,8 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
     }
     tallies.retain(|build, gone| {
         let here = seen.contains(&build);
-        if !here {
-            eprintln!("{}", told(gone));
+        if !here && let Some(said) = told(gone) {
+            eprintln!("{said}");
         }
         here
     });
@@ -974,34 +992,59 @@ mod tests {
             read: 0,
             written: 1 << 30,
             unwritten: 0,
+            seen: true,
             asked: Some(Asker {
                 command: "nix build .#checks".into(),
                 quest: Some("qestabc".into()),
             }),
         };
         assert_eq!(
-            told(&tally),
-            "A build for `nix build .#checks`, for quest qestabc, wrote 1.0 GiB and read 0 B."
+            told(&tally).as_deref(),
+            Some(
+                "A build for `nix build .#checks`, for quest qestabc, wrote 1.0 GiB and read 0 B."
+            )
         );
         tally.asked = Some(Asker {
             command: "nix-build x".into(),
             quest: None,
         });
         assert_eq!(
-            told(&tally),
-            "A build for `nix-build x`, for no quest, wrote 1.0 GiB and read 0 B."
+            told(&tally).as_deref(),
+            Some("A build for `nix-build x`, for no quest, wrote 1.0 GiB and read 0 B.")
         );
         tally.asked = None;
         assert_eq!(
-            told(&tally),
-            "A build whose client had gone wrote 1.0 GiB and read 0 B."
+            told(&tally).as_deref(),
+            Some("A build whose client couldn't be found wrote 1.0 GiB and read 0 B.")
         );
         tally.unwritten = 64 << 20;
         assert_eq!(
-            told(&tally),
-            "A build whose client had gone wrote 1.0 GiB and read 0 B, \
-             leaving up to 64.0 MiB more in memory to write."
+            told(&tally).as_deref(),
+            Some(
+                "A build whose client couldn't be found wrote 1.0 GiB and read 0 B, \
+                 leaving up to 64.0 MiB more in memory to write."
+            )
         );
+    }
+
+    #[test]
+    fn a_build_gone_before_a_look_says_so_and_one_that_wrote_nothing_says_nothing() {
+        let mut tally = Tally {
+            cgroup: 1,
+            read: 4096,
+            written: 1 << 20,
+            unwritten: 0,
+            seen: false,
+            asked: None,
+        };
+        assert_eq!(
+            told(&tally).as_deref(),
+            Some("A build too short to see who asked for it wrote 1.0 MiB and read 4.0 KiB.")
+        );
+        tally.written = 0;
+        assert_eq!(told(&tally), None);
+        tally.unwritten = 4096;
+        assert!(told(&tally).is_some());
     }
 
     #[test]
