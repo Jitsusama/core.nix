@@ -15,7 +15,8 @@ Row {
     // and the key's colour third where it isn't the text's, as a done
     // mark wears success, and its word's fourth. A key of several keys
     // pressed one after another names them with a space between,
-    // "Space ?", and they're set a tie apart.
+    // "Space ?", and a chord joins its keys by +, "Super+O"; they're set
+    // a tie apart, and so is each + (partsOf).
     property var keys: []
     // How wide each one's place is, when it keeps one wider than what it
     // says now, so the keys hold still as what they say changes; a key of
@@ -38,10 +39,32 @@ Row {
     // for them before they show: the keys a tie apart, then the word a
     // mark on.
     function advance(key: string, word: string): real {
-        const parts = key.split(" ").filter(part => part !== "");
+        const parts = partsOf(key);
         return parts.reduce((sum, part) => sum + face.advanceWidth(part), 0)
             + Math.max(0, parts.length - 1) * Theme.space.rung.tie
             + ((word ?? "") === "" ? 0 : Theme.space.rung.mark + face.advanceWidth(word));
+    }
+
+    // What a key is drawn as, each a tie from the next: the keys pressed
+    // one after another, and in a chord its keys with each + on its own
+    // between them, as a row's chord sets it (Chord.qml), so the foot's
+    // "Super + \u21b5" reads as the rows' does (VKCF3Z, 2026-11-07). A +
+    // that is the key itself, alone or as Ctrl's +, stays a key.
+    function partsOf(key: string): var {
+        const parts = [];
+        for (const pressed of key.split(" ").filter(part => part !== "")) {
+            let held = "";
+            for (let at = 0; at < pressed.length; at++) {
+                if (pressed[at] === "+" && held !== "" && at < pressed.length - 1) {
+                    parts.push(held, "+");
+                    held = "";
+                } else {
+                    held += pressed[at];
+                }
+            }
+            parts.push(held);
+        }
+        return parts;
     }
 
     // Read again once the theme's face arrives, since a binding follows
@@ -106,7 +129,7 @@ Row {
                     spacing: Theme.space.rung.tie
 
                     Repeater {
-                        model: hint.key.split(" ").filter(part => part !== "")
+                        model: hints.partsOf(hint.key)
 
                         Text {
                             required property string modelData
