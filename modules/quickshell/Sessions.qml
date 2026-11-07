@@ -139,7 +139,8 @@ Singleton {
     }
 
     // Opens a window of the sessions' own kitty, running `rest`, classed
-    // `classed`: kitty for one Joel starts, pi-spawned for one another
+    // `classed`: kitty for one Joel starts, pi-spawned (or pi-spawned.<n>,
+    // opened on a workspace asked for, openingOn) for one another
     // session started, which niri opens without the focus
     // (modules/niri/config.kdl), and pi-session for one Reopen Them All
     // opens (Niri.qml's heard). Every window of that kitty opens here, so
@@ -150,7 +151,7 @@ Singleton {
     // activation token niri hands what it spawns, which kitty would spend
     // on taking the focus once its window shows.
     function inSessions(classed, rest) {
-        const untold = classed === "pi-spawned"
+        const untold = classed.startsWith("pi-spawned")
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
         Niri.spawn(untold.concat(["systemd-run", "--user", "--scope", "--collect", "--quiet",
             "--slice=agents.slice", "--", "kitty", "-1", "--instance-group", "pi-sessions",
@@ -291,16 +292,18 @@ Singleton {
     // loaded as start() loads one, since only a record brings one back.
     // `told`, when given, is pi's first prompt, sent as it opens, as the
     // shell's $0 so nothing in it is read as the shell's own.
-    function reopened(one, cwd, told) {
+    function reopened(one, cwd, told, into) {
         const fresh = one.fresh === true;
         const quest = fresh && typeof one.quest === "string" && one.quest !== ""
             ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
-        const pi = fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`;
+        const model = one.model ? ` --model ${one.model}` : "";
+        const pi = (fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`) + model;
         const telling = typeof told === "string" && told !== "";
         // Classed as a session's either way, so a window Joel opens
         // meanwhile isn't taken for it; one another session started opens
         // aside.
-        root.inSessions(one.quiet === true ? "pi-spawned" : "pi-session",
+        root.inSessions(into !== null && into !== undefined ? root.openingOn(into)
+            : one.quiet === true ? "pi-spawned" : "pi-session",
             ["--directory", cwd].concat(quest,
                 ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []));
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
@@ -700,6 +703,44 @@ Singleton {
     // up new sessions, i often end up typing into them by accident"). niri
     // puts a window moved so just right of the column last active there.
     // "waiting" while niri hasn't laid it out.
+    // A session's kin among `others`: the session that asked for it
+    // (`from`), since an orchestrator starts its sessions where it is
+    // (Joel, 2026-11-07), else one on its own quest.
+    function kinOf(others, one) {
+        return others.find(session => one.from !== "" && session.presence.session === one.from)
+            ?? others.find(session => one.quest !== "" && session.presence.quest === one.quest);
+    }
+    // The workspace a session another handed over opens on, by its id, or
+    // null to leave it to niri and placeQuietly: where it was kept, when
+    // that's a workspace there now, else its kin's. niri opens a window on
+    // a workspace asked for only by OpenNextWindowOn (core's
+    // opens-next-window-on.patch), so it never shows where Joel is first
+    // and moves (Joel, 2026-11-07: sessions started in the wrong
+    // workspaces). A kin whose window isn't told apart from its kitty's yet
+    // gives none, and placeQuietly waits for it and moves the session after.
+    function opensOn(one, at, beside) {
+        if (at !== null) {
+            const where = Places.whereBack(at, beside);
+            return where.make ? null : where.join ?? null;
+        }
+        const others = root.running.filter(session => session.here
+            && (session.window !== null || session.kitty !== null)
+            && session.presence.session !== one.id);
+        const kin = root.kinOf(others, { from: one.from ?? "", quest: one.quest ?? "" });
+        return kin?.window && Niri.workspace(kin.window.workspace_id)
+            ? kin.window.workspace_id : null;
+    }
+    // The class a window opened on `into` is given, its own, and niri told
+    // to open the next window of it there. kitty opens each of its windows
+    // with the class it's asked for, so no two sessions opening at once
+    // share one; the IPC socket keeps the order the two are asked in.
+    property int openings: 0
+    function openingOn(into) {
+        openings++;
+        const classed = `pi-spawned.${openings}`;
+        Niri.act({ OpenNextWindowOn: { app_id: classed, reference: { Id: into } } });
+        return classed;
+    }
     function placeQuietly(id, waiting) {
         const window = Niri.windows[id];
         if (!window || !Niri.workspace(window.workspace_id))
@@ -714,10 +755,7 @@ Singleton {
         const others = root.running.filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.window?.id !== id && session.presence.session !== waiting.id);
-        const kin = others.find(session => waiting.quest !== ""
-            && session.presence.quest === waiting.quest)
-            ?? others.find(session => waiting.from !== ""
-                && session.presence.session === waiting.from);
+        const kin = root.kinOf(others, waiting);
         if (kin && kin.window === null)
             return "waiting";
         const into = kin?.window.workspace_id ?? window.workspace_id;
@@ -1020,6 +1058,10 @@ Singleton {
             .map(one => ({ id: String(one.id), cwd: one.cwd, fresh: one.fresh === true,
                 quest: typeof one.quest === "string" ? one.quest : "",
                 from: typeof one.from === "string" ? one.from : "",
+                // The model a restart asks for (the harness's quest spawn), passed
+                // to pi as it's said, and dropped when it's anything but a name.
+                model: typeof one.model === "string" && /^[A-Za-z0-9._:/-]+$/.test(one.model)
+                    ? one.model : "",
                 quiet: one.focus !== true }));
         if (given.length === 0)
             return "refused: no session with an id and a folder";
@@ -1075,7 +1117,8 @@ Singleton {
                 quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
             // The pace is counted from once it's begun and said, so the next
             // is said two seconds after however long this one took to start.
-            reopened(next.one, next.one.cwd, next.told);
+            reopened(next.one, next.one.cwd, next.told,
+                quiet ? root.opensOn(next.one, at, root.besideOf(reopening.placed)) : null);
             reopenStartedAt = Date.now();
             reopenPatience.restart();
         });

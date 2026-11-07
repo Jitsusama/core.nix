@@ -101,14 +101,16 @@ Singleton {
     }
 
     // A window as the shell knows it. A kitty window opened for a session is
-    // classed apart: pi-spawned for one another session started, so niri's
-    // rule opens it without taking the focus from Joel
+    // classed apart: pi-spawned, or pi-spawned.<n> for one opened on a
+    // workspace asked for (Sessions.qml's openingOn), for one another
+    // session started, so niri's rule opens it without taking the focus from Joel
     // (modules/niri/config.kdl), and pi-session for one Reopen Them All
     // opens, so a terminal Joel opens meanwhile isn't taken for it. Either
     // is kitty's all the same to every list, mark and key the shell has,
     // and says it holds a session (`session`).
     function heard(window: var): var {
-        if (window.app_id === "pi-spawned" || window.app_id === "pi-session") {
+        const app = window.app_id ?? "";
+        if (/^pi-spawned(\.[0-9]+)?$/.test(app) || app === "pi-session") {
             window.app_id = "kitty";
             window.session = true;
         }
