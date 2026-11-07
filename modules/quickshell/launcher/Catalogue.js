@@ -47,8 +47,12 @@ const LOOKUPS = "keyboard:key:";
 const DISRUPTIVE = new Set(["close", "quit", "leave", "lock", "sleep", "reboot", "stop", "off",
     "turn off", "forget", "disconnect", "share", "install"]);
 
-// The verb a row says now: a word, or a getter's.
+// The verb a row says now: a word, or a getter's; for one naming the act
+// its Return does (`returns`, Launcher.qml's returnOf), that act's.
 function verbOf(row) {
+    if (row.returns) {
+        return verbOf(row.returns);
+    }
     const verb = row.verb;
     return typeof verb === "string" ? verb : "";
 }
@@ -78,6 +82,11 @@ function ends(row) {
 // the row's command as changesState is, so Return on one row and over a
 // selection agree.
 function opens(row, command = {}) {
+    // One whose Return is an act of its own opens as that act does, unless
+    // the act asks for words, which a selection has none of.
+    if (row.returns) {
+        return !row.returns.given && opens(row.returns, command);
+    }
     return typeof row.run === "function" && kindOf(row) === "action" && !row.stays
         && !ends(row) && !disruptive(row) && !changesState(row, command);
 }
@@ -198,7 +207,7 @@ function kindOf(row) {
         return "place";
     }
     const holds = !!row.verbs || !!row.targets || !!row.nested;
-    return holds && !row.run && !row.given ? "place" : "action";
+    return holds && !row.run && !row.returns && !row.given ? "place" : "action";
 }
 
 // What a row's name says without what it's done to, "Turn it off" as

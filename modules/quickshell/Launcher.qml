@@ -1135,30 +1135,32 @@ Scope {
             goTo({ trail: ids.slice(0, -1), spot: ids[ids.length - 1] });
             return { done: false, offered: true, said: `${said}, ready for Return` };
         }
-        if (target.given) {
+        // What Return does with it, as it does from the rows.
+        const act = returnOf(target);
+        if (act.given) {
             if ((words ?? "") === "")
-                return { error: `${said} takes words: ${target.ask ?? ""}` };
-            target.given(words);
+                return { error: `${said} takes words: ${act.ask ?? ""}` };
+            act.given(words);
             return { done: true, said: said };
         }
         // As Return does it, save that what's typed, Ask's question, picks
         // nothing: one whose outcome takes a while keeps the launcher, and
         // the rest close it first.
         trials.picked(target, "", path.length - 1);
-        if (target.stays) {
-            target.run();
+        if (act.stays) {
+            act.run();
             return { done: true, said: said };
         }
-        if (target.now)
-            target.run();
+        if (act.now)
+            act.run();
         const shown = open;
         open = false;
-        if (target.now)
+        if (act.now)
             return { done: true, said: said };
-        if (target.later)
-            runOnceGone(target, shown);
+        if (act.later)
+            runOnceGone(act, shown);
         else
-            target.run();
+            act.run();
         return { done: true, said: said };
     }
 

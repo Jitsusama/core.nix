@@ -53,6 +53,11 @@ QtObject {
         expect("an action", Catalogue.kindOf({ verb: "set", run: does }), "action");
         expect("one that takes words", Catalogue.kindOf({ verb: "say", given: does,
             verbs: opens }), "action");
+        // A session's row names the act its Return does, and holds its acts.
+        expect("one whose Return is an act", Catalogue.kindOf({ verbs: opens,
+            returns: { verb: "go", run: does } }), "action");
+        expect("its verb is its act's", Catalogue.verbOf({ returns: { verb: "resume" } }),
+            "resume");
         // What only Joel's Return does.
         expect("one asked to be sure of", Catalogue.disruptive({ verb: "reboot", confirm: true }),
             true);
@@ -83,6 +88,10 @@ QtObject {
         expect("nor a lock", Catalogue.opens({ verb: "lock", run: does }), false);
         expect("nor a place", Catalogue.opens({ verb: "more", run: does }), false);
         expect("nor a row with nothing to run", Catalogue.opens({ verb: "open" }), false);
+        expect("one whose Return goes opens", Catalogue.opens({ verbs: opens,
+            returns: { verb: "go", run: does } }), true);
+        expect("but not one whose Return asks for words", Catalogue.opens({ verbs: opens,
+            returns: { verb: "talk", run: does, given: does } }), false);
         // The key language decides as Return's landing does (changesState),
         // so Return on one row and over a selection never disagree.
         expect("nor one whose command the language says changes", Catalogue.opens(
