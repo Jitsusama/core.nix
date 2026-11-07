@@ -90,8 +90,58 @@ impl Budgets {
             .map_or(self.default.as_str(), String::as_str)
     }
 
+    /// The budgets the configured feeds bill.
+    pub fn of_feeds(&self) -> Vec<String> {
+        self.feeds.values().cloned().collect()
+    }
+
+    /// The feeds whose bill is a budget's unless a record says another.
+    pub fn feeds_of(&self, budget: &str) -> Vec<String> {
+        self.feeds
+            .iter()
+            .filter(|(_, of)| *of == budget)
+            .map(|(feed, _)| feed.clone())
+            .collect()
+    }
+
     pub fn declared(&self, name: &str) -> Option<&BudgetConfig> {
         self.all.iter().find(|budget| budget.name == name)
+    }
+
+    /// Whether a budget is a subscription, whose turns cost nothing past
+    /// its price.
+    pub fn subscription(&self, name: &str) -> bool {
+        self.declared(name)
+            .is_some_and(|budget| budget.kind == crate::config::BudgetKind::Subscription)
+    }
+
+    /// The budget a record names, or its feed's when it names none.
+    pub fn of_record(&self, feed: &str, named: &str) -> String {
+        if named.is_empty() {
+            self.of_feed(feed).to_owned()
+        } else {
+            named.to_owned()
+        }
+    }
+}
+
+/// A window as a limit's label says it, as in "the weekly limit".
+pub fn window_adjective(hours: u32) -> String {
+    match hours {
+        24 => "daily".into(),
+        168 => "weekly".into(),
+        hours if hours % 24 == 0 => format!("{}-day", hours / 24),
+        hours => format!("{hours}-hour"),
+    }
+}
+
+/// A window as a few words beside a share, as in "62% of 5 h".
+pub fn window_label(hours: u32) -> String {
+    match hours {
+        24 => "the day".into(),
+        168 => "the week".into(),
+        hours if hours % 24 == 0 => format!("{} days", hours / 24),
+        hours => format!("{hours} h"),
     }
 }
 

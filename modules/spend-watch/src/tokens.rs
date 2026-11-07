@@ -21,7 +21,12 @@
 //! new notice, and nothing else is: a level is left only once the time
 //! left passes its own bound by half an hour, so a rate that wavers can't
 //! raise it again and again.
+//!
+//! A cap limits one budget, so its rate, what rolls out of it, the
+//! session spending most and a refusal are all that budget's alone: a
+//! team's token spending fast says nothing of Joel's own cap.
 
+use crate::budgets::Budgets;
 use crate::caps::Cap;
 use crate::history::{History, sql as fail};
 use crate::money::whole;
@@ -135,20 +140,64 @@ pub struct Inputs {
     pub counter: String,
 }
 
+/// What a cap is read against: the budget it limits, and every budget's
+/// word on which that is.
+struct Limited<'a> {
+    budgets: &'a Budgets,
+    budget: String,
+}
+
+impl Limited<'_> {
+    fn is(&self, budget: &str) -> bool {
+        budget == self.budget
+    }
+
+    /// Whether a turn on a provider, under what its log said, drew on it.
+    fn spent_by(&self, provider: &str, logged: Option<&str>) -> bool {
+        let budget = self.budgets.of_turn(provider, logged);
+        self.is(budget.as_deref().unwrap_or(&self.budgets.default))
+    }
+}
+
 /// The last refusal since the cap's reading that its session hasn't got
-/// past: the tokens have run out whatever the forecast says, since the
-/// cap's next reading is up to an hour off.
-fn refused(history: &History, cap: &Cap, now: f64) -> Result<Option<f64>, String> {
-    history
+/// past, of a session drawing on the cap's budget as it was refused: the
+/// tokens have run out whatever the forecast says, since the cap's next
+/// reading is up to an hour off.
+fn refused(
+    history: &History,
+    limited: &Limited,
+    cap: &Cap,
+    now: f64,
+) -> Result<Option<f64>, String> {
+    let mut statement = history
         .db
-        .query_row(
-            "SELECT MAX(r.at) FROM refusals r WHERE r.at > ?1 AND r.at <= ?2
+        .prepare(
+            "SELECT r.at, (SELECT t.provider FROM turns t WHERE t.session = r.session
+                 AND t.at <= r.at ORDER BY t.at DESC LIMIT 1),
+             (SELECT t.budget FROM turns t WHERE t.session = r.session
+                 AND t.at <= r.at ORDER BY t.at DESC LIMIT 1)
+             FROM refusals r WHERE r.at > ?1 AND r.at <= ?2
              AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.session = r.session
              AND t.at > r.at AND t.at <= ?2)",
-            rusqlite::params![cap.at, now],
-            |row| row.get::<_, Option<f64>>(0),
         )
-        .map_err(fail)
+        .map_err(fail)?;
+    let rows = statement
+        .query_map(rusqlite::params![cap.at, now], |row| {
+            Ok((
+                row.get::<_, f64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(fail)?;
+    let mut last: Option<f64> = None;
+    for row in rows {
+        let (at, provider, logged) = row.map_err(fail)?;
+        if limited.spent_by(provider.as_deref().unwrap_or(""), logged.as_deref()) {
+            last = Some(last.map_or(at, |last| last.max(at)));
+        }
+    }
+    Ok(last)
 }
 
 /// How many of the cap's last runs its rises are read from.
@@ -160,17 +209,20 @@ fn rises(history: &History, cap: &Cap, now: f64) -> Result<Vec<f64>, String> {
     let mut statement = history
         .db
         .prepare(
-            "SELECT spent FROM caps c WHERE feed = ?1 AND name = ?2 AND at <= ?3 AND at > ?4
-             AND at = (SELECT MAX(at) FROM caps d WHERE d.feed = c.feed AND d.name = c.name
-             AND CAST(d.at / 3600 AS INTEGER) = CAST(c.at / 3600 AS INTEGER) AND d.at <= ?3)
+            "SELECT spent FROM caps c WHERE feed = ?1 AND budget = ?2 AND name = ?3
+             AND at <= ?4 AND at > ?5
+             AND at = (SELECT MAX(at) FROM caps d WHERE d.feed = c.feed
+             AND d.budget = c.budget AND d.name = c.name
+             AND CAST(d.at / 3600 AS INTEGER) = CAST(c.at / 3600 AS INTEGER) AND d.at <= ?4)
              ORDER BY at",
         )
         .map_err(fail)?;
     let since = now - HOUR * (crate::stats::count(usize::try_from(RISES).unwrap_or(6)) + 1.0);
     let counts = statement
-        .query_map(rusqlite::params![cap.feed, cap.name, now, since], |row| {
-            row.get::<_, f64>(0)
-        })
+        .query_map(
+            rusqlite::params![cap.feed, cap.budget, cap.name, now, since],
+            |row| row.get::<_, f64>(0),
+        )
         .map_err(fail)?
         .collect::<Result<Vec<f64>, _>>()
         .map_err(fail)?;
@@ -185,30 +237,87 @@ fn watched(caps: Vec<Cap>) -> Option<Cap> {
         .max_by_key(|cap| cap.window_hours)
 }
 
-fn billed(history: &History, source: &str, from: i64, to: i64) -> Result<Vec<f64>, String> {
+/// What a source billed the cap's budget in each hour from `from` to
+/// `to`.
+fn billed(
+    history: &History,
+    limited: &Limited,
+    source: &str,
+    from: i64,
+    to: i64,
+) -> Result<Vec<f64>, String> {
     let mut out = vec![0.0; usize::try_from(to - from).unwrap_or(0)];
     let mut statement = history
         .db
         .prepare(
-            "SELECT hour, SUM(dollars) FROM billed WHERE source = ?1 AND hour >= ?2
-             AND hour < ?3 GROUP BY hour",
+            "SELECT hour, feed, budget, SUM(dollars) FROM billed WHERE source = ?1
+             AND hour >= ?2 AND hour < ?3 GROUP BY hour, feed, budget",
         )
         .map_err(fail)?;
     let rows = statement
         .query_map(rusqlite::params![source, from, to], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, f64>(3)?,
+            ))
         })
         .map_err(fail)?;
     for row in rows {
-        let (hour, dollars) = row.map_err(fail)?;
+        let (hour, feed, budget, dollars) = row.map_err(fail)?;
+        if !limited.is(&limited.budgets.of_record(&feed, &budget)) {
+            continue;
+        }
         if let Some(slot) = usize::try_from(hour - from)
             .ok()
             .and_then(|i| out.get_mut(i))
         {
-            *slot = dollars;
+            *slot += dollars;
         }
     }
     Ok(out)
+}
+
+/// The session that spent most of the cap's budget over the last hour,
+/// and its quest.
+fn top(
+    history: &History,
+    limited: &Limited,
+    hour: i64,
+) -> Result<Option<(String, Option<String>)>, String> {
+    let mut statement = history
+        .db
+        .prepare(
+            "SELECT session, quest, provider, budget, SUM(cost) FROM turn_hours
+             WHERE hour >= ?1 AND hour <= ?2 GROUP BY session, quest, provider, budget",
+        )
+        .map_err(fail)?;
+    let rows = statement
+        .query_map([hour - 1, hour], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, f64>(4)?,
+            ))
+        })
+        .map_err(fail)?;
+    let mut spent: std::collections::BTreeMap<String, (f64, Option<String>)> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        let (session, quest, provider, logged, cost) = row.map_err(fail)?;
+        if limited.spent_by(&provider, logged.as_deref()) {
+            let entry = spent.entry(session).or_insert((0.0, None));
+            entry.0 += cost;
+            entry.1 = entry.1.take().or(quest);
+        }
+    }
+    Ok(spent
+        .into_iter()
+        .max_by(|one, other| one.1.0.total_cmp(&other.1.0))
+        .map(|(session, (_, quest))| (session, quest)))
 }
 
 /// How the last hour's rate is read: live, from the meter's hour so far
@@ -222,7 +331,12 @@ pub enum Rate {
 }
 
 /// What the history says, as it stood at `now` when replaying.
-pub fn read(history: &History, now: f64, rate: Rate) -> Result<Option<Inputs>, String> {
+pub fn read(
+    history: &History,
+    budgets: &Budgets,
+    now: f64,
+    rate: Rate,
+) -> Result<Option<Inputs>, String> {
     let caps = match rate {
         Rate::Live => crate::caps::latest(history)?,
         Rate::Replay => crate::caps::latest(history)?
@@ -233,45 +347,41 @@ pub fn read(history: &History, now: f64, rate: Rate) -> Result<Option<Inputs>, S
     let Some(cap) = watched(caps) else {
         return Ok(None);
     };
+    let limited = Limited {
+        budgets,
+        budget: budgets.of_record(&cap.feed, &cap.budget),
+    };
+    let billed = |source: &str, from: i64, to: i64| billed(history, &limited, source, from, to);
     let hour = hour_of(now);
     let into = (now - hour_start(hour)) / HOUR;
     let rate = match rate {
         Rate::Live => {
-            let meter = billed(history, "meter", hour - 1, hour + 1)?;
+            let meter = billed("meter", hour - 1, hour + 1)?;
             let before = if meter[0] > 0.0 {
                 meter[0]
             } else {
-                billed(history, "warehouse", hour - 1, hour)?[0]
+                billed("warehouse", hour - 1, hour)?[0]
             };
             meter[1] + before * (1.0 - into)
         }
         Rate::Replay => {
-            let last = billed(history, "warehouse", hour - 1, hour)?[0];
+            let last = billed("warehouse", hour - 1, hour)?[0];
             if last > 0.0 {
                 last
             } else {
-                billed(history, "meter", hour - 1, hour)?[0]
+                billed("meter", hour - 1, hour)?[0]
             }
         }
     };
     let window = i64::from(cap.window_hours);
     let rolling = billed(
-        history,
         "warehouse",
         hour - window,
         hour - window + i64::try_from(AHEAD).unwrap_or(0) + 1,
     )?;
-    let top = history
-        .db
-        .query_row(
-            "SELECT session, quest FROM turn_hours WHERE hour >= ?1 AND hour <= ?2
-             GROUP BY session ORDER BY SUM(cost) DESC LIMIT 1",
-            [hour - 1, hour],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
-        )
-        .ok();
+    let top = top(history, &limited, hour)?;
     let rises = rises(history, &cap, now)?;
-    let refused = refused(history, &cap, now)?;
+    let refused = refused(history, &limited, &cap, now)?;
     let counter = cap.feed.clone();
     Ok(Some(Inputs {
         cap,
@@ -334,7 +444,12 @@ fn minutes(seconds: f64) -> String {
 /// speaks for.
 #[must_use]
 pub fn key(inputs: &Inputs) -> String {
-    format!("cap:{}:{}:", inputs.cap.feed, inputs.cap.name)
+    // A feed's cap is its feed's whatever the default budget is.
+    format!(
+        "cap:{}:{}:",
+        crate::caps::owner(&inputs.cap, ""),
+        inputs.cap.name
+    )
 }
 
 /// What Joel can do: see what spends, and pause the session spending most.
@@ -493,14 +608,20 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
 
 /// What the warning would have said every five minutes from `from` to
 /// `to`, as the history stood each time, one line a change of words.
-pub fn replay(history: &History, zone: &Zone, from: f64, to: f64) -> Result<String, String> {
+pub fn replay(
+    history: &History,
+    budgets: &Budgets,
+    zone: &Zone,
+    from: f64,
+    to: f64,
+) -> Result<String, String> {
     let mut out = String::new();
     let mut before = None;
     let mut said = String::new();
     let mut at = from;
     while at <= to {
-        let tokens =
-            read(history, at, Rate::Replay)?.and_then(|inputs| outlook(&inputs, before, zone, at));
+        let tokens = read(history, budgets, at, Rate::Replay)?
+            .and_then(|inputs| outlook(&inputs, before, zone, at));
         before = tokens.as_ref().map(|tokens| tokens.level);
         let line = tokens.as_ref().map_or_else(
             || "nothing to say".to_owned(),
@@ -533,8 +654,10 @@ mod tests {
     fn cap(spent: f64, at: f64, state: &str) -> Cap {
         Cap {
             feed: "proxy".into(),
+            budget: String::new(),
             name: "weekly".into(),
             label: "weekly cap".into(),
+            unit: crate::caps::Unit::Dollars,
             allowance: Some(15_000.0),
             window_hours: 168,
             spent,
@@ -544,6 +667,7 @@ mod tests {
             ends: None,
             ends_known: false,
             resets: None,
+            used: None,
             at,
         }
     }
@@ -708,52 +832,69 @@ mod tests {
         );
     }
 
+    /// The columns a cap's reading had before budgets.
+    const CAPS: &str = "(feed, name, at, label, allowance, window_hours, spent, warn, \
+        fallback, state, ends, ends_known, resets)";
+
+    // The meter's hour, what rolls out and a refusal, each only the cap's
+    // own budget's: a team's token billed beside it and refused says
+    // nothing of it.
     #[test]
     fn it_reads_the_meter_and_what_rolls_out() {
         let history = History::memory();
         history
             .db
             .execute_batch(&format!(
-                "INSERT INTO caps VALUES ('proxy', 'weekly', {AT}, 'weekly cap', 15000, 168,
-                 14000, 0.9, NULL, 'ok', NULL, 0, NULL);
-                 INSERT INTO caps VALUES ('proxy', 'premium', {AT}, 'premium day', 1000, 24,
-                 0, 0.5, NULL, 'ok', NULL, 0, NULL);"
+                "INSERT INTO caps {CAPS} VALUES ('proxy', 'weekly', {AT}, 'weekly cap', 15000,
+                 168, 14000, 0.9, NULL, 'ok', NULL, 0, NULL);
+                 INSERT INTO caps {CAPS} VALUES ('proxy', 'premium', {AT}, 'premium day', 1000,
+                 24, 0, 0.5, NULL, 'ok', NULL, 0, NULL);"
             ))
             .unwrap();
         let hour = hour_of(AT);
         let now = hour_start(hour) + 1800.0;
-        let bill = |source: &str, hour: i64, dollars: f64| {
+        let bill = |source: &str, hour: i64, dollars: f64, budget: &str| {
             history
                 .db
                 .execute(
                     "INSERT INTO billed VALUES ('proxy', ?1, ?2, 'pi', 'm', 'v', 's', 'a', 't',
-                     0, 0, 0, 0, ?3, 0, 0)",
-                    rusqlite::params![source, hour, dollars],
+                     0, 0, 0, 0, ?3, 0, 0, ?4)",
+                    rusqlite::params![source, hour, dollars, budget],
                 )
                 .unwrap();
         };
-        bill("meter", hour, 150.0);
-        bill("meter", hour - 1, 240.0);
-        bill("warehouse", hour - 168, 90.0);
+        bill("meter", hour, 150.0, "");
+        bill("meter", hour - 1, 240.0, "");
+        bill("warehouse", hour - 168, 90.0, "");
+        bill("meter", hour, 1000.0, "delta");
+        bill("warehouse", hour - 168, 1000.0, "delta");
         history
             .db
             .execute_batch(&format!(
                 "INSERT INTO refusals VALUES ('gone', {r}, 'm', 'over your weekly cap');
-                 INSERT INTO refusals VALUES ('back', {r}, 'm', 'over your weekly cap');",
-                r = AT + 600.0
+                 INSERT INTO refusals VALUES ('back', {r}, 'm', 'over your weekly cap');
+                 INSERT INTO refusals VALUES ('team', {t}, 'm', 'over your weekly cap');",
+                r = AT + 600.0,
+                t = AT + 1200.0,
             ))
             .unwrap();
-        history
-            .db
-            .execute(
-                "INSERT INTO turns (session, at, hour, model, provider, kind, input, output,
-                 cache_read, cache_write, cache_write_long, cost, cost_cache_write,
-                 cost_output, rebuilt, rebuilt_cost) VALUES
-                 ('back', ?1, 0, 'm', 'p', 'k', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
-                [AT + 900.0],
-            )
-            .unwrap_or_else(|error| panic!("a turn: {error}"));
-        let read = read(&history, now, Rate::Live).unwrap().unwrap();
+        let turn = |session: &str, at: f64, budget: Option<&str>| {
+            history
+                .db
+                .execute(
+                    "INSERT INTO turns (session, at, hour, model, provider, kind, input, output,
+                     cache_read, cache_write, cache_write_long, cost, cost_cache_write,
+                     cost_output, rebuilt, rebuilt_cost, budget) VALUES
+                     (?1, ?2, 0, 'm', 'p', 'k', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?3)",
+                    rusqlite::params![session, at, budget],
+                )
+                .unwrap_or_else(|error| panic!("a turn: {error}"));
+        };
+        turn("back", AT + 900.0, None);
+        turn("team", AT + 300.0, Some("delta"));
+        let read = read(&history, &Budgets::implicit(), now, Rate::Live)
+            .unwrap()
+            .unwrap();
         // One session got past its refusal and one didn't: out.
         assert_eq!(read.refused, Some(AT + 600.0));
         assert_eq!(read.cap.name, "weekly");

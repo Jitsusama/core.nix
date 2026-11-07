@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 6;
+pub const SCHEMA: i64 = 7;
 
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
@@ -89,9 +89,60 @@ END;
     };
 }
 
+/// What a feed billed, by everything a record keys it by: an empty budget
+/// is the feed's own.
+macro_rules! billed {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ",
+            $name,
+            " (
+    feed TEXT NOT NULL, source TEXT NOT NULL, hour INTEGER NOT NULL, tool TEXT NOT NULL,
+    model TEXT NOT NULL, vendor TEXT NOT NULL, session TEXT NOT NULL, agent TEXT NOT NULL,
+    token TEXT NOT NULL, input REAL NOT NULL, cached REAL NOT NULL, cache_write REAL NOT NULL,
+    output REAL NOT NULL, dollars REAL NOT NULL, provisional INTEGER NOT NULL,
+    at REAL NOT NULL, budget TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (feed, source, hour, tool, model, vendor, session, agent, token, budget));
+"
+        )
+    };
+}
+
+/// Each reading of a feed's caps, for its budget: an empty one is the
+/// feed's own. A share's is what's used, and nothing spent.
+macro_rules! caps {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ",
+            $name,
+            " (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, label TEXT NOT NULL,
+    allowance REAL, window_hours INTEGER NOT NULL, spent REAL NOT NULL, warn REAL NOT NULL,
+    fallback REAL, state TEXT NOT NULL, ends TEXT, ends_known INTEGER NOT NULL,
+    resets REAL, budget TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT 'dollars',
+    used REAL, PRIMARY KEY (feed, budget, name, at));
+"
+        )
+    };
+}
+
+macro_rules! cap_events {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ",
+            $name,
+            " (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
+    before REAL, after REAL, spent REAL NOT NULL, budget TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (feed, budget, name, at, kind));
+"
+        )
+    };
+}
+
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 5] = [
+const UPGRADES: [&str; 6] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -110,6 +161,21 @@ const UPGRADES: [&str; 5] = [
         "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, provider, budget,
          COUNT(*), SUM(cost) FROM turns
          GROUP BY hour, session, quest, model, kind, provider, budget;"
+    ),
+    // What a feed said before a record could name its budget was its own,
+    // and a cap before shares were was in dollars. The budget is part of
+    // what keys each, so a feed can say two budgets' alike, and SQLite
+    // only keys a table as it's made.
+    concat!(
+        billed!("billed_7"),
+        "INSERT INTO billed_7 SELECT *, '' FROM billed; DROP TABLE billed;
+         ALTER TABLE billed_7 RENAME TO billed; CREATE INDEX billed_hour ON billed (hour);",
+        caps!("caps_7"),
+        "INSERT INTO caps_7 SELECT *, '', 'dollars', NULL FROM caps; DROP TABLE caps;
+         ALTER TABLE caps_7 RENAME TO caps;",
+        cap_events!("cap_events_7"),
+        "INSERT INTO cap_events_7 SELECT *, '' FROM cap_events; DROP TABLE cap_events;
+         ALTER TABLE cap_events_7 RENAME TO cap_events;"
     ),
 ];
 
@@ -145,25 +211,15 @@ CREATE TABLE quests (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL, parent TEXT,
     status TEXT NOT NULL, started TEXT, updated TEXT, prs INTEGER NOT NULL,
     sessions TEXT NOT NULL);
-CREATE TABLE billed (
-    feed TEXT NOT NULL, source TEXT NOT NULL, hour INTEGER NOT NULL, tool TEXT NOT NULL,
-    model TEXT NOT NULL, vendor TEXT NOT NULL, session TEXT NOT NULL, agent TEXT NOT NULL,
-    token TEXT NOT NULL, input REAL NOT NULL, cached REAL NOT NULL, cache_write REAL NOT NULL,
-    output REAL NOT NULL, dollars REAL NOT NULL, provisional INTEGER NOT NULL,
-    at REAL NOT NULL,
-    PRIMARY KEY (feed, source, hour, tool, model, vendor, session, agent, token));
-CREATE INDEX billed_hour ON billed (hour);
+",
+    billed!("billed"),
+    "CREATE INDEX billed_hour ON billed (hour);
 CREATE TABLE settled (feed TEXT NOT NULL, source TEXT NOT NULL, through INTEGER NOT NULL,
     PRIMARY KEY (feed, source));
-CREATE TABLE caps (
-    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, label TEXT NOT NULL,
-    allowance REAL, window_hours INTEGER NOT NULL, spent REAL NOT NULL, warn REAL NOT NULL,
-    fallback REAL, state TEXT NOT NULL, ends TEXT, ends_known INTEGER NOT NULL,
-    resets REAL, PRIMARY KEY (feed, name, at));
-CREATE TABLE cap_events (
-    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
-    before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
-CREATE TABLE health (feed TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
+",
+    caps!("caps"),
+    cap_events!("cap_events"),
+    "CREATE TABLE health (feed TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
     message TEXT NOT NULL, sign_in TEXT, at REAL NOT NULL,
     since REAL, PRIMARY KEY (feed, source));
 CREATE TABLE actions (feed TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
@@ -612,7 +668,7 @@ mod tests {
         {
             let db = Connection::open(&path).unwrap();
             db.execute_batch(
-                &TABLES
+                &sixth_shape()
                     .replace(hours!(), "")
                     .replace("\n    resets REAL,", "")
                     .replace("\n    since REAL,", "")
@@ -746,7 +802,7 @@ mod tests {
             history
                 .db
                 .execute_batch(
-                    &TABLES
+                    &sixth_shape()
                         .replace(hours!(), "")
                         .replace(SESSIONS_5, "")
                         .replace(TURNS_6, ""),
@@ -775,7 +831,74 @@ mod tests {
 
     /// The tables as the fifth shape kept them.
     fn fifth_shape() -> String {
-        TABLES.replace(TURNS_6, "").replace(hours!(), hours_4!())
+        sixth_shape()
+            .replace(TURNS_6, "")
+            .replace(hours!(), hours_4!())
+    }
+
+    /// The tables as the sixth shape kept them, before a feed's record
+    /// could name its budget.
+    fn sixth_shape() -> String {
+        const BILLED: &str = "CREATE TABLE billed (
+    feed TEXT NOT NULL, source TEXT NOT NULL, hour INTEGER NOT NULL, tool TEXT NOT NULL,
+    model TEXT NOT NULL, vendor TEXT NOT NULL, session TEXT NOT NULL, agent TEXT NOT NULL,
+    token TEXT NOT NULL, input REAL NOT NULL, cached REAL NOT NULL, cache_write REAL NOT NULL,
+    output REAL NOT NULL, dollars REAL NOT NULL, provisional INTEGER NOT NULL,
+    at REAL NOT NULL,
+    PRIMARY KEY (feed, source, hour, tool, model, vendor, session, agent, token));
+";
+        const CAPS: &str = "CREATE TABLE caps (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, label TEXT NOT NULL,
+    allowance REAL, window_hours INTEGER NOT NULL, spent REAL NOT NULL, warn REAL NOT NULL,
+    fallback REAL, state TEXT NOT NULL, ends TEXT, ends_known INTEGER NOT NULL,
+    resets REAL, PRIMARY KEY (feed, name, at));
+";
+        const CAP_EVENTS: &str = "CREATE TABLE cap_events (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
+    before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
+";
+        TABLES
+            .replace(billed!("billed"), BILLED)
+            .replace(caps!("caps"), CAPS)
+            .replace(cap_events!("cap_events"), CAP_EVENTS)
+    }
+
+    // The sixth shape's bill and caps are each their feed's own budget's,
+    // and its caps are in dollars, kept where they stand.
+    #[test]
+    fn a_feed_s_records_gain_a_budget_where_they_stand() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(&sixth_shape()).unwrap();
+            db.execute_batch(
+                "INSERT INTO meta VALUES ('schema', '6');
+                 INSERT INTO billed VALUES ('proxy', 'meter', 10, 'pi', 'm', 'v', '', '', '',
+                     0, 0, 0, 0, 29.83, 1, 1.0);
+                 INSERT INTO caps VALUES ('proxy', 'weekly', 1.0, 'weekly cap', 15000, 168,
+                     3948.29, 0.9, 4000, 'ok', NULL, 0, NULL);
+                 INSERT INTO cap_events VALUES ('proxy', 'weekly', 1.0, 'raised', 4000, 15000,
+                     3948.29);",
+            )
+            .unwrap();
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        let billed: (String, f64) = history
+            .db
+            .query_row("SELECT budget, dollars FROM billed", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(billed, (String::new(), 29.83));
+        let caps = crate::caps::latest(&history).unwrap();
+        assert_eq!(
+            (caps[0].budget.as_str(), caps[0].unit, caps[0].spent),
+            ("", crate::caps::Unit::Dollars, 3948.29)
+        );
+        assert_eq!(crate::caps::events(&history, 0.0).unwrap().len(), 1);
+        assert!(!dir.path().join("history.db.schema-6").exists());
     }
 
     // The fifth shape's turns, read before budgets were, gain a budget

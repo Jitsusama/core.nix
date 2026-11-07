@@ -45,6 +45,9 @@ pub struct Billed {
     /// The credential it was billed to, for spotting one never seen.
     #[serde(default)]
     pub token: Option<String>,
+    /// The budget it was drawn from; the feed's own when none is given.
+    #[serde(default)]
+    pub budget: Option<String>,
     #[serde(default)]
     pub tokens: BilledTokens,
     pub dollars: f64,
@@ -80,11 +83,22 @@ pub struct Settled {
 pub struct Cap {
     pub name: String,
     pub label: String,
+    /// The budget it limits; the feed's own when none is given.
+    #[serde(default)]
+    pub budget: Option<String>,
+    /// Dollars, or a share of a subscription's window.
+    #[serde(default)]
+    pub unit: crate::caps::Unit,
     /// Dollars allowed in the window; null means no limit.
+    #[serde(default)]
     pub allowance: Option<f64>,
     pub window_hours: u32,
-    /// What the provider counts against it, as of `at`.
-    pub spent: f64,
+    /// What the provider counts against it in dollars, as of `at`.
+    #[serde(default)]
+    pub spent: Option<f64>,
+    /// The share of a subscription's window used, from nothing to all.
+    #[serde(default)]
+    pub used: Option<f64>,
     /// The fraction of the allowance it warns at.
     pub warn: f64,
     /// The allowance that applies when an override ends.
@@ -301,6 +315,7 @@ fn check(record: &Record) -> Result<(), String> {
             if cap.window_hours == 0 || !(0.0..=1.0).contains(&cap.warn) {
                 return Err("a cap's window is hours and its warning a fraction".into());
             }
+            check_unit(cap)?;
             // Each figure is a share of it; no allowance is null.
             if cap.allowance.is_some_and(|allowance| allowance <= 0.0)
                 || cap.fallback.is_some_and(|fallback| fallback <= 0.0)
@@ -318,6 +333,34 @@ fn check(record: &Record) -> Result<(), String> {
     Ok(())
 }
 
+/// A cap in dollars says what's spent; a share says what's used of the
+/// window and when it resets, and never an amount, since a share is never
+/// turned into dollars.
+fn check_unit(cap: &Cap) -> Result<(), String> {
+    match cap.unit {
+        crate::caps::Unit::Dollars => {
+            if cap.spent.is_none() || cap.used.is_some() {
+                return Err("a cap in dollars says what's spent, not what's used".into());
+            }
+        }
+        crate::caps::Unit::Share => {
+            let used = cap
+                .used
+                .ok_or("a share cap says what's used of its window")?;
+            if !(0.0..=1.0).contains(&used) {
+                return Err("a share cap's use is a fraction from nothing to all".into());
+            }
+            if cap.resets.is_none() {
+                return Err("a share cap says when its window resets".into());
+            }
+            if cap.allowance.is_some() || cap.spent.is_some() || cap.fallback.is_some() {
+                return Err("a share cap has no allowance and spends no dollars".into());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Keeps a record in the history, as of `now`. Caps compare with the last
 /// one the feed gave, and a change is an event.
 pub fn store(history: &History, feed: &str, record: &Record, now: f64) -> Result<(), String> {
@@ -328,7 +371,7 @@ pub fn store(history: &History, feed: &str, record: &Record, now: f64) -> Result
             let hour = crate::time::hour_of(instant(&billed.hour, "hour")?);
             db.execute(
                 "INSERT OR REPLACE INTO billed VALUES
-                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
                 params![
                     feed,
                     billed.source,
@@ -346,6 +389,7 @@ pub fn store(history: &History, feed: &str, record: &Record, now: f64) -> Result
                     billed.dollars,
                     billed.provisional,
                     now,
+                    billed.budget.clone().unwrap_or_default(),
                 ],
             )
             .map_err(fail)?;
@@ -416,17 +460,19 @@ fn store_cap(history: &History, feed: &str, cap: &Cap) -> Result<(), String> {
     let db = &history.db;
     let fail = |error: rusqlite::Error| error.to_string();
     let at = instant(&cap.at, "at")?;
+    let budget = cap.budget.clone().unwrap_or_default();
     let before: Option<(Option<f64>, String)> = db
         .query_row(
-            "SELECT allowance, state FROM caps WHERE feed = ?1 AND name = ?2 AND at < ?3
-             ORDER BY at DESC LIMIT 1",
-            params![feed, cap.name, at],
+            "SELECT allowance, state FROM caps WHERE feed = ?1 AND budget = ?2 AND name = ?3
+             AND at < ?4 ORDER BY at DESC LIMIT 1",
+            params![feed, budget, cap.name, at],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
         .map_err(fail)?;
     db.execute(
-        "INSERT OR REPLACE INTO caps VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+        "INSERT OR REPLACE INTO caps VALUES
+         (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             feed,
             cap.name,
@@ -434,13 +480,16 @@ fn store_cap(history: &History, feed: &str, cap: &Cap) -> Result<(), String> {
             cap.label,
             cap.allowance,
             cap.window_hours,
-            cap.spent,
+            cap.spent.unwrap_or(0.0),
             cap.warn,
             cap.fallback,
             cap.state.name(),
             cap.ends,
             cap.ends_known,
             cap.resets.as_deref().and_then(crate::time::parse),
+            budget,
+            cap.unit.name(),
+            cap.used,
         ],
     )
     .map_err(fail)?;
@@ -449,7 +498,7 @@ fn store_cap(history: &History, feed: &str, cap: &Cap) -> Result<(), String> {
     };
     let event = |kind: &str| {
         db.execute(
-            "INSERT OR REPLACE INTO cap_events VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO cap_events VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 feed,
                 cap.name,
@@ -457,7 +506,8 @@ fn store_cap(history: &History, feed: &str, cap: &Cap) -> Result<(), String> {
                 kind,
                 allowance,
                 cap.allowance,
-                cap.spent
+                cap.spent.unwrap_or(0.0),
+                budget
             ],
         )
         .map(|_| ())
@@ -561,6 +611,65 @@ mod tests {
         .unwrap();
         let kept = crate::caps::latest(&history).unwrap();
         assert_eq!(kept[0].resets, crate::time::parse("2026-10-15T04:00:00Z"));
+    }
+
+    // A share of a subscription's window says what's used and when it
+    // resets, and never an amount; a cap in dollars says what's spent.
+    #[test]
+    fn a_share_says_what_is_used_and_when_it_resets() {
+        let share = |extra: serde_json::Value| {
+            let mut line = serde_json::json!({
+                "v": 1, "kind": "cap", "name": "five-hours", "label": "5 h",
+                "budget": "claude", "unit": "share", "windowHours": 5, "warn": 0.8,
+                "state": "ok", "at": "2026-11-07T10:00:00Z",
+            });
+            for (key, value) in extra.as_object().unwrap() {
+                line[key] = value.clone();
+            }
+            parse(&line.to_string())
+        };
+        let resets = serde_json::json!("2026-11-07T14:20:00Z");
+        let read = share(serde_json::json!({"used": 0.62, "resets": resets})).unwrap();
+        assert!(matches!(
+            read,
+            Record::Cap(Cap {
+                used: Some(0.62),
+                ..
+            })
+        ));
+        assert!(share(serde_json::json!({"used": 1.2, "resets": resets})).is_err());
+        assert!(share(serde_json::json!({"used": 0.62})).is_err());
+        let priced = serde_json::json!({"used": 0.6, "resets": resets, "allowance": 20});
+        assert!(share(priced).is_err());
+        let unspent = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+            "allowance": 15000, "windowHours": 168, "warn": 0.9, "state": "ok",
+            "at": "2026-11-07T10:00:00Z",
+        });
+        assert!(parse(&unspent.to_string()).is_err());
+    }
+
+    // Two budgets' bills alike from one feed are two figures, not one
+    // replacing the other.
+    #[test]
+    fn a_bill_for_another_budget_is_its_own() {
+        let history = History::memory();
+        for budget in [None, Some("delta")] {
+            let line = serde_json::json!({
+                "v": 1, "kind": "billed", "source": "meter", "hour": "2026-10-14T05:00:00Z",
+                "tool": "all", "model": "m", "budget": budget, "dollars": 10.0,
+            });
+            store(&history, "proxy", &parse(&line.to_string()).unwrap(), 1.0).unwrap();
+        }
+        let kept: Vec<String> = history
+            .db
+            .prepare("SELECT budget FROM billed ORDER BY budget")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(kept, ["", "delta"]);
     }
 
     #[test]

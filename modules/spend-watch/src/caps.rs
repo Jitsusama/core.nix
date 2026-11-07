@@ -33,8 +33,11 @@ impl Unit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cap {
     pub feed: String,
+    /// The budget it limits as its feed said it: empty for the feed's own.
+    pub budget: String,
     pub name: String,
     pub label: String,
+    pub unit: Unit,
     pub allowance: Option<f64>,
     pub window_hours: u32,
     pub spent: f64,
@@ -45,12 +48,15 @@ pub struct Cap {
     pub ends_known: bool,
     /// When a cap counted over periods next resets; none for a rolling one.
     pub resets: Option<f64>,
+    /// The share of a subscription's window used, for a share.
+    pub used: Option<f64>,
     pub at: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Event {
     pub feed: String,
+    pub budget: String,
     pub name: String,
     pub at: f64,
     pub kind: String,
@@ -60,11 +66,17 @@ pub struct Event {
 }
 
 const COLUMNS: &str = "feed, name, label, allowance, window_hours, spent, warn, fallback, \
-    state, ends, ends_known, at, resets";
+    state, ends, ends_known, at, resets, budget, unit, used";
 
 fn cap(row: &rusqlite::Row) -> rusqlite::Result<Cap> {
     Ok(Cap {
         feed: row.get(0)?,
+        budget: row.get(13)?,
+        unit: match row.get::<_, String>(14)?.as_str() {
+            "share" => Unit::Share,
+            _ => Unit::Dollars,
+        },
+        used: row.get(15)?,
         name: row.get(1)?,
         label: row.get(2)?,
         allowance: row.get(3)?,
@@ -82,13 +94,27 @@ fn cap(row: &rusqlite::Row) -> rusqlite::Result<Cap> {
     })
 }
 
+/// Whose a cap is, as its findings' keys say: its feed's for its own
+/// budget, its feed's and the budget's for one a record named, and for a
+/// limit of the machine's own, its budget's, or nobody's for the
+/// default's, as the machine's cap always was.
+pub fn owner(cap: &Cap, default: &str) -> String {
+    match (cap.feed.is_empty(), cap.budget.is_empty()) {
+        (false, true) => cap.feed.clone(),
+        (false, false) => format!("{}/{}", cap.feed, cap.budget),
+        (true, _) if cap.budget == default => String::new(),
+        (true, _) => format!("/{}", cap.budget),
+    }
+}
+
 /// Each cap as its feed last gave it.
 pub fn latest(history: &History) -> Result<Vec<Cap>, String> {
     let mut statement = history
         .db
         .prepare(&format!(
             "SELECT {COLUMNS} FROM caps c WHERE at = (SELECT MAX(at) FROM caps d
-             WHERE d.feed = c.feed AND d.name = c.name) ORDER BY feed, name"
+             WHERE d.feed = c.feed AND d.budget = c.budget AND d.name = c.name)
+             ORDER BY feed, budget, name"
         ))
         .map_err(fail)?;
     let rows = statement.query_map([], cap).map_err(fail)?;
@@ -100,12 +126,12 @@ pub fn earlier_at(history: &History, of: &Cap, at: f64) -> Result<Option<Cap>, S
     let mut statement = history
         .db
         .prepare(&format!(
-            "SELECT {COLUMNS} FROM caps WHERE feed = ?1 AND name = ?2 AND at <= ?3
-             ORDER BY at DESC LIMIT 1"
+            "SELECT {COLUMNS} FROM caps WHERE feed = ?1 AND budget = ?2 AND name = ?3
+             AND at <= ?4 ORDER BY at DESC LIMIT 1"
         ))
         .map_err(fail)?;
     let mut rows = statement
-        .query_map(rusqlite::params![of.feed, of.name, at], cap)
+        .query_map(rusqlite::params![of.feed, of.budget, of.name, at], cap)
         .map_err(fail)?;
     rows.next().transpose().map_err(fail)
 }
@@ -119,14 +145,15 @@ pub fn earlier(history: &History, of: &Cap, periods: usize) -> Result<Vec<Cap>, 
     let mut statement = history
         .db
         .prepare(&format!(
-            "SELECT {COLUMNS} FROM caps c WHERE feed = ?1 AND name = ?2 AND resets < ?3
-             AND at = (SELECT MAX(at) FROM caps d WHERE d.feed = c.feed AND d.name = c.name
-             AND d.resets = c.resets) ORDER BY resets DESC LIMIT ?4"
+            "SELECT {COLUMNS} FROM caps c WHERE feed = ?1 AND budget = ?2 AND name = ?3
+             AND resets < ?4 AND at = (SELECT MAX(at) FROM caps d WHERE d.feed = c.feed
+             AND d.budget = c.budget AND d.name = c.name AND d.resets = c.resets)
+             ORDER BY resets DESC LIMIT ?5"
         ))
         .map_err(fail)?;
     let rows = statement
         .query_map(
-            rusqlite::params![of.feed, of.name, resets, signed(periods)],
+            rusqlite::params![of.feed, of.budget, of.name, resets, signed(periods)],
             cap,
         )
         .map_err(fail)?;
@@ -137,8 +164,8 @@ pub fn events(history: &History, since: f64) -> Result<Vec<Event>, String> {
     let mut statement = history
         .db
         .prepare(
-            "SELECT feed, name, at, kind, before, after, spent FROM cap_events WHERE at >= ?1
-             ORDER BY at, rowid",
+            "SELECT feed, name, at, kind, before, after, spent, budget FROM cap_events
+             WHERE at >= ?1 ORDER BY at, rowid",
         )
         .map_err(fail)?;
     let rows = statement
@@ -151,6 +178,7 @@ pub fn events(history: &History, since: f64) -> Result<Vec<Event>, String> {
                 before: row.get(4)?,
                 after: row.get(5)?,
                 spent: row.get(6)?,
+                budget: row.get(7)?,
             })
         })
         .map_err(fail)?;
@@ -351,6 +379,7 @@ pub fn held(events: Vec<Event>, now: f64) -> Vec<Event> {
     let pressing = |event: &Event| {
         events.iter().any(|other| {
             other.feed == event.feed
+                && other.budget == event.budget
                 && other.name == event.name
                 && other.at == event.at
                 && matches!(other.kind.as_str(), "notified" | "refused")
@@ -371,6 +400,7 @@ pub fn held(events: Vec<Event>, now: f64) -> Vec<Event> {
             .skip(first + 1)
             .find(|(_, later)| {
                 later.feed == event.feed
+                    && later.budget == event.budget
                     && later.name == event.name
                     && changes(later)
                     && later.at - event.at < HELD
@@ -378,7 +408,11 @@ pub fn held(events: Vec<Event>, now: f64) -> Vec<Event> {
             });
         if let Some((last, _)) = back {
             for (index, later) in events.iter().enumerate().take(last + 1).skip(first) {
-                if later.feed == event.feed && later.name == event.name && changes(later) {
+                if later.feed == event.feed
+                    && later.budget == event.budget
+                    && later.name == event.name
+                    && changes(later)
+                {
                     flickered[index] = true;
                 }
             }
@@ -404,7 +438,8 @@ mod tests {
         history
             .db
             .execute_batch(
-                "INSERT INTO caps VALUES
+                "INSERT INTO caps (feed, name, at, label, allowance, window_hours, spent, warn,
+                     fallback, state, ends, ends_known, resets) VALUES
                  ('proxy', 'premium', 10.0, 'premium day', 1000, 24, 5, 0.5, NULL, 'ok', NULL, 0,
                   100.0),
                  ('proxy', 'premium', 20.0, 'premium day', 1000, 24, 7, 0.5, NULL, 'ok', NULL, 0,
@@ -433,6 +468,7 @@ mod tests {
     fn change(name: &str, at: f64, kind: &str, before: f64, after: f64) -> Event {
         Event {
             feed: "proxy".into(),
+            budget: String::new(),
             name: name.into(),
             at,
             kind: kind.into(),

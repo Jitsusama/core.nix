@@ -148,7 +148,8 @@ fn command(args: Vec<String>) -> Result<String, String> {
             let read = |text: &str| {
                 crate::time::parse(text).ok_or(format!("not an RFC 3339 instant: {text}"))
             };
-            crate::tokens::replay(&history, &config.zone()?, read(from)?, read(to)?)
+            let budgets = crate::budgets::Budgets::of(&config);
+            crate::tokens::replay(&history, &budgets, &config.zone()?, read(from)?, read(to)?)
         }
         ["report", rest @ ..] => {
             let config = Config::read(&path)?;

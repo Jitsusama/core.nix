@@ -62,9 +62,15 @@ hour again as often as it likes.
   by what it served; a token never seen before is a finding, so a feed
   whose provider mints credentials as a matter of course leaves it out.
   A token is an opaque name for the credential, never the secret itself.
-- A key is the source, hour, tool, model, vendor, session, agent and
-  token: a feed says each hour's figure for a key once, summed, since a
-  second record for it replaces the first.
+- `budget`: optional, the budget it was drawn from, by the name
+  `jitsusama.spend-watch.budgets` declares it; absent means the feed's
+  own (`feeds.<name>.budget`, or the default budget). A figure that
+  doesn't name its session is shared only among its budget's pieces, so
+  a feed that can tell a team's token from the person's own key says so
+  here.
+- A key is the source, hour, tool, model, vendor, session, agent, token
+  and budget: a feed says each hour's figure for a key once, summed,
+  since a second record for it replaces the first.
 - `tokens`: optional `input`, `cached`, `cacheWrite`, `output`.
 - `dollars`: a figure of none or more.
 - `provisional`: the hour is still open and this is what it stands at.
@@ -82,6 +88,17 @@ fraction of the allowance, and `state`: `ok`, `notified` or `refused`.
 `fallback` is the allowance that applies when a raised one ends, on `ends`;
 `endsKnown` says whether the feed could know the end at all. Every change in
 allowance or state is kept as the cap's history.
+
+`budget` is optional, as a bill's is: the budget it limits, the feed's own
+when absent. A cap's outlook, chances and warnings count only its budget's
+spend, and a feed may give two budgets' caps of the same name.
+
+`unit` is `dollars` when absent, or `share`, for a subscription's window
+(Claude's five hours, its week) whose use is a share: a share gives `used`,
+a fraction from 0 to 1, and `resets`, in place of `allowance`, `spent` and
+`fallback`. A share is never turned into dollars, so it has no forecast in
+dollars; `warn` and `state` still apply, and once it resets with no newer
+reading it stands at none used.
 
 A cap counts a rolling window of `windowHours` unless it gives `resets`, an
 instant after `at`: then it counts periods of `windowHours`, such as a

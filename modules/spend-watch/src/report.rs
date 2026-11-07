@@ -563,6 +563,12 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
 
 pub fn cap_line(picture: &Picture, view: &crate::picture::CapView) -> String {
     let cap = &view.cap;
+    if let Some(used) = view.used {
+        let resets = view.resets.map_or_else(String::new, |at| {
+            format!(" It resets at {}.", picture.zone.clock(at, picture.now))
+        });
+        return format!("{}: {} used.{resets}", cap.label, percent(used));
+    }
     let Some(allowance) = cap.allowance else {
         return format!("{}: no limit, {} spent.", cap.label, whole(view.spent));
     };

@@ -307,22 +307,25 @@ fn window(hours: u32) -> String {
 fn cap_line(picture: &Picture, view: &CapView, sign_ins: Vec<Line>) -> Line {
     let cap = &view.cap;
     let now = picture.now;
-    let side = match cap.allowance {
-        Some(allowance) => format!(
+    let side = match (view.used, cap.allowance) {
+        (Some(used), _) => format!("{} used", percent(used)),
+        (None, Some(allowance)) => format!(
             "{} of {}",
             percent(view.spent / allowance),
             whole(allowance)
         ),
-        None => format!("{} spent", whole(view.spent)),
+        (None, None) => format!("{} spent", whole(view.spent)),
     };
     let mut made = line(format!("cap:{}", cap.name), capitalized(&cap.label), side);
-    let counted = match view.resets {
-        Some(at) => format!(
+    let counted = match (view.used, view.resets) {
+        (Some(_), Some(at)) => format!("resets {}", picture.zone.clock(at, now)),
+        (Some(_), None) => format!("of {}", window(cap.window_hours)),
+        (None, Some(at)) => format!(
             "{} spent, resets {}",
             whole(view.spent),
             picture.zone.clock(at, now)
         ),
-        None => format!("{} in {}", whole(view.spent), window(cap.window_hours)),
+        (None, None) => format!("{} in {}", whole(view.spent), window(cap.window_hours)),
     };
     let ends = cap.ends.map(|day| {
         let said = format!("override ends {}", Zone::day_name(day));
@@ -337,7 +340,9 @@ fn cap_line(picture: &Picture, view: &CapView, sign_ins: Vec<Line>) -> Line {
     let mut events: Vec<&crate::caps::Event> = picture
         .events
         .iter()
-        .filter(|event| event.feed == cap.feed && event.name == cap.name)
+        .filter(|event| {
+            event.feed == cap.feed && event.budget == cap.budget && event.name == cap.name
+        })
         .collect();
     events.sort_by(|one, other| other.at.total_cmp(&one.at));
     made.rows = events
@@ -686,11 +691,14 @@ pub fn collection(
         if view.cap.window_hours <= 24 {
             continue;
         }
-        if let Some(allowance) = view.cap.allowance {
+        let share = view
+            .used
+            .or_else(|| view.cap.allowance.map(|allowance| view.spent / allowance));
+        if let Some(share) = share {
             quiet.push(line(
                 format!("quiet:cap:{}", view.cap.name),
                 capitalized(&view.cap.label),
-                percent(view.spent / allowance),
+                percent(share),
             ));
         }
     }
