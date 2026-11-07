@@ -262,3 +262,27 @@ function asksJoel(presence, by) {
     }
     return true;
 }
+
+// Whether a want of Joel's is said by Needs You's notice rather than its
+// session's. An action stands only while Needs You holds something of its
+// quest he can do now, and Needs You says each such item once, with how
+// long it takes and where it's done, so a session saying it as well put
+// two notices up for one thing to do: at 18:25 and 19:28 on 2026-11-06,
+// each of two items came twice in the same second. A question, a yes or a
+// stuck run is only ever the session's to say.
+function saidByNeedsYou(wants) {
+    return wants?.kind === "action";
+}
+
+// Who a want is, for its notice to be said once and withdrawn when it
+// ends: its session and the id the harness gives it, else its kind and
+// when it began, which the harness keeps as a standing want is raised
+// again. Never its words, which count up as a session holds more ("Holds
+// 3 calls", "and 2 more"), and each count was said as a new want, with its
+// sound. Its words only when it gives no start.
+function wantKey(address, wants) {
+    if (typeof wants?.id === "string" && wants.id !== "") {
+        return `${address} ${wants.id}`;
+    }
+    return `${address} ${wants?.kind ?? ""} ${wants?.since ?? wants?.said ?? ""}`;
+}
