@@ -1838,6 +1838,35 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
     desktop.photograph(f"launcher-agents-drawer-at-{shot}")
 
 
+def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str) -> None:
+    """Photograph the foot on a working, a listening and a paused row, then one's acts.
+
+    Return does each state's harmless act, which the foot says before it's pressed
+    (VKCF3Z, 2026-11-06): talk to one listening, resume one paused. A step in holds every
+    act in its fixed order, whatever Return does. From the find, a Return that changes
+    something only lands first, so the paused row's foot is kept there too.
+    """
+    desktop.down_to(titles["TESTQE"])
+    desktop.photograph(f"launcher-agents-returns-paused-found-at-{shot}")
+    desktop.normal()
+    feet = [("TESTQD", "working", "\u21b5 "), ("TESTQB", "listening", "\u21b5 talk")]
+    for address, stands, said in [*feet, ("TESTQE", "paused", "\u21b5 resume")]:
+        desktop.down_to(titles[address])
+
+        def foot_says(shown: Json, said: str = said) -> bool:
+            """Say whether the selected row's foot says Return's act."""
+            told = (shown["selected"] or {}).get("told", [])
+            return any(str(one).startswith(said) for one in told)
+
+        desktop.launcher_until(foot_says)
+        desktop.photograph(f"launcher-agents-returns-{stands}-at-{shot}")
+    desktop.down_to(titles["TESTQB"])
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Talk" in shown["rows"][:2])
+    desktop.photograph(f"launcher-agents-acts-at-{shot}")
+    desktop.step_out()
+
+
 def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -1884,6 +1913,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             shot = scale.replace(".", "-")
             desktop.photograph(f"launcher-agents-tree-at-{shot}")
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
+            returns_said_in_the_foot(desktop, titles, shot)
             desktop.close_launcher()
         orchestrator_says_whose_spend_is_whose(desktop)
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
