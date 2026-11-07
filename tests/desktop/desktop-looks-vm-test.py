@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 # Joel's scales.
 JOELS_SCALES = ("1.5", "2")
+# A folder kitty has visited, so kitty found holds something under it.
+VISITED = "~/src/tidepool"
 # The drawer takes what the screen leaves beside the centred card, less the gap between them
 # and the margin at the screen's edge, up to its most (Launcher.qml's drawerRoom): the frames
 # rung and the screen rung. On the laptop's 2880 that's 520 at 1.5 and 300 at 2; niri gives
@@ -308,7 +310,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         lands_on_a_setting(desktop, scale)
         lines_what_ends(desktop, scale)
         lists_every_key(desktop, scale)
-        desktop.close_launcher()
+        leaves_kitty(desktop)
         washes_what_it_finds(desktop, scale)
         numbers_programs(desktop, scale)
         counts_before_its_chord(desktop, scale)
@@ -395,11 +397,14 @@ def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
 
 
 def finds_kitty(desktop: Desktop, scale: str) -> None:
-    """Find kitty from its first letter, photographing the foot at k.
+    """Find kitty from its first letter, photographing the foot at k, then the folder under it.
 
     The first letter tells the foot more keys than it holds, so the completion, whose ghost the
     field shows, gives way, and Tab in stays, furthest from Return (VKCF3Z, 2026-11-06).
+    Found, kitty lists the folder it visited under it and its note counts it, so the shots show
+    a program holding what it does, at Joel's scales.
     """
+    desktop.as_account(f"mkdir -p {VISITED} && zoxide add {VISITED}")
     desktop.on_find()
     desktop.type_in("k")
     desktop.launcher_until(lambda shown: shown["typed"] == "k")
@@ -407,7 +412,24 @@ def finds_kitty(desktop: Desktop, scale: str) -> None:
     assert not overlaps, f"at {scale} on k: {overlaps}"
     desktop.photograph(f"launcher-finds-k-at-{scale.replace('.', '-')}")
     desktop.type_in("itty")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+
+    def holds_the_folder(shown: Json) -> bool:
+        """Say whether kitty is selected, counting the folder listed just under it."""
+        selected = shown["selected"] or {}
+        if selected.get("is") != "program:kitty":
+            return False
+        at = shown["rows"].index("kitty")
+        return "tidepool" in shown["rows"][at + 1 : at + 4] and "1 recent" in selected["note"]
+
+    desktop.launcher_until(holds_the_folder)
+    overlaps = desktop_session.foot_overlaps(desktop)
+    assert not overlaps, f"at {scale} on kitty: {overlaps}"
+
+
+def leaves_kitty(desktop: Desktop) -> None:
+    """Close the launcher found on kitty, and forget the folder it visited."""
+    desktop.close_launcher()
+    desktop.as_account(f"zoxide remove {VISITED} && rmdir {VISITED}")
 
 
 def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
@@ -426,7 +448,7 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     """Press a key with no meaning, l, h, q, n past the end and f to no row, shooting each.
 
     Each stands in the keys' place, the mark in text and its words muted, until the next key.
-    kitty opens on Return and holds its windows, so Ctrl+] goes in, furthest from Return.
+    kitty opens on Return and holds its windows, so Tab goes in, furthest from Return.
     Vim's wrapscan words and f's miss are the longest it says, so they're seen whole too.
     """
     machine = desktop.machine
@@ -450,8 +472,9 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     # gg stays on the first row and lets the words go.
     machine.send_chars("gg")
     desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
-    # Inside, the foot says - goes up, and - comes back to kitty.
-    desktop.follow()
+    # Tab opens kitty's page, as Joel goes in; inside, the foot says - goes up, and - comes
+    # back to kitty.
+    desktop.into_program()
     desktop.launcher_until(lambda shown: "- up" in (shown["selected"] or {}).get("told", []))
     desktop.photograph(f"launcher-inside-at-{at}")
     desktop.step_out()
