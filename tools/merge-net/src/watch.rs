@@ -633,16 +633,15 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         .collect();
     let outcomes = attempt_all(world, state, &head, &tests);
     let quarantined = world.quarantined(&head);
+    let on_hold = |test: &str| hold.as_ref().is_some_and(|hold| hold["test"] == test);
+    let owner_in = |test: &str| owner_of(world, &base, &head, test, &tests);
     let mut failed = false;
     let mut unfinished = false;
     for (test, outcome) in tests.iter().zip(outcomes) {
         let kept_out = quarantined.contains(test);
         match outcome {
             Outcome::Passed => {
-                if hold
-                    .as_ref()
-                    .is_some_and(|hold| hold["test"] == test.as_str())
-                {
+                if on_hold(test) {
                     state.clear_hold()?;
                     state.say(&format!(
                         "{test} passes again at {}, so the hold is cleared",
@@ -652,7 +651,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
                 let reason = format!("failed, then passed, at {}", short(&head));
-                let owner = owner_of(world, &base, &head, test, &tests);
+                let owner = owner_in(test);
                 let made = world.quarantine(test, owner, &head, &reason);
                 state.find(&json!({
                     "kind": "flaky",
@@ -671,17 +670,14 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                     "kind": "failed-in-quarantine",
                     "test": test,
                     "commit": head,
-                    "owner_pr": owner_of(world, &base, &head, test, &tests),
+                    "owner_pr": owner_in(test),
                     "log": state.log(&head, test, 2).display().to_string(),
                     "at": now(),
                 }))?;
             }
             Outcome::Failed => {
                 failed = true;
-                if hold
-                    .as_ref()
-                    .is_some_and(|hold| hold["test"] == test.as_str())
-                {
+                if on_hold(test) {
                     continue;
                 }
                 broke(world, state, &base, &head, test)?;
@@ -692,12 +688,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             // but no merge is blamed for it.
             Outcome::Stalled => {
                 failed = true;
-                stalled(
-                    state,
-                    &head,
-                    test,
-                    owner_of(world, &base, &head, test, &tests),
-                )?;
+                stalled(state, &head, test, owner_in(test))?;
             }
         }
     }
