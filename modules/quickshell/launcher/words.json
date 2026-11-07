@@ -2315,6 +2315,7 @@
       "id": "time:clock",
       "in": "time",
       "name": "Clock",
+      "empty": "Nothing keeps the time.",
       "said": {
         "synchronised": "synchronised",
         "unsynchronised": "not synchronised",

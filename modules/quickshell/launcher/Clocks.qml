@@ -373,21 +373,25 @@ Provider {
 
     // The clock's keeping: Clock, stepping into its figures, and Servers,
     // stepping into every server chrony asks, the chosen first (VKCF3Z).
-    // With nothing keeping the time, Clock says so and no more.
+    // Before chrony answers, or with nothing keeping the time, Clock is
+    // still the thing Return steps into, its side saying how it stands and
+    // its inside why it holds nothing, so the row never changes kind under
+    // the cursor as the reading comes, and Return always does something
+    // (Joel, 2026-10-26: every row has a Return act; VKCF3Z, 2026-11-06).
     function keeping() {
         const said = clockSaid;
         if (!kept) {
             const waiting = Timekeeping.watching > 0 && !Timekeeping.refused;
             // Keyed as the Clock chronyd's answer brings, so a step into
-            // Time made before it answers keeps one Clock in its place
-            // once it does, rather than this one gone and that one last.
-            return [copyRow({
+            // Time, or into Clock, made before it answers holds its place
+            // once it does, and Clock's figures come into it.
+            return [thingRow({
                 key: "time:clock",
                 name: Words.name("time:clock"),
                 side: waiting ? "\u2026" : said.nothing,
-                copiesNothing: true,
-                glyph: ""
-            })];
+                empty: waiting ? "\u2026" : Words.of("time:clock").empty,
+                glyph: Theme.glyph.clock
+            }, () => [])];
         }
         const now = Date.now();
         const parts = clockParts(now);
