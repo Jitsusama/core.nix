@@ -105,6 +105,9 @@ pub struct World<'a> {
     pub me: u32,
     /// The account the guard reclaims for.
     pub uid: u32,
+    /// The account's home, for the account's guard: a checkout missing
+    /// from its filesystem was deleted, since that filesystem is here.
+    pub home: Option<&'a Path>,
     pub boot: Boot,
     pub awake: &'a Awake,
     /// Wall seconds.
@@ -551,7 +554,8 @@ impl Walks {
         let walked = self.0.entry((root.clone(), depth)).or_insert_with(|| {
             let device = device(&root)?;
             world.walked += 1;
-            let found = discover::walk(&root, depth.map(|depth| depth as usize)).ok()?;
+            let found =
+                discover::walk(&root, depth.map(|depth| depth as usize), world.home).ok()?;
             Some((device, found))
         });
         walked

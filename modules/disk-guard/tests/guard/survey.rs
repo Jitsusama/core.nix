@@ -86,6 +86,7 @@ fn surveyed(
         processes,
         me: std::process::id(),
         uid: unsafe { libc::geteuid() },
+        home: None,
         boot: BOOT,
         awake: &awake,
         now: at,

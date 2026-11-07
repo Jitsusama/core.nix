@@ -945,7 +945,11 @@ impl Guard {
                 continue;
             };
             for root in roots {
-                let found = discover::walk(root, depth.map(|depth| depth as usize));
+                let found = discover::walk(
+                    root,
+                    depth.map(|depth| depth as usize),
+                    self.home.as_deref(),
+                );
                 for tree in found.unwrap_or_default() {
                     if tree.kind != discover::Kind::Target {
                         continue;
@@ -1913,6 +1917,7 @@ impl Guard {
             me,
             // SAFETY: geteuid only reads the process's own credentials.
             uid: unsafe { libc::geteuid() },
+            home: self.home.as_deref(),
             boot,
             awake: &self.memory.awake,
             now: tick.wall,

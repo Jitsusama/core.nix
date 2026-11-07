@@ -95,7 +95,8 @@ fn git_top(dir: &Path) -> Option<PathBuf> {
 /// to be found. A target is one cargo marked, or one named `target` beside
 /// a manifest before cargo has marked it; a `target` with no manifest
 /// beside it holds targets, one per project of a checkout holding many.
-pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
+/// `home` is the account's home, as `checkout_of` takes it.
+pub fn walk(root: &Path, depth: Option<usize>, home: Option<&Path>) -> io::Result<Vec<Found>> {
     let root = fs::canonicalize(root)?;
     let device = fs::metadata(&root)?.dev();
     let mut found = Vec::new();
@@ -144,7 +145,7 @@ pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
                     checkout,
                 });
             } else if marked(&path) {
-                let checkout = checkout_of(&path);
+                let checkout = checkout_of(&path, home);
                 found.push(Found {
                     path,
                     kind: Kind::Target,
@@ -152,7 +153,7 @@ pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
                 });
             } else if name == "target" {
                 for project in subdirs(&path).into_iter().filter(|p| marked(p)) {
-                    let checkout = checkout_of(&project);
+                    let checkout = checkout_of(&project, home);
                     found.push(Found {
                         path: project,
                         kind: Kind::Target,
@@ -237,9 +238,12 @@ fn dep_infos(target: &Path) -> impl Iterator<Item = PathBuf> {
 
 /// The checkout a target was built from, by the sources its dep-info
 /// names. A source that still exists places it. When none does, the
-/// checkout is gone, unless the nearest directory that survives is on
-/// another filesystem than the target, as a drive's mount point is.
-pub fn checkout_of(target: &Path) -> Checkout {
+/// checkout is gone if the nearest directory that survives is on the
+/// target's filesystem, or on the same filesystem as `home`, which is here
+/// whenever the guard is; anywhere else it may be a drive that isn't
+/// mounted, and the checkout is unknown. Cargo's builds can have a
+/// filesystem to themselves, which no checkout is on.
+pub fn checkout_of(target: &Path, home: Option<&Path>) -> Checkout {
     let mut missing = None;
     for file in dep_infos(target).take(DEP_INFO_BUDGET) {
         for source in dep_info_sources(&file) {
@@ -266,7 +270,10 @@ pub fn checkout_of(target: &Path) -> Checkout {
         }
     };
     let device = |path: &Path| fs::metadata(path).map(|m| m.dev()).ok();
-    if device(survivor).is_some() && device(survivor) == device(target) {
+    let pool = |path: &Path| crate::pool::pool(path).ok();
+    let beside_target = device(survivor).is_some() && device(survivor) == device(target);
+    let in_home = home.is_some_and(|home| pool(survivor).is_some() && pool(survivor) == pool(home));
+    if beside_target || in_home {
         Checkout::Gone(gone.to_owned())
     } else {
         Checkout::Unknown
