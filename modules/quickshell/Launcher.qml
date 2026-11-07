@@ -7250,7 +7250,7 @@ Scope {
 
                             // The selection itself, under the rows, which
                             // draw no fill of their own here (Choice's fills).
-                            Rectangle {
+                            Ground {
                                 id: picked
 
                                 // Among the rows, so it scrolls with them:
@@ -7259,16 +7259,9 @@ Scope {
                                 // its row as the list had gone down.
                                 parent: list.contentItem
                                 z: -1
-                                // Its row's whole band, as Vim's cursorline
-                                // fills its line: from the frame's inside
-                                // edge to its other, the gutter's numbers
-                                // and the far end's ink an inset of padding
-                                // inside it, square, meeting the rows above
-                                // and below (VKCF3Z, 2026-11-06, for Joel's
-                                // "rows in the launcher should have padding
-                                // instead of margins"). A gap above a row
-                                // stays outside its band.
-                                x: -list.x
+                                // Its row's whole band (Ground.qml). A gap
+                                // above a row stays outside its band.
+                                from: list.x
                                 width: listBox.width
                                 height: root.rowTall
                                 // The rows sit from the list's origin, which
@@ -7284,8 +7277,7 @@ Scope {
                                 // stays marked, in the raised role rather
                                 // than the selection's, since the keys
                                 // aren't here: a mark, not a selection.
-                                color: Qt.alpha(QueryKeys.paged(prompt.mode) ? Theme.raised
-                                    : Theme.selection, Theme.floating.selection)
+                                ink: QueryKeys.paged(prompt.mode) ? "raised" : "selection"
                             }
 
                             delegate: Item {

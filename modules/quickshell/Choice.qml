@@ -167,20 +167,12 @@ Rectangle {
         font.pointSize: Theme.level.name.pointSize
     }
 
-    // Its ground, its whole band, as Vim's cursorline fills its line: from
-    // the frame's inside edge to its other, the gutter's numbers and its
-    // far end's ink an inset of padding inside it, square, so a ground
-    // meets the rows above and below (VKCF3Z, 2026-11-06, for Joel's "rows
-    // in the launcher should have padding instead of margins"). It replaced
-    // a ground close round the ink, a margin round a highlight.
-    Rectangle {
-        x: -row.groundFrom
+    // Its ground, its whole band (Ground.qml).
+    Ground {
+        from: row.groundFrom
         width: row.width + row.groundFrom
         height: row.height
-        color: row.flashed ? Theme.accent
-            : row.selected && row.fills || row.tinted
-                ? Qt.alpha(Theme.selection, Theme.floating.selection)
-            : "transparent"
+        ink: row.flashed ? "flash" : row.selected && row.fills || row.tinted ? "selection" : ""
     }
 
     // What the row says at its right is measured as it loads at many times
