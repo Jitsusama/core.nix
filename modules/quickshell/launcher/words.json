@@ -6096,9 +6096,11 @@
       "glyph": "recent",
       "said": {
         "open": "{count} open",
+        "tab": "1 tab",
         "tabs": "{count} tabs",
         "recent": "{count} recent",
-        "next": "next {when} {name}",
+        "next": "next {when} \u00b7 {name}",
+        "today": "{count} today",
         "parts": "{count} new"
       }
     },

@@ -172,6 +172,22 @@ Provider {
     // column when two are titled alike. Each holds what Windows' row for it
     // does (Windows.qml's actsOf), so a window has one set of insides
     // wherever it shows.
+    // Whether a program has a window open now.
+    function isRunning(entry) {
+        return (running[entry.id] ?? []).length > 0;
+    }
+
+    // The pages a closed browser's saved session holds, each as a site it
+    // visited, newest looked at first, each once.
+    function savedSites(entry) {
+        const seen = new Set();
+        return provider.recents.openIn(entry.id).map(line => line.split("\t"))
+            .filter(tab => (tab[4] ?? "") !== "")
+            .sort((a, b) => Number(b[3]) - Number(a[3]))
+            .filter(tab => !seen.has(tab[4]) && seen.add(tab[4]))
+            .map(tab => provider.visited(entry, `${tab[4]}\t${tab[5] ?? ""}`));
+    }
+
     function windowsOf(entry) {
         return (running[entry.id] ?? []).slice(1).map(window => windowRow(window, entry));
     }
@@ -667,7 +683,14 @@ Provider {
         const own = source?.list ? source : null;
         provider.recents.ask(entry.id);
         const listed = () => {
-            const open = source?.kind === "site" ? provider.openSites(entry, source)
+            const site = source?.kind === "site";
+            // A browser's tabs are open only while it runs: one its saved
+            // session still holds once it's closed is a site it visited,
+            // never "open" beside a Return that starts it (VKCF3Z,
+            // 2026-11-07).
+            const live = provider.isRunning(entry);
+            const open = site && live ? provider.openSites(entry, source)
+                : site ? provider.savedSites(entry)
                 : source?.opened ? provider.openFiles(entry, source) : [];
             const shown = open.map(row => row.key);
             return open.concat(provider.recents.of(entry.id)
@@ -727,17 +750,28 @@ Provider {
         const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
         const open = provider.recents.openIn(entry.id);
         const site = source?.kind === "site";
-        const opened = site ? new Set(open.map(line => line.split("\t")[4] ?? "")
-            .filter(address => address !== "")).size : open.length;
-        const kept = provider.recents.of(entry.id).length + givenRecent(entry.id).length;
+        const pages = new Set(open.map(line => line.split("\t")[4] ?? "")
+            .filter(address => address !== "")).size;
+        // A closed browser's saved tabs are counted as recent, as listed.
+        const live = isRunning(entry);
+        const opened = site ? (live ? pages : 0) : open.length;
+        const kept = provider.recents.of(entry.id).length + givenRecent(entry.id).length
+            + (site && !live ? pages : 0);
         const parts = provider.launcher?.partsOfRows[`program:${entry.id}`] ?? [];
-        const meeting = parts.find(part => part.what === "meeting") ?? null;
+        const meetings = parts.filter(part => part.what === "meeting");
         const mail = parts.filter(part => part.what === "mail").length;
-        const next = meeting !== null
-            ? (words.next ?? "").replace("{when}", meeting.side ?? "")
-                .replace("{name}", meeting.name)
+        // Its next meeting by name only where none is listed under it, and
+        // while they are, how many are today, so the say never names a row
+        // just below it (VKCF3Z, 2026-11-07).
+        const listed = provider.launcher?.underListed === `program:${entry.id}`;
+        const today = meetings.filter(part => part.today === true).length;
+        const next = meetings.length > 0
+            ? listed ? (today > 0 ? fill(words.today, today) : "")
+                : (words.next ?? "").replace("{when}", meetings[0].side ?? "")
+                    .replace("{name}", meetings[0].name)
             : mail > 0 ? fill(words.parts, mail) : "";
-        return [opened > 0 ? fill(site ? words.tabs : words.open, opened) : "",
+        const tabs = opened === 1 ? words.tab : words.tabs;
+        return [opened > 0 ? fill(site ? tabs : words.open, opened) : "",
             kept > 0 ? fill(words.recent, kept) : "", next]
             .filter(said => said !== "").join(" \u00b7 ");
     }
@@ -1161,10 +1195,13 @@ Provider {
             Object.defineProperties(row, {
                 verb: { enumerable: true, get: () => latest() ? "go to" : "start" },
                 // What it is, then how many windows it has open, after its
-                // name.
+                // name; only what it is while its say counts what it holds,
+                // which says it's open already, so the say isn't cut for
+                // saying it twice (VKCF3Z, 2026-11-07).
                 count: {
                     enumerable: true,
-                    get: () => [entry.genericName.toLowerCase(), provider.windowCount(entry)]
+                    get: () => [entry.genericName.toLowerCase(),
+                        provider.holding(entry) === "" ? provider.windowCount(entry) : ""]
                         .filter(part => part !== "").join(" \u00b7 ")
                 },
                 // The layer of its own keys it holds as Shortcuts, so the

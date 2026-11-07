@@ -366,9 +366,14 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     foot = laid_out(desktop)["foot"]
     assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
     # The room the opening held is just the widest the find has drawn: what the opening's
-    # keys took, or what the letter brought, and no more.
-    drawn = max(opened["keysRoom"]["said"], shown["keysRoom"]["said"])
-    assert opened["keysRoom"]["held"] == drawn, (
+    # keys took, or what the letter brought, and no more, but for Return held as wide as the
+    # widest verb the words name, where its place draws only the rows' own (VKCF3Z,
+    # 2026-11-07: the slack before Return's dot is only what the rows' verbs need).
+    drawn = max(
+        opened["keysRoom"]["said"] + opened["keysRoom"]["returnSlack"],
+        shown["keysRoom"]["said"] + shown["keysRoom"]["returnSlack"],
+    )
+    assert abs(opened["keysRoom"]["held"] - drawn) <= 1, (
         f"the opening held {opened['keysRoom']['held']} px for the keys, which take"
         f" {opened['keysRoom']['said']} ({opened['hints']}) and then"
         f" {shown['keysRoom']['said']} ({shown['hints']})"

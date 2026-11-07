@@ -88,13 +88,32 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
             return False
         at = rows.index("Calendar")
-        # And Calendar says its next meeting, as the cursor reads it.
+        # And Calendar counts today's, never naming a meeting listed just under it.
         said = str(shown["selected"].get("note", ""))
-        return "Design Review" in rows[at + 1 : at + 4] and said.startswith("next ")
+        listed = "Design Review" in rows[at + 1 : at + 4]
+        return listed and re.fullmatch(r"\d+ today", said) is not None
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)
     desktop.photograph("launcher-calendar-typed")
+    desktop.close_launcher()
+    # In Programs, where nothing is listed under it, it names its next, the time and the name
+    # apart.
+    desktop.answer("programs")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "collection:applications"
+    )
+    desktop.step_in("ret")
+    desktop.down_to("Calendar")
+    desktop.launcher_until(
+        lambda shown: (
+            re.fullmatch(
+                r"next in \d+ min \u00b7 Design Review", str(shown["selected"].get("note", ""))
+            )
+            is not None
+        )
+    )
+    desktop.photograph("launcher-calendar-in-programs")
     desktop.close_launcher()
 
 

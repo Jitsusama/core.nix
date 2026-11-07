@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import STARTING, drawn_at, retry
+from desktop_session import STARTING, drawn_at, laid_out, retry
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1016,6 +1017,86 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
 # zoxide's database changes, even one it made after the shell started.
 # Return on one opens a kitty window there through the kitty already open,
 # over its socket, rather than starting another.
+
+
+def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_page(
+    desktop: Desktop,
+) -> None:
+    """Chrome typed lists its tabs, then the sites it visited, a depth in under it; Tab goes in.
+
+    The machine's Chrome is a stand-in whose lists are files the test writes, in the form
+    chrome-recent-sites prints them: a tab a line (its id, window, whether it's in front, when
+    it was looked at, its address and title), and a site a line (its address and title). Closed,
+    the tab its session kept is a site it visited, never open beside a Return that starts it;
+    with a window, the tab is open, Return goes to Chrome, and its page opens on Go To.
+    """
+    visited = "/run/user/1000/chrome-visited"
+    open_now = "/run/user/1000/chrome-open"
+    sites = "https://estuary.example.org/\tEstuary Notes\nhttps://reef.example.org/\tReef Survey\n"
+    tab = "7\t1\ttrue\t1794070000000\thttps://tide.example.org/\tTide Tables\n"
+    desktop.as_account(f"printf '%s' {shlex.quote(sites)} > {visited}")
+    desktop.as_account(f"printf '%s' {shlex.quote(tab)} > {open_now}")
+    window = "kitty --class google-chrome --title 'Tide Tables - Google Chrome'"
+
+    def under_chrome(note: str, verb: str) -> Callable[[Json], bool]:
+        """Say whether Chrome is selected, saying this, with its tab and its sites under it."""
+
+        def holds(shown: Json) -> bool:
+            rows = shown["rows"]
+            selected = shown["selected"] or {}
+            if selected.get("is") != "program:google-chrome":
+                return False
+            at = rows.index("Google Chrome")
+            listed = rows[at + 1 : at + 4] == ["Tide Tables", "Estuary Notes", "Reef Survey"]
+            return listed and (selected.get("note"), selected.get("verb")) == (note, verb)
+
+        return holds
+
+    try:
+        desktop.answer("chrome")
+        desktop.launcher_until(under_chrome("3 recent", "start"))
+        # Return's place is as wide as the verbs the rows listed say, so the slack before it
+        # is less than one of them: held as wide as every verb the words name, it left a gap
+        # wider than "start" itself (VKCF3Z, 2026-11-07).
+        foot = laid_out(desktop)["foot"]
+        into = next(at for at, word in enumerate(foot) if word["text"] == "Tab")
+        tab_in, after = foot[into + 1], foot[into + 2]
+        verb = next(word for word in foot[into + 2 :] if word["text"] == "start")
+        slack = after["starts"] - (tab_in["starts"] + tab_in["width"])
+        assert slack < verb["width"], (slack, foot)
+        desktop.close_launcher()
+        desktop.as_account(f"niri msg action spawn -- {window}")
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session("niri msg focused-window | grep -q google-chrome"),
+            timeout=STARTING,
+        )
+        desktop.answer("chrome")
+        desktop.launcher_until(under_chrome("1 tab \u00b7 2 recent", "go to"))
+        # Each sits a depth in under Chrome, which is all that ties it there.
+        rows = laid_out(desktop)["rows"]
+        depths = {row["reads"].split(" \u00b7 ")[0]: row["depth"] for row in rows}
+        # Its say counts the tab, so its kind alone follows its name, never "1 window" too.
+        chrome = next(row["reads"] for row in rows if row["reads"].startswith("Google Chrome"))
+        assert chrome.split(" \u00b7 ")[1] == "web browser", chrome
+        assert [depths.get(name) for name in ("Google Chrome", "Tide Tables", "Reef Survey")] == [
+            0,
+            1,
+            1,
+        ], depths
+        desktop.photograph("launcher-chrome-typed")
+        # Tab opens Chrome's page, its first row Return's own, and its Recent in it.
+        desktop.into_program()
+        desktop.launcher_until(
+            lambda shown: (
+                len(shown["held"]) == 1 and shown["current"] == 0 and "Recent" in shown["rows"]
+            )
+        )
+        assert desktop.showing()["selected"]["name"] == "Go To", desktop.showing()["selected"]
+        desktop.photograph("launcher-chrome-page")
+    finally:
+        desktop.close_launcher()
+        # The bracket keeps pkill from matching the shell that runs it.
+        desktop.as_account(f"pkill -f 'kitty --clas[s] google-chrome'; rm -f {visited} {open_now}")
 
 
 def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> None:
