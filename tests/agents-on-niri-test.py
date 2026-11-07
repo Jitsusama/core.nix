@@ -264,7 +264,8 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
 ) -> None:
     """Past 80% of its context, a row says how full before how it stands, in the action's hue."""
     row = found(shell, "listening quest", "Listening Quest")
-    assert row["side"] == "84% full \u00b7 listening", row
+    # Found by typing, whom it's under leads, before what's its own.
+    assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
     assert row["hue"] == "action", row
     # Its drawer gives its figures by gen_ai's names after what's known of it.
     figures = ["Model", "Context", "Last Turn", "Turns Today", "Tokens", "Cache"]
