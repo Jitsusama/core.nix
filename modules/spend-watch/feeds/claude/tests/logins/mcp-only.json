@@ -1,0 +1,7 @@
+{
+  "mcpOAuth": {
+    "some-server": {
+      "accessToken": "recorded-for-tests"
+    }
+  }
+}

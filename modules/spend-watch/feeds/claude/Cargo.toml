@@ -1,0 +1,19 @@
+# claude-plan-feed speaks for a Claude plan to spend-watch: how much of its
+# five hours and its week is used, and when each resets (src/lib.rs says how).
+[package]
+name = "claude-plan-feed"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Instants as the contract writes them, and as the endpoint and Claude Code
+# write theirs.
+jiff = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "3"
+
+[dev-dependencies]
+tempfile = "3"

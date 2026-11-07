@@ -1,0 +1,5 @@
+{"v":1,"kind":"action","id":"sign-in","name":"Sign In to the Claude Plan","run":["kitty","--hold","pi-claude","login"],"fits":["sign-in"]}
+{"v":1,"kind":"cap","name":"five-hours","label":"Claude Pro five-hour allowance","unit":"share","used":0.62,"windowHours":5,"resets":"2026-11-06T18:00:00Z","warn":0.8,"state":"ok","at":"2026-11-06T15:00:00Z"}
+{"v":1,"kind":"cap","name":"week","label":"Claude Pro weekly allowance","unit":"share","used":0.4,"windowHours":168,"resets":"2026-11-09T17:00:00Z","warn":0.8,"state":"ok","at":"2026-11-06T15:00:00Z"}
+{"v":1,"kind":"health","source":"plan","state":"fine","message":"signed in to Claude Pro"}
+{"v":1,"kind":"read","source":"plan","bytes":814,"millis":120}
