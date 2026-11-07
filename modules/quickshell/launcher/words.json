@@ -128,9 +128,8 @@
         "listening": "listening",
         "paused": "paused",
         "parked": "parked",
-        "today": "{spent} today",
-        "inAll": "{spent} today in all",
         "allOf": "{spent} in all",
+        "since": "since {at}",
         "under": "under {address}"
       }
     },
