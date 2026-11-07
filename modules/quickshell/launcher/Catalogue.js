@@ -235,8 +235,14 @@ function saysAct(one, said) {
 // its own to add, nor does one holding nothing. One giving both its verbs
 // and its targets holds rows, as a holder, a talk or a meeting's See It
 // does, so its Return is the step itself. One already inside, by its
-// verb or its name, is moved first rather than said twice.
+// verb or its name, is moved first rather than said twice. A row naming
+// the act its Return does (`returns`) keeps its acts in their own order,
+// as a session's are fixed (VKCF3Z, 2026-11-06: Go To, Talk, Pause or
+// Resume, Stop, Close), its Return being one of them.
 function leading(row, inside) {
+    if (row.returns) {
+        return inside;
+    }
     const verb = verbOf(row);
     const said = verb.toLowerCase();
     // A copy is never first inside: a row whose only act is copying steps

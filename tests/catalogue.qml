@@ -316,6 +316,11 @@ QtObject {
             [0, "", ""]);
         expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "go", run: does,
             verbs: opens }, [{ name: "Go To", verb: "go", run: does }])), "Go To");
+        // One naming its Return's act keeps its acts in their own order.
+        expect("a session's acts stay in order", names(Catalogue.leading({ name: "A Quest",
+            verbs: opens, returns: { verb: "talk", run: does } }, [{ name: "Go To",
+            verb: "go", run: does }, { name: "Talk", verb: "talk", run: does }])),
+            "Go To, Talk");
         // One already inside, named as it's done, is moved first, not doubled.
         const joined = { name: "Lantern", verb: "disconnect", run: does, verbs: opens };
         expect("found by its name", names(Catalogue.leading(joined, [{ name: "Sign in to it",
