@@ -2008,8 +2008,8 @@ Floating {
                             // for a share, as Context's is, or Graph's spark
                             // for a history, as Today's (VKCF3Z, 2026-11-07),
                             // as `figure: { shape, values, warn }`. It
-                            // follows its value on the value's line, the
-                            // names' gap apart, only where it fits whole, so
+                            // follows its value on the value's line, only
+                            // where it fits, so
                             // it takes room on its own fact alone, gives way
                             // before the value, and moves no value. It's no
                             // line for the cursor, as a picture isn't.
@@ -2018,19 +2018,24 @@ Floating {
                             readonly property real figureFrom: {
                                 const face = drawer.faceOf(modelData);
                                 void face.font;
+                                // A value and its figure are two runs of one
+                                // thing, apart as Meter's figure and stroke.
                                 return valueFrom + (known ? face.advanceWidth(
-                                    drawer.unbroken(modelData.value)) : 0) + drawer.labelsGap;
+                                    drawer.unbroken(modelData.value)) : 0)
+                                    + Theme.space.rung.apart;
                             }
                             // A spark keeps Graph's ten cells; a stroke,
                             // having no letters, takes what room the line
-                            // leaves, up to as wide, and down to four of them.
+                            // leaves, as Meter's does, up to as wide, and
+                            // down to three of them, short of which a share
+                            // no longer reads.
                             readonly property real figureRoom: width - figureFrom
                             readonly property real figureWide: figure?.shape === "stroke"
                                 ? Math.min(figureInk.advanceWidth, figureRoom)
                                 : figureInk.advanceWidth
                             readonly property bool figureShown: figure !== null
                                 && value.lineCount <= 1 && figureWide <= figureRoom
-                                && figureWide >= figureInk.advanceWidth * 0.4
+                                && figureWide >= figureInk.advanceWidth * 0.3
                             // The value's baseline, down from the fact's top.
                             readonly property real valueBase: value.y + value.baselineOffset
                             readonly property real share: Math.max(0, Math.min(1,
