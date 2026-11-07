@@ -7002,6 +7002,7 @@
       "late": "{object} not {did} yet",
       "noAnswer": "no answer",
       "objects": {
+        "deskLight": "Desk Light",
         "recording": "Recording"
       },
       "did": {
@@ -7010,6 +7011,7 @@
         "forget": "forgotten",
         "off": "turned off",
         "on": "turned on",
+        "set": "set",
         "stop": "stopped",
         "trust": "trusted"
       }

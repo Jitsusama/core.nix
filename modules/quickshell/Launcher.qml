@@ -471,6 +471,10 @@ Scope {
     // 2026-10-25: "jumpy ... at home arrowing around"). An answer asked
     // again keeps the list where it was scrolled, as a refresh does.
     function reanswer(source) {
+        // An answer's rows are said only by asking it, so what it holds
+        // agrees as it's asked again, shown or not, as the desk light's
+        // Brightness does once litra says so.
+        heldAgreed([source]);
         // At home nothing is asked again, even of a place that's one answer
         // (Disk), so home is never made again under him.
         if (!open || (held.length === 0 && typed.trim() === ""))
@@ -4143,11 +4147,21 @@ Scope {
     // makes it so, or left out where `row` is null. What's said if it never
     // comes names the row as `name` and what was asked by `act`'s verb.
     function becomes(from, key, row, said) {
+        becomesAll(from, [{ key: key, row: row }], said);
+    }
+
+    // Several of `from`'s rows, each { key, row }, held as one act's.
+    function becomesAll(from, holds, said) {
+        if (holds.length === 0)
+            return;
         const now = Object.assign({}, becoming);
-        now[key] = { key: key, from: from, row: row, name: said.name, act: said.act,
-            at: Date.now() };
+        const at = Date.now();
+        for (const one of holds) {
+            now[one.key] = { key: one.key, from: from, row: one.row, name: said.name,
+                act: said.act, at: at };
+            Report.say(`becoming ${one.key}`);
+        }
         becoming = now;
-        Report.say(`becoming ${key}`);
         timeBecoming();
         refreshed(from);
     }
@@ -4205,6 +4219,9 @@ Scope {
     // step is left.
     function nowRow(one) {
         const key = one.key;
+        const own = one.from.rowNow(key);
+        if (own !== undefined)
+            return own;
         const made = one.from.things.concat(one.from.everything())
             .concat(...held.map(step => step.rows ?? []));
         const found = made.find(row => row.key === key && !row.gone);

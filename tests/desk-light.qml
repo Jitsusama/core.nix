@@ -68,6 +68,19 @@ ShellRoot {
         id: launcher
 
         property bool open: false
+        // The rows the light said it will become, by key, and as what, as
+        // the launcher holds them until the light says so (Launcher.qml's
+        // becomesAll).
+        property var held: ({})
+        property var told: null
+
+        function becomesAll(from, holds, said) {
+            const now = Object.assign({}, held);
+            for (const one of holds)
+                now[one.key] = one.row;
+            held = now;
+            told = said;
+        }
     }
 
     Launcher.Light {
@@ -114,12 +127,30 @@ ShellRoot {
         const set = light.answer("desk light 60");
         expect("a share set", set.headline === "set the desk light to 60%" && set.verb === "set", set.headline);
         set.run();
+        // Told before litra answers, the rows as they'll be: its Brightness
+        // at 60% and that level chosen in its step, but nothing it leaves as
+        // it was (Joel, 2026-11-07: "it should show right away").
+        const becoming = launcher.held;
+        expect("the rows as they'll be, before litra answers",
+            becoming["light:desk:brightness"]?.side === "60%"
+                && becoming["light:desk:level:60"]?.side === "chosen"
+                && becoming["light:desk:level:40"]?.side === ""
+                && !("light:desk:warmth" in becoming) && !("verb:turn" in becoming)
+                && launcher.told?.name === "Desk Light" && launcher.told?.act === "set",
+            `${Object.keys(becoming).join(" ")} ${JSON.stringify(launcher.told)}`);
         root.step("brighter by the launcher", () => root.lit(60, 4000), root.brighter);
     }
 
     function brighter() {
         expect("the bar shows a brightness", root.brightened === 1 && root.warmed === 0,
             `${root.brightened} ${root.warmed}`);
+        // How each row reads now, for the launcher to tell its hold is
+        // done with, shown or not.
+        expect("each row as it reads now",
+            light.rowNow("light:desk:brightness")?.side === "60%"
+                && light.rowNow("light:desk:level:60")?.side === "chosen",
+            JSON.stringify([light.rowNow("light:desk:brightness")?.side,
+                light.rowNow("light:desk:level:60")?.side]));
         const set = light.answer("desk light 3000 k");
         expect("a warmth set", set.headline === "set the desk light to 3000 K", set.headline);
         set.run();
@@ -180,7 +211,14 @@ ShellRoot {
             `${root.brightened} ${root.warmed}`);
         expect("off", light.answer("desk light").headline === "the desk light is off",
             light.answer("desk light").headline);
+        launcher.held = ({});
         light.answer("desk light on").run();
+        const lighting = launcher.held;
+        expect("lit, it says so at once",
+            lighting["verb:turn"]?.name === "Turn It Off"
+                && lighting["light:desk:brightness"]?.side === "70%"
+                && launcher.told?.act === "on",
+            `${Object.keys(lighting).join(" ")} ${JSON.stringify(launcher.told)}`);
         root.step("lit by the launcher", () => DeskLight.light !== null && DeskLight.light.on,
             root.optioned);
     }

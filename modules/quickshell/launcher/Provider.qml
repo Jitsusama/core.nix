@@ -171,7 +171,23 @@ Scope {
     // `name` and what was asked by the verb `act` names in words.json's
     // field.becoming.did.
     function becomes(key, row, name, act) {
-        launcher?.becomes(provider, key, row, { name: name, act: act });
+        becomesAll([{ key: key, row: row }], name, act);
+    }
+
+    // Several rows at once, each { key, row }, as one act changes them all:
+    // the desk light's Brightness, the level chosen in its step, and how to
+    // put it out.
+    function becomesAll(holds, name, act) {
+        launcher?.becomesAll(provider, holds, { name: name, act: act });
+    }
+
+    // How a row of its own reads now, by its key, wherever it's shown, or
+    // null where it makes none; undefined where it can't say, which leaves
+    // the launcher to look for it among what it shows (Launcher.qml's
+    // nowRow). An answer's parts are said only by the answer, so the desk
+    // light says its own.
+    function rowNow(key) {
+        return undefined;
     }
 
     // What an act asked wasn't done, said in its own words, lowercase; ""
