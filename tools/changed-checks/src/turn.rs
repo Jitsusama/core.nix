@@ -33,21 +33,14 @@ pub fn taken(path: &Path, waiting: impl FnOnce()) -> Result<File, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::scratch::Scratch;
     use std::sync::mpsc;
     use std::time::Duration;
 
-    /// A folder of the test's own, emptied first.
-    fn folder(test: &str) -> PathBuf {
-        let folder =
-            std::env::temp_dir().join(format!("changed-checks-turn-{}-{test}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        folder
-    }
-
     #[test]
     fn a_turn_free_is_taken_at_once_without_waiting() {
-        let path = folder("free").join("turns/here.lock");
+        let scratch = Scratch::new("turn-free");
+        let path = scratch.join("turns/here.lock");
         let mut waited = false;
         let _turn = taken(&path, || waited = true).unwrap();
         assert!(!waited);
@@ -55,7 +48,8 @@ mod tests {
 
     #[test]
     fn a_turn_held_is_waited_for_and_taken_once_given_back() {
-        let path = folder("held").join("here.lock");
+        let scratch = Scratch::new("turn-held");
+        let path = scratch.join("here.lock");
         let held = taken(&path, || panic!("free at first")).unwrap();
         let (told, heard) = mpsc::channel();
         let other = path.clone();

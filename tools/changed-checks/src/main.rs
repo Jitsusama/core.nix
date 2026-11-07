@@ -71,6 +71,8 @@ mod keep;
 mod pressure;
 mod quarantine;
 mod runs;
+#[cfg(test)]
+mod scratch;
 mod there;
 mod turn;
 

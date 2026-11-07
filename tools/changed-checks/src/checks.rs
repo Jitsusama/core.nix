@@ -309,6 +309,7 @@ pub fn busiest(counts: &BTreeMap<String, u64>, here: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Scratch;
 
     #[test]
     fn the_system_with_the_most_checks_is_compared_and_this_one_wins_a_tie() {
@@ -335,14 +336,6 @@ mod tests {
 
     fn names(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
-    }
-
-    /// A folder of the test's own, emptied first.
-    fn folder(test: &str) -> PathBuf {
-        let folder =
-            std::env::temp_dir().join(format!("changed-checks-{}-{test}", std::process::id()));
-        let _ = fs::remove_dir_all(&folder);
-        folder
     }
 
     #[test]
@@ -548,7 +541,8 @@ mod tests {
 
     #[test]
     fn the_first_run_evaluates_and_keeps_what_it_found() {
-        let path = folder("first").join("kept").join("abc-x86_64-linux.json");
+        let scratch = Scratch::new("first");
+        let path = scratch.join("kept").join("abc-x86_64-linux.json");
         let found = kept(&path, || {
             Ok(derivations(&[("a", Some("a.drv")), ("broken", None)]))
         });
@@ -562,7 +556,8 @@ mod tests {
 
     #[test]
     fn a_later_run_reads_what_was_kept_without_evaluating() {
-        let path = folder("later").join("abc-x86_64-linux.json");
+        let scratch = Scratch::new("later");
+        let path = scratch.join("abc-x86_64-linux.json");
         kept(&path, || Ok(derivations(&[("a", Some("a.drv"))]))).expect("kept");
         let found = kept(&path, || panic!("it evaluated again"));
         assert_eq!(found, Ok(derivations(&[("a", Some("a.drv"))])));
@@ -571,7 +566,8 @@ mod tests {
     #[test]
     fn runs_wanting_one_commit_at_once_evaluate_it_once() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        let path = folder("at-once").join("abc-x86_64-linux.json");
+        let scratch = Scratch::new("at-once");
+        let path = scratch.join("abc-x86_64-linux.json");
         let evaluations = AtomicUsize::new(0);
         let found: Vec<_> = thread::scope(|scope| {
             let runs: Vec<_> = (0..4)
@@ -601,7 +597,8 @@ mod tests {
 
     #[test]
     fn an_evaluation_that_fails_keeps_nothing() {
-        let path = folder("failed").join("abc-x86_64-linux.json");
+        let scratch = Scratch::new("failed");
+        let path = scratch.join("abc-x86_64-linux.json");
         assert_eq!(kept(&path, || Err("no".to_owned())), Err("no".to_owned()));
         assert!(!path.exists());
     }

@@ -246,7 +246,26 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn tree(dirs: &[&str]) -> PathBuf {
+    /// A cgroup tree of the test's own, gone once the test ends, even when
+    /// it fails: the tests' `$TMPDIR` can be a quest's scratch, where a
+    /// folder left behind stays until the quest ends.
+    struct Tree(PathBuf);
+
+    impl std::ops::Deref for Tree {
+        type Target = Path;
+
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Tree {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn tree(dirs: &[&str]) -> Tree {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -255,7 +274,15 @@ mod tests {
         for dir in dirs {
             fs::create_dir_all(root.join(dir)).unwrap();
         }
-        root
+        Tree(root)
+    }
+
+    #[test]
+    fn a_tree_goes_when_its_test_ends() {
+        let root = tree(&["system.slice"]);
+        let made = root.to_path_buf();
+        drop(root);
+        assert!(!made.exists());
     }
 
     const ACCOUNT: &str = "user.slice/user-1000.slice/user@1000.service";
