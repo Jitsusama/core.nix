@@ -52,6 +52,13 @@ Text {
     // and never wider than its cell (MarkSize.js).
     readonly property real markScale: MarkSize.scale(markInk.tightBoundingRect.width / fine,
         inkTall / fine, Theme.level.figure.pointSize, Theme.level.name.pitch)
+    // Where its ink's middle stands across, in its parent's terms, which a
+    // mode's mark taking its cell centres on, so a / or a : stands where
+    // the mark's ink did rather than on its cell's middle, which a mark
+    // drawn from the cell's left at its own scale doesn't fill (Y2YBTS,
+    // 2026-11-06).
+    readonly property real inkCentre: x + (markInk.tightBoundingRect.x
+        + markInk.tightBoundingRect.width / 2) / fine * markScale
     // Where the mark's ink centres: on the capitals' middle, the baseline
     // less half their height as drawn on this screen, whose pixels round
     // them: measured at its own scale.

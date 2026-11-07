@@ -377,11 +377,10 @@ fn measure_left_pt(ask: &Ask) -> f64 {
 }
 
 /// The Typst every list over the page is framed by, the menu and gO's
-/// outline alike, as the launcher's menu is (`CommandMenu.qml`): a
-/// hairline in the rule the window across, a logical pixel snapped to the
-/// device's, then a beat of the page's room above the first row and below
-/// the last, and rows two beats apart, so every line of a list lands on
-/// a line of the page it covers. `framed(side, body)` sets a list's rows
+/// outline alike: a hairline in the rule the window across, a logical
+/// pixel snapped to the device's, then a beat of the page's room above
+/// the first row and below the last, and rows two beats apart, so every
+/// line of a list lands on a line of the page it covers. `framed(side, body)` sets a list's rows
 /// in it from `side` across, and `ground(from, wide)` lays the chosen
 /// row's ground behind words `wide` across from `from`: a mark round
 /// them, above their capitals and below their baseline, as the launcher's

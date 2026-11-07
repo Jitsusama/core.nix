@@ -2211,7 +2211,9 @@ fits whole on the laptop's plate.
   over its first, and signs it with when at the far end. Its head is a
   band of the same height, its mark in the mark column, where the find's
   / and the command line's : take its cell while they last, and the Title
-  on the text column.
+  on the text column. Its : line is the launcher's: it takes the head, what's
+  typed on the text column, and its completions are the list's rows in the
+  lines' place, each a launcher row, never a menu indented under the line.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
   lights only the number, and a block only in visual, which starts on the

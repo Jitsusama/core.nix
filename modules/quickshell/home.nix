@@ -114,7 +114,6 @@ let
     "QueryKeys.js"
     "ModeMarks.js"
     "CommandLine.qml"
-    "CommandMenu.qml"
     "Commands.js"
     "Editing.js"
     "SetWords.js"

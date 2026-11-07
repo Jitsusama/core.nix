@@ -3285,7 +3285,7 @@ onLinux {
   # The held notices are Vim's quickfix list, as tests/notice-list.qml
   # holds NoticeList.js to: the newest first, where each motion lands, what
   # an operator takes, the view kept around the cursor, the gutter's
-  # numbers, what u and Ctrl+R move between, and the command line's menu.
+  # numbers, and what u and Ctrl+R move between.
   the-notices-are-a-quickfix-list =
     let
       qt = pkgs.qt6.qtdeclarative;

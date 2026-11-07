@@ -242,21 +242,3 @@ function footHints(hints, wide, join, fits) {
     return kept;
 }
 
-const ranged = /^(%|[.$0-9'<>,;+-]*)/;
-
-// The menu for what's typed on the command line: a range typed first is
-// kept, and the lines are those whose command starts with what follows it,
-// then those with a word of the act's name that does. Each line is { command, short,
-// name, key }.
-function menu(entries, text) {
-    const prefix = text.match(ranged)?.[0] ?? "";
-    const typed = text.slice(prefix.length).trim().toLowerCase();
-    if (typed === "") {
-        return { prefix, shown: entries };
-    }
-    const word = typed.split(" ")[0];
-    const starts = entries.filter(one => one.command.startsWith(word));
-    const holds = entries.filter(one => !starts.includes(one)
-        && one.name.toLowerCase().split(" ").some(name => name.startsWith(word)));
-    return { prefix, shown: starts.concat(holds) };
-}
