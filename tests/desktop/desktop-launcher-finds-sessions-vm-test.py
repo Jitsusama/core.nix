@@ -621,6 +621,7 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     record = {
         "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
         "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": "gone", "startTicks": 1},
+        "at": "2026-11-06T12:00:00Z",
     }  # fmt: skip
     desktop.as_account(
         f"mkdir -p {parked} && echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json"
