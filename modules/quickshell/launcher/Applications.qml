@@ -106,9 +106,23 @@ Provider {
 
     onPlayingNowChanged: redrawHeld()
 
+    // And a program found from the top, which lists what it holds under
+    // it (`under`), is drawn again as that changes, as a Chrome's tabs
+    // read once it's found.
     function redrawHeld() {
-        if (launcher?.open && launcher.held.length > 0)
+        if (launcher?.open && (launcher.held.length > 0 || launcher.typed.trim() !== ""))
             changed();
+    }
+
+    // What a program found from the top by its name lists under it, so
+    // what it holds shows without a key (VKCF3Z, 2026-11-07: Return still
+    // switches at once): its Recent, in its own order, as Chrome's open
+    // tabs and then the sites it visited, kitty's folders or Docs'
+    // documents, of which the launcher shows the first few. The same rows
+    // its Recent holds, so Return does there what it does inside.
+    function under(entry) {
+        const held = recent(entry)[0];
+        return held ? held.targets() : [];
     }
 
     // The desktop's actions that run exactly this command.
@@ -699,6 +713,35 @@ Provider {
         }
         return "";
     }
+    // What a program holds, said by its row on the cursor where no other
+    // provider says its note, so what's inside shows without a key
+    // (VKCF3Z, 2026-11-07): how many it has open, Chrome's as tabs, how
+    // many its Recent keeps, and its next meeting or how much of its mail
+    // is new, as "3 tabs \u00b7 9 recent" or "next in 5 min Design
+    // Review". A part that's no news, as Slack's theme, isn't counted. Read only from what's already kept, so reading
+    // it asks no program anything: Chrome's tabs are counted once its
+    // Recent was asked for, as typing its name does.
+    function holding(entry) {
+        const words = Words.of("program:recent").said ?? {};
+        const fill = (said, count) => (said ?? "").replace("{count}", String(count));
+        const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+        const open = provider.recents.openIn(entry.id);
+        const site = source?.kind === "site";
+        const opened = site ? new Set(open.map(line => line.split("\t")[4] ?? "")
+            .filter(address => address !== "")).size : open.length;
+        const kept = provider.recents.of(entry.id).length + givenRecent(entry.id).length;
+        const parts = provider.launcher?.partsOfRows[`program:${entry.id}`] ?? [];
+        const meeting = parts.find(part => part.what === "meeting") ?? null;
+        const mail = parts.filter(part => part.what === "mail").length;
+        const next = meeting !== null
+            ? (words.next ?? "").replace("{when}", meeting.side ?? "")
+                .replace("{name}", meeting.name)
+            : mail > 0 ? fill(words.parts, mail) : "";
+        return [opened > 0 ? fill(site ? words.tabs : words.open, opened) : "",
+            kept > 0 ? fill(words.recent, kept) : "", next]
+            .filter(said => said !== "").join(" \u00b7 ");
+    }
+
     // The providers that say a program's note, found once rather than as
     // each program's row is read.
     readonly property var noting: (provider.launcher?.sources ?? [])
@@ -1095,13 +1138,14 @@ Provider {
                 named: binds.length > 0,
                 below: below,
                 verbs: () => provider.controls(entry, start, below),
+                under: () => provider.under(entry),
                 operands: () => provider.operands(entry)
             });
             // What another provider says of it, read as the row is, so it's
             // never kept past being true.
             Object.defineProperty(row, "note", {
                 enumerable: true,
-                get: () => provider.givenNote(entry.id)
+                get: () => provider.givenNote(entry.id) || provider.holding(entry)
             });
             if (provider.stepsIn(entry))
                 return Object.assign(row, {

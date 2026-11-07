@@ -308,8 +308,8 @@ Scope {
         // And a thing found more than one way is one row, as the one
         // with the most to say.
         // A program's own keys named as it is are the program's, a step in.
-        const below = Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
-            gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
+        const below = underFirst(Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
+            gathered.filter(row => !whole.has(row.from.settings.name)), latch))));
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
         const placedAll = Date.now();
@@ -331,6 +331,30 @@ Scope {
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
             showing: Date.now() - placedAll };
+    }
+
+    // The rows with what the first thing found by its name holds listed
+    // under it, as a program found from the top lists its open tabs or its
+    // folders (`under`), and then the first few of its parts, Calendar's
+    // next meetings or Mail's newest, each in its own order, its own row
+    // first so Return still does what it does (VKCF3Z, 2026-11-07). Only
+    // at the top, for what's typed, and only the first, so a word that
+    // names several lists one's.
+    readonly property int underMost: 3
+    function underFirst(rows) {
+        if (held.length > 0 || typed.trim() === "")
+            return rows;
+        const at = rows.findIndex(row => typeof row.under === "function" && !row.byWord
+            && (row.tier ?? 1) <= 1);
+        if (at < 0)
+            return rows;
+        // One found by itself as well stays where it was found, so nothing
+        // is listed twice.
+        const shown = new Set(rows.map(row => Rank.identity(row)));
+        const parts = (partsOfRows[rows[at].key] ?? []).slice(0, underMost);
+        const holds = rows[at].under().slice(0, underMost).concat(parts)
+            .filter(row => !shown.has(Rank.identity(row)));
+        return rows.slice(0, at + 1).concat(holds, rows.slice(at + 1));
     }
 
     // The rows sources end a search with (Provider.qml's last), each

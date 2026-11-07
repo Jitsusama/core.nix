@@ -233,6 +233,11 @@ def slack_is_not_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def answering(note: str) -> bool:
+    """Say whether Slack's program row's note says no trouble, only what it holds, if any."""
+    return re.fullmatch(r"(\d+ recent)?", note) is not None
+
+
 def slack_program_says(
     desktop: Desktop, noted: Callable[[str], bool], *, keep_open: bool = False
 ) -> None:
@@ -332,7 +337,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         # Slack answering again, the program row says nothing of it.
         slack_says(desktop, "ok", [])
-        slack_program_says(desktop, lambda note: note == "")
+        slack_program_says(desktop, answering)
         # What wants Joel again, and then the daemon gone, as when
         # slack-unreads stops: what it held goes with it.
         slack_says(desktop, "ok", conversations)
@@ -350,7 +355,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
 
 def slack_program(desktop: Desktop) -> None:
     """Find Slack's program row, step into it, and wait until it holds Unread and Recent."""
-    slack_program_says(desktop, lambda note: note == "", keep_open=True)
+    slack_program_says(desktop, answering, keep_open=True)
     desktop.follow()
     desktop.launcher_until(lambda shown: "Unread" in shown["rows"] and "Recent" in shown["rows"])
 
@@ -452,7 +457,7 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
         )
         # Nothing unread, Slack's program holds no Unread.
         slack_says(desktop, "ok", [], recent=recent)
-        slack_program_says(desktop, lambda note: note == "", keep_open=True)
+        slack_program_says(desktop, answering, keep_open=True)
         desktop.follow()
         desktop.launcher_until(
             lambda shown: "Recent" in shown["rows"] and "Unread" not in shown["rows"]
