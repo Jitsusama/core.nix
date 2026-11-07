@@ -69,6 +69,7 @@ import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/Becoming.js" as Becoming
 
 Scope {
     id: root
@@ -316,7 +317,8 @@ Scope {
         // What ends a search at the top comes after it all, never counted as
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
-        matches = (steadying ? steadied(rows.concat(below)) : rows.concat(below)).concat(ending);
+        matches = live((steadying ? steadied(rows.concat(below)) : rows.concat(below))
+            .concat(ending));
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -2268,8 +2270,13 @@ Scope {
     property var saying: []
     property int sayingKeys: -1
     readonly property bool sayingNow: saying.length > 0 && prompt.keysTaken === sayingKeys
-    function say(keys) {
+    // Words that aren't keys, as what an act didn't do and why, say nothing
+    // in Return's place, so its last stands at its own width: held there,
+    // the why stood a Return's room away from what it was the why of.
+    property bool sayingLoose: false
+    function say(keys, loose) {
         saying = keys;
+        sayingLoose = loose === true;
         sayingKeys = prompt.keysTaken;
     }
 
@@ -2280,11 +2287,14 @@ Scope {
     // [4a00987e]). Each is [mark, word, colour], as the foot's keys are;
     // said again before it opens, the newer takes its place.
     property var toldOnOpen: []
-    function tellOnOpen(told) {
-        if (open)
-            say(told);
-        else
+    property bool toldLoose: false
+    function tellOnOpen(told, loose) {
+        if (open) {
+            say(told, loose);
+        } else {
             toldOnOpen = told;
+            toldLoose = loose === true;
+        }
     }
 
     // What q says, on the rows and in the drawer alike: with :q at the
@@ -2407,12 +2417,14 @@ Scope {
         footFiguresWidest = footFiguresNow;
     }
 
-    // How wide a row's keys are, Return in its place.
-    function keysWide(told) {
+    // How wide a row's keys are, Return in its place, or loose (say) at
+    // its own width.
+    function keysWide(told, loose) {
         if (told.length === 0)
             return 0;
         return told.slice(1).reduce((sum, key) => sum + statusLine.keys.spacing
-            + statusLine.keys.advance(key[0], key[1]), returnPlace(told[0]));
+            + statusLine.keys.advance(key[0], key[1]), loose === true
+            ? statusLine.keys.advance(told[0][0], told[0][1]) : returnPlace(told[0]));
     }
 
     // How wide Return's place is beside what it says now.
@@ -3971,8 +3983,9 @@ Scope {
             Qt.callLater(() => act.done = KeyTimes.now());
         }
         // What a key changed is shown at once, whatever else waits on the
-        // pacing below, so it's in the key's own frame or the next.
-        if (byKey) {
+        // pacing below, so it's in the key's own frame or the next; and so
+        // is a daemon's word on what an act asked it, whenever it comes.
+        if (byKey || Object.values(becoming).some(one => one.from === source)) {
             if (!refreshing.includes(source))
                 refreshing = refreshing.concat([source]);
             Qt.callLater(refreshDue);
@@ -4112,6 +4125,134 @@ Scope {
         for (const source of due)
             refreshNow(source);
         actsRefreshed(due, begun);
+        heldAgreed(due);
+    }
+
+    // What an act's rows will be once the daemon it asks has done it, by
+    // each row's key, drawn now and held until its source agrees
+    // (launcher/Becoming.js): Wi-Fi's Disconnect reads disconnected on the
+    // key's own frame, not once wifid has said so.
+    property var becoming: ({})
+    readonly property bool anyBecoming: Object.keys(becoming).length > 0
+    // How long a daemon has to agree before its row is put back: wifid
+    // leaves a network, bluez a device and systemd starts a service well
+    // within it.
+    readonly property int becomingWithin: 5000
+
+    // A row of `from`'s, by its key, drawn as `row` from now until its source
+    // makes it so, or left out where `row` is null. What's said if it never
+    // comes names the row as `name` and what was asked by `act`'s verb.
+    function becomes(from, key, row, said) {
+        const now = Object.assign({}, becoming);
+        now[key] = { key: key, from: from, row: row, name: said.name, act: said.act,
+            at: Date.now() };
+        becoming = now;
+        Report.say(`becoming ${key}`);
+        timeBecoming();
+        refreshed(from);
+    }
+
+    // Its source wouldn't do what the row was to become, saying why in its
+    // own words, or "" for no word yet.
+    function becameNot(key, why) {
+        const one = becoming[key];
+        if (one)
+            takenBack(one, why);
+    }
+
+    function takenBack(one, why) {
+        letGo([one.key]);
+        const words = Words.field.becoming ?? {};
+        const what = (why === "" ? words.late : words.refused) ?? "";
+        tellOnOpen(Becoming.told({
+            mark: Theme.glyph.failed,
+            what: what.replace("{object}", one.name)
+                .replace("{did}", (words.did ?? {})[one.act] ?? one.act),
+            why: why === "" ? words.noAnswer ?? "" : why
+        }, { what: Theme.alert, why: Theme.muted }), true);
+        Report.say(`not become ${one.key}${why === "" ? "" : `: ${why}`}`);
+        refreshed(one.from);
+    }
+
+    function letGo(keys) {
+        becoming = Becoming.without(becoming, keys);
+        timeBecoming();
+    }
+
+    // The rows to show, each held row as it will be.
+    function live(rows) {
+        if (!anyBecoming)
+            return rows;
+        const laid = Becoming.laid(rows, becoming, reads);
+        if (laid.agreed.length > 0)
+            agreed(laid.agreed);
+        return laid.rows;
+    }
+
+    function reads(one, row) {
+        return one.from.says([row], [], true);
+    }
+
+    function agreed(keys) {
+        for (const key of keys)
+            Report.say(`became ${key}`);
+        letGo(keys);
+    }
+
+    // The row a hold's source makes now, wherever the launcher reads it: its
+    // things, its collection's members, or a step shown; null where none
+    // is, and undefined where it can't be told, as a step's act once the
+    // step is left.
+    function nowRow(one) {
+        const key = one.key;
+        const made = one.from.things.concat(one.from.everything())
+            .concat(...held.map(step => step.rows ?? []));
+        const found = made.find(row => row.key === key && !row.gone);
+        if (found)
+            return found;
+        return String(key).startsWith("verb:") && !open ? undefined : null;
+    }
+
+    // Each hold whose source has just been heard from, let go once its row
+    // reads as it was to become, or is gone as it was to go.
+    function heldAgreed(sources) {
+        if (!anyBecoming)
+            return;
+        const done = Object.values(becoming).filter(one => sources.includes(one.from))
+            .filter(one => {
+                const now = nowRow(one);
+                return now !== undefined && Becoming.agrees(one, now, reads);
+            });
+        if (done.length > 0)
+            agreed(done.map(one => one.key));
+    }
+
+    // A hold no source agreed to in time is put back, saying so, unless its
+    // row agrees now, or can't be read to tell.
+    function becameLate() {
+        for (const key of Becoming.late(becoming, Date.now(), becomingWithin)) {
+            const one = becoming[key];
+            const now = nowRow(one);
+            if (now === undefined || Becoming.agrees(one, now, reads))
+                agreed([key]);
+            else
+                takenBack(one, "");
+        }
+    }
+
+    function timeBecoming() {
+        const due = Becoming.nextDue(becoming, Date.now(), becomingWithin);
+        if (due < 0) {
+            becomingDue.stop();
+            return;
+        }
+        becomingDue.interval = Math.max(1, due);
+        becomingDue.restart();
+    }
+
+    Timer {
+        id: becomingDue
+        onTriggered: root.becameLate()
     }
     function refreshNow(source) {
         if (!open || asking)
@@ -4537,12 +4678,12 @@ Scope {
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = steadied(found);
+                matches = live(steadied(found));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
             }
-            matches = found;
+            matches = live(found);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
@@ -6106,7 +6247,12 @@ Scope {
             // be told short by how much.
             keysRoom: { held: Math.round(Math.min(root.footKeysWidest, foot.keysRoom)),
                 said: Math.round(root.keysWide(foot.kept)), left: Math.round(foot.keysRoom),
-                told: Math.round(root.keysWide(foot.told)),
+                told: Math.round(root.keysWide(foot.told, foot.loose)),
+                // Return's place beside what its hint says, wider only
+                // while the place is held for keys.
+                place: Math.round(foot.returnPlace),
+                placeSays: foot.told.length === 0 ? 0
+                    : Math.round(statusLine.keys.advance(foot.told[0][0], foot.told[0][1])),
                 mode: Math.round(modeWord.room), least: Math.round(standing.least),
                 // How much wider the keys' room holds Return than its place
                 // draws it: the widest verb the words name, held so the
@@ -6420,7 +6566,7 @@ Scope {
             footReset();
             noteKeys();
             if (toldOnOpen.length > 0) {
-                say(toldOnOpen);
+                say(toldOnOpen, toldLoose);
                 Report.say(`told ${JSON.stringify(toldOnOpen)}`);
                 toldOnOpen = [];
             }
@@ -7855,11 +8001,24 @@ Scope {
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []
+                        // Whether what it says is loose words (say), its
+                        // last at its own width rather than Return's place.
+                        readonly property bool looseNow: root.sayingLoose && root.sayingNow
+                            && toldNow === root.saying
+                        property bool loose: false
 
                         Binding {
                             target: foot
                             property: "told"
                             value: foot.toldNow
+                            when: root.cardSeen
+                            restoreMode: Binding.RestoreNone
+                        }
+
+                        Binding {
+                            target: foot
+                            property: "loose"
+                            value: foot.looseNow
                             when: root.cardSeen
                             restoreMode: Binding.RestoreNone
                         }
@@ -7895,8 +8054,9 @@ Scope {
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
                             - (prompt.mode === "find" ? 0 : modeWord.room)
                         readonly property var kept: Standing.keysFitted(told,
-                            told => root.keysWide(told), keysRoom, root.findYielding)
+                            told => root.keysWide(told, foot.loose), keysRoom, root.findYielding)
                         readonly property real returnPlace: told.length === 0 ? 0
+                            : loose ? statusLine.keys.advance(told[0][0], told[0][1])
                             : root.returnPlace(told[0])
                         // Where Return's place starts, which holds still.
                         readonly property real returnAt: width - card.inset - returnPlace
@@ -7913,7 +8073,7 @@ Scope {
                         // over "1 new" again.
                         readonly property real keysFrom: width - card.inset
                             - Math.max(Math.min(root.footKeysWidest, keysRoom),
-                                root.keysWide(kept))
+                                root.keysWide(kept, foot.loose))
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode it
                         // speaks in so the facts say the same as it comes and

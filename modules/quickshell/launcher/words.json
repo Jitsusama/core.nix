@@ -6992,6 +6992,23 @@
       "newest": "Already at newest change",
       "read": "read"
     },
+    "becoming": {
+      "refused": "{object} not {did}",
+      "late": "{object} not {did} yet",
+      "noAnswer": "no answer",
+      "objects": {
+        "recording": "Recording"
+      },
+      "did": {
+        "disconnect": "disconnected",
+        "distrust": "untrusted",
+        "forget": "forgotten",
+        "off": "turned off",
+        "on": "turned on",
+        "stop": "stopped",
+        "trust": "trusted"
+      }
+    },
     "visual": {
       "counted": "{count} chosen",
       "opens": "open {count}",

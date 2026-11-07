@@ -79,20 +79,22 @@ Singleton {
         call("Check", {});
     }
 
-    function leave(name: string): void {
-        call("Leave", { name: name });
+    // Each hands `answer`, where given, what wifid said, as `call` does, so
+    // a row drawn as it would be is put back if wifid wouldn't.
+    function leave(name: string, answer: var): void {
+        call("Leave", { name: name }, answer);
     }
 
-    function forget(name: string): void {
-        call("Forget", { name: name });
+    function forget(name: string, answer: var): void {
+        call("Forget", { name: name }, answer);
     }
 
-    function trust(name: string, trusted: bool): void {
-        call("Trust", { name: name, trusted: trusted });
+    function trust(name: string, trusted: bool, answer: var): void {
+        call("Trust", { name: name, trusted: trusted }, answer);
     }
 
-    function turn(on: bool): void {
-        call("Radio", { on: on });
+    function turn(on: bool, answer: var): void {
+        call("Radio", { on: on }, answer);
     }
 
     // A join already under way gives way to a new one, as wifid gives it

@@ -916,6 +916,23 @@ onLinux {
       touch $out
     '';
 
+  # A row an act asked a daemon to change is drawn as it will be until its
+  # source agrees, as tests/becoming.qml holds launcher/Becoming.js to it in
+  # Qt's own engine.
+  an-act-shows-before-its-daemon-answers =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "an-act-shows-before-its-daemon-answers" { } ''
+      cp ${../../tests/becoming.qml} becoming.qml
+      cp ${./launcher/Becoming.js} Becoming.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml becoming.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
