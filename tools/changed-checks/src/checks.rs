@@ -48,10 +48,17 @@ const CORES_EACH: usize = 4;
 const MEMORY_EACH: u64 = 6 << 30;
 
 /// How many chunks to evaluate at once on a machine with these cores and
-/// this much memory available: as many as both have room for, between
-/// `AT_ONCE` and `AT_ONCE_MOST`. A person's laptop, with 16 cores and a
-/// few GB free, stays at two; the lent builder takes eight.
-pub fn at_once(cores: usize, available: u64) -> usize {
+/// this much memory available. On a builder made for the run, as many as
+/// both have room for, between `AT_ONCE` and `AT_ONCE_MOST`: the lent
+/// builder takes eight. On the person's own machine, `AT_ONCE` however much
+/// is free, since its cores are shared with everything else there: on
+/// 7 November a run given room for four on a 16-core machine with 35 GB
+/// free had three evaluating as its CPU pressure reached 40%, nearly all of
+/// it theirs.
+pub fn at_once(cores: usize, available: u64, builder: bool) -> usize {
+    if !builder {
+        return AT_ONCE;
+    }
     let by_memory = usize::try_from(available / MEMORY_EACH).unwrap_or(usize::MAX);
     (cores / CORES_EACH)
         .min(by_memory)
@@ -59,15 +66,16 @@ pub fn at_once(cores: usize, available: u64) -> usize {
 }
 
 /// How many chunks this machine evaluates at once, by `at_once`, from its
-/// cores and the memory `/proc/meminfo` says is available. A machine that
-/// says neither gets `AT_ONCE`.
-pub fn at_once_here() -> usize {
+/// cores and the memory `/proc/meminfo` says is available, as a builder
+/// made for the run when `builder` says so. A machine that says neither gets
+/// `AT_ONCE`.
+pub fn at_once_here(builder: bool) -> usize {
     let cores = thread::available_parallelism().map_or(0, std::num::NonZero::get);
     let available = fs::read_to_string("/proc/meminfo")
         .ok()
         .and_then(|text| available(&text))
         .unwrap_or(0);
-    at_once(cores, available)
+    at_once(cores, available, builder)
 }
 
 /// The bytes `/proc/meminfo`'s `MemAvailable` line says, or none.
@@ -429,24 +437,30 @@ mod tests {
     }
 
     #[test]
-    fn a_laptop_with_little_memory_free_evaluates_two_at_once() {
-        assert_eq!(at_once(16, 11 << 30), 2);
+    fn a_builder_with_little_memory_free_evaluates_two_at_once() {
+        assert_eq!(at_once(16, 11 << 30, true), 2);
     }
 
     #[test]
     fn a_big_idle_builder_evaluates_eight_at_once() {
-        assert_eq!(at_once(32, 122 << 30), 8);
+        assert_eq!(at_once(32, 122 << 30, true), 8);
     }
 
     #[test]
     fn the_scarcer_of_cores_and_memory_sets_how_many() {
-        assert_eq!(at_once(32, 24 << 30), 4);
-        assert_eq!(at_once(12, 122 << 30), 3);
+        assert_eq!(at_once(32, 24 << 30, true), 4);
+        assert_eq!(at_once(12, 122 << 30, true), 3);
     }
 
     #[test]
     fn a_machine_that_says_nothing_still_evaluates_two_at_once() {
-        assert_eq!(at_once(0, 0), AT_ONCE);
+        assert_eq!(at_once(0, 0, true), AT_ONCE);
+    }
+
+    #[test]
+    fn the_person_s_own_machine_evaluates_two_however_much_is_free() {
+        assert_eq!(at_once(16, 35 << 30, false), AT_ONCE);
+        assert_eq!(at_once(32, 122 << 30, false), AT_ONCE);
     }
 
     #[test]

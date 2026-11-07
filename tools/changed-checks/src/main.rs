@@ -29,7 +29,7 @@
 //! reads, such as `flake.lock`, touches them all.
 //!
 //! The checks are evaluated a few dozen at a time, in a nix eval each, a VM
-//! test counting four, two evaluations at once, or up to eight on a machine
+//! test counting four, two evaluations at once, or up to eight on a builder
 //! with the cores and memory for them (`checks.rs` says why),
 //! rather than all in one, which held every check at once and reached 24 GB
 //! on a machine many sessions share; each evaluation's memory goes when it
@@ -695,12 +695,13 @@ fn derivations(
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
     let chunks = checks::chunks(&names);
-    // As many go at once as the machine has room for, and a further chunk
-    // begins only while memory isn't stalling: two at once while it was
-    // full stalled Joel's launcher on 29 October.
+    // As many go at once as a builder made for the run has room for, and two
+    // on the person's own machine (`checks::at_once` says why). Either way a
+    // further chunk begins only while memory isn't stalling: two at once
+    // while it was full stalled Joel's launcher on 29 October.
     let evaluated = checks::each_at_once(
         &chunks,
-        checks::at_once_here(),
+        checks::at_once_here(env::var_os(HERE).is_some()),
         || !pressure::memory_stalled(),
         |chunk| {
             let selecting = checks::selecting(chunk)?;
