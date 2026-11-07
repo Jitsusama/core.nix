@@ -7,13 +7,6 @@
     "test": "vm-desktop-opens-and-sets"
   },
   {
-    "at": 1794035350,
-    "commit": "e6b9c86cedfeeaa5378f49b9df3eeeea305bcf41",
-    "owner_pr": null,
-    "reason": "failed, then passed, at e6b9c86cedfe",
-    "test": "vm-desktop-looks"
-  },
-  {
     "at": 1794037906,
     "commit": "5d4f5f331565874729a19ff6408b50a97241980c",
     "owner_pr": null,
