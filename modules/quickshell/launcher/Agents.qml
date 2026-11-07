@@ -167,7 +167,6 @@ Provider {
             // one row left of them (Launcher.qml's compose).
             is: Sessions.isOf(session),
             rich: 2,
-            verb: state === "parked" ? Words.verb("verb:agent:wake") : "go",
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since
             // a member keeps its words as given.
@@ -179,9 +178,10 @@ Provider {
             note: noted,
             depth: depth,
             gone: !session.reachable,
-            later: true,
-            // One parked wakes in its window, which nothing here can go to.
-            run: state === "parked" ? () => Sessions.wake(session) : () => Sessions.goTo(session),
+            // Return does the act its state makes harmless (SessionRow.js's
+            // returns), one of those its step in holds.
+            returns: provider.sessionAct(session,
+                SessionRow.returns(state, windowedOf(session))),
             verbs: () => provider.verbs(session, quest, spent, family),
             // What y takes: the first of its facts, as its verbs list them.
             operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
@@ -234,6 +234,18 @@ Provider {
     // (SessionRow.js), each steering it through its inbox but Go To; an
     // orchestrator's row offers the same ones (Orchestrators.qml).
     function sessionActs(session) {
+        return SessionRow.acts(stateOf(session), windowedOf(session))
+            .map(id => sessionAct(session, id));
+    }
+
+    // Whether a session has a window to go to: its own here, or one its
+    // machine's node attaches elsewhere.
+    function windowedOf(session) {
+        return !!(session.window || session.kitty || (!session.here && session.attach));
+    }
+
+    // One of a session's acts, by its id in SessionRow.js's acts.
+    function sessionAct(session, id) {
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agent:${id}`,
             verb: Words.verb(`verb:agent:${id}`),
@@ -259,9 +271,7 @@ Provider {
             resume: () => act("resume", { run: steered("resume") }),
             stop: () => act("stop", { run: steered("stop") })
         };
-        const windowed = !!(session.window || session.kitty || (!session.here && session.attach));
-        return SessionRow.acts(stateOf(session), windowed)
-            .map(id => made[id]());
+        return made[id]();
     }
 
     // When a session started, as a clock says it, with its day when that

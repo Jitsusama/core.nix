@@ -339,7 +339,7 @@ function acts(row) {
     }
     const steps = !!row.verbs || !!row.targets || !!row.nested || !!row.category
         || !!row.opens || !!row.from;
-    if (steps || !!row.given || row.start !== undefined) {
+    if (steps || !!row.given || !!row.returns || row.start !== undefined) {
         return true;
     }
     return !!row.run && !(row.figure === true && verbOf(row) === "close");
