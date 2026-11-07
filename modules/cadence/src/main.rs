@@ -253,7 +253,7 @@ fn gather(
         last_oom_kill: records::last_machine_oom_kill(&kernel),
         watched: args.watcher.is_some(),
         round,
-        net_holds: net.join("hold.json").exists(),
+        net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
             Path::new(&format!("/proc/{pid}")).exists()
         }),

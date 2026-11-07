@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::records::{Follower, Look, Merge, Run};
+use crate::records::{Follower, Look, Merge, NetHold, Run};
 use crate::stats::spread;
 
 /// A merge not on the machine this long after it merged, in minutes.
@@ -19,6 +19,11 @@ pub const VM_WAIT_MEDIAN_MIN: f64 = 5.0;
 pub const CPU_AVG300: f64 = 40.0;
 /// The net's round this many hours behind main's head.
 pub const NET_BEHIND_H: f64 = 3.0;
+/// The net holding main with no revert under way this long, in minutes:
+/// every merge waits off the machine until the merge that broke a test is
+/// fixed forward or reverted by hand, and on 6 November a revert that
+/// conflicted left it so with only a log line said.
+pub const HELD_UNREVERTED_MIN: i64 = 10;
 /// The card is overdue when the watcher sent none this long, in seconds.
 pub const CARD_EVERY: i64 = 75 * 60;
 /// How long the watcher has to answer before the steward is asked.
@@ -57,8 +62,8 @@ pub struct Snapshot {
     /// When the newest machine-wide out-of-memory kill in the last week was.
     pub last_oom_kill: Option<i64>,
     pub round: Option<Round>,
-    /// Whether the net holds switches while it tests.
-    pub net_holds: bool,
+    /// The net's hold on switching, while a test it broke is unfixed.
+    pub net_hold: Option<NetHold>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
     pub watcher_alive: bool,
@@ -126,6 +131,25 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
             });
         }
     }
+    if let Some(hold) = s
+        .net_hold
+        .as_ref()
+        .filter(|h| !h.reverting && s.now - h.at >= HELD_UNREVERTED_MIN * 60)
+    {
+        let culprit = hold.bad_pr.map_or_else(
+            || "it couldn't tell which merge broke it".to_owned(),
+            |pr| format!("it blames #{pr} and couldn't revert it"),
+        );
+        out.push(Breach {
+            key: format!("hold:{}", hold.at),
+            text: format!(
+                "the net has held main {} min on {}: {culprit}, so every merge waits off the \
+                 machine until it's fixed forward or reverted by hand",
+                (s.now - hold.at) / 60,
+                hold.test
+            ),
+        });
+    }
     if let Some(at) = s.last_oom_kill.filter(|&at| s.now - at < 3600) {
         out.push(Breach {
             key: format!("oom:{at}"),
@@ -158,7 +182,7 @@ fn not_on(s: &Snapshot) -> Option<Breach> {
     {
         return None;
     }
-    let held = if s.net_holds {
+    let held = if s.net_hold.is_some() {
         " (the net holds switches)"
     } else {
         ""
@@ -403,6 +427,36 @@ mod tests {
                 on: None,
             },
         ];
+        assert!(breaches(&s).is_empty());
+    }
+
+    #[test]
+    fn a_hold_with_no_revert_is_said_once_after_ten_minutes() {
+        let mut s = calm(100_000);
+        let hold = NetHold {
+            at: 100_000 - 5 * 60,
+            test: "vm-a".into(),
+            bad_pr: Some(2059),
+            reverting: false,
+        };
+        s.net_hold = Some(hold.clone());
+        assert!(breaches(&s).is_empty());
+        s.net_hold = Some(NetHold {
+            at: 100_000 - 12 * 60,
+            ..hold.clone()
+        });
+        let said = breaches(&s);
+        assert_eq!(said[0].key, format!("hold:{}", 100_000 - 12 * 60));
+        assert!(
+            said[0].text.contains("12 min on vm-a: it blames #2059"),
+            "{}",
+            said[0].text
+        );
+        s.net_hold = Some(NetHold {
+            at: 100_000 - 12 * 60,
+            reverting: true,
+            ..hold
+        });
         assert!(breaches(&s).is_empty());
     }
 
