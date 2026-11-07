@@ -16,6 +16,7 @@ use crate::money::{dollars, maybe_about, percent, whole};
 use crate::picture::{CapView, Picture};
 use crate::report::{self, Cut, Format, Period, Report};
 use crate::series::{self, Source};
+use crate::standing::Standing;
 use crate::status::{action_kind, capitalized, unpriced};
 use crate::time::Zone;
 use serde::Serialize;
@@ -538,12 +539,115 @@ fn widest_first(caps: &[CapView]) -> Vec<&CapView> {
     caps
 }
 
+/// How the budgets stand, where there's more than one: one budget is the
+/// whole, which the periods already say.
+fn budgets(picture: &Picture, config: &crate::config::Config) -> Option<Standing> {
+    Some(crate::standing::standing(picture, config, None))
+        .filter(|standing| standing.budgets.len() > 1)
+}
+
+/// The Budgets row: the month's whole in billed spend, and behind it that
+/// whole, then each budget nearest its limit first, standing in its own
+/// unit, with its limits behind it when it has more than one.
+fn budgets_line(picture: &Picture, standing: &Standing) -> Line {
+    let month =
+        |amounts: &BTreeMap<String, crate::standing::Amount>| amounts["this month"].shown.clone();
+    let total = &standing.total.periods;
+    let mut made = line("budgets", "Budgets", format!("{} this month", month(total)));
+    made.note = crate::standing::WORDS.into();
+    let mut all = line("budgets/all", "All AI Spend", month(total));
+    all.note = joined(&[
+        crate::standing::WORDS,
+        &format!("{} today", total["today"].shown),
+        &format!("{} in 7 days", total["7 days"].shown),
+    ]);
+    made.rows = std::iter::once(all)
+        .chain(
+            standing
+                .budgets
+                .iter()
+                .map(|budget| budget_line(picture, budget)),
+        )
+        .collect();
+    made
+}
+
+/// A budget's row: its standing beside it, what it is below, and each of
+/// its limits behind it when it has more than one.
+fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
+    let mut made = line(
+        format!("budget:{}", budget.name),
+        budget.label.clone(),
+        budget.standing.clone(),
+    );
+    let default = if budget.default { "the default" } else { "" };
+    let resets = match budget.limits.as_slice() {
+        [one] => limit_reset(picture, one),
+        _ => String::new(),
+    };
+    made.note = joined(&[&budget.words, default, &resets]);
+    made.role = limit_role(budget.limits.iter().find(|limit| limit.nearest.is_some())).into();
+    if budget.limits.len() > 1 {
+        made.rows = budget
+            .limits
+            .iter()
+            .map(|limit| {
+                let standing = if limit.standing.is_empty() {
+                    "not read yet".to_owned()
+                } else {
+                    limit.standing.clone()
+                };
+                let mut row = line(
+                    format!("budget:{}:{}", budget.name, limit.name),
+                    capitalized(&limit.label),
+                    standing,
+                );
+                row.note = limit_reset(picture, limit);
+                row.role = limit_role(Some(limit)).into();
+                row
+            })
+            .collect();
+    }
+    made
+}
+
+/// When a limit resets, as its footer says it.
+fn limit_reset(picture: &Picture, limit: &crate::standing::Limit) -> String {
+    limit
+        .resets
+        .as_deref()
+        .and_then(crate::time::parse)
+        .map_or_else(String::new, |at| {
+            format!("resets {}", picture.zone.clock(at, picture.now))
+        })
+}
+
+/// A limit's glyph is coloured only past its warning: a warning there, an
+/// alert once it's reached or refusing.
+fn limit_role(limit: Option<&crate::standing::Limit>) -> &'static str {
+    let Some(limit) = limit else {
+        return "text";
+    };
+    let near = limit.nearest.unwrap_or(0.0);
+    if near >= 1.0 || limit.state.as_deref() == Some("refused") {
+        "alert"
+    } else if near >= limit.warn {
+        "warning"
+    } else {
+        "text"
+    }
+}
+
 /// How things stand: today, with a day's caps behind it; each longer cap,
 /// the widest first, with the week ahead behind the first, since its days
-/// are the week that can stop work; and the periods before, this week
-/// among them. Each has its detail behind it, and with no longer cap the
-/// week ahead stands on its own.
-fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Line> {
+/// are the week that can stop work; the budgets, where there's more than
+/// one; and the periods before, this week among them. Each has its detail
+/// behind it, and with no longer cap the week ahead stands on its own.
+fn now(
+    picture: &Picture,
+    reports: &BTreeMap<String, (Report, Shown)>,
+    standing: Option<&Standing>,
+) -> Vec<Line> {
     let word = picture.standing.word.as_str();
     let mut now = Vec::new();
     let (today, today_basis) = figure_of(picture, Period::Today);
@@ -599,6 +703,7 @@ fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Li
             None => now.push(made),
         }
     }
+    now.extend(standing.map(|standing| budgets_line(picture, standing)));
     let earlier: Vec<Line> = EARLIER
         .iter()
         .map(|period| {
@@ -637,7 +742,7 @@ pub fn collection(
     config: &crate::config::Config,
 ) -> Collection {
     let reports = reports(picture, config);
-    let now = now(picture, &reports);
+    let now = now(picture, &reports, budgets(picture, config).as_ref());
     let mut more = Vec::new();
     let waste_found = findings.iter().any(|finding| finding.detector == "waste");
     if let Some((report, _)) = reports.get("waste")
@@ -1232,6 +1337,113 @@ mod tests {
             collected.sessions["01a1271f-aaaa"],
             crate::money::dollars(19.5)
         );
+    }
+
+    fn depth(lines: &[Line]) -> usize {
+        lines
+            .iter()
+            .map(|line| 1 + depth(&line.rows))
+            .max()
+            .unwrap_or(0)
+    }
+
+    // With budgets declared, how things stand holds one more row: the
+    // month's whole in billed spend, the whole first behind it, then each
+    // budget nearest its limit, a plan with two windows stepping in to
+    // each, and nothing deeper than three.
+    #[test]
+    fn the_budgets_stand_behind_one_row() {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+            "budgets": [
+                {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
+                 "whose": "employer", "default": true},
+                {"name": "claude", "label": "Claude Pro", "kind": "subscription",
+                 "whose": "own", "providers": ["claude-code"],
+                 "price": {"dollars": 20, "per": "month"},
+                 "limits": [{"name": "five-hours", "unit": "share", "windowHours": 5,
+                             "warn": 0.8},
+                            {"name": "week", "unit": "share", "windowHours": 168,
+                             "warn": 0.8}]},
+            ],
+        }))
+        .unwrap();
+        let history = History::memory();
+        let turns = [("me", "anthropic", 40.0), ("plan", "claude-code", 9.0)];
+        for ((session, provider, total), at) in turns
+            .into_iter()
+            .flat_map(|turn| [(turn, NOW - 600.0), (turn, NOW - crate::time::DAY)])
+        {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: session.into(),
+                    at,
+                    model: "m".into(),
+                    provider: provider.into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total,
+                        ..Cost::default()
+                    },
+                    quest: None,
+                    budget: None,
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost: 0.0,
+                    cause: None,
+                }))
+                .unwrap();
+        }
+        store(
+            &history,
+            &serde_json::json!({
+                "v": 1, "kind": "cap", "name": "five-hours", "label": "5 h", "unit": "share",
+                "budget": "claude", "used": 0.85, "windowHours": 5, "warn": 0.8,
+                "state": "ok", "resets": "2026-10-14T16:20:00Z", "at": "2026-10-14T14:20:00Z",
+            }),
+            NOW,
+        );
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let collected = collection(&picture, &[], &config);
+        let names: Vec<&str> = collected
+            .now
+            .iter()
+            .map(|line| line.name.as_str())
+            .collect();
+        let at = names.iter().position(|name| *name == "Budgets").unwrap();
+        assert_eq!(names[at + 1], "Yesterday", "{names:?}");
+        let budgets = &collected.now[at];
+        assert_eq!(budgets.side, format!("{} this month", whole(80.0 + 20.0)));
+        let behind: Vec<(&str, &str)> = budgets
+            .rows
+            .iter()
+            .map(|row| (row.name.as_str(), row.side.as_str()))
+            .collect();
+        assert_eq!(
+            behind,
+            [
+                ("All AI Spend", "$100"),
+                ("Claude Pro", "85% of 5 h"),
+                ("Your proxy cap", "$80 this month"),
+            ]
+        );
+        let plan = &budgets.rows[1];
+        assert_eq!(plan.role, "warning");
+        assert_eq!(plan.note, "your own subscription");
+        let windows: Vec<(&str, &str)> = plan
+            .rows
+            .iter()
+            .map(|row| (row.name.as_str(), row.side.as_str()))
+            .collect();
+        assert_eq!(
+            windows,
+            [("5 h", "85% of 5 h"), ("The week", "not read yet")]
+        );
+        assert_eq!(plan.rows[0].note, "resets 16:20");
+        assert!(depth(&collected.now) <= 3);
     }
 
     // While the screen is shared nothing says an amount, at any depth.

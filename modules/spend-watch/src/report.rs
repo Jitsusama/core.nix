@@ -111,10 +111,11 @@ pub enum Cut {
     Tool,
     Day,
     Source,
+    Budget,
 }
 
 impl Cut {
-    pub const ALL: [Cut; 8] = [
+    pub const ALL: [Cut; 9] = [
         Cut::Quest,
         Cut::Model,
         Cut::Agent,
@@ -123,6 +124,7 @@ impl Cut {
         Cut::Tool,
         Cut::Day,
         Cut::Source,
+        Cut::Budget,
     ];
 
     pub fn id(self) -> &'static str {
@@ -135,6 +137,7 @@ impl Cut {
             Cut::Tool => "tool",
             Cut::Day => "day",
             Cut::Source => "source",
+            Cut::Budget => "budget",
         }
     }
 
@@ -148,6 +151,7 @@ impl Cut {
             Cut::Tool => &["tool", "tools"],
             Cut::Day => &["day", "days", "daily"],
             Cut::Source => &["source", "sources"],
+            Cut::Budget => &["budget", "budgets"],
         }
     }
 
@@ -241,6 +245,8 @@ fn key(picture: &Picture, cut: Cut, piece: &Piece) -> String {
         Cut::Tool => piece.tool.clone(),
         Cut::Day => Zone::day_name(picture.zone.day(crate::time::hour_start(piece.hour))),
         Cut::Source => piece.source.name().into(),
+        // By the name the harness and pi's footer know it by.
+        Cut::Budget => piece.budget.clone(),
     }
 }
 

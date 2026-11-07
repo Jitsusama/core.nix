@@ -47,6 +47,7 @@ pub mod random;
 pub mod report;
 pub mod runs;
 pub mod series;
+pub mod standing;
 pub mod stats;
 pub mod status;
 pub mod time;
