@@ -2906,7 +2906,7 @@ Scope {
     // find leaves it to be its next row. On the find it goes in only where
     // the foot says "Tab in", so never on a row Return already steps into,
     // as an answer holding parts, where it stays the next row.
-    function into(mode) {
+    function tabbedIn(mode) {
         const row = matches[current] ?? null;
         const stepping = !!row && (stepsIn(row) || stepsThing(row));
         if (goesIn(row) && !(mode === "find" && stepping)) {
@@ -6970,7 +6970,7 @@ Scope {
                             // the find's is its next row, and normal's says
                             // it isn't here.
                             case "into":
-                                if (root.into(mode))
+                                if (root.tabbedIn(mode))
                                     return;
                                 act = "next";
                                 break;

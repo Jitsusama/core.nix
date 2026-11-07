@@ -1823,7 +1823,10 @@ QtObject {
         holds("the field says Ctrl+Y for completing", Keys.keyOf("complete", "find"), "Ctrl+y");
         holds("and - for going up, as the foot names it", Keys.keyOf("out", "normal"), "-");
         holds("and Return for going in", Keys.keyOf("run", "normal"), "Return");
-        holds("and no key steps in but Return", Keys.keyOf("into", "normal"), "");
+        // Return opens a program and Tab goes into what it holds, Joel's "keep"
+        // (2026-11-07), so l never steps in.
+        holds("and Tab for going into what a row holds", Keys.keyOf("into", "normal"), "Tab");
+        holds("and l steps in nowhere", Keys.keyOf("intoSaid", "normal"), "l");
 
         // [what, the text, the caret, where Ctrl+W deletes back to]
         const words = [
