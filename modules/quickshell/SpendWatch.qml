@@ -20,6 +20,10 @@ Singleton {
     property var said: null
     // What each pi session spent today, by its whole id.
     readonly property var sessions: said?.sessions ?? {}
+    // How each one's day went, by the same id: { graph, rebuilt }, its
+    // hours as Graph's spark, carrying no dollars, and what rebuilding its
+    // context cost, "" under a cent.
+    readonly property var sessionsToday: said?.sessionsToday ?? {}
     // What each one's councils, judges and fleets cost today, costliest
     // first: [{ on, spent }].
     readonly property var helpers: said?.helpers ?? {}

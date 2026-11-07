@@ -1161,6 +1161,9 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # there or breaks a word.
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+        # One that must stand under its name, as an address, lays every one under: a table or
+        # a list, never a mix (VKCF3Z, 2026-11-07).
+        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
         assert drawer["more"] or facts[-1] < drawer["foot"], (
             f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
         )
@@ -1701,6 +1704,16 @@ TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQE": 2, FOLD: 1}
 SPENT = {
     "v": 2,
     "sessions": {"01a1face-test": "$3.10", "01a1face-qd": "$5.10"},
+    # How the builder's day went, its hours from midnight on the day's largest one.
+    "sessionsToday": {
+        "01a1face-qd": {
+            "graph": {
+                "shape": "spark",
+                "values": [0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0.4, 0.2, 0.7, 1, 0.5, 0.3],
+            },
+            "rebuilt": "$1.20",
+        }
+    },
     "helpers": {},
     "families": {
         "QEST-20261022-TESTQA": {"all": "$14.20", "own": "$3.10", "under": "$11.10"},
@@ -1923,6 +1936,13 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     )
     side = desktop.showing()["selected"]["side"]
     assert side.startswith("84% full \u00b7 working"), f"at {shot}: {side}"
+    # Context draws Meter's stroke after its value, at Joel's scales both.
+    drawer = desktop.showing()["drawer"]
+    drawn = dict(zip(drawer["drawnFacts"], drawer["figures"], strict=True))
+    assert drawn["Context"] == "stroke", f"at {shot}: {drawer}"
+    # Its spend today carries its hours as Graph's spark.
+    assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
+    assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
     desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 

@@ -43,6 +43,8 @@ Item {
     visible: reading !== null && reading !== undefined
     implicitWidth: dots.implicitWidth
     implicitHeight: dots.implicitHeight
+    // Its dots' baseline, so a drawer's fact sets it on its value's.
+    baselineOffset: dots.baselineOffset
 
     // A reading kept between 0 and 1, or null for none.
     function kept(value) {

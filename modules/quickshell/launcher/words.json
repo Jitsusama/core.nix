@@ -307,6 +307,11 @@
       "name": "Its Own"
     },
     {
+      "id": "agents:rebuilt",
+      "in": "agents",
+      "name": "Context Rebuilt"
+    },
+    {
       "id": "agents:under",
       "in": "agents",
       "name": "Its Sessions"

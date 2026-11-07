@@ -213,6 +213,18 @@ QtObject {
         const drawn = SessionRow.drawer("A Quest", { worksOn: "the row" }, told);
         if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
             failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
+        // Its hours ride on its own spend today as a spark, an orchestrator's
+        // on Its Own, and what rebuilding its context cost follows, unsaid
+        // when it's nothing.
+        const hours = { shape: "spark", values: [0, 0.5, 1] };
+        const sparked = given => SessionRow.drawer("A Quest", {},
+            Object.assign({}, told, { hours: hours }, given)).facts
+            .map(fact => fact.figure ? `${fact.label}=${fact.value}:${fact.figure.shape}`
+                : `${fact.label}=${fact.value}`).join(" ");
+        const sparks = [sparked({ rebuilt: "$1.20" }),
+            sparked({ spent: "$14.20 in all", own: "$3.10", rebuilt: "" })].join(" | ");
+        if (sparks !== "spent=$4.20:spark rebuilt=$1.20 | spent=$14.20 in all own=$3.10:spark")
+            failures.push(`a drawer's hours: "${sparks}"`);
         // One paused, parked or closed never looks live: its glyph is muted,
         // every other a program's, as the live rows' are.
         const hues = ["needs", "working", "inLine", "listening", "paused", "parked", "off"]
@@ -276,6 +288,16 @@ QtObject {
             failures.push(`the figures a day on: "${dayAfter}", not "${dayAfterWant}"`);
         if (SessionRow.figures(undefined, "2026-11-07", figureWords, id => id).length !== 0)
             failures.push("one with no usage had figures");
+        // Context alone carries a figure, Meter's stroke of how full, warning
+        // from 80%.
+        const drawnOf = given => SessionRow.figures(given, "2026-11-07", figureWords, id => id)
+            .filter(fact => fact.figure)
+            .map(fact => `${fact.label}:${fact.figure.shape}:${fact.figure.values}:`
+                + `${fact.figure.warn}`).join(" ");
+        const strokes = [drawnOf(usage),
+            drawnOf(Object.assign({}, usage, { context: { used: 168000, limit: 200000 } }))];
+        if (strokes.join(" | ") !== "context:stroke:0.71:false | context:stroke:0.84:true")
+            failures.push(`the drawer's strokes: "${strokes.join(" | ")}"`);
         // When a quest's session was last live: the harness's `at` where it
         // says one, else when a UUIDv7 id says it began, else never.
         const lives = [

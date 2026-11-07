@@ -1207,6 +1207,14 @@ works the same way everywhere.
   figures by OpenTelemetry's gen_ai names: Model, Context ("142k of
   200k"), Last Turn, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.
+  Context draws Meter's stroke of how full after its value, in warning
+  from 80%, and its own spend today Graph's spark of its hours, scaled
+  to the day's busiest hour of any session, so a quiet one reads quiet;
+  Context Rebuilt says what rebuilding its context cost today, an amount
+  hidden while sharing and unsaid under a cent. A drawer's fact may carry a figure so, a stroke or Graph's
+  spark, after its value on the value's baseline, its room counted in
+  how the drawer lays out; where it still won't fit, it gives way before
+  the value. It is no line for the cursor.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,

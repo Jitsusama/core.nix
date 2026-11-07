@@ -416,8 +416,12 @@ function figures(usage, today, said, named) {
         }) : "",
         cache: day && sent > 0 ? fill("cacheRead", { share: read.toFixed(1) }) : ""
     };
-    return Object.keys(known).filter(id => known[id] !== "")
-        .map(id => ({ label: named(id), value: known[id] }));
+    // Context carries Meter's stroke of how full, warning from FULL_AT as
+    // its row's glyph does (VKCF3Z, 2026-11-07).
+    const stroke = { shape: "stroke", values: [usage.context?.used / usage.context?.limit],
+        warn: fullness(usage) >= FULL_AT };
+    return Object.keys(known).filter(id => known[id] !== "").map(id => Object.assign(
+        { label: named(id), value: known[id] }, id === "context" ? { figure: stroke } : {}));
 }
 
 // How the sessions stand together, from how each stands (`states`) and
@@ -454,7 +458,8 @@ function summary(states, spent, said) {
 // run as the eyebrow over its title, "8IDU4E \u00b7 core.nix \u00b7 since
 // 21:52" (VKCF3Z, 2026-11-06); then what it works on, its step, what it
 // waits on Joel for, what it's spent today (an orchestrator's whole
-// orchestration, then its own and its sessions') and the machine it runs
+// orchestration, then its own and its sessions'), what rebuilding its
+// context cost today, and the machine it runs
 // on, each as a name and a figure. Nothing it hasn't said is guessed, and
 // what the eyebrow says isn't said again. The eyebrow names things, so the
 // drawer sets it as they're written, never in capitals (Drawer.qml).
@@ -466,10 +471,15 @@ function drawer(title, presence, said) {
         spent: said.spent,
         own: said.own,
         under: said.under,
+        rebuilt: said.rebuilt,
         machine: said.machine
     };
+    // Its own spend today carries its hours as Graph's spark (`said.hours`,
+    // spend-watch's): an orchestrator's Its Own, any other's Spent Today.
+    const hoursOn = (said.own ?? "") !== "" ? "own" : "spent";
     const facts = Object.keys(known).filter(id => (known[id] ?? "") !== "")
-        .map(id => ({ label: said.named(id), value: known[id] }));
+        .map(id => Object.assign({ label: said.named(id), value: known[id] },
+            id === hoursOn && said.hours ? { figure: said.hours } : {}));
     const eyebrow = [said.address, said.place, said.since]
         .filter(part => (part ?? "") !== "").join(" \u00b7 ");
     // Short of room, it gives way by whole items from its end, as the

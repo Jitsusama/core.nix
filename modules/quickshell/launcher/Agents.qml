@@ -223,6 +223,17 @@ Provider {
         return waiting ? word("inLine", { place: Numbers.ordinal(waiting.place) }) : "";
     }
 
+    // What a session spent today as spend-watch says, and, for one that
+    // `orchestrates`, its whole orchestration's as spend-watch sums its
+    // quest and those under it, or nothing to say either by while sharing.
+    function spendOf(presence, quest, place) {
+        const spent = presence && presence.session && !Quiet.sharing
+            ? SpendWatch.sessions[presence.session] ?? "" : "";
+        const family = place?.orchestrates && quest !== "" && !Quiet.sharing
+            ? SpendWatch.families[quest] ?? null : null;
+        return { spent, family };
+    }
+
     // A session's row, `depth` steps in under its orchestrator, and saying
     // what its whole orchestration spent when it `orchestrates`.
     function made(session, place) {
@@ -239,12 +250,7 @@ Provider {
             : word(state);
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
-        const spent = presence && presence.session && !Quiet.sharing
-            ? SpendWatch.sessions[presence.session] ?? "" : "";
-        // An orchestrator's whole orchestration's, as spend-watch sums its
-        // quest and those under it, or nothing to say it by.
-        const family = place?.orchestrates && quest !== "" && !Quiet.sharing
-            ? SpendWatch.families[quest] ?? null : null;
+        const { spent, family } = spendOf(presence, quest, place);
         const note = asks && presence.wants.said ? presence.wants.said
             : presence && presence.worksOn ? presence.worksOn : "";
         // Elsewhere, its machine leads the note; out of reach, it's all
@@ -298,7 +304,7 @@ Provider {
             operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
                 : copyOperand("fact:agent:address",
                     (session.presence?.addresses ?? [session.address]).join(", "))],
-            drawer: () => provider.drawerOf(session, quest, spent, family)
+            drawer: () => provider.drawerOf(session, quest, place)
         });
         // Itself as it reads ranked flat: at no depth, whom it's under
         // leading its note. It isn't named flat, which Quickshell's
@@ -321,9 +327,20 @@ Provider {
     // What a session's drawer says (SessionRow.js), read as it's shown:
     // for an orchestrator, its orchestration's spend, then its own and its
     // sessions'.
-    function drawerOf(session, quest, spent, family) {
+    function drawerOf(session, quest, place) {
         const presence = session.presence ?? {};
+        // Read as it's shown, so spend-watch's next sum reaches an open
+        // drawer even while the row stays as it was found.
+        const { spent, family } = spendOf(presence, quest, place);
+        // How its day went, as spend-watch says: its hours carry no dollars,
+        // but what rebuilding its context cost is an amount, hidden while
+        // the screen is shared. Its busiest hour nears no limit, so the
+        // spark never wears the warning, which is for a budget past its
+        // warning once the launcher reads budgets (VKCF3Z, 2026-11-07).
+        const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
         return SessionRow.drawer(session.title, presence, {
+            hours: day?.graph ? Object.assign({}, day.graph, { warn: false }) : null,
+            rebuilt: Quiet.sharing ? "" : String(day?.rebuilt ?? ""),
             spent: family ? word("allOf", { spent: family.all }) : spent,
             own: family ? family.own : "",
             under: family ? family.under : "",

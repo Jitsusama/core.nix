@@ -6075,6 +6075,9 @@ Scope {
                 drawnFacts: drawerCard.facts.map(fact => fact.heading ?? fact.label ?? ""),
                 // Each fact's value as it's drawn, null while it's asked.
                 values: drawerCard.facts.map(fact => fact.value ?? null),
+                // Each fact's figure drawn beside its value, by its shape,
+                // "" for none or one given way.
+                figures: drawerCard.figuresDrawn(),
                 // Its preview: the picture it's of, or how many lines.
                 preview: drawerCard.preview === null ? null : {
                     picture: drawerCard.preview.picture ?? "",
@@ -6083,6 +6086,8 @@ Scope {
                 labelsWhole: drawerCard.labelsWhole(),
                 factsWrapped: drawerCard.factsWrapped(),
                 factsUnder: drawerCard.factsUnder(),
+                // Whether its facts read as a table or a list, never a mix.
+                laidOneWay: drawerCard.laidOneWay(),
                 // Whether every value keeps its words whole where it's drawn.
                 valuesWhole: drawerCard.valuesWhole(),
                 // Whether every value beside its name takes one line there.
