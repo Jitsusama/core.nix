@@ -10,7 +10,9 @@ sit under an orchestrator at work, so they fold into one row after its own, whic
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
 folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
 counts only the other. Home's Agents row, and the row "agents" finds, say how they stand
-together and what they spent today, as spend-watch sums it.
+together and what they spent today, as spend-watch sums it. Two orchestrators the harness lists,
+closed, stand dimmed at the tree's end, the one last live first, each saying what its
+orchestration spent today only where it spent anything, Return reopening it.
 """
 
 from __future__ import annotations
@@ -56,6 +58,29 @@ def lost_on_the_last_boot() -> None:
 
 # What spend-watch writes for the launcher, here only the day's whole spend.
 SPEND = Path(os.environ["XDG_RUNTIME_DIR"]) / "spend-watch" / "collection.json"
+WORKFLOW = STATE / "pi/agentic-harness.pi/quest-workflow"
+# Two orchestrators closed, by address, short name, quest's title and when each was last live:
+# Lamplight the later, though the harness lists it second.
+CLOSED = [
+    ("BEACON", "Beacon", "Light the beacon", "2026-11-06T22:00:00Z"),
+    ("LAMPLT", "Lamplight", "Keep the lamp lit", "2026-11-07T04:00:00Z"),
+]
+
+
+def orchestrators_listed() -> None:
+    """Lay what the harness keeps of its orchestrators: the one at work, and two closed."""
+    WORKFLOW.mkdir(parents=True, exist_ok=True)
+    listed = [{"quest": "QEST-20261107-BOSSES", "address": "BOSSES",
+               "title": "Orchestrating Quest"}]  # fmt: skip
+    quests = []
+    for address, short, title, at in CLOSED:
+        quest = f"QEST-20261107-{address}"
+        listed.append({"quest": quest, "address": address, "title": title, "short": short})
+        resume = {"id": f"01b4-{address.lower()}", "cwd": str(KEPT), "at": at}
+        quests.append({"id": quest, "address": address, "title": title, "status": "active",
+                       "resume": resume, "start": str(KEPT)})  # fmt: skip
+    (WORKFLOW / "orchestrators.json").write_text(json.dumps({"orchestrators": listed}))
+    (WORKFLOW / "quests.json").write_text(json.dumps({"quests": quests}))
 
 
 def owner() -> Json:
@@ -115,6 +140,7 @@ def shell() -> Iterator[Shell]:
     lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
     lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
     lost_on_the_last_boot()
+    orchestrators_listed()
     SPEND.parent.mkdir(parents=True, exist_ok=True)
     SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
     logs = Path(os.environ["LOGS"])
@@ -333,3 +359,31 @@ def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell.launcher_until(lambda shown: shown["selected"]["side"] == "1 working \u00b7 $215 today")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["held"] == ["agents"])
+
+
+def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_first(
+    shell: Shell,
+) -> None:
+    """The closed stand after every live row, the one last live first, dimmed, Return reopening."""
+    # Lamplight's orchestration spent today; Beacon's spent nothing.
+    family = {"all": "$14.20", "own": "$3.10", "under": "$11.10"}
+    SPEND.write_text(
+        json.dumps({"v": 2, "agentsToday": "$214", "families": {"QEST-20261107-LAMPLT": family}})
+    )
+    opened(shell)
+    shell.launcher_until(lambda shown: "Beacon" in shown["rows"])
+    rows = shell.showing()["rows"]
+    tree = ["Orchestrating Quest", "1 listening, 1 paused", "Lamplight", "Beacon"]
+    assert rows[:4] == tree, rows
+    shell.down_to("Lamplight")
+    shell.launcher_until(
+        lambda shown: shown["selected"]["side"] == "closed \u00b7 $14.20 in all"
+    )
+    row = shell.showing()["selected"]
+    assert (row["hue"], row["note"], row["verb"]) == ("muted", "Keep the lamp lit", "reopen"), row
+    assert row["told"][:1] == ["\u21b5 reopen"], row
+    shell.down_to("Beacon")
+    assert shell.showing()["selected"]["side"] == "closed", shell.showing()["selected"]
+    # Its acts: Reopen, then its talks, of which it has none.
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(lambda shown: shown["rows"] == ["Reopen"])

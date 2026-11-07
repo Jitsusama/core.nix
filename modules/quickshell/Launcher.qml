@@ -838,7 +838,7 @@ Scope {
         for (const step of spot.trail) {
             // From the top, a place or an answer home is, such as Disk;
             // inside a collection, its things and then its parts, as it
-            // shows them, so Agents leads on to Orchestrators.
+            // shows them, so Agents leads on to Quests.
             const from = held.length > 0 ? held[held.length - 1].row.from : null;
             const rows = held.length === 0 ? categories.concat(home())
                 : from ? offered.concat(partsOf(from)) : offered;
@@ -1073,7 +1073,7 @@ Scope {
     // What a row holds as `enter` shows it stepped into: from home or a
     // collection (`things`), what can be done to it, then its parts, a
     // collection's own among them, as a step into it lists them (Agents'
-    // Orchestrators, Quests, Runs and AI spend); from a thing's own verbs,
+    // Quests, Jobs, Runs and AI spend); from a thing's own verbs,
     // what each is done to. One whose rows can't be made out of the
     // launcher's step holds nothing here.
     function catalogueHolds(row, among) {
@@ -3812,7 +3812,7 @@ Scope {
         const into = inside(row, things);
         // A collection with nothing in it still holds the places its
         // vocabulary names, which a step into it shows: Agents with no
-        // agent running still leads to its Quests and Orchestrators. A row
+        // agent running still leads to its Quests and Runs. A row
         // saying what it holds when empty, as Waiting on You does, is a
         // place stepped into however little it holds.
         const places = things && row.from ? partsOf(row.from).length : 0;

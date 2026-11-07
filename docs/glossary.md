@@ -70,10 +70,12 @@ which are core.nix's own.
 
 ## Agents
 
-The models working for Joel, what they work on, and what they cost. Its places
-are Orchestrators, Quests, Sessions and AI spend. An orchestrator or a session
-can be talked to, opened, paused and stopped; a quest can start a session, go
-first in the queue and conclude.
+The models working for Joel, what they work on, and what they cost. Its
+sessions stand in one tree, each under its orchestrator, the orchestrators
+closed at its end, and its places are Quests, Jobs, Runs and AI spend. A
+session can be talked to, gone to, paused and stopped, and a closed
+orchestrator reopened; a quest can start a session, orchestrate, go first in
+the queue and conclude.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |

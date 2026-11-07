@@ -1391,7 +1391,9 @@ onLinux {
         function isOf(session) { return `window:''${session.window.id}`; }
         function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
         property var started: null
-        function start(quest, folder) { started = [quest, folder]; }
+        function start(quest, folder, orchestrates) {
+          started = orchestrates ? [quest, folder, "orchestrating"] : [quest, folder];
+        }
         readonly property string machine: "alpha"
         property var places: []
         property string fits: ""

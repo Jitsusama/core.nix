@@ -179,19 +179,24 @@ Provider {
         const named = name => (launcher?.sources ?? []).find(one => one.settings.name
             === name) ?? null;
         const agents = named("agents");
+        // Each listed with its session running, as the harness names it.
         const running = agents ? (named("orchestrators")?.listed ?? [])
-            .map(one => Sessions.running.find(session => session.address === one.address))
-            .filter(session => session !== undefined) : [];
-        const session = running.map((one, at) => ({ one, at, stands: agents.stateOf(one) }))
+            .map(one => ({ one, session: Sessions.running.find(session => session.address
+                === one.address) ?? null }))
+            .filter(each => each.session !== null) : [];
+        const first = running.map((each, at) => Object.assign({ at,
+            stands: agents.stateOf(each.session) }, each))
             .sort((a, b) => SessionRow.rank(a.stands) - SessionRow.rank(b.stands)
-                || a.at - b.at)[0]?.one ?? null;
-        if (session === null)
+                || a.at - b.at)[0] ?? null;
+        if (first === null)
             return [];
+        const session = first.session;
         const row = agents.made(session, { orchestrates: true });
         return [thing({
             key: "verb:ask:talk",
             verb: Words.verb("verb:ask:talk"),
-            name: Words.name("verb:ask:talk").replace("{name}", session.title),
+            name: Words.name("verb:ask:talk").replace("{name}",
+                first.one.short || first.one.title || session.title),
             glyph: Words.glyph("verb:ask:talk"),
             hue: "action",
             stays: true,

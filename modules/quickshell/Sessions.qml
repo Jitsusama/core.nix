@@ -114,8 +114,8 @@ Singleton {
     // Starts a session on a quest, in `folder`, as the harness's own spawn
     // does: in the kitty that holds the sessions, through a login shell,
     // so the session has the account's whole environment, with the quest
-    // loaded as it starts. Quests, Orchestrators and Agents' Start a
-    // Session all start one this way, so a session started anywhere is the
+    // loaded as it starts. Quests, a closed orchestrator and Agents' Start
+    // a Session all start one this way, so a session started anywhere is the
     // same. One that `orchestrates` marks its quest as orchestrating once
     // the quest loads, as the quest tool's orchestrate does, which the
     // harness does for it, since the shell never writes a quest.

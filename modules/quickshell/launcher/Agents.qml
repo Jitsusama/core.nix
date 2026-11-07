@@ -256,6 +256,12 @@ Provider {
             ? word("under", { address: orchestrator }) : "";
         // What it spent today, an orchestrator's whole orchestration's.
         const figure = family ? word("allOf", { spent: family.all }) : spent;
+        // An orchestrator is found by what the harness lists it as too,
+        // its short name and its quest's title, as it was in the place of
+        // its own this tree replaced.
+        const listedAs = place?.orchestrates ? (source("orchestrators")?.listed ?? [])
+            .find(one => one.address === session.address) ?? null : null;
+        const known = listedAs ? ` ${listedAs.short ?? ""} ${listedAs.title ?? ""}` : "";
         const items = SessionRow.side(doing, figure);
         const row = member({
             thing: true,
@@ -269,7 +275,7 @@ Provider {
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since
             // a member keeps its words as given.
-            also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}`),
+            also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}${known}`),
             glyph: Theme.glyph.agent,
             hue: SessionRow.hue(state),
             side: items.map(item => item.said).join(" \u00b7 "),
@@ -331,7 +337,7 @@ Provider {
 
     // A session's own acts, in the one order every session keeps
     // (SessionRow.js), each steering it through its inbox but Go To; an
-    // orchestrator's row offers the same ones (Orchestrators.qml).
+    // orchestrator's row is its session's, with its talks after them.
     function sessionActs(session) {
         return SessionRow.acts(stateOf(session), windowedOf(session))
             .map(id => sessionAct(session, id));
