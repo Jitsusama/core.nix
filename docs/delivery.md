@@ -18,6 +18,19 @@ XDG's state folder for every run sent to a builder, the lent builder's
 - A VM run's wait for a builder: a median under 2 minutes.
 - The machine Joel uses: CPU pressure over five minutes under 15% from
   agents' work.
+- The net: a merge that breaks a VM test is caught within an hour of
+  landing, so a round runs as many tests at once as the VM builders hold.
+- Memory: no machine-wide out-of-memory kill for a week, and swap rarely
+  touched. Sessions that only wait are parked or ended rather than held.
+- Runs and tokens per landing: falling week on week, each group against
+  its own last week, since landings differ too much in size to compare
+  across groups.
+
+Every hour the figures go to whoever steers the work as one short card:
+the medians and p90s above, the VM wait, the machine's load, runs and
+tokens per landing, the sessions open and the memory they hold, and the
+top bottleneck with its owner and fix. A missed target raises an alarm the
+moment it is missed, not at the next card.
 
 On 2026-11-05 the last commit to merge took a median 41 minutes from 17:00
 to 21:00 against 6 from 06:00 to 12:00, and a subtests run that takes 3
@@ -40,6 +53,15 @@ filled them was runs that told nobody anything new.
 - Evaluation leaves the machine. `changed-checks` sends its whole run
   unless asked `--here`; a bare `nix flake check` held 24.5 GB beside
   Joel's work on 2026-10-25.
+- Commit before gating. An uncommitted tree's `changed-checks` runs on the
+  machine Joel uses, since a builder can only fetch a commit: on
+  2026-11-06 one compiled a whole machine's closure there.
+- `changed-checks --build` builds every VM test a change moved, whole, and
+  no gate asks for it: on 2026-11-06 one run for a change to the shell
+  alone held every VM builder for 66 minutes.
+- A flake.lock bump of one input that moves no VM test, by `merge-net
+  needs`, is gated by `changed-checks` alone; every other flake.lock change
+  runs everything.
 
 ## Waiting
 
@@ -55,6 +77,22 @@ filled them was runs that told nobody anything new.
 The rule that held the speed goes here, with the day it was learned, and
 the measurement that shows it. A rule that no longer holds a number goes.
 
+- A Rust program with hundreds of crates that changes often builds its
+  dependencies once, apart from itself ([`modules/cargo/dependencies.nix`][4]).
+  On 2026-11-06 the reader compiled 330 crates on every change, 16.6
+  minutes before it could reach the machine; it now compiles its own crate
+  in 2. A program whose whole build takes a few minutes keeps the plain
+  build: the guide's takes 2.3, and moving it would cost the install's VM
+  tests.
+- The net runs twelve VM tests at once, three builders' room. At four on
+  2026-11-06 a round of 33 tests took 85 minutes and filled one builder of
+  six, while 13 merges landed behind it untested, finishing 35 runs in 81
+  minutes; at twelve the next round finished 29 in its first 33.
+- A merge whose build leaves the machine unchanged counts as on from the
+  moment the switch finds that, not from the next switch that changes
+  something; counting it late made a quarantine look 54 minutes slow.
+
 [1]: testing.md
 [2]: ../tools/merge-net/must-run.txt
 [3]: ../tools/merge-net/quarantine.json
+[4]: ../modules/cargo/dependencies.nix
