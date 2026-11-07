@@ -1053,9 +1053,10 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     named = scale.replace(".", "-")
     desktop.photograph(f"notice-at-{named}")
     under, shown = under_the_card(desktop)
-    # Held, a row is the toast's notice in a list: its number on the inset, and every line of it
-    # a tie and a mark past the number, its glyph on the line that signs it (Joel, 2026-11-06:
-    # "I don't like the indent when I'm in list view").
+    # Held, a row is the pop-up's notice in a list and a launcher row in its place: its number on
+    # the inset, its mark in the mark column, and every line of it on the text column (Joel,
+    # 2026-11-06: "they need to share more code and UI/UX design to stop them from constantly
+    # drifting").
     with (
         desktop.told("keys notices"),
         desktop.told("notice offers :pause"),
