@@ -6705,6 +6705,7 @@
   ],
   "field": {
     "found": "{count} found",
+    "matched": "{at} of {all}",
     "waiting": "{count} new",
     "home": "Home",
     "drawer": {
