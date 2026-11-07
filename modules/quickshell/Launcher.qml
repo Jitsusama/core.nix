@@ -5336,7 +5336,12 @@ Scope {
             // than by an ellipsis, and the box is the room it holds.
             const clipper = item.parent && item.parent.clip ? item.parent : item;
             const box = clipper.mapToItem(into, 0, 0);
-            words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
+            // Styled words, as a side's of items with its dots muted, are
+            // said as they read, which their ReadsOn holds as `plain`.
+            const styled = item.textFormat === Text.StyledText
+                && typeof item.parent?.plain === "string";
+            words.push({ text: styled ? item.parent.plain : item.text,
+                x: Math.round(at.x), y: Math.round(at.y),
                 ink: item.color === undefined ? "" : String(item.color),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
                 inked: Math.round(item.contentWidth), cut: item.truncated === true

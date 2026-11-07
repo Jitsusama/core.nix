@@ -323,9 +323,16 @@ Rectangle {
         readonly property string said: row.landed !== "" ? row.landed
             : row.carried !== "" ? row.carried
             : row.kind !== "" ? row.kind
-            : itemised ? Reading.wholeItems(row.sideItems, room,
-                words => Math.ceil(sideFace.advanceWidth(words)) + 1)
+            : itemised ? kept.join(" \u00b7 ")
             : row.side
+        // The items a side of them keeps in its room, the least needed
+        // given way first (Reading.js's keptItems).
+        readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
+            words => Math.ceil(sideFace.advanceWidth(words)) + 1) : []
+        // Whether its dots are drawn apart from its words: where the words
+        // aren't muted already, so its dots are, as the status line's are.
+        readonly property bool dotted: itemised && kept.length > 1 && !row.flashed
+            && (row.selected || row.warns)
         readonly property bool sided: !chorded && said !== ""
         readonly property bool itemised: row.landed === "" && row.carried === ""
             && row.kind === "" && row.sideItems.length > 0
@@ -451,7 +458,9 @@ Rectangle {
             anchors.right: parent.right
             visible: right.sided
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
-            text: right.said
+            text: right.dotted ? Reading.styledItems(right.kept, Theme.muted) : right.said
+            format: right.dotted ? Text.StyledText : Text.PlainText
+            plain: right.said
             wholeWords: true
             endsRight: true
             level: Theme.level.note
