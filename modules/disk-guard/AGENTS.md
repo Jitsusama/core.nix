@@ -171,7 +171,9 @@ or launchd, and [`home.nix`][2] the account's.
   with whose it is (a quest, a worktree, a cache, containers or other),
   whether the guard may clear any of it and, when not, why. Sizing them
   reads millions of entries, so a thread at idle priority does it at most
-  every half hour; `holders_at` says when. `src/holders.rs` holds it.
+  every half hour, and while the disks' use has moved less than a
+  gibibyte since the last, only every six hours; `holders_at` says when.
+  A clear measures again at once. `src/holders.rs` holds it.
 - **The ledger.** Each measurement of the holders goes in the state
   folder's `ledger.json`, kept two days. A holder's `grew` is how much it
   grew since the earliest measurement within the last day that's at least

@@ -381,15 +381,12 @@ pub struct Guard {
     measured: Measured,
     /// The thread measuring them, while it does.
     measuring: Option<std::thread::JoinHandle<()>>,
+    /// When the last measure began, and how full each disk was then.
+    began: Option<crate::holders::LastMeasure>,
 }
 
 /// What holds the disks, as a thread of its own measured it.
 type Measured = Arc<Mutex<Option<(f64, Vec<(crate::holders::Place, u64)>, crate::ledger::Grown)>>>;
-
-/// How often what holds the disks is measured again while one is below
-/// healthy. Sizing every folder the sources name reads millions of
-/// entries, so it's done on a thread at idle priority, and not often.
-const HOLDERS_EVERY: f64 = 1800.0;
 
 /// Why a path stays or would go.
 #[derive(Clone, Debug, PartialEq)]
@@ -663,12 +660,13 @@ impl Guard {
             remeasure: false,
             measured: Arc::new(Mutex::new(None)),
             measuring: None,
+            began: None,
         })
     }
 
     /// Starts measuring what holds the disks, when one is below healthy or
-    /// holds more than its budget, and the last measure is old or missing,
-    /// unless a measure still runs.
+    /// holds more than its budget, and a measure is due, the disks having
+    /// moved since the last or it being hours old, unless one still runs.
     fn measure_holders(&mut self, now: f64) {
         if self
             .measuring
@@ -687,16 +685,19 @@ impl Guard {
                         space.total.saturating_sub(space.free) > budget.of(space.total)
                     })
         });
-        let fresh = self
-            .measured
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .as_ref()
-            .is_some_and(|(at, _, _)| now - at < HOLDERS_EVERY);
-        if !pressed || (fresh && !self.remeasure) {
+        let used = self
+            .watched
+            .iter()
+            .filter_map(|(disk, watched)| {
+                let space = watched.space.as_ref()?;
+                Some((*disk, space.total.saturating_sub(space.free)))
+            })
+            .collect();
+        if !pressed || !(self.remeasure || crate::holders::due(self.began.as_ref(), now, &used)) {
             return;
         }
         self.remeasure = false;
+        self.began = Some(crate::holders::LastMeasure { at: now, used });
         let places = crate::holders::places(&self.config);
         let measured = Arc::clone(&self.measured);
         let state = self.state().to_owned();
