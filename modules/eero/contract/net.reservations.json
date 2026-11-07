@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:07.572Z"
+  },
+  "data": [
+    {
+      "url": "/2.2/networks/1001/reservations/2c8db13091a2",
+      "device": "/2.2/networks/1001/devices/020000000038",
+      "mac": "02:00:00:00:00:38",
+      "description": "network equipment 1",
+      "ip": "10.0.0.208"
+    }
+  ]
+}

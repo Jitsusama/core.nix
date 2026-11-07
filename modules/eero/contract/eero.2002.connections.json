@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:55:00.812Z"
+  },
+  "data": {
+    "provide_device_power": null,
+    "node_actions": [],
+    "ports": {
+      "layout": {
+        "position_rank_order": [
+          0,
+          1
+        ],
+        "layout_type": "TWO_PORT_A"
+      },
+      "interfaces": [
+        {
+          "interface_number": 0,
+          "name": "1",
+          "actions": [
+            {
+              "type": "DISABLE_PORT",
+              "position": 0
+            }
+          ],
+          "network_type": "UNKNOWN",
+          "supported_speed": "P1000",
+          "negotiated_speed": null,
+          "providing_power": null,
+          "port_status": "DISCONNECTED",
+          "ethernet_address": "02:00:00:00:00:25",
+          "capable_protocols": [
+            "DATA"
+          ],
+          "disabled_protocols": [],
+          "connection_status": {
+            "type": "NOT_CONNECTED",
+            "metadata": {
+              "advanced_attributes": {
+                "connection_type": "UNKNOWN"
+              }
+            }
+          },
+          "is_upstream": false,
+          "port_security": {
+            "capable": false,
+            "enabled": false,
+            "status": "DISABLED",
+            "display_status": "NOT_CAPABLE"
+          },
+          "port_flap_info": null,
+          "is_sfp": false,
+          "sfp": null
+        },
+        {
+          "interface_number": 1,
+          "name": "2",
+          "actions": [
+            {
+              "type": "DISABLE_PORT",
+              "position": 0
+            }
+          ],
+          "network_type": "UNKNOWN",
+          "supported_speed": "P1000",
+          "negotiated_speed": null,
+          "providing_power": null,
+          "port_status": "DISCONNECTED",
+          "ethernet_address": "02:00:00:00:00:26",
+          "capable_protocols": [
+            "DATA"
+          ],
+          "disabled_protocols": [],
+          "connection_status": {
+            "type": "NOT_CONNECTED",
+            "metadata": {
+              "advanced_attributes": {
+                "connection_type": "UNKNOWN"
+              }
+            }
+          },
+          "is_upstream": false,
+          "port_security": {
+            "capable": false,
+            "enabled": false,
+            "status": "DISABLED",
+            "display_status": "NOT_CAPABLE"
+          },
+          "port_flap_info": null,
+          "is_sfp": false,
+          "sfp": null
+        }
+      ]
+    },
+    "wireless_devices": [
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "game console 1",
+          "device_type": "game_console",
+          "url": "/2.2/networks/1001/devices/02000000000f"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "generic 1",
+          "device_type": "generic",
+          "url": "/2.2/networks/1001/devices/020000000007"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "generic 4",
+          "device_type": "generic",
+          "url": "/2.2/networks/1001/devices/020000000015"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "laptop computer 1",
+          "device_type": "laptop_computer",
+          "url": "/2.2/networks/1001/devices/02000000000e"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "media streamer 1",
+          "device_type": "media_streamer",
+          "url": "/2.2/networks/1001/devices/020000000016"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "audio 1",
+          "device_type": "audio",
+          "url": "/2.2/networks/1001/devices/020000000017"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "thermostat 1",
+          "device_type": "thermostat",
+          "url": "/2.2/networks/1001/devices/02000000000d"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "phone 1",
+          "device_type": "phone",
+          "url": "/2.2/networks/1001/devices/020000000005"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "unknown computer 1",
+          "device_type": "unknown_computer",
+          "url": "/2.2/networks/1001/devices/020000000008"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "phone 1",
+          "device_type": "phone",
+          "url": "/2.2/networks/1001/devices/020000000003"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:55:15.270Z"
+  },
+  "data": {
+    "url": "/2.2/networks/1001/devices/020000000001",
+    "mac": "02:00:00:00:00:01",
+    "eui64": "02000000fffe0038",
+    "manufacturer": null,
+    "ip": "10.0.0.29",
+    "ips": [
+      "10.0.0.29",
+      "fe80::1"
+    ],
+    "ipv6_addresses": [
+      {
+        "address": "fe80::1",
+        "scope": "link"
+      }
+    ],
+    "nickname": null,
+    "hostname": "tablet 1",
+    "connected": true,
+    "wireless": true,
+    "connection_type": "wireless",
+    "source": {
+      "location": "Den",
+      "is_gateway": false,
+      "model": "eero Pro 6",
+      "display_name": "Den eero",
+      "serial_number": "SERIAL0001",
+      "is_proxied_node": false,
+      "url": "/2.2/eeros/2001"
+    },
+    "last_active": "2026-11-07T22:55:05.861Z",
+    "first_active": "2026-11-07T22:42:35.077Z",
+    "first_seen": "2026-02-09T20:08:06.564127Z",
+    "connectivity": {
+      "rx_bitrate": "48.0 MBit/s",
+      "signal": "-59 dBm",
+      "signal_avg": null,
+      "score": 1,
+      "score_bars": 5,
+      "tx_retry_pct": 0,
+      "frequency": 5260,
+      "bssid": "02:00:00:00:00:02",
+      "snr": 0,
+      "inactive_time_ms": 0,
+      "rx_rate_info": {
+        "rate_bps": null,
+        "mcs": null,
+        "nss": null,
+        "guard_interval": null,
+        "channel_width": null,
+        "phy_type": null
+      },
+      "tx_rate_info": {
+        "rate_bps": null,
+        "mcs": null,
+        "nss": null,
+        "guard_interval": null,
+        "channel_width": null,
+        "phy_type": null
+      },
+      "ethernet_status": null,
+      "packet_stats": {
+        "rx_drops": 0,
+        "tx_retries": 30,
+        "rx_packets": 6,
+        "tx_packets": 6,
+        "total_packets": 12,
+        "tx_retransmit_ppm": 0,
+        "tx_fail_ppm": 0,
+        "rx_drop_ppm": 0
+      }
+    },
+    "interface": {
+      "frequency": "5",
+      "frequency_unit": "GHz"
+    },
+    "usage": {
+      "down_mbps": 0,
+      "up_mbps": 0
+    },
+    "profile": null,
+    "device_type": "tablet",
+    "inferred_make": "Apple",
+    "inferred_model": "iPad",
+    "blacklisted": false,
+    "dropped": false,
+    "homekit": {
+      "registered": false,
+      "protection_mode": "UNKNOWN"
+    },
+    "is_guest": false,
+    "paused": false,
+    "channel": 52,
+    "auth": "wpa2",
+    "multi_link_interfaces": null,
+    "is_private": true,
+    "secondary_wan_deny_access": false,
+    "ring_lte": {
+      "is_not_pausable": false,
+      "ring_managed": false,
+      "lte_enabled": false
+    },
+    "ipv4": "10.0.0.29",
+    "is_proxied_node": false,
+    "manufacturer_device_type_id": null,
+    "amazon_devices_detail": null,
+    "ssid": "home",
+    "subnet_kind": "main",
+    "vlan_id": null,
+    "vlan_name": "",
+    "display_name": "tablet 1",
+    "model_name": null,
+    "upstream_device": null,
+    "device_group": null,
+    "reservations": {
+      "url": "/2.2/networks/1001/reservations",
+      "data": []
+    },
+    "forwards": {
+      "url": "/2.3/networks/1001/forwards",
+      "data": []
+    },
+    "pinholes": {
+      "url": "/2.2/networks/1001/ipv6/pinholes",
+      "data": []
+    }
+  }
+}

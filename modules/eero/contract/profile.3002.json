@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:55:20.178Z"
+  },
+  "data": {
+    "url": "/2.2/networks/1001/profiles/3002",
+    "resources": {
+      "schedules": "/2.2/networks/1001/profiles/3002/schedules"
+    },
+    "name": "profile 2",
+    "paused": false,
+    "devices": [
+      {
+        "url": "/2.2/networks/1001/devices/020000000035",
+        "mac": "02:00:00:00:00:35",
+        "manufacturer": null,
+        "manufacturer_device_type_id": null,
+        "ip": null,
+        "ips": [],
+        "nickname": "tablet 3",
+        "hostname": null,
+        "connected": false,
+        "wireless": false,
+        "connection_type": null,
+        "source": {
+          "location": null,
+          "serial_number": null,
+          "is_gateway": false,
+          "url": null
+        },
+        "last_active": null,
+        "first_active": null,
+        "first_seen": "2020-11-13T21:59:48.529251Z",
+        "connectivity": {
+          "rx_bitrate": null,
+          "signal": null,
+          "signal_avg": null,
+          "score": null,
+          "score_bars": null,
+          "tx_retry_pct": null,
+          "frequency": null,
+          "rx_rate_info": null,
+          "tx_rate_info": null
+        },
+        "interface": {
+          "frequency": null,
+          "frequency_unit": null
+        },
+        "usage": {
+          "down_mbps": 0,
+          "up_mbps": 0
+        },
+        "homekit": null,
+        "device_type": "tablet",
+        "inferred_make": "Apple",
+        "inferred_model": "iPad",
+        "auth": null,
+        "multi_link_interfaces": null,
+        "is_private": true,
+        "is_guest": false,
+        "blocked": false,
+        "secondary_wan_deny_access": false,
+        "paused": false,
+        "display_name": "tablet 3",
+        "model_name": null
+      },
+      {
+        "url": "/2.2/networks/1001/devices/020000000036",
+        "mac": "02:00:00:00:00:36",
+        "manufacturer": null,
+        "manufacturer_device_type_id": null,
+        "ip": null,
+        "ips": [],
+        "nickname": "tablet 4",
+        "hostname": null,
+        "connected": false,
+        "wireless": false,
+        "connection_type": null,
+        "source": {
+          "location": null,
+          "serial_number": null,
+          "is_gateway": false,
+          "url": null
+        },
+        "last_active": null,
+        "first_active": null,
+        "first_seen": "2020-11-13T22:49:51.766588Z",
+        "connectivity": {
+          "rx_bitrate": null,
+          "signal": null,
+          "signal_avg": null,
+          "score": null,
+          "score_bars": null,
+          "tx_retry_pct": null,
+          "frequency": null,
+          "rx_rate_info": null,
+          "tx_rate_info": null
+        },
+        "interface": {
+          "frequency": null,
+          "frequency_unit": null
+        },
+        "usage": {
+          "down_mbps": 0,
+          "up_mbps": 0
+        },
+        "homekit": null,
+        "device_type": "tablet",
+        "inferred_make": "Apple",
+        "inferred_model": "iPad",
+        "auth": null,
+        "multi_link_interfaces": null,
+        "is_private": true,
+        "is_guest": false,
+        "blocked": false,
+        "secondary_wan_deny_access": false,
+        "paused": false,
+        "display_name": "tablet 4",
+        "model_name": null
+      },
+      {
+        "url": "/2.2/networks/1001/devices/020000000037",
+        "mac": "02:00:00:00:00:37",
+        "manufacturer": "Apple, Inc.",
+        "manufacturer_device_type_id": null,
+        "ip": null,
+        "ips": [],
+        "nickname": "tablet 4",
+        "hostname": null,
+        "connected": false,
+        "wireless": false,
+        "connection_type": null,
+        "source": {
+          "location": null,
+          "serial_number": null,
+          "is_gateway": false,
+          "url": null
+        },
+        "last_active": null,
+        "first_active": null,
+        "first_seen": "2020-11-22T13:01:29.013856Z",
+        "connectivity": {
+          "rx_bitrate": null,
+          "signal": null,
+          "signal_avg": null,
+          "score": null,
+          "score_bars": null,
+          "tx_retry_pct": null,
+          "frequency": null,
+          "rx_rate_info": null,
+          "tx_rate_info": null
+        },
+        "interface": {
+          "frequency": null,
+          "frequency_unit": null
+        },
+        "usage": {
+          "down_mbps": 0,
+          "up_mbps": 0
+        },
+        "homekit": null,
+        "device_type": "tablet",
+        "inferred_make": "Apple",
+        "inferred_model": "iPad",
+        "auth": null,
+        "multi_link_interfaces": null,
+        "is_private": false,
+        "is_guest": false,
+        "blocked": false,
+        "secondary_wan_deny_access": false,
+        "paused": false,
+        "display_name": "tablet 4",
+        "model_name": null
+      }
+    ],
+    "schedule": [],
+    "state": {
+      "value": "Active",
+      "schedule": null
+    },
+    "premium_dns": {
+      "zscaler_location_enabled": false,
+      "dns_provider": null,
+      "dns_policies": {
+        "block_pornographic_content": false,
+        "block_illegal_content": false,
+        "block_violent_content": false,
+        "safe_search_enabled": false
+      },
+      "advanced_content_filters": {
+        "blocked_list": [],
+        "allowed_list": []
+      },
+      "ad_block_settings": {
+        "enabled": false,
+        "enabled_for_network": false
+      },
+      "blocked_applications": []
+    },
+    "unified_content_filters": {
+      "is_content_filters_set": false,
+      "dns_policies": {
+        "block_gaming_content": false,
+        "block_illegal_content": false,
+        "block_messaging_content": false,
+        "block_pornographic_content": false,
+        "block_social_content": false,
+        "block_shopping_content": false,
+        "block_streaming_content": false,
+        "block_violent_content": false,
+        "safe_search_enabled": false,
+        "youtube_restricted": false
+      }
+    },
+    "proxied_nodes": [],
+    "default": false
+  }
+}

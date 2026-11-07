@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:06.426Z"
+  },
+  "data": {
+    "url": "/2.2/networks/1001/routing",
+    "devices": {
+      "url": "/2.2/networks/1001/devices",
+      "data": [
+        {
+          "url": "/2.2/networks/1001/devices/020000000035",
+          "mac": "02:00:00:00:00:35",
+          "nickname": "tablet 3"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002b",
+          "mac": "02:00:00:00:00:2b",
+          "nickname": "phone 3"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000039",
+          "mac": "02:00:00:00:00:39",
+          "nickname": "device 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000003a",
+          "mac": "02:00:00:00:00:3a",
+          "nickname": "game console 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000017",
+          "mac": "02:00:00:00:00:17",
+          "nickname": "audio 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002c",
+          "mac": "02:00:00:00:00:2c",
+          "nickname": "tablet 2"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000013",
+          "mac": "02:00:00:00:00:13",
+          "nickname": "printer 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002d",
+          "mac": "02:00:00:00:00:2d",
+          "nickname": "phone 4"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002e",
+          "mac": "02:00:00:00:00:2e",
+          "nickname": "tablet 2"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000016",
+          "mac": "02:00:00:00:00:16",
+          "nickname": "media streamer 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002f",
+          "mac": "02:00:00:00:00:2f",
+          "nickname": "laptop computer 3"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000036",
+          "mac": "02:00:00:00:00:36",
+          "nickname": "tablet 4"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000037",
+          "mac": "02:00:00:00:00:37",
+          "nickname": "tablet 4"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000030",
+          "mac": "02:00:00:00:00:30",
+          "nickname": "laptop computer 4"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000003b",
+          "mac": "02:00:00:00:00:3b",
+          "nickname": "device 2"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000003c",
+          "mac": "02:00:00:00:00:3c",
+          "nickname": "device 3"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000000f",
+          "mac": "02:00:00:00:00:0f",
+          "nickname": "game console 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000003d",
+          "mac": "02:00:00:00:00:3d",
+          "nickname": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000003e",
+          "mac": "02:00:00:00:00:3e",
+          "nickname": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000031",
+          "mac": "02:00:00:00:00:31",
+          "nickname": "laptop computer 5"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000032",
+          "mac": "02:00:00:00:00:32",
+          "nickname": "phone 5"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000033",
+          "mac": "02:00:00:00:00:33",
+          "nickname": "tablet 2"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000003f",
+          "mac": "02:00:00:00:00:3f",
+          "nickname": "device 4"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000034",
+          "mac": "02:00:00:00:00:34",
+          "nickname": "laptop computer 6"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000040",
+          "mac": "02:00:00:00:00:40",
+          "nickname": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000041",
+          "mac": "02:00:00:00:00:41",
+          "nickname": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000001",
+          "mac": "02:00:00:00:00:01",
+          "nickname": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000038",
+          "mac": "02:00:00:00:00:38",
+          "nickname": "network equipment 1"
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000042",
+          "mac": "02:00:00:00:00:42",
+          "nickname": "tablet 2"
+        }
+      ]
+    },
+    "reservations": {
+      "url": "/2.2/networks/1001/reservations",
+      "data": [
+        {
+          "url": "/2.2/networks/1001/reservations/2c8db13091a2",
+          "device": "/2.2/networks/1001/devices/020000000038",
+          "mac": "02:00:00:00:00:38",
+          "description": "network equipment 1",
+          "ip": "10.0.0.208"
+        }
+      ]
+    },
+    "forwards": {
+      "url": "/2.2/networks/1001/forwards",
+      "data": []
+    },
+    "pinholes": {
+      "url": "/2.2/networks/1001/ipv6/pinholes",
+      "data": []
+    }
+  }
+}
