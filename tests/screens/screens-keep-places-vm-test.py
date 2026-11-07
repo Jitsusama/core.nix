@@ -227,6 +227,65 @@ def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they
             booted.outputs_say(screen, there=True)
 
 
+def test_a_shell_starting_on_a_last_boots_sessions_reopens_them_where_they_sat(
+    booted: Screens,
+) -> None:
+    """A shell starting on a boot reopens the last boot's sessions by itself, each where it sat.
+
+    After a reboot Joel types only his disk's PIN and signs in (2026-11-07), so the shell
+    starting with the last boot's sessions kept reopens each, in order, on its own screen and
+    workspace, and a shell started again on the same boot, as a switch restarts it, never
+    reopens them twice.
+    """
+    machine = booted.machine
+    where = {
+        "01c7-there": kept_on("Virtual-1", 1, 1),
+        "01c7-left": kept_on("Virtual-2", 1, 1),
+        "01c7-right": kept_on("Virtual-2", 1, 2),
+        "01c7-up": kept_on("Virtual-2", 2, 1),
+    }
+    # Each the shell began, by the word it says as it begins one.
+    begun = (
+        "journalctl --user -u quickshell -o cat"
+        " | grep -o 'report\\[resumed session 01c7-[a-z]*' | sort | uniq -c"
+    )
+
+    def home(now: dict[str, tuple[str, int, int]]) -> bool:
+        """Whether each is on its own screen, its workspace and its order there."""
+        if len(now) < len(where):
+            return False
+        left, right = now["01c7-left"], now["01c7-right"]
+        return (
+            now["01c7-there"][:2] == ("Virtual-1", 1)
+            and left[:2] == right[:2] == ("Virtual-2", 1)
+            and left[2] < right[2]
+            and now["01c7-up"][:2] == ("Virtual-2", 2)
+        )
+
+    boot = booted.hand_over(where)
+    try:
+        # The shell starting is the sign-in: nothing is pressed.
+        machine.succeed(booted.in_niri("systemctl --user restart quickshell"))
+        deadline = time.monotonic() + 180
+        while not home(now := booted.sessions_sat("01c7-")):
+            assert time.monotonic() < deadline, f"not reopened where they sat: {now}"
+            time.sleep(1)
+        # Started again on this boot, the shell reopens none of them twice:
+        # it decides as niri first answers, well within its first ten seconds.
+        machine.succeed(booted.in_niri("systemctl --user restart quickshell"))
+        machine.wait_until_succeeds(
+            booted.in_niri(
+                "test $(ps -o etimes= -p $(systemctl --user show -p MainPID --value quickshell))"
+                " -ge 10"
+            ),
+            timeout=dt.timedelta(seconds=60),
+        )
+        counted = machine.succeed(booted.in_niri(begun)).split()
+        assert counted[0::2] == ["1"] * len(where), counted
+    finally:
+        booted.handed_back(boot)
+
+
 def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window(
     booted: Screens,
 ) -> None:
