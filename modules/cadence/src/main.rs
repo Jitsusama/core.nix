@@ -115,6 +115,99 @@ fn run(args: &Args) -> io::Result<()> {
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
 }
 
+/// Core's history, from a bare clone of its own kept beside the card and
+/// fetched whole each tick, so it never lags a checkout's own fetching.
+struct Core {
+    dir: PathBuf,
+}
+
+impl Core {
+    fn fetched(folder: &Path) -> io::Result<Self> {
+        let dir = folder.join("core.git");
+        if !dir.exists() {
+            command(
+                "git",
+                &["clone", "--bare", "--quiet", CORE, &dir.to_string_lossy()],
+            )?;
+        }
+        let core = Self { dir };
+        core.git(&[
+            "fetch",
+            "--quiet",
+            "origin",
+            "+refs/heads/main:refs/heads/main",
+        ])?;
+        Ok(core)
+    }
+
+    fn git(&self, args: &[&str]) -> io::Result<String> {
+        let mut all = vec!["-C", self.dir.to_str().unwrap_or_default()];
+        all.extend_from_slice(args);
+        command("git", &all)
+    }
+
+    fn number(&self, args: &[&str]) -> Option<i64> {
+        self.git(args).ok()?.trim().parse().ok()
+    }
+
+    /// Each merge to main since `since`, with the first look of the
+    /// follower's that built it.
+    fn landings(&self, since: i64, follower: &records::Follower) -> io::Result<Vec<Landing>> {
+        let log = self.git(&[
+            "log",
+            "--first-parent",
+            "--merges",
+            &format!("--since=@{since}"),
+            "--format=%H %ct %P %s",
+            "main",
+        ])?;
+        let mut landings = Vec::new();
+        for (mut merge, main, branch) in records::parse_merges(&log) {
+            merge.last_commit = self.number(&["show", "-s", "--format=%ct", &branch]);
+            merge.files = self
+                .git(&["diff", "--name-only", &main, &merge.sha])?
+                .lines()
+                .map(str::to_owned)
+                .collect();
+            let on = follower
+                .looks
+                .iter()
+                .find(|look| {
+                    look.at >= merge.at
+                        && self
+                            .git(&["merge-base", "--is-ancestor", &merge.sha, &look.core])
+                            .is_ok()
+                })
+                .cloned();
+            landings.push(Landing { merge, on });
+        }
+        Ok(landings)
+    }
+
+    /// The net's round, read from its state, against main.
+    fn round(&self, net_state: &str) -> Option<Round> {
+        let head = records::net_round(net_state)?;
+        let merged = self.number(&["show", "-s", "--format=%ct", &head])?;
+        let behind = self.number(&[
+            "rev-list",
+            "--count",
+            "--first-parent",
+            &format!("{head}..main"),
+        ])?;
+        Some(Round {
+            head,
+            merged,
+            behind: usize::try_from(behind).ok()?,
+        })
+    }
+}
+
+fn journal(args: &[&str]) -> String {
+    let mut all = vec!["-o", "short-unix", "--no-pager"];
+    all.extend_from_slice(args);
+    command("journalctl", &all).unwrap_or_default()
+}
+
 fn gather(
     folder: &Path,
     state_home: &Path,
@@ -122,106 +215,23 @@ fn gather(
     args: &Args,
     now: i64,
 ) -> io::Result<Snapshot> {
-    let core = folder.join("core.git");
-    if !core.exists() {
-        command(
-            "git",
-            &["clone", "--bare", "--quiet", CORE, &core.to_string_lossy()],
-        )?;
-    }
-    let git = |args: &[&str]| -> io::Result<String> {
-        let mut all = vec!["-C", core.to_str().unwrap_or_default()];
-        all.extend_from_slice(args);
-        command("git", &all)
-    };
-    git(&[
-        "fetch",
-        "--quiet",
-        "origin",
-        "+refs/heads/main:refs/heads/main",
-    ])?;
-    let since = format!("--since=@{}", now - DAY);
-    let journal = command(
-        "journalctl",
-        &[
-            "--user",
-            "-u",
-            "update-to-main-follows",
-            "-o",
-            "short-unix",
-            "--no-pager",
-            &since,
-        ],
-    )
-    .unwrap_or_default();
-    let follower = records::parse_follower(&journal);
-    let log = git(&[
-        "log",
-        "--first-parent",
-        "--merges",
-        &since,
-        "--format=%H %ct %P %s",
-        "main",
-    ])?;
-    let mut landings = Vec::new();
-    for (mut merge, main, branch) in records::parse_merges(&log) {
-        merge.last_commit = git(&["show", "-s", "--format=%ct", &branch])
-            .ok()
-            .and_then(|t| t.trim().parse().ok());
-        merge.files = git(&["diff", "--name-only", &main, &merge.sha])?
-            .lines()
-            .map(str::to_owned)
-            .collect();
-        let on = follower
-            .looks
-            .iter()
-            .find(|look| {
-                look.at >= merge.at
-                    && git(&["merge-base", "--is-ancestor", &merge.sha, &look.core]).is_ok()
-            })
-            .cloned();
-        landings.push(Landing { merge, on });
-    }
+    let core = Core::fetched(folder)?;
+    let follower = records::parse_follower(&journal(&[
+        "--user",
+        "-u",
+        "update-to-main-follows",
+        &format!("--since=@{}", now - DAY),
+    ]));
+    let landings = core.landings(now - DAY, &follower)?;
     let net = state_home.join("net");
-    let round = fs::read_to_string(net.join("state.json"))
-        .ok()
-        .and_then(|s| records::net_round(&s))
-        .and_then(|head| {
-            let merged = git(&["show", "-s", "--format=%ct", &head])
-                .ok()?
-                .trim()
-                .parse()
-                .ok()?;
-            let behind = git(&[
-                "rev-list",
-                "--count",
-                "--first-parent",
-                &format!("{head}..main"),
-            ])
-            .ok()?
-            .trim()
-            .parse()
-            .ok()?;
-            Some(Round {
-                head,
-                merged,
-                behind,
-            })
-        });
+    let round = core.round(&fs::read_to_string(net.join("state.json")).unwrap_or_default());
     let (available_gib, swap_gib) =
         records::memory(&fs::read_to_string("/proc/meminfo").unwrap_or_default());
-    let kernel = command(
-        "journalctl",
-        &[
-            "-k",
-            "-o",
-            "short-unix",
-            "--no-pager",
-            &format!("--since=@{}", now - 7 * DAY),
-            "--grep=oom-kill:",
-        ],
-    )
-    .unwrap_or_default();
+    let kernel = journal(&[
+        "-k",
+        &format!("--since=@{}", now - 7 * DAY),
+        "--grep=oom-kill:",
+    ]);
     let watcher = args.watcher.as_deref().and_then(|a| mesh.presence(a));
     let sent = args
         .watcher

@@ -219,8 +219,8 @@ pub struct Question {
 pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     let mut out = Vec::new();
     let mut escalate = |state: &mut State, key: String, text: String| {
-        if !state.escalated.contains_key(&key) {
-            state.escalated.insert(key, s.now);
+        if let std::collections::btree_map::Entry::Vacant(slot) = state.escalated.entry(key) {
+            slot.insert(s.now);
             out.push(Question {
                 to: To::Steward,
                 key: None,

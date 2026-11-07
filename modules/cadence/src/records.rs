@@ -43,7 +43,9 @@ impl Merge {
 fn tests_or_docs(path: &str) -> bool {
     path.starts_with("tests/")
         || path.starts_with("docs/")
-        || path.ends_with(".md")
+        || std::path::Path::new(path)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("md"))
         || path == "check-descriptions.nix"
         || path == "checks.nix"
         || path.ends_with("/checks.nix")
@@ -152,12 +154,12 @@ pub fn parse_follower(journal: &str) -> Follower {
         };
         #[expect(clippy::cast_possible_truncation, reason = "a time in seconds")]
         let at = at as i64;
-        if let Some(core) = rest.split_once(" core@").map(|(_, sha)| sha.trim()) {
-            if rest.contains("asking at") {
-                asked = Some((at, core.to_owned()));
-                follower.going = Some(at);
-                continue;
-            }
+        if let Some(core) = rest.split_once(" core@").map(|(_, sha)| sha.trim())
+            && rest.contains("asking at")
+        {
+            asked = Some((at, core.to_owned()));
+            follower.going = Some(at);
+            continue;
         }
         let Some(brace) = rest.find('{') else {
             continue;

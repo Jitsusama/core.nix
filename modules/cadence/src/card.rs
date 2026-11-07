@@ -19,7 +19,21 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
         clock(s.now),
         clock(since)
     );
+    delivery(&mut out, s, &clock);
+    machine(&mut out, s);
+    net(&mut out, s, &clock);
+    out
+}
 
+#[expect(clippy::cast_precision_loss, reason = "seconds within a lifetime")]
+fn minutes(secs: i64) -> f64 {
+    secs as f64 / 60.0
+}
+
+/// The hour's merges, how long each took to reach the machine, and its
+/// switches.
+fn delivery(out: &mut String, s: &Snapshot, clock: &impl Fn(i64) -> String) {
+    let since = s.now - 3600;
     let merged: Vec<_> = s.landings.iter().filter(|l| l.merge.at >= since).collect();
     let tests_only = merged.iter().filter(|l| l.merge.tests_only()).count();
     let _ = writeln!(
@@ -27,15 +41,13 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
         "Core: {} merged ({tests_only} tests or docs only).",
         merged.len()
     );
-    #[expect(clippy::cast_precision_loss, reason = "seconds within a lifetime")]
-    let minutes = |secs: i64| secs as f64 / 60.0;
     let to_merge: Vec<f64> = merged
         .iter()
         .filter(|l| !l.merge.boot())
         .filter_map(|l| l.merge.last_commit.map(|c| minutes(l.merge.at - c)))
         .collect();
     line(
-        &mut out,
+        out,
         "Last commit to merge, outside boot (target median 20)",
         &to_merge,
     );
@@ -48,7 +60,7 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
         })
         .collect();
     let times: Vec<f64> = on.iter().map(|(m, _)| *m).collect();
-    line(&mut out, "Merge to on (target median 8)", &times);
+    line(out, "Merge to on (target median 8)", &times);
     on.sort_by(|a, b| b.0.total_cmp(&a.0));
     if !on.is_empty() {
         let worst: Vec<String> = on
@@ -78,7 +90,11 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
         .last()
         .map_or_else(|| "none".to_owned(), |&at| clock(at));
     let _ = writeln!(out, "  switches: {}, last at {last}", switches.len());
+}
 
+/// The hour's VM runs and the machine's pressure and memory.
+fn machine(out: &mut String, s: &Snapshot) {
+    let since = s.now - 3600;
     let vm: Vec<_> = s.runs.iter().filter(|r| r.vm() && r.at >= since).collect();
     let ok = vm.iter().filter(|r| r.status == 0).count();
     let waits: Vec<f64> = vm
@@ -86,7 +102,7 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
         .filter_map(|r| r.waited.map(|w| w / 60.0))
         .collect();
     let _ = writeln!(out, "VM runs: {}, {ok} passed.", vm.len());
-    line(&mut out, "VM wait for a builder (target median 2)", &waits);
+    line(out, "VM wait for a builder (target median 2)", &waits);
 
     let cpu = s
         .cpu_avg300
@@ -108,6 +124,10 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
         ),
         None => writeln!(out, "  no machine-wide out-of-memory kill this week."),
     };
+}
+
+/// How far the net trails main, and whether the watching session is there.
+fn net(out: &mut String, s: &Snapshot, clock: &impl Fn(i64) -> String) {
     match &s.round {
         Some(round) => {
             let _ = writeln!(
@@ -124,13 +144,12 @@ pub fn card(s: &Snapshot, clock: impl Fn(i64) -> String) -> String {
     }
     if s.watched {
         let watcher = if s.watcher_alive { "there" } else { "gone" };
-        let card_at = s.last_card.map_or_else(|| "none".to_owned(), &clock);
+        let card_at = s.last_card.map_or_else(|| "none".to_owned(), clock);
         let _ = writeln!(
             out,
             "The session keeping the cycle fast is {watcher}; its last card went at {card_at}."
         );
     }
-    out
 }
 
 fn line(out: &mut String, what: &str, xs: &[f64]) {
