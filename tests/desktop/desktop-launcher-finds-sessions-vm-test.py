@@ -137,10 +137,11 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
             and shown["selected"]["verb"] == "go to"
         )
     )
-    # Its acts in the order every session keeps them, then what's known of
-    # it, each named first, as every part is, then what it says.
-    assert desktop.showing()["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
-    desktop.down_to("Stop")
+    # Its acts in the order every session keeps them, Close last since it's
+    # here, then what's known of it, each named first, as every part is, then
+    # what it says.
+    assert desktop.showing()["rows"][:5] == ["Go To", "Talk", "Pause", "Stop", "Close"]
+    desktop.down_to("Close")
     for name, side in [
         ("Quest", r"QEST-20261022-TESTQA"),
         ("Address", r"TESTQA"),
