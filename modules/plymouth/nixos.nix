@@ -533,9 +533,9 @@ in
     # its next frame, fifty a second, and says nothing when it has, so the
     # resume waits a tenth of a second first. One that finds no image to read
     # carries on with the boot, which says it's starting again. systemd's
-    # generator starts the unit only when there may be an image. The frame
-    # holds the image's empty track, and the kernel is told where it is
-    # first, to fill it as it reads (imageBar).
+    # generator starts the unit only when there may be an image. The words
+    # saying so have the image's empty track under them, and the kernel is
+    # told where it is first, to fill it as it reads (imageBar).
     boot.initrd.systemd.services.systemd-hibernate-resume.serviceConfig = {
       ExecStartPre = [
         "-${imageBar}"
@@ -547,6 +547,9 @@ in
     boot.initrd.systemd.storePaths = [
       (lib.getExe' pkgs.coreutils "sleep")
       imageBar
+      # The initrd takes a script's own path but not those it names, so the
+      # measures it reads go in too.
+      measures
     ];
 
     # As soon as the splash is up, so the generation shows before the disk
