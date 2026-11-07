@@ -26,8 +26,13 @@
 //! there, to prove the net on a throwaway branch; `MERGE_NET_STATE` then
 //! names a state folder of its own, so its hold stops no switch.
 //!
-//! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] | merge-net needs [--base REF]
-//! | merge-net status`
+//! `watch --follow PATH` names the installed merge-net: once that is
+//! another build than the one running, the watch ends between rounds, for
+//! its unit to start the new one, rather than a switch stopping it
+//! mid-round and losing every run in flight.
+//!
+//! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
+//! | merge-net needs [--base REF] | merge-net status`
 
 mod holds;
 mod rules;
@@ -37,6 +42,7 @@ mod world;
 
 use std::env;
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 
@@ -44,8 +50,8 @@ use state::{State, short};
 use watch::Round;
 use world::Real;
 
-const USED: &str = "Usage: merge-net watch [--from COMMIT] [--branch NAME] [--once] | \
-                    merge-net needs [--base REF] | merge-net status";
+const USED: &str = "Usage: merge-net watch [--from COMMIT] [--branch NAME] [--once] \
+                    [--follow PATH] | merge-net needs [--base REF] | merge-net status";
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -82,12 +88,16 @@ fn main() -> ExitCode {
 /// Follow main, a round at a time, until stopped, or once with `--once`.
 fn watching(rest: &[&str]) -> Result<ExitCode, String> {
     let (mut from, mut once, mut branch) = (None, false, "main".to_owned());
+    let mut follow: Option<PathBuf> = None;
     let mut words = rest.iter();
     while let Some(word) = words.next() {
         match *word {
             "--from" => from = Some((*words.next().ok_or("--from needs a commit")?).to_owned()),
             "--branch" => (*words.next().ok_or("--branch needs a name")?).clone_into(&mut branch),
             "--once" => once = true,
+            "--follow" => {
+                follow = Some(PathBuf::from(*words.next().ok_or("--follow needs a path")?));
+            }
             other => return Err(format!("{other} isn't something watch takes\n{USED}")),
         }
     }
@@ -142,8 +152,28 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
                 ExitCode::FAILURE
             });
         }
+        if let Some(installed) = &follow
+            && replaced(fs::canonicalize(installed), env::current_exe())
+        {
+            state.say("another merge-net is installed, so this one ends between rounds");
+            return Ok(ExitCode::SUCCESS);
+        }
         std::thread::sleep(std::time::Duration::from_secs(rest));
     }
+}
+
+/// Whether the merge-net installed is another build than the one running.
+/// On 7 November three switches in 25 minutes each restarted the net with
+/// a new build, and a round of about 20 minutes ran from 16:21 past 17:15.
+/// A running build no longer on disk has been replaced; an installed one
+/// that can't be read says nothing.
+fn replaced(installed: io::Result<PathBuf>, running: io::Result<PathBuf>) -> bool {
+    let Ok(installed) = installed else {
+        return false;
+    };
+    !running
+        .and_then(fs::canonicalize)
+        .is_ok_and(|running| running == installed)
 }
 
 /// Say whether the branch's change runs VM tests before merging, and which.
@@ -283,4 +313,36 @@ fn git(arguments: &[&str]) -> Result<String, String> {
         ));
     }
     Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_watch_ends_once_another_build_is_installed() {
+        let dir = env::temp_dir().join(format!("merge-net-follow-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let (old, new) = (dir.join("old"), dir.join("new"));
+        fs::write(&old, "").unwrap();
+        fs::write(&new, "").unwrap();
+        let installed = || fs::canonicalize(&new);
+        assert!(
+            !replaced(installed(), Ok(new.clone())),
+            "the build installed runs"
+        );
+        assert!(
+            replaced(installed(), Ok(old.clone())),
+            "an older build runs"
+        );
+        assert!(
+            replaced(installed(), Ok(dir.join("collected"))),
+            "the running build is gone from disk"
+        );
+        assert!(
+            !replaced(fs::canonicalize(dir.join("unread")), Ok(old)),
+            "nothing can be read of what's installed"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
