@@ -1957,14 +1957,26 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
 
 
 def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
-    """Photograph a quest's step in from Start a Session: Start Here, then Orchestrate."""
+    """Photograph a quest's step in from Start a Session: Start Here, then Orchestrate.
+
+    Normal's foot keeps : and Space ?, since the mode's word holds room only for what it
+    says in normal, never for visual's count (VKCF3Z, 2026-11-07: held for "N chosen", it
+    cost normal its :); visual says its count where normal's word stood.
+    """
     desktop.down_to("Start a Session")
     desktop.machine.send_key("ret")
     desktop.launcher_until(lambda shown: UNSTARTED in shown["rows"])
     desktop.down_to(UNSTARTED)
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
+    hints = desktop.showing()["hints"]
+    assert {": commands", "Space ? keys"} <= set(hints), f"at {shot}: {hints}"
     desktop.photograph(f"launcher-agents-start-quest-at-{shot}")
+    desktop.machine.send_chars("v")
+    desktop.launcher_until(lambda shown: shown["modeWord"] == "1 chosen")
+    desktop.photograph(f"launcher-agents-start-quest-visual-at-{shot}")
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["modeWord"] == "")
     desktop.step_out()
     desktop.step_out()
 
