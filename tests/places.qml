@@ -206,6 +206,35 @@ QtObject {
         expect("one given a workspace of its own opens at none", Places.opensAt(made, beside),
             null);
 
+        // A reboot's list, taken a minute before this boot began.
+        const began = Date.parse("2026-11-07T17:00:00Z");
+        const listed = (fields) => JSON.stringify(Object.assign({ v: 1, boot: "the-last",
+            taken: "2026-11-07T16:59:00Z", sessions: [
+                { id: "01-boss", cwd: "/home/j/boss", title: "Boss", output: "eDP-1",
+                    workspace: 2, column: 1 },
+                { id: "01-loose", cwd: "/home/j/loose", title: "Loose" },
+                { id: "01; rm -rf ~", cwd: "/tmp" },
+                { id: "01-nowhere", title: "Nowhere" }
+            ] }, fields));
+        const ids = list => list.sessions.map(one => one.id);
+        expect("a reboot's list names each whole one, with its place where it has one",
+            Places.rebootList(listed({}), "this-one", began).sessions, [
+                { id: "01-boss", cwd: "/home/j/boss", title: "Boss",
+                    at: { output: "eDP-1", workspace: 2, column: 1, tile: 1 } },
+                { id: "01-loose", cwd: "/home/j/loose", title: "Loose", at: null }
+            ]);
+        expect("a list this boot took names none, so a shell restart reopens nothing",
+            ids(Places.rebootList(listed({ boot: "this-one" }), "this-one", began)), []);
+        expect("nor one taken more than an hour before this boot began",
+            ids(Places.rebootList(listed({ taken: "2026-11-07T15:59:00Z" }), "this-one",
+                began)), []);
+        expect("nor one taken after it began",
+            ids(Places.rebootList(listed({ taken: "2026-11-07T17:01:00Z" }), "this-one",
+                began)), []);
+        expect("nor one with no boot, nor what isn't a list",
+            [ids(Places.rebootList(listed({ boot: "" }), "this-one", began)),
+                ids(Places.rebootList("{", "this-one", began))], [[], []]);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

@@ -2569,8 +2569,10 @@
     niri started with the laptop's lid shut on a dock connects the monitor alone, never the
     laptop's screen, until the lid opens, holds the monitor's first frame, and from before that
     hold takes a switch's settings; keys typed through the virtual keyboard keep the session
-    from going idle; sessions reopened while the screen they sat on is gone go to it, in their
-    order, once it comes back; and a screen back takes back its workspaces
+    from going idle; a shell starting after a reboot reopens the sessions its list names, each
+    where it sat, and never what a boot's end left or on a restart alone; sessions reopened
+    while the screen they sat on is gone go to it, in their order, once it comes back; and a
+    screen back takes back its workspaces
   '';
   vm-screens-keep-the-launcher = ''
     the launcher opens, finds and runs a row on either of two screens, a Return held doing it
