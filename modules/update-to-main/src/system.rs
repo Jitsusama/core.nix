@@ -41,7 +41,10 @@ pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathB
     if config.elsewhere {
         nix.args(["--builders", ""]);
     }
-    let printed = run::output(nix, "building the system", [flake])?;
+    let started = Instant::now();
+    let printed = run::output(nix, "building the system", [flake]);
+    eprintln!("building the system: {}s", started.elapsed().as_secs());
+    let printed = printed?;
     let system = PathBuf::from(printed.lines().last().unwrap_or_default());
     let needs: &[&str] = match config.kind {
         Kind::Nixos => &["bin/switch-to-configuration", "nixos-version"],
@@ -112,6 +115,12 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     }
     let shown = run::output(show, "reading what the system needs", &needed)?;
     let (kept, rest) = heavy(&pieces(&shown)?, &needed, &config.kept.names);
+    eprintln!(
+        "the system needs {} pieces built: {} kept apart, {} on the builders, the rest here",
+        needed.len(),
+        kept.len(),
+        rest.len()
+    );
     if !kept.is_empty() {
         build_kept(config, &kept)?;
     }
@@ -143,7 +152,57 @@ fn away(
     if let Some(builders) = builders {
         away.args(["--builders", builders]);
     }
-    run::output(away, what, outputs(pieces)).map(|_| ())
+    told(away, what, pieces)
+}
+
+/// Builds pieces with `build`, saying in the journal how long it took and
+/// where each piece was built, since what Nix says of a build that works is
+/// otherwise dropped, and a slow switch then can't say what it waited on.
+fn told(build: std::process::Command, what: &str, pieces: &[String]) -> Result<(), Failure> {
+    let started = Instant::now();
+    let ran = run::said(build, what, outputs(pieces));
+    let took = started.elapsed();
+    match &ran {
+        Ok(said) => eprintln!("{}", account(what, pieces.len(), took, said)),
+        Err(_) => eprintln!(
+            "{what}: {} pieces, failed after {}s",
+            pieces.len(),
+            took.as_secs()
+        ),
+    }
+    ran.map(|_| ())
+}
+
+/// How many pieces a build was asked for, how long it took, and where Nix
+/// says it built each, the first few by name.
+fn account(what: &str, pieces: usize, took: Duration, said: &str) -> String {
+    const NAMED: usize = 12;
+    let built: Vec<String> = said.lines().filter_map(built_where).collect();
+    let mut line = format!("{what}: {pieces} pieces in {}s", took.as_secs());
+    if !built.is_empty() {
+        line.push_str(&format!(", {} built: ", built.len()));
+        line.push_str(&built[..built.len().min(NAMED)].join(", "));
+        if built.len() > NAMED {
+            line.push_str(&format!(" and {} more", built.len() - NAMED));
+        }
+    }
+    line
+}
+
+/// The derivation's name and its builder from a line in which Nix says it's
+/// building one: `building '/nix/store/<hash>-<name>.drv' on '<builder>'...`,
+/// or with no builder when it builds here.
+fn built_where(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("building '")?;
+    let (path, rest) = rest.split_once('\'')?;
+    let file = path.rsplit('/').next()?;
+    let name = file.split_once('-').map_or(file, |(_, name)| name);
+    let name = name.strip_suffix(".drv").unwrap_or(name);
+    let place = rest
+        .strip_prefix(" on '")
+        .and_then(|on| on.split_once('\''))
+        .map_or("here", |(builder, _)| builder);
+    Some(format!("{name} on {place}"))
 }
 
 /// Every output of each piece, as Nix builds them.
@@ -215,7 +274,7 @@ fn here(
     }
     local.args(["--max-jobs", &here.max_jobs.to_string()]);
     local.args(["--cores", &here.cores.to_string()]);
-    run::output(local, what, outputs(pieces)).map(|_| ())
+    told(local, what, pieces)
 }
 
 /// The machine's load averaged over the last minute, when it can be read.
@@ -622,6 +681,39 @@ mod tests {
 
     fn every(shown: &str) -> Vec<String> {
         pieces(shown).unwrap().into_keys().collect()
+    }
+
+    #[test]
+    fn a_build_says_how_long_it_took_and_where_each_piece_was_built() {
+        let said = "these 2 derivations will be built:\n  /nix/store/a-reader.drv\n  \
+                    /nix/store/b-links.drv\n\
+                    building '/nix/store/0abc-reader-0.1.0.drv' on 'ssh-ng://far'...\n\
+                    copying path '/nix/store/0def-reader-0.1.0' from 'ssh-ng://far'...\n\
+                    building '/nix/store/0ghi-links.drv'...\n";
+        assert_eq!(
+            account(
+                "building on the builders",
+                2,
+                Duration::from_secs(734),
+                said
+            ),
+            "building on the builders: 2 pieces in 734s, 2 built: \
+             reader-0.1.0 on ssh-ng://far, links on here"
+        );
+        assert_eq!(
+            account("building here", 3, Duration::from_secs(5), ""),
+            "building here: 3 pieces in 5s",
+            "a build that built nothing says only its time"
+        );
+    }
+
+    #[test]
+    fn a_long_build_names_its_first_pieces_and_counts_the_rest() {
+        let said: String = (0..14)
+            .map(|n| format!("building '/nix/store/0h-p{n}.drv'...\n"))
+            .collect();
+        let line = account("building here", 14, Duration::from_secs(1), &said);
+        assert!(line.ends_with("p11 on here and 2 more"), "{line}");
     }
 
     #[test]
