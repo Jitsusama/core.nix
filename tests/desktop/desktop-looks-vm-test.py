@@ -1854,12 +1854,16 @@ def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str
     Return does each state's harmless act, which the foot says before it's pressed
     (VKCF3Z, 2026-11-06): talk to one listening, resume one paused. A step in holds every
     act in its fixed order, whatever Return does. From the find, a Return that changes
-    something only lands first, so the paused row's foot is kept there too.
+    something only lands first, and its foot names the act it leads to all the same
+    (VKCF3Z, 2026-11-07), so the paused row's foot is kept there too.
     """
     desktop.down_to(titles["TESTQE"])
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 resume"]
+    )
     desktop.photograph(f"launcher-agents-returns-paused-found-at-{shot}")
     desktop.normal()
-    feet = [("TESTQD", "working", "\u21b5 "), ("TESTQC", "listening", "\u21b5 talk")]
+    feet = [("TESTQD", "working", "\u21b5 go to"), ("TESTQC", "listening", "\u21b5 talk")]
     for address, stands, said in [*feet, ("TESTQE", "paused", "\u21b5 resume")]:
         desktop.down_to(titles[address])
 

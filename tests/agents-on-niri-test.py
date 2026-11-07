@@ -196,6 +196,10 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
     """A paused session's Return lands on Resume, which changes how it stands; a second resumes."""
     row = found(shell, "paused quest", "Paused Quest")
     assert row["verb"] == "resume", row
+    # From the find its foot names the act Return leads to, though the first
+    # press only lands: no Return hint is the glyph alone (VKCF3Z, 2026-11-07).
+    assert row["told"][:1] == ["\u21b5 resume"], row
+    assert "\u21b5" not in row["told"], row
     shell.send_key("ret")
     shell.launcher_until(
         lambda shown: (
