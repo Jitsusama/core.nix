@@ -134,7 +134,10 @@ Provider {
             : gone.afresh ? [act("afresh", gone.afresh)] : [];
         return first.concat(orchestrators.talksOf(one.address));
     }
-    onAllChanged: changedTo(all)
+    // Said as every row it shows moves, the sessions' and those after
+    // them, so a step held in Landed loses a landing as it's read.
+    readonly property var everyRow: everything()
+    onEveryRowChanged: changedTo(everyRow)
 
     // The rows of what SessionRow.tree laid out: a session's own, or the
     // fold of an orchestration's members that only wait, which says how
@@ -658,7 +661,14 @@ Provider {
     readonly property var landed: {
         const sessions = Sessions.running.concat(Sessions.parked);
         const unread = SessionRow.landed(sessions, Sessions.landingsRead);
-        if (unread.length === 0)
+        // The last read while the launcher holds it, it stays, empty, so
+        // the step in can be said again with every landing dimmed, as a
+        // row gone from any list is, rather than lost from under it; it
+        // goes once the launcher lets it go.
+        const launcher = provider.launcher;
+        const held = !!launcher && launcher.open
+            && (launcher.held ?? []).some(step => step.row.key === "agents:landed");
+        if (unread.length === 0 && !held)
             return null;
         const read = one => Sessions.readLandings([one.key],
             SessionRow.stillRead(sessions, Sessions.landingsRead));
@@ -687,6 +697,7 @@ Provider {
                 glyph: Words.glyph("verb:agents:landed:try")
             }) : null,
             act("read", Object.assign({
+                stays: true,
                 run: () => read(one),
                 undo: () => Sessions.unreadLandings([one.key])
             }, Words.ending("verb:agents:landed:read")))
@@ -701,6 +712,9 @@ Provider {
             glyph: Words.glyph("agents:landed"),
             hue: "action",
             later: goes(one) !== "",
+            // Read where it goes nowhere, which keeps the launcher, as a
+            // setting's change does, so the next landing is under the cursor.
+            stays: goes(one) === "",
             run: () => {
                 if (goes(one) === "change")
                     toChange(one)();
@@ -713,7 +727,7 @@ Provider {
         return thingRow({
             key: "agents:landed",
             name: Words.name("agents:landed"),
-            side: String(unread.length),
+            side: unread.length > 0 ? String(unread.length) : "",
             glyph: Words.glyph("agents:landed"),
             hue: "action"
         }, () => unread.map(landing));
