@@ -566,6 +566,25 @@ def test_the_heads_title_holds_still_and_its_mark_takes_the_glyphs_cell(shell: S
         assert cell <= mark < titles["normal"], f"a mark off the glyph's cell: {marks}, {colon}"
 
 
+def test_ctrl_r_puts_the_clipboard_on_the_command_line(shell: Shell) -> None:
+    """Ctrl+R then + puts the clipboard's first line at the : line's caret, as Vim's does.
+
+    The held notices' : line took it and the launcher's didn't, so the two lines kept two
+    sets of keys; they're one line now (Joel, 2026-11-06: "they need to share more code").
+    """
+    shell.as_account("printf 'lockscreen\\nand more' | wl-copy > /dev/null 2>&1")
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.normal()
+    shell.send_chars(":")
+    shell.launcher_until(lambda shown: shown["command"] is not None)
+    shell.send_key("ctrl-r")
+    shell.send_chars("+")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "lockscreen")
+    shell.send_key("esc")
+    shell.close_launcher()
+
+
 def head_title(shell: Shell) -> tuple[int, int]:
     """Give where the head's Title starts and where the word before it, its cell's, starts."""
     field = laid_out(shell)["field"]

@@ -13,16 +13,19 @@
 //
 // Its keys are Vim's command line's and his cmp's (modules/neovim/keys.nix):
 // letters type, ← → Home End move the caret, Backspace, Ctrl+H, Ctrl+W and
-// Ctrl+U delete; Tab, Shift+Tab, ↓ ↑, Ctrl+N and Ctrl+P choose a line,
-// writing it in; Ctrl+Y takes what's chosen and Ctrl+E puts the menu away;
+// Ctrl+U delete, Ctrl+R then + or * puts the clipboard in; Tab, Shift+Tab,
+// ↓ ↑, Ctrl+N and Ctrl+P choose a line, writing it in; Ctrl+Y takes what's
+// chosen and Ctrl+E puts the menu away;
 // Return runs exactly what's typed; Escape and Ctrl+C drop the line, and
 // Backspace on an empty line gives normal. Return, Escape and Backspace
 // leaving act only on a fresh press, so a held key never runs or leaves
 // what it only reached.
 pragma ComponentBehavior: Bound
 import QtQuick
+import Quickshell
 import "Bands.js" as Bands
 import "Commands.js" as Commands
+import "LineEditing.js" as LineEditing
 
 Item {
     id: line
@@ -37,6 +40,9 @@ Item {
     property var choosing: Commands.typing("")
     // Whether Ctrl+Y or Ctrl+E has put the menu away, until the next letter.
     property bool away: false
+    // Whether Ctrl+R waits for the register it puts, as the held notices'
+    // lines read it (LineEditing.js).
+    property bool register: false
     // The menu as typed narrows it, which Tab and the arrows choose among.
     readonly property var shown: away ? [] : Commands.narrowed(menu, choosing.typed, argued)
     // The line chosen, or null.
@@ -113,8 +119,27 @@ Item {
         }
     }
 
+    // The key after Ctrl+R, a modifier alone passed over: + or * puts the
+    // clipboard's first line in at the caret, as Vim's Ctrl+R + does, and
+    // any other is taken, putting nothing.
+    function registered(event) {
+        line.register = false;
+        const read = LineEditing.edit({ text: input.text, caret: input.cursorPosition,
+            register: true }, event.text, false);
+        if (read.act === "paste") {
+            input.insert(input.cursorPosition, (Quickshell.clipboardText ?? "").split("\n")[0]);
+            line.choosing = Commands.typing(input.text);
+            line.away = false;
+        }
+    }
+
     function pressed(event) {
         const held = event.isAutoRepeat;
+        if (line.register && event.text !== "") {
+            line.registered(event);
+            event.accepted = true;
+            return;
+        }
         switch (key(event)) {
         case "Escape":
         case "Ctrl+c":
@@ -163,6 +188,10 @@ Item {
             break;
         case "Ctrl+u":
             input.remove(0, input.cursorPosition);
+            break;
+        case "Ctrl+r":
+            line.register = LineEditing.edit(LineEditing.line(input.text, input.cursorPosition),
+                "Ctrl+R", false).line.register;
             break;
         default:
             // A letter held types once, as every field of ours does, and

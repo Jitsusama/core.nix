@@ -28,6 +28,7 @@ import QtQuick
 import "Bands.js" as Bands
 import "Changes.js" as Changes
 import "Columns.js" as Columns
+import "Commands.js" as Commands
 import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
@@ -124,12 +125,11 @@ Card {
     // cursor on the middle line, scrolloff held to half the view.
     readonly property real linesShare: 0.5
     property real screenHeight: 768
-    // While the command line is up its menu takes the lines' room, and at
-    // rest the cursor's open card does, so they give way round the cursor,
-    // down to one, and the frame never passes the screen's rung on a short
-    // screen.
-    readonly property int shownRoom: mode === "command" ? commandRows
-        : Math.max(1, Math.min(room, Math.floor((listTall - cardShown) / rowHeight)))
+    // At rest the cursor's open card takes the lines' room, so they give
+    // way round the cursor, down to one, and the frame never passes the
+    // screen's rung on a short screen.
+    readonly property int shownRoom: Math.max(1, Math.min(room,
+        Math.floor((listTall - cardShown) / rowHeight)))
     // How tall the cursor's card stands under its row, as the card says it
     // with the notice it opens, so a card going away never clears the one
     // that replaced it.
@@ -185,20 +185,20 @@ Card {
     }
     onListTopChanged: if (listing) Report.say(`notice lists keys from ${listTop + 1}`)
 
-    // The command line: what's typed, where it was opened from, which menu
-    // line is chosen (-1 for none) and whether the menu's put away.
-    property var commandLine: NoticeKeys.line("")
+    // The command line, the launcher's own (CommandLine.qml), made while :
+    // is open: where it was opened from, the range it opens on, and the
+    // line itself, which holds what's typed, its menu narrowed and the line
+    // chosen in it.
     property string commandFrom: "normal"
-    property int menuChosen: -1
-    property bool menuAway: false
-    // While Tab chooses, the menu stays what was typed before it, as Vim's
-    // wildmenu cycles through every match of what was typed: narrowed by
-    // the line it writes, a second Tab would find only the first's choice.
-    property string menuTyped: ""
-    readonly property var menuFound: NoticeList.menu(entries,
-        menuChosen >= 0 ? menuTyped : commandLine.text)
-    onMenuChosenChanged: if (menuChosen >= 0)
-        Report.say(`notice menu chose ${menuFound.shown[menuChosen]?.command ?? ""}`)
+    property string commandRange: ""
+    readonly property CommandLine commandItem: commandLoader.item as CommandLine
+    readonly property string commandText: commandItem ? commandItem.text : ""
+    readonly property var menuShown: commandItem ? commandItem.shown : []
+    readonly property var menuChosen: commandItem ? commandItem.chosenLine : null
+    onMenuChosenChanged: if (menuChosen !== null)
+        Report.say(`notice menu chose ${menuChosen.command}`)
+    // Where the keys go back to once the line is let go, which took them.
+    property Item keysTo: null
 
     // A reply's prompt on the card it answers, and its words before the
     // last change in normal over them, for u.
@@ -214,6 +214,9 @@ Card {
 
     onModeChanged: {
         refreeze();
+        if (mode !== "command" && keysTo !== null)
+            keysTo.forceActiveFocus();
+        Qt.callLater(placeNumbers);
         Report.say(`notice mode ${mode}`);
     }
     onPendingChanged: refreeze()
@@ -270,6 +273,60 @@ Card {
                 + `card ${Math.round(row.cardX)}, bands apart ${gaps.join(" ")}`);
     }
 
+    // Whether the command line stands in the head as the launcher's does,
+    // read from where its parts are drawn, for a test to hold: its : in
+    // the head mark's cell and on the head band, what's typed on the text
+    // column, and its menu's lines on the columns, tiling from a tie under
+    // the head's hairline.
+    function sayCommand() {
+        const line = commandItem;
+        if (line === null)
+            return;
+        const near = (a, b) => Math.abs(a - b) < 0.5;
+        const drawn = Array.from(line.children);
+        const colon = drawn.find(one => one.text === ":" && !("cursorPosition" in one));
+        const typed = drawn.find(one => "cursorPosition" in one);
+        if (!colon || !typed)
+            return;
+        const at = colon.mapToItem(sheet, 0, 0);
+        const centre = at.x + colonInk.tightBoundingRect.x + colonInk.tightBoundingRect.width / 2;
+        const inHead = at.y >= 0 && at.y + colon.height <= headRule.y;
+        const typedX = typed.mapToItem(sheet, 0, 0).x;
+        // Only the rows drawn count: those wholly inside the menu's view,
+        // which must hold as many as it has room for.
+        const rows = [];
+        const view = menuRows.mapToItem(sheet, 0, 0).y;
+        let end = headRule.y + headRule.height + Theme.space.rung.tie;
+        for (let row = 0; row < menuRows.count; row++) {
+            const band = menuRows.itemAtIndex(row) as MenuRow;
+            if (!band)
+                continue;
+            const top = band.mapToItem(sheet, 0, 0);
+            if (top.y < view - 0.5 || top.y + band.height > view + menuRows.height + 0.5)
+                continue;
+            rows.push({ gap: Math.round(top.y - end),
+                name: Math.round(top.x + band.nameX - columns.text) });
+            end = top.y + band.height;
+        }
+        const room = Math.min(menuShown.length, menuRoom);
+        const ok = near(centre, cellMiddle) && inHead && near(typedX, columns.text)
+            && rows.length === room && room > 0
+            && rows.every(one => one.gap === 0 && one.name === 0);
+        Report.say(ok ? "notice command stands in the head"
+            : `notice command : at ${Math.round(centre)} of ${Math.round(cellMiddle)}, `
+                + `in the head ${inHead}, typed at ${Math.round(typedX)} of `
+                + `${Math.round(columns.text)}, ${rows.length} rows drawn of ${room} `
+                + `(${menuRows.count} listed, room ${menuRoom}, view ${menuRows.height} `
+                + `tall), rows ${JSON.stringify(rows)}`);
+    }
+
+    // The :'s ink, so sayCommand reads where its middle is drawn.
+    TextMetrics {
+        id: colonInk
+        text: ":"
+        font: figure.font
+    }
+
     // Whether the status line reaches the frame, so its text centres in
     // the band the hairline and the frame close, for a test to hold.
     function sayFoot() {
@@ -284,7 +341,6 @@ Card {
         frozen = null;
         found = "";
         findLine = NoticeKeys.line("");
-        commandLine = NoticeKeys.line("");
         replyTo = null;
         listing = false;
         lastChange = null;
@@ -537,44 +593,44 @@ Card {
     readonly property var entries: {
         const one = current;
         const out = [];
-        // As the menu (CommandMenu.qml) reads a line: its command
-        // and short form, what follows them where the line names its
-        // argument, its title and its key; `writes` is what Tab writes.
-        const entry = (command, short, name, key, writes, after) => ({
-            command, short, name, title: name, key, writes: writes ?? command,
-            after: after ?? ""
-        });
+        // A line as the launcher's menu reads one (Commands.js): its
+        // command and short form, its title, its key, the argument it
+        // writes, and whether it takes a range or what's typed after it;
+        // `after` is shown after it, as what :g takes.
+        const entry = (command, short, title, key, more) => Object.assign({
+            command, short, title, key, kind: "surface", argument: "", after: "",
+            lowered: ` ${title.toLowerCase()}`, bang: false, takes: false, ranged: false,
+            undoable: true
+        }, more ?? {});
         if (one && (stack.opens(one) || Notices.senderWindow(one.appName)))
             out.push(entry("open", "ope", Words.name("verb:notice:open"), "\u21b5"));
         if (one && (one.hasInlineReply || replyOffer(one)))
             out.push(entry("reply", "rep", "Reply", ""));
         for (const offer of offered)
             out.push(entry(offer.command, offer.command, offer.text, ""));
-        out.push(entry("delete", "d", "Done", "dd"),
-            entry("forget", "forg", Words.name("verb:notice:forget"), ""),
-            entry("yank", "y", Words.name("verb:notice:copy"), "yy"),
-            entry("edit", "e", Words.name("verb:notices:all"), "", "e Notices", " Notices"),
-            entry("global", "g", "On Each Found", "", "g/", "/pat/cmd"),
+        out.push(entry("delete", "d", "Done", "dd", { ranged: true }),
+            entry("forget", "forg", Words.name("verb:notice:forget"), "", { ranged: true }),
+            entry("yank", "y", Words.name("verb:notice:copy"), "yy", { ranged: true }),
+            entry("edit", "e", Words.name("verb:notices:all"), "",
+                { argument: "Notices", takes: true }),
+            entry("global", "g", "On Each Found", "", { after: "/pat/cmd", takes: true,
+                ranged: true }),
             entry("undo", "u", "Bring Them Back", "u"),
             entry("redo", "red", "Take Them Again", "Ctrl+R"),
             entry("quit", "q", "Let Them Go", "ZZ"),
             entry("help", "h", "These Keys", "Space ?"),
-            entry("set", "se", "Relative Numbers", "Space u l", "set rnu!", " rnu!"),
-            entry("{n}", "", "Go to Line n", "nG", ""));
+            entry("set", "se", "Relative Numbers", "Space u l",
+                { argument: "rnu!", takes: true }),
+            entry("{n}", "{n}", "Go to Line n", "nG", { kind: "row", row: cursor + 1 }));
         return out;
     }
 
-    // The cards the command line acts on: the selection it was opened from,
-    // or the cursor card.
-    readonly property var targets: commandFrom === "visual" && lastSelection
-        ? selectedOf(lastSelection) : [listed[cursor]]
-
     // What a chosen menu line acts on, as a drawer would name it.
     readonly property string actsOn: {
-        const chosenEntry = menuFound.shown[menuChosen] ?? null;
+        const chosenEntry = menuChosen;
         if (chosenEntry === null)
             return "";
-        const ids = commandFrom === "visual" || commandLine.text.startsWith(Ex.selected)
+        const ids = commandFrom === "visual" || commandText.startsWith(Ex.selected)
             ? (lastSelection ? selectedOf(lastSelection) : [listed[cursor]]) : [listed[cursor]];
         const names = ids.map(id => senderOf(id)).filter(name => name !== "");
         return ids.length === 1 ? `on ${notice(ids[0])?.summary ?? ""}`
@@ -590,7 +646,6 @@ Card {
     // Runs what's typed on the command line, exactly, as Vim's Return does.
     function run(text) {
         const from = commandFrom;
-        commandLine = NoticeKeys.line("");
         mode = from === "prompt" ? "prompt" : "normal";
         const asked = Ex.parse(text, commandNames);
         if (asked.error) {
@@ -776,9 +831,6 @@ Card {
         case "find":
             finds(key, repeated);
             break;
-        case "command":
-            commanded(key, repeated);
-            break;
         case "insert":
             inserted(key, repeated);
             break;
@@ -836,61 +888,21 @@ Card {
             + line.text.slice(line.caret), line.caret + words.length);
     }
 
-    function opensCommand(from, text) {
+    // Opens the command line on the range given, as the launcher's : opens
+    // (CommandLine.qml), which takes the keys until it's let go.
+    function opensCommand(from, range) {
         commandFrom = from;
-        commandLine = NoticeKeys.line(text);
-        menuChosen = -1;
-        menuAway = false;
+        commandRange = range;
+        // Its gutter holds the menu's numbers, as the launcher's does.
+        gutterDigits = Math.max(gutterDigits, String(entries.length).length);
         mode = "command";
-        Report.say(`notice menu ${menuFound.shown.length}`);
     }
 
-    // A key on the command line: typing narrows the menu, Tab and the
-    // arrows choose a line and write it in, Return runs what's typed, and
-    // Escape drops the line, putting back what it covered.
-    function commanded(key, repeated) {
-        const typed = NoticeKeys.typing(commandLine, key, "command", repeated);
-        const before = commandLine.text;
-        commandLine = typed.line;
-        if (commandLine.text !== before)
-            menuChosen = -1;
-        const back = commandFrom === "find" ? "find" : commandFrom === "prompt" ? "prompt"
+    // The line let go, by Escape or by Backspace on it empty, gives back
+    // the mode it was opened from, putting back what it covered.
+    function commandLeft() {
+        mode = commandFrom === "find" ? "find" : commandFrom === "prompt" ? "prompt"
             : "normal";
-        switch (typed.act) {
-        case "run":
-            run(commandLine.text);
-            break;
-        case "choose":
-        case "chooseBack": {
-            const shown = menuFound.shown;
-            if (shown.length === 0)
-                break;
-            const by = typed.act === "choose" ? 1 : -1;
-            if (menuChosen < 0)
-                menuTyped = commandLine.text;
-            menuChosen = menuChosen < 0 ? (by > 0 ? 0 : shown.length - 1)
-                : (menuChosen + by + shown.length) % shown.length;
-            const prefix = menuFound.prefix;
-            const chosenEntry = shown[menuChosen];
-            commandLine = NoticeKeys.line(prefix + chosenEntry.writes);
-            break;
-        }
-        case "take":
-            menuAway = true;
-            break;
-        case "away":
-            menuAway = true;
-            menuChosen = -1;
-            break;
-        case "paste":
-            commandLine = pasted(commandLine);
-            break;
-        case "drop":
-        case "leave":
-            commandLine = NoticeKeys.line("");
-            mode = back;
-            break;
-        }
     }
 
     // A key in a reply's prompt, typing its words; Return sends them and
@@ -1139,9 +1151,9 @@ Card {
         // The command line names its own keys: Tab chooses until a line is
         // chosen or typed, and then Return runs it.
         if (mode === "command") {
-            if (commandLine.text === "" && menuChosen < 0)
+            if (commandText === "" && menuChosen === null)
                 return [{ act: "choose", key: "Tab", word: "choose" }];
-            const asked = Ex.parse(commandLine.text, commandNames);
+            const asked = Ex.parse(commandText, commandNames);
             const name = asked.global ? "global" : asked.name ?? "";
             return [{ act: "run", key: "\u21b5", word: name === "" ? "run" : name }];
         }
@@ -1183,10 +1195,10 @@ Card {
     // breaks its words held as it does popped (VKCF3Z, 2026-11-06): its
     // gutter, the numbers' room and the mark rung after them.
     readonly property real gutter: Columns.gutterOf(numbers.room, Theme.space.rung)
-    // Where a mark centres across in the mark column, which the mode's
-    // marks in the head and on the : line centre on too, as Vim keeps one
-    // cell for its mode (Y2YBTS, 2026-11-06).
-    readonly property real cellMiddle: columns.mark + columns.markWidth / 2
+    // Where the head's mark centres its ink across, which the mode's marks
+    // in its cell, the find's / and the :, centre on, as Vim keeps one cell
+    // for its mode (Y2YBTS, 2026-11-06).
+    readonly property real cellMiddle: headMark.inkCentre
     // Space ?'s pitch, the drawer's key list's: Figure's, at Note.
     readonly property real keyPitch: Theme.level.figure.pitch
     // How many of its lines show: as many as stand within the rows' room,
@@ -1226,6 +1238,13 @@ Card {
         property real cardX
     }
 
+    // A line of the command line's menu, its band, saying where its name
+    // stands across and its baseline down, for sayCommand and its number.
+    component MenuRow: Item {
+        property real nameX
+        property real nameBaseline
+    }
+
     // The gutter's room, by the widest it holds: as many figures as the
     // most cards held since the keys were taken, so a card arriving or
     // going never moves the rows, and ten widen it only once. Its numbers
@@ -1242,6 +1261,15 @@ Card {
     property var numbered: []
     function placeNumbers() {
         const out = [];
+        if (mode === "command") {
+            for (let at = 0; at < menuRows.count; at += 1) {
+                const row = menuRows.itemAtIndex(at) as MenuRow;
+                if (row)
+                    out.push({ at, base: row.y - menuRows.contentY + row.nameBaseline });
+            }
+            numbered = out;
+            return;
+        }
         for (let at = 0; at < lines.count; at += 1) {
             const line = lines.itemAt(at) as Line;
             if (line)
@@ -1319,9 +1347,9 @@ Card {
     // The caret's blink, as the launcher's and his kitty's: a key shows it
     // whole, it fades out and back in, and with no key for a while it holds
     // steady, so a line left still draws nothing more (Prompt.qml).
-    readonly property bool typing: mode === "find" || mode === "command" || mode === "insert"
+    readonly property bool typing: mode === "find" || mode === "insert"
     readonly property string lineText: mode === "find" ? findLine.text
-        : mode === "command" ? commandLine.text : mode === "insert" ? promptLine.text : ""
+        : mode === "insert" ? promptLine.text : ""
     property real caretLight: 1
     readonly property bool blinks: typing && visible && Options.caret.fade > 0
     onLineTextChanged: wakes()
@@ -1432,9 +1460,10 @@ Card {
             }
 
             Mark {
+                id: headMark
                 x: held.columns.mark
                 line: held.headBase
-                visible: held.mode !== "find"
+                visible: held.mode !== "find" && held.mode !== "command"
                 text: Theme.glyph.notifications
                 color: Theme.accent
             }
@@ -1457,6 +1486,7 @@ Card {
                 id: placed
                 x: held.columns.text
                 y: held.headBase - place.baselineOffset
+                visible: held.mode !== "command"
                 spacing: Theme.space.rung.items
 
                 Text {
@@ -1519,6 +1549,33 @@ Card {
                     }
                 }
             }
+
+            // The command line, the launcher's own, in the head while : is
+            // open, as Vim's : and / share one line (#2042): its : in the
+            // head mark's cell, where the find's / stands, and what's typed
+            // on the text column, over the names it completes. From the
+            // frame's inside edge to its other, as the launcher's stands.
+            Loader {
+                id: commandLoader
+                x: -held.inset
+                width: head.width + 2 * held.inset
+                height: head.height
+                active: held.mode === "command"
+                onLoaded: {
+                    const line = item as CommandLine;
+                    line.take(held.commandRange, "");
+                    Report.say(`notice menu ${line.shown.length}`);
+                    Qt.callLater(held.sayCommand);
+                }
+
+                sourceComponent: CommandLine {
+                    markMiddle: held.cellMiddle + held.inset
+                    typedAt: held.columns.text + held.inset
+                    menu: held.entries
+                    onRan: read => held.run(read.typed)
+                    onLetGo: () => held.commandLeft()
+                }
+            }
         }
 
         // The head's hairline, inset to inset, spanning the ink: a rule
@@ -1538,10 +1595,12 @@ Card {
             height: Theme.space.rung.tie
         }
 
-        // The lines in view, numbered, or Space ?'s list in their place.
+        // The lines in view, numbered, or in their place Space ?'s list or
+        // the command line's menu.
         Item {
             width: sheet.width
-            height: inViewLines.height
+            height: held.mode === "command" ? Math.max(menuRows.height, held.rowHeight)
+                : inViewLines.height
 
             Column {
                 id: inViewLines
@@ -1549,7 +1608,7 @@ Card {
 
                 Repeater {
                     id: lines
-                    model: held.listing ? [] : held.inView
+                    model: held.listing || held.mode === "command" ? [] : held.inView
                     onItemAdded: Qt.callLater(held.placeNumbers)
                     onItemRemoved: Qt.callLater(held.placeNumbers)
                     delegate: lineBand
@@ -1559,16 +1618,87 @@ Card {
             // The launcher's gutter, over the bands' grounds, which reach
             // under it: the cursor line's own number in text, the rest how
             // far from it, muted, on the inset.
+            //
+            // On the command line, its menu's lines, each a launcher row
+            // (Choice.qml) on the columns: its command in Vim's help
+            // notation on the text column under what's typed, what it does
+            // in its words and its key at the far end, never a menu
+            // indented under the line (Joel, 2026-11-06: "i don't like how
+            // auto completions are indented, they signal the wrong
+            // organizational concept"). From the frame's inside edge to its
+            // other, so the chosen line's ground fills its band.
+            ListView {
+                id: menuRows
+                x: -held.inset
+                width: parent.width + 2 * held.inset
+                // From the lines it's given, not its own count: read from
+                // that, it stood no taller than nothing with eleven listed.
+                height: Math.min(held.menuShown.length, held.menuRoom) * held.rowHeight
+                visible: held.mode === "command"
+                clip: true
+                interactive: false
+                boundsBehavior: Flickable.StopAtBounds
+                model: held.menuShown
+                currentIndex: held.commandItem?.choosing.at ?? -1
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0)
+                        positionViewAtIndex(currentIndex, ListView.Contain);
+                    else
+                        positionViewAtBeginning();
+                }
+                onContentYChanged: Qt.callLater(held.placeNumbers)
+                onCountChanged: {
+                    Qt.callLater(held.placeNumbers);
+                    Qt.callLater(held.sayCommand);
+                }
+
+                delegate: MenuRow {
+                    id: menuRow
+
+                    required property int index
+                    required property var modelData
+                    readonly property string named: Commands.called(modelData)
+                        + (modelData.after ?? "")
+                    nameBaseline: menuChoice.nameBaseline
+                    nameX: menuChoice.x + held.inset + menuChoice.glyphColumn
+                    // The view lays its rows out after it opens, so where
+                    // the line stands is said again once each is made.
+                    Component.onCompleted: {
+                        Qt.callLater(held.placeNumbers);
+                        Qt.callLater(held.sayCommand);
+                    }
+
+                    width: menuRows.width
+                    height: held.rowHeight
+
+                    Choice {
+                        id: menuChoice
+                        x: held.columns.mark
+                        width: parent.width - x
+                        height: parent.height
+                        groundFrom: x
+                        selected: menuRow.index === menuRows.currentIndex
+                        shown: held.visible
+                        name: menuRow.named
+                        plainName: menuRow.named
+                        count: menuRow.modelData.title ?? ""
+                        side: menuRow.modelData.key ?? ""
+                    }
+                }
+            }
+
             Gutter {
                 id: numbers
                 z: 1
                 height: parent.height
-                slots: held.inView.length
+                clip: true
+                slots: held.mode === "command" ? held.menuRoom + 1 : held.inView.length
                 rows: held.numbered
-                current: held.cursor
+                current: held.mode === "command" ? menuRows.currentIndex : held.cursor
                 relative: held.relative
                 digits: held.gutterDigits
-                figures: String(Math.max(1, held.listed.length)).length
+                figures: String(Math.max(1, held.mode === "command" ? menuRows.count
+                    : held.listed.length)).length
                 shown: true
             }
         }
@@ -1592,10 +1722,6 @@ Card {
                 readonly property bool atCursor: at === held.cursor
                 readonly property bool chosenLine: held.selected.includes(modelData)
                     || atCursor && (held.mode === "normal" || held.pending)
-                // What the command line would act on, which keeps a ground
-                // while the menu's line takes the selection's.
-                readonly property bool targeted: held.mode === "command"
-                    && held.targets.includes(modelData)
                 readonly property var from: one ? Notices.sender(one.appName) : null
                 readonly property bool washed: held.pattern !== ""
                 // When it came, said at the far end of its only line, or of
@@ -1610,13 +1736,12 @@ Card {
 
                 // Chosen in visual, under the cursor in normal, or waiting
                 // on an operator, its band wears the selection's ground,
-                // as the launcher's tinted rows do; a command line's
-                // targets lie on raised.
+                // as the launcher's tinted rows do.
                 Ground {
                     from: held.inset
                     width: parent.width + 2 * held.inset
                     height: parent.height
-                    ink: line.targeted ? "raised" : line.chosenLine ? "selection" : ""
+                    ink: line.chosenLine ? "selection" : ""
                 }
 
                 // Its sender's mark, centred on its Name's capitals.
@@ -1998,77 +2123,6 @@ Card {
             }
         }
 
-        // The menu, rising above the command line (CommandMenu.qml), as
-        // many lines as the screen has room for.
-        CommandMenu {
-            id: commandMenu
-            // From the frame's inside edge to its other, as it stands its
-            // own lines' ink at the inset.
-            x: -held.inset
-            width: sheet.width + 2 * held.inset
-            all: held.entries
-            lines: held.menuFound.shown
-            chosen: held.menuChosen
-            most: held.menuRoom
-            visible: held.mode === "command" && !held.menuAway && showing > 0
-        }
-
-        // The command line, above the status line with its menu rising
-        // from it, as Vim's: the accent's sigil, what's typed in the mono
-        // at Figure, and the bar caret where it types.
-        Item {
-            visible: held.mode === "command"
-            width: sheet.width
-            height: held.rowHeight
-
-            // How far in the caret stands.
-            TextMetrics {
-                id: lineBefore
-                font: figure.font
-                text: held.commandLine.text.slice(0, held.commandLine.caret)
-            }
-
-            // The :'s ink, so its middle stands on the cell's.
-            TextMetrics {
-                id: colonInk
-                font: figure.font
-                text: ":"
-            }
-
-            // In the mark column's cell, as the find's / takes it.
-            Text {
-                id: sigil
-                x: held.cellMiddle - colonInk.tightBoundingRect.x
-                    - colonInk.tightBoundingRect.width / 2
-                anchors.verticalCenter: parent.verticalCenter
-                text: ":"
-                color: Theme.accent
-                font: figure.font
-            }
-
-            // On the text column, where the rows' names stand.
-            Text {
-                id: typed
-                x: held.columns.text
-                width: parent.width - x
-                anchors.baseline: sigil.baseline
-                text: held.commandLine.text
-                textFormat: Text.PlainText
-                elide: Text.ElideLeft
-                color: Theme.strong
-                font: figure.font
-            }
-
-            Rectangle {
-                opacity: held.caretLight
-                x: typed.x + lineBefore.advanceWidth
-                y: typed.y + typed.baselineOffset - figure.ascent
-                width: Math.max(1, Math.round(figure.averageCharacterWidth / 4))
-                height: figure.ascent + figure.descent
-                color: Theme.strong
-            }
-        }
-
         // A tie between the last band and the foot's hairline, as under
         // the head's.
         Item {
@@ -2227,25 +2281,14 @@ Card {
         }
     }
 
-    // How many menu lines show: ten at most, and no more than the height
-    // the lines leave while the command line is up, so the line being
-    // typed never falls off the screen; one at least.
-    readonly property int menuRoom: Math.max(1, Math.min(10,
-        Math.floor((commandTall - inView.length * rowHeight) / commandMenu.pitch) - 1))
-    // How tall the lines and the menu may be while the command line is up:
-    // the lines' height less the command line and the menu's hairline. A
-    // menu line's pitch more is kept for the menu's room above and below
-    // its lines.
-    readonly property real commandTall: listTall - Theme.border - rowHeight
+    // How many of the menu's lines show in the lines' place: ten at most,
+    // as his pumheight, and no more than the lines' room; one at least.
+    readonly property int menuRoom: Math.max(1, Math.min(10, Math.floor(listTall / rowHeight)))
     // How tall the lines may be: the screen less its rung each side, the
     // frame's hairlines, the head and its rule, the ties inside the rules,
     // and the foot and its rule.
     readonly property real listTall: screenHeight - 2 * Theme.space.rung.screen
         - 4 * Theme.border - headTall - 2 * Theme.space.rung.tie - rowHeight - sheet.bottomPadding
-    // The lines that leave the menu three where the screen has the room.
-    readonly property int commandRows: Math.max(1, Math.min(room,
-        Math.floor((commandTall - 4 * commandMenu.pitch) / rowHeight)))
-
 
     SystemClock {
         id: clock

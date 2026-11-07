@@ -1782,8 +1782,7 @@
   '';
   the-notices-are-a-quickfix-list = ''
     the held notices are Vim's quickfix list: the newest first, each motion's landing, what an
-    operator takes, the view kept around the cursor, the gutter's numbers, u and Ctrl+R, and the
-    command line's menu
+    operator takes, the view kept around the cursor, the gutter's numbers, and u and Ctrl+R
   '';
   the-notices-keep-their-order = ''
     the notices' stack puts a critical one in front and the rest in the order they came, one unheard

@@ -719,6 +719,7 @@ Scope {
 
                 stack: root
                 live: root.live
+                keysTo: taker
                 x: -gutter
                 width: stack.width + gutter
                 visible: root.holding

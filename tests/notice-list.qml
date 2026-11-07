@@ -115,20 +115,6 @@ QtObject {
             Changes.changed(undone.history, { ids: [4], kind: "done" }).undone, []);
 
 
-        const entries = [
-            { command: "open", short: "ope", name: "Open", key: "\u21b5" },
-            { command: "delete", short: "d", name: "Done", key: "dd" },
-            { command: "forget", short: "forg", name: "Forget It", key: "" },
-            { command: "yank", short: "y", name: "Copy What It Said", key: "yy" }
-        ];
-        const names = text => List.menu(entries, text).shown.map(one => one.command);
-        holds("nothing typed lists them all", names(""), ["open", "delete", "forget", "yank"]);
-        holds("narrowed by the command's start", names("fo"), ["forget"]);
-        holds("then by the act's words", names("copy"), ["yank"]);
-        holds("a range typed first is kept", List.menu(entries, "'<,'>d").prefix, "'<,'>");
-        holds("and the rest narrows", names("'<,'>d"), ["delete"]);
-        holds("% too", List.menu(entries, "%y").prefix, "%");
-
         // A card's words on a short screen: the whole lines that fit, ending
         // at a whole word with an ellipsis (VKCF3Z, 2026-11-05), a run's
         // width here its length.

@@ -79,6 +79,12 @@ ComponentBehavior: Bound`, and every delegate declares what it takes from
 its model as `required` properties. A nested item names its delegate by id
 rather than reading the delegate's properties bare.
 
+A ListView that sizes itself to its rows takes its height from its model's
+length, never from its own `count`: bound to that, the held notices' menu
+stood no taller than nothing with eleven rows listed. A check that reads a
+view's rows counts only those wholly inside it, since `itemAtIndex` also
+answers for rows made but clipped away.
+
 `quickshell-passes-qmllint` runs qmllint over the account's files, and any
 warning fails. It reads Quickshell's own type files, with two of their faults
 corrected, and leaves out two kinds of report that are gaps in those files
