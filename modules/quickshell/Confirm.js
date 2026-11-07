@@ -32,11 +32,17 @@ function answer(ask, key, now, guard) {
 // one row by its name, as "Close Notes? (y/n)", and more by their count
 // and kind, each verb with its own in the order they come, as "Close 2
 // windows and forget 1 copy? (y/n)", so Joel needn't look to see what
-// they are (VKCF3Z, 2026-11-05).
+// they are (VKCF3Z, 2026-11-05). One row that says what its ending
+// leaves (`leaves`) says it before y/n, as "Close Lamplight? Its worktree
+// stays. (y/n)", so ending a session never reads as losing its work,
+// begun as the sentence it is.
 function question(rows, words) {
+    const left = rows.length === 1 ? String(rows[0].leaves ?? "") : "";
+    const leaves = left.charAt(0).toUpperCase() + left.slice(1);
     const said = rows.length === 1
-        ? (words.ask ?? "").replace("{ends}", saysItself(rows[0], words) ? ""
-            : verbOf(rows[0], words)).replace("{name}", rows[0].name ?? "").trim()
+        ? (leaves !== "" ? words.askLeaves ?? "" : words.ask ?? "")
+            .replace("{ends}", saysItself(rows[0], words) ? "" : verbOf(rows[0], words))
+            .replace("{name}", rows[0].name ?? "").replace("{leaves}", leaves).trim()
         : (words.asks ?? "").replace("{what}", listed(parts(rows, words), words));
     return said.charAt(0).toUpperCase() + said.slice(1);
 }

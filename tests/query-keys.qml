@@ -249,12 +249,18 @@ QtObject {
             true);
         holds("unless it says how it's put back",
             Operators.asks([Object.assign({ undo: run }, close)], commands), false);
+        // One that says what it leaves asks even where it's guarded and
+        // alone, as a session's Close does, since the ask says it.
+        holds("one guarded thing saying what it leaves asks",
+            Operators.asks([Object.assign({ leaves: "Its folder stays." }, as("close"))],
+                commands), true);
         // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
         // It names the one row it ends, and more by their count and kind,
         // each verb with its own, so Joel needn't look to see what they are
         // (VKCF3Z, 2026-11-05).
         const asking = { ask: "{ends} {name}? (y/n)", asks: "{what}? (y/n)",
+            askLeaves: "{ends} {name}? {leaves} (y/n)",
             part: "{ends} {count} {kind}", ends: "end", thing: "thing", and: "and",
             many: { copy: "copies" } };
         const closing = name => ({ ends: "close", name, kind: "window" });
@@ -266,6 +272,9 @@ QtObject {
         holds("and one whose name begins with its verb by its name alone",
             Confirm.question([{ ends: "forget", name: "Forget the Clipboard" }], asking),
             "Forget the Clipboard? (y/n)");
+        holds("and one that says what it leaves says so before y/n, as a sentence",
+            Confirm.question([Object.assign({ leaves: "its worktree stays." },
+                closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");
         holds("and counts more by their kind", Confirm.question([closing("Notes"),
             closing("Mail")], asking), "Close 2 windows? (y/n)");
         holds("and each verb with its own, the first first", Confirm.question([closing("Notes"),
