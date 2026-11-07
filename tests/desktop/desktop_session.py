@@ -41,6 +41,7 @@ class Values(TypedDict):
     ask_portal: str
     choose_a_file: str
     copilot_key: str
+    ergodox: str
     keyboard: str
     touchscreen: str
     tuple_window: str
@@ -52,6 +53,8 @@ class Values(TypedDict):
     # A wide picture and a short video, for the file picker to preview.
     wide: str
     clip: str
+    # The ErgoDox's layout, as its module describes it for the shell.
+    ergodox_layout: str
     # The packages whose programs the test runs by their paths.
     coreutils: str
     dbus: str

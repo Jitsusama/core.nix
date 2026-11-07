@@ -8,11 +8,14 @@
 // listed only in the board's own parts (Keyboards.qml), and the overlay
 // shows what the launcher chose. Among the keyboards plugged in, the
 // board's parts hold its Layer, saying where it's locked, and its Light,
-// each a setting whose choices a step in run the board's own command. It
-// exits 0 once every case holds,
-// and otherwise 1, saying which case didn't.
+// each a setting whose choices a step in run the board's own command.
+// Then the board is unplugged, as its watcher says with "-", and the open
+// layout goes, with every key, act and choice of the board, until it's
+// plugged back in. It exits 0 once every case holds, and otherwise 1,
+// saying which case didn't.
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "launcher"
 
@@ -54,6 +57,82 @@ ShellRoot {
             choice.run();
             return `${choice.name}: ${Niri.spawned.join(" ")}`;
         }).join("; ");
+    }
+
+    // Where the board's watcher says its layer, written here as the watcher
+    // would as the board is unplugged and plugged back in.
+    FileView {
+        id: layerFile
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/keyboard-layer`
+        printErrors: false
+    }
+
+    // The board's rows the launcher would list or find.
+    function boardRows() {
+        return keyboard.everything().concat(keyboard.search("backslash").rows,
+            keyboard.search("lock punk").rows, keyboard.search("flash").rows);
+    }
+
+    // Waits for the watcher's word to reach the shell, for five seconds at
+    // most, then runs the next cases.
+    Timer {
+        id: plugging
+        interval: 50
+        repeat: true
+        property int left: 100
+        property bool plugged: false
+        property var next: () => {}
+        onTriggered: {
+            if (KeyboardLayer.present === plugged) {
+                stop();
+                root.guarded(next);
+            } else if (--left === 0) {
+                stop();
+                console.warn(`FAIL the watcher's "${plugged ? "Numb locked" : "-"}" never came`);
+                Qt.exit(1);
+            }
+        }
+    }
+
+    function plug(plugged, next) {
+        layerFile.setText(plugged ? "Numb locked\n" : "-\n");
+        plugging.plugged = plugged;
+        plugging.next = next;
+        plugging.left = 100;
+        plugging.start();
+    }
+
+    function guarded(cases) {
+        try {
+            cases();
+        } catch (error) {
+            console.warn(`FAIL ${error.message}`);
+            Qt.callLater(() => Qt.exit(1));
+        }
+    }
+
+    // Unplugged, the open layout goes and nothing of the board is listed,
+    // found or shown, though its layout file stays; plugged back in, it all
+    // comes back.
+    function unplugged() {
+        expect("the layout put away as the board goes", !KeyboardLayout.shown,
+            `${KeyboardLayout.shown}`);
+        expect("no board while it's unplugged", !KeyboardLayout.present,
+            `${KeyboardLayout.layers.length} layers`);
+        expect("none of its rows", boardRows().length === 0,
+            boardRows().map(row => row.name).join(", "));
+        KeyboardLayout.toggle();
+        expect("no layout to show", !KeyboardLayout.shown, `${KeyboardLayout.shown}`);
+        plug(true, pluggedBack);
+    }
+
+    function pluggedBack() {
+        expect("the board back", KeyboardLayout.present && first("backslash").name
+            === "\\ backslash", first("backslash").name);
+        KeyboardLayout.toggle();
+        expect("its layout shown again", KeyboardLayout.shown && KeyboardLayout.layer === 2,
+            `${KeyboardLayout.shown} ${KeyboardLayout.layer}`);
+        Qt.callLater(() => Qt.exit(0));
     }
 
     // Quickshell reads the files in the background, so the cases wait for
@@ -180,7 +259,7 @@ ShellRoot {
             KeyboardLayout.toggle();
             expect("the board's layer shown", KeyboardLayout.shown && KeyboardLayout.layer === 2,
                 `${KeyboardLayout.shown} ${KeyboardLayout.layer}`);
-            Qt.callLater(() => Qt.exit(0));
+            plug(false, unplugged);
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
             Qt.callLater(() => Qt.exit(1));
