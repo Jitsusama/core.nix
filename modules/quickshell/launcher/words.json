@@ -3843,7 +3843,7 @@
       "id": "on:waiting",
       "in": "on",
       "name": "Needs You",
-      "verb": "go",
+      "verb": "go to",
       "glyph": "waitsOnJoel",
       "empty": "Nothing needs you.",
       "tells": {
