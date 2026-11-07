@@ -140,11 +140,23 @@ function acts(standing, windowed) {
     return ids;
 }
 
-// What its drawer says: since when it's run as the eyebrow over its title,
-// then what it works on, its step, what it waits on Joel for, what it's
-// spent today (an orchestrator's whole orchestration, then its own and its
-// sessions'), its address and the machine it runs on, each as a name and
-// a figure. Nothing it hasn't said is guessed.
+// What a session's row says at its right, each item with how much it's
+// needed, so where room runs short they give way whole (Choice.qml): how
+// it stands, then what it spent today, last and kept longest, and nothing
+// more (VKCF3Z, 2026-11-06: "working \u00b7 $4.20"). Its address and
+// folder are its drawer's eyebrow, and typing its address still finds it.
+function side(doing, spent) {
+    return [{ said: doing, keep: 3 }, { said: spent, keep: 4 }]
+        .filter(item => item.said !== "");
+}
+
+// What its drawer says: its address, where it works and since when it's
+// run as the eyebrow over its title, "8IDU4E \u00b7 core.nix \u00b7 since
+// 21:52" (VKCF3Z, 2026-11-06); then what it works on, its step, what it
+// waits on Joel for, what it's spent today (an orchestrator's whole
+// orchestration, then its own and its sessions') and the machine it runs
+// on, each as a name and a figure. Nothing it hasn't said is guessed, and
+// what the eyebrow says isn't said again.
 function drawer(title, presence, said) {
     const known = {
         works: presence?.worksOn,
@@ -153,11 +165,11 @@ function drawer(title, presence, said) {
         spent: said.spent,
         own: said.own,
         under: said.under,
-        address: said.address,
         machine: said.machine
     };
     const facts = Object.keys(known).filter(id => (known[id] ?? "") !== "")
         .map(id => ({ label: said.named(id), value: known[id] }));
-    const eyebrow = (said.started ?? "") === "" ? "" : `${said.named("started")} ${said.started}`;
+    const eyebrow = [said.address, said.place, said.since]
+        .filter(part => (part ?? "") !== "").join(" \u00b7 ");
     return { eyebrow, title, facts, body: "" };
 }

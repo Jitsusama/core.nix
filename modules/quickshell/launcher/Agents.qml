@@ -155,15 +155,9 @@ Provider {
         const orchestrator = presence?.orchestratedBy ?? "";
         const under = orchestrator !== "" && orchestrator !== session.address
             ? word("under", { address: orchestrator }) : "";
-        const figure = family ? word("inAll", { spent: family.all })
-            : spent !== "" ? word("today", { spent: spent }) : "";
-        // What it says at its right, each item with how much it's needed,
-        // so where room runs short they give way whole (Choice.qml): its
-        // tree first, then its address, then its state, and what it cost
-        // stays (VKCF3Z, 2026-11-04).
-        const items = [{ said: session.address, keep: 2 }, { said: doing, keep: 3 },
-            { said: figure, keep: 4 }, { said: session.folder, keep: 0 }]
-            .filter(item => item.said !== "");
+        // What it spent today, an orchestrator's whole orchestration's.
+        const figure = family ? word("allOf", { spent: family.all }) : spent;
+        const items = SessionRow.side(doing, figure);
         const row = member({
             thing: true,
             key: `agent:${session.address}`,
@@ -199,7 +193,7 @@ Provider {
         // leading its note. It isn't named flat, which Quickshell's
         // JavaScript would read as the arrays' method it lacks.
         // Whom it's under leads what it says at its right too, given way
-        // after its tree, and found from the top its words after its name
+        // first, and found from the top its words after its name
         // (Launcher.qml's gathering), since its note is said only in the
         // foot (15J7N3, 2026-11-04).
         const ranked = [{ said: under, keep: 1 }].concat(items).filter(item => item.said !== "");
@@ -222,8 +216,12 @@ Provider {
             spent: family ? word("allOf", { spent: family.all }) : spent,
             own: family ? family.own : "",
             under: family ? family.under : "",
-            started: presence.owner?.startedAt ? started(presence.owner.startedAt) : "",
+            since: presence.owner?.startedAt
+                ? word("since", { at: started(presence.owner.startedAt) }) : "",
             address: session.address,
+            // Where it works: its repository, as its record names it,
+            // else its folder.
+            place: presence.repo || session.folder,
             machine: session.machine,
             named: id => Words.name(`agents:${id}`)
         });

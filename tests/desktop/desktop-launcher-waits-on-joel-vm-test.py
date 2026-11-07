@@ -250,12 +250,14 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
         """Say what Agents lists of the sessions, as the launcher's catalogue has it."""
         listed = json.loads(machine.succeed(desktop.in_session("qs ipc call launcher list")))
         return [
-            entry["says"]
+            entry["words"]
             for entry in listed
             if entry["in"] == "Agents" and entry["kind"] == "action" and "says" in entry
         ]
 
-    retry(lambda _: any("TESTQA" in said for said in sessions()), timeout=dt.timedelta(seconds=30))
+    # TESTQA's session, named by its quest as its record says it.
+    named = "A quest of its own & whole"
+    retry(lambda _: named in sessions(), timeout=dt.timedelta(seconds=30))
     # A switch restarts the shell; the first list it gives already holds
     # the session, never an empty Agents while it reads the folder.
     desktop.as_account("systemctl --user restart quickshell")
@@ -263,7 +265,7 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
         desktop.in_session("qs ipc call launcher list"), timeout=dt.timedelta(seconds=60)
     )
     first = sessions()
-    assert any("TESTQA" in said for said in first), first
+    assert named in first, first
 
 
 def test_the_launchers_home_counts_the_sessions_whose_names_are_too_long_to_list(
@@ -319,11 +321,18 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     assert "Another" in desktop.showing()["rows"], desktop.showing()["rows"]
     # The second, which would go first once it wants Joel.
     desktop.next_row()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][1])
+    # Its address leads its drawer's eyebrow, since the row says only how
+    # it stands and what it spent.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == shown["rows"][1]
+            and shown["drawer"]["eyebrow"].split(" \u00b7 ")[0] in {"TESTQA", "TESTQB"}
+        )
+    )
     shown = desktop.showing()
     order = shown["rows"]
     chosen = shown["selected"]["name"]
-    address = shown["selected"]["side"].split(" \u00b7 ")[0]
+    address = shown["drawer"]["eyebrow"].split(" \u00b7 ")[0]
     stays = "TESTQA" if address == "TESTQB" else "TESTQB"
     # It comes to want Joel, a want older than the shell so no notice
     # takes the screen, and the other stops working.
@@ -374,7 +383,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     def its_row(says: str) -> Json | None:
         """Give the long session's row as it's drawn, once its right says this."""
         laid = laid_out(desktop)
-        row = next((row for row in laid["rows"] if "TESTQC" in row["reads"]), None)
+        row = next((row for row in laid["rows"] if "Bootstrap" in row["reads"]), None)
         return row if row and says in row["reads"] else None
 
     def name_of(row: Json) -> Json:

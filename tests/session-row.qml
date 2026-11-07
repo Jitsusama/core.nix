@@ -6,7 +6,8 @@
 // one order of how they stand (needs you, working, in line, listening,
 // paused, parked), and Agents sits each session under the one orchestrating it, a
 // step in, an orchestration standing where its most urgent row would
-// (QEST-20261026-15J7N3's agents-tree-look.md).
+// (QEST-20261026-15J7N3's agents-tree-look.md). A row says how it stands
+// and what it spent at its right, and its drawer the rest.
 import QtQuick
 import "SessionRow.js" as SessionRow
 
@@ -126,6 +127,46 @@ QtObject {
             if (got !== want)
                 failures.push(`the acts of one ${state}: "${got}", not "${want}"`);
         }
+
+        // A row says how it stands and what it spent today at its right,
+        // the spend kept longest, and nothing more: its address and folder
+        // are its drawer's (VKCF3Z, 2026-11-06: "working \u00b7 $4.20").
+        const side = items => items.map(item => `${item.said}/${item.keep}`).join(" ");
+        const sides = [
+            ["its state, then its spend, kept longest", "working", "$4.20",
+                "working/3 $4.20/4"],
+            ["one that has spent nothing says its state alone", "listening", "",
+                "listening/3"],
+            ["one off says only what it spent", "", "$1", "$1/4"]
+        ];
+        for (const [what, doing, spent, want] of sides) {
+            const got = side(SessionRow.side(doing, spent));
+            if (got !== want)
+                failures.push(`${what}: "${got}", not "${want}"`);
+        }
+
+        // Its drawer's eyebrow says its address, where it works and since
+        // when, and its facts don't say the address again.
+        const told = {
+            address: "8IDU4E",
+            place: "core.nix",
+            since: "since 21:52",
+            machine: "",
+            spent: "$4.20",
+            named: id => id
+        };
+        const drawn = SessionRow.drawer("A Quest", { worksOn: "the row" }, told);
+        if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
+            failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
+        const facts = drawn.facts.map(fact => fact.label).join(" ");
+        if (facts !== "works spent")
+            failures.push(`the drawer's facts: "${facts}", not "works spent"`);
+        // One whose record names no place, nor when it began, says its
+        // address alone.
+        const bare = SessionRow.drawer("A Quest", {}, Object.assign({}, told,
+            { place: "", since: "" }));
+        if (bare.eyebrow !== "8IDU4E")
+            failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

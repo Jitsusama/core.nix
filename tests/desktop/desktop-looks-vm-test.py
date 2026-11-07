@@ -1740,8 +1740,17 @@ def unorchestrated(desktop: Desktop) -> None:
 
 
 def address_of(row: Json) -> str:
-    """Say which of the orchestration's sessions a drawn row is."""
-    return next(address for address in TREE if address in row["reads"])
+    """Say which of the orchestration's sessions a drawn row is, by its title.
+
+    A session's row says its title, how it stands and what it spent; its address is its
+    drawer's.
+    """
+    return next(address for address, title, _, _ in ORCHESTRATION if title in row["reads"])
+
+
+def in_orchestration(row: Json) -> bool:
+    """Say whether a drawn row is one of the orchestration's sessions."""
+    return any(title in row["reads"] for _, title, _, _ in ORCHESTRATION)
 
 
 def orchestration_drawn(desktop: Desktop) -> list[Json]:
@@ -1749,7 +1758,7 @@ def orchestration_drawn(desktop: Desktop) -> list[Json]:
     was = None
     for _ in range(20):
         laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-        now = [row for row in laid["rows"] if any(address in row["reads"] for address in TREE)]
+        now = [row for row in laid["rows"] if in_orchestration(row)]
         if now == was:
             return now
         was = now
@@ -1778,8 +1787,7 @@ def into_agents(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["agents"]
-            and sum(any(address in thing["reads"] for address in TREE) for thing in shown["things"])
-            == len(TREE)
+            and sum(in_orchestration(thing) for thing in shown["things"]) == len(TREE)
         )
     )
 
@@ -1808,17 +1816,17 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
                 assert abs(glyph - name) <= 1, (
                     f"at {scale} {one}'s glyph is at {glyph}, not on {above}'s name at {name}"
                 )
-            # Short of room, a side gives way whole, the tree, the address, then the state,
-            # before a name gives up a letter, and what it cost stays, never slid from its left.
-            costs = {"TESTQA": "$14.20 today in all", "TESTQD": "$5.10 today"}
+            # Short of room, a side gives way whole, the state first, before a name gives up
+            # a letter, and what it cost stays, never slid from its left.
+            costs = {"TESTQA": "$14.20 in all", "TESTQD": "$5.10"}
             for row in rows:
                 one = address_of(row)
                 side_gives_way_whole(row, titles[one], costs.get(one, ""), scale)
             # The orchestrator says what all of it spent; one under it, its own. One idle
             # is listening, never waiting.
             reads = {address_of(row): row["reads"] for row in rows}
-            assert "$14.20 today in all" in reads["TESTQA"], reads
-            assert "$5.10 today" in reads["TESTQD"], reads
+            assert "$14.20 in all" in reads["TESTQA"], reads
+            assert "$5.10" in reads["TESTQD"], reads
             assert "in all" not in reads["TESTQD"], reads
             assert "listening" in reads["TESTQB"], reads
             assert "waiting" not in " ".join(reads.values()), reads

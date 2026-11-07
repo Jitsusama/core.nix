@@ -106,6 +106,8 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.launcher_ready()
     # Its collection by what it's called, then the session named
     # whole, as its record says it, not as its window's title cuts it.
+    # At its right, how it stands and what it spent today, nothing more;
+    # its address, folder and start are its drawer's eyebrow.
     desktop.type_in("agents")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
     machine.send_key("ret")
@@ -113,8 +115,11 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         lambda shown: (
             shown["held"] == ["agents"]
             and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
-            and "$12.50 today" in shown["selected"]["side"]
-            and "2nd in line" in shown["selected"]["side"]
+            and shown["selected"]["side"] == "2nd in line \u00b7 $12.50"
+            and re.fullmatch(
+                r"TESTQA \u00b7 my-tree \u00b7 since \d\d:\d\d", shown["drawer"]["eyebrow"]
+            )
+            is not None
         )
     )
     desktop.photograph("launcher-agents")
@@ -305,14 +310,16 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     """An orchestrator is found by its name, and talked to through its session's inbox."""
     machine = desktop.machine
     an_orchestrator(desktop)
-    # A running one is its session, drawn as every session is: its address
-    # and what it's doing beside it, and its Return goes to its window.
+    # A running one is its session, drawn as every session is: what it's
+    # doing beside it and its address in its drawer, and its Return goes to
+    # its window.
     desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lighthouse"
-            and str(shown["selected"]["side"]).startswith("TESTQA \u00b7 ")
+            and "TESTQA" not in str(shown["selected"]["side"])
+            and str(shown["drawer"]["eyebrow"]).startswith("TESTQA \u00b7 ")
             and shown["selected"]["verb"] == "go"
         )
     )
