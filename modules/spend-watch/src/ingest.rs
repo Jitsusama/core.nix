@@ -8,7 +8,7 @@
 
 use crate::config::Config;
 use crate::history::History;
-use crate::logs::{Carry, read};
+use crate::logs::{Ancestry, Carry, ancestry, read_after};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -285,7 +285,15 @@ fn scan_slice(
     carry.workspaces = reading
         .workspaces
         .map(|workspaces| workspaces.to_string_lossy().into_owned());
-    let (events, used) = read(&bytes, &mut carry, reading.refusals);
+    // A branch taken from further back is found in what the log held
+    // before this read, which is read again only then.
+    let earlier = || {
+        std::fs::File::open(path).map_or_else(
+            |_| Ancestry::default(),
+            |file| ancestry(std::io::BufReader::new(file.take(offset))),
+        )
+    };
+    let (events, used) = read_after(&bytes, &mut carry, reading.refusals, &earlier);
     // A slice that ends inside one enormous line, a pasted image say,
     // reads nothing: the line is stepped past, since no turn is that long,
     // or waited for while it's still being written.

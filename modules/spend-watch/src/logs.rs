@@ -26,6 +26,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Below this many tokens a rebuild is noise: providers cache in blocks.
 const REBUILD_FLOOR: f64 = 1024.0;
@@ -67,13 +68,82 @@ pub struct Carry {
     /// The last entry read, by its id, to tell a branch taken from
     /// further back from the one carrying on.
     pub last_id: Option<String>,
-    /// Every budget an entry has named so far, the default as empty, each
-    /// with the entries under it, every id followed by a space: a branch
-    /// taken from one of them draws on it again. The default's are left
-    /// out, since an entry under no other is under it once any budget has
-    /// been named. Kept this small, since it's written at every read, and
-    /// only a branch taken from further back looks in it.
-    pub under: std::collections::BTreeMap<String, String>,
+    /// Whether an entry has named a budget yet, so that a branch from an
+    /// entry no budget entry is above draws on the default. Which budget a
+    /// branch's parent drew on is found in the log itself when one is
+    /// taken, which is rare, rather than every entry's being kept here,
+    /// which is written at every read.
+    pub named: bool,
+}
+
+/// What a log's entries say of their branches: each one's parent, and
+/// what each budget entry names. It's gathered only to find where a branch
+/// taken from further back came from, and never kept.
+#[derive(Debug, Default)]
+pub struct Ancestry {
+    parents: HashMap<String, String>,
+    named: HashMap<String, String>,
+}
+
+/// Just what of an entry tells its branch, so a long message is passed
+/// over rather than held.
+#[derive(Deserialize)]
+struct Lineage {
+    id: Option<String>,
+    #[serde(rename = "parentId")]
+    parent: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    #[serde(rename = "customType")]
+    custom: Option<String>,
+    data: Option<Value>,
+}
+
+impl Ancestry {
+    /// Learns what one line says of its entry; a line that isn't an entry
+    /// says nothing.
+    pub fn learn(&mut self, line: &[u8]) {
+        let Ok(entry) = serde_json::from_slice::<Lineage>(line) else {
+            return;
+        };
+        let Some(id) = entry.id else {
+            return;
+        };
+        if let Some(name) = budget_named(
+            entry.kind.as_deref(),
+            entry.custom.as_deref(),
+            entry.data.as_ref(),
+        ) {
+            self.named.insert(id.clone(), name);
+        }
+        if let Some(parent) = entry.parent.filter(|parent| !parent.is_empty()) {
+            self.parents.insert(id, parent);
+        }
+    }
+
+    /// What the nearest budget entry at or above an entry names: empty for
+    /// the default, none when no budget entry is above it.
+    fn budget_of(&self, id: &str) -> Option<String> {
+        let mut at = id;
+        // A log's parents can't loop, but a damaged one is walked no
+        // further than it has entries.
+        for _ in 0..=self.parents.len() {
+            if let Some(name) = self.named.get(at) {
+                return Some(name.clone());
+            }
+            at = self.parents.get(at)?;
+        }
+        None
+    }
+}
+
+/// The ancestry of a log's lines, read one at a time.
+pub fn ancestry(lines: impl std::io::BufRead) -> Ancestry {
+    let mut ancestry = Ancestry::default();
+    for line in lines.split(b'\n').map_while(Result::ok) {
+        ancestry.learn(&line);
+    }
+    ancestry
 }
 
 /// The version of the harness's budget entry this reads; another is
@@ -187,15 +257,30 @@ pub enum Event {
     },
 }
 
-/// Reads what's whole in `bytes`, which start where the last read
-/// stopped, and says how many bytes it used: up to the last line break.
+/// Reads what's whole in `bytes`, the start of a log, and says how many
+/// bytes it used: up to the last line break.
 pub fn read(bytes: &[u8], carry: &mut Carry, refusals: &[String]) -> (Vec<Event>, usize) {
+    read_after(bytes, carry, refusals, &Ancestry::default)
+}
+
+/// Reads what's whole in `bytes`, which start where the last read
+/// stopped, as `read` does. `earlier` gives the ancestry of what the log
+/// held before them, asked only for a branch taken from further back.
+pub fn read_after(
+    bytes: &[u8],
+    carry: &mut Carry,
+    refusals: &[String],
+    earlier: &dyn Fn() -> Ancestry,
+) -> (Vec<Event>, usize) {
     let used = bytes
         .iter()
         .rposition(|&byte| byte == b'\n')
         .map_or(0, |at| at + 1);
     let mut events = Vec::new();
+    let mut start = 0;
     for line in bytes[..used].split(|&byte| byte == b'\n') {
+        let begins = start;
+        start += line.len() + 1;
         if line.is_empty() {
             continue;
         }
@@ -203,6 +288,15 @@ pub fn read(bytes: &[u8], carry: &mut Carry, refusals: &[String]) -> (Vec<Event>
         let Ok(entry) = serde_json::from_slice::<Value>(line) else {
             continue;
         };
+        if let Some(parent) = branched_from(&entry, carry) {
+            let mut ancestry = earlier();
+            for before in bytes[..begins].split(|&byte| byte == b'\n') {
+                ancestry.learn(before);
+            }
+            carry.budget = ancestry
+                .budget_of(parent)
+                .or_else(|| carry.named.then(String::new));
+        }
         let copied = carry
             .copied_until
             .is_some_and(|until| stamp(&entry).is_some_and(|at| at < until));
@@ -270,32 +364,28 @@ fn stamp(entry: &Value) -> Option<f64> {
         .and_then(crate::time::parse)
 }
 
-/// Follows an entry onto its branch, so its budget is that of its
-/// nearest budget entry among its ancestors: a parent other than the
-/// last entry read is a branch taken from further back, which draws on
-/// what that parent did. A log without ids follows the file's order.
+/// The parent of an entry that's a branch taken from further back: one
+/// whose parent isn't the last entry read. A log without ids has none.
+fn branched_from<'a>(entry: &'a Value, carry: &Carry) -> Option<&'a str> {
+    entry.get("id").and_then(Value::as_str)?;
+    let parent = entry
+        .get("parentId")
+        .and_then(Value::as_str)
+        .filter(|parent| !parent.is_empty())?;
+    (carry.last_id.as_deref() != Some(parent)).then_some(parent)
+}
+
+/// Follows an entry onto its branch: a budget entry names the budget the
+/// entries after it on its branch draw on. A branch taken from further
+/// back has its budget found before this, in `read_after`; a log without
+/// ids follows the file's order.
 fn follow(entry: &Value, carry: &mut Carry) {
     let Some(id) = entry.get("id").and_then(Value::as_str) else {
         return;
     };
-    if let Some(parent) = entry.get("parentId").and_then(Value::as_str)
-        && carry.last_id.as_deref() != Some(parent)
-    {
-        carry.budget = carry
-            .under
-            .iter()
-            .find(|(_, ids)| ids.split_whitespace().any(|under| under == parent))
-            .map(|(name, _)| name.clone())
-            .or_else(|| (!carry.under.is_empty()).then(String::new));
-    }
     if let Some(named) = budget_entry(entry) {
-        carry.under.entry(named.clone()).or_default();
+        carry.named = true;
         carry.budget = Some(named);
-    }
-    if let Some(name) = carry.budget.as_ref().filter(|name| !name.is_empty()) {
-        let ids = carry.under.entry(name.clone()).or_default();
-        ids.push_str(id);
-        ids.push(' ');
     }
     carry.last_id = Some(id.to_owned());
 }
@@ -303,11 +393,20 @@ fn follow(entry: &Value, carry: &mut Carry) {
 /// The budget a budget entry of a version this reads names: empty for
 /// the default.
 fn budget_entry(entry: &Value) -> Option<String> {
-    let custom = entry.get("customType").and_then(Value::as_str);
-    if entry.get("type").and_then(Value::as_str) != Some("custom") || custom != Some("budget") {
+    budget_named(
+        entry.get("type").and_then(Value::as_str),
+        entry.get("customType").and_then(Value::as_str),
+        entry.get("data"),
+    )
+}
+
+/// What an entry of a type, a custom type and data names, if it's a
+/// budget entry of a version this reads: empty for the default.
+fn budget_named(kind: Option<&str>, custom: Option<&str>, data: Option<&Value>) -> Option<String> {
+    if kind != Some("custom") || custom != Some("budget") {
         return None;
     }
-    let data = entry.get("data")?;
+    let data = data?;
     if data.get("v").and_then(Value::as_u64) != Some(BUDGET_ENTRY) {
         return None;
     }
@@ -853,7 +952,9 @@ mod tests {
     }
 
     // A branch taken from further back draws on what its parent did, not
-    // on the entry last written, even when the branch is read later.
+    // on the entry last written, even when the branch is read later, from
+    // the log itself: the carry kept between reads holds no entry's id
+    // but the last.
     #[test]
     fn a_branch_draws_on_its_own_ancestors() {
         let first = lines(&[
@@ -868,15 +969,32 @@ mod tests {
         let mut carry = Carry::default();
         let (events, _) = read(&first, &mut carry, &refusals());
         assert_eq!(budgets(&events), [Some(""), Some("delta"), Some("aquifer")]);
-        let mut carry: Carry =
-            serde_json::from_str(&serde_json::to_string(&carry).unwrap()).unwrap();
+        let kept = serde_json::to_string(&carry).unwrap();
+        assert!(!kept.contains("\"c\"") && !kept.contains("\"d\""), "{kept}");
+        let mut carry: Carry = serde_json::from_str(&kept).unwrap();
         let later = lines(&[
             &tree_turn("g", "d", "2026-11-07T02:30:00Z"),
             &tree_turn("h", "g", "2026-11-07T02:31:00Z"),
             &tree_turn("i", "b", "2026-11-07T02:32:00Z"),
         ]);
-        let (events, _) = read(&later, &mut carry, &refusals());
+        let earlier = || ancestry(first.as_slice());
+        let (events, _) = read_after(&later, &mut carry, &refusals(), &earlier);
         assert_eq!(budgets(&events), [Some("delta"), Some("delta"), Some("")]);
+    }
+
+    // A branch from an entry no budget entry is above draws on the default
+    // once any budget has been named, and on nothing said before then.
+    #[test]
+    fn a_branch_from_above_every_budget_entry_draws_on_the_default() {
+        let bytes = lines(&[
+            HEADER,
+            &tree_turn("a", "", "2026-11-07T02:00:00Z"),
+            &budget("b", "a", Some("delta")),
+            &tree_turn("c", "b", "2026-11-07T02:21:00Z"),
+            &tree_turn("d", "a", "2026-11-07T02:22:00Z"),
+        ]);
+        let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+        assert_eq!(budgets(&events), [None, Some("delta"), Some("")]);
     }
 
     // A log without ids is followed in the file's order, and an entry of a
