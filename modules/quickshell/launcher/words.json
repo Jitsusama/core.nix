@@ -7011,9 +7011,12 @@
         "forget": "forgotten",
         "off": "turned off",
         "on": "turned on",
+        "reopen": "reopened",
         "set": "set",
+        "start": "started",
         "stop": "stopped",
-        "trust": "trusted"
+        "trust": "trusted",
+        "wake": "woken"
       }
     },
     "visual": {

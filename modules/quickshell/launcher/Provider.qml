@@ -169,16 +169,17 @@ Scope {
     // it so, as an act asking a daemon has it (launcher/Becoming.js); null
     // for a row that goes. If it never comes, the foot names the row as
     // `name` and what was asked by the verb `act` names in words.json's
-    // field.becoming.did.
-    function becomes(key, row, name, act) {
-        becomesAll([{ key: key, row: row }], name, act);
+    // field.becoming.did. An act whose outcome can't be foretold, or that's
+    // slower than a daemon, says so in `how`: { done, within } (Becoming.js).
+    function becomes(key, row, name, act, how) {
+        becomesAll([{ key: key, row: row }], name, act, how);
     }
 
     // Several rows at once, each { key, row }, as one act changes them all:
     // the desk light's Brightness, the level chosen in its step, and how to
     // put it out.
-    function becomesAll(holds, name, act) {
-        launcher?.becomesAll(provider, holds, { name: name, act: act });
+    function becomesAll(holds, name, act, how) {
+        launcher?.becomesAll(provider, holds, Object.assign({ name: name, act: act }, how ?? {}));
     }
 
     // How a row of its own reads now, by its key, wherever it's shown, or

@@ -111,6 +111,12 @@ Singleton {
         .filter(session => session.window)
         .map(session => session.window.id).join(" ")
 
+    // How long a pi may take to start, which the launcher waits for on a
+    // row it shows as a wake or a start will leave it, before putting it
+    // back: pi loads its extensions and its whole log before it says it's
+    // up, far slower than a daemon's answer.
+    readonly property int startsWithin: 30000
+
     // Starts a session on a quest, in `folder`, as the harness's own spawn
     // does: in the kitty that holds the sessions, through a login shell,
     // so the session has the account's whole environment, with the quest

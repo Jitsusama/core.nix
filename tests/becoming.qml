@@ -83,6 +83,28 @@ QtObject {
             Object.keys(Becoming.without(holds, ["a"])).join(" "), "b");
         check(failures, "and the rest are left as they were", Object.keys(holds).length, 2);
 
+        // An act whose outcome its source can't foretell says how it knows it's
+        // done, as a session woken comes back listening or at work, and waits
+        // as long as it says, as a pi takes to start.
+        const waking = { key: "lantern", row: { key: "lantern", side: "listening" }, at: 0,
+            done: row => row !== null && row.side !== "parked", within: 30000 };
+        const parked = { key: "lantern", side: "parked" };
+        check(failures, "one held till it's done is drawn as it will be till then",
+            read(Becoming.laid([parked], { lantern: waking }, reads).rows), "lantern:listening*");
+        const working = Becoming.laid([{ key: "lantern", side: "working" }],
+            { lantern: waking }, reads);
+        check(failures, "and is agreed however it comes back done, as it is",
+            `${read(working.rows)} ${working.agreed.join(" ")}`, "lantern:working lantern");
+        check(failures, "its source agrees by what it says is done",
+            `${Becoming.agrees(waking, parked, reads)} `
+                + `${Becoming.agrees(waking, { key: "lantern", side: "working" }, reads)}`,
+            "false true");
+        const slow = { a: Object.assign({}, holds.a, { within: 30000 }), b: holds.b };
+        check(failures, "a hold that waits longer comes due when it says",
+            `${Becoming.late(slow, 8000, 5000).join(" ")}|${Becoming.late(slow, 31000, 5000)}`,
+            "b|a,b");
+        check(failures, "and the next due counts it", Becoming.nextDue(slow, 2000, 5000), 6000);
+
         const told = Becoming.told({ mark: "x", what: "Home-5G not disconnected",
             why: "not connected" }, { what: "alert", why: "muted" });
         check(failures, "the foot reads what wasn't done, then why", JSON.stringify(told),

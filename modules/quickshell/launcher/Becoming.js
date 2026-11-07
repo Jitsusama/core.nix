@@ -6,7 +6,11 @@
 // the row it becomes; that's held by the row's key until the row its source
 // makes reads the same, and taken back if the source refuses, or hasn't
 // agreed in time. Each held is { key, row, at }, row null for one that
-// goes, as a recording stopped does.
+// goes, as a recording stopped does. An act whose outcome its source can't
+// foretell, as a session woken may come back listening or at work, says
+// how it knows it's done instead, `done(row)` given the row its source
+// makes now or null; and one slower than a daemon, as a pi starting, how
+// long it waits, `within` ms.
 .pragma library
 
 // The rows as they'll be: each held row laid over the one with its key, the
@@ -22,7 +26,8 @@ function laid(rows, holds, reads) {
             shown.push(row);
         } else if (one.row !== null) {
             const becomes = Object.assign({}, row, one.row);
-            if (reads(one, becomes) === reads(one, row)) {
+            if (typeof one.done === "function" ? one.done(row)
+                : reads(one, becomes) === reads(one, row)) {
                 agreed.push(one.key);
                 shown.push(row);
             } else {
@@ -36,6 +41,9 @@ function laid(rows, holds, reads) {
 // Whether the row its source makes now, or null where it makes none, is what
 // a hold was to become.
 function agrees(one, now, reads) {
+    if (typeof one.done === "function") {
+        return one.done(now);
+    }
     if (one.row === null || now === null) {
         return one.row === now;
     }
@@ -51,14 +59,16 @@ function without(holds, keys) {
     return kept;
 }
 
-// The keys of the holds no source has agreed to within `within` ms of `now`.
+// The keys of the holds no source has agreed to within `within` ms of `now`,
+// or a hold's own.
 function late(holds, now, within) {
-    return Object.values(holds).filter(one => one.at + within <= now).map(one => one.key);
+    return Object.values(holds).filter(one => one.at + (one.within ?? within) <= now)
+        .map(one => one.key);
 }
 
 // When the next hold comes due, in ms from `now`, or -1 for none held.
 function nextDue(holds, now, within) {
-    const ats = Object.values(holds).map(one => one.at + within - now);
+    const ats = Object.values(holds).map(one => one.at + (one.within ?? within) - now);
     return ats.length === 0 ? -1 : Math.max(0, Math.min(...ats));
 }
 
