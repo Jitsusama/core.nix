@@ -65,7 +65,24 @@ PanelWindow {
     }
 
     Reported {
+        id: reported
         name: "keyboard"
+    }
+
+    // Another layer, or another keyboard's layout as a board comes or goes,
+    // is drawn in place, and its frame said for the desktop test, with
+    // which layer it is and how tall its card stands, as it is each time
+    // the map is shown. It's said once the card has taken the new keys'
+    // measure.
+    onShownChanged: {
+        reported.changed();
+        Qt.callLater(sayLayer);
+    }
+    onVisibleChanged: Qt.callLater(sayLayer)
+
+    function sayLayer(): void {
+        if (Options.reports && visible)
+            Report.say(`keyboard layer ${shown.name} ${Math.round(card.height)}`);
     }
 
     Floating {
