@@ -9,6 +9,9 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      # The model and the answers it's drawn from, which the tests read.
+      ./home-network.json
+      ./contract
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
