@@ -174,6 +174,12 @@ QtObject {
         const marked = Reading.styledItems(["a<b", "c & d"], "dots");
         expect("markup in the words written as it reads",
             marked === "a&lt;b <font color=\"dots\">\u00b7</font> c &amp; d", marked);
+        // An item given an ink of its own is drawn in it, the rest in the
+        // side's, so Reopen Them All's "1 folder gone" reads in the alert's
+        // colour and its "1 of 2" doesn't (VKCF3Z, 2026-11-07).
+        const inked = Reading.styledItems(["1 of 2", "1 folder gone"], "dots", ["", "alert"]);
+        expect("an item in its own ink", inked === "1 of 2 <font color=\"dots\">\u00b7</font> "
+            + "<font color=\"alert\">1 folder gone</font>", inked);
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

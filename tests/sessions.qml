@@ -313,11 +313,27 @@ ShellRoot {
             === JSON.stringify(["s-given-back /given-back ",
                 `s-gone ${state}/trees/given-back ${state}`, `s-none ${state}/trees/given-back `]),
             JSON.stringify(unopened));
+        // Each folder looked for is known after, so a row says one's gone
+        // before Return the next time it's listed.
+        expect("a folder found gone is known gone", Sessions.folderGone("/given-back")
+            && !Sessions.folderGone("/tmp"), JSON.stringify(Sessions.folders));
+        // Forgotten, one carried is offered no more, and only those
+        // restore.json still names are kept forgotten.
+        Sessions.forgetReopen({ id: "s-ferried" });
+        expect("a forgotten one is offered no more",
+            Sessions.toReopen.map(one => one.id).join(" ")
+                === "s-before s-fresh s-given-back s-far s-ferry",
+            JSON.stringify(Sessions.toReopen));
+        Sessions.forgotten = ["s-long-gone"];
+        Sessions.forgetReopen({ id: "s-ferried" });
+        expect("what restore.json no longer names isn't kept forgotten",
+            JSON.stringify(Sessions.forgotten) === '["s-ferried"]',
+            JSON.stringify(Sessions.forgotten));
         Sessions.putOffLastBoot();
         expect("put off, none", Sessions.lastBoot.length === 0, JSON.stringify(Sessions.lastBoot));
         // The carried are never put off with the last boot.
         expect("put off, the carried still", Sessions.toReopen.map(one => one.id).join(" ")
-            === "s-ferry s-ferried", JSON.stringify(Sessions.toReopen));
+            === "s-ferry", JSON.stringify(Sessions.toReopen));
         stage = "forgotten";
         tell({ gone: ["session:s-LIVE01"] });
     }

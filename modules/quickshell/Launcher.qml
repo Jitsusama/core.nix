@@ -2225,6 +2225,20 @@ Scope {
         sayingKeys = prompt.keysTaken;
     }
 
+    // What an act done once the launcher closed came to, when it wasn't
+    // what its row said it would be, as a folder gone between the listing
+    // and Return: said once the next time it opens, until the first key,
+    // as `say` says a key's word, never as a notice (VKCF3Z, 2026-11-07
+    // [4a00987e]). Each is [mark, word, colour], as the foot's keys are;
+    // said again before it opens, the newer takes its place.
+    property var toldOnOpen: []
+    function tellOnOpen(told) {
+        if (open)
+            say(told);
+        else
+            toldOnOpen = told;
+    }
+
     // What q says, on the rows and in the drawer alike: with :q at the
     // right end, where Return stands, so it reads q then :q.
     function sayQuit() {
@@ -2466,11 +2480,12 @@ Scope {
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
     // one with the way it goes whole ("log out", "put back", whose first
-    // word alone says nothing, and Go To's "go to", so the foot names the
-    // act by its name, as VKCF3Z ruled on 2026-11-07), a verb with how many
-    // it takes whole (the file picker's "open 2", which said "open" while
-    // it would answer two gathered files), anything else by its first word.
-    readonly property var phrasal: ["in", "out", "back", "to"]
+    // word alone says nothing, Go To's "go to", so the foot names the act
+    // by its name, as VKCF3Z ruled on 2026-11-07, and "start afresh", which
+    // says it won't reopen what was), a verb with how many it takes whole
+    // (the file picker's "open 2", which said "open" while it would answer
+    // two gathered files), anything else by its first word.
+    readonly property var phrasal: ["in", "out", "back", "to", "afresh"]
 
     function oneWord(verb) {
         const said = verb.split(" ");
@@ -5396,6 +5411,9 @@ Scope {
             const styled = item.textFormat === Text.StyledText
                 && typeof item.parent?.plain === "string";
             words.push({ text: styled ? item.parent.plain : item.text,
+                // And as it's marked up, so a test can say which ink each
+                // of its items wears.
+                styled: styled ? item.text : "",
                 x: Math.round(at.x), y: Math.round(at.y),
                 ink: item.color === undefined ? "" : String(item.color),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
@@ -5820,6 +5838,10 @@ Scope {
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
+                // Its glyph's role, and whether what it says at its right
+                // takes the alert's.
+                hue: row.hue ?? "",
+                alerts: !!row.alerts,
                 // What's said below its name, a collection's note.
                 note: row.note ?? "",
                 // The whole words drawn below the rows for it, if any.
@@ -6153,6 +6175,11 @@ Scope {
             // room, cutting the glance's date and charge.
             footReset();
             noteKeys();
+            if (toldOnOpen.length > 0) {
+                say(toldOnOpen);
+                Report.say(`told ${JSON.stringify(toldOnOpen)}`);
+                toldOnOpen = [];
+            }
             Report.say(`stands ${standing.said}`);
         } else {
             // An ask closing with it says no, as Escape would, and is
@@ -7436,6 +7463,7 @@ Scope {
                                     graph: entry.modelData.graph ?? null
                                     warns: !!entry.modelData.warns
                                     marked: entry.modelData.marked === true
+                                    alerts: !!entry.modelData.alerts
                                     figures: list.figures
                                     sides: list.sides
                                     // A quiet row's name is plain, so its

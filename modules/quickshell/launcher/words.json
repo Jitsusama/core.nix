@@ -150,7 +150,13 @@
         "lastBoot": "from the last boot",
         "carried": "carried from {machine}",
         "machines": "{count} machines",
-        "both": "{boot} from the last boot, {carried} {from}"
+        "both": "{boot} from the last boot, {carried} {from}",
+        "there": "{there} of {count}",
+        "goneOne": "1 folder gone",
+        "goneMany": "{count} folders gone",
+        "reopened": "reopened",
+        "folderGone": "folder gone",
+        "foldersGone": "folders gone"
       }
     },
     {
@@ -170,8 +176,19 @@
       "verb": "reopen",
       "glyph": "resume",
       "said": {
-        "gone": "not reopened, since its folder, {cwd}, is gone"
+        "gone": "{cwd} is gone",
+        "isGone": "is gone"
       }
+    },
+    {
+      "id": "verb:agents:to-reopen:forget",
+      "command": "forget",
+      "in": "agents:to-reopen",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forget"
     },
     {
       "id": "verb:agents:to-reopen:notNow",
@@ -224,10 +241,10 @@
       "said": {
         "on": "on {machine}",
         "away": "{machine}, out of reach",
-        "unheld": "not joined, since {machine} doesn't hold it in a way that can be joined from here",
-        "unreached": "not joined, since {machine} is out of reach",
-        "untold": "not told, since {why}",
-        "unanswered": "not told, since the node didn't answer"
+        "unheld": "not joined, {machine} can't hand it over",
+        "unreached": "not joined, {machine} is out of reach",
+        "untold": "not told, {why}",
+        "unanswered": "not told, the node didn't answer"
       }
     },
     {
@@ -6500,9 +6517,21 @@
       "verb": "reopen",
       "glyph": "resume",
       "said": {
-        "afresh": "started afresh in {folder}, since its last session's folder, {cwd}, is gone",
-        "nowhere": "not reopened, since its last session's folder, {cwd}, is gone and its quest names no folder to start in",
-        "unfound": "not reopened, since its last session's record wasn't found and its quest names no folder to start in"
+        "afresh": "started afresh in {folder}",
+        "isGone": "is gone",
+        "unfound": "not reopened, its last session's record not found"
+      }
+    },
+    {
+      "id": "verb:orchestrator:afresh",
+      "command": "new",
+      "in": "orchestrators",
+      "name": "Start Afresh",
+      "verb": "start afresh",
+      "glyph": "resume",
+      "said": {
+        "gone": "{cwd} is gone \u00b7 starts in {folder}",
+        "nowhere": "{cwd} is gone"
       }
     },
     {

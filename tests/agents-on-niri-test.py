@@ -7,7 +7,9 @@ from the node alone. A listening session's Return asks what to say to it, and a 
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. Both
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
-into, and typing still finds each.
+into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
+folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
+counts only the other.
 """
 
 from __future__ import annotations
@@ -34,6 +36,21 @@ STATE = Path(os.environ["XDG_STATE_HOME"])
 PRESENCE = STATE / "pi/agentic-harness.pi/mesh-workflow/presence"
 STEER = STATE / "pi/agentic-harness.pi/steer"
 NODE = Path(os.environ["XDG_RUNTIME_DIR"]) / "mycelium" / f"{REALM}.sock"
+RESTORE = STATE / "pi/restore.json"
+# Where the last boot's two sessions to reopen ran: one still there, one given back.
+KEPT = Path.home() / "harbour"
+GIVEN_BACK = Path.home() / "trees/given-back"
+
+
+def lost_on_the_last_boot() -> None:
+    """Lay what the harness keeps of the last boot: two sessions, one whose folder is gone."""
+    KEPT.mkdir(parents=True, exist_ok=True)
+    lost = [("01b2-harbour", "HARBOR", "Harbour", KEPT), ("01b3-given", "GIVENB", "Given Back",
+             GIVEN_BACK)]  # fmt: skip
+    RESTORE.parent.mkdir(parents=True, exist_ok=True)
+    sessions = [{"id": key, "address": address, "title": title, "cwd": str(cwd), "lostAt": 1}
+                for key, address, title, cwd in lost]  # fmt: skip
+    RESTORE.write_text(json.dumps({"v": 1, "boot": "an-earlier-boot", "sessions": sessions}))
 
 
 def owner() -> Json:
@@ -92,6 +109,7 @@ def shell() -> Iterator[Shell]:
     under = {"orchestratedBy": "BOSSES", "busy": False}
     lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
     lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
+    lost_on_the_last_boot()
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
     with (logs / "mycelium.log").open("w") as log:
@@ -230,3 +248,55 @@ def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
     assert shell.showing()["selected"]["told"][:1] == ["\u21b5 open"], shell.showing()
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Listening Quest", "Paused Quest"])
+
+
+def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
+    shell: Shell,
+) -> None:
+    """One to reopen whose folder is gone says so on its row and holds only Forget It.
+
+    Reopen Them All counts what it will reopen, the other alone, rather than a notice saying
+    after that one wasn't (VKCF3Z, 2026-11-07).
+    """
+    opened(shell)
+    shell.down_to("Sessions to Reopen")
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Reopen Them All", "Harbour", "Given Back", "Not Now"]
+            and (shown["selected"] or {}).get("side") == "1 of 2 \u00b7 1 folder gone"
+        )
+    )
+    shell.down_to("Given Back")
+    row = shell.showing()["selected"]
+    gone = (row["side"], row["alerts"], row["hue"])
+    assert gone == ("~/trees/given-back is gone", True, "alert"), row
+    # The count of what failed wears the ink the row that failed says it in,
+    # and "1 of 2" the side's own.
+    words = [w for r in json.loads(shell.as_account(shell.ipc("laidOut")))["rows"]
+             for w in r["words"]]  # fmt: skip
+    alert = next(w["ink"] for w in words if w["text"] == "~/trees/given-back is gone")
+    count = next(w["styled"] for w in words if w["text"] == "1 of 2 \u00b7 1 folder gone")
+    assert f'<font color="{alert}">1 folder gone</font>' in count, (alert, count)
+    assert count.startswith("1 of 2 "), count
+    # It holds no Reopen: Return steps in, to Forget It alone.
+    assert row["told"][:1] == ["\u21b5 open"], row
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"] == ["Forget It"])
+    # Forgetting ends what's offered, so Return writes :forget, which asks.
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: (shown["command"] or {}).get("line") == "forget" and not shown["linedFresh"]
+    )
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["takesAnswer"])
+    shell.send_chars("y")
+    shell.launcher_until(lambda shown: not shown["open"])
+    # Forgotten, it's no longer offered, and the harness's record is as it wrote it.
+    opened(shell)
+    shell.down_to("Sessions to Reopen")
+    assert shell.showing()["selected"]["side"] == "1 session", shell.showing()
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
+    kept = [one["id"] for one in json.loads(RESTORE.read_text())["sessions"]]
+    assert kept == ["01b2-harbour", "01b3-given"], kept

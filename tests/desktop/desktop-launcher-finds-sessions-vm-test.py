@@ -649,10 +649,15 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
 
 
 def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:
-    """Agents reopens what the last boot's end took away, Return twice, or puts it off."""
+    """Agents reopens what the last boot's end took away, Return twice, or puts it off.
+
+    One whose folder is gone says so on its row before Return, and Reopen Them All counts
+    only the other.
+    """
     machine = desktop.machine
     opened = "$XDG_RUNTIME_DIR/pi-opened"
-    # The harness kept one session live as an earlier boot ended.
+    # The harness kept two sessions live as an earlier boot ended, one in a
+    # folder given back since.
     lost = {
         "v": 1,
         "boot": "an-earlier-boot",
@@ -664,9 +669,16 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
                 "cwd": "/home/jitsusama/harbour",
                 "lostAt": 1,
             },
+            {
+                "id": "01b3-given",
+                "address": "GIVENB",
+                "title": "Given Back",
+                "cwd": "/home/jitsusama/given-back",
+                "lostAt": 1,
+            },
         ],
     }
-    desktop.as_account(f"rm -f {opened} && mkdir -p ~/harbour")
+    desktop.as_account(f"rm -rf {opened} ~/given-back && mkdir -p ~/harbour")
     kept(desktop, "~/.local/state/pi/restore.json", lost)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -676,12 +688,22 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     desktop.launcher_until(lambda shown: "Sessions to Reopen" in shown["rows"])
     desktop.down_to("Sessions to Reopen")
     selected = desktop.showing()["selected"]
-    assert (selected["side"], selected["note"]) == ("1 session", "from the last boot"), selected
-    # Return steps in, all of them first; reopening changes how things
-    # stand, so Return lands on it and a second reopens them.
+    assert (selected["side"], selected["note"]) == ("2 sessions", "from the last boot"), selected
+    # Return steps in, all of them first, counting what it will reopen;
+    # reopening changes how things stand, so Return lands on it and a
+    # second reopens them.
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Reopen Them All", "Harbour", "Given Back", "Not Now"]
+            and (shown["selected"] or {}).get("side") == "1 of 2 \u00b7 1 folder gone"
+        )
+    )
     desktop.photograph("launcher-agents-last-boot")
+    desktop.down_to("Given Back")
+    assert desktop.showing()["selected"]["side"] == "~/given-back is gone", desktop.showing()
+    desktop.photograph("launcher-agents-last-boot-gone")
+    desktop.down_to("Reopen Them All")
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
     machine.send_key("ret")

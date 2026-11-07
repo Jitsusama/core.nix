@@ -127,19 +127,27 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
-    // A session elsewhere that couldn't be joined or told is said in a
-    // notice, since nothing opens to show it.
+    // A session elsewhere that couldn't be joined or told is said in the
+    // foot, by its address in the alert colour, where the act was pressed:
+    // at once while the launcher's open, or else once it opens next, never
+    // as a notice (VKCF3Z, 2026-11-07 [4a00987e]).
     Connections {
         target: Sessions
 
         function onUnjoined(session) {
-            Niri.spawn(["notify-send", "--app-name=Sessions", "--", session.title,
-                provider.elsewhere(session.reachable ? "unheld" : "unreached", session)]);
+            provider.launcher?.tellOnOpen([[session.address,
+                provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
+                Theme.alert]]);
         }
 
         function onUnsteered(session, why) {
-            Niri.spawn(["notify-send", "--app-name=Sessions", "--", session.title,
-                provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why)]);
+            provider.launcher?.tellOnOpen([[session.address,
+                provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
+                Theme.alert]]);
+        }
+
+        function onToReopenChanged() {
+            provider.lookForFolders();
         }
     }
 
@@ -456,13 +464,29 @@ Provider {
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;
-        // In its own folder only; when that's gone, a notice says so and
-        // nothing opens, never one in the home folder instead.
-        const gone = String((Words.of("verb:agents:to-reopen:one").said ?? {}).gone ?? "");
-        const unopened = (one, cwd) => Sessions.sayUnopened(
-            String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd)));
-        const reopen = one => Sessions.reopen(one, cwd => unopened(one, cwd));
-        const closed = one => thing({
+        // In its own folder only, never the home folder instead. One whose
+        // folder is gone says so on its row, looked for as the launcher
+        // opens (lookForFolders), and holds no Reopen (VKCF3Z, 2026-11-07
+        // [4a00987e]); one whose folder went since it was listed is said
+        // once the launcher opens next, with how the rest went, never as a
+        // notice.
+        const oneSaid = Words.of("verb:agents:to-reopen:one").said ?? {};
+        const goneHere = one => one.machine === undefined && Sessions.folderGone(one.cwd);
+        const reopen = one => Sessions.reopen(one, cwd => provider.launcher?.tellOnOpen([
+            [homely(cwd), String(oneSaid.isGone ?? ""), Theme.alert]]));
+        const goneCount = count => count === 1 ? String(said.goneOne ?? "")
+            : String(said.goneMany ?? "").replace("{count}", count);
+        const forget = one => act("forget", { run: () => Sessions.forgetReopen(one) });
+        const unreopened = one => thingRow({
+            key: `agents:to-reopen:${one.id}`,
+            name: String(one.title || one.address || one.id),
+            side: String(oneSaid.gone ?? "").replace("{cwd}", homely(one.cwd)),
+            alerts: true,
+            note: fromOf(one),
+            glyph: Theme.glyph.agent,
+            hue: "alert"
+        }, () => [forget(one)]);
+        const closed = one => goneHere(one) ? unreopened(one) : thing({
             thing: true,
             key: `agents:to-reopen:${one.id}`,
             name: String(one.title || one.address || one.id),
@@ -475,6 +499,36 @@ Provider {
             later: true,
             run: () => reopen(one)
         });
+        const reopenable = lost.filter(one => !goneHere(one));
+        const goneNow = lost.length - reopenable.length;
+        // Reopen Them All reopens those that can be, its side counting them
+        // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
+        // after is counted with how many reopened, and said once the
+        // launcher opens next.
+        const outcome = { asked: reopenable.length, gone: 0 };
+        const tellAll = () => provider.launcher?.tellOnOpen([
+            [String(outcome.gone), String(said[outcome.gone === 1 ? "folderGone"
+                : "foldersGone"] ?? ""), Theme.alert],
+            [String(outcome.asked - outcome.gone), String(said.reopened ?? "")]]);
+        // Its count of what failed is drawn in the alert's colour, as the
+        // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
+        const there = String(said.there ?? "").replace("{there}", reopenable.length)
+            .replace("{count}", lost.length);
+        const themAll = () => act("all", {
+            later: true,
+            side: goneNow === 0 ? "" : `${there} \u00b7 ${goneCount(goneNow)}`,
+            sideItems: goneNow === 0 ? [] : [{ said: there, keep: 2 },
+                { said: goneCount(goneNow), keep: 3, hue: "alert" }],
+            // Each back where it sat (Sessions.qml's reopenThemAll), a
+            // carried one beside where Joel is, since it never sat here,
+            // and then the windows that reopen themselves. Each is told to
+            // carry on as it opens, so none waits to be poked; one reopened
+            // alone from its own row isn't, since Joel is there.
+            run: () => Sessions.reopenThemAll(reopenable, () => {
+                outcome.gone += 1;
+                tellAll();
+            })
+        });
         return thingRow({
             key: "agents:to-reopen",
             name: Words.name("agents:to-reopen"),
@@ -483,17 +537,27 @@ Provider {
             note: note,
             glyph: Words.glyph("agents:to-reopen"),
             hue: "action"
-        }, () => [act("all", {
-            later: true,
-            // Each back where it sat (Sessions.qml's reopenThemAll), a
-            // carried one beside where Joel is, since it never sat here,
-            // and then the windows that reopen themselves. Each is told to
-            // carry on as it opens, so none waits to be poked; one reopened
-            // alone from its own row isn't, since Joel is there.
-            run: () => Sessions.reopenThemAll(lost, unopened)
-        })].concat(lost.map(closed), booted === 0 ? [] : [act("notNow", {
+        }, () => (reopenable.length === 0 ? [] : [themAll()]).concat(lost.map(closed),
+            booted === 0 ? [] : [act("notNow", {
             run: () => Sessions.putOffLastBoot()
         })]));
+    }
+
+    // Whether each folder there is to reopen in is there, looked for as the
+    // launcher opens and as the sessions to reopen change while it's open,
+    // so each row says it before Return rather than trusting what the
+    // shell found at its start.
+    function lookForFolders() {
+        if (provider.launcher?.open)
+            Sessions.lookForFolders(Sessions.toReopen.filter(one => one.machine === undefined)
+                .map(one => one.cwd));
+    }
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            provider.lookForFolders();
+        }
     }
 
     things: toReopen ? [toReopen, start] : [start]

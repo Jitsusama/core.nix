@@ -142,6 +142,9 @@ Rectangle {
     // at its right takes the warning colour, and its graph all of it, one
     // flag for both so they never disagree (docs/design.md, Kinds).
     property bool warns: false
+    // Whether what it says needs him now, as a session's folder gone: what
+    // it says at its right takes the alert colour (VKCF3Z, 2026-11-07).
+    property bool alerts: false
     // How many characters the widest of what the list's graphed rows say
     // at their right runs to, so every graph in the list stands in one
     // column clear of them all.
@@ -340,10 +343,18 @@ Rectangle {
         // given way first (Reading.js's keptItems).
         readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
             words => Math.ceil(sideFace.advanceWidth(words)) + 1) : []
+        // The colour each kept item is drawn in where it names a role of
+        // its own (`hue`), as a count of what failed wears the alert's,
+        // or "" for the side's.
+        readonly property var inks: kept.map(words => {
+            const item = row.sideItems.find(one => one.said === words);
+            return item?.hue ? String(Theme[item.hue]) : "";
+        })
         // Whether its dots are drawn apart from its words: where the words
-        // aren't muted already, so its dots are, as the status line's are.
+        // aren't muted already, so its dots are, as the status line's are,
+        // or where an item wears a colour of its own.
         readonly property bool dotted: itemised && kept.length > 1 && !row.flashed
-            && (row.selected || row.warns)
+            && (row.selected || row.warns || inks.some(ink => ink !== ""))
         readonly property bool sided: !chorded && said !== ""
         readonly property bool itemised: row.landed === "" && row.carried === ""
             && row.kind === "" && row.sideItems.length > 0
@@ -469,7 +480,8 @@ Rectangle {
             anchors.right: parent.right
             visible: right.sided
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
-            text: right.dotted ? Reading.styledItems(right.kept, Theme.muted) : right.said
+            text: right.dotted ? Reading.styledItems(right.kept, Theme.muted, right.inks)
+                : right.said
             format: right.dotted ? Text.StyledText : Text.PlainText
             plain: right.said
             wholeWords: true
@@ -478,6 +490,7 @@ Rectangle {
             // Muted reads under the Lc 60 any text needs on the selection.
             color: row.flashed ? row.flashInk
                 : row.landed !== "" ? Theme.accent
+                : row.alerts && row.kind === "" ? Theme.alert
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth

@@ -59,6 +59,16 @@ Provider {
     // there. Never the index's `sessions`, which can hold one long dead
     // whose pid was used again (Joel's Aquifer orchestrator, 2026-10-29).
     property var resumable: ({})
+    // The folder each of those ran in, as the index says, looked for as the
+    // launcher opens, so a closed one whose folder has gone says so, and
+    // where it would start instead, before Return (VKCF3Z, 2026-11-07
+    // [4a00987e]).
+    property var resumeFolders: ({})
+    function lookForFolders() {
+        if (provider.launcher?.open)
+            Sessions.lookForFolders(Object.values(resumeFolders)
+                .concat(Object.values(startFolders)));
+    }
 
     readonly property string harness: Sessions.state
     readonly property string inboxes: Sessions.inboxes
@@ -146,12 +156,23 @@ Provider {
             stands: stands,
             verbs: () => provider.verbs(one, stands)
         });
-        // A closed one reopens on Return, its Reopen leading the step in.
-        if (stands === "off")
-            Object.assign(row, {
+        // A closed one reopens on Return, its Reopen leading the step in;
+        // one whose folder is gone says so, and starts afresh in its
+        // quest's start folder by an act named for that, or, with none to
+        // start in, holds nothing but its talks.
+        if (stands === "off") {
+            const gone = goneFrom(one);
+            Object.assign(row, gone === null ? {
                 verb: Words.verb("verb:orchestrator:reopen"),
                 run: () => provider.start(one)
+            } : {
+                side: gone.side,
+                alerts: true,
+                hue: "alert",
+                verb: gone.afresh ? Words.verb("verb:orchestrator:afresh") : "more",
+                run: gone.afresh ? gone.afresh : () => provider.launcher?.enter(row)
             });
+        }
         return row;
     }
 
@@ -169,9 +190,35 @@ Provider {
     // session's, as made() gives them, and one whose session isn't found
     // yet offers its talks alone.
     function verbs(one, stands) {
-        if (stands === "off")
+        if (stands !== "off")
+            return talksOf(one.address);
+        const gone = goneFrom(one);
+        if (gone === null)
             return [act("reopen", { run: () => provider.start(one) })];
-        return talksOf(one.address);
+        return (gone.afresh ? [act("afresh", { run: gone.afresh })] : [])
+            .concat(talksOf(one.address));
+    }
+
+    // How a closed one's folder is gone, as last looked for: what its row
+    // says, and the start afresh in its quest's start folder where that's
+    // there, or null while its folder is there or not looked for yet.
+    function goneFrom(one) {
+        const cwd = resumeFolders[one.quest] ?? "";
+        if (cwd === "" || !Sessions.folderGone(cwd))
+            return null;
+        const folder = startFolders[one.quest] ?? "";
+        const said = Words.of("verb:orchestrator:afresh").said ?? {};
+        const starts = folder !== "" && !Sessions.folderGone(folder);
+        return {
+            side: String(said[starts ? "gone" : "nowhere"] ?? "")
+                .replace("{cwd}", homely(cwd)).replace("{folder}", homely(folder)),
+            afresh: starts ? () => Sessions.start(one.quest, folder) : null
+        };
+    }
+    function homely(folder) {
+        const home = Sessions.home;
+        return folder === home || folder.startsWith(`${home}/`)
+            ? `~${folder.slice(home.length)}` : folder;
     }
 
     // Each talk with an orchestrator, by its address, newest first, as
@@ -343,8 +390,9 @@ Provider {
     // restart an orchestrator that is closed, continuing from where it
     // left off"); one with no session yet is started on its quest, in the
     // folder the quest index says a new one starts in, never the quest's
-    // own. When the session's folder is gone, it starts afresh in that
-    // start folder, never the home folder, and a notice says so.
+    // own. When the session's folder went since it was listed, it starts
+    // afresh in that start folder, never the home folder, and the foot
+    // says so once the launcher opens next, never a notice.
     function start(one) {
         const last = resumable[one.quest];
         if (!last) {
@@ -353,14 +401,12 @@ Provider {
         }
         const name = one.short || one.title || one.address;
         const said = Words.of("verb:orchestrator:reopen").said ?? {};
-        const home = Sessions.home;
-        const homely = folder => folder === home || folder.startsWith(`${home}/`)
-            ? `~${folder.slice(home.length)}` : folder;
-        const which = (cwd, startedIn) => startedIn !== "" ? "afresh"
-            : cwd === "" ? "unfound" : "nowhere";
+        const told = (cwd, startedIn) => startedIn !== ""
+            ? [name, String(said.afresh ?? "").replace("{folder}", homely(startedIn))]
+            : cwd === "" ? [name, String(said.unfound ?? ""), Theme.alert]
+            : [homely(cwd), String(said.isGone ?? ""), Theme.alert];
         Sessions.resume(last, one.quest, startFolders[one.quest] ?? "", (cwd, startedIn) =>
-            Sessions.sayUnopened(name, String(said[which(cwd, startedIn)] ?? "")
-                .replace("{cwd}", homely(cwd)).replace("{folder}", homely(startedIn))));
+            provider.launcher?.tellOnOpen([told(cwd, startedIn)]));
     }
 
     function everything() {
@@ -454,6 +500,7 @@ Provider {
             if (provider.launcher.open) {
                 orchestrators.reload();
                 questIndex.reload();
+                provider.lookForFolders();
                 provider.looked += 1;
                 provider.lookForTalks();
             }
@@ -486,18 +533,24 @@ Provider {
             try {
                 const out = {};
                 const resumes = {};
+                const folders = {};
                 for (const quest of JSON.parse(text()).quests ?? []) {
                     if (quest.start)
                         out[quest.id] = quest.start;
                     if (typeof quest.resume?.id === "string")
                         resumes[quest.id] = quest.resume.id;
+                    if (typeof quest.resume?.cwd === "string")
+                        folders[quest.id] = quest.resume.cwd;
                 }
                 provider.startFolders = out;
                 provider.resumable = resumes;
+                provider.resumeFolders = folders;
             } catch (e) {
                 provider.startFolders = {};
                 provider.resumable = {};
+                provider.resumeFolders = {};
             }
+            provider.lookForFolders();
         }
     }
 }

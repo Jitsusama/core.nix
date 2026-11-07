@@ -274,11 +274,30 @@ Singleton {
         }
     }
 
-    // Says, as a notice of the desktop's own, why a session didn't open as
-    // asked, in the words the caller gives.
-    function sayUnopened(title, body) {
-        Niri.spawn(["notify-send", "--app-name=Sessions", "--", title, body]);
-        Report.say(`unopened ${title}: ${body}`);
+    // Whether each folder a closed session would reopen in is there, as it
+    // was last looked for: true or false, and absent until it has been. The
+    // place listing them looks as it's shown (lookForFolders), never trusting
+    // what the shell found at its start, so a row says its folder is gone
+    // before Return rather than a notice saying so after (VKCF3Z,
+    // 2026-11-07 [4a00987e]).
+    property var folders: ({})
+    function lookForFolders(cwds) {
+        const asked = cwds.filter((cwd, at) => cwd !== "" && cwds.indexOf(cwd) === at);
+        if (asked.length === 0)
+            return;
+        lookFor(asked, there => heardFolders(asked, there));
+    }
+    function heardFolders(asked, there) {
+        if (asked.every((cwd, at) => folders[cwd] === there[at]))
+            return;
+        const next = Object.assign({}, folders);
+        asked.forEach((cwd, at) => {
+            next[cwd] = there[at];
+        });
+        folders = next;
+    }
+    function folderGone(cwd) {
+        return folders[cwd] === false;
     }
 
     // Opens a closed session again where it left off, in a window of its
@@ -389,18 +408,45 @@ Singleton {
         .sort((one, other) => other.carried.at.localeCompare(one.carried.at)
             || one.id.localeCompare(other.id))
 
-    // Every session there is to reopen: the last boot's, then the carried.
+    // Every session there is to reopen: the last boot's, then the carried,
+    // but those Joel forgot.
     readonly property var toReopen: lastBoot.concat(carried)
+        .filter(one => !forgotten.includes(one.id))
+
+    // The sessions to reopen Joel forgot, by id, kept by the shell as the
+    // boot he put off is, since restore.json is the harness's to write. It
+    // keeps only those restore.json still names, so it never grows past it.
+    property var forgotten: {
+        try {
+            const ids = JSON.parse(forgottenFile.text()).ids;
+            return Array.isArray(ids) ? ids.map(String) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+    FileView {
+        id: forgottenFile
+        path: Quickshell.statePath("reopen-forgotten.json")
+        blockLoading: true
+        printErrors: false
+    }
+    function forgetReopen(lost) {
+        const named = restoring.sessions.map(one => one.id);
+        forgotten = forgotten.filter(id => named.includes(id)).concat([lost.id]);
+        forgottenFile.setText(JSON.stringify({ ids: forgotten }));
+    }
 
     // One of them, in its own folder only: when that's gone, nothing is
     // opened, and `gone(cwd)` is told so the caller says so, since there's
-    // no quest here to start afresh.
+    // no quest here to start afresh. Its row said so already unless the
+    // folder went since it was listed, so it says so from now on too.
     function reopen(lost, gone) {
         if (lost.machine !== undefined) {
             rejoin(lost);
             return;
         }
         lookFor([lost.cwd], there => {
+            heardFolders([lost.cwd], there);
             if (there[0])
                 reopened(lost, lost.cwd);
             else
@@ -1120,6 +1166,7 @@ Singleton {
         reopening.looking = true;
         lookFor([next.one.cwd], there => {
             reopening.looking = false;
+            heardFolders([next.one.cwd], there);
             if (!there[0]) {
                 next.gone?.(next.one, next.one.cwd);
                 reopenNext();
