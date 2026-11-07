@@ -1,0 +1,1921 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:00.928Z"
+  },
+  "data": {
+    "url": "/2.2/networks/1001",
+    "resources": {
+      "ac_compat": "/2.2/networks/1001/ac_compat",
+      "burst_reporters": "/2.2/networks/1001/burst_reporters",
+      "device_blacklist": "/2.2/networks/1001/blacklist",
+      "devices": "/2.2/networks/1001/devices",
+      "diagnostics": "/2.2/networks/1001/diagnostics",
+      "eeros": "/2.2/networks/1001/eeros",
+      "forwards": "/2.2/networks/1001/forwards",
+      "ouicheck": "/2.2/networks/1001/ouicheck",
+      "guestnetwork": "/2.2/networks/1001/guestnetwork",
+      "profiles": "/2.2/networks/1001/profiles",
+      "reservations": "/2.2/networks/1001/reservations",
+      "settings": "/2.2/networks/1001/settings",
+      "speedtest": "/2.2/networks/1001/speedtest",
+      "transfer": "/2.2/networks/1001/transfer",
+      "updates": "/2.2/networks/1001/updates",
+      "reboot": "/2.2/networks/1001/reboot",
+      "support": "/2.2/networks/1001/support",
+      "insights": "/2.2/networks/1001/insights",
+      "routing": "/2.2/networks/1001/routing",
+      "thread": "/2.2/networks/1001/thread"
+    },
+    "capabilities": {
+      "ac_compat": {
+        "capable": false,
+        "requirements": {
+          "has_supported_hardware": true,
+          "has_min_mobile_version": false
+        }
+      },
+      "device_blacklist": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_proper_connection_mode": true
+        }
+      },
+      "device_management": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_min_version": true,
+          "has_proper_connection_mode": true,
+          "has_nodes": true
+        }
+      },
+      "diagnostics": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_min_version": true
+        }
+      },
+      "led_action": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_min_version": true
+        }
+      },
+      "bifrost": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_bifrost_algo": true
+        }
+      },
+      "device_usage": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_min_version": true,
+          "has_feature_flag": true,
+          "has_proper_connection_mode": true
+        }
+      },
+      "delorean": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_min_version": true
+        }
+      },
+      "thread_network": {
+        "capable": true,
+        "requirements": {
+          "has_supported_hardware": true,
+          "has_proper_connection_mode": true,
+          "has_min_mobile_version": true,
+          "has_min_node_version": true,
+          "has_min_thread_version": true,
+          "has_feature_flag": true
+        }
+      },
+      "thread_commissioning": {
+        "capable": false,
+        "requirements": {
+          "is_thread_network_capable": true,
+          "has_min_mobile_version": true,
+          "is_enabled": false,
+          "has_border_agent": true,
+          "is_active": true
+        }
+      },
+      "premium": {
+        "capable": true,
+        "requirements": {
+          "has_min_version": true,
+          "has_min_mobile_version": true,
+          "has_proper_connection_mode": true,
+          "has_allowed_group": true,
+          "has_allowed_country_code": true,
+          "has_proper_owner_role": true,
+          "has_proper_owned_network_count": true,
+          "has_proper_org_configs": true
+        }
+      },
+      "premium_payment_flow": {
+        "capable": true,
+        "requirements": {
+          "has_min_mobile_version": true,
+          "has_proper_connection_mode": true,
+          "has_allowed_group": true,
+          "has_allowed_country_code": true,
+          "has_proper_owner_role": true,
+          "has_proper_owned_network_count": true
+        }
+      },
+      "ad_block_viewable": {
+        "capable": true,
+        "requirements": {
+          "has_adblock_throttle": true,
+          "has_adblock_feature_flag": true,
+          "has_adblock_group": true,
+          "has_adblock_min_mobile_version": true,
+          "premium_payment_flow_capable": true
+        }
+      },
+      "simple_setup": {
+        "capable": false,
+        "requirements": {
+          "has_min_version": true,
+          "is_feature_enabled": true,
+          "in_enabled_groups": true,
+          "in_enabled_countries": false,
+          "not_account_linking_capable": true
+        }
+      },
+      "cedar": {
+        "capable": false,
+        "capable_with_user_remediations": true,
+        "requirements": {
+          "has_min_version": true,
+          "is_feature_enabled": true,
+          "in_enabled_groups": true,
+          "in_required_connection_mode": true,
+          "feature_flag_enabled": true,
+          "has_min_mobile_version": false,
+          "is_certified_gateway": true
+        }
+      },
+      "homekit": {
+        "capable": false,
+        "capable_with_user_remediations": true,
+        "requirements": {
+          "has_min_version": true,
+          "is_feature_enabled": true,
+          "in_enabled_groups": true,
+          "in_required_connection_mode": true,
+          "feature_flag_enabled": true,
+          "has_min_mobile_version": false,
+          "is_certified_gateway": true
+        }
+      },
+      "ad_block": {
+        "capable": false,
+        "requirements": {
+          "has_adblock_throttle": true,
+          "has_adblock_group": true,
+          "has_adblock_feature_flag": true,
+          "has_adblock_min_version": true,
+          "has_adblock_min_mobile_version": true,
+          "has_premium": false,
+          "premium_capable": true
+        }
+      },
+      "ipv6": {
+        "capable": true,
+        "requirements": {
+          "has_proper_connection_mode": true,
+          "has_min_version": true
+        }
+      },
+      "ipv6_editable": {
+        "capable": true,
+        "requirements": {
+          "has_no_organization_override": true,
+          "is_ipv6_capable": true
+        }
+      },
+      "sqm": {
+        "capable": true,
+        "requirements": {
+          "has_proper_connection_mode": true,
+          "has_min_version": true
+        }
+      },
+      "band_steering": {
+        "capable": true,
+        "requirements": {
+          "has_min_version": true,
+          "wireless_mode_is_default": true
+        }
+      },
+      "acs": {
+        "capable": true,
+        "requirements": {
+          "has_min_version": true,
+          "has_proper_connection_mode": true
+        }
+      },
+      "dns_caching": {
+        "capable": true,
+        "requirements": {
+          "has_proper_connection_mode": true,
+          "has_min_version": true
+        }
+      },
+      "wpa3": {
+        "capable": true,
+        "requirements": {
+          "has_min_version": true,
+          "is_feature_enabled": true,
+          "in_enabled_groups": true
+        }
+      },
+      "historical_insights": {
+        "capable": true,
+        "requirements": {}
+      },
+      "per_device_insights": {
+        "capable": true,
+        "requirements": {
+          "has_min_version": true,
+          "has_proper_connection_mode": true
+        }
+      },
+      "historical_usage": {
+        "capable": false,
+        "requirements": {
+          "has_min_mobile_version": false,
+          "has_min_node_firmware": true,
+          "has_feature_flag": true,
+          "in_enabled_groups": false
+        }
+      },
+      "historical_usage_notifications": {
+        "capable": false,
+        "requirements": {
+          "has_min_mobile_version": false,
+          "has_right_connection_mode": true,
+          "has_min_node_version": true,
+          "has_feature_flag": true,
+          "in_enabled_groups": false
+        }
+      },
+      "software_end_of_life": {
+        "capable": false,
+        "requirements": {
+          "has_min_mobile_version": false,
+          "has_feature_flag": true
+        }
+      },
+      "udp_speed_tests": {
+        "capable": true,
+        "requirements": {
+          "gateway_model": "Eden",
+          "gateway_version": "v7.17.4-5+NIGHTLY-RC-2026-11-01.prod.eden",
+          "minimum_version": "7.13.1"
+        }
+      },
+      "power_saving": {
+        "capable": false,
+        "requirements": {
+          "has_supported_hardware": false,
+          "has_supported_firmware": true,
+          "is_country_capable_or_pre_release_network": true,
+          "gateway_model": "Eden",
+          "firmware": "v7.17.4-5+NIGHTLY-RC-2026-11-01.prod.eden",
+          "country_from_geo_ip": "CA"
+        }
+      },
+      "premium_upsell": {
+        "capable": true,
+        "requirements": {
+          "has_allowed_org": false,
+          "is_premium_payment_capable": true,
+          "is_eero_plus_upgrade_enabled": true,
+          "is_not_partner_app": true
+        }
+      },
+      "premium_partnerships": {
+        "capable": true,
+        "requirements": {
+          "has_allowed_org": true,
+          "is_premium_capable": true
+        }
+      },
+      "premium_management": {
+        "capable": true,
+        "requirements": {
+          "has_allowed_org": false,
+          "is_not_isp_org_managed": true,
+          "is_premium_capable": true
+        }
+      },
+      "premium_branding": {
+        "capable": true,
+        "requirements": {
+          "has_allowed_org": true,
+          "is_premium_payment_capable": true
+        }
+      },
+      "premium_isp_plan_enabled": {
+        "capable": true,
+        "requirements": {
+          "has_allowed_org": true,
+          "is_premium_capable": true
+        }
+      },
+      "premium_cancel_immediately": {
+        "capable": false,
+        "requirements": {
+          "has_allowed_org": false,
+          "is_premium_capable": true
+        }
+      },
+      "premium_isp_self_signup": {
+        "capable": false,
+        "requirements": {
+          "has_allowed_org": false,
+          "is_premium_capable": true
+        }
+      },
+      "org_auto_associates_networks": {
+        "capable": false,
+        "requirements": {
+          "has_allowed_org": false,
+          "is_premium_capable": true
+        }
+      },
+      "push_notification_setting_activity_report": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": false,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "is_premium_user": false
+        }
+      },
+      "account_linking": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "in_enabled_groups": true,
+          "has_min_mobile_version": false,
+          "has_required_auth_method": true
+        }
+      },
+      "unified_content_filters": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "dnsfilter_whitelists": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "dnsfilter_blacklists": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "dnsfilter_allowlist": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "dnsfilter_blocklist": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "dnsfilter_threat_categories": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "ffs": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "is_account_linking_capable": false
+        }
+      },
+      "improved_profile_creation_flow": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false
+        }
+      },
+      "improved_switch_networks": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_proper_organizational_role": false,
+          "has_min_mobile_version": false
+        }
+      },
+      "smart_home_hub": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "is_account_linking_capable": false,
+          "meets_hardware_requirement": true
+        }
+      },
+      "alexa_skill": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "is_account_linking_capable": false,
+          "in_enabled_group": true,
+          "has_min_mobile_version": false
+        }
+      },
+      "alexa_chat": {
+        "capable": false,
+        "requirements": {
+          "network_is_in_supported_country": false,
+          "org_enabled": true,
+          "org_not_in_exclusion_list": true
+        }
+      },
+      "amazon_device_nickname": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": false,
+          "is_account_linking_capable": false
+        }
+      },
+      "new_private_devices_notifications": {
+        "capable": true,
+        "requirements": {
+          "is_feature_enabled": true,
+          "in_enabled_groups": true
+        }
+      },
+      "ddns_enabled": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "has_min_upsell_mobile_version": false,
+          "require_secure_plus": false,
+          "has_secure_plus": false
+        }
+      },
+      "allow_block_edit": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "port_forward_range": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true
+        }
+      },
+      "adblock_for_profiles": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "vlan": {
+        "capable": true,
+        "requirements": {
+          "has_gateway": true,
+          "has_minimum_firmware": true
+        }
+      },
+      "ring_lte": {
+        "capable": false,
+        "requirements": {
+          "is_gateway_kilimanjaro": false,
+          "in_required_connection_mode": true
+        }
+      },
+      "block_apps": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "adblock_profile_entry": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "block_apps_categories": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "network_not_bridged": true
+        }
+      },
+      "ownership_transfer": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false,
+          "has_ownership_transfer_permission": true,
+          "is_isp_managed": false
+        }
+      },
+      "is_android_web_payments": {
+        "capable": false,
+        "requirements": {
+          "is_enabled": true,
+          "has_min_mobile_version": false
+        }
+      },
+      "proxied_nodes_beta_1": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "has_proper_connection_mode": true,
+          "is_country_allowed": true,
+          "is_gateway_node_eligible": true,
+          "network_has_wifi_nodes": true
+        }
+      },
+      "proxied_nodes_beta_2": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "has_min_mobile_version": false,
+          "has_min_version": true,
+          "has_proper_connection_mode": true,
+          "is_country_allowed": true,
+          "is_gateway_node_eligible": true,
+          "network_has_wifi_nodes": true
+        }
+      },
+      "pppoe": {
+        "capable": true,
+        "requirements": {
+          "has_gateway": true,
+          "has_minimum_firmware": true,
+          "is_not_bridged": true
+        }
+      },
+      "backup_access_point": {
+        "capable": true,
+        "requirements": {
+          "has_min_firmware_version": true
+        }
+      },
+      "free_backup_access_point": {
+        "capable": false,
+        "requirements": {
+          "backup_access_point_capable": true,
+          "has_min_mobile_version": false,
+          "feature_flag_enabled": true,
+          "is_retail_network": true
+        }
+      },
+      "thread_keychain_sharing": {
+        "capable": false,
+        "requirements": {
+          "feature_enabled": true,
+          "has_supported_hardware": true,
+          "has_min_version": true,
+          "has_min_mobile_version": false,
+          "has_proper_connection_mode": true
+        }
+      },
+      "post_setup_wan_troubleshooting": {
+        "capable": true,
+        "requirements": {
+          "gateway_has_min_firmware_version": true,
+          "has_proper_connection_mode": true
+        }
+      },
+      "eero_business_retail_upsell": {
+        "capable": true,
+        "requirements": {
+          "is_supported_location": true,
+          "has_required_network_count": true,
+          "is_retail_user": true,
+          "is_not_premium_user": true,
+          "is_network_owner": true,
+          "does_not_have_active_business_license": true,
+          "is_not_partner_app": true
+        }
+      },
+      "eero_business_ready": {
+        "capable": true,
+        "requirements": {
+          "all_supported_eeros": true,
+          "not_in_bridge_mode": true,
+          "not_in_custom_mode": true
+        }
+      },
+      "eero_for_business_capable": {
+        "capable": false,
+        "requirements": {
+          "has_min_version": true,
+          "is_supported_location": true,
+          "has_available_seats": false
+        }
+      },
+      "multistaticip": {
+        "capable": false,
+        "requirements": {
+          "not_in_bridged_mode": true,
+          "has_supported_firmware": true,
+          "has_supported_eeros": true,
+          "is_org_enabled_for_multistaticip": false,
+          "is_network_compatible_with_v1": true
+        }
+      },
+      "dhcp_auto": {
+        "capable": true,
+        "requirements": {
+          "has_required_network_type": true
+        }
+      },
+      "dhcp_manual": {
+        "capable": true,
+        "requirements": {
+          "has_required_network_type": true
+        }
+      },
+      "bridge": {
+        "capable": true,
+        "requirements": {
+          "has_required_network_type": true
+        }
+      },
+      "ip_passthrough": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": true,
+          "has_supported_hardware": false,
+          "has_single_eero": false
+        }
+      },
+      "multi_ssid": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false
+        }
+      },
+      "captive_portal": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false,
+          "is_not_bridge_mode": true
+        }
+      },
+      "guest_network": {
+        "capable": true,
+        "requirements": {
+          "has_required_network_type": true
+        }
+      },
+      "eero_business_license_key": {
+        "capable": true,
+        "requirements": {
+          "is_supported_location": true,
+          "has_eligible_user_state": true,
+          "is_network_owner": true,
+          "is_eero_business_ready": true,
+          "has_required_network_type": true,
+          "does_not_have_active_business_license": true,
+          "is_not_partner_app": true
+        }
+      },
+      "mlo_mode": {
+        "capable": false,
+        "requirements": {
+          "has_min_firmware_version": false,
+          "has_proper_wireless_mode": true,
+          "is_legacy_network": false
+        }
+      },
+      "disable_client_ap": {
+        "capable": true,
+        "requirements": {
+          "enabled_for_network": true
+        }
+      },
+      "wpa3_update": {
+        "capable": true,
+        "requirements": {
+          "has_min_version": true,
+          "is_feature_enabled": true,
+          "in_enabled_groups": true
+        }
+      },
+      "mdu": {
+        "capable": true,
+        "requirements": {
+          "has_required_network_type": true,
+          "all_supported_eeros": true
+        }
+      },
+      "retrograde": {
+        "capable": false,
+        "requirements": {
+          "enabled": true,
+          "has_supported_eeros": true,
+          "has_allowed_country_code": false,
+          "has_min_version": true
+        }
+      },
+      "simple_connect": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false,
+          "all_supported_leaf_eeros": true,
+          "all_supported_gateway_eeros": false,
+          "is_feature_enabled": true
+        }
+      },
+      "multi_wan": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": true,
+          "is_feature_enabled": false,
+          "has_min_firmware_version": true,
+          "not_in_bridge_mode": true,
+          "has_supported_wan_connection_type": true
+        }
+      },
+      "hardware_upsell_recommendation": {
+        "capable": true,
+        "requirements": {
+          "is_network_wifi_capable": true,
+          "is_retail_network_or_enabled_for_org": true,
+          "not_bridge_mode": true
+        }
+      },
+      "captive_portal_capture_user_data": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false,
+          "is_feature_enabled": true,
+          "has_min_mobile_version": false
+        }
+      },
+      "subnet_settings": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false,
+          "decoupled_enterprise_enabled": false
+        }
+      },
+      "ssid_settings": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false,
+          "decoupled_enterprise_enabled": false
+        }
+      },
+      "channel_settings": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false
+        }
+      },
+      "identity_protection": {
+        "capable": false,
+        "requirements": {
+          "is_secure_plus": false,
+          "has_allowed_country_code": true
+        }
+      },
+      "digital_footprint_scan": {
+        "capable": true,
+        "requirements": {
+          "has_allowed_country_code": true
+        }
+      },
+      "client_disassociation": {
+        "capable": true,
+        "requirements": {
+          "has_required_network_type": true
+        }
+      },
+      "multistaticip_v2": {
+        "capable": false,
+        "requirements": {
+          "not_in_bridged_mode": true,
+          "has_supported_firmware": true,
+          "has_supported_eeros": true,
+          "is_org_enabled_for_multistaticip_v2": false,
+          "has_min_mobile_version": false
+        }
+      },
+      "plus_external_payment": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": true,
+          "has_supported_country": false,
+          "has_min_mobile_version": false
+        }
+      },
+      "business_external_payment": {
+        "capable": false,
+        "requirements": {
+          "is_feature_enabled": false,
+          "has_supported_country": false,
+          "has_min_mobile_version": false
+        }
+      },
+      "euda_capable": {
+        "capable": false,
+        "requirements": {
+          "is_network_owner_in_eu": false
+        }
+      },
+      "dhcp_option": {
+        "capable": true,
+        "requirements": {
+          "does_not_have_vega_gateway": true,
+          "not_in_bridged_mode": true,
+          "has_supported_firmware": true
+        }
+      },
+      "default_profile": {
+        "capable": true,
+        "requirements": {
+          "network_not_in_bridged_mode": true,
+          "gw_has_min_version": true,
+          "leaves_have_min_version": true,
+          "min_firmware_version": false
+        }
+      },
+      "port_forwarding": {
+        "capable": true,
+        "requirements": {
+          "has_non_cellular_primary_wan": true,
+          "is_not_bridged_mode": true
+        }
+      },
+      "frontier_internet_upsell": {
+        "capable": false,
+        "requirements": {
+          "has_min_mobile_version": false,
+          "is_in_frontier_service_area": false,
+          "is_retail_network": true,
+          "is_network_owner": true,
+          "is_feature_enabled": true,
+          "isp_not_in_exclusion_list": true,
+          "is_not_on_internet_backup": true
+        }
+      },
+      "metrics_alerts": {
+        "capable": false,
+        "requirements": {
+          "is_org_enabled_for_metricsalerts": false,
+          "has_required_network_type": false,
+          "is_non_org_allowlisted": false
+        }
+      },
+      "eero_signal_ad_capable": {
+        "capable": false,
+        "requirements": {
+          "retrograde_capable": false,
+          "does_not_have_retrograde_hw": true,
+          "is_retail_network": true,
+          "is_network_owner": true,
+          "is_feature_enabled": true
+        }
+      },
+      "scheduled_power_saving": {
+        "capable": false,
+        "requirements": {
+          "has_supported_hardware": false,
+          "has_min_firmware_version": true
+        }
+      },
+      "supports_6ghz": {
+        "capable": false,
+        "requirements": {
+          "has_supported_hardware": false
+        }
+      },
+      "data_controller": {
+        "capable": false,
+        "requirements": {
+          "has_min_mobile_version": false,
+          "premium_feature_enabled_for_org": false
+        }
+      },
+      "virtual_agent": {
+        "capable": false,
+        "requirements": {
+          "feature_flag_enabled": true,
+          "network_is_in_supported_country": false
+        }
+      },
+      "mobile_marketing_campaigns": {
+        "capable": false,
+        "requirements": {
+          "has_min_mobile_version": false,
+          "is_retail_network": true
+        }
+      },
+      "datapacks_upsell": {
+        "capable": false,
+        "requirements": {
+          "has_datapack_upsell": false,
+          "is_retail_network": true,
+          "has_available_datapack_slots": false,
+          "has_limited_data_plan": true,
+          "is_feature_enabled": true
+        }
+      },
+      "third_party_captive_portal": {
+        "capable": false,
+        "requirements": {
+          "has_required_network_type": false,
+          "has_min_firmware_version": true,
+          "is_feature_enabled": false
+        }
+      },
+      "acl": {
+        "capable": false,
+        "requirements": {
+          "enabled": true,
+          "gateway_capable": true,
+          "gateway_version_known": true,
+          "network_type_capable": false,
+          "not_in_bridged_mode": true
+        }
+      },
+      "dhcp_client_config": {
+        "capable": false,
+        "requirements": {
+          "network_type_capable": false,
+          "in_bridged_mode": false,
+          "all_eeros_supported": false
+        }
+      },
+      "nat_port_randomization": {
+        "capable": true,
+        "requirements": {
+          "gateway_has_min_firmware_version": true,
+          "not_in_bridged_mode": true
+        }
+      },
+      "wlan_rate_limit": {
+        "capable": false,
+        "multi_subnet_capable": false,
+        "requirements": {
+          "network_type_capable": false,
+          "nodes_capable": false
+        }
+      },
+      "dhcp_subnet_options": {
+        "capable": false,
+        "requirements": {
+          "enabled": false,
+          "gateway_has_min_firmware_version": false,
+          "does_not_have_vega_gateway": true,
+          "not_in_bridged_mode": true
+        }
+      }
+    },
+    "flags": [
+      {
+        "flag": "dfs_v2",
+        "value": true
+      },
+      {
+        "flag": "disable_dgaf",
+        "value": 0
+      },
+      {
+        "flag": "ebtable_limits",
+        "value": {
+          "mlimit": 1000,
+          "mblimit": 1000
+        }
+      },
+      {
+        "flag": "enable_bootloader_otav2",
+        "value": true
+      },
+      {
+        "flag": "enable_otav2",
+        "value": true
+      },
+      {
+        "flag": "enable_tentilla",
+        "value": true
+      },
+      {
+        "flag": "kea_exit_failure_hook",
+        "value": true
+      },
+      {
+        "flag": "notification_new_device",
+        "value": true
+      },
+      {
+        "flag": "robocop_ip_blocking",
+        "value": true
+      },
+      {
+        "flag": "samknows_shouldfork",
+        "value": true
+      },
+      {
+        "flag": "sonos_report_topology",
+        "value": true
+      },
+      {
+        "flag": "supported_rates",
+        "value": {
+          "5g_rates": "",
+          "2g_rates": ""
+        }
+      },
+      {
+        "flag": "use_kea_v2",
+        "value": true
+      }
+    ],
+    "name": "home",
+    "display_name": "home",
+    "nickname_label": "nickname label 39",
+    "status": "connected",
+    "messages": [],
+    "gateway": "dhcp",
+    "wan_ip": "203.0.113.1",
+    "geo_ip": {
+      "countryCode": "CA",
+      "countryName": "Canada",
+      "city": "Springfield",
+      "region": "Province",
+      "timezone": "America/New_York",
+      "postalCode": "A1A",
+      "metroCode": null,
+      "areaCode": null,
+      "regionName": "Province",
+      "isp": "Example ISP",
+      "org": "Example ISP",
+      "asn": 64496
+    },
+    "gateway_ip": "10.0.0.1",
+    "connection": {
+      "mode": "nat"
+    },
+    "lease": {
+      "mode": "dhcp",
+      "dhcp": {
+        "ip": "203.0.113.1",
+        "mask": "255.255.254.0",
+        "router": "203.0.113.2"
+      },
+      "static": null
+    },
+    "dhcp": {
+      "mode": "automatic",
+      "custom": null,
+      "custom_v2": null
+    },
+    "dns": {
+      "mode": "automatic",
+      "parent": {
+        "ips": [
+          "203.0.113.3",
+          "203.0.113.4"
+        ]
+      },
+      "custom": null,
+      "caching": false,
+      "default_test_servers": [
+        {
+          "name": "Resolver A",
+          "ipv4": [
+            "203.0.113.5",
+            "203.0.113.6"
+          ],
+          "ipv6": [
+            "2001:db8::10",
+            "2001:db8::11"
+          ]
+        },
+        {
+          "name": "Resolver B",
+          "ipv4": [
+            "203.0.113.7",
+            "203.0.113.8"
+          ],
+          "ipv6": [
+            "2001:db8::12",
+            "2001:db8::13"
+          ]
+        },
+        {
+          "name": "Resolver C",
+          "ipv4": [
+            "203.0.113.9",
+            "203.0.113.10"
+          ],
+          "ipv6": [
+            "2001:db8::14",
+            "2001:db8::15"
+          ]
+        },
+        {
+          "name": "Resolver D",
+          "ipv4": [
+            "203.0.113.11",
+            "203.0.113.12"
+          ],
+          "ipv6": [
+            "2001:db8::16",
+            "2001:db8::17"
+          ]
+        }
+      ]
+    },
+    "upnp": true,
+    "nat_port_randomization": false,
+    "ipv6_upstream": false,
+    "thread": false,
+    "sqm": true,
+    "band_steering": true,
+    "wpa3": false,
+    "wireless_mode": "default",
+    "mlo_mode": "disabled",
+    "eeros": {
+      "count": 3,
+      "data": [
+        {
+          "url": "/2.2/eeros/2003",
+          "resources": {
+            "led_action": "/2.2/eeros/2003/led",
+            "reboot": "/2.2/eeros/2003/reboot",
+            "connections": "/2.2/eeros/2003/connections"
+          },
+          "serial": "SERIAL0003",
+          "network": {
+            "url": "/2.2/networks/1001",
+            "name": "home",
+            "created": "2020-11-13T21:47:13.478824Z"
+          },
+          "location": "Hall",
+          "joined": "2020-11-13T21:47:15+0000",
+          "gateway": true,
+          "ip_address": "10.0.0.1",
+          "status": "green",
+          "messages": [],
+          "model": "eero Pro 6",
+          "compact_model": "eero Pro 6",
+          "model_number": "K010011",
+          "model_variant": null,
+          "ethernet_addresses": [
+            "02:00:00:00:00:21",
+            "02:00:00:00:00:22"
+          ],
+          "ethernet_status": {
+            "statuses": [
+              {
+                "interfaceNumber": 0,
+                "hasCarrier": true,
+                "speed": "P1000",
+                "isWanPort": true,
+                "isLte": false,
+                "isLeafWiredToUpstream": false,
+                "neighbor": null,
+                "power_saving": false,
+                "original_speed": null,
+                "derated_reason": null,
+                "lldpInfo": [],
+                "port_name": "1",
+                "port_security": null,
+                "poe": null,
+                "bandwidth_usage": {
+                  "tx_bytes": 153124674,
+                  "rx_bytes": 0
+                },
+                "port_flap_info": null
+              },
+              {
+                "interfaceNumber": 1,
+                "hasCarrier": true,
+                "speed": "P1000",
+                "isWanPort": false,
+                "isLte": false,
+                "isLeafWiredToUpstream": false,
+                "neighbor": null,
+                "power_saving": false,
+                "original_speed": null,
+                "derated_reason": null,
+                "lldpInfo": [],
+                "port_name": "2",
+                "port_security": null,
+                "poe": null,
+                "bandwidth_usage": {
+                  "tx_bytes": 53741,
+                  "rx_bytes": 0
+                },
+                "port_flap_info": null
+              }
+            ],
+            "wiredInternet": true,
+            "segmentId": "02:00:00:00:00:23"
+          },
+          "radio_channel_stats": {
+            "band_5GHz_low": {
+              "channel": 52,
+              "channel_width": 80,
+              "tx_power": 22,
+              "channel_utilization": 5,
+              "client_count": 0
+            },
+            "band_2_4GHz": {
+              "channel": 6,
+              "channel_width": 20,
+              "tx_power": 30,
+              "channel_utilization": 8,
+              "client_count": 1
+            },
+            "band_5GHz_high": {
+              "channel": 149,
+              "channel_width": 80,
+              "tx_power": 28,
+              "channel_utilization": 41,
+              "client_count": 1
+            }
+          },
+          "gateway_ip": null,
+          "wifi_bssids": [
+            "02:00:00:00:00:24",
+            "02:00:00:00:00:0c",
+            "02:00:00:00:00:06"
+          ],
+          "update_available": false,
+          "update_status": {
+            "support_expired": false,
+            "support_expiration_string": "",
+            "support_expiration_date": null
+          },
+          "os": "v7.17.4-5",
+          "os_version": "v7.17.4-5",
+          "mesh_quality_bars": 5,
+          "wired": true,
+          "led_on": true,
+          "led_brightness": 100,
+          "using_wan": true,
+          "is_primary_node": true,
+          "nightlight": null,
+          "last_reboot": "2026-11-07T07:22:42.035551983Z",
+          "uptime": {
+            "since_last_reboot_s": 55878,
+            "since_cloud_connection_s": 54413
+          },
+          "mac_address": "02:00:00:00:00:21",
+          "wan_reported": null,
+          "ipv6_addresses": [
+            {
+              "address": "fe80::7/64",
+              "scope": "link",
+              "interface": "br_lan"
+            },
+            {
+              "address": "fe80::8/64",
+              "scope": "link",
+              "interface": "br_wan"
+            }
+          ],
+          "organization": null,
+          "connected_clients_count": 2,
+          "connected_wired_clients_count": 0,
+          "connected_wireless_clients_count": 2,
+          "requires_amazon_pre_authorized_code": false,
+          "heartbeat_ok": true,
+          "last_heartbeat": "2026-11-07T22:53:51.606Z",
+          "connection_type": "WIRED",
+          "power_info": {
+            "power_source": "USB",
+            "power_source_metadata": {}
+          },
+          "backup_wan": null,
+          "extended_border_agent_address": "0000000000000001",
+          "provide_device_power": null,
+          "port_details": [
+            {
+              "ethernet_address": "02:00:00:00:00:21",
+              "port_name": "1",
+              "position": 0
+            },
+            {
+              "ethernet_address": "02:00:00:00:00:22",
+              "port_name": "2",
+              "position": 1
+            }
+          ],
+          "bands": [
+            "band_2_4GHz",
+            "band_5GHz_low",
+            "band_5GHz_high"
+          ],
+          "provides_wifi": true,
+          "bssids_with_bands": [
+            {
+              "band": "band_5GHz_low",
+              "ethernet_address": "02:00:00:00:00:24"
+            },
+            {
+              "band": "band_2_4GHz",
+              "ethernet_address": "02:00:00:00:00:0c"
+            },
+            {
+              "band": "band_5GHz_high",
+              "ethernet_address": "02:00:00:00:00:06"
+            }
+          ],
+          "auto_provisioned": false,
+          "state": "ONLINE",
+          "wireless_upstream_node": null,
+          "cellular_backup": null,
+          "channel_selection": null,
+          "accessories": [],
+          "retrograde_capable": true,
+          "power_saving": {
+            "schedule": {
+              "active": false,
+              "start": null,
+              "end": null
+            }
+          }
+        },
+        {
+          "url": "/2.2/eeros/2002",
+          "resources": {
+            "led_action": "/2.2/eeros/2002/led",
+            "reboot": "/2.2/eeros/2002/reboot",
+            "connections": "/2.2/eeros/2002/connections"
+          },
+          "serial": "SERIAL0002",
+          "network": {
+            "url": "/2.2/networks/1001",
+            "name": "home",
+            "created": "2020-11-13T21:47:13.478824Z"
+          },
+          "location": "Study",
+          "joined": "2020-11-13T21:50:49+0000",
+          "gateway": false,
+          "ip_address": "10.0.0.88",
+          "status": "green",
+          "messages": [],
+          "model": "eero Pro 6",
+          "compact_model": "eero Pro 6",
+          "model_number": "K010011",
+          "model_variant": null,
+          "ethernet_addresses": [
+            "02:00:00:00:00:25",
+            "02:00:00:00:00:26"
+          ],
+          "ethernet_status": {
+            "statuses": [
+              {
+                "interfaceNumber": 0,
+                "hasCarrier": false,
+                "speed": "P10",
+                "isWanPort": false,
+                "isLte": false,
+                "isLeafWiredToUpstream": false,
+                "neighbor": null,
+                "power_saving": false,
+                "original_speed": null,
+                "derated_reason": null,
+                "lldpInfo": [],
+                "port_name": "1",
+                "port_security": null,
+                "poe": null,
+                "bandwidth_usage": null,
+                "port_flap_info": null
+              },
+              {
+                "interfaceNumber": 1,
+                "hasCarrier": false,
+                "speed": "P10",
+                "isWanPort": false,
+                "isLte": false,
+                "isLeafWiredToUpstream": false,
+                "neighbor": null,
+                "power_saving": false,
+                "original_speed": null,
+                "derated_reason": null,
+                "lldpInfo": [],
+                "port_name": "2",
+                "port_security": null,
+                "poe": null,
+                "bandwidth_usage": null,
+                "port_flap_info": null
+              }
+            ],
+            "wiredInternet": false,
+            "segmentId": "02:00:00:00:00:27"
+          },
+          "radio_channel_stats": {
+            "band_5GHz_low": {
+              "channel": 52,
+              "channel_width": 80,
+              "tx_power": 22,
+              "channel_utilization": 5,
+              "client_count": 3
+            },
+            "band_2_4GHz": {
+              "channel": 6,
+              "channel_width": 20,
+              "tx_power": 30,
+              "channel_utilization": 18,
+              "client_count": 2
+            },
+            "band_5GHz_high": {
+              "channel": 149,
+              "channel_width": 80,
+              "tx_power": 28,
+              "channel_utilization": 39,
+              "client_count": 4
+            }
+          },
+          "gateway_ip": null,
+          "wifi_bssids": [
+            "02:00:00:00:00:04",
+            "02:00:00:00:00:10",
+            "02:00:00:00:00:09"
+          ],
+          "update_available": false,
+          "update_status": {
+            "support_expired": false,
+            "support_expiration_string": "",
+            "support_expiration_date": null
+          },
+          "os": "v7.17.4-5",
+          "os_version": "v7.17.4-5",
+          "mesh_quality_bars": 5,
+          "wired": false,
+          "led_on": true,
+          "led_brightness": 100,
+          "using_wan": false,
+          "is_primary_node": false,
+          "nightlight": null,
+          "last_reboot": "2026-11-07T07:22:59.776783944Z",
+          "uptime": {
+            "since_last_reboot_s": 55861,
+            "since_cloud_connection_s": 1176
+          },
+          "mac_address": "02:00:00:00:00:25",
+          "wan_reported": null,
+          "ipv6_addresses": [
+            {
+              "address": "fe80::b/64",
+              "scope": "link",
+              "interface": "br_lan"
+            }
+          ],
+          "organization": null,
+          "connected_clients_count": 9,
+          "connected_wired_clients_count": 0,
+          "connected_wireless_clients_count": 9,
+          "requires_amazon_pre_authorized_code": false,
+          "heartbeat_ok": true,
+          "last_heartbeat": "2026-11-07T22:53:46.694Z",
+          "connection_type": "WIRELESS",
+          "power_info": {
+            "power_source": "USB",
+            "power_source_metadata": {}
+          },
+          "backup_wan": null,
+          "extended_border_agent_address": "0000000000000001",
+          "provide_device_power": null,
+          "port_details": [
+            {
+              "ethernet_address": "02:00:00:00:00:25",
+              "port_name": "1",
+              "position": 0
+            },
+            {
+              "ethernet_address": "02:00:00:00:00:26",
+              "port_name": "2",
+              "position": 1
+            }
+          ],
+          "bands": [
+            "band_2_4GHz",
+            "band_5GHz_low",
+            "band_5GHz_high"
+          ],
+          "provides_wifi": true,
+          "bssids_with_bands": [
+            {
+              "band": "band_5GHz_low",
+              "ethernet_address": "02:00:00:00:00:04"
+            },
+            {
+              "band": "band_2_4GHz",
+              "ethernet_address": "02:00:00:00:00:10"
+            },
+            {
+              "band": "band_5GHz_high",
+              "ethernet_address": "02:00:00:00:00:09"
+            }
+          ],
+          "auto_provisioned": false,
+          "state": "ONLINE",
+          "wireless_upstream_node": {
+            "name": "Hall",
+            "primary_mesh_radio": "5.8GHz",
+            "node_or_proxied_node_id": 2004,
+            "is_proxied_node": false
+          },
+          "cellular_backup": null,
+          "channel_selection": null,
+          "accessories": [],
+          "retrograde_capable": true,
+          "power_saving": {
+            "schedule": {
+              "active": false,
+              "start": null,
+              "end": null
+            }
+          }
+        },
+        {
+          "url": "/2.2/eeros/2001",
+          "resources": {
+            "led_action": "/2.2/eeros/2001/led",
+            "reboot": "/2.2/eeros/2001/reboot",
+            "connections": "/2.2/eeros/2001/connections"
+          },
+          "serial": "SERIAL0001",
+          "network": {
+            "url": "/2.2/networks/1001",
+            "name": "home",
+            "created": "2020-11-13T21:47:13.478824Z"
+          },
+          "location": "Den",
+          "joined": "2020-11-13T21:54:36+0000",
+          "gateway": false,
+          "ip_address": "10.0.0.209",
+          "status": "green",
+          "messages": [],
+          "model": "eero Pro 6",
+          "compact_model": "eero Pro 6",
+          "model_number": "K010011",
+          "model_variant": null,
+          "ethernet_addresses": [
+            "02:00:00:00:00:28",
+            "02:00:00:00:00:29"
+          ],
+          "ethernet_status": {
+            "statuses": [
+              {
+                "interfaceNumber": 0,
+                "hasCarrier": false,
+                "speed": "P10",
+                "isWanPort": false,
+                "isLte": false,
+                "isLeafWiredToUpstream": false,
+                "neighbor": null,
+                "power_saving": false,
+                "original_speed": null,
+                "derated_reason": null,
+                "lldpInfo": [],
+                "port_name": "1",
+                "port_security": null,
+                "poe": null,
+                "bandwidth_usage": null,
+                "port_flap_info": null
+              },
+              {
+                "interfaceNumber": 1,
+                "hasCarrier": false,
+                "speed": "P10",
+                "isWanPort": false,
+                "isLte": false,
+                "isLeafWiredToUpstream": false,
+                "neighbor": null,
+                "power_saving": false,
+                "original_speed": null,
+                "derated_reason": null,
+                "lldpInfo": [],
+                "port_name": "2",
+                "port_security": null,
+                "poe": null,
+                "bandwidth_usage": null,
+                "port_flap_info": null
+              }
+            ],
+            "wiredInternet": false,
+            "segmentId": "02:00:00:00:00:2a"
+          },
+          "radio_channel_stats": {
+            "band_5GHz_low": {
+              "channel": 52,
+              "channel_width": 80,
+              "tx_power": 22,
+              "channel_utilization": 5,
+              "client_count": 2
+            },
+            "band_2_4GHz": {
+              "channel": 6,
+              "channel_width": 20,
+              "tx_power": 30,
+              "channel_utilization": 20,
+              "client_count": 1
+            },
+            "band_5GHz_high": {
+              "channel": 149,
+              "channel_width": 80,
+              "tx_power": 28,
+              "channel_utilization": 37,
+              "client_count": 1
+            }
+          },
+          "gateway_ip": null,
+          "wifi_bssids": [
+            "02:00:00:00:00:02",
+            "02:00:00:00:00:14",
+            "02:00:00:00:00:12"
+          ],
+          "update_available": false,
+          "update_status": {
+            "support_expired": false,
+            "support_expiration_string": "",
+            "support_expiration_date": null
+          },
+          "os": "v7.17.4-5",
+          "os_version": "v7.17.4-5",
+          "mesh_quality_bars": 5,
+          "wired": false,
+          "led_on": false,
+          "led_brightness": 100,
+          "using_wan": false,
+          "is_primary_node": false,
+          "nightlight": null,
+          "last_reboot": "2026-11-07T07:22:59.605522859Z",
+          "uptime": {
+            "since_last_reboot_s": 55861,
+            "since_cloud_connection_s": 1959
+          },
+          "mac_address": "02:00:00:00:00:28",
+          "wan_reported": null,
+          "ipv6_addresses": [
+            {
+              "address": "fe80::d/64",
+              "scope": "link",
+              "interface": "br_lan"
+            }
+          ],
+          "organization": null,
+          "connected_clients_count": 4,
+          "connected_wired_clients_count": 0,
+          "connected_wireless_clients_count": 4,
+          "requires_amazon_pre_authorized_code": false,
+          "heartbeat_ok": true,
+          "last_heartbeat": "2026-11-07T22:54:00.584Z",
+          "connection_type": "WIRELESS",
+          "power_info": {
+            "power_source": "USB",
+            "power_source_metadata": {}
+          },
+          "backup_wan": null,
+          "extended_border_agent_address": "0000000000000001",
+          "provide_device_power": null,
+          "port_details": [
+            {
+              "ethernet_address": "02:00:00:00:00:28",
+              "port_name": "1",
+              "position": 0
+            },
+            {
+              "ethernet_address": "02:00:00:00:00:29",
+              "port_name": "2",
+              "position": 1
+            }
+          ],
+          "bands": [
+            "band_2_4GHz",
+            "band_5GHz_low",
+            "band_5GHz_high"
+          ],
+          "provides_wifi": true,
+          "bssids_with_bands": [
+            {
+              "band": "band_5GHz_low",
+              "ethernet_address": "02:00:00:00:00:02"
+            },
+            {
+              "band": "band_2_4GHz",
+              "ethernet_address": "02:00:00:00:00:14"
+            },
+            {
+              "band": "band_5GHz_high",
+              "ethernet_address": "02:00:00:00:00:12"
+            }
+          ],
+          "auto_provisioned": false,
+          "state": "ONLINE",
+          "wireless_upstream_node": {
+            "name": "Hall",
+            "primary_mesh_radio": "5.8GHz",
+            "node_or_proxied_node_id": 2004,
+            "is_proxied_node": false
+          },
+          "cellular_backup": null,
+          "channel_selection": null,
+          "accessories": [],
+          "retrograde_capable": true,
+          "power_saving": {
+            "schedule": {
+              "active": false,
+              "start": null,
+              "end": null
+            }
+          }
+        }
+      ]
+    },
+    "online_eeros_count": 3,
+    "offline_eeros_count": 0,
+    "pending_eeros_count": 0,
+    "clients": {
+      "count": 24,
+      "url": "/2.2/networks/1001/clients"
+    },
+    "speed": {
+      "status": "none",
+      "date": "2026-11-05T10:52:15Z",
+      "up": {
+        "value": 11.93,
+        "units": "Mbps"
+      },
+      "down": {
+        "value": 369.86,
+        "units": "Mbps"
+      },
+      "node_status": {
+        "alive": true,
+        "last_seen_at": "2026-11-07T22:53:51.606Z"
+      }
+    },
+    "timezone": {
+      "value": "America/New_York",
+      "geo_ip": "America/New_York"
+    },
+    "updates": {
+      "preferred_update_hour": 2,
+      "min_required_firmware": "v1.1.2",
+      "target_firmware": "v7.17.4-5",
+      "update_to_firmware": "v7.17.4-5",
+      "update_required": false,
+      "can_update_now": false,
+      "has_update": false,
+      "update_status": null,
+      "scheduled_update_time": null,
+      "last_update_started": "2026-11-07T07:19:15.119446Z",
+      "last_user_update": {
+        "last_update_started": "2026-11-07T07:19:15.119446Z",
+        "unresponsive_eeros": [],
+        "incomplete_eeros": []
+      },
+      "manifest_resource": "https://eeroassets.com/eeroOS-release-notes/b9f51ecc-8dc6-4b20-9cbf-5f2c2815f3ba/v7.17.4_en-CA.json"
+    },
+    "health": {
+      "internet": {
+        "status": "connected",
+        "isp_up": true
+      },
+      "eero_network": {
+        "status": "connected"
+      }
+    },
+    "upstream": [],
+    "ip_settings": {
+      "double_nat": false,
+      "public_ip": "203.0.113.1"
+    },
+    "premium_dns": {
+      "dns_policies_enabled": false,
+      "zscaler_location_enabled": false,
+      "any_policies_enabled_for_network": false,
+      "dns_provider": null,
+      "dns_policies": {
+        "block_malware": false,
+        "ad_block": false
+      },
+      "ad_block_settings": {
+        "enabled": false,
+        "profiles": [],
+        "business_subnets": []
+      },
+      "advanced_content_filters": null
+    },
+    "owner": "owner 48",
+    "premium_status": "trial_eligible",
+    "rebooting": null,
+    "last_reboot": null,
+    "homekit": null,
+    "ipv6_lease": null,
+    "ipv6": {
+      "name_servers": {
+        "mode": "automatic",
+        "custom": []
+      }
+    },
+    "organization": null,
+    "image_assets": null,
+    "access_expires_on": null,
+    "guest_network": {
+      "url": "/2.2/networks/1001/guestnetwork",
+      "resources": {},
+      "name": "name 49",
+      "enabled": false
+    },
+    "amazon_account_linked": false,
+    "amazon_directed_id": null,
+    "amazon_full_name": null,
+    "ffs": false,
+    "temporary_flags": {},
+    "alexa_skill": false,
+    "amazon_device_nickname": false,
+    "vlan": null,
+    "wan_reported": null,
+    "ddns": {
+      "enabled": false,
+      "subdomain": ""
+    },
+    "ring_lte": null,
+    "pppoe_username": null,
+    "pppoe_enabled": null,
+    "proxied_nodes": null,
+    "backup_internet_enabled": true,
+    "network_customer_type": "Residential",
+    "power_saving": false,
+    "power_saving_schedule_enabled": false,
+    "wan_type": "DHCP",
+    "ipip6": null,
+    "enable_ndproxy": false,
+    "auto_setup_mode": "LTS",
+    "cellular_backup": null,
+    "has_stacked_network_temp_admin": false,
+    "accessories": []
+  }
+}

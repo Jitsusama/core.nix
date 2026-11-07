@@ -1,0 +1,139 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:55:09.881Z"
+  },
+  "data": {
+    "provide_device_power": null,
+    "node_actions": [],
+    "ports": {
+      "layout": {
+        "position_rank_order": [
+          0,
+          1
+        ],
+        "layout_type": "TWO_PORT_A"
+      },
+      "interfaces": [
+        {
+          "interface_number": 0,
+          "name": "1",
+          "actions": [
+            {
+              "type": "DISABLE_PORT",
+              "position": 0
+            }
+          ],
+          "network_type": "UNKNOWN",
+          "supported_speed": "P1000",
+          "negotiated_speed": null,
+          "providing_power": null,
+          "port_status": "DISCONNECTED",
+          "ethernet_address": "02:00:00:00:00:28",
+          "capable_protocols": [
+            "DATA"
+          ],
+          "disabled_protocols": [],
+          "connection_status": {
+            "type": "NOT_CONNECTED",
+            "metadata": {
+              "advanced_attributes": {
+                "connection_type": "UNKNOWN"
+              }
+            }
+          },
+          "is_upstream": false,
+          "port_security": {
+            "capable": false,
+            "enabled": false,
+            "status": "DISABLED",
+            "display_status": "NOT_CAPABLE"
+          },
+          "port_flap_info": null,
+          "is_sfp": false,
+          "sfp": null
+        },
+        {
+          "interface_number": 1,
+          "name": "2",
+          "actions": [
+            {
+              "type": "DISABLE_PORT",
+              "position": 0
+            }
+          ],
+          "network_type": "UNKNOWN",
+          "supported_speed": "P1000",
+          "negotiated_speed": null,
+          "providing_power": null,
+          "port_status": "DISCONNECTED",
+          "ethernet_address": "02:00:00:00:00:29",
+          "capable_protocols": [
+            "DATA"
+          ],
+          "disabled_protocols": [],
+          "connection_status": {
+            "type": "NOT_CONNECTED",
+            "metadata": {
+              "advanced_attributes": {
+                "connection_type": "UNKNOWN"
+              }
+            }
+          },
+          "is_upstream": false,
+          "port_security": {
+            "capable": false,
+            "enabled": false,
+            "status": "DISABLED",
+            "display_status": "NOT_CAPABLE"
+          },
+          "port_flap_info": null,
+          "is_sfp": false,
+          "sfp": null
+        }
+      ]
+    },
+    "wireless_devices": [
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "generic 2",
+          "device_type": "generic",
+          "url": "/2.2/networks/1001/devices/02000000000a"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "tablet 1",
+          "device_type": "tablet",
+          "url": "/2.2/networks/1001/devices/020000000001"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "printer 1",
+          "device_type": "printer",
+          "url": "/2.2/networks/1001/devices/020000000013"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "laptop computer 2",
+          "device_type": "laptop_computer",
+          "url": "/2.2/networks/1001/devices/020000000011"
+        }
+      },
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "phone 1",
+          "device_type": "phone",
+          "url": "/2.2/networks/1001/devices/020000000005"
+        }
+      }
+    ]
+  }
+}

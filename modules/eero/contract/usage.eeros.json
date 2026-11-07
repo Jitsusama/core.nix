@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:48.442Z"
+  },
+  "data": {
+    "start": "2026-11-06T22:54:43Z",
+    "end": "2026-11-07T22:54:43Z",
+    "values": [
+      {
+        "id": 4001,
+        "model_number": "Eden",
+        "serial": "SERIAL0003",
+        "location": "Hall",
+        "url": "/2.2/eeros/2003",
+        "upload": 10083304,
+        "download": 150169706
+      },
+      {
+        "id": 4002,
+        "model_number": "Eden",
+        "serial": "SERIAL0001",
+        "location": "Den",
+        "url": "/2.2/eeros/2001",
+        "upload": 3644372,
+        "download": 142050784
+      },
+      {
+        "id": 4003,
+        "model_number": "Eden",
+        "serial": "SERIAL0002",
+        "location": "Study",
+        "url": "/2.2/eeros/2002",
+        "upload": 3680059,
+        "download": 142047296
+      }
+    ]
+  }
+}

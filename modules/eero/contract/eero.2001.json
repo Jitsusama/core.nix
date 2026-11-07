@@ -1,0 +1,195 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:55:08.962Z"
+  },
+  "data": {
+    "url": "/2.2/eeros/2001",
+    "resources": {
+      "led_action": "/2.2/eeros/2001/led",
+      "reboot": "/2.2/eeros/2001/reboot",
+      "connections": "/2.2/eeros/2001/connections"
+    },
+    "serial": "SERIAL0001",
+    "network": {
+      "url": "/2.2/networks/1001",
+      "name": "home",
+      "created": "2020-11-13T21:47:13.478824Z"
+    },
+    "location": "Den",
+    "joined": "2020-11-13T21:54:36+0000",
+    "gateway": false,
+    "ip_address": "10.0.0.209",
+    "status": "green",
+    "messages": [],
+    "model": "eero Pro 6",
+    "compact_model": "eero Pro 6",
+    "model_number": "K010011",
+    "model_variant": null,
+    "ethernet_addresses": [
+      "02:00:00:00:00:28",
+      "02:00:00:00:00:29"
+    ],
+    "ethernet_status": {
+      "statuses": [
+        {
+          "interfaceNumber": 0,
+          "hasCarrier": false,
+          "speed": "P10",
+          "isWanPort": false,
+          "isLte": false,
+          "isLeafWiredToUpstream": false,
+          "neighbor": null,
+          "power_saving": false,
+          "original_speed": null,
+          "derated_reason": null,
+          "lldpInfo": [],
+          "port_name": "1",
+          "port_security": null,
+          "poe": null,
+          "bandwidth_usage": null,
+          "port_flap_info": null
+        },
+        {
+          "interfaceNumber": 1,
+          "hasCarrier": false,
+          "speed": "P10",
+          "isWanPort": false,
+          "isLte": false,
+          "isLeafWiredToUpstream": false,
+          "neighbor": null,
+          "power_saving": false,
+          "original_speed": null,
+          "derated_reason": null,
+          "lldpInfo": [],
+          "port_name": "2",
+          "port_security": null,
+          "poe": null,
+          "bandwidth_usage": null,
+          "port_flap_info": null
+        }
+      ],
+      "wiredInternet": false,
+      "segmentId": "02:00:00:00:00:2a"
+    },
+    "radio_channel_stats": {
+      "band_5GHz_low": {
+        "channel": 52,
+        "channel_width": 80,
+        "tx_power": 22,
+        "channel_utilization": 5,
+        "client_count": 2
+      },
+      "band_2_4GHz": {
+        "channel": 6,
+        "channel_width": 20,
+        "tx_power": 30,
+        "channel_utilization": 19,
+        "client_count": 1
+      },
+      "band_5GHz_high": {
+        "channel": 149,
+        "channel_width": 80,
+        "tx_power": 28,
+        "channel_utilization": 38,
+        "client_count": 2
+      }
+    },
+    "gateway_ip": null,
+    "wifi_bssids": [
+      "02:00:00:00:00:02",
+      "02:00:00:00:00:14",
+      "02:00:00:00:00:12"
+    ],
+    "update_available": false,
+    "update_status": {
+      "support_expired": false,
+      "support_expiration_string": "",
+      "support_expiration_date": null
+    },
+    "os": "v7.17.4-5",
+    "os_version": "v7.17.4-5",
+    "mesh_quality_bars": 5,
+    "wired": false,
+    "led_on": false,
+    "led_brightness": 100,
+    "using_wan": false,
+    "is_primary_node": false,
+    "nightlight": null,
+    "last_reboot": "2026-11-07T07:22:59.605522859Z",
+    "uptime": {
+      "since_last_reboot_s": 55929,
+      "since_cloud_connection_s": 2027
+    },
+    "mac_address": "02:00:00:00:00:28",
+    "wan_reported": null,
+    "ipv6_addresses": [
+      {
+        "address": "fe80::d/64",
+        "scope": "link",
+        "interface": "br_lan"
+      }
+    ],
+    "organization": null,
+    "connected_clients_count": 5,
+    "connected_wired_clients_count": 0,
+    "connected_wireless_clients_count": 5,
+    "requires_amazon_pre_authorized_code": false,
+    "heartbeat_ok": true,
+    "last_heartbeat": "2026-11-07T22:55:00.697Z",
+    "backup_wan": null,
+    "extended_border_agent_address": "0000000000000001",
+    "provide_device_power": null,
+    "port_details": [
+      {
+        "ethernet_address": "02:00:00:00:00:28",
+        "port_name": "1",
+        "position": 0
+      },
+      {
+        "ethernet_address": "02:00:00:00:00:29",
+        "port_name": "2",
+        "position": 1
+      }
+    ],
+    "bands": [
+      "band_2_4GHz",
+      "band_5GHz_low",
+      "band_5GHz_high"
+    ],
+    "provides_wifi": true,
+    "bssids_with_bands": [
+      {
+        "band": "band_5GHz_low",
+        "ethernet_address": "02:00:00:00:00:02"
+      },
+      {
+        "band": "band_2_4GHz",
+        "ethernet_address": "02:00:00:00:00:14"
+      },
+      {
+        "band": "band_5GHz_high",
+        "ethernet_address": "02:00:00:00:00:12"
+      }
+    ],
+    "auto_provisioned": false,
+    "state": "ONLINE",
+    "wireless_upstream_node": {
+      "name": "Hall",
+      "primary_mesh_radio": "5.8GHz",
+      "node_or_proxied_node_id": 2004,
+      "is_proxied_node": false
+    },
+    "cellular_backup": null,
+    "channel_selection": null,
+    "accessories": [],
+    "retrograde_capable": true,
+    "power_saving": {
+      "schedule": {
+        "active": false,
+        "start": null,
+        "end": null
+      }
+    }
+  }
+}
