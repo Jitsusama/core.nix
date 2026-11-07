@@ -348,10 +348,12 @@ Scope {
             && (row.tier ?? 1) <= 1);
         if (at < 0)
             return rows;
-        const shown = new Set(rows.map(row => row.key));
+        // One found by itself as well stays where it was found, so nothing
+        // is listed twice.
+        const shown = new Set(rows.map(row => Rank.identity(row)));
         const parts = (partsOfRows[rows[at].key] ?? []).slice(0, underMost);
         const holds = rows[at].under().slice(0, underMost).concat(parts)
-            .filter(row => !shown.has(row.key));
+            .filter(row => !shown.has(Rank.identity(row)));
         return rows.slice(0, at + 1).concat(holds, rows.slice(at + 1));
     }
 
