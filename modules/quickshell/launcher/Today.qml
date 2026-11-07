@@ -225,12 +225,18 @@ Provider {
 
     // Today in every calendar, stepping into each, once they're reckoned;
     // until then it says it's asking, or that the reader isn't answering.
+    // Asking, it's keyed as the answer will be, so the step holding Date
+    // takes the answer in its place: keyed apart, the asking row stayed
+    // where it was, dimmed and doing nothing, and the answer came in at
+    // the end (Joel, 2026-11-07: "Now -> Date -> Calendars does not work
+    // from the launcher").
     function calendarsRow(at, now) {
         const reading = Calendars.reading;
         const said = calendarsSaid;
         if (reading?.day !== Moment.iso(at)) {
             const side = Calendars.refused ? said.silent : "\u2026";
-            return copyRow({ name: Words.name("today:calendars"), side: side,
+            return copyRow({ key: "today:calendars", name: Words.name("today:calendars"),
+                side: side,
                 copiesNothing: true, note: "", glyph: Theme.glyph.date });
         }
         // From sunset, a calendar whose day begins then is on the day begun;

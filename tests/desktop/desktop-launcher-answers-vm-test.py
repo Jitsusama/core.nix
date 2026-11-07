@@ -1108,6 +1108,27 @@ def date_steps_into_its_calendars(desktop: Desktop) -> None:
         )
 
 
+def calendars_from_now(desktop: Desktop) -> None:
+    """Walk from home into Now, then Date, then Calendars, and find the four calendars there.
+
+    That's the way Joel goes (2026-11-07: "Now -> Date -> Calendars does not work from the
+    launcher"), each a step by Return rather than a search, so Date is held under Now.
+    """
+    desktop.answer("")
+    desktop.normal()
+    desktop.down_to("Now")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Date" in shown["rows"])
+    desktop.down_to("Date")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
+    desktop.down_to("Calendars")
+    desktop.step_in()
+    calendars = ["Chinese", "Japanese", "Hebrew", "Islamic"]
+    desktop.launcher_until(lambda shown: shown["rows"][: len(calendars)] == calendars)
+    desktop.close_launcher()
+
+
 def calendars_asked(desktop: Desktop) -> None:
     """Ask Date's calendars without the reader, then with it, from where the laptop is."""
     # With the reader gone, Calendars says it isn't answering, and Return closes rather than
@@ -1127,6 +1148,7 @@ def calendars_asked(desktop: Desktop) -> None:
         desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start timekeeping.socket")
+    calendars_from_now(desktop)
     # Asked again, today in the Chinese, Japanese, Hebrew and Islamic calendars, each a
     # thing whose plate is titled with its date in its own script.
     desktop.answer("date")
