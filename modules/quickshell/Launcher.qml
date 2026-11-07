@@ -5301,6 +5301,7 @@ Scope {
             const clipper = item.parent && item.parent.clip ? item.parent : item;
             const box = clipper.mapToItem(into, 0, 0);
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
+                ink: item.color === undefined ? "" : String(item.color),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
                 inked: Math.round(item.contentWidth), cut: item.truncated === true
                     || (clipper !== item && item.implicitWidth > clipper.width),
@@ -5326,6 +5327,8 @@ Scope {
                     depth: row.depth ?? 0,
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card),
+                    // Its band, its own room a gap above it aside.
+                    band: Math.round(drawn.mapToItem(card, 0, drawn.height - root.rowTall).y),
                     // Whether its name is what was found, and the name's
                     // letters washed beneath, a run each, as many as its
                     // wash draws: a cut name's last may not.
@@ -5336,8 +5339,11 @@ Scope {
         // Where the selection is drawn, and where its row is, so a test can
         // say it's drawn on its row.
         const chosen = list.itemAtIndex(root.current);
+        const ground = picked.mapToItem(card, 0, 0);
         const selection = !picked.visible || !chosen ? null : {
-            y: Math.round(picked.mapToItem(card, 0, 0).y),
+            y: Math.round(ground.y),
+            x: Math.round(ground.x), width: Math.round(picked.width),
+            height: Math.round(picked.height),
             // Where its row's ground would stand, close round the row's ink.
             row: Math.round(chosen.mapToItem(card, 0, chosen.height - root.rowTall
                 + (root.rowTall - root.rowCaps) / 2 - Theme.space.rung.mark).y)
@@ -5348,8 +5354,17 @@ Scope {
         const first = list.itemAtIndex(0);
         const firstAt = first ? Math.round(first.y - list.contentY) : null;
         // The command line's words while it's open, and its menu's, so a
-        // test can say where the line stands and where its lines start.
+        // test can say where the line stands and where its lines start;
+        // and the gutter's numbers, so it can say where they stand.
+        // The frame's inside across, and the hairlines' tops, so a test can
+        // say where a ground meets them.
+        const inside = listBox.mapToItem(card, 0, 0);
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
+            numbers: wordsIn(rowsGutter, card), rowTall: root.rowTall,
+            inside: { x: Math.round(inside.x), width: Math.round(listBox.width),
+                y: Math.round(inside.y), height: Math.round(listBox.height) },
+            hairlines: [headLine, footLine].map(line => ({
+                y: Math.round(line.mapToItem(card, 0, 0).y), height: line.height })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
             drawn: root.rowsDrawn, firstAt, line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
@@ -5643,7 +5658,9 @@ Scope {
                 numbers: rowsGutter.said().map(number => number.text),
                 cursor: (rowsGutter.said().find(number => number.ink === "text") ?? {}).text
                     ?? "",
-                made: rowsGutter.made, room: Math.round(rowsGutter.width)
+                made: rowsGutter.made, room: Math.round(rowsGutter.width),
+                // One figure's width, which a test measures the numbers by.
+                figure: rowsGutter.widest("9")
             },
             lastPlace: root.lastPlace !== null,
             // An operator waiting for its motion, as d's first d, and the
@@ -5738,6 +5755,8 @@ Scope {
                 mode: Math.round(modeWord.room), least: Math.round(standing.least) },
             // The keys the foot says now, each its mark and its word.
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
+            // And the keys it would say with room for all, before any give way.
+            wanted: foot.toldNow.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
@@ -6812,6 +6831,7 @@ Scope {
                 // inset to inset, so it spans the ink and never cuts the
                 // card into boxes against the frame (VKCF3Z, 2026-11-05).
                 Rectangle {
+                    id: headLine
                     x: Theme.space.rung.inset
                     width: parent.width - 2 * x
                     height: Theme.border
@@ -7372,6 +7392,7 @@ Scope {
                     // over the rows, so no gap among the rows outranks it;
                     // inset to inset, as the head's is.
                     Rectangle {
+                        id: footLine
                         x: Theme.space.rung.inset
                         width: parent.width - 2 * x
                         height: Theme.border

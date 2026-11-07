@@ -10,6 +10,7 @@ launcher closed and leaves it so, so any test runs alone.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import subprocess
@@ -488,21 +489,94 @@ def test_a_place_stands_its_head_and_rows_where_home_does(shell: Shell) -> None:
     glyph and Title and its rows' glyphs and names stood a digit left of home's for each digit
     fewer (Joel, 2026-11-06: "padding is different when on the home launcher screen and a
     secondary screen"). Machine holds about ten rows and Now a few, so each once had its own.
+
+    The numbers start on the inset, where the mode word does, as wide as the place needs, so
+    home's eight take one figure and Machine's two, the spare room after them (Joel,
+    2026-11-06: "why leave constant room for three when we often have only 1?"). On the find
+    its / takes the place glyph's cell, so only the Title and the rows are held to home's there.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
+    opening = shell.showing()["count"]
+    figure = shell.showing()["gutter"]["figure"]
     # A find at home reaches every thing, and stands where home does too.
     shell.type_in("machine", selecting="Machine")
-    stood = {"a find": columns(shell, "Home")}
+    found = columns(shell, "Home")
+    numbers = {"a find": numbered(shell)}
     shell.normal()
-    stood["Home"] = columns(shell, "Home")
+    stood = {"Home": columns(shell, "Home")}
+    numbers["Home"] = numbered(shell)
     shell.close_launcher()
     for place in ("Machine", "Now"):
-        stood[place] = stepped_into(shell, place)
+        stood[place], numbers[place] = stepped_into(shell, place)
     assert len(set(stood.values())) == 1, f"glyphs and names stand apart: {stood}"
+    assert found[1:] == stood["Home"][1:], f"a find stands apart: {found}, {stood['Home']}"
+    starts = {place: at for place, (at, _, _, _) in numbers.items()}
+    modes = {place: mode for place, (_, _, mode, _) in numbers.items()}
+    assert starts == modes, f"numbers and the mode word stand apart: {starts}, {modes}"
+    # A place's numbers take its own rows' digits; a find, the most it listed as it was typed,
+    # home's at its opening at least, which home in normal after it keeps.
+    # As wide as its figures, give or take the pixel a block rounds up by.
+    off = {
+        place: (numbers[place][1], len(str(numbers[place][3])) * figure)
+        for place in ("Machine", "Now")
+        if abs(numbers[place][1] - len(str(numbers[place][3])) * figure) > 1
+    }
+    assert not off, f"numbers not as wide as their figures ({figure} each): {off}, {numbers}"
+    # A find holds the most it listed as it was typed, home's at its opening at least, and
+    # normal after it keeps them: whole figures, never fewer.
+    held = numbers["a find"][1]
+    assert held == numbers["Home"][1] >= len(str(opening)) * figure - 1, numbers
+    assert abs(held / figure - round(held / figure)) * figure <= 1, numbers
 
 
-def stepped_into(shell: Shell, place: str) -> tuple[int, int, int, int]:
+def test_the_heads_title_holds_still_and_its_mark_takes_the_glyphs_cell(shell: Shell) -> None:
+    """The head's Title starts at one x in normal, on the find and in visual, as the : line's text.
+
+    The head's first column held the find's / and nothing in normal, so normal showed a bare
+    cell the find filled (Joel, 2026-11-06: "an extra space in front of the launcher heading
+    when in command mode that we don't have in find"). Now / and : take the place glyph's
+    cell, and nothing stands in the gutter's column in any mode.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("k")
+    titled = {"find": head_title(shell)}
+    shell.normal()
+    titled["normal"] = head_title(shell)
+    shell.send_chars("v")
+    shell.launcher_until(lambda shown: shown["mode"] == "visual")
+    titled["visual"] = head_title(shell)
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["mode"] == "normal")
+    shell.send_chars(":lo")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "lo")
+    line = laid_out(shell)["line"]
+    typed = next(word for word in line if word["text"] == "lo")
+    colon = next(word for word in line if word["text"] == ":")
+    shell.send_key("esc")
+    shell.close_launcher()
+    marks = {mode: mark for mode, (_, mark) in titled.items()}
+    titles = {mode: title for mode, (title, _) in titled.items()}
+    assert len(set(titles.values())) == 1, f"the Title moves between modes: {titles}"
+    assert typed["x"] == titles["normal"], f"the : line's text at {typed['x']}: {titles}"
+    # The / and the : stand in the cell the place's glyph does, never before it.
+    cell = marks["normal"]
+    for mark in (marks["find"], colon["x"]):
+        assert cell <= mark < titles["normal"], f"a mark off the glyph's cell: {marks}, {colon}"
+
+
+def head_title(shell: Shell) -> tuple[int, int]:
+    """Give where the head's Title starts and where the word before it, its cell's, starts."""
+    field = laid_out(shell)["field"]
+    at = before_and_at(field, "Home")
+    assert at, field
+    return at[1], at[0]
+
+
+def stepped_into(
+    shell: Shell, place: str
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
     """Open the launcher, step into a place from home, and give where its columns stand."""
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -510,9 +584,21 @@ def stepped_into(shell: Shell, place: str) -> tuple[int, int, int, int]:
     shell.step_in()
     shell.launcher_until(lambda shown: shown["path"][-1:] == [place])
     shell.normal()
-    stood = columns(shell, place)
+    stood = columns(shell, place), numbered(shell)
     shell.close_launcher()
     return stood
+
+
+def numbered(shell: Shell) -> tuple[int, int, int, int]:
+    """Give where the gutter's numbers start, their block's width, the mode word's x, the rows."""
+    laid = laid_out(shell)
+    numbers = laid["numbers"]
+    assert numbers, laid
+    mode = next(word["x"] for word in laid["foot"] if re.fullmatch("[A-Z]{3}", word["text"]))
+    count = shell.showing()["count"]
+    # Where the numbers' block starts, which right-aligns them within it as Vim's column does.
+    block = min(word["x"] for word in numbers)
+    return block, max(word["width"] for word in numbers), mode, count
 
 
 def columns(shell: Shell, title: str) -> tuple[int, int, int, int]:
@@ -545,6 +631,49 @@ def laid_out(shell: Shell) -> Json:
             return cast("Json", now)
         was = now
     return cast("Json", was)
+
+
+# The tie rung, in logical pixels: the room between the rows' bands and each hairline.
+TIE = 4
+
+
+def test_rows_tile_and_the_cursor_row_is_filled_edge_to_edge(shell: Shell) -> None:
+    """Home's rows meet with no gap, and the cursor row's ground fills its band, gutter and all.
+
+    As Vim's cursorline fills its line (Joel, 2026-11-06: "rows in the launcher should have
+    padding instead of margins"): the room a row keeps is inside its band, the ground runs
+    from the frame's inside edge to its other, and a tie stands between the bands and each
+    hairline, so a ground never touches a rule. Now's chord leaves its row for the foot.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.normal()
+    shell.down_to("Now")
+    laid = laid_out(shell)
+    bands = [row["band"] for row in laid["rows"]]
+    tall = laid["rowTall"]
+    apart = [(top, below) for top, below in itertools.pairwise(bands) if below != top + tall]
+    assert not apart, f"bands {tall} tall stand apart: {apart} of {bands}"
+    ground = laid["selection"]
+    across = (ground["x"], ground["width"], ground["height"])
+    assert across == (laid["inside"]["x"], laid["inside"]["width"], tall), (ground, laid)
+    selected = next(row for row in laid["rows"] if row["selected"])
+    assert ground["y"] == selected["band"], (ground, selected)
+    head, foot = laid["hairlines"]
+    rows = laid["inside"]
+    assert bands[0] == rows["y"], f"the first band starts below the list: {bands}, {rows}"
+    room = (rows["y"] - head["y"] - head["height"], foot["y"] - rows["y"] - rows["height"])
+    assert room == (TIE, TIE), f"the rows stand {room} from the hairlines: {laid['hairlines']}"
+    shown = shell.showing()
+    assert shown["selected"]["chord"] == "", f"Now's row draws its chord: {shown['selected']}"
+    # Furthest from Return, it's the first to give way, so it's asked for, if not kept.
+    taught = " ".join(shown["wanted"])
+    assert "next time" in taught, f"the foot doesn't teach Now's chord: {shown['wanted']}"
+    # At the line's size, the heading outranks the cursor row's name by its ink at least.
+    title = next(word for word in laid["field"] if word["text"] == "Home")
+    name = next(word for word in selected["words"] if word["text"] == "Now")
+    assert title["ink"] == name["ink"], f"the Title is fainter than its rows: {title}, {name}"
+    shell.close_launcher()
 
 
 def test_the_selection_glides_to_its_row_and_typing_never_glides(shell: Shell) -> None:
