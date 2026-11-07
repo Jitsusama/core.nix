@@ -1,5 +1,6 @@
-use disk_guard::discover::{Checkout, Found, Kind, checkout_of, walk};
+use disk_guard::discover::{Checkout, Found, Kind, checkout_of};
 use std::fs;
+use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
@@ -40,6 +41,11 @@ fn tagged(target: &Path, sources: &[&Path]) -> PathBuf {
         &format!("{}: {}\n", deps.display(), names.join(" ")),
     );
     target.to_owned()
+}
+
+/// A walk for no account's home, as the machine's guard walks.
+fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
+    disk_guard::discover::walk(root, depth, None)
 }
 
 fn sorted(mut found: Vec<Found>) -> Vec<Found> {
@@ -197,7 +203,7 @@ fn a_target_whose_checkout_was_deleted_is_orphaned() {
     let gone = root.join("src/gone");
     let t = tagged(&root.join("builds/gone"), &[&gone.join("src/lib.rs")]);
     dir(&root.join("src"));
-    assert_eq!(checkout_of(&t), Checkout::Gone(gone));
+    assert_eq!(checkout_of(&t, None), Checkout::Gone(gone));
 }
 
 #[test]
@@ -211,7 +217,7 @@ fn toolchain_and_registry_sources_say_nothing_of_the_checkout() {
         &root.join("t"),
         &[&registry, store, &top.join("src/lib.rs")],
     );
-    assert_eq!(checkout_of(&t), Checkout::At(top));
+    assert_eq!(checkout_of(&t, None), Checkout::At(top));
 }
 
 #[test]
@@ -226,6 +232,28 @@ fn a_checkout_on_another_filesystem_is_never_called_gone() {
     if elsewhere.unwrap_or(false) {
         let source = shm.join("disk-guard-test-absent/src/lib.rs");
         let t = tagged(&root.path().join("t"), &[&source]);
-        assert_eq!(checkout_of(&t), Checkout::Unknown);
+        assert_eq!(checkout_of(&t, None), Checkout::Unknown);
+        assert_eq!(checkout_of(&t, Some(root.path())), Checkout::Unknown);
     }
+}
+
+#[test]
+fn a_build_on_its_own_filesystem_whose_checkout_left_the_home_is_orphaned() {
+    // Cargo's builds can have a filesystem to themselves, which no checkout
+    // is on. A checkout missing from the home's filesystem was deleted, since
+    // that filesystem is here, though the builds' filesystem isn't it.
+    let home = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let home = real(home.path());
+    let Ok(builds) = tempfile::tempdir_in("/dev/shm") else {
+        return;
+    };
+    let device = |path: &Path| path.metadata().unwrap().dev();
+    if device(builds.path()) == device(&home) {
+        return;
+    }
+    let gone = home.join("trees/gone");
+    let t = tagged(&builds.path().join("ab/cd"), &[&gone.join("src/lib.rs")]);
+    dir(&home.join("trees"));
+    assert_eq!(checkout_of(&t, Some(&home)), Checkout::Gone(gone));
+    assert_eq!(checkout_of(&t, None), Checkout::Unknown);
 }
