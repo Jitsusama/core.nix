@@ -511,16 +511,32 @@ Rectangle {
     // Where it may start: past the name, and its words where there are any.
     readonly property real sayFrom: (row.detail !== "" ? countText.x + countText.width
         : nameBox.x + nameBox.width) + Theme.space.rung.groups
+    // The say as much as fits its room, given way at a whole word, and
+    // not said at all where only its first word and an ellipsis would
+    // fit, never a letter and an ellipsis (VKCF3Z, 2026-11-07: "A b\u2026
+    // 84% full"). Qt elides with a pixel to spare, so each is measured
+    // with one.
+    readonly property string sayWhole: {
+        void sayFace.font;
+        const cut = Reading.wholeWords(row.say, row.sayEnd - row.sayFrom,
+            words => Math.ceil(sayFace.advanceWidth(words)) + 1);
+        return cut === row.say || cut.includes(" ") ? cut : "";
+    }
+
+    FontMetrics {
+        id: sayFace
+        font: sayText.font
+    }
 
     Text {
         id: sayText
         width: Math.max(0, Math.min(implicitWidth, row.sayEnd - row.sayFrom))
         x: row.sayEnd - width
         anchors.baseline: monoLine.baseline
-        visible: row.say !== "" && width > 0
+        visible: row.sayWhole !== "" && width > 0
         elide: Text.ElideRight
         textFormat: Text.PlainText
-        text: row.say
+        text: row.sayWhole
         color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize

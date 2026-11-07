@@ -1203,9 +1203,17 @@ works the same way everywhere.
   inside it. A live session past 80% of its context says how full first
   ("84% full · working · $4.20"), its glyph in the warning's hue, the
   figure kept longest while room runs short and the money giving way
-  before how it stands, since its drawer says the spend. Its drawer gives its
-  figures by OpenTelemetry's gen_ai names: Model, Context ("142k of
-  200k"), Last Turn, Turns Today, Tokens and Cache, today's only on the
+  before how it stands, since its drawer says the spend. Its drawer's
+  first screen holds what matters of it, never only its title (Joel,
+  2026-11-07): Doing, its step alone ("edit Drawer.qml"), since how it
+  stands is its row's, and none where it has no step; Needs You For;
+  its Last Landing; what it spent; its figures; Context Rebuilt; its
+  Quest, how that stands said only where it isn't active; its Machine;
+  and Working On last, as words, without the title the drawer already
+  says (VKCF3Z, 2026-11-07). A row's note says no title again either,
+  and gives way at a whole word, never a letter and an ellipsis. Its figures go by
+  OpenTelemetry's gen_ai names: Context ("142k of 200k") and Last Turn
+  first, then Model, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.
   Context draws Meter's stroke of how full after its value, in warning
   from 80%, and its own spend today Graph's spark of its hours, scaled

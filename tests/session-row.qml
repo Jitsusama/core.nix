@@ -1,7 +1,8 @@
 // How the launcher says where a pi session stands and lays a list of them
 // out, run in Qt's own JavaScript engine, the one the shell runs it in.
 // The `the-launcher-lays-sessions-under-their-orchestrators` check copies
-// modules/quickshell/launcher/SessionRow.js beside this file and runs
+// modules/quickshell/launcher/SessionRow.js and SessionDrawer.js beside
+// this file and runs
 // `qml -platform offscreen session-row.qml`. Each list of sessions keeps
 // one order of how they stand (needs you, working, in line, listening,
 // paused, parked), and Agents sits each session under the one orchestrating it, a
@@ -9,6 +10,7 @@
 // (QEST-20261026-15J7N3's agents-tree-look.md). A row says how it stands
 // and what it spent at its right, and its drawer the rest.
 import QtQuick
+import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "Reading.js" as Reading
 
@@ -210,14 +212,14 @@ QtObject {
             spent: "$4.20",
             named: id => id
         };
-        const drawn = SessionRow.drawer("A Quest", { worksOn: "the row" }, told);
+        const drawn = SessionDrawer.drawer("A Quest", { worksOn: "the row" }, told);
         if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
             failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
         // Its hours ride on its own spend today as a spark, an orchestrator's
         // on Its Own, and what rebuilding its context cost follows, unsaid
         // when it's nothing.
         const hours = { shape: "spark", values: [0, 0.5, 1] };
-        const sparked = given => SessionRow.drawer("A Quest", {},
+        const sparked = given => SessionDrawer.drawer("A Quest", {},
             Object.assign({}, told, { hours: hours }, given)).facts
             .map(fact => fact.figure ? `${fact.label}=${fact.value}:${fact.figure.shape}`
                 : `${fact.label}=${fact.value}`).join(" ");
@@ -275,15 +277,16 @@ QtObject {
         const figured = facts => facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
         const onItsDay = figured(SessionRow.figures(usage, "2026-11-07", figureWords,
             id => id));
-        const onItsDayWant = "model=claude-opus-5-5; context=142k of 200k; "
-            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token; turns=359; "
+        const onItsDayWant = "context=142k of 200k; "
+            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token; model=claude-opus-5-5; "
+            + "turns=359; "
             + "tokens=126M in \u00b7 272k out; cache=99.0% read";
         if (onItsDay !== onItsDayWant)
             failures.push(`the drawer's figures: "${onItsDay}", not "${onItsDayWant}"`);
         const dayAfter = figured(SessionRow.figures(usage, "2026-11-08", figureWords,
             id => id));
-        const dayAfterWant = "model=claude-opus-5-5; context=142k of 200k; "
-            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token";
+        const dayAfterWant = "context=142k of 200k; "
+            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token; model=claude-opus-5-5";
         if (dayAfter !== dayAfterWant)
             failures.push(`the figures a day on: "${dayAfter}", not "${dayAfterWant}"`);
         if (SessionRow.figures(undefined, "2026-11-07", figureWords, id => id).length !== 0)
@@ -333,12 +336,48 @@ QtObject {
             if (eyebrowIn(room) !== want)
                 failures.push(`the eyebrow in ${room}: "${eyebrowIn(room)}", not "${want}"`);
         }
-        const facts = drawn.facts.map(fact => fact.label).join(" ");
-        if (facts !== "works spent")
-            failures.push(`the drawer's facts: "${facts}", not "works spent"`);
+        // What it works on is words, said last, since it runs long.
+        const facts = drawn.facts.map(fact => `${fact.label}${fact.words ? ":words" : ""}`)
+            .join(" ");
+        if (facts !== "spent works:words")
+            failures.push(`the drawer's facts: "${facts}", not "spent works:words"`);
+        // Its first screen holds what matters, in this order: what it's
+        // doing, its step alone, what it needs Joel for, what it landed last,
+        // what it spent, its figures, then its quest, its machine and what its
+        // quest is about, that without the title the drawer already says
+        // (Joel, 2026-11-07: "the agents side panel generally just shows its
+        // title"; VKCF3Z, 2026-11-07).
+        const full = SessionDrawer.drawer("A Quest", {
+            worksOn: "A Quest: what it's for, at length",
+            stepDetail: { kind: "tool", name: "edit", detail: "/src/core.nix/Drawer.qml" },
+            wants: { said: "which way?" },
+            questInfo: { id: "QEST-1", title: "A Quest", status: "active" }
+        }, Object.assign({}, told, {
+            needs: "Sign In", landed: "core.nix#1 \u00b7 15:44",
+            machine: "there", figures: [{ label: "context", value: "84k of 200k" }]
+        })).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
+        const fullWant = "step=edit Drawer.qml; wants=which way? \u00b7 Sign In; "
+            + "last-landing=core.nix#1 \u00b7 15:44; spent=$4.20; context=84k of 200k; "
+            + "task=QEST-1; machine=there; works=what it's for, at length";
+        if (full !== fullWant)
+            failures.push(`the drawer's first screen: "${full}", not "${fullWant}"`);
+        // One with no step says no Doing, and a quest that isn't active says
+        // how it stands.
+        const still = SessionDrawer.drawer("A Quest", {
+            questInfo: { id: "QEST-1", title: "A Quest", status: "paused" }
+        }, told).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
+        if (still !== "spent=$4.20; task=QEST-1 \u00b7 paused")
+            failures.push(`a drawer with no step, its quest paused: "${still}"`);
+        // A step says its tool and what it's on, a file by its name, and
+        // nothing the harness cut short.
+        const steps = [{ kind: "thinking" }, { kind: "tool", name: "bash", detail: "cd ~/a; f\u2026" },
+            { kind: "tool", name: "quest", detail: "journal" }, null]
+            .map(detail => SessionDrawer.step(detail)).join(", ");
+        if (steps !== "thinking, bash, quest journal, ")
+            failures.push(`a step: "${steps}"`);
         // One whose record names no place, nor when it began, says its
         // address alone.
-        const bare = SessionRow.drawer("A Quest", {}, Object.assign({}, told,
+        const bare = SessionDrawer.drawer("A Quest", {}, Object.assign({}, told,
             { place: "", since: "" }));
         if (bare.eyebrow !== "8IDU4E")
             failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);

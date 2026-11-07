@@ -254,6 +254,7 @@ let
     "launcher/Steady.js"
     "launcher/Becoming.js"
     "launcher/SessionRow.js"
+    "launcher/SessionDrawer.js"
     "launcher/Trials.js"
     "launcher/Traces.js"
     "launcher/Emoji.js"

@@ -945,6 +945,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
       cp ${../../tests/session-row.qml} session-row.qml
       cp ${./launcher/SessionRow.js} SessionRow.js
+      cp ${./launcher/SessionDrawer.js} SessionDrawer.js
       cp ${./Reading.js} Reading.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

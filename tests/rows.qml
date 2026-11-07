@@ -293,6 +293,9 @@ ShellRoot {
                 say: root.sentence; glyph: "$"; selected: true }
             Choice { id: sayingNot; width: root.panel; name: root.long; side: "79%"
                 glyph: "$"; selected: true }
+            // A say with room for some of its words, beside a short name.
+            Choice { id: sayingSome; width: root.panel; name: "Battery"; side: "79%"
+                say: `${root.sentence} ${root.long}`; glyph: "$"; selected: true }
             // An agent's side of items, on the cursor row and off it: its
             // words in the row's ink, the dots between them muted.
             Choice { id: itemsChosen; width: root.panel; name: "A Quest"; glyph: "$"
@@ -729,11 +732,24 @@ ShellRoot {
             && textItem(sayingAlone, "\u00b7") === null, said(drawn(sayingAlone, [])));
         const named = readsOn(sayingLong, root.long);
         const unsaid = readsOn(sayingNot, root.long);
-        const longSay = drawn(sayingLong, []).find(t => t.text === root.sentence);
+        // What's drawn of it, whole or cut: none of the name's or the side's.
+        const longSays = drawn(sayingLong, []).filter(t => t.text.length > 1
+            && root.sentence.startsWith(t.text.replace(/\u2026$/, "")));
         expect("a long say gives way, from its end, and never the name",
             named !== null && unsaid !== null && Math.abs(named.width - unsaid.width) <= 0.5
-                && (longSay === undefined || longSay.truncated),
+                && longSays.every(t => t.text !== root.sentence),
             `${named?.width} against ${unsaid?.width}, ${said(drawn(sayingLong, []))}`);
+        // And it gives way at a whole word, or whole, never through a word nor
+        // down to its first alone (VKCF3Z, 2026-11-07: "A b\u2026 84% full").
+        const some = `${root.sentence} ${root.long}`;
+        const someSaid = drawn(sayingSome, []).filter(t => t.text.length > 1
+            && some.startsWith(t.text.replace(/\u2026$/, "")));
+        expect("a long say gives way at a whole word, never a letter",
+            longSays.every(t => !t.truncated && t.text.endsWith("\u2026") && t.text.includes(" "))
+                && someSaid.length === 1 && !someSaid[0].truncated
+                && someSaid[0].text.endsWith("\u2026")
+                && !/[A-Za-z0-9]/.test(some.charAt(someSaid[0].text.length - 1)),
+            `${said(drawn(sayingLong, []))}; ${said(drawn(sayingSome, []))}`);
     }
 
     // The gutter, as his Neovim's number, relativenumber and
