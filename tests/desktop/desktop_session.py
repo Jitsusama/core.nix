@@ -299,9 +299,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         # niri builds its software renderer before it opens its socket, which on a
         # busy host has taken past two minutes.
         machine.wait_until_succeeds("ls /run/user/1000/niri.*.sock", timeout=STARTING)
+        # niri imports these as a session does, run as its child so each holds
+        # what niri set: NIRI_ON_DEMAND_WHEN_ASKED says it gives the keys as a
+        # surface asks (modules/niri's on-demand-when-asked.patch).
         self.as_account(
             "NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock) niri msg action spawn --"
             " systemctl --user import-environment WAYLAND_DISPLAY NIRI_SOCKET"
+            " NIRI_ON_DEMAND_WHEN_ASKED"
         )
         machine.wait_until_succeeds(
             self.in_session("systemctl --user show-environment | grep -q WAYLAND_DISPLAY")

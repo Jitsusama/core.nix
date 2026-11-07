@@ -148,6 +148,10 @@ let
         LIBGL_ALWAYS_SOFTWARE = 1;
         QT_QPA_PLATFORM = "wayland";
         QT_QUICK_BACKEND = "software";
+        # What the machine's niri gives the session it starts
+        # (modules/niri's on-demand-when-asked.patch), set here since the
+        # shell starts beside this niri rather than under it.
+        NIRI_ON_DEMAND_WHEN_ASKED = 1;
       }
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_STATE_HOME=$PWD/state
