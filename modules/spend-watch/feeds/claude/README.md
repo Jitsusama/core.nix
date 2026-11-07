@@ -54,7 +54,7 @@ answer gives `"five_hour": null`.
 The endpoint isn't documented and may change. Its name, its header and its
 shape are known from tools that read it in the open:
 
-- [anthropics/claude-code#99231][99231] asks for an official endpoint, and
+- [Claude Code's issue 99231][99231] asks for an official endpoint, and
   says community tools read `/api/oauth/usage` with the token in
   `~/.claude/.credentials.json`.
 - CodexBar's [Claude notes][codexbar-notes] give the request, its beta
@@ -63,8 +63,8 @@ shape are known from tools that read it in the open:
   `utilization` and `resets_at` and treats a 429 with `Retry-After`, five
   minutes when none is given; and [its tests][codexbar-tests] keep a
   captured Max 20x answer with `"five_hour": null`.
-- [alasdaircs/clawdmeter-wifi#10][clawdmeter] saw a plan's five-hour window
-  dropped in early November 2026, and [anthropics/claude-code#105240][105240]
+- [clawdmeter-wifi's issue 10][clawdmeter] saw a plan's five-hour window
+  dropped in early November 2026, and [Claude Code's issue 105240][105240]
   calls Ultra the plan formerly Max 20x.
 - Claude Code's [authentication docs][auth] say where the sign-in is kept on
   each system, and that `CLAUDE_CONFIG_DIR` moves it.
@@ -108,7 +108,7 @@ Two more say the same figures, and neither is built:
   `anthropic-ratelimit-unified-5h-utilization`, `-5h-reset`, `-5h-status`
   and the same for `7d`, as a fraction and epoch seconds, with
   `-status`, `-representative-claim` and `-overage-*` beside them
-  ([StephanMeijer/meneerhenk#351][meneerhenk] keeps a captured 429). Reading
+  ([meneerhenk's issue 351][meneerhenk] keeps a captured 429). Reading
   them means a model request of its own, or a proxy in front of Claude Code.
 - Claude Code gives its [status line][statusline] `rate_limits.five_hour` and
   `rate_limits.seven_day`, each `used_percentage` and `resets_at`, but only
