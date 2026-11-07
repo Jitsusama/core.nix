@@ -280,6 +280,15 @@ ShellRoot {
             && (chooser.settings.recent.length === 0 || chooser.lately.length > 0);
     }
 
+    // Every folder a case reads from: notes, and each on the way to it, the
+    // home :cd completes "~/no" from among them. An answer forgets what was
+    // read, and each folder is read again on its own, so a case waiting on
+    // notes alone could find home not yet read under load, and :cd
+    // completing nothing (2026-11-07).
+    function readFrom() {
+        return ["/", notes].concat(chooser.onTheWay(notes));
+    }
+
     Connections {
         target: chooser
 
@@ -300,7 +309,7 @@ ShellRoot {
     // Each case, once what it waits on is there.
     function step() {
         try {
-            if (stage === 0 && ready(["/", notes].concat(chooser.onTheWay(notes)))) {
+            if (stage === 0 && ready(readFrom())) {
                 stage = 1;
                 opening();
             } else if (stage === 1 && previewing === "a.md" && `${notes}/a.md` in chooser.previews) {
@@ -333,7 +342,8 @@ ShellRoot {
                     choices: [{ id: "encoding", label: "Encoding", default: "utf8",
                         options: [{ id: "utf8", label: "UTF-8" }, { id: "latin1", label: "Latin-1" }] }]
                 });
-            } else if (stage === 3 && chooser.asking?.reply.endsWith("/2.sock") && ready([notes])) {
+            } else if (stage === 3 && chooser.asking?.reply.endsWith("/2.sock")
+                && ready(readFrom())) {
                 stage = 4;
                 save();
             } else if (stage === 4 && answers.length === 2) {
@@ -344,7 +354,8 @@ ShellRoot {
                 expect("a save keeps the folder it went to", chooser.savedLastIn() === `${notes}/sub`,
                     chooser.savedLastIn());
                 ask(3, { mode: "open", title: "Pick a Folder", folders: true, folder: notes });
-            } else if (stage === 5 && chooser.asking?.reply.endsWith("/3.sock") && ready([notes])) {
+            } else if (stage === 5 && chooser.asking?.reply.endsWith("/3.sock")
+                && ready(readFrom())) {
                 stage = 6;
                 folder();
             } else if (stage === 6 && answers.length === 3) {
