@@ -14,13 +14,52 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 5;
+pub const SCHEMA: i64 = 7;
 
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
 /// the turns again each time cost most of a pass once they were counted
-/// in hundreds of thousands; these are a fiftieth as many.
+/// in hundreds of thousands; these are a fiftieth as many. A turn's
+/// provider and the budget its log said are among what they're split by,
+/// since the budget a turn draws on is worked out from both.
 macro_rules! hours {
+    () => {
+        "
+CREATE TABLE turn_hours (
+    hour INTEGER NOT NULL, session TEXT NOT NULL, quest TEXT, model TEXT NOT NULL,
+    kind TEXT NOT NULL, provider TEXT NOT NULL, budget TEXT, turns INTEGER NOT NULL,
+    cost REAL NOT NULL);
+CREATE INDEX turn_hours_key ON turn_hours (hour, session, quest, model, kind);
+CREATE TRIGGER turn_hours_add AFTER INSERT ON turns BEGIN
+    INSERT INTO turn_hours SELECT NEW.hour, NEW.session, NEW.quest, NEW.model, NEW.kind,
+        NEW.provider, NEW.budget, 0, 0
+        WHERE NOT EXISTS (SELECT 1 FROM turn_hours WHERE hour = NEW.hour
+            AND session = NEW.session AND quest IS NEW.quest AND model = NEW.model
+            AND kind = NEW.kind AND provider = NEW.provider AND budget IS NEW.budget);
+    UPDATE turn_hours SET turns = turns + 1, cost = cost + NEW.cost
+        WHERE hour = NEW.hour AND session = NEW.session AND quest IS NEW.quest
+            AND model = NEW.model AND kind = NEW.kind AND provider = NEW.provider
+            AND budget IS NEW.budget;
+END;
+CREATE TRIGGER turn_hours_take AFTER DELETE ON turns BEGIN
+    UPDATE turn_hours SET turns = turns - 1, cost = cost - OLD.cost
+        WHERE hour = OLD.hour AND session = OLD.session AND quest IS OLD.quest
+            AND model = OLD.model AND kind = OLD.kind AND provider = OLD.provider
+            AND budget IS OLD.budget;
+    DELETE FROM turn_hours WHERE turns = 0 AND hour = OLD.hour AND session = OLD.session
+        AND quest IS OLD.quest AND model = OLD.model AND kind = OLD.kind
+        AND provider = OLD.provider AND budget IS OLD.budget;
+END;
+CREATE TRIGGER turns_stay BEFORE UPDATE ON turns BEGIN
+    SELECT RAISE(ABORT, 'a turn is added or forgotten, never changed');
+END;
+"
+    };
+}
+
+/// The hours as the fourth shape first kept them, before they were split
+/// by provider and budget, which taking a third shape up builds.
+macro_rules! hours_4 {
     () => {
         "
 CREATE TABLE turn_hours (
@@ -50,17 +89,94 @@ END;
     };
 }
 
+/// What a feed billed, by everything a record keys it by: an empty budget
+/// is the feed's own.
+macro_rules! billed {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ",
+            $name,
+            " (
+    feed TEXT NOT NULL, source TEXT NOT NULL, hour INTEGER NOT NULL, tool TEXT NOT NULL,
+    model TEXT NOT NULL, vendor TEXT NOT NULL, session TEXT NOT NULL, agent TEXT NOT NULL,
+    token TEXT NOT NULL, input REAL NOT NULL, cached REAL NOT NULL, cache_write REAL NOT NULL,
+    output REAL NOT NULL, dollars REAL NOT NULL, provisional INTEGER NOT NULL,
+    at REAL NOT NULL, budget TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (feed, source, hour, tool, model, vendor, session, agent, token, budget));
+"
+        )
+    };
+}
+
+/// Each reading of a feed's caps, for its budget: an empty one is the
+/// feed's own. A share's is what's used, and nothing spent.
+macro_rules! caps {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ",
+            $name,
+            " (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, label TEXT NOT NULL,
+    allowance REAL, window_hours INTEGER NOT NULL, spent REAL NOT NULL, warn REAL NOT NULL,
+    fallback REAL, state TEXT NOT NULL, ends TEXT, ends_known INTEGER NOT NULL,
+    resets REAL, budget TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT 'dollars',
+    used REAL, PRIMARY KEY (feed, budget, name, at));
+"
+        )
+    };
+}
+
+macro_rules! cap_events {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ",
+            $name,
+            " (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
+    before REAL, after REAL, spent REAL NOT NULL, budget TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (feed, budget, name, at, kind));
+"
+        )
+    };
+}
+
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 4] = [
+const UPGRADES: [&str; 6] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
-        hours!(),
+        hours_4!(),
         "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, COUNT(*), SUM(cost)
          FROM turns GROUP BY hour, session, quest, model, kind;"
     ),
     "ALTER TABLE sessions ADD COLUMN kind TEXT; ALTER TABLE sessions ADD COLUMN name TEXT;",
+    // A turn read before budgets were has none its log said, so it draws
+    // on the budget claiming its provider, or the default.
+    concat!(
+        "ALTER TABLE turns ADD COLUMN budget TEXT;
+         DROP TRIGGER turn_hours_add; DROP TRIGGER turn_hours_take; DROP TRIGGER turns_stay;
+         DROP TABLE turn_hours;",
+        hours!(),
+        "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, provider, budget,
+         COUNT(*), SUM(cost) FROM turns
+         GROUP BY hour, session, quest, model, kind, provider, budget;"
+    ),
+    // What a feed said before a record could name its budget was its own,
+    // and a cap before shares were was in dollars. The budget is part of
+    // what keys each, so a feed can say two budgets' alike, and SQLite
+    // only keys a table as it's made.
+    concat!(
+        billed!("billed_7"),
+        "INSERT INTO billed_7 SELECT *, '' FROM billed; DROP TABLE billed;
+         ALTER TABLE billed_7 RENAME TO billed; CREATE INDEX billed_hour ON billed (hour);",
+        caps!("caps_7"),
+        "INSERT INTO caps_7 SELECT *, '', 'dollars', NULL FROM caps; DROP TABLE caps;
+         ALTER TABLE caps_7 RENAME TO caps;",
+        cap_events!("cap_events_7"),
+        "INSERT INTO cap_events_7 SELECT *, '' FROM cap_events; DROP TABLE cap_events;
+         ALTER TABLE cap_events_7 RENAME TO cap_events;"
+    ),
 ];
 
 const TABLES: &str = concat!(
@@ -78,7 +194,8 @@ CREATE TABLE turns (
     input REAL NOT NULL, output REAL NOT NULL, cache_read REAL NOT NULL,
     cache_write REAL NOT NULL, cache_write_long REAL NOT NULL,
     cost REAL NOT NULL, cost_cache_write REAL NOT NULL, cost_output REAL NOT NULL,
-    gap REAL, rebuilt REAL NOT NULL, rebuilt_cost REAL NOT NULL, cause TEXT);
+    gap REAL, rebuilt REAL NOT NULL, rebuilt_cost REAL NOT NULL, cause TEXT,
+    budget TEXT);
 CREATE INDEX turns_hour ON turns (hour);
 CREATE INDEX turns_session ON turns (session);
 CREATE INDEX turns_at ON turns (at);
@@ -94,25 +211,15 @@ CREATE TABLE quests (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL, parent TEXT,
     status TEXT NOT NULL, started TEXT, updated TEXT, prs INTEGER NOT NULL,
     sessions TEXT NOT NULL);
-CREATE TABLE billed (
-    feed TEXT NOT NULL, source TEXT NOT NULL, hour INTEGER NOT NULL, tool TEXT NOT NULL,
-    model TEXT NOT NULL, vendor TEXT NOT NULL, session TEXT NOT NULL, agent TEXT NOT NULL,
-    token TEXT NOT NULL, input REAL NOT NULL, cached REAL NOT NULL, cache_write REAL NOT NULL,
-    output REAL NOT NULL, dollars REAL NOT NULL, provisional INTEGER NOT NULL,
-    at REAL NOT NULL,
-    PRIMARY KEY (feed, source, hour, tool, model, vendor, session, agent, token));
-CREATE INDEX billed_hour ON billed (hour);
+",
+    billed!("billed"),
+    "CREATE INDEX billed_hour ON billed (hour);
 CREATE TABLE settled (feed TEXT NOT NULL, source TEXT NOT NULL, through INTEGER NOT NULL,
     PRIMARY KEY (feed, source));
-CREATE TABLE caps (
-    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, label TEXT NOT NULL,
-    allowance REAL, window_hours INTEGER NOT NULL, spent REAL NOT NULL, warn REAL NOT NULL,
-    fallback REAL, state TEXT NOT NULL, ends TEXT, ends_known INTEGER NOT NULL,
-    resets REAL, PRIMARY KEY (feed, name, at));
-CREATE TABLE cap_events (
-    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
-    before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
-CREATE TABLE health (feed TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
+",
+    caps!("caps"),
+    cap_events!("cap_events"),
+    "CREATE TABLE health (feed TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
     message TEXT NOT NULL, sign_in TEXT, at REAL NOT NULL,
     since REAL, PRIMARY KEY (feed, source));
 CREATE TABLE actions (feed TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
@@ -413,7 +520,7 @@ impl History {
                 self.db
                     .execute(
                         "INSERT INTO turns VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-                         ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                         ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                         params![
                             turn.session,
                             turn.at,
@@ -434,6 +541,7 @@ impl History {
                             turn.rebuilt,
                             turn.rebuilt_cost,
                             turn.cause.as_ref().map(crate::logs::Cause::name),
+                            turn.budget,
                         ],
                     )
                     .map_err(sql)?;
@@ -560,11 +668,12 @@ mod tests {
         {
             let db = Connection::open(&path).unwrap();
             db.execute_batch(
-                &TABLES
+                &sixth_shape()
                     .replace(hours!(), "")
                     .replace("\n    resets REAL,", "")
                     .replace("\n    since REAL,", "")
-                    .replace(SESSIONS_5, ""),
+                    .replace(SESSIONS_5, "")
+                    .replace(TURNS_6, ""),
             )
             .unwrap();
             db.execute_batch(
@@ -594,7 +703,10 @@ mod tests {
         history
             .db
             .execute(
-                "INSERT INTO turns VALUES (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
+                "INSERT INTO turns (session, at, hour, model, provider, kind, quest, input,
+                 output, cache_read, cache_write, cache_write_long, cost, cost_cache_write,
+                 cost_output, gap, rebuilt, rebuilt_cost, cause) VALUES
+                 (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
                  0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL)",
                 params![session, crate::time::hour_start(hour), hour, quest, cost],
             )
@@ -689,7 +801,12 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(hours!(), "").replace(SESSIONS_5, ""))
+                .execute_batch(
+                    &sixth_shape()
+                        .replace(hours!(), "")
+                        .replace(SESSIONS_5, "")
+                        .replace(TURNS_6, ""),
+                )
                 .unwrap();
             history
                 .db
@@ -709,6 +826,117 @@ mod tests {
     /// What shape 5 added to a session.
     const SESSIONS_5: &str = ",\n    kind TEXT, name TEXT";
 
+    /// What shape 6 added to a turn.
+    const TURNS_6: &str = ",\n    budget TEXT";
+
+    /// The tables as the fifth shape kept them.
+    fn fifth_shape() -> String {
+        sixth_shape()
+            .replace(TURNS_6, "")
+            .replace(hours!(), hours_4!())
+    }
+
+    /// The tables as the sixth shape kept them, before a feed's record
+    /// could name its budget.
+    fn sixth_shape() -> String {
+        const BILLED: &str = "CREATE TABLE billed (
+    feed TEXT NOT NULL, source TEXT NOT NULL, hour INTEGER NOT NULL, tool TEXT NOT NULL,
+    model TEXT NOT NULL, vendor TEXT NOT NULL, session TEXT NOT NULL, agent TEXT NOT NULL,
+    token TEXT NOT NULL, input REAL NOT NULL, cached REAL NOT NULL, cache_write REAL NOT NULL,
+    output REAL NOT NULL, dollars REAL NOT NULL, provisional INTEGER NOT NULL,
+    at REAL NOT NULL,
+    PRIMARY KEY (feed, source, hour, tool, model, vendor, session, agent, token));
+";
+        const CAPS: &str = "CREATE TABLE caps (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, label TEXT NOT NULL,
+    allowance REAL, window_hours INTEGER NOT NULL, spent REAL NOT NULL, warn REAL NOT NULL,
+    fallback REAL, state TEXT NOT NULL, ends TEXT, ends_known INTEGER NOT NULL,
+    resets REAL, PRIMARY KEY (feed, name, at));
+";
+        const CAP_EVENTS: &str = "CREATE TABLE cap_events (
+    feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
+    before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
+";
+        TABLES
+            .replace(billed!("billed"), BILLED)
+            .replace(caps!("caps"), CAPS)
+            .replace(cap_events!("cap_events"), CAP_EVENTS)
+    }
+
+    // The sixth shape's bill and caps are each their feed's own budget's,
+    // and its caps are in dollars, kept where they stand.
+    #[test]
+    fn a_feed_s_records_gain_a_budget_where_they_stand() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(&sixth_shape()).unwrap();
+            db.execute_batch(
+                "INSERT INTO meta VALUES ('schema', '6');
+                 INSERT INTO billed VALUES ('proxy', 'meter', 10, 'pi', 'm', 'v', '', '', '',
+                     0, 0, 0, 0, 29.83, 1, 1.0);
+                 INSERT INTO caps VALUES ('proxy', 'weekly', 1.0, 'weekly cap', 15000, 168,
+                     3948.29, 0.9, 4000, 'ok', NULL, 0, NULL);
+                 INSERT INTO cap_events VALUES ('proxy', 'weekly', 1.0, 'raised', 4000, 15000,
+                     3948.29);",
+            )
+            .unwrap();
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        let billed: (String, f64) = history
+            .db
+            .query_row("SELECT budget, dollars FROM billed", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(billed, (String::new(), 29.83));
+        let caps = crate::caps::latest(&history).unwrap();
+        assert_eq!(
+            (caps[0].budget.as_str(), caps[0].unit, caps[0].spent),
+            ("", crate::caps::Unit::Dollars, 3948.29)
+        );
+        assert_eq!(crate::caps::events(&history, 0.0).unwrap().len(), 1);
+        assert!(!dir.path().join("history.db.schema-6").exists());
+    }
+
+    // The fifth shape's turns, read before budgets were, gain a budget
+    // none of their logs said, and each hour's sums are split by provider
+    // and budget, so its picture reads as it did.
+    #[test]
+    fn turns_gain_a_budget_where_they_stand() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history.db.execute_batch(&fifth_shape()).unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '5');")
+                .unwrap();
+            turn(&history, "a", 10, Some("q"), 1.5);
+            turn(&history, "a", 10, Some("q"), 2.5);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        hours_hold(&history);
+        let split: (String, Option<String>, i64) = history
+            .db
+            .query_row(
+                "SELECT provider, budget, turns FROM turn_hours",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(split, ("anthropic".into(), None, 2));
+        turn(&history, "a", 10, Some("q"), 1.0);
+        hours_hold(&history);
+        assert!(!dir.path().join("history.db.schema-5").exists());
+    }
+
     // The fourth shape's sessions gain a kind and a name, none for those
     // read before, and its turns stay.
     #[test]
@@ -721,7 +949,7 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(SESSIONS_5, ""))
+                .execute_batch(&fifth_shape().replace(SESSIONS_5, ""))
                 .unwrap();
             history
                 .db

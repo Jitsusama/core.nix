@@ -50,9 +50,17 @@ pub struct Standing {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapView {
     pub cap: Cap,
+    /// The budget it limits, by name.
+    pub budget: String,
+    /// Whose it is, as its findings' keys say: its feed's, or its budget's
+    /// for a cap of the machine's own.
+    pub owner: String,
     /// The window's spend now: the feed's figure plus what's been billed
-    /// since it was given.
+    /// since it was given. Nothing, for a share.
     pub spent: f64,
+    /// The share of a plan's window used now, for a share: none
+    /// since a reset nobody has read past.
+    pub used: Option<f64>,
     pub clock: Option<Clock>,
     /// The day an override ends, when known, as the instant it does.
     pub ends_at: Option<f64>,
@@ -96,6 +104,9 @@ pub struct Picture {
     pub days: Days,
     /// Every hour's best dollars, by hour.
     pub hours: BTreeMap<i64, f64>,
+    /// The same, each budget's apart, by its name.
+    pub budget_hours: HashMap<String, BTreeMap<i64, f64>>,
+    pub budgets: crate::budgets::Budgets,
     /// Today's and the last week's pieces, for their cuts.
     /// Every piece the history holds, for a report of any period.
     pub pieces: Vec<Piece>,
@@ -141,13 +152,11 @@ impl Picture {
             .map_err(fail)?
             .unwrap_or(crate::time::hour_of(now));
         let now_hour = crate::time::hour_of(now);
-        let inputs = Inputs::read(history, first_hour, now_hour + 1)?;
+        let budgets = crate::budgets::Budgets::of(config);
+        let inputs = Inputs::read(history, &budgets, first_hour, now_hour + 1)?;
         let (ratios, shifts) = learned(&inputs, &zone);
         let pieces = inputs.pieces(&ratios);
-        let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
-        for piece in &pieces {
-            *hours.entry(piece.hour).or_default() += piece.dollars;
-        }
+        let (hours, budget_hours) = hours_of(&pieces);
         let today = zone.day(now);
         let first_day = zone.day(crate::time::hour_start(first_hour)).min(today);
         let daily = daily(&zone, &hours, first_day, today);
@@ -169,7 +178,12 @@ impl Picture {
         };
         let shape = shape(&zone, &hours, now_hour);
         let standing = standing(&zone, &hours, now, daily.last().copied().unwrap_or(0.0));
-        let caps = cap_views(history, config, &zone, &hours, &paths, &shape, now)?;
+        let forecast = Forecast {
+            paths: &paths,
+            shape: &shape,
+            hours: &hours,
+        };
+        let caps = cap_views(history, &budgets, &zone, &budget_hours, &forecast, now)?;
         let events = caps::held(caps::events(history, now - 30.0 * DAY)?, now);
         let refusals = read_refusals(history)?;
         let sources = read_sources(history)?;
@@ -216,6 +230,8 @@ impl Picture {
             fed: inputs.fed,
             zone: zone.clone(),
             hours: hours.clone(),
+            budget_hours,
+            budgets,
             lead: (
                 config.override_lead.iter().copied().max().unwrap_or(3),
                 config.override_lead.iter().copied().min().unwrap_or(1),
@@ -297,6 +313,21 @@ impl Picture {
         }
         usual_day * self.shape.shares[Zone::weekday(day)][self.zone.local_hour(self.now) as usize]
     }
+}
+
+/// Every hour's dollars, and each budget's apart.
+fn hours_of(pieces: &[Piece]) -> (BTreeMap<i64, f64>, HashMap<String, BTreeMap<i64, f64>>) {
+    let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
+    let mut budget_hours: HashMap<String, BTreeMap<i64, f64>> = HashMap::new();
+    for piece in pieces {
+        *hours.entry(piece.hour).or_default() += piece.dollars;
+        *budget_hours
+            .entry(piece.budget.clone())
+            .or_default()
+            .entry(piece.hour)
+            .or_default() += piece.dollars;
+    }
+    (hours, budget_hours)
 }
 
 /// The pieces of local days `from` through `to`, from pieces in hour
@@ -596,118 +627,241 @@ fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> S
     }
 }
 
+/// What each cap's clock is judged on: the forecast's paths of the whole
+/// account's spend, how a day falls across its hours, and every hour's.
+struct Forecast<'a> {
+    paths: &'a Paths,
+    shape: &'a Shape,
+    hours: &'a BTreeMap<i64, f64>,
+}
+
+/// Each cap read, the feeds' and the machine's own, each against only
+/// its own budget's hours.
 fn cap_views(
     history: &History,
-    config: &Config,
+    budgets: &crate::budgets::Budgets,
     zone: &Zone,
-    hours: &BTreeMap<i64, f64>,
-    paths: &Paths,
-    shape: &Shape,
+    budget_hours: &HashMap<String, BTreeMap<i64, f64>>,
+    forecast: &Forecast,
     now: f64,
 ) -> Result<Vec<CapView>, String> {
-    let now_hour = crate::time::hour_of(now);
-    let mut caps = caps::latest(history)?;
-    if caps.is_empty()
-        && let Some(own) = &config.cap
-    {
-        caps.push(own_cap(own, hours, now));
-    }
+    let fed = caps::latest(history)?;
+    let own = own_caps(budgets, &fed, budget_hours, now);
+    let none = BTreeMap::new();
     let mut out = Vec::new();
-    for cap in caps {
-        let window = i64::from(cap.window_hours);
-        let earlier = caps::earlier(history, &cap, EARLIER_PERIODS)?;
-        let cap_share = counted(&cap, &earlier, hours);
-        // What's been billed since the feed's figure, hours wholly after it:
-        // none when the figure came this hour.
-        let after = crate::time::hour_of(cap.at) + 1;
-        let billed =
-            |from: i64| cap_share * hours.range(from..=now_hour).map(|(_, d)| d).sum::<f64>();
-        let since: f64 = if cap.feed.is_empty() || after > now_hour {
-            0.0
-        } else {
-            billed(after)
-        };
-        let resets = next_reset(&cap, now);
-        let spent = match resets {
-            // Read in a period that's since reset: what's billed since.
-            Some(next) if cap.at < next - f64::from(cap.window_hours) * HOUR => billed(
-                crate::time::hour_of(next - f64::from(cap.window_hours) * HOUR),
-            ),
-            _ => cap.spent + since,
-        };
-        // What rolls out next: the window's oldest hours first.
-        let past: Vec<f64> = (now_hour - window + 1..=now_hour)
-            .map(|hour| cap_share * hours.get(&hour).copied().unwrap_or(0.0))
-            .collect();
-        let leaving = match resets {
-            Some(at) => caps::Window::Resets {
-                at,
-                hours: cap.window_hours as usize,
-            },
-            None => caps::Window::Rolling(&past),
-        };
-        let paths = scaled(paths, cap_share);
-        let ends_at = cap.ends.map(|day| zone.day_start(day + 1));
-        let clock = match cap.allowance {
-            Some(allowance) if !paths.is_empty() => Some(caps::clock(
-                spent,
-                allowance,
-                cap.warn,
-                cap.fallback,
-                ends_at,
-                leaving,
-                &paths,
-                shape,
-                zone,
-                now,
-            )),
-            Some(allowance) if spent >= allowance => Some(caps::clock(
-                spent,
-                allowance,
-                cap.warn,
-                cap.fallback,
-                ends_at,
-                leaving,
-                &vec![vec![0.0; 7]],
-                shape,
-                zone,
-                now,
-            )),
-            _ => None,
+    for cap in fed.into_iter().chain(own) {
+        let budget = budgets.of_record(&cap.feed, &cap.budget);
+        let owner = caps::owner(&cap, &budgets.default);
+        let hours = budget_hours.get(&budget).unwrap_or(&none);
+        let view = match cap.unit {
+            caps::Unit::Share => share_view(cap, now),
+            caps::Unit::Dollars => {
+                let earlier = caps::earlier(history, &cap, EARLIER_PERIODS)?;
+                let of_all = budget_share(hours, forecast.hours, crate::time::hour_of(now));
+                dollars_view(cap, &earlier, hours, of_all, forecast, zone, now)
+            }
         };
         out.push(CapView {
-            cap,
-            spent,
-            clock,
-            ends_at,
-            resets,
+            budget,
+            owner,
+            ..view
         });
     }
     Ok(out)
 }
 
-/// The cap a machine with no feed sets itself, read from what's billed.
-fn own_cap(own: &crate::config::CapConfig, hours: &BTreeMap<i64, f64>, now: f64) -> Cap {
+/// A share of a plan's window as its feed read it, or none used
+/// once it has reset since. A share is never turned into dollars, so it
+/// has no forecast of its own.
+fn share_view(cap: Cap, now: f64) -> CapView {
+    let resets = next_reset(&cap, now);
+    let window = f64::from(cap.window_hours) * HOUR;
+    let used = match resets {
+        Some(next) if cap.at < next - window => Some(0.0),
+        _ => cap.used,
+    };
+    CapView {
+        budget: String::new(),
+        owner: String::new(),
+        spent: 0.0,
+        used,
+        clock: None,
+        ends_at: None,
+        resets,
+        cap,
+    }
+}
+
+/// A cap in dollars: its spend now, from the feed's figure and what its
+/// budget has billed since, and its clock, from the forecast at the
+/// budget's share of all spend and the cap's share of its budget's.
+fn dollars_view(
+    cap: Cap,
+    earlier: &[Cap],
+    hours: &BTreeMap<i64, f64>,
+    of_all: f64,
+    forecast: &Forecast,
+    zone: &Zone,
+    now: f64,
+) -> CapView {
     let now_hour = crate::time::hour_of(now);
-    let window = i64::from(own.window_hours);
-    Cap {
+    let window = i64::from(cap.window_hours);
+    let cap_share = counted(&cap, earlier, hours);
+    // What's been billed since the feed's figure, hours wholly after it:
+    // none when the figure came this hour.
+    let after = crate::time::hour_of(cap.at) + 1;
+    let billed = |from: i64| cap_share * hours.range(from..=now_hour).map(|(_, d)| d).sum::<f64>();
+    let since: f64 = if cap.feed.is_empty() || after > now_hour {
+        0.0
+    } else {
+        billed(after)
+    };
+    let resets = next_reset(&cap, now);
+    let spent = match resets {
+        // Read in a period that's since reset: what's billed since.
+        Some(next) if cap.at < next - f64::from(cap.window_hours) * HOUR => billed(
+            crate::time::hour_of(next - f64::from(cap.window_hours) * HOUR),
+        ),
+        _ => cap.spent + since,
+    };
+    // What rolls out next: the window's oldest hours first.
+    let past: Vec<f64> = (now_hour - window + 1..=now_hour)
+        .map(|hour| cap_share * hours.get(&hour).copied().unwrap_or(0.0))
+        .collect();
+    let leaving = match resets {
+        Some(at) => caps::Window::Resets {
+            at,
+            hours: cap.window_hours as usize,
+        },
+        None => caps::Window::Rolling(&past),
+    };
+    let paths = scaled(forecast.paths, cap_share * of_all);
+    let ends_at = cap.ends.map(|day| zone.day_start(day + 1));
+    let still = vec![vec![0.0; 7]];
+    let paths = match cap.allowance {
+        Some(_) if !paths.is_empty() => Some(paths.as_ref()),
+        // Over with no forecast, it's still back once its spend leaves.
+        Some(allowance) if spent >= allowance => Some(&still),
+        _ => None,
+    };
+    let clock = cap.allowance.zip(paths).map(|(allowance, paths)| {
+        caps::clock(
+            spent,
+            allowance,
+            cap.warn,
+            cap.fallback,
+            ends_at,
+            leaving,
+            paths,
+            forecast.shape,
+            zone,
+            now,
+        )
+    });
+    CapView {
+        budget: String::new(),
+        owner: String::new(),
+        spent,
+        used: None,
+        clock,
+        ends_at,
+        resets,
+        cap,
+    }
+}
+
+/// How much of all spend a budget's was over the last four weeks, which
+/// the forecast of all of it is scaled by for the budget's caps; all of
+/// it while nothing was spent.
+fn budget_share(budget: &BTreeMap<i64, f64>, all: &BTreeMap<i64, f64>, now_hour: i64) -> f64 {
+    let recent = now_hour - 28 * 24..=now_hour;
+    let total: f64 = all.range(recent.clone()).map(|(_, d)| d).sum();
+    if total <= 0.0 {
+        return 1.0;
+    }
+    (budget.range(recent).map(|(_, d)| d).sum::<f64>() / total).clamp(0.0, 1.0)
+}
+
+/// The allowances in dollars the config declares, counted here from each
+/// budget's hours: each unless a feed reads its budget's of the same
+/// name, and the machine's own cap only while no feed gives its budget
+/// one, as it always has.
+fn own_caps(
+    budgets: &crate::budgets::Budgets,
+    fed: &[Cap],
+    budget_hours: &HashMap<String, BTreeMap<i64, f64>>,
+    now: f64,
+) -> Vec<Cap> {
+    let read = |budget: &str, name: Option<&str>| {
+        fed.iter().any(|cap| {
+            budgets.of_record(&cap.feed, &cap.budget) == budget
+                && name.is_none_or(|name| cap.name == name)
+        })
+    };
+    let none = BTreeMap::new();
+    budgets
+        .all
+        .iter()
+        .flat_map(|budget| {
+            budget
+                .allowances
+                .iter()
+                .map(move |allowance| (budget, allowance))
+        })
+        .filter(|(_, allowance)| allowance.unit == caps::Unit::Dollars)
+        .filter(|(budget, allowance)| {
+            !read(
+                &budget.name,
+                (!allowance.stands_in).then_some(allowance.name.as_str()),
+            )
+        })
+        .map(|(budget, allowance)| {
+            let hours = budget_hours.get(&budget.name).unwrap_or(&none);
+            own_cap(&budget.name, allowance, hours, now)
+        })
+        .collect()
+}
+
+/// An allowance of the machine's own, read from what its budget has billed.
+fn own_cap(
+    budget: &str,
+    declared: &crate::config::AllowanceConfig,
+    hours: &BTreeMap<i64, f64>,
+    now: f64,
+) -> Cap {
+    let now_hour = crate::time::hour_of(now);
+    let mut cap = Cap {
         feed: String::new(),
-        name: "own".into(),
-        label: format!("{}-hour cap", own.window_hours),
-        allowance: Some(own.allowance),
-        window_hours: own.window_hours,
-        spent: hours
-            .range(now_hour - window + 1..=now_hour)
-            .map(|(_, d)| d)
-            .sum(),
-        warn: own.warn,
+        budget: budget.to_owned(),
+        name: declared.name.clone(),
+        label: if declared.stands_in {
+            format!("{}-hour cap", declared.window_hours)
+        } else {
+            format!(
+                "{} allowance",
+                crate::budgets::window_adjective(declared.window_hours)
+            )
+        },
+        unit: caps::Unit::Dollars,
+        allowance: declared.allowance,
+        window_hours: declared.window_hours,
+        spent: 0.0,
+        warn: declared.warn,
         fallback: None,
         state: "ok".into(),
         ends: None,
         ends_known: true,
-        resets: None,
+        resets: declared.resets.as_deref().and_then(crate::time::parse),
+        used: None,
         at: now,
-    }
+    };
+    // A period counts from its start; a rolling window, its last hours.
+    let first = match next_reset(&cap, now) {
+        Some(next) => crate::time::hour_of(next - f64::from(declared.window_hours) * HOUR),
+        None => now_hour - i64::from(declared.window_hours) + 1,
+    };
+    cap.spent = hours.range(first..=now_hour).map(|(_, d)| d).sum();
+    cap
 }
 
 /// The forecast's paths at a cap's share of what's billed, as they are
@@ -737,8 +891,11 @@ mod tests {
     fn cap(feed: &str, spent: f64) -> Cap {
         Cap {
             feed: feed.into(),
+            budget: String::new(),
             name: "premium".into(),
             label: "premium day".into(),
+            unit: caps::Unit::Dollars,
+            used: None,
             allowance: Some(1000.0),
             window_hours: 24,
             spent,
@@ -818,5 +975,122 @@ mod tests {
         assert_eq!(counted(&today, &earlier, &hours), 0.5);
         // With nothing known before either, all of it counts.
         assert_eq!(counted(&today, &[], &hours), 1.0);
+    }
+
+    const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z
+
+    /// The proxy's cap the default, a team's token with an allowance of
+    /// the machine's own, and a Claude plan the proxy's feed reads a share
+    /// of.
+    fn budgeted() -> Config {
+        serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+            "budgets": [
+                {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
+                 "whose": "employer", "default": true},
+                {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team",
+                 "allowances": [{"name": "week", "allowance": 400, "windowHours": 168,
+                                 "warn": 0.9}]},
+                {"name": "claude", "label": "Claude Pro", "kind": "plan",
+                 "whose": "own", "providers": ["claude-code"]},
+            ],
+            "feeds": [{"name": "proxy", "label": "the AI proxy", "command": ["f"]}],
+        }))
+        .unwrap()
+    }
+
+    fn turn(history: &History, session: &str, budget: &str, at: f64, cost: f64) {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        history
+            .add_event(&Event::Turn(Turn {
+                session: session.into(),
+                at,
+                model: "m".into(),
+                provider: "anthropic".into(),
+                kind: Kind::Agent,
+                tokens: Tokens::default(),
+                cost: Cost {
+                    total: cost,
+                    ..Cost::default()
+                },
+                quest: None,
+                budget: Some(budget.into()),
+                gap: None,
+                rebuilt: 0.0,
+                rebuilt_cost: 0.0,
+                cause: None,
+            }))
+            .unwrap();
+    }
+
+    fn store(history: &History, line: &serde_json::Value) {
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(history, "proxy", &record, NOW).unwrap();
+    }
+
+    // A team's token spending fast moves only its own cap: the proxy's
+    // cap counts what the proxy's budget spent since its reading, and an
+    // allowance of the machine's own counts only its budget's hours.
+    #[test]
+    fn each_cap_counts_only_its_budget_s_spend() {
+        let history = History::memory();
+        let read = crate::time::hour_start(crate::time::hour_of(NOW) - 2) + 60.0;
+        store(
+            &history,
+            &serde_json::json!({
+                "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+                "allowance": 1000, "windowHours": 168, "spent": 100, "warn": 0.9,
+                "state": "ok", "at": crate::time::rfc3339(read),
+            }),
+        );
+        turn(&history, "me", "", NOW - HOUR, 50.0);
+        turn(&history, "team", "delta", NOW - HOUR, 500.0);
+        let picture = Picture::read(&history, &budgeted(), NOW).unwrap();
+        let view = |name: &str| {
+            picture
+                .caps
+                .iter()
+                .find(|view| view.cap.name == name)
+                .unwrap()
+        };
+        let weekly = view("weekly");
+        assert_eq!((weekly.budget.as_str(), weekly.spent), ("proxy", 150.0));
+        let week = view("week");
+        assert_eq!((week.budget.as_str(), week.spent), ("delta", 500.0));
+        assert_eq!(week.cap.label, "weekly allowance");
+        let found = crate::detect::caps(&picture);
+        let keys: Vec<&str> = found.iter().map(|finding| finding.key.as_str()).collect();
+        assert_eq!(keys, ["cap:/delta:week:over"]);
+    }
+
+    // A share of a plan's window is its used share, never dollars,
+    // warned at its warning, and nothing used once it has reset unread.
+    #[test]
+    fn a_share_is_its_used_share_until_it_resets() {
+        let history = History::memory();
+        let share = |used: f64, at: f64, resets: f64| {
+            serde_json::json!({
+                "v": 1, "kind": "cap", "name": "five-hours", "label": "5-hour window",
+                "budget": "claude", "unit": "share", "used": used, "windowHours": 5,
+                "warn": 0.8, "state": "ok", "at": crate::time::rfc3339(at),
+                "resets": crate::time::rfc3339(resets),
+            })
+        };
+        store(&history, &share(0.85, NOW - 600.0, NOW + 2.0 * HOUR));
+        let picture = Picture::read(&history, &budgeted(), NOW).unwrap();
+        let view = &picture.caps[0];
+        assert_eq!(
+            (view.budget.as_str(), view.used, view.clock.is_none()),
+            ("claude", Some(0.85), true)
+        );
+        let found = crate::detect::caps(&picture);
+        assert_eq!(found[0].key, "cap:proxy/claude:five-hours:near");
+        assert!(!found[0].detail.contains('$'), "{}", found[0].detail);
+        store(&history, &share(1.0, NOW - 6.0 * HOUR, NOW - HOUR));
+        let later = Picture::read(&history, &budgeted(), NOW + 1.0).unwrap();
+        assert_eq!(later.caps[0].used, Some(0.85), "the newest reading stands");
+        let after = Picture::read(&history, &budgeted(), NOW + 3.0 * HOUR).unwrap();
+        assert_eq!(after.caps[0].used, Some(0.0));
     }
 }

@@ -36,8 +36,9 @@
       home = account workstation;
       file = home.xdg.configFile."spend-watch/config.json".source;
       # Every option set, so each shape the module renders is one the
-      # daemon reads: a feed, the Claude plan's as a machine names it, a cap
-      # of the account's own, a zone.
+      # daemon reads: a feed for a budget, the Claude plan's as a machine
+      # names it for its plan, budgets with their allowances and a price, a
+      # cap of the account's own, a zone.
       fed = account (bareNixos [
         self.nixosModules.workstation
         {
@@ -49,10 +50,37 @@
                 "run"
               ];
               environment.REGION = "north";
+              budget = "provider";
+            };
+            budgets = {
+              provider = {
+                label = "the provider's cap";
+                kind = "cap";
+                whose = "employer";
+                default = true;
+                allowances.week = {
+                  allowance = 400;
+                  windowHours = 168;
+                  resets = "2026-11-09T05:00:00Z";
+                };
+              };
+              plan = {
+                label = "the plan";
+                kind = "plan";
+                whose = "own";
+                providers = [ "plan-code" ];
+                price.dollars = 20;
+                allowances.window = {
+                  unit = "share";
+                  windowHours = 5;
+                  warn = 0.8;
+                };
+              };
             };
             feeds.claude = {
               label = "Claude";
               command = [ (lib.getExe home.jitsusama.spend-watch.claudePlanFeed) ];
+              budget = "plan";
             };
             cap.allowance = 4000;
             zone = "America/Toronto";

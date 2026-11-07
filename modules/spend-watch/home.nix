@@ -21,7 +21,17 @@
 #     command = [ (lib.getExe config.jitsusama.spend-watch.claudePlanFeed) ];
 #   };
 #
-# With none, every figure is pi's own at list prices, and says so.
+# With none, every figure is pi's own at list prices, and says so. Where the
+# money comes from more than one place, each is a budget, and a feed says
+# which is its own:
+#
+#   jitsusama.spend-watch.budgets.proxy = {
+#     label = "Your proxy cap"; kind = "cap"; whose = "employer"; default = true;
+#   };
+#   jitsusama.spend-watch.budgets.delta = {
+#     label = "Delta team token"; kind = "team"; whose = "team";
+#   };
+#   jitsusama.spend-watch.feeds.proxy.budget = "proxy";
 {
   config,
   lib,
@@ -52,10 +62,37 @@ let
     registry = cfg.paths.registry;
     quests = cfg.paths.quests;
     state = cfg.paths.state;
-    feeds = lib.mapAttrsToList (name: feed: {
-      inherit name;
-      inherit (feed) label command environment;
-    }) cfg.feeds;
+    feeds = lib.mapAttrsToList (
+      name: feed:
+      {
+        inherit name;
+        inherit (feed) label command environment;
+      }
+      // lib.optionalAttrs (feed.budget != null) { inherit (feed) budget; }
+    ) cfg.feeds;
+    budgets = lib.mapAttrsToList (
+      name: budget:
+      {
+        inherit name;
+        inherit (budget)
+          label
+          kind
+          whose
+          default
+          providers
+          ;
+        allowances = lib.mapAttrsToList (
+          name: allowance:
+          {
+            inherit name;
+            inherit (allowance) unit windowHours warn;
+          }
+          // lib.optionalAttrs (allowance.allowance != null) { inherit (allowance) allowance; }
+          // lib.optionalAttrs (allowance.resets != null) { inherit (allowance) resets; }
+        ) budget.allowances;
+      }
+      // lib.optionalAttrs (budget.price != null) { inherit (budget) price; }
+    ) cfg.budgets;
     notices = {
       inherit (cfg.notices) enable perWeek daily;
     };
@@ -123,6 +160,127 @@ in
               '';
               type = lib.types.attrsOf lib.types.str;
               default = { };
+            };
+            budget = lib.mkOption {
+              description = ''
+                The budget its bill and caps are for, unless a record names another;
+                the default budget when null.
+              '';
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+            };
+          };
+        }
+      );
+    };
+
+    budgets = lib.mkOption {
+      description = ''
+        Where pi's requests draw their money from, by name: a Claude plan, an API
+        key, a proxy's cap, a team's token. Exactly one is the default, which a
+        turn draws on when nothing says otherwise. With none declared, all of it
+        is one budget, `default`, labelled "pi".
+      '';
+      default = { };
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            label = lib.mkOption {
+              description = "What it's called where it's shown.";
+              type = lib.types.str;
+            };
+            kind = lib.mkOption {
+              description = "What it is: a Claude plan, a key, a cap or a team's token.";
+              type = lib.types.enum [
+                "plan"
+                "key"
+                "cap"
+                "team"
+              ];
+            };
+            whose = lib.mkOption {
+              description = "Whose money it is.";
+              type = lib.types.enum [
+                "own"
+                "employer"
+                "team"
+              ];
+            };
+            default = lib.mkOption {
+              description = "Whether it's the one a turn draws on when nothing says otherwise.";
+              type = lib.types.bool;
+              default = false;
+            };
+            providers = lib.mkOption {
+              description = ''
+                pi's providers whose turns are always this budget's, whatever the
+                session's log says, as `claude-code` is a Claude plan's.
+              '';
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+            };
+            price = lib.mkOption {
+              description = "What a plan costs, billed whether it's used or not.";
+              default = null;
+              type = lib.types.nullOr (
+                lib.types.submodule {
+                  options = {
+                    dollars = lib.mkOption {
+                      description = "Dollars a period.";
+                      type = lib.types.numbers.nonnegative;
+                    };
+                    per = lib.mkOption {
+                      description = "The period the price is for.";
+                      type = lib.types.enum [ "month" ];
+                      default = "month";
+                    };
+                  };
+                }
+              );
+            };
+            allowances = lib.mkOption {
+              description = ''
+                What it may spend in a period, by name: dollars against an allowance,
+                or a share of a plan's window. A feed's cap of the same name for this
+                budget is the same allowance, read.
+              '';
+              default = { };
+              type = lib.types.attrsOf (
+                lib.types.submodule {
+                  options = {
+                    unit = lib.mkOption {
+                      description = "What it counts in.";
+                      type = lib.types.enum [
+                        "dollars"
+                        "share"
+                      ];
+                      default = "dollars";
+                    };
+                    allowance = lib.mkOption {
+                      description = "Dollars allowed in the window, for an allowance in dollars.";
+                      type = lib.types.nullOr lib.types.numbers.positive;
+                      default = null;
+                    };
+                    windowHours = lib.mkOption {
+                      description = "The window, in hours.";
+                      type = lib.types.ints.positive;
+                    };
+                    resets = lib.mkOption {
+                      description = ''
+                        An instant it resets at, RFC 3339, for one counted over periods
+                        rather than a rolling window; it resets every window after.
+                      '';
+                      type = lib.types.nullOr lib.types.str;
+                      default = null;
+                    };
+                    warn = lib.mkOption {
+                      description = "The share of it to warn at.";
+                      type = lib.types.numbers.between 0 1;
+                      default = 0.9;
+                    };
+                  };
+                }
+              );
             };
           };
         }
@@ -257,7 +415,10 @@ in
     };
 
     cap = lib.mkOption {
-      description = "A cap to hold spend to where no feed gives one.";
+      description = ''
+        The default budget's allowance in dollars, held where no feed gives that
+        budget a cap.
+      '';
       default = null;
       type = lib.types.nullOr (
         lib.types.submodule {

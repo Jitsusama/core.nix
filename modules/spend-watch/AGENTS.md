@@ -18,14 +18,15 @@ feed speaks.
   being cut off, signed out or offline leaves pi's logs, which always read.
   `src/series.rs` holds the order.
 - **Tracing.** Every piece of spend carries its session, quest, repo, model,
-  tool and agent kind, so every cut is a sum of the same pieces and every
-  report agrees with every other. A quest's spend rolls up to its root,
+  tool, agent kind and budget, so every cut is a sum of the same pieces and
+  every report agrees with every other. A quest's spend rolls up to its root,
   and for the launcher's Agents to every quest above it, today's each a
   family in `collection.json` (its whole, its own and its subquests'), so
   an orchestrator says its orchestration's without the shell adding. A
-  bill that doesn't say which session spent it is shared by the pieces on
-  its model, by their list prices, since models are priced apart; a
-  metered hour keeps what other tools spent on each model as theirs on it.
+  bill that doesn't say which session spent it is shared by its budget's
+  pieces on its model, by their list prices, since models are priced
+  apart; a metered hour keeps what other tools spent on each model as
+  theirs on it.
   When pi carries a session into a new log it copies the old entries ahead
   of the new header, so what comes before the header is the parent log's
   to count, unless that log is gone.
@@ -39,6 +40,23 @@ feed speaks.
   name, and serves the quest whose workspace it works in until a quest
   entry says otherwise. `src/ingest.rs` finds them; `src/series.rs` maps
   them.
+- **Budgets.** pi's logs name one provider for everything a proxy
+  carries, whether it spends Joel's own key or a team's token, so each
+  turn's budget is worked out: the budget claiming its provider, since
+  that's what's paid (pi-claude's `claude-code` is the Claude plan's);
+  else the one the nearest budget entry among its ancestors names, which
+  the harness writes as a session's budget changes; else the default. A
+  run's agent whose log names none draws on what its session did at that
+  hour. A name nobody declared counts as itself, shown as undeclared, so
+  the budgets always sum to the whole. A feed's bill and caps are its
+  budget's unless a record names another; a budget no feed bills is
+  estimated from the logs; a plan's turns cost nothing but its price,
+  their list prices kept as what they were worth. Each allowance
+  counts only its budget's spend, and so do its outlook, its warnings and
+  the tokens warning. A share of a window is never turned into dollars,
+  so the whole across budgets is billed dollars only: metered spend and
+  each plan's price over the days it covers. `src/budgets.rs`
+  attributes, `src/standing.rs` says how each stands.
 - **Waste.** Each cache write gets a cause: a compaction, a pause longer
   than the cache lives, a fresh session, a model change. Rebuilt context is
   the money a session spent having again what it had. Some is how an
@@ -50,10 +68,11 @@ feed speaks.
   profile, which now only spreads a day across its hours. Its ranges are
   checked against what happened, not recalibrated, since spend changes faster
   than a calibration learns.
-- **Caps.** A cap is a clock: simulated paths of the forecast give the
-  chance of reaching it before the window rolls, and while over, when it
-  comes back. Every change in allowance is history, and a cap lowered,
-  lapsed, or a raise about to end is an alert. A change is told once it
+- **Caps.** A cap is a clock: simulated paths of the forecast, at its
+  budget's share of all spend, give the chance of reaching it before the
+  window rolls, and while over, when it comes back. Every change in
+  allowance is history, and a cap lowered, lapsed, or a raise about to
+  end is an alert. A change is told once it
   has stood ten minutes, or at once when the cap warns or refuses at it,
   and a change back within that time takes both away, since a
   provider's figure can flicker for one reading. A fall stops being an
@@ -100,9 +119,11 @@ feed speaks.
   `src/collection.rs` lays them out as the launcher's other collections
   are: what wants a look first, then how things stand, each a figure with
   its parts a step in, then what was found. How things stand is today,
-  each cap longer than a day, then each period before, Yesterday to the
-  last 30 days: a day's cap is behind today and the week ahead behind the
-  widest cap. The periods sit in the collection itself, so no path goes
+  each cap longer than a day, the budgets where there's more than one,
+  then each period before, Yesterday to the last 30 days: a day's cap is
+  behind today, the week ahead behind the widest cap, and behind Budgets
+  the whole, then each budget nearest its allowance, a budget with several
+  allowances stepping in to each. The periods sit in the collection itself, so no path goes
   deeper than three (Joel, 2026-10-26).
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
@@ -120,8 +141,8 @@ feed speaks.
 
 The crate is a library with a thin `main.rs`. Its tests run as it builds;
 `direnv exec . cargo test` runs them here, and `spend-watch import` followed
-by `show` or `report` tries it on the account's own logs without the daemon,
-with a config whose state lies elsewhere.
+by `show`, `report` or `budgets` tries it on the account's own logs without
+the daemon, with a config whose state lies elsewhere.
 
 `feeds/` holds the feeds kept beside the watch, each a crate of its own
 with its tests and checks: [`feeds/claude/`][3] speaks for a Claude plan,

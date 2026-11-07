@@ -21,7 +21,16 @@
 //! and in its quest, at the hours its log has turns in, and the run's own
 //! total counts only what no log of it covers; a swarm's is its kind's,
 //! named by its session.
+//!
+//! Every piece draws on a budget (budgets.rs): a turn's provider's, else
+//! its log's, else, for a run's agent whose log says none, the budget its
+//! session drew on at that hour by its log, else the default. Each
+//! budget's hour is priced on its own: a feed's bill for a budget is
+//! shared only among that budget's pieces, a budget no feed bills is
+//! estimated from pi's logs, and a plan's turns cost nothing more
+//! than its price, their list prices kept as what they're worth.
 
+use crate::budgets::Budgets;
 use crate::estimate::Ratios;
 
 use crate::history::{History, sql as fail};
@@ -68,6 +77,8 @@ pub struct Piece {
     /// subagent:<kind>, or the tool's own word.
     pub kind: String,
     pub persona: String,
+    /// The budget it drew on, by name, declared or not.
+    pub budget: String,
     pub dollars: f64,
     pub list: f64,
     pub source: Source,
@@ -87,6 +98,12 @@ struct Known {
     model: String,
     kind: String,
     persona: String,
+    /// The provider its turns went to, which may claim their budget.
+    provider: String,
+    /// What its log said it drew on: none where nothing did, empty for
+    /// the default.
+    logged: Option<String>,
+    budget: String,
     list: f64,
 }
 
@@ -96,12 +113,15 @@ struct BilledRow {
     tool: String,
     model: String,
     session: String,
+    /// The budget it was drawn from: the record's, else its feed's.
+    budget: String,
     dollars: f64,
 }
 
 /// What the history knows about one window, read once.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Inputs {
+    budgets: Budgets,
     known: BTreeMap<i64, Vec<Known>>,
     billed: BTreeMap<i64, Vec<BilledRow>>,
     /// Each source's settled hours: [first, through).
@@ -112,6 +132,8 @@ pub struct Inputs {
     subagents: HashMap<String, Known>,
     /// Whether any feed has ever billed anything.
     pub fed: bool,
+    /// The budgets a feed bills: each feed's own, and any a record named.
+    fed_budgets: HashSet<String>,
 }
 
 /// Each session's repo, by its id.
@@ -120,19 +142,43 @@ type Repos = HashMap<String, String>;
 type Agents = HashMap<String, (String, String)>;
 /// The quest a session served in an hour, by the hour and the session.
 type QuestAt = HashMap<(i64, String), Option<String>>;
+/// What each session's log said it drew on in each hour it spent, by the
+/// session: the costliest word of the hour, beside its cost.
+type LoggedAt = HashMap<String, BTreeMap<i64, (f64, Option<String>)>>;
+/// Pieces pi's side knows, each by its hour.
+type ByHour = Vec<(i64, Known)>;
 
 impl Inputs {
-    pub fn read(history: &History, from: i64, to: i64) -> Result<Inputs, String> {
+    pub fn read(
+        history: &History,
+        budgets: &Budgets,
+        from: i64,
+        to: i64,
+    ) -> Result<Inputs, String> {
         let db = &history.db;
-        let mut inputs = Inputs::default();
+        let mut inputs = Inputs {
+            budgets: budgets.clone(),
+            known: BTreeMap::new(),
+            billed: BTreeMap::new(),
+            settled: HashMap::new(),
+            logged: HashSet::new(),
+            subagents: HashMap::new(),
+            fed: false,
+            fed_budgets: HashSet::new(),
+        };
         let (repos, agents) = inputs.read_sessions(db)?;
-        let (quest_at, turns) = Inputs::read_turns(db, from, to, &repos)?;
-        inputs.read_runs(db, (from, to), &repos, &quest_at)?;
+        let (quest_at, logged_at, turns) = inputs.read_turns(db, from, to, &repos)?;
+        inputs.read_runs(db, (from, to), &repos, &quest_at, &logged_at)?;
         for (hour, turn) in turns {
-            let known = inputs.labelled(turn, &agents);
+            let known = inputs.labelled(hour, turn, &agents, &logged_at);
             inputs.known.entry(hour).or_default().push(known);
         }
+        // Each hour's are by budget, so each budget's are a run of them.
+        for known in inputs.known.values_mut() {
+            known.sort_by(|one, other| one.budget.cmp(&other.budget));
+        }
         inputs.read_billed(db, from, to)?;
+        inputs.read_fed_budgets(db, &budgets.of_feeds())?;
         inputs.read_settled(db)?;
         inputs.fed = db
             .query_row("SELECT EXISTS (SELECT 1 FROM billed)", [], |row| row.get(0))
@@ -169,20 +215,23 @@ impl Inputs {
         Ok((repos, agents))
     }
 
-    /// Each hour's turns, and the quest a session served in each hour, for
-    /// its subagents.
+    /// Each hour's turns, and the quest a session served and the budget
+    /// its log said in each hour, for its subagents.
     fn read_turns(
+        &self,
         db: &Connection,
         from: i64,
         to: i64,
         repos: &Repos,
-    ) -> Result<(QuestAt, Vec<(i64, Known)>), String> {
+    ) -> Result<(QuestAt, LoggedAt, ByHour), String> {
         let mut quest_at = QuestAt::new();
-        let mut turns: Vec<(i64, Known)> = Vec::new();
+        let mut logged_at = LoggedAt::new();
+        let mut turns = ByHour::new();
         let mut statement = db
             .prepare(
-                "SELECT hour, session, quest, model, kind, cost FROM turn_hours
-                     WHERE hour >= ?1 AND hour < ?2 ORDER BY hour, session, quest, model, kind",
+                "SELECT hour, session, quest, model, kind, provider, budget, cost FROM turn_hours
+                 WHERE hour >= ?1 AND hour < ?2
+                 ORDER BY hour, session, quest, model, kind, provider, budget",
             )
             .map_err(fail)?;
         let rows = statement
@@ -193,13 +242,20 @@ impl Inputs {
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
-                    row.get::<_, f64>(5)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, f64>(7)?,
                 ))
             })
             .map_err(fail)?;
         for row in rows {
-            let (hour, session, quest, model, kind, list) = row.map_err(fail)?;
+            let (hour, session, quest, model, kind, provider, logged, list) = row.map_err(fail)?;
             quest_at.insert((hour, session.clone()), quest.clone());
+            let said = logged_at.entry(session.clone()).or_default().entry(hour);
+            let said = said.or_insert((f64::NEG_INFINITY, None));
+            if list > said.0 {
+                *said = (list, logged.clone());
+            }
             turns.push((
                 hour,
                 Known {
@@ -210,11 +266,31 @@ impl Inputs {
                     model,
                     kind,
                     persona: String::new(),
+                    budget: self
+                        .budgets
+                        .of_turn(&provider, logged.as_deref())
+                        .unwrap_or_else(|| self.budgets.default.clone()),
+                    provider,
+                    logged,
                     list,
                 },
             ));
         }
-        Ok((quest_at, turns))
+        Ok((quest_at, logged_at, turns))
+    }
+
+    /// The budget a session drew on by its log at an hour: what it said
+    /// that hour, or at the last hour before that it spent in, or the
+    /// default.
+    fn session_budget(&self, logged_at: &LoggedAt, session: &str, hour: i64) -> String {
+        logged_at
+            .get(session)
+            .and_then(|hours| hours.range(..=hour).next_back())
+            .and_then(|(_, (_, logged))| logged.as_deref())
+            .map_or_else(
+                || self.budgets.default.clone(),
+                |logged| self.budgets.named(logged),
+            )
     }
 
     /// Each run of subagents: the sessions that were its agents, and, at
@@ -225,6 +301,7 @@ impl Inputs {
         (from, to): (i64, i64),
         repos: &Repos,
         quest_at: &QuestAt,
+        logged_at: &LoggedAt,
     ) -> Result<(), String> {
         let mut statement = db
             .prepare("SELECT kind, model, persona, parent, started, cost, sessions FROM runs")
@@ -249,11 +326,14 @@ impl Inputs {
             let known = Known {
                 quest: quest_at.get(&(hour, parent.clone())).cloned().flatten(),
                 repo: repos.get(&parent).cloned().unwrap_or_default(),
+                budget: self.session_budget(logged_at, &parent, hour),
                 own: parent.clone(),
                 session: parent,
                 model,
                 kind: format!("subagent:{kind}"),
                 persona,
+                provider: String::new(),
+                logged: None,
                 list: cost,
             };
             let ids: Vec<String> = serde_json::from_str(&sessions).unwrap_or_default();
@@ -292,32 +372,67 @@ impl Inputs {
         Ok(())
     }
 
-    /// What each hour billed, by source, tool, model and session.
+    /// What each hour billed, by source, tool, model, session and budget,
+    /// each hour's by budget.
     fn read_billed(&mut self, db: &Connection, from: i64, to: i64) -> Result<(), String> {
         let mut statement = db
             .prepare(
-                "SELECT hour, source, tool, model, session, SUM(dollars) FROM billed
-                     WHERE hour >= ?1 AND hour < ?2 GROUP BY hour, source, tool, model, session",
+                "SELECT hour, source, tool, model, session, feed, budget, SUM(dollars) FROM billed
+                 WHERE hour >= ?1 AND hour < ?2
+                 GROUP BY hour, source, tool, model, session, feed, budget",
             )
             .map_err(fail)?;
         let rows = statement
             .query_map([from, to], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
+                    row.get::<_, String>(5)?,
                     BilledRow {
                         source: row.get(1)?,
                         tool: row.get(2)?,
                         model: row.get(3)?,
                         session: row.get(4)?,
-                        dollars: row.get(5)?,
+                        budget: row.get(6)?,
+                        dollars: row.get(7)?,
                     },
                 ))
             })
             .map_err(fail)?;
         for row in rows {
-            let (hour, billed) = row.map_err(fail)?;
+            let (hour, feed, mut billed) = row.map_err(fail)?;
+            if billed.budget.is_empty() {
+                self.budgets.of_feed(&feed).clone_into(&mut billed.budget);
+            }
             self.billed.entry(hour).or_default().push(billed);
         }
+        for billed in self.billed.values_mut() {
+            billed.sort_by(|one, other| one.budget.cmp(&other.budget));
+        }
+        Ok(())
+    }
+
+    /// The budgets a feed bills: each configured feed's own, and every
+    /// budget a feed's record has named or a feed no longer configured
+    /// billed.
+    fn read_fed_budgets(&mut self, db: &Connection, feeds: &[String]) -> Result<(), String> {
+        let mut statement = db
+            .prepare("SELECT DISTINCT feed, budget FROM billed")
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(fail)?;
+        for row in rows {
+            let (feed, budget) = row.map_err(fail)?;
+            let budget = if budget.is_empty() {
+                self.budgets.of_feed(&feed).to_owned()
+            } else {
+                budget
+            };
+            self.fed_budgets.insert(budget);
+        }
+        self.fed_budgets.extend(feeds.iter().cloned());
         Ok(())
     }
 
@@ -348,17 +463,30 @@ impl Inputs {
     }
 
     /// A turn as the work it was part of: a run's, shown as the run's under
-    /// the session that started it; an agent's, as its kind's and named.
-    /// A compaction or an extension's call stays what it is.
-    fn labelled(&self, turn: Known, agents: &HashMap<String, (String, String)>) -> Known {
+    /// the session that started it, drawing on that session's budget at
+    /// the hour where neither its provider nor its log says another; an
+    /// agent's, as its kind's and named. A compaction or an extension's
+    /// call stays what it is.
+    fn labelled(
+        &self,
+        hour: i64,
+        turn: Known,
+        agents: &HashMap<String, (String, String)>,
+        logged_at: &LoggedAt,
+    ) -> Known {
         let agent = turn.kind == "agent";
         if let Some(run) = self.subagents.get(&turn.own) {
+            let budget = self
+                .budgets
+                .of_turn(&turn.provider, turn.logged.as_deref())
+                .unwrap_or_else(|| self.session_budget(logged_at, &run.session, hour));
             return Known {
                 session: run.session.clone(),
                 quest: turn.quest.or_else(|| run.quest.clone()),
                 repo: run.repo.clone(),
                 kind: if agent { run.kind.clone() } else { turn.kind },
                 persona: run.persona.clone(),
+                budget,
                 ..turn
             };
         }
@@ -390,8 +518,13 @@ impl Inputs {
             if !self.settled("warehouse", hour) {
                 continue;
             }
+            // Only what a feed bills is learned from: a budget it doesn't
+            // isn't in its bill.
             let mut list: HashMap<&str, f64> = HashMap::new();
-            for piece in known {
+            for piece in known
+                .iter()
+                .filter(|piece| self.fed_budgets.contains(&piece.budget))
+            {
                 *list.entry(&piece.model).or_default() += piece.list;
             }
             let mut billed: HashMap<&str, f64> = HashMap::new();
@@ -436,17 +569,21 @@ impl Inputs {
             repo: known.repo.clone(),
             kind: known.kind.clone(),
             persona: known.persona.clone(),
+            budget: known.budget.clone(),
             dollars,
             list: known.list,
             source,
         }
     }
 
+    /// Spend no log here knows the turns of: another tool's, a session's
+    /// elsewhere, or what a bill holds past pi's.
     fn other(
         hour: i64,
         tool: &str,
         model: &str,
         session: &str,
+        budget: &str,
         dollars: f64,
         source: Source,
     ) -> Piece {
@@ -459,6 +596,7 @@ impl Inputs {
             repo: String::new(),
             kind: tool.into(),
             persona: String::new(),
+            budget: budget.into(),
             dollars,
             list: 0.0,
             source,
@@ -472,6 +610,7 @@ impl Inputs {
     /// model differently, are drawn evenly from what's left over.
     fn metered(
         hour: i64,
+        budget: &str,
         known: &[Known],
         meter: &BTreeMap<&str, f64>,
         estimate: impl Fn(&Known) -> Option<f64>,
@@ -530,6 +669,7 @@ impl Inputs {
                     "other",
                     model,
                     "",
+                    budget,
                     dollars * stays,
                     Source::Meter,
                 ));
@@ -543,6 +683,7 @@ impl Inputs {
     fn warehouse_pieces(
         &self,
         hour: i64,
+        budget: &str,
         known: &[Known],
         billed: &[BilledRow],
         out: &mut Vec<Piece>,
@@ -560,6 +701,7 @@ impl Inputs {
                     &row.tool,
                     &row.model,
                     "",
+                    budget,
                     row.dollars,
                     Source::Warehouse,
                 ));
@@ -585,26 +727,26 @@ impl Inputs {
                     ));
                 }
             } else if let Some(run) = self.subagents.get(*session) {
-                out.push(Self::piece(hour, run, *dollars, Source::Warehouse));
+                // The bill says whose budget it drew on, whatever its run's.
+                out.push(Piece {
+                    budget: budget.into(),
+                    ..Self::piece(hour, run, *dollars, Source::Warehouse)
+                });
             } else if self.logged.contains(*session) {
                 // Billed in an hour its log has no turn in, near an hour's edge.
                 let model = rows
                     .iter()
                     .find(|row| row.session == *session)
                     .map_or("", |row| &row.model);
-                let mut piece =
-                    Self::other(hour, "pi", model, session, *dollars, Source::Warehouse);
-                piece.kind = "agent".into();
-                out.push(piece);
+                out.push(Self::billed_alone(
+                    hour, model, session, "agent", budget, *dollars,
+                ));
             } else {
                 let model = rows
                     .iter()
                     .find(|row| row.session == *session)
                     .map_or("", |row| &row.model);
-                let mut piece =
-                    Self::other(hour, "pi", model, "elsewhere", *dollars, Source::Warehouse);
-                piece.kind = "elsewhere".into();
-                out.push(piece);
+                out.push(Self::elsewhere(hour, model, budget, *dollars));
             }
         }
         // What came without a split follows the shares of the uncovered
@@ -639,19 +781,71 @@ impl Inputs {
                     ));
                 }
             } else {
-                let mut piece =
-                    Self::other(hour, "pi", model, "elsewhere", dollars, Source::Warehouse);
-                piece.kind = "elsewhere".into();
-                out.push(piece);
+                out.push(Self::elsewhere(hour, model, budget, dollars));
             }
         }
     }
 
+    /// pi's spend the warehouse billed that no log here has turns for.
+    fn billed_alone(
+        hour: i64,
+        model: &str,
+        session: &str,
+        kind: &str,
+        budget: &str,
+        dollars: f64,
+    ) -> Piece {
+        Piece {
+            kind: kind.into(),
+            ..Self::other(
+                hour,
+                "pi",
+                model,
+                session,
+                budget,
+                dollars,
+                Source::Warehouse,
+            )
+        }
+    }
+
+    /// pi's spend no log here knows: another machine's, or a one-shot run's.
+    fn elsewhere(hour: i64, model: &str, budget: &str, dollars: f64) -> Piece {
+        Self::billed_alone(hour, model, "elsewhere", "elsewhere", budget, dollars)
+    }
+
+    /// An hour's pieces, each budget's priced on its own.
     fn hour_pieces(&self, hour: i64, ratios: &Ratios, out: &mut Vec<Piece>) {
         let known: &[Known] = self.known.get(&hour).map_or(&[], Vec::as_slice);
         let billed: &[BilledRow] = self.billed.get(&hour).map_or(&[], Vec::as_slice);
-        if self.settled("warehouse", hour) {
-            self.warehouse_pieces(hour, known, billed, out);
+        let mut budgets: Vec<&str> = known
+            .iter()
+            .map(|piece| piece.budget.as_str())
+            .chain(billed.iter().map(|row| row.budget.as_str()))
+            .collect();
+        budgets.sort_unstable();
+        budgets.dedup();
+        for budget in budgets {
+            let known = of_budget(known, budget, |piece| &piece.budget);
+            let billed = of_budget(billed, budget, |row| &row.budget);
+            self.budget_pieces(hour, budget, known, billed, ratios, out);
+        }
+    }
+
+    /// One budget's pieces in an hour: from a feed's bill for it where
+    /// there is one, else estimated from pi's logs, and nothing for a
+    /// plan's turns no bill counts.
+    fn budget_pieces(
+        &self,
+        hour: i64,
+        budget: &str,
+        known: &[Known],
+        billed: &[BilledRow],
+        ratios: &Ratios,
+        out: &mut Vec<Piece>,
+    ) {
+        if self.fed_budgets.contains(budget) && self.settled("warehouse", hour) {
+            self.warehouse_pieces(hour, budget, known, billed, out);
             return;
         }
         let mut meter: BTreeMap<&str, f64> = BTreeMap::new();
@@ -660,7 +854,15 @@ impl Inputs {
         }
         let estimate = |piece: &Known| ratios.of(&piece.model).map(|ratio| piece.list * ratio);
         if !meter.is_empty() {
-            Self::metered(hour, known, &meter, estimate, out);
+            Self::metered(hour, budget, known, &meter, estimate, out);
+            return;
+        }
+        if self.budgets.is_plan(budget) {
+            out.extend(
+                known
+                    .iter()
+                    .map(|piece| Self::piece(hour, piece, 0.0, Source::List)),
+            );
             return;
         }
         for piece in known {
@@ -672,6 +874,13 @@ impl Inputs {
             }
         }
     }
+}
+
+/// The run of `items`, sorted by budget, that are `budget`'s.
+fn of_budget<'a, T>(items: &'a [T], budget: &str, of: impl Fn(&T) -> &String) -> &'a [T] {
+    let first = items.partition_point(|item| of(item).as_str() < budget);
+    let last = items.partition_point(|item| of(item).as_str() <= budget);
+    &items[first..last]
 }
 
 /// Dollars summed by some key, largest first.
@@ -714,6 +923,187 @@ mod tests {
         History::memory()
     }
 
+    fn read(history: &History, from: i64, to: i64) -> Result<Inputs, String> {
+        Inputs::read(history, &Budgets::implicit(), from, to)
+    }
+
+    /// A proxy's cap the default, a Claude plan claiming its provider, and
+    /// a team's token.
+    fn declared() -> Budgets {
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/", "runs": "/", "registry": "/", "quests": "/", "state": "/",
+            "budgets": [
+                {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
+                 "whose": "employer", "default": true},
+                {"name": "claude", "label": "Claude Pro", "kind": "plan",
+                 "whose": "own", "providers": ["claude-code"]},
+                {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team"},
+            ],
+        }))
+        .unwrap();
+        Budgets::of(&config)
+    }
+
+    /// A turn on a provider, under what its log said of its budget.
+    fn budgeted(
+        history: &History,
+        session: &str,
+        hour: i64,
+        provider: &str,
+        logged: Option<&str>,
+        cost: f64,
+    ) {
+        history
+            .db
+            .execute(
+                "INSERT INTO turns VALUES (?1, ?2, ?3, 'opus', ?4, 'agent', NULL,
+                 0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL, ?6)",
+                rusqlite::params![
+                    session,
+                    crate::time::hour_start(hour),
+                    hour,
+                    provider,
+                    cost,
+                    logged
+                ],
+            )
+            .unwrap();
+        history
+            .db
+            .execute(
+                "INSERT OR IGNORE INTO sessions (id, cwd, repo, started) VALUES (?1, '/x', 'x', 0)",
+                [session],
+            )
+            .unwrap();
+    }
+
+    fn by_budget(pieces: &[Piece]) -> Vec<(String, f64)> {
+        let mut sums = by(pieces, |piece| piece.budget.clone());
+        sums.sort_by(|one, other| one.0.cmp(&other.0));
+        sums
+    }
+
+    // A Claude plan's provider spends the plan whatever the log says, and
+    // costs nothing past its price, though its list price is kept as what
+    // it was worth; the log names the rest, its word for none being the
+    // default, and a name nobody declared still counts, so the budgets sum
+    // to the whole.
+    #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "whole-dollar list prices pass through untouched"
+    )]
+    fn each_turn_draws_on_its_provider_s_budget_then_its_log_s() {
+        let history = history();
+        budgeted(&history, "s1", H, "claude-code", Some("delta"), 1.0);
+        budgeted(&history, "s2", H, "anthropic", Some("delta"), 2.0);
+        budgeted(&history, "s3", H, "anthropic", Some(""), 4.0);
+        budgeted(&history, "s4", H, "anthropic", None, 8.0);
+        budgeted(&history, "s5", H, "anthropic", Some("probe"), 16.0);
+        let pieces = Inputs::read(&history, &declared(), H, H + 1)
+            .unwrap()
+            .pieces(&Ratios::default());
+        assert_eq!(
+            by_budget(&pieces),
+            [
+                ("claude".into(), 0.0),
+                ("delta".into(), 2.0),
+                ("probe".into(), 16.0),
+                ("proxy".into(), 12.0),
+            ]
+        );
+        assert_eq!(total(&pieces), 30.0);
+        let plan: f64 = pieces
+            .iter()
+            .filter(|p| p.budget == "claude")
+            .map(|p| p.list)
+            .sum();
+        assert_eq!(plan, 1.0);
+    }
+
+    fn fed_declared() -> Budgets {
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/", "runs": "/", "registry": "/", "quests": "/", "state": "/",
+            "budgets": [
+                {"name": "proxy", "label": "Your proxy cap", "kind": "cap",
+                 "whose": "employer", "default": true},
+                {"name": "delta", "label": "Delta team token", "kind": "team", "whose": "team"},
+            ],
+            "feeds": [{"name": "proxy", "label": "the AI proxy", "command": ["f"]}],
+        }))
+        .unwrap();
+        Budgets::of(&config)
+    }
+
+    // A bill that doesn't say its session is shared only among the pieces
+    // of the budget it's for, the feed's own unless the record names one.
+    #[test]
+    fn an_unsplit_bill_is_shared_within_its_budget() {
+        let history = history();
+        budgeted(&history, "me", H, "anthropic", Some(""), 10.0);
+        budgeted(&history, "team", H, "anthropic", Some("delta"), 30.0);
+        billed(&history, "warehouse", H, "pi", "opus", None, 20.0);
+        let line = serde_json::json!({
+            "v": 1, "kind": "billed", "source": "warehouse", "hour": hour_text(H),
+            "tool": "pi", "model": "opus", "budget": "delta", "dollars": 15.0,
+        });
+        fed(&history, &line.to_string());
+        settle(&history, H + 1);
+        let pieces = Inputs::read(&history, &fed_declared(), H, H + 1)
+            .unwrap()
+            .pieces(&Ratios::default());
+        assert_eq!(
+            by_budget(&pieces),
+            [("delta".into(), 15.0), ("proxy".into(), 20.0)]
+        );
+    }
+
+    // A budget no feed bills is priced from pi's logs, and the feed's bill
+    // is still its own budget's alone.
+    #[test]
+    fn a_budget_no_feed_bills_is_estimated_from_the_logs() {
+        let history = history();
+        budgeted(&history, "me", H, "anthropic", Some(""), 10.0);
+        budgeted(&history, "team", H, "anthropic", Some("delta"), 30.0);
+        billed(&history, "warehouse", H, "pi", "opus", None, 20.0);
+        settle(&history, H + 1);
+        let ratios = Ratios::fixed(&[("opus", 0.5)]);
+        let pieces = Inputs::read(&history, &fed_declared(), H, H + 1)
+            .unwrap()
+            .pieces(&ratios);
+        assert_eq!(
+            by_budget(&pieces),
+            [("delta".into(), 15.0), ("proxy".into(), 20.0)]
+        );
+        let delta = pieces.iter().find(|piece| piece.budget == "delta").unwrap();
+        assert_eq!(delta.source, Source::Estimated);
+    }
+
+    // A council's reviewer whose log says nothing draws on what the session
+    // that asked for it drew on at that hour, and the run's total beyond
+    // its logs on what the session drew on as it started.
+    #[test]
+    fn a_run_s_agent_draws_on_its_session_s_budget() {
+        let history = history();
+        budgeted(&history, "me", H, "anthropic", Some("delta"), 10.0);
+        budgeted(&history, "me", H + 2, "anthropic", Some(""), 10.0);
+        budgeted(&history, "r1", H + 1, "anthropic", None, 4.0);
+        budgeted(&history, "r1", H + 2, "anthropic", None, 2.0);
+        budgeted(&history, "r2", H + 1, "anthropic", Some("aquifer"), 1.0);
+        run(&history, "council", "me", H, 9.0, &["r1", "r2"]);
+        let pieces = Inputs::read(&history, &declared(), H, H + 3)
+            .unwrap()
+            .pieces(&Ratios::default());
+        let at = |hour: i64| -> Vec<(String, f64)> {
+            let pieces: Vec<Piece> = pieces.iter().filter(|p| p.hour == hour).cloned().collect();
+            by_budget(&pieces)
+        };
+        // The run's $9 less its logs' $7 stands at its start, as delta's.
+        assert_eq!(at(H), [("delta".into(), 12.0)]);
+        assert_eq!(at(H + 1), [("aquifer".into(), 1.0), ("delta".into(), 4.0)]);
+        assert_eq!(at(H + 2), [("proxy".into(), 12.0)]);
+    }
+
     fn turn(
         history: &History,
         session: &str,
@@ -726,7 +1116,7 @@ mod tests {
             .db
             .execute(
                 "INSERT INTO turns VALUES (?1, ?2, ?3, ?4, 'anthropic', 'agent', ?5,
-                 0, 0, 0, 0, 0, ?6, 0, 0, NULL, 0, 0, NULL)",
+                 0, 0, 0, 0, 0, ?6, 0, 0, NULL, 0, 0, NULL, NULL)",
                 rusqlite::params![
                     session,
                     crate::time::hour_start(hour),
@@ -791,9 +1181,7 @@ mod tests {
     fn logs_alone_are_list_prices() {
         let history = history();
         turn(&history, "s1", H, "opus", 10.0, Some("Q1"));
-        let pieces = Inputs::read(&history, H, H + 1)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
         assert_eq!(total(&pieces), 10.0);
         assert_eq!(weakest(&pieces), Some(Source::List));
     }
@@ -813,9 +1201,7 @@ mod tests {
         billed(&history, "warehouse", H, "pi", "opus", Some("gone"), 3.0);
         billed(&history, "warehouse", H, "river", "opus", None, 1.0);
         settle(&history, H + 1);
-        let pieces = Inputs::read(&history, H, H + 1)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
         assert_eq!(total(&pieces), 37.0);
         let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
         assert_eq!(quests[0], ("Q2".into(), 25.0));
@@ -834,9 +1220,7 @@ mod tests {
         turn(&history, "s2", H, "opus", 30.0, Some("Q2"));
         billed(&history, "warehouse", H, "pi", "opus", None, 20.0);
         settle(&history, H + 1);
-        let pieces = Inputs::read(&history, H, H + 1)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
         let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
         assert_eq!(quests, vec![("Q2".into(), 15.0), ("Q1".into(), 5.0)]);
     }
@@ -868,9 +1252,7 @@ mod tests {
         turn(&history, "me", H, "opus", 10.0, Some("Q1"));
         turn(&history, "r1", H + 1, "opus", 4.0, None);
         run(&history, "council", "me", H, 5.0, &["r1", "r2"]);
-        let pieces = Inputs::read(&history, H, H + 2)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 2).unwrap().pieces(&Ratios::default());
         assert!((total(&pieces) - 15.0).abs() < 1e-9, "{pieces:?}");
         let reviewer: Vec<&Piece> = pieces.iter().filter(|p| p.hour == H + 1).collect();
         assert_eq!(reviewer.len(), 1);
@@ -897,9 +1279,7 @@ mod tests {
         let history = history();
         turn(&history, "me", H, "opus", 10.0, Some("Q1"));
         run(&history, "fleet", "me", H, 5.0, &["f1"]);
-        let pieces = Inputs::read(&history, H, H + 1)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
         assert!((total(&pieces) - 15.0).abs() < 1e-9);
         let fleet = by(&pieces, |piece| piece.kind.clone());
         assert!(fleet.contains(&("subagent:fleet".into(), 5.0)), "{fleet:?}");
@@ -924,9 +1304,7 @@ mod tests {
         billed(&history, "warehouse", H, "pi", "opus", None, 5.0);
         billed(&history, "warehouse", H, "pi", "sonnet", None, 15.0);
         settle(&history, H + 1);
-        let pieces = Inputs::read(&history, H, H + 1)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
         let agent = pieces.iter().find(|p| p.session == "acp").unwrap();
         assert_eq!(
             (
@@ -951,9 +1329,7 @@ mod tests {
         billed(&history, "warehouse", H, "pi", "sonnet", None, 20.0);
         billed(&history, "warehouse", H, "pi", "other", None, 4.0);
         settle(&history, H + 1);
-        let pieces = Inputs::read(&history, H, H + 1)
-            .unwrap()
-            .pieces(&Ratios::default());
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
         let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
         assert_eq!(quests, vec![("Q2".into(), 23.0), ("Q1".into(), 9.0)]);
     }
@@ -964,7 +1340,7 @@ mod tests {
         turn(&history, "s1", H, "opus", 10.0, None);
         billed(&history, "meter", H, "all", "opus", None, 12.0);
         let ratios = Ratios::fixed(&[("opus", 0.85)]);
-        let pieces = Inputs::read(&history, H, H + 1).unwrap().pieces(&ratios);
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&ratios);
         assert!((total(&pieces) - 12.0).abs() < 1e-9);
         let tools = by(&pieces, |piece| piece.tool.clone());
         assert!((tools[0].1 - 8.5).abs() < 1e-9 && tools[0].0 == "pi");
@@ -986,7 +1362,7 @@ mod tests {
         billed(&history, "meter", H, "all", "opus", None, 12.0);
         billed(&history, "meter", H, "all", "gemini", None, 5.0);
         let ratios = Ratios::fixed(&[("opus", 0.85), ("sonnet", 1.0)]);
-        let pieces = Inputs::read(&history, H, H + 1).unwrap().pieces(&ratios);
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&ratios);
         assert!((total(&pieces) - 17.0).abs() < 1e-9);
         let mut models = by(&pieces, |piece| format!("{} {}", piece.tool, piece.model));
         models.sort_by(|one, other| one.0.cmp(&other.0));
@@ -1013,7 +1389,7 @@ mod tests {
         billed(&history, "warehouse", H - 10, "pi", "opus", None, 1.0);
         settle(&history, H - 9);
         let ratios = Ratios::fixed(&[("opus", 0.8)]);
-        let pieces = Inputs::read(&history, H, H + 1).unwrap().pieces(&ratios);
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&ratios);
         assert!((total(&pieces) - 8.0).abs() < 1e-9);
         assert_eq!(weakest(&pieces), Some(Source::Estimated));
     }

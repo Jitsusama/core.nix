@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::history::History;
 use crate::picture::Picture;
 use crate::report::{self, Cut, Format, Period};
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 const USAGE: &str = "\
@@ -13,8 +14,11 @@ spend-watch: what AI use costs
   spend-watch report [period] [by <cut>] [--format text|markdown|json|csv]
       period: today, yesterday, this week, last week, this month,
               last month, 30 days; with no cut, the week at a glance
-      cut: quest, model, agent, repo, session, tool, day, source
+      cut: quest, model, agent, repo, session, tool, day, source, budget
   spend-watch report waste|caps|quests|outliers|forecast
+  spend-watch budgets [--session <id>] [--json]
+                                    how each budget stands against its
+                                    allowances, and the whole in billed spend
   spend-watch findings              what holds now
   spend-watch findings expect <key> mark one expected
   spend-watch backtest              the forecast and the notices, replayed
@@ -148,8 +152,11 @@ fn command(args: Vec<String>) -> Result<String, String> {
             let read = |text: &str| {
                 crate::time::parse(text).ok_or(format!("not an RFC 3339 instant: {text}"))
             };
-            crate::tokens::replay(&history, &config.zone()?, read(from)?, read(to)?)
+            let budgets = crate::budgets::Budgets::of(&config);
+            crate::tokens::replay(&history, &budgets, &config.zone()?, read(from)?, read(to)?)
         }
+        ["budgets"] => budgets(&path, format, None),
+        ["budgets", "--session", session] => budgets(&path, format, Some(session)),
         ["report", rest @ ..] => {
             let config = Config::read(&path)?;
             report_command(&config, rest, format)
@@ -208,6 +215,40 @@ fn show(path: &std::path::Path, collection: bool) -> Result<String, String> {
     };
     text.map(|text| text + "\n")
         .map_err(|error| error.to_string())
+}
+
+/// `budgets`: how each budget stands, as JSON for the harness, or a line
+/// each for a person.
+fn budgets(
+    path: &std::path::Path,
+    format: Format,
+    session: Option<&str>,
+) -> Result<String, String> {
+    let config = Config::read(path)?;
+    let (_, picture) = picture(&config)?;
+    let standing = crate::standing::standing(&picture, &config, session);
+    if format == Format::Json {
+        return serde_json::to_string_pretty(&standing)
+            .map(|text| text + "\n")
+            .map_err(|error| error.to_string());
+    }
+    let total = &standing.total.periods["this month"];
+    let mut out = format!("{} this month, {}.\n\n", total.shown, standing.total.words);
+    // Writing to a String can't fail, so what `writeln!` returns is let go.
+    for budget in &standing.budgets {
+        let default = if budget.default { ", the default" } else { "" };
+        _ = writeln!(out, "  {}{default}: {}", budget.label, budget.standing);
+    }
+    if let Some(session) = &standing.session {
+        _ = writeln!(
+            out,
+            "\nSession {} draws on {}: {} in all.",
+            session.id,
+            session.budget.as_deref().unwrap_or("nothing yet"),
+            session.spent.shown
+        );
+    }
+    Ok(out)
 }
 
 /// `findings`: every standing finding, as text or JSON.
@@ -286,7 +327,7 @@ fn report_command(config: &Config, rest: &[&str], format: Format) -> Result<Stri
     };
     let cut = match cut_words {
         Some(words) => Cut::parse(&words).ok_or(format!(
-            "no cut {words}: quest, model, agent, repo, session, tool, day or source"
+            "no cut {words}: quest, model, agent, repo, session, tool, day, source or budget"
         ))?,
         None => Cut::Quest,
     };

@@ -10,6 +10,8 @@
 //! - a quest-workflow entry says which quest the turns after it serve, and
 //!   before one, a session working in a quest's workspace serves that quest;
 //! - a session-info entry names the session, as an agent's names its agent;
+//! - a budget entry says which budget the turns after it on its branch
+//!   draw on, by the nearest among each turn's ancestors;
 //! - a model change matters to why cache was written.
 //!
 //! A log is read from where the last read stopped, and only whole lines: a
@@ -59,7 +61,24 @@ pub struct Carry {
     /// Whether the header was read with copies in mind, so a log held
     /// from before they were is checked once.
     pub copies_known: bool,
+    /// The budget the branch being read draws on, by its nearest budget
+    /// entry: none before any, empty for the default, else its name.
+    pub budget: Option<String>,
+    /// The last entry read, by its id, to tell a branch taken from
+    /// further back from the one carrying on.
+    pub last_id: Option<String>,
+    /// Every budget an entry has named so far, the default as empty, each
+    /// with the entries under it, every id followed by a space: a branch
+    /// taken from one of them draws on it again. The default's are left
+    /// out, since an entry under no other is under it once any budget has
+    /// been named. Kept this small, since it's written at every read, and
+    /// only a branch taken from further back looks in it.
+    pub under: std::collections::BTreeMap<String, String>,
 }
+
+/// The version of the harness's budget entry this reads; another is
+/// passed over, as a feed's newer line is.
+const BUDGET_ENTRY: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
@@ -137,6 +156,9 @@ pub struct Turn {
     pub tokens: Tokens,
     pub cost: Cost,
     pub quest: Option<String>,
+    /// The budget its log said it draws on: none where no entry said,
+    /// empty for the default, else the budget's name.
+    pub budget: Option<String>,
     /// Seconds since the session's last agent turn.
     pub gap: Option<f64>,
     pub rebuilt: f64,
@@ -248,9 +270,58 @@ fn stamp(entry: &Value) -> Option<f64> {
         .and_then(crate::time::parse)
 }
 
+/// Follows an entry onto its branch, so its budget is that of its
+/// nearest budget entry among its ancestors: a parent other than the
+/// last entry read is a branch taken from further back, which draws on
+/// what that parent did. A log without ids follows the file's order.
+fn follow(entry: &Value, carry: &mut Carry) {
+    let Some(id) = entry.get("id").and_then(Value::as_str) else {
+        return;
+    };
+    if let Some(parent) = entry.get("parentId").and_then(Value::as_str)
+        && carry.last_id.as_deref() != Some(parent)
+    {
+        carry.budget = carry
+            .under
+            .iter()
+            .find(|(_, ids)| ids.split_whitespace().any(|under| under == parent))
+            .map(|(name, _)| name.clone())
+            .or_else(|| (!carry.under.is_empty()).then(String::new));
+    }
+    if let Some(named) = budget_entry(entry) {
+        carry.under.entry(named.clone()).or_default();
+        carry.budget = Some(named);
+    }
+    if let Some(name) = carry.budget.as_ref().filter(|name| !name.is_empty()) {
+        let ids = carry.under.entry(name.clone()).or_default();
+        ids.push_str(id);
+        ids.push(' ');
+    }
+    carry.last_id = Some(id.to_owned());
+}
+
+/// The budget a budget entry of a version this reads names: empty for
+/// the default.
+fn budget_entry(entry: &Value) -> Option<String> {
+    let custom = entry.get("customType").and_then(Value::as_str);
+    if entry.get("type").and_then(Value::as_str) != Some("custom") || custom != Some("budget") {
+        return None;
+    }
+    let data = entry.get("data")?;
+    if data.get("v").and_then(Value::as_u64) != Some(BUDGET_ENTRY) {
+        return None;
+    }
+    match data.get("name")? {
+        Value::Null => Some(String::new()),
+        Value::String(name) => Some(name.clone()),
+        _ => None,
+    }
+}
+
 fn entry_events(entry: &Value, carry: &mut Carry, refusals: &[String], events: &mut Vec<Event>) {
     let kind = entry.get("type").and_then(Value::as_str).unwrap_or("");
     let at = stamp(entry);
+    follow(entry, carry);
     match kind {
         "session" => session_entry(entry, at, carry, events),
         "session_info" => {
@@ -436,6 +507,7 @@ fn push_turn(
         tokens,
         cost,
         quest: carry.quest.clone(),
+        budget: carry.budget.clone(),
         gap: None,
         rebuilt: 0.0,
         rebuilt_cost: 0.0,
@@ -738,6 +810,89 @@ mod tests {
         let turns = turns(&events);
         assert_eq!(turns[0].quest.as_deref(), Some("QEST-2"));
         assert_eq!(turns[1].quest.as_deref(), Some("QEST-1"));
+    }
+
+    /// A turn in a log whose entries have ids, with its parent's.
+    fn tree_turn(id: &str, parent: &str, at: &str) -> String {
+        let mut entry: Value = serde_json::from_str(&turn(at, 0, 1, 0)).unwrap();
+        entry["id"] = id.into();
+        entry["parentId"] = parent.into();
+        entry.to_string()
+    }
+
+    fn budget(id: &str, parent: &str, name: Option<&str>) -> String {
+        serde_json::json!({
+            "type": "custom", "customType": "budget", "id": id, "parentId": parent,
+            "timestamp": "2026-11-07T02:20:33Z",
+            "data": {"v": 1, "name": name, "label": "Delta team token"},
+        })
+        .to_string()
+    }
+
+    fn budgets(events: &[Event]) -> Vec<Option<&str>> {
+        turns(events)
+            .iter()
+            .map(|turn| turn.budget.as_deref())
+            .collect()
+    }
+
+    // Before any entry a turn's log says nothing of its budget; after one,
+    // it draws on the budget named, or the default for none.
+    #[test]
+    fn a_budget_entry_names_the_turns_after_it() {
+        let bytes = lines(&[
+            HEADER,
+            &tree_turn("a", "", "2026-11-07T02:00:00Z"),
+            &budget("b", "a", Some("delta")),
+            &tree_turn("c", "b", "2026-11-07T02:21:00Z"),
+            &budget("d", "c", None),
+            &tree_turn("e", "d", "2026-11-07T02:22:00Z"),
+        ]);
+        let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+        assert_eq!(budgets(&events), [None, Some("delta"), Some("")]);
+    }
+
+    // A branch taken from further back draws on what its parent did, not
+    // on the entry last written, even when the branch is read later.
+    #[test]
+    fn a_branch_draws_on_its_own_ancestors() {
+        let first = lines(&[
+            HEADER,
+            &budget("a", "", None),
+            &tree_turn("b", "a", "2026-11-07T02:00:00Z"),
+            &budget("c", "b", Some("delta")),
+            &tree_turn("d", "c", "2026-11-07T02:21:00Z"),
+            &budget("e", "d", Some("aquifer")),
+            &tree_turn("f", "e", "2026-11-07T02:22:00Z"),
+        ]);
+        let mut carry = Carry::default();
+        let (events, _) = read(&first, &mut carry, &refusals());
+        assert_eq!(budgets(&events), [Some(""), Some("delta"), Some("aquifer")]);
+        let mut carry: Carry =
+            serde_json::from_str(&serde_json::to_string(&carry).unwrap()).unwrap();
+        let later = lines(&[
+            &tree_turn("g", "d", "2026-11-07T02:30:00Z"),
+            &tree_turn("h", "g", "2026-11-07T02:31:00Z"),
+            &tree_turn("i", "b", "2026-11-07T02:32:00Z"),
+        ]);
+        let (events, _) = read(&later, &mut carry, &refusals());
+        assert_eq!(budgets(&events), [Some("delta"), Some("delta"), Some("")]);
+    }
+
+    // A log without ids is followed in the file's order, and an entry of a
+    // version this doesn't read is passed over.
+    #[test]
+    fn a_budget_entry_of_another_version_is_passed_over() {
+        let newer = budget("x", "", Some("delta")).replace("\"v\":1", "\"v\":2");
+        let bytes = lines(&[
+            HEADER,
+            &newer,
+            &turn("2026-11-07T02:00:00Z", 0, 1, 0),
+            &budget("y", "", Some("aquifer")),
+            &turn("2026-11-07T02:01:00Z", 0, 1, 0),
+        ]);
+        let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
+        assert_eq!(budgets(&events), [None, Some("aquifer")]);
     }
 
     #[test]

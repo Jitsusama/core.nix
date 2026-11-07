@@ -251,6 +251,7 @@ mod tests {
                     ..Cost::default()
                 },
                 quest: None,
+                budget: None,
                 gap: None,
                 rebuilt: 0.0,
                 rebuilt_cost: 0.0,

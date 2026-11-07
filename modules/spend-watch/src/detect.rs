@@ -167,7 +167,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
 
 /// A finding's key for one of a cap's states.
 fn cap_key(view: &CapView, what: &str) -> String {
-    format!("cap:{}:{}:{what}", view.cap.feed, view.cap.name)
+    format!("cap:{}:{}:{what}", view.owner, view.cap.name)
 }
 
 /// What one cap with an allowance says now: over it, likely to reach it
@@ -176,6 +176,11 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
     let cap = &view.cap;
     let now = picture.now;
     let ask = offered(picture, "cap");
+    if let Some(used) = view.used {
+        return share_finding(picture, view, used, ask)
+            .into_iter()
+            .collect();
+    }
     let Some(allowance) = cap.allowance else {
         return Vec::new();
     };
@@ -252,6 +257,46 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
     }
     out.extend(ending_finding(picture, view, clock, allowance, ask));
     out
+}
+
+/// A share of a plan's window used up, or past its warning: said
+/// in shares, since a share is never turned into dollars, and with when
+/// it resets.
+fn share_finding(
+    picture: &Picture,
+    view: &CapView,
+    used: f64,
+    ask: Option<Action>,
+) -> Option<Finding> {
+    let cap = &view.cap;
+    let over = used >= 1.0 || cap.state == "refused";
+    if !over && used < cap.warn {
+        return None;
+    }
+    let resets = view.resets.map_or_else(String::new, |at| {
+        format!(", resetting at {}", picture.zone.clock(at, picture.now))
+    });
+    let (what, severity, title) = if over {
+        ("over", Severity::Alert, format!("over the {}", cap.label))
+    } else {
+        ("near", Severity::Warning, format!("near the {}", cap.label))
+    };
+    let mut f = finding(
+        cap_key(view, what),
+        "caps",
+        severity,
+        title,
+        format!("{} of the {} used{resets}.", percent(used), cap.label),
+    );
+    f.badge = view.resets.map_or_else(
+        || percent(used),
+        |at| format!("resets {}", picture.zone.clock(at, picture.now)),
+    );
+    f.note = format!("{} used", percent(used));
+    f.surprise = if over { 3.0 } else { 1.0 };
+    f.cap = true;
+    f.action = ask;
+    Some(f)
 }
 
 /// A cap that's over: by how much, and when it's back under.
@@ -361,6 +406,7 @@ fn cap_events(picture: &Picture) -> Vec<Finding> {
     let back = |event: &crate::caps::Event| {
         picture.events.iter().any(|later| {
             later.feed == event.feed
+                && later.budget == event.budget
                 && later.name == event.name
                 && later.at > event.at
                 && later.kind == "raised"
@@ -398,7 +444,11 @@ fn cap_events(picture: &Picture) -> Vec<Finding> {
         let mut f = finding(
             format!(
                 "cap-event:{}:{}:{}:{}",
-                event.feed,
+                if event.budget.is_empty() {
+                    event.feed.clone()
+                } else {
+                    format!("{}/{}", event.feed, event.budget)
+                },
                 event.name,
                 event.kind,
                 crate::time::whole_seconds(event.at)
@@ -1245,6 +1295,7 @@ mod tests {
                     ..Cost::default()
                 },
                 quest: None,
+                budget: None,
                 gap: None,
                 rebuilt: 0.0,
                 rebuilt_cost: 0.0,
@@ -1272,6 +1323,7 @@ mod tests {
                         ..Cost::default()
                     },
                     quest: None,
+                    budget: None,
                     gap: None,
                     rebuilt: 0.0,
                     rebuilt_cost: 100.0 * share(back),
@@ -1625,6 +1677,7 @@ mod tests {
                         ..Cost::default()
                     },
                     quest: Some("child".into()),
+                    budget: None,
                     gap: None,
                     rebuilt: 0.0,
                     rebuilt_cost: 0.0,
