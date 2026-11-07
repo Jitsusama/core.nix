@@ -5,5 +5,12 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 5d4f5f331565",
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794072148,
+    "commit": "b6ef1e9bfefe84bceee9ae657c1e57a5a7dccc2e",
+    "owner_pr": 2142,
+    "reason": "failed, then passed, at b6ef1e9bfefe",
+    "test": "vm-desktop-looks"
   }
 ]
