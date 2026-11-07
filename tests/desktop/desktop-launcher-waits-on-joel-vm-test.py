@@ -105,7 +105,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["subagents"]
+            shown["held"] == ["runs"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
                 r"fleet \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
