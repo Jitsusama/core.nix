@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, SIGNING_IN, retry
+from desktop_session import KEY_PACE, LAUNCHER_OPEN, SIGNING_IN, retry
 from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
@@ -87,17 +87,17 @@ def sets_the_output(desktop: Desktop) -> None:
         def told(shown: Json, kind: str = kind) -> bool:
             return kind in said(shown)
 
-        machine.send_chars(":set output=")
+        machine.send_chars(":set output=", delay=KEY_PACE)
         desktop.launcher_until(listed)
         chosen = next(entry for entry in menu(desktop.showing()) if kind in entry)
         machine.send_key("esc")
         desktop.launcher_until(lambda shown: shown["command"] is None)
-        machine.send_chars(f":set {chosen}\n")
+        machine.send_chars(f":set {chosen}\n", delay=KEY_PACE)
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
-        machine.send_chars(":set output?\n")
+        machine.send_chars(":set output?\n", delay=KEY_PACE)
         desktop.launcher_until(told)
-    machine.send_chars(":set input?\n")
+    machine.send_chars(":set input?\n", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: said(shown) == "input=Stand-in microphone")
     desktop.close_launcher()
 
@@ -325,27 +325,34 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
 
         retry(says, timeout=timedelta(seconds=15))
 
-    def stream() -> int:
-        """Give the id of the stream mpv plays through, as PipeWire lists it."""
-        nodes = sound_nodes(desktop)
-        return next(
+    def streams() -> list[int]:
+        """Give the ids of the streams mpv plays through, as PipeWire lists them."""
+        return [
             int(node["id"])
-            for node in nodes
+            for node in sound_nodes(desktop)
             if node.get("type") == "PipeWire:Interface:Node"
             and node["info"]["props"].get("media.class") == "Stream/Output/Audio"
             and node["info"]["props"].get("application.name") == "mpv"
-        )
+        ]
 
     playing("Playing", "First tone")
-    machine.wait_until_succeeds(
-        desktop.in_session("pw-dump | grep -q Stream/Output/Audio"), timeout=WAIT
-    )
-    tone = stream()
+    retry(lambda _: streams() != [], timeout=WAIT)
 
     def heard(volume: str) -> None:
-        """Wait until PipeWire says the stream is this loud, as wpctl says it."""
-        loud = f"wpctl get-volume {tone} | grep -qxF 'Volume: {volume}'"
-        machine.wait_until_succeeds(desktop.in_session(loud), timeout=WAIT)
+        """Wait until PipeWire says mpv's stream is this loud, as wpctl says it.
+
+        Its stream is looked up again on every try: mpv can open a new one as it skips,
+        pauses and plays, and the launcher turns the one open now, so an id read before
+        then names a stream that's gone, and the wait never ends.
+        """
+
+        def loud(_: bool) -> bool:
+            said = f"wpctl get-volume {{}} | grep -qxF 'Volume: {volume}'"
+            return any(
+                machine.execute(desktop.in_session(said.format(tone)))[0] == 0 for tone in streams()
+            )
+
+        retry(loud, timeout=WAIT)
 
     def reads(name: str, said: str) -> Callable[[Json], bool]:
         """Make a test of whether the launcher shows a row by this name reading this."""
@@ -379,7 +386,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         if then:
             desktop.launcher_until(lambda shown: shown["footer"] == then)
             desktop.normal()
-            machine.send_chars("cc")
+            machine.send_chars("cc", delay=KEY_PACE)
             desktop.launcher_until(lambda shown: shown["typed"] == "")
             # cc leaves it on the find; back in normal, a changing row's
             # Return does it rather than landing.
@@ -461,14 +468,14 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     # :setl sets the option of what it's in, the program's Sound, as Vim's
     # :setlocal sets the buffer's: it mutes the stream alone, never the
     # speakers, and says how it stands.
-    machine.send_chars(":setl mute\n")
+    machine.send_chars(":setl mute\n", delay=KEY_PACE)
     heard("1.00 [MUTED]")
     machine.fail(desktop.in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"))
-    machine.send_chars(":setl mute?\n")
+    machine.send_chars(":setl mute?\n", delay=KEY_PACE)
     desktop.launcher_until(
         lambda shown: shown["command"] is None and shown["commandSaid"] == "mute"
     )
-    machine.send_chars(":setl nomute\n")
+    machine.send_chars(":setl nomute\n", delay=KEY_PACE)
     heard("1.00")
 
     # The volume's bar follows too, filling from the left by the volume:
@@ -854,7 +861,7 @@ def commands_a_network(desktop: Desktop) -> None:
     desktop.normal()
     machine.send_chars(":")
     desktop.launcher_until(lambda shown: disconnect in line(shown).get("menu", []))
-    machine.send_chars("disc")
+    machine.send_chars("disc", delay=KEY_PACE)
     holds("disc", menu=[disconnect])
     machine.send_key("tab")
     holds("disconnect", 0)
@@ -877,7 +884,7 @@ def commands_a_network(desktop: Desktop) -> None:
     machine.send_key("ctrl-y")
     holds("disconnect", menu=[])
     machine.send_key("ctrl-u")
-    machine.send_chars("wifi on")
+    machine.send_chars("wifi on", delay=KEY_PACE)
     machine.send_key("ctrl-w")
     machine.send_key("ctrl-h")
     holds("wifi", menu=[])
@@ -893,7 +900,7 @@ def commands_a_network(desktop: Desktop) -> None:
     # :setl trust trusts the network the cursor is on, as its Trust It row
     # does, which turns on mDNS there, and notrust stops.
     for typed, mdns in [("trust", "+mDNS"), ("notrust", "-mDNS")]:
-        machine.send_chars(f":setl {typed}\n")
+        machine.send_chars(f":setl {typed}\n", delay=KEY_PACE)
         machine.wait_until_succeeds(
             f"resolvectl status wlan1 | grep -qF -- {mdns}", timeout=timedelta(seconds=30)
         )
@@ -917,7 +924,7 @@ def binds_a_range(desktop: Desktop) -> None:
     machine = desktop.machine
 
     def says(typed: str, said: str) -> None:
-        machine.send_chars(typed)
+        machine.send_chars(typed, delay=KEY_PACE)
         desktop.launcher_until(
             lambda shown: shown["command"] is None and said in (shown["commandSaid"] or "")
         )
@@ -930,7 +937,7 @@ def binds_a_range(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: len(shown["rows"]) > 1 and "Lantern" in shown["rows"])
     desktop.normal()
     says(":%q\n", "E481: No range allowed")
-    machine.send_chars(":%disc\n")
+    machine.send_chars(":%disc\n", delay=KEY_PACE)
     desktop.launcher_until(
         lambda shown: (
             shown["question"].endswith("can disconnect; disconnect them? (y/n)")
@@ -941,7 +948,7 @@ def binds_a_range(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["question"] == "")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     before = left_lantern(desktop)
-    machine.send_chars(":g/Lant/disc\n")
+    machine.send_chars(":g/Lant/disc\n", delay=KEY_PACE)
     machine.wait_until_succeeds(
         f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
     )
@@ -968,7 +975,7 @@ def lists_earlier_lines(desktop: Desktop) -> None:
         desktop.launcher_ready()
         desktop.normal()
     for typed in [":his\n", "@:"]:
-        machine.send_chars(typed)
+        machine.send_chars(typed, delay=KEY_PACE)
         desktop.launcher_until(
             lambda shown: (
                 [one.strip() for one in (shown["command"] or {}).get("menu", [])[:2]]
@@ -997,7 +1004,7 @@ def says_how_wi_fi_is_set(desktop: Desktop) -> None:
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.normal()
-    machine.send_chars(":set ")
+    machine.send_chars(":set ", delay=KEY_PACE)
     desktop.launcher_until(
         lambda shown: (
             {"wifi wifi=Office", "volume"}
@@ -1007,17 +1014,17 @@ def says_how_wi_fi_is_set(desktop: Desktop) -> None:
             }
         )
     )
-    machine.send_chars("wi")
+    machine.send_chars("wi", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: line(shown).get("menu") == ["wifi wifi=Office"])
     machine.send_key("tab")
     desktop.launcher_until(
         lambda shown: line(shown).get("line") == "set wifi" and line(shown).get("chosen") == 0
     )
-    machine.send_chars("?\n")
+    machine.send_chars("?\n", delay=KEY_PACE)
     desktop.launcher_until(
         lambda shown: shown["command"] is None and shown["commandSaid"] == "wifi=Office"
     )
-    machine.send_chars(":set wfii\n")
+    machine.send_chars(":set wfii\n", delay=KEY_PACE)
     desktop.launcher_until(
         lambda shown: shown["commandSaid"] == "E518: Unknown option: wfii" and shown["open"]
     )
@@ -1030,21 +1037,21 @@ def sets_the_session(desktop: Desktop) -> None:
     machine = desktop.machine
 
     def says(typed: str, said: str) -> None:
-        machine.send_chars(typed)
+        machine.send_chars(typed, delay=KEY_PACE)
         desktop.launcher_until(
             lambda shown: shown["command"] is None and shown["commandSaid"] == said
         )
 
-    machine.send_chars(":set dnd=60\n")
+    machine.send_chars(":set dnd=60\n", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: shown["command"] is None)
     says(":set dnd?\n", "dnd=60")
-    machine.send_chars(":set nodnd\n")
+    machine.send_chars(":set nodnd\n", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: shown["command"] is None)
     says(":set dnd?\n", "nodnd")
-    machine.send_chars(":set keepawake\n")
+    machine.send_chars(":set keepawake\n", delay=KEY_PACE)
     machine.wait_until_succeeds("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
     says(":set keepawake?\n", "keepawake")
-    machine.send_chars(":set nokeepawake\n")
+    machine.send_chars(":set nokeepawake\n", delay=KEY_PACE)
     machine.wait_until_fails("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
 
 
@@ -1055,7 +1062,7 @@ def sets_wi_fi(desktop: Desktop) -> None:
     desktop.launcher_ready()
     desktop.normal()
     for typed, blocked in [("wifi", "no"), ("nowifi", "yes"), ("wifi", "no")]:
-        machine.send_chars(f":set {typed}\n")
+        machine.send_chars(f":set {typed}\n", delay=KEY_PACE)
         machine.wait_until_succeeds(
             f"rfkill list wifi | grep -q 'Soft blocked: {blocked}'", timeout=timedelta(seconds=15)
         )
@@ -1091,7 +1098,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     assert not any(word["text"] == "insert" for word in foot), foot
     # Its padlock leads the line, never the find's /.
     assert desktop.showing()["sigil"] != "/", desktop.showing()
-    machine.send_chars("not the pass")
+    machine.send_chars("not the pass", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: shown["caret"] == len("not the pass"))
     machine.send_key("ctrl-h")
     desktop.launcher_until(lambda shown: shown["caret"] == len("not the pas"))
@@ -1301,7 +1308,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == office and shown["typed"] == "signal"
     )
-    machine.send_chars("cc")
+    machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     desktop.photograph("launcher-wifi-detail")
     # The Speed holds each way and the retries, Return into it.
@@ -1310,7 +1317,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
     desktop.step_out()
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
-    machine.send_chars("cc")
+    machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them; the figure's
@@ -1327,7 +1334,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # Network lists Wi-Fi alone.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("network ")
+    machine.send_chars("network ", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: shown["held"] == ["network"] and "Wi-Fi" in shown["rows"])
     assert "Wi-Fi Off" not in desktop.showing()["rows"], desktop.showing()["rows"]
     desktop.type_in("wi-fi", selecting="Wi-Fi")
@@ -1407,14 +1414,14 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi"
     )
-    machine.send_chars("cc")
+    machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
     # l opens the VPN's, which has no hardware address, and
     # the old word for it finds nothing.
     desktop.type_in("tunnel")
     desktop.launcher_until(lambda shown: "VPN" not in shown["rows"])
     desktop.normal()
-    machine.send_chars("cc")
+    machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
     desktop.type_in("vpn", selecting="VPN")
     desktop.follow()
