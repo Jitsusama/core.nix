@@ -9,11 +9,20 @@
 //! unanswered for twenty minutes, or is gone for ten, it asks the steward
 //! above it instead, once. Given no watcher, it writes the card alone.
 //!
+//! Given `--restart`, each tick first revives, before anything that needs
+//! the network: every orchestrator (each `--orchestrator`, and any that
+//! others name as theirs) and every session of the steward's whose pi
+//! died is started again on its own log, its window put back, and the
+//! steward told (revive.rs says which are left down).
+//!
 //!     cadence tick [--watcher ADDRESS --steward ADDRESS]
+//!         [--restart WORDS [--orchestrator ADDRESS]... [--skip ADDRESS]...]
 
 mod card;
 mod mesh;
 mod records;
+mod revive;
+mod start;
 mod stats;
 mod watch;
 
@@ -41,23 +50,35 @@ const DAY: i64 = 86_400;
 struct Args {
     watcher: Option<String>,
     steward: Option<String>,
+    restart: Option<String>,
+    orchestrators: Vec<String>,
+    skip: Vec<String>,
 }
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     if args.next().as_deref() != Some("tick") {
-        eprintln!("usage: cadence tick [--watcher ADDRESS --steward ADDRESS]");
+        eprintln!(
+            "usage: cadence tick [--watcher ADDRESS --steward ADDRESS] [--restart WORDS \
+             [--orchestrator ADDRESS]... [--skip ADDRESS]...]"
+        );
         return ExitCode::from(2);
     }
     let mut parsed = Args {
         watcher: None,
         steward: None,
+        restart: None,
+        orchestrators: Vec::new(),
+        skip: Vec::new(),
     };
     while let Some(flag) = args.next() {
         let value = args.next();
         match (flag.as_str(), value) {
             ("--watcher", Some(v)) => parsed.watcher = Some(v),
             ("--steward", Some(v)) => parsed.steward = Some(v),
+            ("--restart", Some(v)) => parsed.restart = Some(v),
+            ("--orchestrator", Some(v)) => parsed.orchestrators.push(v),
+            ("--skip", Some(v)) => parsed.skip.push(v),
             _ => {
                 eprintln!("cadence: {flag} isn't a flag it takes, or has no value");
                 return ExitCode::from(2);
@@ -83,6 +104,25 @@ fn run(args: &Args) -> io::Result<()> {
         root: state_home.join("pi/agentic-harness.pi"),
     };
     let now = now_ms() / 1000;
+    if let (Some(restart), Some(steward)) = (&args.restart, &args.steward) {
+        let data_home =
+            env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
+        let reviving = start::Reviving {
+            steward: steward.clone(),
+            watcher: args.watcher.clone(),
+            orchestrators: args.orchestrators.clone(),
+            skip: args.skip.clone(),
+            restart: restart.clone(),
+            quests: data_home.join("pi/agentic-harness.pi/quest-workflow/quests"),
+        };
+        let send = |to: &str, intent: &str, text: String| mesh.send(&message(to, intent, text));
+        // Reviving doesn't wait on the card: a fetch that fails mustn't
+        // leave a died orchestrator down.
+        match start::revive(&reviving, &mesh, &folder, now, &send) {
+            Ok(said) => said.iter().for_each(|line| println!("{line}")),
+            Err(err) => eprintln!("cadence: reviving: {err}"),
+        }
+    }
     let snapshot = gather(&folder, &state_home, &mesh, args, now)?;
     write_whole(&folder.join("card.txt"), &card::card(&snapshot, clock))?;
 
@@ -106,7 +146,7 @@ fn run(args: &Args) -> io::Result<()> {
             ),
             To::Steward => question.text.clone(),
         };
-        let message = new_question(to, text);
+        let message = message(to, "question", text);
         mesh.send(&message)?;
         if let Some(key) = &question.key {
             state.asked_as(key, &message.id, now, &question.text);
@@ -270,7 +310,7 @@ fn gather(
     })
 }
 
-fn new_question(to: &str, text: String) -> Message {
+fn message(to: &str, intent: &str, text: String) -> Message {
     let ms = now_ms();
     let pid = std::process::id();
     // Apart from another process's ids by its pid and the moment's
@@ -285,7 +325,7 @@ fn new_question(to: &str, text: String) -> Message {
         at: Timestamp::from_millisecond(ms).map_or_else(|_| String::new(), |t| t.to_string()),
         from: FROM.to_owned(),
         to: vec![format!("@{to}")],
-        intent: "question".to_owned(),
+        intent: intent.to_owned(),
         text,
         pid,
         re: None,

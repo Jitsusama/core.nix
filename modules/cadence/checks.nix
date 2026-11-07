@@ -18,8 +18,11 @@ onLinux {
   # VM waits, high pressure, a fresh kill and the net's lag at each doubling
   # are each asked about once; an overdue card is asked for; a question
   # unanswered twenty minutes, or a watcher gone ten, goes to the steward
-  # once; a question lands whole and wakes a parked session; and the card
-  # says the hour's merges, switches and runs.
+  # once; a question lands whole and wakes a parked session; the card says
+  # the hour's merges, switches and runs; and of the orchestrators and the
+  # steward's sessions, one that crashed is revived and one ended or done
+  # is left, once per address, not twice in ten minutes nor past three an
+  # hour.
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });

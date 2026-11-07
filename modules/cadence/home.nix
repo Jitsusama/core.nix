@@ -10,6 +10,10 @@
 # fetched each tick, the switches from update-to-main's follower's journal,
 # the runs from nix-offload's record, and the net's round from its state,
 # so it needs no builder and holds nothing between ticks.
+#
+# Given `revive.restart`, each tick first starts again every orchestrator
+# and every session of the steward's whose pi died, in a terminal on the
+# account's own PATH, so a crash overnight costs minutes, not the night.
 {
   config,
   lib,
@@ -25,6 +29,21 @@ let
     "--steward"
     cfg.steward
   ];
+  reviving = cfg.revive.restart != null && cfg.steward != null;
+  revive = lib.optionals reviving (
+    [
+      "--restart"
+      cfg.revive.restart
+    ]
+    ++ lib.concatMap (a: [
+      "--orchestrator"
+      a
+    ]) cfg.revive.orchestrators
+    ++ lib.concatMap (a: [
+      "--skip"
+      a
+    ]) cfg.revive.skip
+  );
 in
 {
   options.jitsusama.cadence = {
@@ -37,6 +56,28 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "The mesh address asked when the watcher doesn't answer or is gone.";
+    };
+    revive = {
+      restart = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "pi --model provider/model";
+        description = ''
+          The words a login shell runs to start a died session, before
+          `--session <id>`; null revives nothing. It needs `steward`, who
+          is told of each start.
+        '';
+      };
+      orchestrators = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Mesh addresses revived as orchestrators, beside any that others name as theirs.";
+      };
+      skip = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Mesh addresses never revived.";
+      };
     };
   };
 
@@ -53,15 +94,17 @@ in
             "tick"
           ]
           ++ asking
+          ++ revive
         );
-        # git and journalctl, as the account has them.
+        # git and journalctl, as the account has them, and to revive, the
+        # terminal, shell and holder it starts a session with.
         Environment = [
           "PATH=${
             lib.makeBinPath [
               pkgs.git
               pkgs.systemd
             ]
-          }"
+          }${lib.optionalString reviving ":${config.home.profileDirectory}/bin:/run/current-system/sw/bin"}"
         ];
         Slice = "background.slice";
       };
