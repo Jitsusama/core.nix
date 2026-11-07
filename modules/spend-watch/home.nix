@@ -21,7 +21,17 @@
 #     command = [ (lib.getExe config.jitsusama.spend-watch.claudePlanFeed) ];
 #   };
 #
-# With none, every figure is pi's own at list prices, and says so.
+# With none, every figure is pi's own at list prices, and says so. Where the
+# money comes from more than one place, each is a budget, and a feed says
+# which is its own:
+#
+#   jitsusama.spend-watch.budgets.proxy = {
+#     label = "Your proxy cap"; kind = "cap"; whose = "employer"; default = true;
+#   };
+#   jitsusama.spend-watch.budgets.delta = {
+#     label = "Delta team token"; kind = "team"; whose = "team";
+#   };
+#   jitsusama.spend-watch.feeds.proxy.budget = "proxy";
 {
   config,
   lib,

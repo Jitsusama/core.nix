@@ -4,14 +4,16 @@ description: >
   What AI use has cost, from spend-watch's history: the bill where a feed
   gives one, pi's logs at list prices where not. Use when asked what
   something cost, where the money went, how spend compares with usual,
-  how close a cap is, what's coming this week, which sessions, quests,
-  models or agents cost most, or how much went on rebuilding context.
+  how close a cap is, how each budget stands against its limits, what's
+  coming this week, which sessions, quests, models, agents or budgets cost
+  most, or how much went on rebuilding context.
 ---
 
 # spend-watch
 
 spend-watch keeps a history of every dollar the account's AI use cost, by
-hour, session, quest, model, agent and repo. Its figures are the bill where a
+hour, session, quest, model, agent, repo and budget: the money a request
+draws on, such as a proxy's cap, a team's token or a Claude plan. Its figures are the bill where a
 feed gives one (a provider's warehouse, then its live meter), an estimate from
 pi's logs times each model's learned ratio of bill to list where the bill
 hasn't come ("about"), and pi's list prices where there's no bill at all.
@@ -36,11 +38,14 @@ spend-watch report caps                    # caps and their changes
 spend-watch report quests                  # spend beside status and PRs
 spend-watch report outliers                # sessions costly per turn
 spend-watch report forecast                # the week ahead, with ranges
+spend-watch report this month by budget    # each budget's spend
+spend-watch budgets                        # each budget against its limits
+spend-watch budgets --session <id> --json  # and one session's, under its own
 spend-watch findings                       # what holds now
 ```
 
 Periods: today, yesterday, this week, last week, this month, last month, 30
-days. Cuts: quest, model, agent, repo, session, tool, day, source.
+days. Cuts: quest, model, agent, repo, session, tool, day, source, budget.
 
 ## Reading the Answers
 
@@ -51,6 +56,11 @@ days. Cuts: quest, model, agent, repo, session, tool, day, source.
   (council)". A council's or judge's reviewers count toward the session
   that asked for them and its quest, at the hours they worked; a swarm's
   agents toward the quest whose workspace they work in.
+- A budget stands in its own unit: dollars against a limit in dollars, or
+  the share of a subscription's window used, which is never turned into
+  dollars. The whole across budgets is billed spend: what was metered and
+  each subscription's price, never its use. A budget marked undeclared was
+  named in a log but not in the config; its spend still counts.
 - A forecast's range is its 80% one, checked against the history by
   `spend-watch backtest`.
 - A finding marked expected (`spend-watch findings expect <key>`) stays in

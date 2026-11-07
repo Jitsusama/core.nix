@@ -43,6 +43,10 @@ to the feeds that read it.
 
 ## What a Feed Writes
 
+A feed speaks for one budget, the money a request draws on: its own,
+`feeds.<name>.budget`, or the default budget when that's unset. A `billed`
+or `cap` record for another budget names it in `budget`.
+
 Instants are RFC 3339; days are `YYYY-MM-DD`. Each record has a `kind`:
 
 ### billed
