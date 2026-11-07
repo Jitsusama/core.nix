@@ -51,8 +51,9 @@ PITCH = 24
 BEAT = 12
 NEAR = 0.02
 # A Title's pitch: how far the title sits under the eyebrow, and its lines apart when its name
-# wraps, tighter than two of the plate's, so the name reads as one heading.
-TITLE_LEADING = 32
+# wraps, tighter than two of the plate's, so the name reads as one heading. One line's pitch,
+# since a Title stands apart by weight rather than size (VKCF3Z, 2026-11-06).
+TITLE_LEADING = 24
 # A Display's pitch: how far Now's time sits under its eyebrow, as a title sits a Title's.
 DISPLAY_PITCH = 56
 # How far the text keeps from the plate's frame on every side, its foot included: the inset rung,

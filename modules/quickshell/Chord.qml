@@ -45,6 +45,10 @@ Flow {
             font.family: chord.level.family
             font.pointSize: chord.level.pointSize
             font.weight: chord.level.weight
+            // The mono's slashed zero, so a key's 0 and O read apart, which
+            // at Note's size they didn't (VKCF3Z, 2026-11-06: Super+O read as
+            // "+ 0"). Only in keys: a figure anywhere else keeps its zero.
+            font.features: ({ cv01: 1 })
 
             Text {
                 id: plus

@@ -95,7 +95,8 @@ Scope {
     readonly property real cardChrome: card.height - listBox.height
     // How tall the drawer stands in the card's place: down to the rows'
     // end, so the foot stays in sight under it, saying how to come back.
-    readonly property real rowsEnd: Theme.border + headTall + Theme.border + listBox.height
+    readonly property real rowsEnd: Theme.border + headTall + Theme.border
+        + Theme.space.rung.tie + listBox.height
     // The card's words but its foot, which give way to the drawer where it
     // takes their place, fading on the drawer's own curve as it comes.
     property real wordsShown: drawerOver && drawerHolds ? 0 : 1
@@ -2078,9 +2079,16 @@ Scope {
         const shorter = enough(choice);
         if (shorter !== "")
             taught.push([shorter, hints.enough ?? ""]);
-        else if (kindOf(choice) !== "" && (choice.chord ?? []).length > 0)
-            taught.push([chordText(choice.chord), hints.nextTime ?? ""]);
+        else if (taughtChord(choice).length > 0)
+            taught.push([chordText(taughtChord(choice)), hints.nextTime ?? ""]);
         return taught;
+    }
+
+    // The chord the foot teaches for a row its row doesn't draw: a thing's,
+    // whose row says its kind where a chord would be, and a home row's,
+    // which opens its place straight (homeRow).
+    function taughtChord(choice) {
+        return kindOf(choice) !== "" ? choice.chord ?? [] : choice.nextTime ?? [];
     }
 
     // The find's keys that give way first, short of room, in order of
@@ -2128,6 +2136,10 @@ Scope {
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
         keys.push([hintKey("keys"), hints.keys ?? ""]);
+        // A place's chord, drawn first, furthest from Return, so it gives
+        // way first (VKCF3Z, 2026-11-06).
+        if ((choice.nextTime ?? []).length > 0)
+            keys.splice(1, 0, [chordText(choice.nextTime), hints.nextTime ?? ""]);
         return keys;
     }
 
@@ -2612,7 +2624,14 @@ Scope {
         const rest = names.length > 0 && fitted === "" ? source.counted() : fitted;
         const placed = Object.assign({}, row, {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
-                : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
+                : [lead, rest].filter(part => part !== "").join(" \u00b7 "),
+            // A home row never draws its chord: the foot teaches it as the
+            // next time's way while it's the cursor row, furthest from
+            // Return, and the row's far end is its say's. Drawn on Now,
+            // Super+O stood alone at the row's end and read as a stray
+            // "+ 0" (VKCF3Z, 2026-11-06).
+            chord: [],
+            nextTime: row.chord
         });
         // A collection with a plate of its own, as Now's moment is
         // (WhatsOn.qml), shows it beside its home row.
@@ -2661,9 +2680,11 @@ Scope {
             note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
+            // The chord that opens it straight, at its right as Desktop's
+            // collections draw theirs (home's rows hand it to the foot).
             chord: opener ? opener.chord : [],
-            // How many it holds at its right, before its chord, where a
-            // row's figure stands (VKCF3Z, 2026-11-05).
+            // How many it holds at its right, where a row's figure stands
+            // (VKCF3Z, 2026-11-05).
             side: counted ? source.counted() : "",
             gap: gap,
             opens: name,
@@ -2719,8 +2740,10 @@ Scope {
     onHeldChanged: {
         const left = placeHeld;
         placeHeld = held;
-        // Every place's gutter starts as wide as home's.
+        // Every place's gutter starts as wide as home's, its numbers as
+        // few as its own rows need.
         gutterDigits = leastDigits;
+        numberDigits = 1;
         if (open && placeOf(left) !== placeOf(held)) {
             // A place opening redraws every row, so its foot's room is
             // weighed afresh then, as its rows come.
@@ -2958,22 +2981,29 @@ Scope {
         && (commanding !== null ? commandRows.count > 0 : matches.length > 0)
     readonly property bool numbersCounted: numbersRelative && commanding === null
         && (prompt.mode === "normal" || prompt.mode === "visual")
-    // How many digits the gutter holds: three in every place, as Joel's
-    // Neovim's number column holds three in every buffer (Vim's numberwidth
-    // of four, a space with them), and more only once a list numbers past
-    // 999. Home's find reaches hundreds, so it needs three; a place that
-    // held only its own rows' digits stood its glyphs and names a digit
-    // left of home's, and stepping in moved every column (Joel, 2026-11-06:
-    // "padding is different when on the home launcher screen and a
-    // secondary screen"). Neither a find's first letter nor its narrowing
-    // widens it.
+    // How many digits the gutter's room holds: three in every place, and
+    // more only once a list numbers past 999, so the rows' glyphs and names
+    // stand in one place on every page and in every mode. Home's find
+    // reaches hundreds; a place that held only its own rows' room stood
+    // its glyphs and names a digit left of home's, and stepping in moved
+    // every column (Joel, 2026-11-06: "padding is different when on the
+    // home launcher screen and a secondary screen").
     readonly property int leastDigits: 3
     property int gutterDigits: leastDigits
+    // How many digits its numbers take, as Vim's number column takes as
+    // many as its buffer's lines need: the rows a place lists, and while a
+    // find is typed, the most it has listed, so its narrowing never
+    // shrinks them under the cursor. They start on the inset whatever
+    // their count, and the room they don't take lies after them, before
+    // the glyphs (VKCF3Z, 2026-11-06, for Joel's "why leave constant room
+    // for three when we often have only 1?").
+    property int numberDigits: 1
 
     function noteDigits() {
         const digits = String(Math.max(1, matches.length)).length;
         if (digits > gutterDigits)
             gutterDigits = digits;
+        numberDigits = typed === "" ? digits : Math.max(numberDigits, digits);
     }
     onNumberedChanged: placeNumbers()
     // The : line's lines numbered while it's open, and the rows again after.
@@ -5344,9 +5374,8 @@ Scope {
             y: Math.round(ground.y),
             x: Math.round(ground.x), width: Math.round(picked.width),
             height: Math.round(picked.height),
-            // Where its row's ground would stand, close round the row's ink.
-            row: Math.round(chosen.mapToItem(card, 0, chosen.height - root.rowTall
-                + (root.rowTall - root.rowCaps) / 2 - Theme.space.rung.mark).y)
+            // Where its row's ground would stand, its band's top.
+            row: Math.round(chosen.mapToItem(card, 0, chosen.height - root.rowTall).y)
         };
         // Where the first row is drawn below the top of the list, so a test
         // can say a list shown from its start leaves no space above it:
@@ -5488,7 +5517,8 @@ Scope {
     // row's, below the field and its hairline.
     readonly property real fieldLine: Theme.border + prompt.height / 2
     readonly property real fieldBase: headBase
-    readonly property real rowLine: Theme.border + headTall + Theme.border + rowTall / 2
+    readonly property real rowLine: Theme.border + headTall + Theme.border
+        + Theme.space.rung.tie + rowTall / 2
     // How tall a row is, four beats; its middle is a centre, half of it,
     // rather than a space of its own.
     readonly property real rowTall: 4 * Theme.space.beat
@@ -5506,18 +5536,17 @@ Scope {
     // past them, where the gutter's room ends, and its glyph a mark into
     // the ground; each keeps its own inset inside, so each stands its inset
     // less a mark before the gutter's end.
-    readonly property real textAreaAt: rowsGutter.x + rowsGutter.width
+    readonly property real textAreaAt: rowsGutter.x + rowsGutter.room
         - (Theme.space.rung.inset - Theme.space.rung.mark)
     // Where the field's baseline stands, down from the card's top: centred
     // by eye in the head's band, the frame's inside to its hairline, which
     // the field fills (docs/design.md: text in a band centres in it).
     readonly property real headBase: Theme.border + prompt.baselineOffset
-    // How tall the head is above its hairline: so the field's line at rest
-    // stands centred in it and a row over the first row's, and the plate's
-    // beat counts on from it (VKCF3Z, 2026-11-05). A place's name, larger,
-    // centres on its own, settling a few pixels lower in the same band.
-    readonly property real headTall: Bands.above(rowTall, rowCaps, prompt.restingLift,
-        Theme.border)
+    // How tall the head is above its hairline: a row's band, its line
+    // centred by the band rule, so the card keeps one rhythm, a head band,
+    // the hairline, the rows' bands, the hairline and the status line, now
+    // its Title is the line's size (VKCF3Z, 2026-11-06).
+    readonly property real headTall: rowTall
     // How tall a row's capitals stand, which its ground is set round.
     readonly property real rowCaps: nameCaps.tightBoundingRect.height
     // Where the foot's baseline stands under its hairline: its capitals
@@ -5578,9 +5607,9 @@ Scope {
             mode: prompt.mode,
             // What leads the line, the find's / at every depth, and its hue
             // by the theme's role, and a held thing's glyph after it.
-            sigil: prompt.glyph,
-            sigilHue: Qt.colorEqual(prompt.hue, Theme.accent) ? "accent"
-                : Qt.colorEqual(prompt.hue, Theme.muted) ? "muted" : "",
+            sigil: prompt.cellMark,
+            sigilHue: Qt.colorEqual(prompt.cellHue, Theme.accent) ? "accent"
+                : Qt.colorEqual(prompt.cellHue, Theme.muted) ? "muted" : "",
             lead: prompt.lead,
             // The row Return landed on from the find, until the next key,
             // and whether a Return now would come too soon after it.
@@ -6038,6 +6067,7 @@ Scope {
             prompt.take();
             // The gutter as wide as every place's.
             gutterDigits = leastDigits;
+            numberDigits = 1;
             noteDigits();
             // Weighed once an opening, not on every mode change, which
             // walks every thing's verbs.
@@ -6430,18 +6460,14 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        // The line's first column holds the mode's mark, as
-                        // Vim's / line starts with its /: the find's / in
-                        // the accent, and nothing in normal or visual, whose
-                        // keys are on the rows, the column kept so nothing
-                        // after it moves as the mark comes and goes (VKCF3Z,
-                        // 2026-11-06, on Joel's "when in normal mode, it
-                        // shouldn't have a / at the front"). That column is
-                        // the gutter's, and the rest stand on the rows' own:
-                        // a held thing's glyph, or the padlock, over their
-                        // glyphs, and what's typed or a place's name over
-                        // their names, as the : line's typing stands, so
-                        // nothing moves between / and : either. An ask
+                        // The line stands on the rows' columns: a held
+                        // thing's glyph, or the padlock, over their glyphs,
+                        // where the find's / and the : line's : take its
+                        // cell while they last, and what's typed or a
+                        // place's name over their names, so nothing moves
+                        // between normal, / and : (VKCF3Z, 2026-11-06, on
+                        // Joel's "when in normal mode, it shouldn't have a
+                        // / at the front"). An ask
                         // leads with nothing, since the line isn't a find
                         // while it stands, its words where the find's are.
                         readonly property bool sigilLeads: !secret && !words && root.asked === null
@@ -6451,8 +6477,16 @@ Scope {
                         // bare band said nothing at the top of the screen
                         // he sees most).
                         readonly property bool home: sigilLeads && root.held.length === 0
-                        glyph: sigilLeads && mode === "find" ? "/" : ""
-                        hue: Theme.accent
+                        // Nothing in the gutter's column in any mode: the
+                        // find's / takes the place glyph's cell while it
+                        // lasts, as Vim keeps one cell for its mode, so
+                        // normal never shows a bare cell the find fills
+                        // (VKCF3Z, 2026-11-06, for Joel's "an extra space
+                        // in front of the launcher heading when in command
+                        // mode that we don't have in find").
+                        glyph: ""
+                        cellMark: sigilLeads && mode === "find" ? "/" : ""
+                        cellHue: Theme.accent
                         lead: root.asked !== null ? "" : secret ? Theme.glyph.secret
                             : thing ? thing.lead ?? thing.glyph
                             : home ? Theme.glyph.home : ""
@@ -6764,7 +6798,9 @@ Scope {
                             root.commanding?.typed ?? "")
 
                         sourceComponent: CommandLine {
-                            markAt: Theme.space.rung.inset
+                            // Its : in the place glyph's cell, as the find's
+                            // / stands, and nothing in the gutter's column.
+                            markMiddle: prompt.cellMiddle
                             typedAt: root.textAreaAt + Theme.space.rung.inset + root.glyphColumn
                             menu: root.commanding?.menu ?? []
                             argued: (entry, arg) => root.commandArguments(entry, arg)
@@ -6839,11 +6875,17 @@ Scope {
                     opacity: root.wordsShown
                 }
 
-                // The rows and the foot, from frame to frame: the rows meet
-                // the head's hairline and the foot's with what a row leaves,
-                // and the foot's baseline stands an inset above the frame.
+                // The rows and the foot, from frame to frame: the rows' bands
+                // a tie from the head's hairline and from the foot's, so a
+                // ground never touches a rule (VKCF3Z, 2026-11-06), and the
+                // foot's baseline an inset above the frame.
                 Column {
                     width: parent.width
+
+                    Item {
+                        width: parent.width
+                        height: Theme.space.rung.tie
+                    }
 
                     // As tall as it opened, whatever's found, so the foot
                     // never jumps and a row never moves because others
@@ -6856,6 +6898,10 @@ Scope {
                         height: root.over !== null
                             ? Math.min(commandRows.count, 10) * root.rowTall : root.tall
                         opacity: root.wordsShown
+                        // It cuts the rows at its edges rather than the list
+                        // at its own, so a row's ground reaches out over the
+                        // gutter to the frame.
+                        clip: true
 
                         // The command line's menu, while : is open: its lines
                         // are the list, in the rows' place, each a row as any
@@ -6906,6 +6952,7 @@ Scope {
                                 Choice {
                                     id: commandChoice
                                     anchors.fill: parent
+                                    groundFrom: commandRows.x
                                     selected: commandRow.index === commandRows.currentIndex
                                     shown: card.opacity > 0
                                     glyph: commandRow.act?.glyph ?? ""
@@ -6924,6 +6971,8 @@ Scope {
                         Gutter {
                             id: rowsGutter
                             x: Theme.space.rung.inset
+                            // Over the rows' grounds, which reach under it.
+                            z: 1
                             height: parent.height
                             clip: true
                             slots: Math.ceil(height / root.rowTall) + 1
@@ -6933,6 +6982,10 @@ Scope {
                                 ? commandRows.currentIndex : root.current
                             relative: root.numbersCounted
                             digits: root.gutterDigits
+                            // On the : line, as many as its lines need.
+                            figures: root.commanding !== null
+                                ? String(Math.max(1, commandRows.count)).length
+                                : root.numberDigits
                             shown: root.numbered
                         }
 
@@ -6963,7 +7016,6 @@ Scope {
                             readonly property int figures: root.figuresWidest
                             // And the widest any row has said there.
                             readonly property int sides: root.sidesWidest
-                            clip: true
                             boundsBehavior: Flickable.StopAtBounds
                             // The rows by what each is (steadyId), each
                             // drawn once and kept while it's there: a refresh,
@@ -7207,14 +7259,18 @@ Scope {
                                 // its row as the list had gone down.
                                 parent: list.contentItem
                                 z: -1
-                                // Close round its ink, as Choice's own ground
-                                // is (Choice.qml): a mark round the glyph and
-                                // what's flush right, above the capitals and
-                                // below the baseline, so more room stands
-                                // outside it than in.
-                                x: Theme.space.rung.inset - Theme.space.rung.mark
-                                width: list.width - 2 * x
-                                height: root.rowCaps + 2 * Theme.space.rung.mark
+                                // Its row's whole band, as Vim's cursorline
+                                // fills its line: from the frame's inside
+                                // edge to its other, the gutter's numbers
+                                // and the far end's ink an inset of padding
+                                // inside it, square, meeting the rows above
+                                // and below (VKCF3Z, 2026-11-06, for Joel's
+                                // "rows in the launcher should have padding
+                                // instead of margins"). A gap above a row
+                                // stays outside its band.
+                                x: -list.x
+                                width: listBox.width
+                                height: root.rowTall
                                 // The rows sit from the list's origin, which
                                 // moves off 0 as rows above come or go while
                                 // the list is scrolled, so the fill does too,
@@ -7222,10 +7278,8 @@ Scope {
                                 // stayed where its row had been, under
                                 // another row (Joel, 2026-10-29: the
                                 // highlight sat off the selected text).
-                                y: list.originY + list.pickY + (root.rowTall - root.rowCaps) / 2
-                                    - Theme.space.rung.mark
+                                y: list.originY + list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
-                                radius: Theme.inner
                                 // While the drawer holds the keys the row
                                 // stays marked, in the raised role rather
                                 // than the selection's, since the keys
@@ -7293,6 +7347,7 @@ Scope {
                                     // only what they move moves.
                                     shown: card.opacity > 0 && !QueryKeys.paged(prompt.mode)
                                     fills: false
+                                    groundFrom: list.x
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
                                     // A colour's swatch wears the colour itself.
@@ -7378,6 +7433,11 @@ Scope {
                     // A picture, or a row's whole words, show in the drawer
                     // beside the card, never below the rows, so the card's
                     // height never changes with the selection.
+
+                    Item {
+                        width: parent.width
+                        height: Theme.space.rung.tie
+                    }
 
                     // The foot, one line, the one place that teaches, so the
                     // rows stay clean. On the right, what Return does here,

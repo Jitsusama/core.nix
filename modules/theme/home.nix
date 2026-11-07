@@ -995,18 +995,22 @@ in
           };
           # Drawn for the size it's set at, never a poster's cut, and with
           # the threshold's whimsy: softened, its wonky letters on.
+          # A surface's head, at its line's size: it stands apart from the
+          # glyph and the text beside it by a heavy serif in strong ink,
+          # never by size (Joel, 2026-11-06: "use weights and not size for
+          # that ... it feels like shit"). Heavier than Words' strong, which
+          # stays for emphasis inside words, and no tighter, since that was
+          # for a display cut.
           title = {
             face = "serif";
-            step = "title";
-            # A heading's lines sit tighter than the words' (design.md, Space).
-            pitch = 32;
+            step = "large";
+            pitch = 24;
             axes = {
-              wght = 560;
-              opsz = 21;
+              wght = 640;
+              opsz = 14;
               SOFT = 100;
               WONK = 1;
             };
-            tracking = -1.0e-2;
             colour = "strong";
           };
           # Medium always, so selection changes only colour and fill and a

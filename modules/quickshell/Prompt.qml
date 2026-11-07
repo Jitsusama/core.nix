@@ -51,6 +51,27 @@ Item {
     // find's / leads the line.
     property string lead
     property color leadHue: Theme.muted
+    // The mode's mark, standing in the lead's cell while its mode lasts, as
+    // Vim's one mode cell: the find's / or nothing, so the lead's glyph
+    // and its mark take turns there and nothing after them moves (VKCF3Z,
+    // 2026-11-06, for Joel's "an extra space in front of the launcher
+    // heading ... that we don't have in find").
+    property string cellMark
+    property color cellHue: Theme.accent
+    // Where the lead's ink centres across, which the mode's mark centres
+    // on, whether the lead is drawn or not: a cell with no lead centres
+    // its mark in a mark's room.
+    readonly property real cellMiddle: lead === ""
+        ? leadText.x + Theme.level.name.pitch / 2
+        : leadText.x + (leadInk.tightBoundingRect.x + leadInk.tightBoundingRect.width / 2)
+            / leadFine * leadScale
+    // The mode mark's ink measured, so its middle stands on the cell's.
+    TextMetrics {
+        id: cellInk
+        text: prompt.cellMark
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+    }
     // Given, the lead's column is held at it whether a lead is drawn or
     // not, so what's typed keeps its place as a thing is held and let go,
     // as the launcher's rows keep their glyph column.
@@ -822,11 +843,22 @@ Item {
         id: leadText
         x: Theme.space.rung.inset + prompt.glyphWidth
         anchors.baseline: shown.baseline
-        visible: prompt.lead !== ""
+        visible: prompt.lead !== "" && prompt.cellMark === ""
         text: prompt.lead
         color: prompt.leadHue
         font.family: Theme.level.figure.family
         font.pointSize: Theme.level.figure.pointSize * prompt.leadScale
+    }
+
+    Text {
+        id: cellText
+        x: prompt.cellMiddle - cellInk.tightBoundingRect.x - cellInk.tightBoundingRect.width / 2
+        anchors.baseline: shown.baseline
+        visible: prompt.cellMark !== ""
+        text: prompt.cellMark
+        color: prompt.cellHue
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
     Text {
@@ -1108,7 +1140,9 @@ Item {
                     Text {
                         id: stepName
                         text: step.modelData
-                        color: Theme.text
+                        // The Title's own ink, strong, so the heading
+                        // outranks the cursor row's name beneath it.
+                        color: Theme.level.title.colour
                         font: titleFace.font
                     }
                 }
