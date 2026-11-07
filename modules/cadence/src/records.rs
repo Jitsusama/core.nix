@@ -288,9 +288,56 @@ pub fn net_round(state: &str) -> Option<String> {
     serde_json::from_str::<State>(state).ok()?.round
 }
 
+/// The net's hold on switching, from its `hold.json`: the test a merge
+/// broke, the merge's pull request when it found one, and whether its
+/// revert is under way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetHold {
+    pub at: i64,
+    pub test: String,
+    pub bad_pr: Option<u64>,
+    pub reverting: bool,
+}
+
+#[must_use]
+pub fn net_hold(hold: &str) -> Option<NetHold> {
+    #[derive(Deserialize)]
+    struct Hold {
+        at: i64,
+        test: String,
+        bad_pr: Option<u64>,
+        revert_commit: Option<String>,
+    }
+    let hold = serde_json::from_str::<Hold>(hold).ok()?;
+    Some(NetHold {
+        at: hold.at,
+        test: hold.test,
+        bad_pr: hold.bad_pr,
+        reverting: hold.revert_commit.is_some(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_nets_hold_says_its_test_its_merge_and_its_revert() {
+        let failed = "{\"at\":1794024062,\"bad\":\"c210\",\"bad_pr\":2059,\
+                      \"revert_commit\":null,\"revert_pr\":null,\"test\":\"vm-a\"}";
+        assert_eq!(
+            net_hold(failed),
+            Some(NetHold {
+                at: 1_794_024_062,
+                test: "vm-a".into(),
+                bad_pr: Some(2059),
+                reverting: false,
+            })
+        );
+        let reverting = "{\"at\":1,\"bad_pr\":7,\"revert_commit\":\"ab\",\"test\":\"vm-a\"}";
+        assert!(net_hold(reverting).is_some_and(|h| h.reverting));
+        assert_eq!(net_hold(""), None);
+    }
 
     #[test]
     fn a_merge_reads_its_pull_request_and_parents() {

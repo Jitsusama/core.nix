@@ -142,6 +142,23 @@ fn net(out: &mut String, s: &Snapshot, clock: &impl Fn(i64) -> String) {
             let _ = writeln!(out, "The net is caught up with main.");
         }
     }
+    if let Some(hold) = &s.net_hold {
+        let pr = hold.bad_pr.map_or_else(
+            || "a merge it couldn't name".to_owned(),
+            |pr| format!("#{pr}"),
+        );
+        let revert = if hold.reverting {
+            "its revert is under way"
+        } else {
+            "nothing reverts it"
+        };
+        let _ = writeln!(
+            out,
+            "  it holds switches since {} on {}, broken by {pr}; {revert}.",
+            clock(hold.at),
+            hold.test
+        );
+    }
     if s.watched {
         let watcher = if s.watcher_alive { "there" } else { "gone" };
         let card_at = s.last_card.map_or_else(|| "none".to_owned(), clock);
