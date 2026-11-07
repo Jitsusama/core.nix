@@ -7827,15 +7827,25 @@ Scope {
                             // doesn't see what a call reads, so it reads the
                             // face itself, to be measured again in the theme's
                             // face once that arrives.
+                            // Each mode holds only what it says itself:
+                            // normal a count typed and what the place says,
+                            // the others their count chosen. Normal's held
+                            // for visual's "N chosen", which it never says,
+                            // and gave its : and - away to it (VKCF3Z,
+                            // 2026-11-07: space that ranks nothing). The
+                            // facts sit left of it, so they hold still all
+                            // the same, and visual brings keys of its own.
                             readonly property real room: {
                                 void measure.font;
+                                const figures = "9".repeat(root.footFiguresWidest);
                                 // What the place says widens it while it says
                                 // it, so it's read whole.
-                                const widest = Math.max(root.placeSays === "" ? 0
-                                    : measure.advanceWidth(root.placeSays),
-                                    measure.advanceWidth(Operators.chosenSaid(
-                                        "9".repeat(root.footFiguresWidest),
-                                        Words.field.visual ?? {})));
+                                const widest = prompt.mode !== "normal"
+                                    ? measure.advanceWidth(Operators.chosenSaid(figures,
+                                        Words.field.visual ?? {}))
+                                    : Math.max(measure.advanceWidth(figures),
+                                        root.placeSays === "" ? 0
+                                            : measure.advanceWidth(root.placeSays));
                                 return Theme.space.rung.groups + Math.ceil(widest);
                             }
                             // A group after the facts, since it says the line's
