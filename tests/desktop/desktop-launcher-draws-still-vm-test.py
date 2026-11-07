@@ -60,13 +60,6 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     reads it once as it opens, its note saying the last write.
     """
     jobs = "$XDG_RUNTIME_DIR/jobs"
-    # Once as it opens, once as Agents makes its rows on opening, once as
-    # the queue is read on opening, and three to spare for anything else
-    # the desktop changes meanwhile: run soon after the VM starts, its
-    # displays, networks and Machine were still said again as it opened,
-    # which made one more (2026-10-30). Made again on each write, it would
-    # be ten more.
-    joins_on_opening = 6
     # The shell's first opening joins its sources as they first come, so
     # it's had before counting, and the test counts the same run first or
     # later.
@@ -96,6 +89,19 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
 
     # Closed, a write never so much as wakes it: the folder isn't watched.
     assert watches() == 0, "the closed launcher watches the queue's folder"
+    # Nor are its rows joined again while it's closed, even by a change it
+    # does hear, a window opening, counted before it opens, since an open
+    # launcher joins them as anything on the desktop changes: a budget for
+    # the opening's joins failed whenever the desktop moved meanwhile
+    # (2026-11-06).
+    windows = int(desktop.as_account("qs ipc call launcher changes windows"))
+    desktop.as_account("niri msg action spawn -- kitty --title still-closed sleep infinity")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"test $(qs ipc call launcher changes windows) -gt {windows}"),
+        timeout=STARTING,
+    )
+    joined = int(desktop.as_account("qs ipc call launcher joined")) - before
+    assert joined == 0, f"the closed launcher joined its rows {joined} times"
     try:
         desktop.answer("queue")
         desktop.launcher_until(
@@ -112,17 +118,10 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
         )
         heard = re.findall(r"report\[(heard jobs [^\]]*)\]", said)
         assert heard == ["heard jobs 20"], f"the closed launcher heard the queue: {heard}"
-        joined = int(desktop.as_account("qs ipc call launcher joined")) - before
-        # A loaded builder makes the VM lag, and each lag heard changes
-        # Machine's Lag row, which can join them once more: six lags made
-        # one more on 2026-11-04. None comes of the queue's writes.
-        lags = len(re.findall(r"report\[heard lag ", said))
-        assert joined <= joins_on_opening + lags, (
-            f"the closed launcher joined its rows {joined} times, {lags} lags heard"
-        )
     finally:
         desktop.close_launcher()
-        desktop.as_account(f"rm -f {jobs}/queue.json")
+        # Bracketed, so the pattern doesn't match the shell running it.
+        desktop.as_account(f"rm -f {jobs}/queue.json; pkill -f 'title still-close[d]' || true")
 
 
 def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) -> None:
@@ -285,16 +284,23 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     """
     machine = desktop.machine
     opened = desktop.showing()
-    assert [hint.split(" ")[0] for hint in opened["hints"]] == ["\u21b5"], opened["hints"]
+    # Opened on Now, a home row, the foot teaches its chord beside Return and draws nothing
+    # else (Y2YBTS, 2026-11-06: a home row hands its chord to the foot).
+    taught = opened["hints"][1:]
+    assert opened["hints"][0].startswith("\u21b5"), opened["hints"]
+    assert all(hint.endswith("next time") for hint in taught), opened["hints"]
     machine.send_chars("s")
     desktop.launcher_until(lambda shown: any("complete" in hint for hint in shown["hints"]))
     shown = desktop.showing()
     foot = laid_out(desktop)["foot"]
     assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
-    # The room the opening held is just what the keys the letter brought take.
-    assert opened["keysRoom"]["held"] == shown["keysRoom"]["said"], (
+    # The room the opening held is just the widest the find has drawn: what the opening's
+    # keys took, or what the letter brought, and no more.
+    drawn = max(opened["keysRoom"]["said"], shown["keysRoom"]["said"])
+    assert opened["keysRoom"]["held"] == drawn, (
         f"the opening held {opened['keysRoom']['held']} px for the keys, which take"
-        f" {shown['keysRoom']['said']}: {shown['hints']}"
+        f" {opened['keysRoom']['said']} ({opened['hints']}) and then"
+        f" {shown['keysRoom']['said']} ({shown['hints']})"
     )
     # And that's how they're drawn: the first key starts as far in from the status line's end
     # as they take, in the card's frame, where the foot's words are laid out.
