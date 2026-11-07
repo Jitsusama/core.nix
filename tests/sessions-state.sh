@@ -1,63 +1,16 @@
 #!/usr/bin/env bash
-# Lays out pi's sessions for tests/sessions.qml under the folder given, as
-# the harness keeps them: a presence record for each, and the processes
-# they name. Two run, started as kitty starts a window's program, one saying
-# so in its record and one only in its environment; one runs where niri
-# shows no window of its kitty; one's process has ended; one is from an
-# earlier boot; and one names a running pid that started at another time,
-# as a pid used again does. Two say they're parked, their processes ended
-# as a parked one's has; tests/sessions.qml writes the marker one keeps
-# while it's parked once the shell has started, as the harness makes its
-# park folder only then. A stand-in kitten lists one kitty's windows,
-# and a stand-in mycelium refuses a steer.
-# The running processes' pids are written beside them, for the test to end.
+# Lays out what pi's sessions leave beside what the machine's node says of
+# them, for tests/sessions.qml, under the folder given: the realm the node
+# keeps, what the last boot's end took away, closed sessions' own records,
+# a stand-in kitten listing one kitty's windows, and a stand-in mycelium
+# refusing a steer. The sessions themselves are the node's, which the test
+# stands in for, so no presence record is laid out and no process started.
 set -euo pipefail
 
 state=$1
-presence=$state/pi/agentic-harness.pi/mesh-workflow/presence
-mkdir -p "$presence" "$state/bin" "$state/mycelium"
+mkdir -p "$state/pi/agentic-harness.pi" "$state/bin" "$state/mycelium"
 # The realm a machine's node keeps, whose socket isn't there yet.
 echo harbour >"$state/mycelium/realm"
-boot=$(cat /proc/sys/kernel/random/boot_id)
-
-# A process's start in clock ticks: the stat's 22nd field, counted after the
-# name's closing bracket, which may hold spaces.
-ticks() {
-  local stat
-  stat=$(cat "/proc/$1/stat")
-  stat=${stat##*) }
-  cut -d ' ' -f 20 <<<"$stat"
-}
-
-# A record: its file, its address, its owner's pid, boot and start, and any
-# more fields, as JSON.
-record() {
-  printf '{"session":"s-%s","addresses":["%s"],"owner":{"pid":%s,"bootId":"%s","startTicks":%s}%s}\n' \
-    "$2" "$2" "$3" "$4" "$5" "$6" >"$presence/$1.json"
-}
-
-KITTY_LISTEN_ON=unix:@kitty-500 KITTY_WINDOW_ID=3 sleep 300 &
-live=$!
-sleep 300 &
-other=$!
-KITTY_LISTEN_ON=unix:@kitty-700 KITTY_WINDOW_ID=2 sleep 300 &
-unseen=$!
-true &
-ended=$!
-wait "$ended"
-
-record live LIVE01 "$live" "$boot" "$(ticks "$live")" \
-  ',"busy":true,"title":"\u03c0 - Live One - core.nix"'
-record other OTHER2 "$other" "$boot" "$(ticks "$other")" \
-  ',"title":"\u03c0 - Lighth\u2026 - wrong","questInfo":{"id":"QEST-20261106-OTHER2","title":"Lighthouse - Keep It Lit","short":"OTHER2","status":"active"},"cwd":"/home/me/lamp/","terminal":{"driverId":"kitty","kind":"kitty-window","hostId":"here","value":"4","scope":"unix:@kitty-600"}'
-record unseen NOWIN6 "$unseen" "$boot" "$(ticks "$unseen")" ''
-record ended ENDED3 "$ended" "$boot" 1 ''
-record old OLD004 "$live" another-boot "$(ticks "$live")" ''
-record reused REUSE5 "$live" "$boot" "$(($(ticks "$live") + 1))" ''
-record napper NAPPER "$ended" "$boot" 1 \
-  ',"state":"parked","title":"\u03c0 - Napper - core.nix"'
-record woken WOKEN8 "$ended" "$boot" 1 ',"state":"parked"'
-echo "$live" >"$state/live.pid"
 
 # What the last boot's end took away, as the harness keeps it: one whole,
 # one pi never saved, with its quest, one whose folder is gone since, one with no folder and one whose id a
@@ -85,7 +38,6 @@ cat >"$state/pi/restore.json" <<'EOF'
    "carried":"lighthouse"}
 ]}
 EOF
-echo "$other" >"$state/other.pid"
 
 # Closed sessions' own records, as pi keeps them, each opening with the
 # folder it ran in: one in a tree still there, which isn't the home

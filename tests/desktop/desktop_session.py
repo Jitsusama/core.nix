@@ -15,7 +15,7 @@ import re
 import shlex
 import tempfile
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
@@ -895,7 +895,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         )
         return {
             **told,
+            # The session's own id, which pi always writes and the node keys each record by: one
+            # without it isn't a session to the node. TESTQA's is pi_session's.
+            "session": "01a1face-test" if address == "TESTQA" else f"01a1face-{name[-2:]}",
             "title": title,
+            # When it was written, which mycelium's node reads every
+            # record by: one without it isn't a session to the node.
+            "at": datetime.now(UTC).isoformat(),
             "owner": {
                 "pid": int(pid),
                 "bootId": self.as_account("cat /proc/sys/kernel/random/boot_id").strip(),

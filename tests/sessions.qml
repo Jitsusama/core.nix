@@ -1,35 +1,35 @@
 pragma ComponentBehavior: Bound
 // Drives pi's sessions (modules/quickshell/Sessions.qml) through Quickshell
-// itself, over the records and processes tests/sessions-state.sh lays out,
-// with niri, kitty's kitten and the notices stood in. Every window niri
-// shows carries the same title, so nothing can be found by one. A session
-// runs while the process its record names does, on this boot, started when
-// the record says; its window is found through the kitty it runs in, by its
-// record's terminal or its process's environment, and among a kitty's
-// several windows by kitty's own list; Go To focuses that window, or asks
-// kitty when niri's isn't known; a record that goes, or a process that
-// ends, takes its session with it. One parked is held apart from those
-// running while its marker stands, and only then, however its record
-// reads; Wake, or talking to it, writes the file its marker names, as the
-// node's parked one is held too. What an earlier boot's end took away
-// is offered whole, reopened held in its own folder, until put off, one
-// pi never saved started under its own id with its quest, and Reopen Them
+// itself, with the machine's mycelium node stood in for over the daemon
+// interface it speaks, and niri, kitty's kitten and the notices stood in
+// too, over what tests/sessions-state.sh lays out. The sessions are the
+// node's and nothing else's: a node not listening as the shell starts, as
+// when a switch restarts it, is said as not answering, with no session
+// guessed in its place, and is watched once it listens. Every window niri
+// shows carries the same title, so nothing can be found by one. A
+// session's window is found through the kitty its record's terminal names,
+// and among a kitty's several windows by kitty's own list; Go To focuses
+// that window, or asks kitty when niri's isn't known. One the node says has
+// ended, parked, is held apart from those running while its marker stands,
+// and only then, however its record reads; Wake, or talking to it, writes
+// the file its marker names. What an earlier boot's end took away is
+// offered whole, reopened held in its own folder, until put off, one pi
+// never saved started under its own id with its quest, and Reopen Them
 // All reopens even when niri never answers its ask for the screens; what
 // another machine carried here is offered after it, the newest first, and
-// never put off with it, and a
-// window it had joined to a session another machine holds is joined again
-// by its words, once; a closed session resumes in its own folder, and one whose folder is gone
-// opens nowhere but its quest's start folder, never the home folder. A
-// machine's node that isn't listening as the shell starts, as when a
-// switch restarts it, is watched once it listens, however long after.
-// What it tells of sessions on the realm's other machines is held too:
-// each says its machine, after this machine's; Go To joins one by the
-// words its node gives; one out of reach stays, saying so, and isn't
-// joined; one last heard of before this boot is passed over; and a steer
-// to one goes through the node, its refusal said. While the node answers,
-// the presence folder isn't watched; once it's lost, what it said stays
-// shown until the folder is read. It exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// never put off with it, and a window it had joined to a session another
+// machine holds is joined again by its words, once; a closed session
+// resumes in its own folder, and one whose folder is gone opens nowhere
+// but its quest's start folder, never the home folder. What the node tells
+// of sessions on the realm's other machines is held too: each says its
+// machine, after this machine's; Go To joins one by the words its node
+// gives; one out of reach stays, saying so, and isn't joined; one last
+// heard of before this boot is passed over; and a steer to one goes
+// through the node, its refusal said. One the node says is gone goes; a
+// change saying only what differs keeps the rest of what the node said;
+// one the node says has ended goes; and a node lost leaves what it said
+// shown. It exits 0 once every case holds, and otherwise 1, saying which
+// didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -39,7 +39,7 @@ ShellRoot {
     id: root
 
     readonly property string state: Quickshell.env("XDG_STATE_HOME")
-    property string stage: "listed"
+    property string stage: "unanswered"
 
     function expect(what, holds, said) {
         if (!holds)
@@ -69,6 +69,13 @@ ShellRoot {
         }
     }
 
+    Connections {
+        target: Sessions.node
+        function onStateChanged() {
+            Qt.callLater(root.check);
+        }
+    }
+
     function parkedAs() {
         return Sessions.parked.map(session => session.address).sort().join(" ");
     }
@@ -86,16 +93,18 @@ ShellRoot {
 
     function check() {
         try {
-            if (stage === "listed")
+            if (stage === "unanswered")
+                unanswered();
+            else if (stage === "listed")
                 listed();
             else if (stage === "reopening")
                 reopening();
             else if (stage === "forgotten")
                 forgotten();
+            else if (stage === "differing")
+                differing();
             else if (stage === "ended")
                 ended();
-            else if (stage === "node")
-                watched();
             else if (stage === "lost")
                 lost();
         } catch (error) {
@@ -103,11 +112,21 @@ ShellRoot {
         }
     }
 
+    // With the node not listening, it's said so, and no session is
+    // guessed from a folder or a process; then it listens.
+    function unanswered() {
+        if (Sessions.node?.state !== "not answering")
+            return;
+        expect("no session while the node doesn't answer", addresses() === "", addresses());
+        stage = "listed";
+        node.active = true;
+    }
+
     // Waits until every running session is listed and the kitty with two
     // windows has said which holds its session.
     function listed() {
         const other = find("OTHER2");
-        if (addresses() !== "LIVE01 NOWIN6 OTHER2" || !other || !other.window)
+        if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window)
             return;
         if (parkedAs() === "") {
             parking.running = true;
@@ -116,9 +135,6 @@ ShellRoot {
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
             JSON.stringify(live.window));
-        expect("its kitty from its process's environment",
-            JSON.stringify(live.kitty) === '{"socket":"unix:@kitty-500","window":3}',
-            JSON.stringify(live.kitty));
         expect("its label shown, cut at its folder",
             live.title === "Live One" && live.folder === "core.nix", `${live.title} ${live.folder}`);
         expect("its quest's title and its folder as its record says them, not its label",
@@ -129,10 +145,11 @@ ShellRoot {
         expect("its kitty from its record's terminal",
             JSON.stringify(other.kitty) === '{"socket":"unix:@kitty-600","window":4}',
             JSON.stringify(other.kitty));
-        expect("one ended, one from another boot and one whose pid was used again aren't there",
-            Object.keys(Sessions.present).sort().join(" ") === "LIVE01 NOWIN6 OTHER2",
+        expect("one the node says has ended, and one before this boot elsewhere, aren't there",
+            Object.keys(Sessions.present).sort().join(" ") === "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH",
             Object.keys(Sessions.present).sort().join(" "));
-        expect("working, as its record says", Sessions.working === 1, Sessions.working);
+        // LIVE01 here, and both elsewhere.
+        expect("working, as each record says", Sessions.working === 3, Sessions.working);
         expect("a session is its window", Sessions.isOf(other) === "window:21", Sessions.isOf(other));
 
         Sessions.goTo(other);
@@ -146,9 +163,29 @@ ShellRoot {
         Sessions.goTo(unseen);
         expect("Go To asks its kitty", Niri.spawned.join(" ")
             === "kitten @ --to unix:@kitty-700 focus-window --match id:2", Niri.spawned.join(" "));
+        elsewhere();
         parks();
         lastBoot();
         stage = "reopening";
+    }
+
+    // Those on the realm's other machines, as the node tells of them.
+    function elsewhere() {
+        const far = find("FARAWY");
+        const out = find("OUTRCH");
+        expect("one elsewhere says its machine", !far.here && far.machine === "lighthouse"
+            && far.reachable, JSON.stringify(far));
+        expect("one out of reach says so", !out.reachable && out.attach === null,
+            JSON.stringify(out));
+        expect("this machine's first", Sessions.running.slice(0, 3).every(session => session.here),
+            Sessions.running.map(session => session.address).join(" "));
+        Sessions.goTo(far);
+        expect("Go To joins it by its node's words", inSessions(Niri.spawned.join(" "))
+            === "kitty -1 --instance-group pi-sessions zsh -lic mycelium attach r-far",
+            Niri.spawned.join(" "));
+        Sessions.goTo(out);
+        expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
+        Sessions.steer("farawy", { act: "pause" });
     }
 
     // One parked is listed apart, never running, and only while its marker
@@ -174,16 +211,14 @@ ShellRoot {
             said.join(" | "));
     }
 
-    // The markers of the one parked in the folder and the one the node
-    // tells of, each naming its wake file, laid once the shell has listed
-    // its sessions, in a park folder that wasn't there till then, as the
-    // harness makes it only as a session first parks.
+    // The marker of the one parked, naming its wake file, laid once the
+    // shell has listed its sessions, in a park folder that wasn't there
+    // till then, as the harness makes it only as a session first parks.
     Process {
         id: parking
         command: ["sh", "-c", 'p="$1/pi/agentic-harness.pi/park-workflow/parked"; mkdir -p "$p"'
-            + ' && for one in napper parked; do'
-            + ' printf \'{"session":"s-%s","wake":"%s/%s.wake"}\' "$(echo "$one" | tr a-z A-Z)"'
-            + ' "$1" "$one" > "$p/s-$(echo "$one" | tr a-z A-Z).json"; done', "park", root.state]
+            + ' && printf \'{"session":"s-NAPPER","wake":"%s/napper.wake"}\' "$1"'
+            + ' > "$p/s-NAPPER.json"', "park", root.state]
     }
 
     // Why each that didn't open as asked didn't, as its caller is told:
@@ -248,8 +283,8 @@ ShellRoot {
     }
     function reopening() {
         const kitties = Niri.spawns.map(command => inSessions(command))
-            .filter(command => command.startsWith("kitty "));
-        if (kitties.length < 6 || unopened.length < 3)
+            .filter(command => command.startsWith("kitty ") && !command.includes("attach r-far"));
+        if (kitties.length < 6 || unopened.length < 3 || !steered)
             return;
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
@@ -284,49 +319,57 @@ ShellRoot {
         expect("put off, the carried still", Sessions.toReopen.map(one => one.id).join(" ")
             === "s-ferry s-ferried", JSON.stringify(Sessions.toReopen));
         stage = "forgotten";
-        removing.running = true;
+        tell({ gone: ["session:s-LIVE01"] });
     }
 
-    // A record that goes takes its session.
+    // One the node says is gone goes.
     function forgotten() {
-        if (addresses() !== "NOWIN6 OTHER2")
+        if (addresses() !== "FARAWY NOWIN6 OTHER2 OUTRCH")
             return;
+        // Told only that it's working now, it keeps the rest of what the
+        // node said of it: running here, in kitty 700's window.
+        stage = "differing";
+        tell({
+            changed: [{
+                key: "session:s-NOWIN6",
+                presence: { session: "s-NOWIN6", addresses: ["NOWIN6"], busy: true,
+                    terminal: root.terminal("unix:@kitty-700", "2") }
+            }]
+        });
+    }
+
+    function differing() {
+        const unseen = find("NOWIN6");
+        if (!unseen || !unseen.presence.busy)
+            return;
+        expect("a change saying only what differs keeps the rest", unseen.here
+            && JSON.stringify(unseen.kitty) === '{"socket":"unix:@kitty-700","window":2}',
+            JSON.stringify(unseen));
         stage = "ended";
-        ending.running = true;
+        tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
     }
 
-    // A process that ends takes its session once a window goes, as its
-    // window does when kitty's program ends.
+    // One the node says has ended goes, though its record stays.
     function ended() {
-        if (addresses() !== "NOWIN6")
+        if (addresses() !== "FARAWY NOWIN6 OUTRCH")
             return;
-        // Refused since the shell started, the node listens now.
-        stage = "node";
-        node.active = true;
+        stage = "lost";
+        node.active = false;
+        root.answering.connected = false;
     }
 
-    // The node's sessions are heard once it listens: asked again, the
-    // shell watches it, and what it tells is held.
-    function watched() {
-        if (Sessions.node === null || addresses() !== "FARAWY OUTRCH" || parkedAs() !== "PARKED")
+    // A node lost leaves what it said shown, never a moment with none.
+    function lost() {
+        expect("a node lost leaves what it said", addresses() === "FARAWY NOWIN6 OUTRCH",
+            addresses());
+        if (Sessions.node?.state !== "not answering")
             return;
-        const far = find("FARAWY");
-        const out = find("OUTRCH");
-        expect("one elsewhere says its machine", !far.here && far.machine === "lighthouse"
-            && far.reachable, JSON.stringify(far));
-        expect("one out of reach says so", !out.reachable && out.attach === null,
-            JSON.stringify(out));
-        Sessions.goTo(far);
-        expect("Go To joins it by its node's words", inSessions(Niri.spawned.join(" "))
-            === "kitty -1 --instance-group pi-sessions zsh -lic mycelium attach r-far",
-            Niri.spawned.join(" "));
-        Sessions.goTo(out);
-        expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
-        stage = "steered";
-        Sessions.steer("farawy", { act: "pause" });
+        console.log("a session is known by its own record");
+        Qt.callLater(() => Qt.exit(0));
     }
 
     property string unjoined: ""
+    property bool steered: false
 
     // A steer elsewhere goes through the node, whose refusal is said.
     Connections {
@@ -339,9 +382,9 @@ ShellRoot {
         function onUnsteered(session, why) {
             try {
                 root.expect("a steer elsewhere is refused by the node, saying why",
-                    root.stage === "steered" && session.address === "FARAWY"
+                    session.address === "FARAWY"
                     && why === "lighthouse is out of reach, so FARAWY can't be told now", why);
-                root.steeredBy();
+                steerSaid.running = true;
             } catch (error) {
                 root.fail(error.message);
             }
@@ -356,34 +399,8 @@ ShellRoot {
                     root.expect("the node is asked with the steer",
                         text.startsWith("--realm harbour steer FARAWY\n{")
                         && text.includes('"act":"pause"'), text);
-                    root.stage = "unwatched";
-                    watches.running = true;
-                } catch (error) {
-                    root.fail(error.message);
-                }
-            }
-        }
-    }
-    function steeredBy() {
-        steerSaid.running = true;
-    }
-
-    // While the node answers, the shell holds no watch on the presence
-    // folder, which is written as often as any session changes: counted
-    // among the inotify watches the shell, this process's parent, holds.
-    Process {
-        id: watches
-        command: ["sh", "-c", 'i=$(printf "%x" "$(stat -c %i "$1")");'
-            + ' cat /proc/"$PPID"/fdinfo/* 2>/dev/null | grep -c " ino:$i " || true', "count",
-            `${root.state}/pi/agentic-harness.pi/mesh-workflow/presence`]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    root.expect("the presence folder isn't watched while the node answers",
-                        text.trim() === "0", `${text.trim()} watches`);
-                    root.stage = "lost";
-                    node.active = false;
-                    root.answering.connected = false;
+                    root.steered = true;
+                    Qt.callLater(root.check);
                 } catch (error) {
                     root.fail(error.message);
                 }
@@ -391,29 +408,21 @@ ShellRoot {
         }
     }
 
-    // A node lost leaves what it said shown until the folder says it all,
-    // never a moment with no sessions, then the folder's alone.
-    function lost() {
-        expect("a node lost leaves no moment with no sessions", addresses() !== "", "none");
-        if (addresses() !== "NOWIN6")
-            return;
-        console.log("a session is known by its own record");
-        Qt.callLater(() => Qt.exit(0));
-    }
-
-    // The node's end of the shell's watch, so the node can be lost.
+    // The node's end of the shell's watch, so the node can tell it more,
+    // and be lost.
     property var answering: null
 
-    Connections {
-        target: Sessions
-        function onNodeChanged() {
-            Qt.callLater(root.check);
-        }
+    // Tells the shell's watch a change, as the node does.
+    function tell(change) {
+        answering.write(`${JSON.stringify(Object.assign({ id: root.watchId }, change))}\n`);
+        answering.flush();
     }
+    property var watchId: null
 
     // A stand-in for the machine's node, listening only once asked, which
-    // answers a watch with three sessions on another machine: one held
-    // there, one out of reach, and one last heard of before this boot.
+    // speaks the daemon interface as mycelium's does (its PROTOCOL.md, The
+    // Daemon Interface): hello, and a watch of sessions answered with each
+    // whole, then each change saying only what differs.
     SocketServer {
         id: node
         active: false
@@ -423,92 +432,68 @@ ShellRoot {
             Component.onCompleted: root.answering = asked
             parser: SplitParser {
                 onRead: line => {
-                    // Asked as mycelium's node takes a watch, its groups, if
-                    // any, one pattern of group names, or refused as it
-                    // refuses one. The shell hears the sessions alone, so a
-                    // watch naming groups, whose messages it never reads, is
-                    // a failure too.
-                    const watch = JSON.parse(line).Watch;
-                    if (!watch || !root.takes(watch)) {
-                        root.fail(`a watch the node would refuse: ${line}`);
-                        asked.write('{"Err":"not a request"}\n');
-                        asked.flush();
-                        return;
+                    const ask = JSON.parse(line);
+                    let answer;
+                    if (ask.ask === "hello") {
+                        answer = { id: ask.id, version: 1, domain: "node", state: "running" };
+                    } else if (ask.ask === "watch" && ask.kind === "session"
+                        && ask.keys === undefined) {
+                        root.watchId = ask.id;
+                        answer = { id: ask.id, records: root.sessions() };
+                    } else {
+                        root.fail(`an ask the shell has no need of: ${line}`);
+                        answer = { id: ask.id, error: { code: "unknown-ask", message: line } };
                     }
-                    asked.write(`${JSON.stringify({ SessionsChanged: { sessions: root.elsewhere() } })}\n`);
+                    asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
                 }
             }
         }
     }
 
-    // A pattern of groups as mycelium takes one (its group.rs): tokens of
-    // a-z, 0-9, `-` and `_` between dots, any one `*`, and `>` last only.
-    function pattern(groups) {
-        return typeof groups === "string"
-            && /^([a-z0-9_-]+|\*)(\.([a-z0-9_-]+|\*))*(\.>)?$|^>$/.test(groups);
+    function terminal(scope, window) {
+        return { driverId: "kitty", kind: "kitty-window", hostId: "here", value: window,
+            scope: scope };
     }
 
-    // Whether the node takes this watch, and it asks for the sessions
-    // alone: no groups (absent or null, as the node reads both), and a
-    // `recent`, if given, a number.
-    function takes(watch) {
-        const groups = watch.groups ?? null;
-        if (groups !== null && !root.pattern(groups)) {
-            return false;
-        }
-        if (watch.recent !== undefined && typeof watch.recent !== "number") {
-            return false;
-        }
-        if (groups !== null) {
-            root.fail(`a watch asking for the messages of ${groups}, which the shell never reads`);
-        }
-        return true;
-    }
-
-    function elsewhere() {
+    // The sessions the node holds, as records of the daemon interface.
+    function sessions() {
         const now = new Date().toISOString();
-        const one = (id, address, state, at, attach) => ({
-            id: id, address: address, machine: "lighthouse", state: state, at: at,
-            attach: attach, window: null, groups: [], title: "",
+        const record = (id, fields) => Object.assign({
+            key: `session:${id}`, kind: "session", heard: Date.now(), id: id, at: now,
+            groups: [], title: "", window: null, held: null
+        }, fields);
+        // One here, running, as its own record says it.
+        const here = (address, state, presence) => record(`s-${address}`, {
+            address: address, machine: Sessions.machine, here: true, state: state,
+            presence: Object.assign({ session: `s-${address}`, addresses: [address] }, presence)
+        });
+        // One on another machine.
+        const far = (id, address, state, at, attach) => record(id, {
+            address: address, machine: "lighthouse", here: false, state: state, at: at,
+            attach: attach,
             presence: { addresses: [address], title: `\u03c0 - ${address} - /far`, busy: true }
         });
-        // One parked here, as the node tells of it: ended, its record
-        // saying it's parked, and its marker standing; and one ended whose
-        // record says so with no marker.
-        const here = (address, session) => ({
-            id: `r-${address}`, address: address, machine: Sessions.machine, state: "ended",
-            at: now, groups: [], title: "", presence: { addresses: [address], session: session,
-                state: "parked", busy: false, title: `\u03c0 - ${address} - core.nix` }
-        });
         return [
-            one("r-far", "FARAWY", "busy", now, "mycelium attach r-far"),
-            one("r-out", "OUTRCH", "unreachable", now, null),
-            one("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old"),
-            here("PARKED", "s-PARKED"),
-            here("GONE09", "s-GONE09")
+            here("LIVE01", "busy", { busy: true, title: "\u03c0 - Live One - core.nix",
+                terminal: terminal("unix:@kitty-500", "3") }),
+            here("OTHER2", "idle", {
+                title: "\u03c0 - Lighth\u2026 - wrong",
+                questInfo: { id: "QEST-20261106-OTHER2", title: "Lighthouse - Keep It Lit",
+                    short: "OTHER2", status: "active" },
+                cwd: "/home/me/lamp/", terminal: terminal("unix:@kitty-600", "4")
+            }),
+            here("NOWIN6", "idle", { terminal: terminal("unix:@kitty-700", "2") }),
+            here("ENDED3", "ended", {}),
+            // Parked, as the node tells of one: ended, its record saying
+            // it's parked; one with its marker standing, one without.
+            here("NAPPER", "ended", { state: "parked", busy: false,
+                title: "\u03c0 - Napper - core.nix" }),
+            here("WOKEN8", "ended", { state: "parked" }),
+            far("r-far", "FARAWY", "busy", now, "mycelium attach r-far"),
+            far("r-out", "OUTRCH", "unreachable", now, null),
+            far("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old")
         ];
-    }
-
-    Process {
-        id: removing
-        command: ["rm", `${root.state}/pi/agentic-harness.pi/mesh-workflow/presence/live.json`]
-    }
-
-    Process {
-        id: ending
-        // Until it has ended, not only been told to: a window gone before
-        // its process is would leave the session listed, as nothing else
-        // asks again, which a busy machine's checks hit.
-        command: ["sh", "-c", 'kill "$1"; while kill -0 "$1" 2>/dev/null'
-            + ' && [ "$(cut -d " " -f 3 "/proc/$1/stat")" != Z ]; do sleep 0.05; done',
-            "end", Quickshell.env("OTHER_PID")]
-        onExited: {
-            const windows = Object.assign({}, Niri.windows);
-            delete windows[21];
-            Niri.windows = windows;
-            Niri.revision += 1;
-        }
     }
 
     Timer {

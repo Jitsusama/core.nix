@@ -51,6 +51,16 @@ let
     "launcher-reads-mail"
     "launcher-moves-windows"
   ];
+  # The areas that show pi's sessions, whose machine runs the realm's
+  # mycelium node, as a workstation does, since the shell knows sessions
+  # from the node alone. It links nothing, so it needs no key.
+  runsTheNode = builtins.elem area [
+    "launcher-finds-sessions"
+    "launcher-draws-still"
+    "launcher-waits-on-joel"
+    "launcher-goes-places"
+    "looks"
+  ];
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -614,7 +624,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # reads the file a test writes in slack-unreads' place. Nobody signs
         # in to Slack here, so slack-unreads itself never starts. Only where
         # an area reads it.
-        imports = lib.optional bringsSlack self.homeModules.slack;
+        imports =
+          lib.optional bringsSlack self.homeModules.slack
+          ++ lib.optionals runsTheNode [
+            self.homeModules.mycelium
+            { jitsusama.mycelium.realm = "harbour"; }
+          ];
         # And Slack's own desktop entry, as the machine's Slack brings it,
         # so Programs has the row whose note says why Slack can't be
         # checked. It starts nothing, since nothing here opens it.

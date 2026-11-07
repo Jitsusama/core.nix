@@ -4,6 +4,8 @@ It answers the shell's daemon interface (RSCH-20261029-0E8050) on the socket nam
 argument: hello, and a watch, answered with one record for each key asked, or else one for each
 kind asked, `<kind>:one`. Each record says the kinds its watch asked for, so tests/daemon.qml can
 tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone.
+A watch of sessions is answered as mycelium's node answers one: a record whole, then a change
+saying only the fields that differ, one dropped as null.
 """
 
 import json
@@ -23,10 +25,19 @@ def kinds_of(asked: dict[str, object]) -> list[str]:
     return []
 
 
-def answer(asked: dict[str, object]) -> dict[str, object]:
-    """Answer one ask."""
+def answer(asked: dict[str, object]) -> list[dict[str, object]]:
+    """Answer one ask, in the lines a daemon sends for it."""
     if asked.get("ask") == "hello":
-        return {"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}
+        return [{"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}]
+    if asked.get("kind") == "session":
+        whole = {"key": "session:a", "kind": "session", "heard": 1}
+        return [
+            {"id": asked.get("id"), "records": [{**whole, "state": "idle", "step": "x"}]},
+            {
+                "id": asked.get("id"),
+                "changed": [{"key": "session:a", "state": "busy", "step": None}],
+            },
+        ]
     kinds = kinds_of(asked)
     keys = asked.get("keys")
     named = (
@@ -37,7 +48,7 @@ def answer(asked: dict[str, object]) -> dict[str, object]:
     records = [
         {"key": key, "kind": key.split(":", 1)[0], "heard": 1, "asked": kinds} for key in named
     ]
-    return {"id": asked.get("id"), "records": records}
+    return [{"id": asked.get("id"), "records": records}]
 
 
 def serve(client: socket.socket) -> None:
@@ -49,7 +60,8 @@ def serve(client: socket.socket) -> None:
             except json.JSONDecodeError:
                 continue
             if isinstance(asked, dict):
-                lines.write(json.dumps(answer(asked)) + "\n")
+                for said in answer(asked):
+                    lines.write(json.dumps(said) + "\n")
                 lines.flush()
 
 

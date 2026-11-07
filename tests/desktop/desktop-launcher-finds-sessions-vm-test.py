@@ -39,6 +39,9 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
+# How late, in seconds, the journal may stamp a line of the shell's on a busy machine.
+JOURNAL_LAG = 0.1
+
 
 @pytest.fixture(scope="module")
 def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
@@ -621,6 +624,7 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     record = {
         "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
         "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": "gone", "startTicks": 1},
+        "at": "2026-11-06T12:00:00Z",
     }  # fmt: skip
     desktop.as_account(
         f"mkdir -p {parked} && echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json"
@@ -1222,10 +1226,13 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     )
     desktop.launcher_until(lambda shown: not shown["open"])
     # Each began two seconds or more after the one before, so they don't
-    # all start at once.
+    # all start at once. The shell paces them by its own clock, and the
+    # journal stamps each line as it reads it, up to a tenth of a second
+    # late on a busy machine: one read late once made a gap of 1.94 s
+    # between two the shell began 2 s apart.
     began = started_apart(desktop, since, "report[resumed session 01c3-")
     assert len(began) == len(where), began
-    assert all(gap >= 2 for gap in began[1:]), began  # noqa: PLR2004
+    assert all(gap >= 2 - JOURNAL_LAG for gap in began[1:]), began
     back = sat(desktop, "01c3-")
     assert back["01c3-west"][0] == back["01c3-east"][0] == 1, back
     assert back["01c3-west"][1] < back["01c3-east"][1], back

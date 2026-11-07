@@ -7,13 +7,10 @@ pragma Singleton
 // A session is what its own record says: the file each keeps in the mesh's
 // presence folder while it runs. The machine's mycelium node passes each
 // record on, and says the moment a session starts, changes or ends, from
-// its process rather than a clock (Jitsusama/mycelium), so while the node
-// answers, the sessions are this machine's of those it holds. While it
-// doesn't, as on a machine with none or while it restarts, the records
-// are read from the folder, watched for changes, and a session is running
-// while the process its record names is, on this boot, started when the
-// record says; a record left by a session that died, or by an earlier
-// boot, is passed over. Nothing is read from a window's title, which a
+// its process rather than a clock (Jitsusama/mycelium), so the sessions
+// are the node's, and nothing else: the shell reads no presence file and
+// looks at no process. While the node doesn't answer, what it last said
+// stays. Nothing is read from a window's title, which a
 // program can set, a terminal can cut short and two sessions can share
 // (Joel, 2026-10-27: "we should have a better system for agent session
 // awareness that isn't so fragile"). Each reader here goes through
@@ -1826,8 +1823,7 @@ Singleton {
     readonly property real bootedAt: Date.now()
         - Number(uptime.text().split(" ")[0] || 0) * 1000
 
-    // A process's own files, and a parked session's marker, read when
-    // asked.
+    // A parked session's marker, read when asked.
     FileView {
         id: process
         blockLoading: true
@@ -1840,26 +1836,10 @@ Singleton {
         return process.text();
     }
 
-    // Whether the process a record names still runs: on this boot, and
-    // started when the record says, since a pid is used again once its
-    // process ends. Its start is the stat's 22nd field, in clock ticks,
-    // counted after the name's closing bracket, as the harness counts it;
-    // one ended but not yet reaped says Z just after it.
-    function alive(owner) {
-        if (!owner || !owner.pid || owner.bootId !== bootId)
-            return false;
-        const stat = read(`/proc/${owner.pid}/stat`);
-        const name = stat.lastIndexOf(")");
-        if (name < 0)
-            return false;
-        const fields = stat.slice(name + 2).split(" ");
-        if (fields[0] === "Z")
-            return false;
-        return owner.startTicks === undefined || Number(fields[19]) === owner.startTicks;
-    }
-
     // The kitty window a session runs in, { socket, window }, or null: as
-    // its record's terminal says, or else as its process was started.
+    // the node says a held one's is, or as its record's terminal says. One
+    // whose record names no terminal is held, its window the node's
+    // (2026-11-06: 43 of the 53 running, and every one of them held).
     readonly property var kittySocket: /^unix:@kitty-(\d+)$/
     // The kitty window the node says a session is in, from its `window`.
     function kittyOfWindow(window) {
@@ -1868,24 +1848,17 @@ Singleton {
     }
     function kittyOf(presence) {
         const terminal = presence.terminal;
-        if (terminal && typeof terminal === "object")
-            return terminal.driverId === "kitty" && terminal.scope && Number(terminal.value) > 0
-                ? { socket: terminal.scope, window: Number(terminal.value) } : null;
-        const environment = read(`/proc/${presence.owner.pid}/environ`).split("\u0000");
-        const said = name => (environment.find(pair => pair.startsWith(`${name}=`)) ?? "")
-            .slice(name.length + 1);
-        const socket = said("KITTY_LISTEN_ON");
-        const window = Number(said("KITTY_WINDOW_ID"));
-        return socket !== "" && window > 0 ? { socket: socket, window: window } : null;
+        return terminal && typeof terminal === "object" && terminal.driverId === "kitty"
+            && terminal.scope && Number(terminal.value) > 0
+            ? { socket: terminal.scope, window: Number(terminal.value) } : null;
     }
 
-    // Each running session's record, { file, presence, kitty, held }: as
-    // the node has it while it answers, else each from the folder whose
-    // process runs. A held session is in the window the node says joined
-    // its holder last, or none, since its process has lost its own. Made
-    // again when a record changes, the node tells of a change or a window
-    // comes or goes, and kept as it was when nothing in it did, so what
-    // reads it isn't told for nothing.
+    // Each running session's record, { file, presence, kitty, held }, as
+    // the node has it. A held session is in the window the node says
+    // joined its holder last, or none, since its process has lost its own.
+    // Made again when the node tells of a change or a window comes or
+    // goes, and kept as it was when nothing in it did, so what reads it
+    // isn't told for nothing.
     property var live: []
     property string liveSaid: ""
     // Each parked session's record, { file, presence, kitty, held }, as
@@ -1895,62 +1868,47 @@ Singleton {
         const next = [];
         const sleeping = [];
         const markers = parkedMarkers();
-        // A node from before it passed records on says too little to show.
-        if (!fromFolder) {
-            for (const id of Object.keys(node).sort()) {
-                const session = node[id];
-                const presence = session.presence;
-                const state = String(session.state ?? "").toLowerCase();
-                const out = state === "unreachable";
-                const running = state === "busy" || state === "idle" || out;
-                const kitty = kittyOfWindow(session.window);
-                const here = (session.machine ?? machine) === machine;
-                const changed = Date.parse(session.at ?? "") || 0;
-                // The node says one parked has ended, which its process
-                // has; its record says it's parked.
-                if (state === "ended" && here && parks(presence, markers)) {
-                    sleeping.push({ file: id, presence: presence, kitty: null, held: null });
-                    continue;
-                }
-                if (!running || !presence || (presence.addresses ?? []).length === 0)
-                    continue;
-                // One elsewhere the node last heard of before this boot is
-                // long gone, so a machine away for days leaves nothing.
-                if (here)
-                    next.push({
-                        file: id,
-                        presence: presence,
-                        kitty: session.held ? kitty : kitty ?? kittyOf(presence),
-                        held: session.held ?? null
-                    });
-                else if (changed >= bootedAt)
-                    next.push({
-                        file: id,
-                        presence: presence,
-                        kitty: kitty,
-                        held: null,
-                        machine: String(session.machine),
-                        here: false,
-                        attach: out ? null : session.attach ?? null,
-                        reachable: !out,
-                        changed: changed
-                    });
+        const held = node?.held ?? {};
+        for (const key of Object.keys(held).sort()) {
+            const session = held[key];
+            const id = String(session.id ?? key.replace(/^session:/, ""));
+            const presence = session.presence;
+            const state = String(session.state ?? "").toLowerCase();
+            const out = state === "unreachable";
+            const running = state === "busy" || state === "idle" || out;
+            const kitty = kittyOfWindow(session.window);
+            const here = typeof session.here === "boolean" ? session.here
+                : (session.machine ?? machine) === machine;
+            const changed = Date.parse(session.at ?? "") || 0;
+            // The node says one parked has ended, which its process has;
+            // its record says it's parked.
+            if (state === "ended" && here && parks(presence, markers)) {
+                sleeping.push({ file: id, presence: presence, kitty: null, held: null });
+                continue;
             }
-        } else {
-            if (!folderRead())
-                return;
-            for (const file of Object.keys(records).sort()) {
-                const presence = records[file];
-                if (presence && (presence.addresses ?? []).length > 0 && alive(presence.owner))
-                    next.push({
-                        file: file,
-                        presence: presence,
-                        kitty: kittyOf(presence),
-                        held: null
-                    });
-                else if (parks(presence, markers))
-                    sleeping.push({ file: file, presence: presence, kitty: null, held: null });
-            }
+            if (!running || !presence || (presence.addresses ?? []).length === 0)
+                continue;
+            // One elsewhere the node last heard of before this boot is long
+            // gone, so a machine away for days leaves nothing.
+            if (here)
+                next.push({
+                    file: id,
+                    presence: presence,
+                    kitty: session.held ? kitty : kitty ?? kittyOf(presence),
+                    held: session.held ?? null
+                });
+            else if (changed >= bootedAt)
+                next.push({
+                    file: id,
+                    presence: presence,
+                    kitty: kitty,
+                    held: null,
+                    machine: String(session.machine),
+                    here: false,
+                    attach: out ? null : session.attach ?? null,
+                    reachable: !out,
+                    changed: changed
+                });
         }
         const said = JSON.stringify([next, sleeping]);
         if (said === liveSaid)
@@ -2096,143 +2054,25 @@ Singleton {
     }
     readonly property string machine: hostname.text().trim()
 
-    // The node's sessions by id, everyone it holds, while it answers a
-    // watch; null while it doesn't, so the folder is read instead.
-    property var node: null
+    // The node's sessions, every one it holds, over the daemon interface
+    // (mycelium's PROTOCOL.md, The Daemon Interface): watched whole, then
+    // told each change as only what differs. While the node isn't
+    // answering, as while a switch restarts it, what it last said stays
+    // held, and the shell guesses nothing in its place: no folder read, no
+    // process looked at (Joel, 2026-11-06: "treated way more like our
+    // hardware integrations").
     readonly property string nodePath: realm !== "" && Quickshell.env("XDG_RUNTIME_DIR")
         ? `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${realm}.sock` : ""
-    // A fresh connection each time, since a Socket refused once never
-    // connects again, however it's asked (Quickshell's socket.cpp keeps the
-    // refused one), as when a switch restarts the node and the shell asks
-    // before it listens; then Now read the folder until the shell restarted.
-    property bool linking: true
-    // A watch always carries the sessions; the groups it names are those
-    // whose messages it carries too, and the shell wants none of them, so
-    // it names none: a watch with no groups hears the sessions alone, and
-    // with no `recent`, nothing from before it (mycelium#47).
+    readonly property var node: nodeLink.item
     LazyLoader {
-        active: root.linking && root.nodePath !== ""
+        id: nodeLink
+        active: root.nodePath !== ""
 
-        Socket {
-            id: mycelium
-            path: root.nodePath
-            connected: true
-            onConnectionStateChanged: {
-                if (mycelium.connected) {
-                    mycelium.write(`${JSON.stringify({ Watch: {} })}\n`);
-                    mycelium.flush();
-                    return;
-                }
-                if (root.node !== null) {
-                    root.node = null;
-                    root.relive();
-                }
-                relink.restart();
-            }
-            onError: relink.restart()
-            parser: SplitParser {
-                onRead: line => root.nodeSaid(line)
-            }
-        }
-    }
-    // A node not yet up, or restarting, is asked again a few seconds on.
-    Timer {
-        id: relink
-        interval: 5000
-        onTriggered: {
-            root.linking = false;
-            root.linking = true;
-        }
-    }
-    // What the node tells a watch: every session first, then each one new,
-    // changed or forgotten.
-    function nodeSaid(line) {
-        let event;
-        try {
-            event = JSON.parse(line);
-        } catch (e) {
-            return;
-        }
-        let next;
-        if (event.SessionsChanged) {
-            next = {};
-            for (const session of event.SessionsChanged.sessions ?? [])
-                next[session.id] = session;
-        } else if (event.SessionChanged) {
-            next = Object.assign({}, node ?? {});
-            next[event.SessionChanged.session.id] = event.SessionChanged.session;
-        } else if (typeof event.Err === "string") {
-            // A watch refused leaves the folder read, which works but
-            // costs a watcher a session, so it's said where it's seen.
-            Report.say(`the node refused the watch: ${event.Err}`);
-            return;
-        } else if (event.SessionForgotten) {
-            next = Object.assign({}, node ?? {});
-            delete next[event.SessionForgotten.id];
-        } else {
-            return;
-        }
-        node = next;
-        relive();
-    }
-
-    // Each record is read from its file, watched, only while the folder is
-    // where sessions are known from: while the node answers, it carries
-    // every record itself, so a watcher per session would only cost the
-    // shell a file each (the 2026-10-29 crash came of readers per
-    // session). A node lost makes them once, as many as there are records.
-    // The folder isn't watched either then, since every session's record
-    // is written there as often as it changes: fifteen times a minute woke
-    // the shell for a folder nothing read (2026-10-31).
-    readonly property bool fromFolder: node === null
-        || !Object.values(node).every(session => session.presence)
-    LazyLoader {
-        id: presenceFolder
-        active: root.fromFolder
-
-        FolderListModel {
-            folder: `file://${root.state}/mesh-workflow/presence`
-            showDirs: false
-            nameFilters: ["*.json"]
-            onStatusChanged: root.relive()
-        }
-    }
-    // Whether every record in the folder is read, so a node lost leaves
-    // what it said shown until the folder says it all, never a moment with
-    // no sessions while the folder is listed. Each file's view is counted
-    // before it has told what it read, and the records were forgotten
-    // while the node answered, so a count alone let the folder say none.
-    function folderRead() {
-        const listing = presenceFolder.item;
-        if (listing === null || listing.status !== FolderListModel.Ready
-            || presenceViews.count !== listing.count)
-            return false;
-        for (let at = 0; at < presenceViews.count; at += 1) {
-            const view = presenceViews.objectAt(at);
-            if (view === null || view.path.startsWith(state) && !(view.path in records))
-                return false;
-        }
-        return true;
-    }
-    Instantiator {
-        id: presenceViews
-        model: root.fromFolder ? presenceFolder.item : null
-        // A session that ends takes its file with it, and its state goes too.
-        onObjectRemoved: (index, object) => root.forget(object.path)
-        // A record may be read before it's counted, so the last is shown
-        // once it is.
-        onCountChanged: root.relive()
-
-        FileView {
-            required property string filePath
-            path: filePath
-            // Read as it's made, so a node lost leaves no moment with no
-            // sessions.
-            blockLoading: true
-            watchChanges: true
-            printErrors: false
-            onFileChanged: reload()
-            onLoaded: root.heard(filePath, text())
+        Daemon {
+            socket: root.nodePath
+            kind: "session"
+            changesDiffer: true
+            onRevisionChanged: root.relive()
         }
     }
 
@@ -2307,32 +2147,6 @@ Singleton {
             JSON.stringify({ session: id, messageId: "joel", at: new Date().toISOString() })]);
         Report.say(`woke session ${session.address}`);
     }
-    // Each running session's record, by every address it answers to; and
-    // every record, by its file.
+    // Each running session's record, by every address it answers to.
     property var present: ({})
-    property var records: ({})
-    function forget(file) {
-        const next = Object.assign({}, records);
-        delete next[file];
-        records = next;
-        relive();
-    }
-    function heard(file, text) {
-        // A folder Qt fell back to when the presence folder isn't there.
-        if (!file.startsWith(state))
-            return;
-        // One that isn't a record is kept as nothing, so it's known read.
-        let record;
-        try {
-            record = JSON.parse(text);
-        } catch (e) {
-            record = null;
-        }
-        if (!record || typeof record !== "object")
-            record = null;
-        const next = Object.assign({}, records);
-        next[file] = record;
-        records = next;
-        relive();
-    }
 }

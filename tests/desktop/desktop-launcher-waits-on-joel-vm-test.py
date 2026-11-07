@@ -221,7 +221,10 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         "since": machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip(),
         "said": "Which way?",
     }
-    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    # The shell hears it from the node, a moment after pi writes it, so the
+    # windows are opened once it has: as its Needs You notice shows.
+    with desktop.told("shows card A quest of its own & whole needs you"):
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     tabbed()
     desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Notes for Tuesday")
     desktop.next_row()
