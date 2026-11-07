@@ -47,77 +47,77 @@
     },
     "speed_tests": [
       {
-        "at": "2026-11-05T10:52:15+0000",
+        "at": "2026-11-05T10:52:15Z",
         "down_mbps": 369.86,
         "up_mbps": 11.93
       },
       {
-        "at": "2026-11-03T15:51:24+0000",
+        "at": "2026-11-03T15:51:24Z",
         "down_mbps": 369.79,
         "up_mbps": 11.73
       },
       {
-        "at": "2026-11-01T10:52:14+0000",
+        "at": "2026-11-01T10:52:14Z",
         "down_mbps": 369.91,
         "up_mbps": 12.2
       },
       {
-        "at": "2026-10-28T09:52:15+0000",
+        "at": "2026-10-28T09:52:15Z",
         "down_mbps": 369.88,
         "up_mbps": 12.55
       },
       {
-        "at": "2026-10-26T09:53:28+0000",
+        "at": "2026-10-26T09:53:28Z",
         "down_mbps": 369.91,
         "up_mbps": 11.7
       },
       {
-        "at": "2026-10-24T09:52:45+0000",
+        "at": "2026-10-24T09:52:45Z",
         "down_mbps": 369.88,
         "up_mbps": 11.49
       },
       {
-        "at": "2026-10-23T09:53:30+0000",
+        "at": "2026-10-23T09:53:30Z",
         "down_mbps": 369.92,
         "up_mbps": 11.8
       },
       {
-        "at": "2026-10-18T09:52:33+0000",
+        "at": "2026-10-18T09:52:33Z",
         "down_mbps": 369.83,
         "up_mbps": 12.33
       },
       {
-        "at": "2026-10-14T09:52:56+0000",
+        "at": "2026-10-14T09:52:56Z",
         "down_mbps": 369.85,
         "up_mbps": 12.28
       },
       {
-        "at": "2026-10-11T09:52:42+0000",
+        "at": "2026-10-11T09:52:42Z",
         "down_mbps": 369.94,
         "up_mbps": 12.31
       },
       {
-        "at": "2026-10-06T09:52:33+0000",
+        "at": "2026-10-06T09:52:33Z",
         "down_mbps": 369.9,
         "up_mbps": 11.86
       },
       {
-        "at": "2026-10-03T09:52:23+0000",
+        "at": "2026-10-03T09:52:23Z",
         "down_mbps": 369.85,
         "up_mbps": 12.29
       },
       {
-        "at": "2026-09-30T09:52:42+0000",
+        "at": "2026-09-30T09:52:42Z",
         "down_mbps": 369.8,
         "up_mbps": 11.96
       },
       {
-        "at": "2026-09-28T09:53:00+0000",
+        "at": "2026-09-28T09:53:00Z",
         "down_mbps": 369.84,
         "up_mbps": 11.89
       },
       {
-        "at": "2026-09-24T09:53:31+0000",
+        "at": "2026-09-24T09:53:31Z",
         "down_mbps": 369.9,
         "up_mbps": 11.75
       }
@@ -386,7 +386,7 @@
       "firmware": "v7.17.4-5",
       "update_available": false,
       "support_ends": null,
-      "joined": "2020-11-13T21:47:15+0000",
+      "joined": "2020-11-13T21:47:15Z",
       "last_reboot": "2026-11-07T07:22:42.035551983Z",
       "up_s": 55897,
       "cloud_s": 54432,
@@ -688,7 +688,7 @@
       "firmware": "v7.17.4-5",
       "update_available": false,
       "support_ends": null,
-      "joined": "2020-11-13T21:50:49+0000",
+      "joined": "2020-11-13T21:50:49Z",
       "last_reboot": "2026-11-07T07:22:59.776783944Z",
       "up_s": 55879,
       "cloud_s": 1195,
@@ -990,7 +990,7 @@
       "firmware": "v7.17.4-5",
       "update_available": false,
       "support_ends": null,
-      "joined": "2020-11-13T21:54:36+0000",
+      "joined": "2020-11-13T21:54:36Z",
       "last_reboot": "2026-11-07T07:22:59.605522859Z",
       "up_s": 55879,
       "cloud_s": 1978,
@@ -1502,7 +1502,12 @@
       "score": 1,
       "bars": 5,
       "rx": {
-        "mbps": 48.0
+        "mbps": 48.0,
+        "mcs": null,
+        "streams": null,
+        "width_mhz": null,
+        "guard_ns": null,
+        "generation": null
       },
       "tx": null,
       "retry_pct": 0,
@@ -1627,7 +1632,12 @@
       "score": 1,
       "bars": 5,
       "rx": {
-        "mbps": 48.0
+        "mbps": 48.0,
+        "mcs": null,
+        "streams": null,
+        "width_mhz": null,
+        "guard_ns": null,
+        "generation": null
       },
       "tx": null,
       "retry_pct": 0,
@@ -2014,7 +2024,12 @@
       "score": 1,
       "bars": 5,
       "rx": {
-        "mbps": 48.0
+        "mbps": 48.0,
+        "mcs": null,
+        "streams": null,
+        "width_mhz": null,
+        "guard_ns": null,
+        "generation": null
       },
       "tx": null,
       "retry_pct": 0,
