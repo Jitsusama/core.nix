@@ -1167,9 +1167,12 @@ Card {
     // pop-up's notice by the gutter alone and from a launcher row by the
     // gutters' widths alone (Joel, 2026-11-06: "they need to share more
     // code and UI/UX design to stop them from constantly drifting").
-    readonly property var columns: Columns.across(sheet.width,
-        Columns.gutterOf(numbers.room, Theme.space.rung), Columns.ofMark(Theme.level.name.pitch),
-        Theme.space.rung)
+    readonly property var columns: Columns.across(sheet.width, gutter,
+        Columns.ofMark(Theme.level.name.pitch), Theme.space.rung)
+    // How much wider than a pop-up notice the list stands, so a notice
+    // breaks its words held as it does popped (VKCF3Z, 2026-11-06): its
+    // gutter, the numbers' room and the mark rung after them.
+    readonly property real gutter: Columns.gutterOf(numbers.room, Theme.space.rung)
     // Where a mark centres across in the mark column, which the mode's
     // marks in the head and on the : line centre on too, as Vim keeps one
     // cell for its mode (Y2YBTS, 2026-11-06).

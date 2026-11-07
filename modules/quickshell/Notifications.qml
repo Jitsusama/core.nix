@@ -500,7 +500,7 @@ Scope {
             && !Notices.gathered && !root.remaking
         anchors.top: true
         anchors.right: true
-        implicitWidth: stack.width + root.inside.right + Theme.floating.reach
+        implicitWidth: stack.x + stack.width + root.inside.right
         implicitHeight: stack.height + stack.y + Theme.floating.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -543,7 +543,9 @@ Scope {
 
         Column {
             id: stack
-            x: Theme.floating.reach
+            // Held, the list stands its gutter wider than the column, out
+            // to the left, its right edge under the corner as every card's.
+            x: Theme.floating.reach + (held.visible ? held.gutter : 0)
             y: root.inside.top
             onHeightChanged: reported.changed()
             // Where the pointer reaches and what niri blurs follow a card
@@ -717,7 +719,8 @@ Scope {
 
                 stack: root
                 live: root.live
-                width: stack.width
+                x: -gutter
+                width: stack.width + gutter
                 visible: root.holding
                 screenHeight: window.screen ? window.screen.height : 768
                 onVisibleChanged: Qt.callLater(window.gather)
