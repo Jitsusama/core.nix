@@ -63,17 +63,16 @@ pub struct Carry {
     /// from before they were is checked once.
     pub copies_known: bool,
     /// The budget the branch being read draws on, by its nearest budget
-    /// entry: none before any, empty for the default, else its name.
-    pub budget: Option<String>,
-    /// The last entry read, by its id, to tell a branch taken from
-    /// further back from the one carrying on.
-    pub last_id: Option<String>,
-    /// Whether an entry has named a budget yet, so that a branch from an
+    /// entry: none before any, empty for the default, else its name. Once
+    /// any entry has named one it's never none again, so a branch from an
     /// entry no budget entry is above draws on the default. Which budget a
     /// branch's parent drew on is found in the log itself when one is
     /// taken, which is rare, rather than every entry's being kept here,
     /// which is written at every read.
-    pub named: bool,
+    pub budget: Option<String>,
+    /// The last entry read, by its id, to tell a branch taken from
+    /// further back from the one carrying on.
+    pub last_id: Option<String>,
 }
 
 /// What a log's entries say of their branches: each one's parent, and
@@ -339,7 +338,7 @@ pub fn read_after(
             *learned = begins;
             carry.budget = ancestry
                 .budget_of(parent)
-                .or_else(|| carry.named.then(String::new));
+                .or_else(|| carry.budget.is_some().then(String::new));
         }
         let copied = carry
             .copied_until
@@ -428,7 +427,6 @@ fn follow(entry: &Value, carry: &mut Carry) {
         return;
     };
     if let Some(named) = budget_entry(entry) {
-        carry.named = true;
         carry.budget = Some(named);
     }
     carry.last_id = Some(id.to_owned());
