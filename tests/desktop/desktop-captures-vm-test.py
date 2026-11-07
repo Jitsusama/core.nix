@@ -699,17 +699,28 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
         assert said is not None
         assert before - 1 <= said <= after + 1, (before, said, after)
         desktop.normal()
-        desktop.machine.send_chars(":set recording?\n")
+        run_line(desktop, "set recording?")
         desktop.launcher_until(
             lambda shown: shown["command"] is None and shown["commandSaid"] == "recording"
         )
         desktop.as_account("rm -f /tmp/stop")
-        desktop.machine.send_chars(":set norecording\n")
+        run_line(desktop, "set norecording")
         desktop.machine.wait_until_succeeds("test -e /tmp/stop", timeout=timedelta(seconds=10))
     finally:
         desktop.as_account(f"rm -f {state}")
     desktop.launcher_until(lambda shown: length(shown) is None)
     desktop.close_launcher()
+
+
+def run_line(desktop: Desktop, line: str) -> None:
+    """Type a line on the : line, wait until the shell shows it whole, then press Return.
+
+    Typed with its Return in one burst, the Return was lost once just after niri lagged, the
+    line left standing unrun (the net, core 5a9d3fa6), so it's pressed once the line is there.
+    """
+    desktop.machine.send_chars(f":{line}")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == line)
+    desktop.machine.send_key("ret")
 
 
 def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
