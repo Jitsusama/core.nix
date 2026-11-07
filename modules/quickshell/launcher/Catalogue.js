@@ -235,11 +235,12 @@ function saysAct(one, said) {
 // its own to add, nor does one holding nothing. One giving both its verbs
 // and its targets holds rows, as a holder, a talk or a meeting's See It
 // does, so its Return is the step itself. One already inside, by its
-// verb or its name, is moved first rather than said twice. A row naming
-// the act its Return does (`returns`) keeps its acts in their own order,
-// as a session's are fixed (VKCF3Z, 2026-11-06: Go To, Talk, Pause or
-// Resume, Stop, Close), its Return being one of them.
-function leading(row, inside) {
+// verb or its name, is moved first rather than said twice. A copy of its
+// own wears `copyMark`, the theme's copy glyph. A row naming the act its
+// Return does (`returns`) keeps its acts in their own order, as a
+// session's are fixed (VKCF3Z, 2026-11-06: Go To, Talk, Pause or Resume,
+// Stop, Close), its Return being one of them.
+function leading(row, inside, copyMark) {
     if (row.returns) {
         return inside;
     }
@@ -257,7 +258,7 @@ function leading(row, inside) {
     }
     const already = inside.findIndex(one => saysAct(one, said));
     if (copying) {
-        return copiedLast(already >= 0 ? inside[already] : ownAct(row, verb),
+        return copiedLast(already >= 0 ? inside[already] : ownAct(row, verb, copyMark),
             inside.filter((_one, at) => at !== already));
     }
     if (already === 0) {
@@ -266,7 +267,7 @@ function leading(row, inside) {
     if (already > 0) {
         return [inside[already]].concat(inside.slice(0, already), inside.slice(already + 1));
     }
-    return [ownAct(row, verb)].concat(inside);
+    return [ownAct(row, verb, copyMark)].concat(inside);
 }
 
 // A step into a row that does something and keeps the launcher, as a
@@ -275,12 +276,13 @@ function leading(row, inside) {
 // no chord with Ctrl is needed for it (Joel, 2026-11-02: "all of those
 // ctrl keys do not feel very vim to me"). One already inside, by its verb
 // or its name, is moved first and closes rather than being said twice.
-function closingFirst(row, inside) {
+function closingFirst(row, inside, copyMark) {
     const verb = verbOf(row);
     const said = verb.toLowerCase();
     const already = said === "" ? -1 : inside.findIndex(one => saysAct(one, said));
     // It no longer keeps the launcher, but it changes what the row did.
-    const act = Object.assign({}, already >= 0 ? inside[already] : ownAct(row, verb),
+    const act = Object.assign({}, already >= 0 ? inside[already]
+        : ownAct(row, verb, copyMark),
         { stays: false, changes: true });
     return [act].concat(inside.filter((_one, at) => at !== already));
 }
@@ -292,8 +294,11 @@ function copiedLast(copy, inside) {
     return inside.concat([copy]);
 }
 
-// Return's own act as a row inside, doing what Return on the row does.
-function ownAct(row, verb) {
+// Return's own act as a row inside, doing what Return on the row does,
+// wearing its row's glyph, but for a copy, which wears `copyMark` as every
+// Copy row does: a row's own glyph may say a caution, as a budget's past
+// its warning does, which its copy doesn't (VKCF3Z, 2026-11-07).
+function ownAct(row, verb, copyMark) {
     const said = verb.toLowerCase();
     // Every field a provider's row has (Provider.qml's `thing`), so the
     // list draws it as it draws them; the launcher prepares its name.
@@ -313,7 +318,7 @@ function ownAct(row, verb) {
         later: false,
         // A copy is set while the launcher holds the keys, as the row's is.
         now: row.now === true,
-        glyph: row.glyph ?? "",
+        glyph: said === "copy" ? copyMark ?? "" : row.glyph ?? "",
         hue: "action",
         stays: row.stays === true,
         // Asked through the row, so a run that depends on how the row

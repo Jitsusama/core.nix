@@ -18,8 +18,10 @@
 // Its glyph says what sort of row it is, so a thing to do never reads like
 // a figure (docs/design.md, Shape and Kinds): an act wears its glyph in its
 // hue, a row that holds more, an answer's parts or a collection, wears it
-// in the edge colour, and a figure, a value an answer's part only says,
-// wears none, its name keeping the column the glyphs leave. A row with a
+// muted, and a figure, a value an answer's part only says, wears none, its
+// name keeping the column the glyphs leave; but a warning's or an alert's
+// hue is kept, and a figure marked wears its mark, so a row says how it
+// stands by its mark as a budget's do. A row with a
 // graph draws it between its words and what it is, in one column down the
 // list, its name giving way to it first.
 // Not Row, which is QtQuick's own and would silently win.
@@ -127,6 +129,13 @@ Rectangle {
     // Its glyph wears what it says, as a colour's swatch does, so it's
     // never dimmed or left off.
     property bool swatch: false
+    // Whether a figure wears its mark anyway, as a budget's window does,
+    // whose mark's hue says how it stands (VKCF3Z, 2026-11-07).
+    property bool marked: false
+    // Whether its hue says how it stands, a warning's or an alert's, which
+    // its mark keeps however quiet a row of its sort is.
+    readonly property bool standing: Qt.colorEqual(hue, Theme.warning)
+        || Qt.colorEqual(hue, Theme.alert)
     // Its graph, as Graph.qml draws one, or null.
     property var graph: null
     // Whether what it says warns, as an update waiting does: what it says
@@ -185,14 +194,16 @@ Rectangle {
     Mark {
         x: Theme.space.rung.inset + row.indent
         line: (row.height + row.capitals) / 2
-        // A swatch is the figure itself, so it stays.
-        visible: row.sort !== "figure" || row.swatch
+        // A swatch is the figure itself, so it stays, as does a figure's
+        // mark saying how it stands.
+        visible: row.sort !== "figure" || row.swatch || row.marked
         text: row.glyph
         // A row holding more is quieter than one that acts, muted as a
         // place's mark is in the head: never the frame's edge, which the
-        // cursor's ground all but hides (VKCF3Z, 2026-11-06).
+        // cursor's ground all but hides (VKCF3Z, 2026-11-06); but for a
+        // warning or an alert, which it keeps.
         color: row.flashed && !row.swatch ? row.flashInk
-            : row.sort === "holds" && !row.swatch ? Theme.muted : row.hue
+            : row.sort === "holds" && !row.swatch && !row.standing ? Theme.muted : row.hue
     }
 
     // Selected, a name too long for its room reads on (ReadsOn.qml), and

@@ -705,10 +705,13 @@ glyph says what sort of row it is, so a thing to do never reads like a
 figure. An act (a thing with verbs, a verb, anything Return does) wears its
 own glyph, or else its thing's, in its hue. A row that holds more (an
 answer, whose parts are a step in, a row of rows, a collection) wears its
-glyph in the edge colour, since what it's for is inside. A figure, a value
-an answer's part only says, wears none, even where Return copies it, and
-its words keep the column's edge; a colour's swatch stays, since it is the
-figure. In a
+glyph muted, since what it's for is inside. A figure, a value an answer's
+part only says, wears none, even where Return copies it, and its words keep
+the column's edge; a colour's swatch stays, since it is the figure. A row
+that says how it stands by its mark, as a budget and its windows do, keeps
+a warning's or an alert's hue on it, holding more or not, and a figure of
+those wears its mark. Return's own Copy wears the copy glyph, as every
+Copy row does, never its row's. In a
 block of text a glyph never starts a line, since it would leave a hole under
 itself or push the text off its edge. It sits inline before the word it
 marks, or in a signature, as a notice signs what sent it: its mark in a
@@ -2132,7 +2135,8 @@ hairline, the rows, a hairline, the status line.
 - **The rows** are the launcher's: the gutter, the glyph, the name and its
   words, the side at the far end, each a band meeting the next, the cursor's
   ground filling its band. A row that holds more draws its mark muted, never
-  in a rule's or the ground's colour, so it reads on the cursor. What a row
+  in a rule's or the ground's colour, so it reads on the cursor, but for a
+  warning's or an alert's, which it keeps. What a row
   is, holds or does follows its name, in Words ("Shortcuts" then "Tabs,
   Tab Numbers"; "brightness ⟨percent⟩" then "Sets the screen's
   brightness"). A figure
