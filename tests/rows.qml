@@ -204,7 +204,7 @@ ShellRoot {
                 width: root.panel
                 steady: true
                 chips: [{ text: "Open the Notes" },
-                    { text: "~/gathering/more", yields: true }, { text: "Found" }]
+                    { text: "~/gathering/notes/kept/more", yields: true }, { text: "Found" }]
                 hint: "what to do?"
             }
             Prompt {
@@ -215,7 +215,7 @@ ShellRoot {
                 lead: Theme.glyph.category
                 chips: [foldered.chips[0], foldered.chips[1], { text: "Gathered" }]
                 hint: foldered.hint
-                text: "abcdefghijklmno"
+                text: "abcdefghijklmnopqrstuvwxyzabcdefghij"
             }
             // Three steps in with a long hint, which leaves a note no room:
             // the note gives way rather than lying over the hint.
@@ -708,14 +708,18 @@ ShellRoot {
         expect("the numbers end together, right-aligned",
             said.every(number => Math.abs(number.ends - said[0].ends) <= 0.5),
             JSON.stringify(said));
-        expect("its digits fit its room, and no more",
-            Math.abs(gutter.widest("999") - said[0].ends) <= 0.5,
-            `${gutter.widest("999")} against ${said[0].ends}`);
-        // The numbers stand a tie from the text they number, as Vim's
-        // number column stands a space from the text (VKCF3Z, 2026-11-05).
-        expect("the numbers end a tie before the rows",
-            Math.abs(gutter.width - said[0].ends - Theme.space.rung.tie) <= 0.5,
-            `${gutter.width - said[0].ends} before the rows`);
+        // Its numbers a block on its left as wide as their figures, the
+        // room's spare after them, as Vim's numberwidth (VKCF3Z, 2026-11-06).
+        expect("its numbers end where their figures do, its spare room after them",
+            Math.abs(gutter.widest("9") - said[0].ends) <= 0.5
+                && gutter.widest("999") < gutter.room,
+            `${gutter.widest("9")} against ${said[0].ends}, room ${gutter.room}`);
+        // Its room ends a tie before the text it numbers, as Vim's number
+        // column stands a space from the text (VKCF3Z, 2026-11-05), and
+        // its numbers' spare room lies inside it.
+        expect("its room ends a tie before the rows",
+            Math.abs(gutter.width - gutter.widest("999") - Theme.space.rung.tie) <= 0.5,
+            `${gutter.width - gutter.widest("999")} before the rows`);
 
         expect("it makes a number a slot, not a row", gutter.made === gutter.slots,
             `${gutter.made} for ${gutter.slots} slots`);
@@ -864,7 +868,9 @@ ShellRoot {
                     && lettersCut.length === 0 && clipFrom <= markEnd + 0.5,
                 precedes === null ? "no mark"
                     : `mark ends at ${markEnd}, shown from ${clipFrom}, `
-                        + `letters cut: ${JSON.stringify(lettersCut)}`);
+                        + `letters cut: ${JSON.stringify(lettersCut)}; the field set its mark `
+                        + `from ${folderTyped.markFrom}, shown from ${folderTyped.shownFrom}, `
+                        + `the mark ${precedes.implicitWidth} wide`);
             // A path's mark stands a rung apart from the ink either side, to
             // its own, so a step reads further off than a word does (the
             // picker audit's finding 13).

@@ -8,10 +8,10 @@
 # (home.nix), with the marks it was given.
 { mark }:
 {
-  Super = {
-    text = mark "superKey";
-    wide = true;
-  };
+  # Its name, as Ctrl's and Alt's: the system's logo it prints is no proper
+  # glyph at a chord's size, where Joel read it as a gear (VKCF3Z,
+  # 2026-11-06).
+  Super.text = "Super";
   Shift.text = "⇧";
   Return.text = "↵";
   Up.text = "↑";

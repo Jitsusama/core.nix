@@ -154,6 +154,9 @@ Rectangle {
     // Selected, it's filled, unless the list draws the selection itself so
     // it can glide from row to row (Launcher.qml's list).
     property bool fills: true
+    // How far left of the row its frame's inside edge stands, the gutter's
+    // room between, which its ground reaches out to.
+    property real groundFrom: 0
 
     // A TextMetrics, which follows the face as it loads, where a
     // FontMetrics' call in a binding is asked once, before it has.
@@ -164,16 +167,16 @@ Rectangle {
         font.pointSize: Theme.level.name.pointSize
     }
 
-    // Its ground, close round its ink, as Joel liked a highlight (the
-    // aesthetic skill's "Margin round a highlight, not padding inside it"):
-    // a mark round the glyph and what's flush right, above the capitals and
-    // below the baseline, so more room stands outside it than in.
+    // Its ground, its whole band, as Vim's cursorline fills its line: from
+    // the frame's inside edge to its other, the gutter's numbers and its
+    // far end's ink an inset of padding inside it, square, so a ground
+    // meets the rows above and below (VKCF3Z, 2026-11-06, for Joel's "rows
+    // in the launcher should have padding instead of margins"). It replaced
+    // a ground close round the ink, a margin round a highlight.
     Rectangle {
-        x: Theme.space.rung.inset - Theme.space.rung.mark
-        y: (row.height - row.capitals) / 2 - Theme.space.rung.mark
-        width: row.width - 2 * x
-        height: row.capitals + 2 * Theme.space.rung.mark
-        radius: Theme.inner
+        x: -row.groundFrom
+        width: row.width + row.groundFrom
+        height: row.height
         color: row.flashed ? Theme.accent
             : row.selected && row.fills || row.tinted
                 ? Qt.alpha(Theme.selection, Theme.floating.selection)

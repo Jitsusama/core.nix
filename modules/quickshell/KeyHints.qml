@@ -117,6 +117,9 @@ Row {
                             font.family: hints.level.family
                             font.pointSize: hints.level.pointSize
                             font.weight: hints.level.weight
+                            // The mono's slashed zero, so a key's 0 and O
+                            // read apart, as Chord draws them.
+                            font.features: ({ cv01: 1 })
                         }
                     }
                 }

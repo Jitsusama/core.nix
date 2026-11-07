@@ -23,10 +23,16 @@ Item {
     property int current: 0
     property bool relative: true
     property bool shown: false
-    // How many digits its room holds: the most its list can number, which
-    // the launcher holds while a place is open, so neither a find
-    // narrowing nor its first letter widens it.
+    // How many digits its room holds, which the launcher holds the same in
+    // every place, so the rows' glyphs and names never move between them.
     property int digits: 3
+    // How many digits its numbers take now, as Vim's number column is as
+    // wide as its buffer's lines need: a block on its left edge, the
+    // card's inset, with the numbers right-aligned in it, and the room it
+    // doesn't need after them, between the numbers and the glyphs, never
+    // before the numbers (VKCF3Z, 2026-11-06, for Joel's "why leave
+    // constant room for three when we often have only 1?").
+    property int figures: 1
     // How many numbers it has made, now: its slots while shown, else none.
     readonly property int made: numbers.count
 
@@ -35,7 +41,11 @@ Item {
     // numbers nothing. Read from the metrics' own property, which follows
     // the face as it loads, where a call in a binding is asked once, before
     // it has.
-    width: shown ? Math.ceil(metrics.advanceWidth) + Theme.space.rung.tie : 0
+    width: shown ? room : 0
+    // The room it holds whether it numbers or not, which the columns after
+    // it stand on, so a list with no numbers, as the : line's with no
+    // menu, moves no glyph and no name (VKCF3Z, 2026-11-06).
+    readonly property real room: Math.ceil(metrics.advanceWidth) + Theme.space.rung.tie
 
     // How wide a number is in the gutter's face, for a test to measure by.
     function widest(text) {
@@ -73,6 +83,11 @@ Item {
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
     }
+    TextMetrics {
+        id: block
+        text: "9".repeat(Math.max(1, Math.min(gutter.figures, gutter.digits)))
+        font: metrics.font
+    }
 
     Repeater {
         id: numbers
@@ -87,7 +102,7 @@ Item {
                 && number.row.at === gutter.current
 
             visible: number.row !== null
-            width: gutter.width - Theme.space.rung.tie
+            width: Math.ceil(block.advanceWidth)
             horizontalAlignment: Text.AlignRight
             y: (number.row?.base ?? 0) - number.baselineOffset
             text: number.row === null ? "" : gutter.numberOf(number.row.at)

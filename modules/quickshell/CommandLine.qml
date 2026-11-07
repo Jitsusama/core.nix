@@ -59,6 +59,9 @@ Item {
     // inset in and a glyph's column on, a mark's square cell, a line pitch
     // wide, and the mark rung before its text.
     property real markAt: Theme.space.rung.inset
+    // Given, where the : centres its ink across instead, as the launcher
+    // stands it in its place glyph's cell, where the find's / stands.
+    property real markMiddle: -1
     property real typedAt: Theme.space.rung.inset + Theme.level.name.pitch
         + Theme.space.rung.mark
 
@@ -192,9 +195,16 @@ Item {
         font: input.font
     }
 
+    TextMetrics {
+        id: colonInk
+        text: ":"
+        font: input.font
+    }
+
     Text {
         id: sigil
-        x: line.markAt
+        x: line.markMiddle < 0 ? line.markAt
+            : line.markMiddle - colonInk.tightBoundingRect.x - colonInk.tightBoundingRect.width / 2
         anchors.baseline: input.baseline
         text: ":"
         color: Theme.accent
