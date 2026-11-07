@@ -266,10 +266,10 @@ fn source_line(pieces: &[Piece]) -> String {
 pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
     let (from, to) = period.days(&picture.zone, picture.now);
     let pieces = picture.between(from, to);
-    let total = series::total(&pieces);
+    let total = series::total(pieces);
     // Each name's dollars, whether any are estimated, and its first hour.
     let mut grouped: HashMap<String, (f64, bool, i64)> = HashMap::new();
-    for piece in &pieces {
+    for piece in pieces {
         let entry = grouped
             .entry(key(picture, cut, piece))
             .or_insert((0.0, false, piece.hour));
@@ -322,8 +322,8 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
         from: Zone::iso_day(from),
         to: Zone::iso_day(to),
         total,
-        shown: crate::money::maybe_about(dollars(total), series::estimated(&pieces)),
-        source: source_line(&pieces),
+        shown: crate::money::maybe_about(dollars(total), series::estimated(pieces)),
+        source: source_line(pieces),
         rest: left_out,
         rows,
         notes,
@@ -370,7 +370,7 @@ pub fn by_sessions(picture: &Picture, period: Period) -> String {
 fn sessions_spent(picture: &Picture, period: Period) -> HashMap<String, (f64, bool)> {
     let (from, to) = period.days(&picture.zone, picture.now);
     let mut spent: HashMap<String, (f64, bool)> = HashMap::new();
-    for piece in &picture.between(from, to) {
+    for piece in picture.between(from, to) {
         if piece.session.is_empty() || piece.session == "elsewhere" {
             continue;
         }
@@ -391,8 +391,7 @@ pub fn helpers_by_session(
 ) -> std::collections::BTreeMap<String, Vec<Helper>> {
     let (from, to) = period.days(&picture.zone, picture.now);
     let mut spent: HashMap<(&str, &str), (f64, bool)> = HashMap::new();
-    let pieces = picture.between(from, to);
-    for piece in &pieces {
+    for piece in picture.between(from, to) {
         let Some(kind) = piece.kind.strip_prefix("subagent:") else {
             continue;
         };
@@ -444,8 +443,7 @@ pub fn by_family(picture: &Picture, period: Period) -> std::collections::BTreeMa
         .collect();
     // Each quest's own and under, and whether either was estimated.
     let mut spent: HashMap<&str, (f64, f64, bool, bool)> = HashMap::new();
-    let pieces = picture.between(from, to);
-    for piece in &pieces {
+    for piece in picture.between(from, to) {
         let Some(quest) = piece.quest.as_deref() else {
             continue;
         };
@@ -582,7 +580,7 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
         to: Zone::iso_day(picture.zone.day(picture.now)),
         total: picture.week.dollars,
         shown: crate::money::maybe_about(dollars(picture.week.dollars), picture.week.estimated),
-        source: source_line(&week),
+        source: source_line(week),
         rest: None,
         rows,
         notes,
@@ -708,7 +706,7 @@ pub fn quests(picture: &Picture, period: Period) -> Report {
     let (from, to) = period.days(&picture.zone, picture.now);
     let pieces = picture.between(from, to);
     let mut by_root: HashMap<&str, f64> = HashMap::new();
-    for piece in &pieces {
+    for piece in pieces {
         if let Some(quest) = &piece.quest {
             *by_root.entry(picture.root(quest)).or_default() += piece.dollars;
         }
@@ -761,7 +759,7 @@ pub fn quests(picture: &Picture, period: Period) -> Report {
         to: Zone::iso_day(to),
         total,
         shown: dollars(total),
-        source: source_line(&pieces),
+        source: source_line(pieces),
         rest: None,
         rows,
         notes,

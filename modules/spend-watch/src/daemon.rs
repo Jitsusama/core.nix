@@ -363,16 +363,18 @@ fn heard(findings: &[Finding], watched: Option<&str>) -> Vec<Finding> {
 }
 
 /// One whole pass: how things stand, what's found, what the shell shows
-/// and what's said.
+/// and what's said. `kept` carries what the last pass read that can't
+/// have moved since.
 pub fn pass(
     history: &History,
     config: &Config,
     writer: &mut Writer,
     desk: &mut dyn Desk,
+    kept: &mut crate::picture::Kept,
     now: f64,
 ) -> Result<status::Status, String> {
-    let picture = Picture::read(history, config, now)?;
-    let raised = crate::detect::all(&picture, history, config)?;
+    let picture = Picture::read_keeping(history, config, now, kept)?;
+    let raised = crate::detect::all_keeping(&picture, history, config, &mut kept.minutes)?;
     let findings = crate::findings::settle(history, &raised, now)?;
     let live = crate::tokens::Rate::Live;
     let inputs = crate::tokens::read(history, &picture.budgets, now, live)?.map(|mut inputs| {
@@ -522,6 +524,7 @@ pub fn run(config: &Config) -> Result<(), String> {
     }
     let mut writer = Writer::new();
     let mut desk = Buses::default();
+    let mut kept = crate::picture::Kept::default();
     let mut feeds = feeds(config);
     let mut pace = Pace::Idle;
     // The first pass is due at once, as though the last were an idle wait
@@ -564,7 +567,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             if let Err(error) = catch_up(&history, config) {
                 eprintln!("reading pi's logs: {error}");
             }
-            match pass(&history, config, &mut writer, &mut desk, now) {
+            match pass(&history, config, &mut writer, &mut desk, &mut kept, now) {
                 Ok(shown) => last_status = Some((shown, Instant::now(), Instant::now())),
                 Err(error) => eprintln!("a pass failed: {error}"),
             }

@@ -304,8 +304,8 @@ fn figure_of(picture: &Picture, period: Period) -> (String, &'static str) {
     let (from, to) = period.days(&picture.zone, picture.now);
     let pieces = picture.between(from, to);
     (
-        maybe_about(dollars(series::total(&pieces)), series::estimated(&pieces)),
-        basis(series::weakest(&pieces), picture.fed),
+        maybe_about(dollars(series::total(pieces)), series::estimated(pieces)),
+        basis(series::weakest(pieces), picture.fed),
     )
 }
 

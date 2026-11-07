@@ -168,7 +168,7 @@ pub fn standing(picture: &Picture, config: &Config, session: Option<&str>) -> St
             .total_cmp(&one.nearest.unwrap_or(-1.0))
     });
     let today = picture.zone.day(picture.now);
-    let mut sessions = last_budgets(&picture.between(today, today));
+    let mut sessions = last_budgets(picture.between(today, today));
     let session = session.map(|id| {
         let pieces: Vec<Piece> = picture
             .pieces
@@ -201,7 +201,7 @@ pub fn standing(picture: &Picture, config: &Config, session: Option<&str>) -> St
 }
 
 /// Each period's local days, first and last, by its name.
-type Spans<'a> = Vec<(&'static str, (i64, i64), Vec<Piece>)>;
+type Spans<'a> = Vec<(&'static str, (i64, i64), &'a [Piece])>;
 
 fn spans(picture: &Picture) -> Spans<'_> {
     let today = picture.zone.day(picture.now);
