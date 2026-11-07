@@ -1129,12 +1129,21 @@ def calendars_from_now(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+def the_shell_restarted(desktop: Desktop, said: str) -> None:
+    """Restart the shell and wait until its calendars say how the reader answered today."""
+    since = desktop.mark()
+    desktop.as_account("systemctl --user restart quickshell")
+    desktop.reported(said, lambda _rest: True, since, dt.timedelta(seconds=60))
+
+
 def calendars_asked(desktop: Desktop) -> None:
     """Ask Date's calendars without the reader, then with it, from where the laptop is."""
-    # With the reader gone, Calendars says it isn't answering, and Return closes rather than
-    # copying those words. It's asked first, since a day once answered is kept.
+    # With the reader gone as the shell starts, Calendars says it isn't answering, and Return
+    # closes rather than copying those words. The shell starts again for it, since today is
+    # asked for as it starts and a day once answered is kept.
     try:
         desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
+        the_shell_restarted(desktop, "calendars refused")
         desktop.answer("date")
         desktop.follow()
         desktop.launcher_until(
@@ -1148,16 +1157,17 @@ def calendars_asked(desktop: Desktop) -> None:
         desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start timekeeping.socket")
+    # Shown again, Date asks again, the way Joel goes to it.
     calendars_from_now(desktop)
-    # Asked again, today in the Chinese, Japanese, Hebrew and Islamic calendars, each a
-    # thing whose plate is titled with its date in its own script.
+    # With the reader there as the shell starts, today's answer is held before the launcher
+    # opens, so Date's first frame holds today in the Chinese, Japanese, Hebrew and Islamic
+    # calendars, with nothing to wait for (Joel, 2026-11-07: "calendars takes way too long to
+    # load"). Each is a thing whose plate is titled with its date in its own script.
+    the_shell_restarted(desktop, "calendars held ")
     desktop.answer("date")
     desktop.follow()
-    desktop.launcher_until(
-        lambda shown: any(
-            str(thing["reads"]).startswith("Calendars \u00b7 4") for thing in shown["things"]
-        )
-    )
+    first = [str(thing["reads"]) for thing in desktop.showing()["things"]]
+    assert any(it.startswith("Calendars \u00b7 4") for it in first), f"Date showed {first}"
     desktop.down_to("Calendars")
     desktop.follow()
     calendars = ["Chinese", "Japanese", "Hebrew", "Islamic"]
