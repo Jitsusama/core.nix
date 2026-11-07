@@ -42,10 +42,16 @@ in
 {
   home.packages = [ net ];
 
+  # A switch leaves the running net be, since stopping it mid-round loses
+  # every run in flight; it follows the build installed and ends between
+  # rounds once that is another, for Restart to start the new one.
   systemd.user.services.merge-net = {
-    Unit.Description = "Runs the VM tests each merge to core's main changed, and reverts a merge that breaks one";
+    Unit = {
+      Description = "Runs the VM tests each merge to core's main changed, and reverts a merge that breaks one";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
-      ExecStart = "${lib.getExe net} watch";
+      ExecStart = "${lib.getExe net} watch --follow ${config.home.profileDirectory}/bin/merge-net";
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;

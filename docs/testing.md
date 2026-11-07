@@ -175,7 +175,8 @@ a quarantined test still runs, but its failure is said and blocks nothing.
 A run the net stops, past two hours on a builder or silent there for
 thirty minutes, is a stall, not a failure (the wait for a builder counts
 for neither): one stalling twice at a commit is a finding, and no
-merge is blamed for it.
+merge is blamed for it. A switch leaves the net running, since stopping it
+mid-round loses every run in flight; it starts its new build between rounds.
 The net starts nothing while a hold on the whole machine stands, or while
 `~/.local/state/net/pause` is there, and `merge-net status` says where it
 is.
