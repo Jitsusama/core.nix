@@ -5273,6 +5273,12 @@ Scope {
             return String(root.choicesJoined);
         }
 
+        // How many changes a source has said, open or closed, so that check
+        // knows the closed launcher heard one before counting what it made.
+        function changes(name: string): string {
+            return String(root.changesIn[name] ?? 0);
+        }
+
         // How many searches of what's typed have run, for the check that
         // text typed at once is searched once.
         function searched(): string {
