@@ -40,16 +40,17 @@ let
   );
 
   # A role's colour as the console's SGR number: the one of its sixteen
-  # holding the role's colour, or its own foreground when none does.
+  # holding the role's colour or near it (../theme/nearest.nix), or its
+  # own foreground when it is the foreground or none is.
   slot =
     role:
     let
       names = eight ++ map (name: "bright_${name}") eight;
-      at = lib.lists.findFirstIndex (
-        name: lib.toLower terminal.${name} == lib.toLower theme.colours.${role}
-      ) null names;
+      at = import ../theme/nearest.nix { inherit lib; } theme.colours.${role} (
+        map (name: terminal.${name}) (names ++ [ "foreground" ])
+      );
     in
-    if at == null then "39" else toString (if at < 8 then 30 + at else 82 + at);
+    if at == null || at == 16 then "39" else toString (if at < 8 then 30 + at else 82 + at);
 
   # A piece of text in a role's colour.
   escape = builtins.fromJSON ''"\u001b"'';
