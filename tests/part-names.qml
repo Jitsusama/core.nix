@@ -131,6 +131,7 @@ ShellRoot {
             clock.filter(name => calendar.includes(name)).join(", "));
         asNowShows();
         asKept();
+        asUnkept();
         const stoodIn = Calendars.reading;
         // Its day as it is before sunset, whenever the check runs.
         Calendars.reading = evening(stoodIn, Date.now() + 3600000);
@@ -299,6 +300,34 @@ ShellRoot {
     // vocabulary names for it, Servers into each server, the chosen first,
     // and a server into every figure it has, each named as its drawer
     // names it; one that's answered none of its polls is out of reach.
+    // Before chrony answers, and when nothing keeps the time, Clock is the
+    // same thing, stepped into on Return, its side saying how it stands and
+    // its inside why it holds nothing yet: a row that only said so did
+    // nothing on Return, and changed kind under the cursor as the reading
+    // came (Joel, 2026-10-26: every row has a Return act; VKCF3Z,
+    // 2026-11-06).
+    function asUnkept() {
+        const reading = Timekeeping.reading;
+        const kept = clocks.answer("time").rows.find(each => each.key === "time:clock");
+        Timekeeping.reading = null;
+        Timekeeping.watching = 1;
+        const asked = clocks.answer("time").rows.find(each => each.key === "time:clock");
+        Timekeeping.refused = true;
+        const refused = clocks.answer("time").rows.find(each => each.key === "time:clock");
+        Timekeeping.reading = reading;
+        Timekeeping.watching = 0;
+        Timekeeping.refused = false;
+        for (const [when, clock, side, empty] of [
+            ["asked", asked, "\u2026", "\u2026"],
+            ["refused", refused, "nothing keeps the time", "Nothing keeps the time."]
+        ]) {
+            const said = `${clock?.verb} ${clock?.glyph === kept.glyph} ${clock?.side}`
+                + ` ${clock?.verbs?.().length} ${clock?.empty}`;
+            expect(`the clock ${when} steps in, saying why it holds nothing`,
+                said === `more true ${side} 0 ${empty}`, said);
+        }
+    }
+
     function asKept() {
         const time = clocks.answer("time");
         const row = id => time.rows.find(each => each.name === Words.name(id));
