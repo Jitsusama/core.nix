@@ -488,44 +488,6 @@ Singleton {
         putOffFile.setText(JSON.stringify({ boot: putOff }));
     }
 
-    // The last boot's sessions, reopened by themselves as Reopen Them All
-    // does when the shell first starts on a boot, so a reboot asks nothing
-    // of Joel past his disk's PIN and his sign-in (Joel, 2026-11-07, by
-    // P9R1KI [6ecca200]: "make sure i can quickly recover afterwards").
-    // Only what the shell finds as it starts, once niri has said its
-    // workspaces: a last boot's file laid later is offered on the row
-    // instead. The boot is kept once its sessions are reopened, so a shell
-    // started again on it, as a switch restarts it, never reopens them
-    // twice; what's left, a folder gone, stays on the row.
-    property bool reopenLooked: false
-    property string reopenedItself: {
-        try {
-            return String(JSON.parse(reopenedFile.text()).boot ?? "");
-        } catch (error) {
-            return "";
-        }
-    }
-    FileView {
-        id: reopenedFile
-        path: Quickshell.statePath("last-boot-reopened.json")
-        blockLoading: true
-        printErrors: false
-    }
-    function reopenItself() {
-        if (reopenLooked || Object.keys(Niri.workspaces ?? {}).length === 0)
-            return;
-        reopenLooked = true;
-        const boot = restoring.boot;
-        const lost = lastBoot.filter(one => !forgotten.includes(one.id));
-        if (lost.length === 0 || boot === reopenedItself)
-            return;
-        reopenedItself = boot;
-        reopenedFile.setText(JSON.stringify({ boot }));
-        Report.say(`reopening ${lost.length} the last boot took away`);
-        reopenThemAll(lost, (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
-            + `since its folder, ${cwd}, is gone`));
-    }
-
     // Where each session's window sits, kept so Reopen Them All puts every
     // one back on its workspace in its order after a cold boot (Joel,
     // 2026-10-29, after a restore: "every session is all over the place on
@@ -1205,15 +1167,6 @@ Singleton {
             return;
         }
         reopening.queue = reopening.queue.slice(1);
-        // One already running or parked here is never begun again, as a
-        // restart watch may have begun it meanwhile, since two pis on one
-        // log would each write over the other.
-        if (root.running.concat(root.parked).some(session => session.here
-            && session.presence.session === next.one.id)) {
-            console.info(`sessions: ${next.one.id} not reopened, since it runs here`);
-            reopenNext();
-            return;
-        }
         reopening.looking = true;
         lookFor([next.one.cwd], there => {
             reopening.looking = false;
@@ -2122,7 +2075,6 @@ Singleton {
     Connections {
         target: Niri
         function onRevisionChanged() {
-            root.reopenItself();
             const seen = Object.keys(Niri.windows).join(" ");
             if (seen === root.windowsSeen)
                 return;
