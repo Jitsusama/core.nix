@@ -284,16 +284,23 @@ def holds_room_only_for_what_it_draws(desktop: Desktop) -> None:
     """
     machine = desktop.machine
     opened = desktop.showing()
-    assert [hint.split(" ")[0] for hint in opened["hints"]] == ["\u21b5"], opened["hints"]
+    # Opened on Now, a home row, the foot teaches its chord beside Return and draws nothing
+    # else (Y2YBTS, 2026-11-06: a home row hands its chord to the foot).
+    taught = opened["hints"][1:]
+    assert opened["hints"][0].startswith("\u21b5"), opened["hints"]
+    assert all(hint.endswith("next time") for hint in taught), opened["hints"]
     machine.send_chars("s")
     desktop.launcher_until(lambda shown: any("complete" in hint for hint in shown["hints"]))
     shown = desktop.showing()
     foot = laid_out(desktop)["foot"]
     assert shown["keysFrom"] == opened["keysFrom"], (opened["keysFrom"], shown["keysFrom"])
-    # The room the opening held is just what the keys the letter brought take.
-    assert opened["keysRoom"]["held"] == shown["keysRoom"]["said"], (
+    # The room the opening held is just the widest the find has drawn: what the opening's
+    # keys took, or what the letter brought, and no more.
+    drawn = max(opened["keysRoom"]["said"], shown["keysRoom"]["said"])
+    assert opened["keysRoom"]["held"] == drawn, (
         f"the opening held {opened['keysRoom']['held']} px for the keys, which take"
-        f" {shown['keysRoom']['said']}: {shown['hints']}"
+        f" {opened['keysRoom']['said']} ({opened['hints']}) and then"
+        f" {shown['keysRoom']['said']} ({shown['hints']})"
     )
     # And that's how they're drawn: the first key starts as far in from the status line's end
     # as they take, in the card's frame, where the foot's words are laid out.
