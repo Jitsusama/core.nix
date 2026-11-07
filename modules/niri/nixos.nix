@@ -135,6 +135,15 @@
     # the focused column to an index, so the next patch
     # (opens-next-window-as-column.patch) lets it say the index it opens
     # at as a new column, which Reopen Them All puts each session back at.
+    #
+    # niri gives an on-demand layer surface the keys only as it first maps
+    # or is clicked, so the shell's launcher, kept mapped while closed,
+    # asked for them exclusively: a click on a window left them in the
+    # launcher, and notices held over it never had them, since between two
+    # exclusive surfaces niri takes the first. The patch
+    # (on-demand-when-asked.patch) gives them to a mapped surface as it
+    # turns on-demand, the newest to ask having them, and back to the one
+    # that asked before as it lets go, until a click gives a window them.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -163,6 +172,7 @@
         ./lid-read-before-outputs.patch
         ./opens-next-window-on.patch
         ./opens-next-window-as-column.patch
+        ./on-demand-when-asked.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

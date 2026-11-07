@@ -1,0 +1,398 @@
+Gives keyboard focus to a mapped layer surface as it asks for on-demand
+interactivity, as a newly mapped on-demand surface already gets it, and
+gives it back to the one that asked before when the focused one lets go.
+
+A shell keeps its launcher mapped while closed, so it opens at once, and
+asks for the keys only as it opens. niri gave on-demand focus only on a
+first map or a click, so such a launcher had to ask for exclusive focus,
+and an exclusive surface beats every window: a click on one left the
+keys in the launcher. Between two exclusive surfaces on a layer niri
+takes the first found, not the newest, so notices held over the open
+launcher never had the keys.
+
+Now the newest to ask, by its interactivity or a click, has focus, and
+the newest still asking has it back when that one lets go. Only a
+pointer giving a window focus (a click, a drop, a double-click resize)
+forgets who asked, so a surface closing later never takes focus back
+from the window. An action, as a bind or a client's IPC runs, and a
+window opening on its own leave focus with the surface that asked, as
+exclusive focus did, so a shell moving windows from its open launcher
+keeps the launcher's keys.
+
+diff --git a/src/handlers/layer_shell.rs b/src/handlers/layer_shell.rs
+index 0c5c1cd..dda321b 100644
+--- a/src/handlers/layer_shell.rs
++++ b/src/handlers/layer_shell.rs
+@@ -146,6 +146,17 @@ impl State {
+             } else {
+                 // The surface remains mapped.
+                 if let Some(mapped) = self.niri.mapped_layer_surfaces.get_mut(layer) {
++                    // A mapped surface turning on-demand asks for focus as a newly mapped one
++                    // gets it, so a shell that keeps its launcher mapped while closed gives it
++                    // focus by asking as it opens, and the newest to ask has it.
++                    if mapped.take_asked_for_focus_on_commit() {
++                        // As note_on_demand_ask, on the field, since `mapped` borrows niri.
++                        let asked = &mut self.niri.layer_shell_on_demand_asked;
++                        asked.retain(|one| one != layer);
++                        asked.push(layer.clone());
++                        self.niri.layer_shell_on_demand_focus = Some(layer.clone());
++                    }
++
+                     // Check if the layer changed.
+                     if mapped.take_recompute_rules_on_commit() {
+                         let config = self.niri.config.borrow();
+@@ -179,6 +190,7 @@ impl State {
+                 // has focus, but Smithay's Layer doesn't implement Ord so this would be a
+                 // little annoying.
+                 self.niri.layer_shell_on_demand_focus = Some(layer.clone());
++                self.niri.note_on_demand_ask(layer);
+             }
+         } else {
+             // The surface is unmapped.
+@@ -223,17 +235,27 @@ impl State {
+ 
+ fn add_mapped_layer_pre_commit_hook(layer: &LayerSurface) -> HookId {
+     add_pre_commit_hook::<State, _>(layer.wl_surface(), move |state, _dh, surface| {
+-        let layer_changed = with_states(surface, |states| {
++        let (layer_changed, asked_for_focus) = with_states(surface, |states| {
+             let mut guard = states.cached_state.get::<LayerSurfaceCachedState>();
+-            let pending_layer = guard.pending().layer;
+-            let current_layer = guard.current().layer;
+-            pending_layer != current_layer
++            let pending = guard.pending();
++            let (pending_layer, pending_keys) = (pending.layer, pending.keyboard_interactivity);
++            let current = guard.current();
++            let on_demand = wlr_layer::KeyboardInteractivity::OnDemand;
++            (
++                pending_layer != current.layer,
++                pending_keys == on_demand && current.keyboard_interactivity != on_demand,
++            )
+         });
+ 
+-        if layer_changed {
++        if layer_changed || asked_for_focus {
+             for mapped in state.niri.mapped_layer_surfaces.values_mut() {
+                 if mapped.surface().wl_surface() == surface {
+-                    mapped.set_recompute_rules_on_commit();
++                    if layer_changed {
++                        mapped.set_recompute_rules_on_commit();
++                    }
++                    if asked_for_focus {
++                        mapped.set_asked_for_focus_on_commit();
++                    }
+                     break;
+                 }
+             }
+diff --git a/src/handlers/mod.rs b/src/handlers/mod.rs
+index 58e070a..e56104e 100644
+--- a/src/handlers/mod.rs
++++ b/src/handlers/mod.rs
+@@ -428,6 +428,7 @@ impl DndGrabHandler for State {
+                 let window = mapped.window.clone();
+                 self.niri.layout.activate_window(&window);
+                 self.niri.layer_shell_on_demand_focus = None;
++                self.niri.forget_on_demand_asks();
+                 activate_output = false;
+             }
+         }
+diff --git a/src/handlers/xdg_shell.rs b/src/handlers/xdg_shell.rs
+index b4dd085..892347b 100644
+--- a/src/handlers/xdg_shell.rs
++++ b/src/handlers/xdg_shell.rs
+@@ -219,10 +219,12 @@ impl XdgShellHandler for State {
+                     // FIXME: don't activate once we can pass specific windows to actions.
+                     self.niri.layout.activate_window(&window);
+                     self.niri.layer_shell_on_demand_focus = None;
++                    self.niri.forget_on_demand_asks();
+                     self.niri.layout.toggle_full_width();
+                 }
+                 if intersection.intersects(ResizeEdge::TOP_BOTTOM) {
+                     self.niri.layer_shell_on_demand_focus = None;
++                    self.niri.forget_on_demand_asks();
+                     self.niri.layout.reset_window_height(Some(&window));
+                 }
+                 // FIXME: granular.
+diff --git a/src/layer/mapped.rs b/src/layer/mapped.rs
+index fbaa6fc..50499b6 100644
+--- a/src/layer/mapped.rs
++++ b/src/layer/mapped.rs
+@@ -36,6 +36,12 @@ pub struct MappedLayer {
+     /// Set in the pre-commit hook when the layer changes; consumed in the commit handler.
+     recompute_rules_on_commit: bool,
+ 
++    /// Whether the surface asked for on-demand keyboard focus in the commit being handled.
++    ///
++    /// Set in the pre-commit hook when its interactivity turns on-demand; consumed in the
++    /// commit handler.
++    asked_for_focus_on_commit: bool,
++
+     /// Buffer to draw instead of the surface when it should be blocked out.
+     block_out_buffer: SolidColorBuffer,
+ 
+@@ -84,6 +90,7 @@ impl MappedLayer {
+             pre_commit_hook,
+             rules,
+             recompute_rules_on_commit: false,
++            asked_for_focus_on_commit: false,
+             block_out_buffer: SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.]),
+             view_size,
+             scale,
+@@ -157,6 +164,14 @@ impl MappedLayer {
+         std::mem::take(&mut self.recompute_rules_on_commit)
+     }
+ 
++    pub fn set_asked_for_focus_on_commit(&mut self) {
++        self.asked_for_focus_on_commit = true;
++    }
++
++    pub fn take_asked_for_focus_on_commit(&mut self) -> bool {
++        std::mem::take(&mut self.asked_for_focus_on_commit)
++    }
++
+     pub fn place_within_backdrop(&self) -> bool {
+         if !self.rules.place_within_backdrop {
+             return false;
+diff --git a/src/niri.rs b/src/niri.rs
+index 82d88f9..b8f1919 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -364,6 +364,9 @@ pub struct Niri {
+     pub bind_repeat_timer: Option<RegistrationToken>,
+     pub keyboard_focus: KeyboardFocus,
+     pub layer_shell_on_demand_focus: Option<LayerSurface>,
++    /// On-demand layer surfaces that asked for focus, oldest first, since a pointer last gave a
++    /// window focus: the newest still asking has it, so one letting go hands it back.
++    pub layer_shell_on_demand_asked: Vec<LayerSurface>,
+     pub idle_inhibiting_surfaces: HashSet<WlSurface>,
+     pub is_fdo_idle_inhibited: Arc<AtomicBool>,
+     pub keyboard_shortcuts_inhibiting_surfaces: HashMap<WlSurface, KeyboardShortcutsInhibitor>,
+@@ -1189,26 +1192,29 @@ impl State {
+     }
+ 
+     pub fn update_keyboard_focus(&mut self) {
+-        // Clean up on-demand layer surface focus if necessary.
+-        if let Some(surface) = &self.niri.layer_shell_on_demand_focus {
+-            // Still alive and has on-demand interactivity.
+-            let mut good = surface.alive()
++        // Clean up on-demand layer surface focus if necessary: it stays with a surface still
++        // alive, on-demand, mapped and out of the overview backdrop.
++        let mapped_layers = &self.niri.mapped_layer_surfaces;
++        let still_asks = |surface: &LayerSurface| {
++            surface.alive()
+                 && surface.cached_state().keyboard_interactivity
+-                    == wlr_layer::KeyboardInteractivity::OnDemand;
+-
+-            if let Some(mapped) = self.niri.mapped_layer_surfaces.get(surface) {
+-                // Check if it moved to the overview backdrop.
+-                if mapped.place_within_backdrop() {
+-                    good = false;
+-                }
+-            } else {
+-                // The layer surface is alive but it got unmapped.
+-                good = false;
+-            }
+-
+-            if !good {
+-                self.niri.layer_shell_on_demand_focus = None;
+-            }
++                    == wlr_layer::KeyboardInteractivity::OnDemand
++                && mapped_layers
++                    .get(surface)
++                    .is_some_and(|mapped| !mapped.place_within_backdrop())
++        };
++        let good = self
++            .niri
++            .layer_shell_on_demand_focus
++            .as_ref()
++            .is_some_and(still_asks);
++        if !good {
++            // Give focus back to the newest surface that asked and still asks. An action, as a
++            // bind or a client's IPC runs, clears the focus without forgetting who asked, so a
++            // shell moving windows from its open launcher keeps the launcher's keys.
++            self.niri.layer_shell_on_demand_asked.retain(still_asks);
++            self.niri.layer_shell_on_demand_focus =
++                self.niri.layer_shell_on_demand_asked.last().cloned();
+         }
+ 
+         // Compute the current focus.
+@@ -2676,6 +2682,7 @@ impl Niri {
+             seat,
+             keyboard_focus: KeyboardFocus::Layout { surface: None },
+             layer_shell_on_demand_focus: None,
++            layer_shell_on_demand_asked: Vec::new(),
+             idle_inhibiting_surfaces: HashSet::new(),
+             is_fdo_idle_inhibited: Arc::new(AtomicBool::new(false)),
+             keyboard_shortcuts_inhibiting_surfaces: HashMap::new(),
+@@ -6281,11 +6288,26 @@ impl Niri {
+         });
+     }
+ 
++    /// Forgets which on-demand layer surfaces asked for focus, as a pointer gives a window
++    /// focus, so a surface letting go later never takes it back. Nothing else forgets them, so
++    /// a window opening on its own leaves the keys with the surface that asked.
++    pub fn forget_on_demand_asks(&mut self) {
++        self.layer_shell_on_demand_asked.clear();
++    }
++
++    /// Notes an on-demand layer surface asking for focus, by a click or its interactivity: the
++    /// newest to ask has it, and it goes back to the one before as that one lets go.
++    pub fn note_on_demand_ask(&mut self, surface: &LayerSurface) {
++        self.layer_shell_on_demand_asked.retain(|one| one != surface);
++        self.layer_shell_on_demand_asked.push(surface.clone());
++    }
++
+     pub fn focus_layer_surface_if_on_demand(&mut self, surface: Option<LayerSurface>) {
+         if let Some(surface) = surface {
+             if surface.cached_state().keyboard_interactivity
+                 == wlr_layer::KeyboardInteractivity::OnDemand
+             {
++                self.note_on_demand_ask(&surface);
+                 if self.layer_shell_on_demand_focus.as_ref() != Some(&surface) {
+                     self.layer_shell_on_demand_focus = Some(surface);
+ 
+@@ -6298,6 +6320,7 @@ impl Niri {
+         }
+ 
+         // Something else got clicked, clear on-demand layer-shell focus.
++        self.forget_on_demand_asks();
+         if self.layer_shell_on_demand_focus.is_some() {
+             self.layer_shell_on_demand_focus = None;
+ 
+diff --git a/src/tests/layer_shell.rs b/src/tests/layer_shell.rs
+index 72caf72..465f08a 100644
+--- a/src/tests/layer_shell.rs
++++ b/src/tests/layer_shell.rs
+@@ -1,11 +1,15 @@
+ use insta::assert_snapshot;
++use niri_config::Action;
+ use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
+ use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
+     Anchor, KeyboardInteractivity,
+ };
+ 
++use wayland_client::protocol::wl_surface::WlSurface;
++
+ use super::*;
+-use crate::tests::client::{LayerConfigureProps, LayerMargin};
++use crate::niri::KeyboardFocus;
++use crate::tests::client::{ClientId, LayerConfigureProps, LayerMargin};
+ 
+ #[test]
+ fn simple_top_anchor() {
+@@ -256,3 +260,116 @@ fn multiple_commits_before_mapping() {
+     // Configure with new size.
+     assert_snapshot!(layer.format_recent_configures(), @"size: 1920 × 50");
+ }
++
++/// Maps a layer surface on the overlay layer, asking for no keyboard focus, as a shell keeps a
++/// launcher mapped while it's closed.
++fn map_on_overlay(f: &mut Fixture, id: ClientId, namespace: &str) -> WlSurface {
++    let layer = f.client(id).create_layer(None, Layer::Overlay, namespace);
++    let surface = layer.surface.clone();
++    layer.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Left | Anchor::Top),
++        size: Some((100, 100)),
++        kb_interactivity: Some(KeyboardInteractivity::None),
++        ..Default::default()
++    });
++    layer.commit();
++    f.double_roundtrip(id);
++
++    let layer = f.client(id).layer(&surface);
++    layer.attach_new_buffer();
++    layer.set_size(100, 100);
++    layer.ack_last_and_commit();
++    f.double_roundtrip(id);
++    surface
++}
++
++/// Sets a mapped layer surface's keyboard interactivity, as a shell does opening and closing.
++fn set_keys(f: &mut Fixture, id: ClientId, surface: &WlSurface, keys: KeyboardInteractivity) {
++    let layer = f.client(id).layer(surface);
++    layer.set_configure_props(LayerConfigureProps {
++        kb_interactivity: Some(keys),
++        ..Default::default()
++    });
++    layer.commit();
++    f.double_roundtrip(id);
++}
++
++/// Names what has keyboard focus: a layer surface by its namespace, or the layout.
++fn focused(f: &mut Fixture) -> String {
++    f.niri_state().update_keyboard_focus();
++    let niri = f.niri();
++    match &niri.keyboard_focus {
++        KeyboardFocus::LayerShell { surface } => niri
++            .mapped_layer_surfaces
++            .keys()
++            .find(|layer| layer.wl_surface() == surface)
++            .map(|layer| layer.namespace().to_owned())
++            .unwrap_or_else(|| String::from("an unknown layer surface")),
++        KeyboardFocus::Layout { .. } => String::from("layout"),
++        other => format!("{other:?}"),
++    }
++}
++
++#[test]
++fn a_mapped_layer_turning_on_demand_takes_focus_and_the_newest_has_it() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let id = f.add_client();
++
++    let launcher = map_on_overlay(&mut f, id, "launcher");
++    let notices = map_on_overlay(&mut f, id, "notices");
++    assert_eq!(focused(&mut f), "layout");
++
++    set_keys(&mut f, id, &launcher, KeyboardInteractivity::OnDemand);
++    assert_eq!(focused(&mut f), "launcher");
++
++    // The newest to ask has focus, mapped before it or after.
++    set_keys(&mut f, id, &notices, KeyboardInteractivity::OnDemand);
++    assert_eq!(focused(&mut f), "notices");
++
++    // Letting go gives it back to the one that asked before, still asking.
++    set_keys(&mut f, id, &notices, KeyboardInteractivity::None);
++    assert_eq!(focused(&mut f), "launcher");
++
++    set_keys(&mut f, id, &launcher, KeyboardInteractivity::None);
++    assert_eq!(focused(&mut f), "layout");
++}
++
++#[test]
++fn a_click_elsewhere_forgets_which_layer_surfaces_asked() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let id = f.add_client();
++
++    let launcher = map_on_overlay(&mut f, id, "launcher");
++    let notices = map_on_overlay(&mut f, id, "notices");
++    set_keys(&mut f, id, &launcher, KeyboardInteractivity::OnDemand);
++    assert_eq!(focused(&mut f), "launcher");
++
++    // A click on anything but an on-demand layer surface, as on a window.
++    f.niri().focus_layer_surface_if_on_demand(None);
++    assert_eq!(focused(&mut f), "layout");
++
++    // Another asking then letting go leaves focus with the layout, not the launcher, which
++    // still asks but lost focus to the click.
++    set_keys(&mut f, id, &notices, KeyboardInteractivity::OnDemand);
++    assert_eq!(focused(&mut f), "notices");
++    set_keys(&mut f, id, &notices, KeyboardInteractivity::None);
++    assert_eq!(focused(&mut f), "layout");
++}
++
++#[test]
++fn an_action_leaves_focus_with_the_layer_surface_that_asked() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let id = f.add_client();
++
++    let launcher = map_on_overlay(&mut f, id, "launcher");
++    set_keys(&mut f, id, &launcher, KeyboardInteractivity::OnDemand);
++    assert_eq!(focused(&mut f), "launcher");
++
++    // A shell moves windows from its open launcher with actions, which clear on-demand focus;
++    // the launcher still asks, so it keeps focus.
++    f.niri_state().do_action(Action::FocusWorkspaceDown, false);
++    assert_eq!(focused(&mut f), "launcher");
++}

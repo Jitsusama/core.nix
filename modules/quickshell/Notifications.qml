@@ -508,7 +508,11 @@ Scope {
         BackgroundEffect.blurRegion: notices
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "notifications"
-        WlrLayershell.keyboardFocus: root.holding ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        // Asked for on demand, as the launcher asks, so held over it the
+        // notices take the keys and give them back as they let go; a card
+        // coming asks for none.
+        WlrLayershell.keyboardFocus: root.holding ? WlrKeyboardFocus.OnDemand
+            : WlrKeyboardFocus.None
 
         // Keys reach the held list while the stack holds them, which niri
         // gives a frame after it's asked and takes back a frame after
