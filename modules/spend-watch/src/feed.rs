@@ -340,6 +340,16 @@ fn check(record: &Record) -> Result<(), String> {
 /// with its kind after it ("near the Week allowance").
 const UNSAID: [&str; 6] = ["cap", "limit", "quota", "allowance", "budget", "window"];
 
+/// Whether a word is one of those, plural or possessive alike, which a
+/// budget's own words never say either (VKCF3Z, 2026-11-07).
+pub fn unsaid(word: &str) -> bool {
+    let bare = word
+        .trim_end_matches("'s")
+        .trim_end_matches('s')
+        .to_lowercase();
+    UNSAID.contains(&bare.as_str())
+}
+
 /// A window's name, as the contract's README has it: in Title Case, each
 /// word and each part of a hyphenated one opening with a capital, never
 /// with a figure, and in the glossary's words (VKCF3Z, 2026-11-07).
@@ -356,13 +366,7 @@ fn check_label(label: &str) -> Result<(), String> {
     {
         return Err(format!("window {label:?} isn't named in Title Case"));
     }
-    if let Some(said) = words.iter().find(|word| {
-        let bare = word
-            .trim_end_matches("'s")
-            .trim_end_matches('s')
-            .to_lowercase();
-        UNSAID.contains(&bare.as_str())
-    }) {
+    if let Some(said) = words.iter().find(|word| unsaid(word)) {
         return Err(format!(
             "window {label:?} says {said:?}: a window is named for its length"
         ));

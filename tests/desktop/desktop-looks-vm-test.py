@@ -2107,9 +2107,9 @@ BUDGETED = {
                 marked(
                     spend_line(
                         "budget:proxy",
-                        "Your proxy cap",
+                        "Your AI proxy token",
                         "$27,570 of $40,000",
-                        "the employer's cap \u00b7 the default",
+                        "the employer's money \u00b7 the default",
                     ),
                     "agent",
                 ),
@@ -2157,7 +2157,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             assert rows[:4] == [
                 "All AI Spend",
                 "Claude Pro",
-                "Your proxy cap",
+                "Your AI proxy token",
                 "Delta team token",
             ], rows
             desktop.down_to("Claude Pro")
