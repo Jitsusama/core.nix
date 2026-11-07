@@ -70,13 +70,10 @@ Provider {
     // what it's about, the session it's of, and its participants. The
     // node's record keeps its own `kind`, so a run's own is read from its
     // id, which the harness writes as fleet.<id> or review.<round>-<time>.
-    // One the node says runs whose session is gone has nothing left to
-    // finish it, so its participants still at work are gone.
     readonly property var runs: records.map(record => {
         const id = String(record.id ?? "");
         const bare = id.replace(/^[a-z]+\./, "");
         const round = bare.replace(/-.*$/, "");
-        const gone = record.state === "running" && !started[record.parent ?? ""];
         return {
             id: bare,
             key: record.key ?? `run:${id}`,
@@ -86,7 +83,7 @@ Provider {
             started: record.since ?? "",
             participants: (record.members ?? []).map(member => ({
                 id: member.id ?? "",
-                state: gone && running(member.state) ? "gone" : member.state ?? "",
+                state: member.state ?? "",
                 model: member.model ?? "",
                 cost: Number(member["pi.cost.usd"] ?? 0),
                 started: member.since ?? "",
@@ -163,9 +160,20 @@ Provider {
     // nothing.
     readonly property var kept: ({})
 
+    // A run as its session leaves it: one the node says runs whose session
+    // is gone has nothing left to finish it, so its participants still at
+    // work are gone. Read where the rows are, so a session coming or going
+    // makes them once.
+    function settled(run, sessions) {
+        if (sessions[run.parent] || !run.participants.some(p => running(p.state)))
+            return run;
+        return Object.assign({}, run, { participants: run.participants.map(p => (running(p.state)
+            ? Object.assign({}, p, { state: "gone" }) : p)) });
+    }
+
     // Running first, then the newest.
     readonly property var all: {
-        const sorted = runs.slice().sort((a, b) => {
+        const sorted = runs.map(run => settled(run, started)).sort((a, b) => {
             const live = run => Number(run.participants.some(p => running(p.state)));
             return live(b) - live(a) || String(b.started).localeCompare(String(a.started));
         });
