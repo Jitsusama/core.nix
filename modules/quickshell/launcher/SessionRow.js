@@ -203,6 +203,36 @@ function side(doing, spent) {
         .filter(item => item.said !== "");
 }
 
+// How the sessions stand together, from how each stands (`states`) and
+// what they all spent today as spend-watch sums it (`spent`, "" while
+// it's unsaid or the screen is shared): those needing Joel first, as what
+// waits on him comes first everywhere it's said, then those working, then
+// the day's dollars, "1 needs you \u00b7 3 working \u00b7 $214 today", as
+// Home's Agents row and the row found by name both say it (VKCF3Z,
+// 2026-11-07). With none needing him nor working, it names how the rest
+// stand in the fold's words and order, "3 listening, 1 paused", the parked
+// not among them, and nothing for what isn't there. `said` is the
+// vocabulary's agents words.
+function summary(states, spent, said) {
+    const count = standing => states.filter(one => one === standing).length;
+    const filled = (key, fill) => String(said[key] ?? "").replace("{count}", fill);
+    const working = count("working");
+    const needing = count("needs");
+    const rest = working === 0 && needing === 0 ? ["inLine", "listening", "paused"]
+        .filter(standing => count(standing) > 0)
+        .map(standing => standing === "inLine" ? filled("inLineCount", count(standing))
+            : `${count(standing)} ${said[standing] ?? standing}`)
+        .join(", ") : "";
+    const parts = [
+        needing === 1 ? filled("needsCount", 1) : needing > 1 ? filled("needCount", needing)
+            : "",
+        working > 0 ? filled("workingCount", working) : "",
+        rest,
+        spent !== "" ? String(said.today ?? "").replace("{spent}", spent) : ""
+    ];
+    return parts.filter(part => part !== "").join(" \u00b7 ");
+}
+
 // What its drawer says: its address, where it works and since when it's
 // run as the eyebrow over its title, "8IDU4E \u00b7 core.nix \u00b7 since
 // 21:52" (VKCF3Z, 2026-11-06); then what it works on, its step, what it

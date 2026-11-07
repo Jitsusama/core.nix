@@ -169,6 +169,12 @@ Scope {
         return null;
     }
 
+    // What Home's row says it holds in place of naming what it holds, as
+    // Agents says how its sessions stand together, or null to name them.
+    function homeSays() {
+        return null;
+    }
+
     // The one row a source ends every search at the top with, after
     // everything found, as Search Slack for what's typed is (VKCF3Z,
     // d7c0f933), or null. Asked each time the list is put together, so it

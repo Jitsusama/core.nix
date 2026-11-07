@@ -237,6 +237,36 @@ QtObject {
                     + `"${got}", not "${want}"`);
         }
 
+        // Together they say those needing Joel, those working, then the
+        // day's dollars; with neither, how the rest stand in the fold's
+        // order, the parked aside.
+        const words = {
+            workingCount: "{count} working",
+            inLineCount: "{count} in line",
+            needsCount: "1 needs you",
+            needCount: "{count} need you",
+            listening: "listening",
+            paused: "paused",
+            today: "{spent} today"
+        };
+        const summaries = [
+            ["working working listening needs working", "$214",
+                "1 needs you \u00b7 3 working \u00b7 $214 today"],
+            ["needs needs paused", "", "2 need you"],
+            ["paused listening parked listening listening", "$3.10",
+                "3 listening, 1 paused \u00b7 $3.10 today"],
+            ["listening inLine", "", "1 in line, 1 listening"],
+            ["parked", "", ""],
+            ["", "$0.40", "$0.40 today"],
+            ["", "", ""]
+        ];
+        for (const [states, spent, want] of summaries) {
+            const got = SessionRow.summary(states.split(" ").filter(one => one !== ""), spent,
+                words);
+            if (got !== want)
+                failures.push(`together, ${states || "none"}: "${got}", not "${want}"`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
