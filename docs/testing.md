@@ -150,7 +150,8 @@ The rest run after the merge, on the net: `merge-net watch`, which
 a head changed since the last head it passed, on the VM builders, twelve
 at once. A test that fails twice at one commit is broken: the net finds
 which merge broke it the moment it does, while the round's other tests
-run on, checks that the merge changed the test and that the
+run on, searching only the merges that changed the test's derivation,
+since a derivation fails wherever it does, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, reverts it through a PR merged on its own checks, clears
 the hold as that PR merges, or as a test ends once it's on main, and writes a
@@ -162,7 +163,8 @@ new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
 code broke it. So is one that passes at main's newest head, since a fix
 forward has landed: the net asks beside the search's first step, stops the
-search if it was, and asks again before it reverts. One that
+search if it was, and asks again before it reverts, running nothing at a
+head that builds the test unchanged. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
