@@ -1690,6 +1690,11 @@
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
     comes due once its time is up; and the foot says what wasn't done, then why
   '';
+  the-launcher-paces-its-refreshes = ''
+    an open launcher takes the first of its sources' changes at once and those after it a pace
+    apart, together, and a refresh taken another way takes the one waiting with it, so no two
+    refreshes begin closer than the pace
+  '';
   the-launcher-lays-sessions-under-their-orchestrators = ''
     every list of pi sessions keeps one order of how they stand, and Agents lays each under the
     session orchestrating it, a step in and at most two, an orchestration standing where its most
