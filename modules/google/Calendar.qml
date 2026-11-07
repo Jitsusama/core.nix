@@ -76,9 +76,9 @@ Singleton {
         return Said.toldElsewhere(meeting, notices, now);
     }
 
-    // Whether it's on or starts today.
-    function today(meeting) {
-        return Said.today(meeting, now);
+    // Whether Now holds it as the next meeting (Calendar.js's upNext).
+    function upNext(meeting) {
+        return Said.upNext(meeting, now);
     }
 
     // Its day and times in full: "Monday 26 October, 14:00 to 14:30".

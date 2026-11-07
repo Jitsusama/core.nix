@@ -197,7 +197,7 @@ QtObject {
             ["no meeting", null, now, false]
         ];
         for (const [what, one, when, meant] of todays)
-            check(`next, ${what}`, Calendar.today(one, when), meant);
+            check(`next, ${what}`, Calendar.upNext(one, when), meant);
 
         check("its day and times in full", Calendar.dated(
             meeting("m", at(26, 14, 0), at(26, 14, 30))), "Monday 26 October, 14:00 to 14:30");
