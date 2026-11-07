@@ -138,7 +138,7 @@ mod relay;
 mod sleep;
 mod there;
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
@@ -1972,21 +1972,78 @@ fn give_back_unreturned(settings: &Settings, lent: Option<&Lent>, leaving: &[Lea
     still
 }
 
+/// How long a helper call has to end once a stop has told it to, before
+/// it's killed.
+const GRACE: Duration = Duration::from_secs(2);
+
+/// Run the helper with `arguments` to its end and give what it printed,
+/// unless a stop comes first. Told to stop, the service ends the call and
+/// everything it started, and gives nothing. The call runs in a process
+/// group of its own, since the unit's stop signals the service alone: on
+/// 7 November a stop came while the helper deleted a builder, and its
+/// cloud client, with the network going, ran on until systemd killed it all
+/// 10 s later, holding the reboot. The builder goes either way, and one
+/// still there is the next start's to take back.
+fn call_helper(settings: &Settings, arguments: &[&str]) -> Option<Vec<u8>> {
+    let mut call = Command::new(&settings.helper)
+        .args(arguments)
+        .stdout(Stdio::piped())
+        .process_group(0)
+        .spawn()
+        .map_err(|error| eprintln!("nix-offload: running the helper: {error}"))
+        .ok()?;
+    let mut out = call.stdout.take()?;
+    let said = thread::spawn(move || {
+        let mut said = Vec::new();
+        let _ = out.read_to_end(&mut said);
+        said
+    });
+    loop {
+        match call.try_wait() {
+            Ok(Some(status)) if status.success() => return said.join().ok(),
+            Ok(Some(_)) | Err(_) => return None,
+            Ok(None) if ENDING.load(Ordering::SeqCst) => {
+                eprintln!(
+                    "nix-offload: told to stop, so the helper's {} ends",
+                    arguments[0]
+                );
+                end_within(&mut call, GRACE);
+                return None;
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+        }
+    }
+}
+
+/// Tell `call` and everything it started to end, and kill what's left
+/// after `grace`.
+fn end_within(call: &mut Child, grace: Duration) {
+    let Ok(pid) = libc::pid_t::try_from(call.id()) else {
+        return;
+    };
+    // SAFETY: signals to our own child's process group, which it leads.
+    unsafe { libc::kill(-pid, libc::SIGTERM) };
+    let told = Instant::now();
+    while told.elapsed() < grace {
+        if call.try_wait().is_ok_and(|status| status.is_some()) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    // SAFETY: as above.
+    unsafe { libc::kill(-pid, libc::SIGKILL) };
+    let _ = call.wait();
+}
+
 /// Say any builder under the prefix that isn't this one's, leaving it be.
 fn say_others(settings: &Settings) {
-    let Ok(alive) = Command::new(&settings.helper)
-        .args(["alive", &settings.prefix])
-        .output()
-    else {
+    let Some(alive) = call_helper(settings, &["alive", &settings.prefix]) else {
         eprintln!("nix-offload: couldn't ask the helper what's there");
         return;
     };
     let journal = fs::read_to_string(&settings.journal).unwrap_or_default();
     let ours = journal::unreturned(&journal);
-    for name in String::from_utf8_lossy(&alive.stdout)
-        .lines()
-        .map(str::trim)
-    {
+    for name in String::from_utf8_lossy(&alive).lines().map(str::trim) {
         if !name.is_empty() && !ours.iter().any(|known| known.name == name) {
             eprintln!("nix-offload: {name} is there after the deadline, and isn't this one's");
         }
@@ -1995,10 +2052,7 @@ fn say_others(settings: &Settings) {
 
 /// Ask the helper to give a builder back: whether it's gone.
 fn down(settings: &Settings, name: &str) -> bool {
-    let gone = Command::new(&settings.helper)
-        .args(["down", name])
-        .status()
-        .is_ok_and(|status| status.success());
+    let gone = call_helper(settings, &["down", name]).is_some();
     if !gone {
         eprintln!("nix-offload: the helper couldn't give {name} back; it's asked again next tick");
     }
@@ -2167,6 +2221,39 @@ mod tests {
             began.elapsed()
         );
         ENDING.store(false, Ordering::SeqCst);
+    }
+
+    /// A helper whose give-back ignores a stop, as a cloud client waiting
+    /// on a network that's gone can.
+    const DELETES_ON: &str = r#"#!/bin/sh
+trap '' TERM
+[ "$1" = down ] && sleep 60
+exit 0
+"#;
+
+    #[test]
+    fn a_stop_ends_a_give_back_in_flight() {
+        let _alone = STOPS.write().unwrap_or_else(PoisonError::into_inner);
+        let folder = tempfile::tempdir().unwrap();
+        let (mut settings, _) = holding(folder.path(), "");
+        settings.helper = folder.path().join("deletes-on");
+        executable(&settings.helper, DELETES_ON);
+        hear_stops();
+        thread::spawn(|| {
+            thread::sleep(Duration::from_millis(300));
+            // SAFETY: a signal to this process, whose handler only stores
+            // to an atomic.
+            unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
+        });
+        let began = Instant::now();
+        let gone = down(&settings, "lend-5");
+        ENDING.store(false, Ordering::SeqCst);
+        assert!(!gone, "a give-back cut short isn't one that happened");
+        assert!(
+            began.elapsed() < GRACE + Duration::from_secs(1),
+            "a stop took {:?} to end a give-back",
+            began.elapsed()
+        );
     }
 
     #[test]
