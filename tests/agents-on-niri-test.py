@@ -156,6 +156,23 @@ def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell:
     )
 
 
+def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: Shell) -> None:
+    """A paused row's glyph is muted, never the listening row's colour (#2052)."""
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    names = ("Listening Quest", "Paused Quest")
+    shell.launcher_until(lambda shown: all(name in shown["rows"] for name in names))
+    laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+    inks = {
+        name: row["words"][0]["ink"]
+        for row in laid["rows"]
+        for name in names
+        if any(word["text"] == name for word in row["words"])
+    }
+    assert set(inks) == set(names), laid["rows"]
+    assert inks["Paused Quest"] != inks["Listening Quest"], f"paused looks live: {inks}"
+
+
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
     """A paused session's Return lands on Resume, which changes how it stands; a second resumes."""
     row = found(shell, "paused quest", "Paused Quest")
