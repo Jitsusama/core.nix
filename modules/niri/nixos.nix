@@ -124,6 +124,14 @@
     # lid shut to show it. It doesn't cover a monitor that comes up only
     # after niri has started, as one behind an MST hub can: until it does,
     # niri has the shut panel alone and keeps it dark.
+    #
+    # niri opens a window on a workspace it's told of only through a rule
+    # naming a named one, so a session one session started opened on the
+    # workspace Joel was on, and the shell moved it after, a flash and a
+    # column taken from him. The patch (opens-next-window-on.patch) adds
+    # OpenNextWindowOn, which says the next window with an app ID opens
+    # on a workspace, by its id, from its first frame and without the
+    # focus; it's used once and forgotten after 30 seconds.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -150,6 +158,7 @@
         ./spawn-behind-the-lock.patch
         ./virtual-keys-are-activity.patch
         ./lid-read-before-outputs.patch
+        ./opens-next-window-on.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
