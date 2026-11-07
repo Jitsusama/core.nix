@@ -1961,10 +1961,12 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     assert drawn["Spent Today"] == "spark", f"at {shot}: {drawer}"
     assert drawer["laidOneWay"], f"at {shot} its facts mix beside and under: {drawer}"
     assert drawer["values"][0] == "working \u00b7 edit Drawer.qml", f"at {shot}: {drawer}"
-    # Those through its model are on its first screen, before any it says are more.
+    # What it's doing, its quest, its spend and how full it is are on its first screen, even
+    # this short one's, before any it says are more.
     said = str(drawer.get("moreSays") or "")
     hidden = int(said.split(maxsplit=1)[0]) if said else 0
-    assert len(drawer["facts"]) - hidden >= len(first), f"at {shot} it hides {said}: {drawer}"
+    led = first[: first.index("Context") + 1]
+    assert len(drawer["facts"]) - hidden >= len(led), f"at {shot} it hides {said}: {drawer}"
     desktop.photograph(f"launcher-agents-figures-at-{shot}")
 
 
