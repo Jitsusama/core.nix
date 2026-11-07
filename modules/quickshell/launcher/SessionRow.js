@@ -271,8 +271,12 @@ function returns(standing, windowed) {
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name
 // stays in text and the far-end word says how it stands.
-function hue(stands) {
-    return ["paused", "parked", "off"].includes(stands) ? "muted" : "program";
+function hue(stands, warns) {
+    if (["paused", "parked", "off"].includes(stands)) {
+        return "muted";
+    }
+    // A live one with a tier 2 figure asks for a look, in the action's hue.
+    return warns ? "action" : "program";
 }
 
 // When the session a quest resumes by was last live, in milliseconds, from
@@ -306,9 +310,108 @@ function lastLiveFirst(ones) {
 // it stands, then what it spent today, last and kept longest, and nothing
 // more (VKCF3Z, 2026-11-06: "working \u00b7 $4.20"). Its address and
 // folder are its drawer's eyebrow, and typing its address still finds it.
-function side(doing, spent) {
-    return [{ said: doing, keep: 3 }, { said: spent, keep: 4 }]
+// A tier 2 figure leads while it's true, "84% full \u00b7 working \u00b7
+// $4.20", and is kept longest, since it's why the row asks for a look.
+function side(doing, spent, filled) {
+    return [{ said: filled ?? "", keep: 5 }, { said: doing, keep: 3 }, { said: spent, keep: 4 }]
         .filter(item => item.said !== "");
+}
+
+// How full a session's context is, as a whole percent of its window, from
+// its record's `usage.context` ({ used, limit }), the harness's count of
+// what the next turn sends; 0 where it isn't said. Past FULL_AT it's tier 2
+// on its row (the design's figures, 2026-11-06): a compaction is near, and
+// each turn sends most of a window.
+const FULL_AT = 80;
+const PERCENT = 100;
+function fullness(usage) {
+    const used = Number(usage?.context?.used ?? 0);
+    const limit = Number(usage?.context?.limit ?? 0);
+    return limit > 0 && used > 0 ? Math.floor(used / limit * PERCENT) : 0;
+}
+
+// What its row says of how full it is, in the vocabulary's words, only past
+// FULL_AT; "" below it.
+function full(usage, said) {
+    const share = fullness(usage);
+    return share >= FULL_AT ? String(said.full ?? "").replace("{share}", share) : "";
+}
+
+// A count of tokens as a figure reads it: whole under a thousand, then
+// thousands and millions, one decimal while that's under ten ("4.1k",
+// "142k", "1.2M", "1M").
+const THOUSAND = 1000;
+const MILLION = 1000000;
+const TENS = 10;
+const ZERO_DECIMAL = /\.0$/;
+function tokens(count) {
+    const many = Number(count ?? 0);
+    const scaled = (by, unit) => {
+        const value = many / by;
+        const shown = value < TENS ? value.toFixed(1).replace(ZERO_DECIMAL, "")
+            : String(Math.round(value));
+        return `${shown}${unit}`;
+    };
+    if (many < THOUSAND) {
+        return String(Math.round(many));
+    }
+    return Math.round(many / THOUSAND) < THOUSAND ? scaled(THOUSAND, "k") : scaled(MILLION, "M");
+}
+
+// How long a turn took, from milliseconds: tenths of a second under ten,
+// whole seconds under a minute, then minutes.
+const SECOND_MS = 1000;
+const MINUTE_S = 60;
+function took(ms) {
+    const seconds = Number(ms ?? 0) / SECOND_MS;
+    if (seconds < TENS) {
+        return `${seconds.toFixed(1).replace(ZERO_DECIMAL, "")} s`;
+    }
+    return seconds < MINUTE_S ? `${Math.round(seconds)} s` : `${Math.round(seconds / MINUTE_S)} min`;
+}
+
+// The drawer's figures for a session, by OpenTelemetry's gen_ai names as
+// its record's `usage` keeps them (the design's figures, tier 3): its
+// model, how full its context is, its last turn, and today's turns, tokens
+// and cache, those only while the record's day is `today`, since the
+// harness starts them over each day. No amount is among them, so sharing
+// the screen hides none; what it spent is spend-watch's, said beside them.
+// `said` is the vocabulary's agents words, `named` names each figure.
+const GEN_AI = "gen_ai.usage.";
+function figures(usage, today, said, named) {
+    if (!usage) {
+        return [];
+    }
+    const fill = (key, parts) => Object.keys(parts)
+        .reduce((text, part) => text.replace(`{${part}}`, parts[part]), String(said[key] ?? ""));
+    const used = (spent, kind) => Number(spent?.[`${GEN_AI}${kind}`] ?? 0);
+    const model = usage["gen_ai.response.model"] ?? usage["gen_ai.request.model"] ?? "";
+    const context = usage.context?.limit > 0 && usage.context?.used > 0
+        ? fill("contextOf", { used: tokens(usage.context.used), limit: tokens(usage.context.limit) })
+        : "";
+    const last = usage.turns?.last;
+    const lastOut = used(usage.last, "output_tokens");
+    const turn = last?.duration_ms > 0
+        ? fill("turnTook", { took: took(last.duration_ms), out: tokens(lastOut) })
+            + (last.first_token_ms > 0
+                ? ` \u00b7 ${fill("firstToken", { took: took(last.first_token_ms) })}` : "")
+        : "";
+    const day = usage.day === today ? usage.today : null;
+    const sent = used(day, "input_tokens") + used(day, "cache_read.input_tokens")
+        + used(day, "cache_creation.input_tokens");
+    const read = sent > 0 ? used(day, "cache_read.input_tokens") / sent * PERCENT : 0;
+    const known = {
+        model,
+        context,
+        "last-turn": turn,
+        turns: usage.day === today && usage.turns?.today > 0 ? String(usage.turns.today) : "",
+        tokens: day && sent > 0 ? fill("tokensOf", {
+            sent: tokens(sent), out: tokens(used(day, "output_tokens"))
+        }) : "",
+        cache: day && sent > 0 ? fill("cacheRead", { share: read.toFixed(1) }) : ""
+    };
+    return Object.keys(known).filter(id => known[id] !== "")
+        .map(id => ({ label: named(id), value: known[id] }));
 }
 
 // How the sessions stand together, from how each stands (`states`) and
@@ -372,5 +475,9 @@ function drawer(title, presence, said) {
         { said: said.place ?? "", keep: 2 },
         { said: said.since ?? "", keep: 1 }
     ];
-    return { eyebrow, eyebrowItems, eyebrowNames: true, title, facts, body: "" };
+    // Its figures follow what's known of it (`said.figures`, figures()).
+    return {
+        eyebrow, eyebrowItems, eyebrowNames: true, title,
+        facts: facts.concat(said.figures ?? []), body: ""
+    };
 }
