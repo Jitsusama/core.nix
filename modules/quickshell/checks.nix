@@ -1602,6 +1602,7 @@ onLinux {
       niri = singleton "Niri.qml" "function spawn(command) {}";
       sessions = singleton "Sessions.qml" ''
         readonly property string home: Quickshell.env("HOME")
+        property var running: []
         function tell(words, folder, program) {}
         function talk(address, words) { return true; }
       '';
@@ -1614,6 +1615,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Ask.qml} launcher/Ask.qml
+      cp ${./launcher/SessionRow.js} launcher/SessionRow.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
