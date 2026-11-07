@@ -172,7 +172,7 @@ Provider {
             // a member keeps its words as given.
             also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}`),
             glyph: Theme.glyph.agent,
-            hue: "program",
+            hue: SessionRow.hue(state),
             side: items.map(item => item.said).join(" \u00b7 "),
             sideItems: items,
             note: noted,

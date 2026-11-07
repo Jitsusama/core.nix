@@ -10,6 +10,7 @@
 // and what it spent at its right, and its drawer the rest.
 import QtQuick
 import "SessionRow.js" as SessionRow
+import "Reading.js" as Reading
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -158,6 +159,26 @@ QtObject {
         const drawn = SessionRow.drawer("A Quest", { worksOn: "the row" }, told);
         if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
             failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
+        // One paused or parked never looks live: its glyph is muted, every
+        // other a program's, as the live rows' are.
+        const hues = ["needs", "working", "inLine", "listening", "paused", "parked"].map(state => `${state}:${SessionRow.hue(state)}`)
+            .join(" ");
+        if (hues !== "needs:program working:program inLine:program listening:program"
+            + " paused:muted parked:muted")
+            failures.push(`the glyphs' roles by state: "${hues}"`);
+        // It names things from the world, so it's set as they're written.
+        if (drawn.eyebrowNames !== true)
+            failures.push("the drawer's eyebrow isn't said to name things");
+        // Short of room, as the drawer gives it way (Reading.wholeItems), it
+        // loses when it started first, then its repo, and never its address,
+        // each whole, at a letter's width a letter.
+        const eyebrowIn = room => Reading.wholeItems(drawn.eyebrowItems, room,
+            words => words.length);
+        for (const [room, want] of [[40, "8IDU4E \u00b7 core.nix \u00b7 since 21:52"],
+            [30, "8IDU4E \u00b7 core.nix"], [10, "8IDU4E"], [3, "8IDU4E"]]) {
+            if (eyebrowIn(room) !== want)
+                failures.push(`the eyebrow in ${room}: "${eyebrowIn(room)}", not "${want}"`);
+        }
         const facts = drawn.facts.map(fact => fact.label).join(" ");
         if (facts !== "works spent")
             failures.push(`the drawer's facts: "${facts}", not "works spent"`);

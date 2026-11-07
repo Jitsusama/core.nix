@@ -76,9 +76,10 @@ Provider {
             // there's no drawer (Launcher.qml's drawerAdds). Over them,
             // who sent it and when. Its words read in the face its card
             // reads them in, so they don't change face between the two
-            // (VKCF3Z, 2026-11-03).
-            drawer: { eyebrow: provider.whoAndWhen(notice), title: notice.summary,
-                body: notice.body, prose: true },
+            // (VKCF3Z, 2026-11-03). Its sender is a name from the world,
+            // so the eyebrow is set as it's written (VKCF3Z, 2026-11-07).
+            drawer: { eyebrow: provider.whoAndWhen(notice), eyebrowNames: true,
+                title: notice.summary, body: notice.body, prose: true },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml).
             glyph: String.fromCodePoint(notice.glyph),

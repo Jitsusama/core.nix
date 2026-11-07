@@ -50,6 +50,7 @@ import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerPage.js" as Page
 import "Search.js" as Search
+import "Reading.js" as Reading
 
 Floating {
     id: drawer
@@ -230,6 +231,32 @@ Floating {
     property real rowDrop: 0
 
     readonly property string eyebrow: shown ? shown.eyebrow ?? "" : ""
+    // The level its eyebrow is set at: Label, in capitals, for the
+    // shell's own words, and Note, as written, for one that carries a name
+    // from the world, an address, a repo or a folder, which is never
+    // re-cased, as a title never re-cases one (VKCF3Z, 2026-11-06). A row
+    // says so with `eyebrowNames: true`. Both are one level, so the
+    // drawer's count of them stays.
+    readonly property var eyebrowLevel: shown?.eyebrowNames ? Theme.level.note
+        : Theme.level.label
+    // The eyebrow as it's drawn: one given as items gives way by whole
+    // items, those it keeps least first (Reading.wholeItems), never cut
+    // mid-item; any other is cut at its end.
+    readonly property string eyebrowSaid: (shown?.eyebrowItems ?? []).length > 0
+        ? Reading.wholeItems(shown.eyebrowItems, eyebrowText.width,
+            words => Math.ceil(eyebrowFace.advanceWidth(words)) + 1)
+        : eyebrow
+    FontMetrics {
+        id: eyebrowFace
+        font.family: drawer.eyebrowLevel.family
+        font.pointSize: drawer.eyebrowLevel.pointSize
+        font.weight: drawer.eyebrowLevel.weight
+        font.italic: drawer.eyebrowLevel.italic
+        font.variableAxes: drawer.eyebrowLevel.variableAxes
+        font.capitalization: drawer.eyebrowLevel.capitalization
+        font.letterSpacing: drawer.eyebrowLevel.letterSpacing
+        font.features: drawer.eyebrowLevel.features
+    }
     readonly property string title: shown ? shown.title ?? "" : ""
     // Its facts, less any that only says the title again, as a server's
     // name would right under it (VKCF3Z, 2026-11-03).
@@ -1402,23 +1429,26 @@ Floating {
 
             // When or where, in capitals over the plate, on the field's
             // centre: a label, set apart by case and tracking rather than
-            // size alone, so it reads as one before the name.
+            // size alone, so it reads as one before the name; or, naming
+            // something, as it is written (eyebrowLevel).
             PageText {
                 id: eyebrowText
                 sought: drawer.washing
                 width: parent.width
                 y: drawer.fieldBase - Theme.border - baselineOffset
                 visible: drawer.eyebrow !== ""
-                plain: drawer.eyebrow
+                plain: drawer.eyebrowSaid
                 leading: 0
                 elides: true
                 ink: Theme.muted
-                font.family: Theme.level.label.family
-                font.pointSize: Theme.level.label.pointSize
-                font.weight: Theme.level.label.weight
-                font.capitalization: Theme.level.label.capitalization
-                font.letterSpacing: Theme.level.label.letterSpacing
-                font.features: Theme.level.label.features
+                font.family: drawer.eyebrowLevel.family
+                font.pointSize: drawer.eyebrowLevel.pointSize
+                font.weight: drawer.eyebrowLevel.weight
+                font.italic: drawer.eyebrowLevel.italic
+                font.variableAxes: drawer.eyebrowLevel.variableAxes
+                font.capitalization: drawer.eyebrowLevel.capitalization
+                font.letterSpacing: drawer.eyebrowLevel.letterSpacing
+                font.features: drawer.eyebrowLevel.features
             }
 
             // The moment: the time, its seconds, what needs Joel and the

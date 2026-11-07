@@ -155,6 +155,14 @@ function returns(standing, windowed) {
     return windowed && standing !== "listening" ? "switch" : "talk";
 }
 
+// The theme's role its glyph is drawn in: a program's, as a live one
+// is, and muted for one paused or parked, which never looks live
+// (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name
+// stays in text and the far-end word says how it stands.
+function hue(stands) {
+    return stands === "paused" || stands === "parked" ? "muted" : "program";
+}
+
 // What a session's row says at its right, each item with how much it's
 // needed, so where room runs short they give way whole (Choice.qml): how
 // it stands, then what it spent today, last and kept longest, and nothing
@@ -171,7 +179,8 @@ function side(doing, spent) {
 // waits on Joel for, what it's spent today (an orchestrator's whole
 // orchestration, then its own and its sessions') and the machine it runs
 // on, each as a name and a figure. Nothing it hasn't said is guessed, and
-// what the eyebrow says isn't said again.
+// what the eyebrow says isn't said again. The eyebrow names things, so the
+// drawer sets it as they're written, never in capitals (Drawer.qml).
 function drawer(title, presence, said) {
     const known = {
         works: presence?.worksOn,
@@ -186,5 +195,14 @@ function drawer(title, presence, said) {
         .map(id => ({ label: said.named(id), value: known[id] }));
     const eyebrow = [said.address, said.place, said.since]
         .filter(part => (part ?? "") !== "").join(" \u00b7 ");
-    return { eyebrow, title, facts, body: "" };
+    // Short of room, it gives way by whole items from its end, as the
+    // held foot gives its position way whole: when it started goes first,
+    // then where it works, and its address never (VKCF3Z, 2026-11-07:
+    // "since 0\u2026" tells nothing).
+    const eyebrowItems = [
+        { said: said.address ?? "", keep: 3 },
+        { said: said.place ?? "", keep: 2 },
+        { said: said.since ?? "", keep: 1 }
+    ];
+    return { eyebrow, eyebrowItems, eyebrowNames: true, title, facts, body: "" };
 }
