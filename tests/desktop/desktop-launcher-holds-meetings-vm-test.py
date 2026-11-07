@@ -88,7 +88,9 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
             return False
         at = rows.index("Calendar")
-        return "Design Review" in rows[at + 1 : at + 4]
+        # And Calendar says its next meeting, as the cursor reads it.
+        said = str(shown["selected"].get("note", ""))
+        return "Design Review" in rows[at + 1 : at + 4] and said.startswith("next ")
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)

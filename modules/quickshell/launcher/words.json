@@ -6088,7 +6088,14 @@
       "in": "applications",
       "name": "Recent",
       "verb": "more",
-      "glyph": "recent"
+      "glyph": "recent",
+      "said": {
+        "open": "{count} open",
+        "tabs": "{count} tabs",
+        "recent": "{count} recent",
+        "next": "next {when} {name}",
+        "parts": "{count} new"
+      }
     },
     {
       "id": "path:file",

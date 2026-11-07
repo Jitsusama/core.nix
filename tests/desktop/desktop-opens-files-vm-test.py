@@ -1031,7 +1031,9 @@ def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> 
             if "kitty" not in rows or (shown["selected"] or {}).get("name") != "kitty":
                 return False
             at = rows.index("kitty")
-            return "estuary" in rows[at + 1 : at + 4]
+            # And kitty says what it holds, as the cursor reads it.
+            said = re.search(r"\d+ recent", str(shown["selected"].get("note", "")))
+            return "estuary" in rows[at + 1 : at + 4] and said is not None
 
         desktop.launcher_until(under_kitty)
         desktop.photograph("launcher-kitty-typed")
