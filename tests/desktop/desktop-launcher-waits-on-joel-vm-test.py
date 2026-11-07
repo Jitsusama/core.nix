@@ -864,13 +864,13 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         # A question after it is the session's to say, so once its card shows, the
         # action's would have shown before it.
         question = {"kind": "question", "since": since, "said": "Which way now?"}
-        with desktop.told("shows card A quest of its own & whole asks you"):
+        with desktop.told("shows card A quest of its own & whole needs you"):
             desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
         cards = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(begun)} | grep -o 'report\\[shows card [^]]*'"
         ).splitlines()
-        assert cards.count("report[shows card A quest of its own & whole asks you") == 1, cards
+        assert cards.count("report[shows card A quest of its own & whole needs you") == 1, cards
         desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
