@@ -194,7 +194,11 @@ let
   # wtype, with a file of tests run through pytest against it
   # (tests/launcher_on_niri.py starts the shell and types).
   launcherOnNiri =
-    { name, tests }:
+    {
+      name,
+      tests,
+      given ? [ ],
+    }:
     let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
       checked = pkgs.runCommandLocal "${name}-tests" { } ''
@@ -214,20 +218,26 @@ let
         pkgs.wl-clipboard
         pkgs.wtype
       ];
-      command = lib.escapeShellArgs [
-        "env"
-        "SHELL_FOLDER=quickshell"
-        "LOGS=logs"
-        "TAKE_NOTICES=${lib.escapeShellArgs (spawnedBy "Super+N")}"
-        "PYTHONPATH=${checked}"
-        (lib.getExe python)
-        "-m"
-        "pytest"
-        "-p"
-        "no:cacheprovider"
-        "-v"
-        "${checked}/${baseNameOf tests}"
-      ];
+      command = lib.escapeShellArgs (
+        [
+          "env"
+          "SHELL_FOLDER=quickshell"
+          "LOGS=logs"
+          "TAKE_NOTICES=${lib.escapeShellArgs (spawnedBy "Super+N")}"
+          "PYTHONPATH=${checked}"
+        ]
+        # What a file of tests is given besides, as a program it runs.
+        ++ given
+        ++ [
+          (lib.getExe python)
+          "-m"
+          "pytest"
+          "-p"
+          "no:cacheprovider"
+          "-v"
+          "${checked}/${baseNameOf tests}"
+        ]
+      );
     };
 in
 # The shell runs only on Linux, so a Mac has none of its checks: most build
@@ -260,6 +270,15 @@ onLinux {
   the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
     name = "the-launcher-answers-whats-typed-on-niri";
     tests = ../../tests/launcher-on-niri-test.py;
+  };
+
+  # An agent's row does, on Return, the act its state makes harmless, its
+  # sessions the realm's own node's, as a workstation's are
+  # (tests/agents-on-niri-test.py).
+  an-agents-return-does-its-harmless-act-on-niri = launcherOnNiri {
+    name = "an-agents-return-does-its-harmless-act-on-niri";
+    tests = ../../tests/agents-on-niri-test.py;
+    given = [ "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}" ];
   };
 
   # A switch restarts Quickshell when any file it reads changes, so the shell

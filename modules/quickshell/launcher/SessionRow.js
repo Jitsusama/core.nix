@@ -140,6 +140,21 @@ function acts(standing, windowed) {
     return ids;
 }
 
+// The act Return does, one of `acts`: the one its state makes harmless
+// (VKCF3Z, 2026-11-06). Go To one at work or waiting on Joel, Talk to one
+// listening, Resume one paused and Wake one parked; one with no window
+// to go to is talked to. Stop and Close end it, so they are never
+// Return's.
+function returns(standing, windowed) {
+    if (standing === "parked") {
+        return "wake";
+    }
+    if (standing === "paused") {
+        return "resume";
+    }
+    return windowed && standing !== "listening" ? "switch" : "talk";
+}
+
 // What a session's row says at its right, each item with how much it's
 // needed, so where room runs short they give way whole (Choice.qml): how
 // it stands, then what it spent today, last and kept longest, and nothing

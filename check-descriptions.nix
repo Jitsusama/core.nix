@@ -1580,6 +1580,12 @@
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
     figures and its parts' heat answer
   '';
+  an-agents-return-does-its-harmless-act-on-niri = ''
+    on the account's whole shell on niri, its sessions the realm's mycelium node's, a listening
+    agent's Return asks what to say to it and a paused one's lands on Resume, which a second
+    Return sends, while Ctrl+] still steps into every act either has; a drawer names the repo
+    its record says over the folder it works in
+  '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
     colours and copies them, says once and quietly what needs a network couldn't, holds an

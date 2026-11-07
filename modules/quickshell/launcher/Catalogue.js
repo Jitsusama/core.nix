@@ -47,8 +47,12 @@ const LOOKUPS = "keyboard:key:";
 const DISRUPTIVE = new Set(["close", "quit", "leave", "lock", "sleep", "reboot", "stop", "off",
     "turn off", "forget", "disconnect", "share", "install"]);
 
-// The verb a row says now: a word, or a getter's.
+// The verb a row says now: a word, or a getter's; for one naming the act
+// its Return does (`returns`, Launcher.qml's returnOf), that act's.
 function verbOf(row) {
+    if (row.returns) {
+        return verbOf(row.returns);
+    }
     const verb = row.verb;
     return typeof verb === "string" ? verb : "";
 }
@@ -78,6 +82,11 @@ function ends(row) {
 // the row's command as changesState is, so Return on one row and over a
 // selection agree.
 function opens(row, command = {}) {
+    // One whose Return is an act of its own opens as that act does, unless
+    // the act asks for words, which a selection has none of.
+    if (row.returns) {
+        return !row.returns.given && opens(row.returns, command);
+    }
     return typeof row.run === "function" && kindOf(row) === "action" && !row.stays
         && !ends(row) && !disruptive(row) && !changesState(row, command);
 }
@@ -198,7 +207,7 @@ function kindOf(row) {
         return "place";
     }
     const holds = !!row.verbs || !!row.targets || !!row.nested;
-    return holds && !row.run && !row.given ? "place" : "action";
+    return holds && !row.run && !row.returns && !row.given ? "place" : "action";
 }
 
 // What a row's name says without what it's done to, "Turn it off" as
@@ -226,8 +235,14 @@ function saysAct(one, said) {
 // its own to add, nor does one holding nothing. One giving both its verbs
 // and its targets holds rows, as a holder, a talk or a meeting's See It
 // does, so its Return is the step itself. One already inside, by its
-// verb or its name, is moved first rather than said twice.
+// verb or its name, is moved first rather than said twice. A row naming
+// the act its Return does (`returns`) keeps its acts in their own order,
+// as a session's are fixed (VKCF3Z, 2026-11-06: Go To, Talk, Pause or
+// Resume, Stop, Close), its Return being one of them.
 function leading(row, inside) {
+    if (row.returns) {
+        return inside;
+    }
     const verb = verbOf(row);
     const said = verb.toLowerCase();
     // A copy is never first inside: a row whose only act is copying steps
@@ -339,7 +354,7 @@ function acts(row) {
     }
     const steps = !!row.verbs || !!row.targets || !!row.nested || !!row.category
         || !!row.opens || !!row.from;
-    if (steps || !!row.given || row.start !== undefined) {
+    if (steps || !!row.given || !!row.returns || row.start !== undefined) {
         return true;
     }
     return !!row.run && !(row.figure === true && verbOf(row) === "close");

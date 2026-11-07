@@ -1029,6 +1029,15 @@ Scope {
                             words: `${row.name} (${verbOf(row)}, led by ${inside[0].name})`,
                             in: names.join(" \u203a ")
                         });
+                    // A row whose Return does one of its acts holds that
+                    // act in its step too, so it can be chosen there.
+                    if (deeper && row.returns
+                        && !inside.some(one => one.key === row.returns.key))
+                        skipped.push({
+                            id,
+                            words: `${row.name} (${verbOf(row)}, not held inside)`,
+                            in: names.join(" \u203a ")
+                        });
                     walk(inside, row, path, names.concat([row.name]), depth + 1);
                 }
             }
@@ -1126,30 +1135,32 @@ Scope {
             goTo({ trail: ids.slice(0, -1), spot: ids[ids.length - 1] });
             return { done: false, offered: true, said: `${said}, ready for Return` };
         }
-        if (target.given) {
+        // What Return does with it, as it does from the rows.
+        const act = returnOf(target);
+        if (act.given) {
             if ((words ?? "") === "")
-                return { error: `${said} takes words: ${target.ask ?? ""}` };
-            target.given(words);
+                return { error: `${said} takes words: ${act.ask ?? ""}` };
+            act.given(words);
             return { done: true, said: said };
         }
         // As Return does it, save that what's typed, Ask's question, picks
         // nothing: one whose outcome takes a while keeps the launcher, and
         // the rest close it first.
         trials.picked(target, "", path.length - 1);
-        if (target.stays) {
-            target.run();
+        if (act.stays) {
+            act.run();
             return { done: true, said: said };
         }
-        if (target.now)
-            target.run();
+        if (act.now)
+            act.run();
         const shown = open;
         open = false;
-        if (target.now)
+        if (act.now)
             return { done: true, said: said };
-        if (target.later)
-            runOnceGone(target, shown);
+        if (act.later)
+            runOnceGone(act, shown);
         else
-            target.run();
+            act.run();
         return { done: true, said: said };
     }
 
@@ -1738,6 +1749,8 @@ Scope {
     function verbOf(row) {
         if (!row)
             return "";
+        if (row.returns)
+            return verbOf(row.returns);
         if ((row.verb ?? "") !== "")
             return oneWord(row.verb);
         return kindOf(row) !== "" ? "open" : oneWord(Rank.verbIn(row.name ?? "") || "open");
@@ -1826,6 +1839,9 @@ Scope {
     function stepsIn(choice) {
         if (leadsElsewhere(choice) || copiesOnly(choice))
             return true;
+        // One whose Return does one of its acts does it, never stepping in.
+        if (choice.returns)
+            return false;
         if (choice.start !== undefined || choice.given || !holdsMore(choice))
             return false;
         if (choice.category || choice.group || choice.lands || !choice.run)
@@ -1839,7 +1855,18 @@ Scope {
     // changesState), as the key language flags the command the row is
     // named by, so Return lands where d asks.
     function changesState(choice) {
-        return !!choice && Catalogue.changesState(choice, commandNamed(choice));
+        const act = returnOf(choice);
+        return !!act && Catalogue.changesState(act, commandNamed(act));
+    }
+
+    // What Return does on a row: the act it names to (`returns`), as a
+    // session's Return does what its state makes harmless, Talk for one
+    // listening and Resume for one paused (VKCF3Z, 2026-11-06), while its
+    // step in still holds all its acts; or else the row's own. Every way
+    // Return is read (run, lands, endsSomething, the foot's word and the
+    // report's verb) reads this, so they never disagree.
+    function returnOf(row) {
+        return row?.returns ?? row;
     }
 
     // The command a row is named by (Catalogue.js's named), from its words
@@ -1872,9 +1899,10 @@ Scope {
     // asking Joel to be sure is done, since stepping in was the second press.
     // A meeting's row joins, as its row says (Catalogue.js's startsItself).
     function lands(choice) {
+        const act = returnOf(choice);
         return !!choice && prompt.modal && prompt.mode === "find" && changesState(choice)
-            && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !choice.sure
-            && !sureOf() && !Catalogue.startsItself(choice, commandNamed(choice))
+            && !stepsIn(choice) && !stepsThing(choice) && !act.given && !act.sure
+            && !sureOf() && !Catalogue.startsItself(act, commandNamed(act))
             && !endsSomething(choice);
     }
 
@@ -1891,11 +1919,12 @@ Scope {
     function endsSomething(choice) {
         if (!choice || !prompt.modal)
             return false;
-        const named = commandNamed(choice);
+        const act = returnOf(choice);
+        const named = commandNamed(act);
         const set = named.command === "set"
-            ? SetWords.setOne(String(commandWords(choice).argument ?? ""), setOptions) : null;
+            ? SetWords.setOne(String(commandWords(act).argument ?? ""), setOptions) : null;
         const off = set?.how === "off" && setOptions[set.option]?.ends === true;
-        return Catalogue.endsSomething(choice, named, off);
+        return Catalogue.endsSomething(act, named, off);
     }
 
     // The line Return writes for a row that ends something, as the menu
@@ -1904,7 +1933,7 @@ Scope {
     // banged, "logout!", and runs past its confirm rather than asking again.
     function endsLine(choice) {
         const thing = held.length > 0 ? held[held.length - 1].row : choice;
-        const line = Commands.actLine(choice, true, { called: commandWords,
+        const line = Commands.actLine(returnOf(choice), true, { called: commandWords,
             table: Options.commands, thing });
         const asked = (!!choice.sure || sureOf()) && line.bang;
         return Commands.written(asked ? Object.assign({}, line, { banged: true }) : line, "");
@@ -5035,6 +5064,13 @@ Scope {
             fill(choice.start);
             return;
         }
+        // A row whose Return does one of its acts (returnOf) does it: one
+        // asking for words asks only now, and the rest close the launcher,
+        // the row learned as what was meant, never its act.
+        if (choice.returns) {
+            ranReturn(choice, choice.returns);
+            return;
+        }
         // A category, or a row holding a provider's things, steps in.
         if ((choice.category || choice.group) && enter(choice))
             return;
@@ -5095,6 +5131,19 @@ Scope {
             runOnceGone(choice, true);
         else
             choice.run();
+    }
+
+    function ranReturn(row, act) {
+        if (act.given) {
+            ask(act);
+            return;
+        }
+        learn(row);
+        open = false;
+        if (act.later)
+            runOnceGone(act, true);
+        else
+            act.run();
     }
 
     // Runs a row that waits for the launcher to be gone, as a screenshot

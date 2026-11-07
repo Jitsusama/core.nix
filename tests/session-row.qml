@@ -168,6 +168,26 @@ QtObject {
         if (bare.eyebrow !== "8IDU4E")
             failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);
 
+        // Return does the act its state makes harmless, always one of its
+        // acts: Go To one at work, Talk to one listening, Resume one paused
+        // and Wake one parked; with no window to go to, Talk.
+        const returns = [
+            ["working", true, "switch"],
+            ["inLine", true, "switch"],
+            ["needs", true, "switch"],
+            ["working", false, "talk"],
+            ["listening", true, "talk"],
+            ["paused", true, "resume"],
+            ["paused", false, "resume"],
+            ["parked", false, "wake"]
+        ];
+        for (const [state, windowed, want] of returns) {
+            const got = SessionRow.returns(state, windowed);
+            if (got !== want || !SessionRow.acts(state, windowed).includes(got))
+                failures.push(`Return on one ${state}${windowed ? "" : " unwindowed"}: `
+                    + `"${got}", not "${want}"`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
