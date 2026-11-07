@@ -205,8 +205,9 @@ of each kind of line it sets, and a row's pitch is its height.
   measured in device pixels and named by its rung. A gap off its rung by more
   than a device pixel, or one nobody can name, is a fault.
 - **Equal where it says it is.** The room round a thing is the same on every
-  side, measured to the ink: a frame's padding, a notice's, the margin round
-  a highlight. **Check:** its four measurements, within a device pixel.
+  side, measured to the ink: a frame's padding, a notice's, a band's room
+  over and under its text. **Check:** its four measurements, within a device
+  pixel.
 - **Space groups.** What belongs together sits closer than anything else
   does to it: each gap is its level's rung, and every rung is wider than the
   one inside it, so two levels never share a space and nothing inside a thing
@@ -431,7 +432,7 @@ axis.
 | Level   | Face and setting                                         | Step    | Case                | Colour                                                   | What goes at it                                                                                                               |
 | ------- | -------------------------------------------------------- | ------- | ------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Display | Monaspace 400, tabular figures                           | hero on the lock and greeter, display on a plate | as is, -0.01 em | text on a wallpaper, strong on a plate                 | a clock or a time shown large                                                                                                 |
-| Title   | Fraunces upright, wght 560, opsz 21, SOFT 100, WONK 1    | title   | sentence, -0.01 em  | strong on a drawer, text as a place's name              | a drawer's title, a place's name in the launcher's head, a dialog's heading, a page's section                                 |
+| Title   | Fraunces upright, wght 640, opsz 14, SOFT 100, WONK 1    | large   | sentence            | strong                                                   | a drawer's title, a place's name in the launcher's head, a dialog's heading, a page's section                                 |
 | Name    | Monaspace Medium 500                                     | large   | as written          | text; strong when selected or as a notice's sender       | a row's name, a notice's sender, a window's title                                                                             |
 | Figure  | Monaspace 400, tabular figures                           | large   | as written          | text; strong while typed                                 | a fact's value, a figure in a row, the typed query                                                                            |
 | Words   | Fraunces upright, wght 380, opsz 14, SOFT 50, WONK 0     | large   | sentence            | muted beside a name; text alone                          | a row's words, a notice's words, a drawer's prose, the lock's day, a prompt's ask                                             |
@@ -440,7 +441,10 @@ axis.
 | Label   | Monaspace Medium 500, the `case` feature                 | body    | capitals, +0.16 em  | muted                                                    | a drawer's eyebrow, a group's heading in a list                                                                               |
 
 Label is Note told apart by case, so a surface counting its levels counts
-them as one. Each surface says which levels it shows, in the surfaces table.
+them as one. Label's capitals are for our own words: a name from the world,
+an address, a repository, a folder or a file, is never re-cased, so an
+eyebrow carrying one is set in Note as written ("8IDU4E · core.nix ·
+since 21:52"). Each surface says which levels it shows, in the surfaces table.
 
 ## Space
 
@@ -501,8 +505,10 @@ Müller-Brockmann). The **beat** is 12, half the large pitch, and every space be
 blocks is a whole number of beats, so a row (48), a drawer's line (24) and
 home's group gap (12) fall on one grid and lines at two pitches side by side
 meet on it. Each level carries its **pitch**, baseline to baseline,
-`Theme.level.note.pitch`: Note and Label 20; Name, Figure, Words and Voice 24;
-Title 32; Display 56.
+`Theme.level.note.pitch`: Note and Label 20; Title, Name, Figure, Words and
+Voice 24; Display 56. A Title is its line's size, told apart by weight and
+colour, never by size (Joel, 2026-11-06: "use weights and not size for
+that"), so a head is a band like the rows.
 
 - **Lines of one thing** sit at their level's pitch.
 - **Things of a kind** sit a row or a pitch apart, and a beat further where any
@@ -555,13 +561,18 @@ The rest follows from the ladder:
   keeps it after its cluster's last item, never between items, so every gap is
   its rung. Return's slack sits before the dot that joins it, so the dot goes
   with Return and none hangs alone before a gap.
-- **A chosen line's ground hugs its ink**, as Joel liked (the skill's "Margin
-  round a highlight, not padding inside it"): a mark (8) round its first and
-  last ink and above its capitals and below its baseline, square, with more
-  room outside it than in, so it neither presses on the frame nor floats. One
-  shape for the rows, the command menu, the held list, the drawer's lines and
-  the reader's lists. A selection inside a line covers its characters exactly,
-  as Vim's Visual does, and so does a find's wash.
+- **Rows tile, as Vim's lines do** (Joel, 2026-11-06: "rows in the launcher
+  should have padding instead of margins"): a row is a band with its room
+  inside it, and bands meet with no gap. A one-line band is 48, its line
+  centred by the band rule; a taller row keeps an apart (12) over its first
+  line and under its last. The cursor row's ground fills its whole band,
+  from one inside edge of the frame to the other, gutter included, square,
+  while its ink stays on the inset. The list's first band starts a tie
+  under the head's hairline and its last ends a tie over the foot's, so a
+  ground never touches a rule. One shape for the launcher's rows, the
+  command line's, the held list and the drawer's lines. A selection inside a
+  line covers its characters exactly, as Vim's Visual does, and so does a
+  find's wash.
 - **One hairline**: a logical pixel snapped to the device, from the frame's
   inside edge to its inside edge, never touched by a ground.
 
@@ -706,11 +717,16 @@ up to the ink, not the box, so a glyph's left edge and the letters above
 it share a column.
 
 **Chords are drawn key by key:** a key's own glyph where a proper one exists
-(the NixOS mark for Super, ⇧, ↵ and the arrows), its name where none does
-(Ctrl, Alt, Esc, Tab, Space), and a letter as itself, joined by + with the
-same room on each side, all muted, even on the selected row. A chord sits at
-the right of its row, at least `space.xxl` from the name. Nothing says what
-Escape does, since it only ever leaves a mode.
+(⇧, ↵ and the arrows), its name where none does (Super, Ctrl, Alt, Esc,
+Tab, Space), and a letter as itself, joined by + with the same room on each
+side, all muted, even on the selected row. Super is named, since the NixOS
+mark at Note's size reads as a gear (Joel's shot of 2026-11-06 read "⚙ +
+0"), and a chord's figures take Monaspace's slashed zero (`cv01`), in
+chords, the foot's keys and the key list alone, so Super + O never reads as
+a zero. A chord sits at the right of its row, at least `space.xxl` from the
+name, but home's rows hand theirs to the foot, which teaches Now's "Super +
+O next time" while the cursor is on it, furthest from Return and first to
+give way. Nothing says what Escape does, since it only ever leaves a mode.
 
 **A row says what it is.** A thing's row (a program, a window, a pi
 session, a network, a device, a copy) says its kind at its right edge, muted:
@@ -1859,17 +1875,21 @@ cursor row's own absolute and in text, as his `number`, `relativenumber`
 and `cursorlineopt=number` draw them; Space u l switches them to absolute.
 On the find and the command line the numbers are absolute, as his
 numbertoggle draws them in insert, so a list is never shown without them
-(Joel, 2026-11-05: "when not present it looks like shit"). The gutter is
-as wide as the digits of the most rows the place's find can list, three on
-home, two in Programs and one in a small place, then a tie to the ground. It
-holds that width while the list is open, so no letter or mode moves a row
-sideways. The find line, the command line
-and the head start at the card's inset, over the numbers, as Vim's / and :
-lines start at column 0 left of its number column: the gutter is the list's,
-and the lines are the card's. A picker's ask keeps its room that way.
-While a find narrows the rows, the head keeps it after the place's Title,
-with what it found: "Home slack · 3 found". The status line says where the
-cursor stands ("1 of 3"), so the two never both read "of".
+(Joel, 2026-11-05: "when not present it looks like shit"). The numbers
+are a block starting on the card's inset, on the x where the head's mark,
+the hairlines and the mode word start, as wide as the digits this place
+needs now and right-aligned in it, as Vim makes room only for the largest
+(Joel, 2026-11-06: "why leave constant room for three when we often have
+only 1?"): one figure on home in normal. A find holds the digits of the
+most rows it lists at opening and only grows within that find. The glyph
+column stays where three figures and a tie would put it, on every page and
+in every mode, so the spare room lies between the numbers and the glyphs,
+never before the numbers, and no page or mode moves a glyph or a name
+sideways (Gutter.qml, Columns.js). The head's mark, its Title and what's
+typed stand on the rows' glyph and name columns. While a find narrows the
+rows, the head keeps its count after what's typed: "/ Home slack · 3
+found". The status line says where the cursor stands ("1 of 3"), so the
+two never both read "of".
 
 - **Moving:** j k, gg G and {n}G, H M L, Ctrl+D Ctrl+U Ctrl+F Ctrl+B, and
   { } to the next and previous group of rows, each taking a count. Only a
@@ -2095,21 +2115,24 @@ need for notifications and the laucnher to feel more similar ... i like the
 status line in notifications better"). Each is the same card: a head, a
 hairline, the rows, a hairline, the status line.
 
-- **The head** is the card's one line for typing. Its first column, at the
-  card's inset over the gutter's numbers, holds the mode's mark: the
-  accent's `/` on the find, `:` on the command line, and nothing in normal
-  or visual (Joel, 2026-11-06: "when in normal mode, it sholudn't have a /
-  at the front"). The place's glyph stands over the rows' glyphs and its
-  Title over their names, home's too ("Home", "Notices", "Time ›
-  Servers"), so the mark comes and goes and nothing else moves. What's
+- **The head** is the card's one line for typing, a 48 band like the rows.
+  It draws nothing over the gutter in any mode. The place's glyph stands in
+  the rows' glyph cell and its Title over their names, home's too ("⌂ Home",
+  "Notices", "Time › Servers"). The mode's mark takes the glyph's cell
+  while the mode lasts, centred by its ink: the accent's `/` on the find,
+  `:` on the command line (Joel, 2026-11-06: "we have an extra space in
+  front of the launcher heading when in command mode that we don't have in
+  find"). So the Title and what's typed start on one x in every mode. What's
   typed follows the Title, and a find's count sits beside it, as Vim's
-  search count sits beside the search. The head holds two levels, the Title
-  and Figure, on one baseline (Joel, 2026-11-06: "it is like a bumpy hill
-  and a bit too chaotic"): the launcher's find has no bare ask, since the
-  mark and the caret say to type, and a prompt keeps its particular one
-  ("open which file?").
+  search count sits beside the search. The head holds one size on one
+  baseline, the Title told from Figure by the serif's weight and strong
+  (Joel, 2026-11-06: "it is like a bumpy hill and a bit too chaotic"): the
+  launcher's find has no bare ask, since the mark and the caret say to type,
+  and a prompt keeps its particular one ("open which file?").
 - **The rows** are the launcher's: the gutter, the glyph, the name and its
-  words, the side at the far end, the ground hugging its ink. What a row
+  words, the side at the far end, each a band meeting the next, the cursor's
+  ground filling its band. A row that holds more draws its mark muted, never
+  in a rule's or the ground's colour, so it reads on the cursor. What a row
   is, holds or does follows its name, in Words ("Shortcuts" then "Tabs,
   Tab Numbers"; "brightness ⟨percent⟩" then "Sets the screen's
   brightness"). A figure
@@ -2127,7 +2150,18 @@ hairline, the rows, a hairline, the status line.
 - **The command line** takes the head, the find line's place, as Vim's
   `:` and `/` are one line (Joel, 2026-11-06: "it is basically / by
   default"): its `:` where the find's `/` stands, what's typed on the
-  rows' names, over the line it completes.
+  rows' names, over the line it completes. Its completions take the rows'
+  place as rows, never indented, in held notices too.
+- **One set of pieces** draws them, and the notice that pops up: Card.qml
+  is the frame, its edge, radius and fill and the inset on every side, and
+  Columns.js finds the gutter, the mark column and the text column from
+  what stands in them (Joel, 2026-11-06: "they need to share more code and
+  UI/UX design to stop them from constantly drifting"). A glyph in the mark
+  column is followed by a mark (8), a picture, as music's 48 cover, by an
+  apart (12). The pop-up has no gutter, as Vim's `nonumber`, and is as wide
+  as forty letters of Words beside its mark column, so a notice breaks the
+  same popped as held. `every-card-is-the-one-card` fails on a surface that
+  draws its own frame, reads the inset or sets its own x.
 - **The status line** is one component both read (StatusLine.qml), below.
 
 **The foot, the mode mark, the mode word and the key list.** The foot is

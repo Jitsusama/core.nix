@@ -136,8 +136,11 @@ constrain".
 - **Marks one height.** A row of marks stands level, every one's ink the
   same height on one middle line, however tall its font draws it; uneven
   heights set off "my autism infused OCD" (2026-10-24).
-- **Margin round a highlight, not padding inside it.** A selected item's
-  fill sits close round its ink, with room outside it, so it doesn't float.
+- **Rows that tile, as Vim's lines do.** A row's room is inside it and rows
+  meet, so the selected one's fill spans its whole row, edge to edge ("rows
+  in the launcher should have padding instead of margins", 2026-11-06). It
+  replaced a fill hugging the ink, which left the chosen line against the
+  next. A selection inside a line still covers its characters exactly.
 - **A step inside the edge.** Things in a corner sit a little inside the
   windows' edge, so nothing lines up with something else by chance.
 - **Chords drawn as keys.** A key's mark where a good one exists, its name
