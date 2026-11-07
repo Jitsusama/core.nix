@@ -237,20 +237,25 @@ QtObject {
                     + `"${got}", not "${want}"`);
         }
 
-        // Together they say those working, those needing Joel, then the
-        // day's dollars; with neither, how many run, the parked aside.
+        // Together they say those needing Joel, those working, then the
+        // day's dollars; with neither, how the rest stand in the fold's
+        // order, the parked aside.
         const words = {
             workingCount: "{count} working",
+            inLineCount: "{count} in line",
             needsCount: "1 needs you",
             needCount: "{count} need you",
-            running: "{count} running",
+            listening: "listening",
+            paused: "paused",
             today: "{spent} today"
         };
         const summaries = [
             ["working working listening needs working", "$214",
-                "3 working \u00b7 1 needs you \u00b7 $214 today"],
+                "1 needs you \u00b7 3 working \u00b7 $214 today"],
             ["needs needs paused", "", "2 need you"],
-            ["listening paused parked", "$3.10", "2 running \u00b7 $3.10 today"],
+            ["paused listening parked listening listening", "$3.10",
+                "3 listening, 1 paused \u00b7 $3.10 today"],
+            ["listening inLine", "", "1 in line, 1 listening"],
             ["parked", "", ""],
             ["", "$0.40", "$0.40 today"],
             ["", "", ""]

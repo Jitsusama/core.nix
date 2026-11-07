@@ -572,7 +572,7 @@ Provider {
         return Sessions.running.concat(Sessions.parked).map(session => stateOf(session));
     }
 
-    // How they stand together, "3 working \u00b7 1 needs you \u00b7 $214
+    // How they stand together, "1 needs you \u00b7 3 working \u00b7 $214
     // today" (SessionRow.js), the day's dollars as spend-watch sums every
     // session's, never added up here, and none of them while the screen is
     // shared.

@@ -276,8 +276,8 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
 ) -> None:
     """The launcher's home says how its sessions stand together, never their names.
 
-    "1 working", as "3 working \u00b7 1 needs you \u00b7 $214 today" would, however long a
-    quest's name is (VKCF3Z, 2026-11-06).
+    "1 working", as "1 needs you \u00b7 3 working \u00b7 $214 today" would, however long a
+    quest's name is (VKCF3Z, 2026-11-07).
     """
     desktop.pi_session()
     # A session whose quest's name is longer than home's row has room for,
