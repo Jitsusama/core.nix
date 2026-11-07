@@ -142,19 +142,43 @@ QtObject {
 
         // A session's acts follow how it stands: one at work or in line can
         // be stopped, one paused resumed, one parked only woken or talked
-        // to, with no window known to go to.
+        // to, with no window known to go to. One here closes, last; one
+        // elsewhere can't, since its node's relay of a close is dropped.
         const acts = [
-            ["working", true, "switch talk pause stop"],
-            ["inLine", false, "talk pause stop"],
-            ["listening", true, "switch talk pause"],
-            ["needs", true, "switch talk pause"],
-            ["paused", true, "switch talk resume"],
-            ["parked", false, "wake talk"]
+            ["working", true, true, "switch talk pause stop close"],
+            ["working", true, false, "switch talk pause stop"],
+            ["inLine", false, true, "talk pause stop close"],
+            ["listening", true, true, "switch talk pause close"],
+            ["needs", true, false, "switch talk pause"],
+            ["paused", true, true, "switch talk resume close"],
+            ["parked", false, true, "wake talk"]
         ];
-        for (const [state, windowed, want] of acts) {
-            const got = SessionRow.acts(state, windowed).join(" ");
+        for (const [state, windowed, here, want] of acts) {
+            const got = SessionRow.acts(state, windowed, here).join(" ");
             if (got !== want)
-                failures.push(`the acts of one ${state}: "${got}", not "${want}"`);
+                failures.push(`the acts of one ${state}${here ? " here" : ""}: "${got}", `
+                    + `not "${want}"`);
+        }
+
+        // What Close's ask says stays: its worktree or its folder, and its
+        // quest's Needs You items by their count.
+        const leaving = {
+            stays: "its {kept} stays.",
+            stay: "its {kept} stay.",
+            tree: "worktree",
+            folder: "folder",
+            and: "and",
+            needItem: "{count} Needs You item",
+            needItems: "{count} Needs You items"
+        };
+        for (const [tree, needs, want] of [[true, 0, "its worktree stays."],
+            [true, 1, "its worktree and 1 Needs You item stay."],
+            [false, 2, "its folder and 2 Needs You items stay."],
+            [false, 0, "its folder stays."]]) {
+            const got = SessionRow.leaves(tree, needs, leaving);
+            if (got !== want)
+                failures.push(`what Close leaves of ${tree ? "a tree" : "a folder"} with `
+                    + `${needs}: "${got}", not "${want}"`);
         }
 
         // A row says how it stands and what it spent today at its right,
@@ -254,7 +278,7 @@ QtObject {
         ];
         for (const [state, windowed, want] of returns) {
             const got = SessionRow.returns(state, windowed);
-            if (got !== want || !SessionRow.acts(state, windowed).includes(got))
+            if (got !== want || !SessionRow.acts(state, windowed, true).includes(got))
                 failures.push(`Return on one ${state}${windowed ? "" : " unwindowed"}: `
                     + `"${got}", not "${want}"`);
         }

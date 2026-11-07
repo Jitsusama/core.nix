@@ -54,7 +54,7 @@ function asking(entry, acts, line, commands) {
     const changes = commands[entry.command]?.changes === true
         && !Commands.neverAsks(entry.command);
     const asks = changes && Operators.asks(acts.map(act => ({ command: entry.command,
-        undo: act.undo })), commands);
+        undo: act.undo, leaves: act.leaves })), commands);
     if (!asks || bang) {
         return { ask: "" };
     }

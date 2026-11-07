@@ -5,6 +5,7 @@ are the realm's own mycelium node's, which reads the presence records laid here 
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
+A session's Close asks first, saying what of it stays, and y steers it a close from Joel.
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. Both
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
@@ -270,6 +271,31 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
         time.sleep(0.1)
     told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
     assert [one["act"] for one in told] == ["resume"], told
+
+
+def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: Shell) -> None:
+    """Close, last among a session's acts, asks what it leaves, and y steers it a close."""
+    opened(shell)
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(lambda shown: shown["rows"][:4] == ["Talk", "Pause", "Stop", "Close"])
+    shell.down_to("Close")
+    # Return writes the line Close is, and a second runs it, which asks.
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: (shown["command"] or {}).get("line") == "close" and not shown["linedFresh"]
+    )
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["takesAnswer"])
+    asked = "Close BOSSES? Its folder stays. (y/n)"
+    assert shell.showing()["question"] == asked, shell.showing()
+    shell.send_chars("y")
+    inbox = STEER / "BOSSES"
+    deadline = time.monotonic() + 10
+    while not any(inbox.glob("*.json")):
+        assert time.monotonic() < deadline, "nothing reached the orchestrator's inbox"
+        time.sleep(0.1)
+    told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
+    assert [(one["act"], one["from"]) for one in told] == [("close", "joel")], told
 
 
 def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(

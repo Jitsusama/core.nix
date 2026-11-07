@@ -1338,8 +1338,12 @@ works the same way everywhere.
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"). **An act that ends or takes away
   never runs on Return**, from any mode: Disconnect It, Forget It, Close
-  It, Turn Off, Stop, Done, and the session's Lock, Sleep, Log Out, Reboot
-  and Power Off. Return on its row puts its command on the command line,
+  It, Turn Off, Stop, an agent's Close, Done, and the session's Lock,
+  Sleep, Log Out, Reboot and Power Off. An agent's Close always asks,
+  naming the session by its address, since the path above says its title,
+  and its ask says what stays, "Close 8IDU4E? Its worktree and 1 Needs You
+  item stay. (y/n)", so ending one never reads as losing its work.
+  Return on its row puts its command on the command line,
   `:disconnect`, the menu saying what it acts on, and a fresh Return there
   runs it; the row and the foot name the key that carries it, "d
   disconnect" where d's table gives it, else ": disconnect", as Vim's
@@ -2055,7 +2059,11 @@ visual tints it, and the mode word's room says what it will hit. Operators,
 | u, Ctrl+R | every change with an inverse, while the surface is open | the same | the cards back, still read | nothing | from the trash |
 
 What can't be undone asks once on the command line, as Vim's `confirm()`
-does ("Forget Home-5G and its password? (y/n)"). Only y answers yes, keys
+does ("Forget Home-5G and its password? (y/n)"), taking the whole head while
+it stands, the path giving way whole and back once it's answered. Where even
+the head can't hold it, what stays gives way from its end at a whole word,
+behind an ellipsis, never what it does, to what, or its keys. Only y answers
+yes, keys
 pressed in the first 300 ms are ignored, and ! skips the ask; what asks
 comes from the language's `undoable`, never a list kept by hand. An act
 the language marks guarded keeps its own work, so one doesn't ask, though it can't be

@@ -4,10 +4,37 @@
 // tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
 
-// An ask standing: what it asks, what y does and what n does, and when it
-// was put, in ms.
+// An ask standing: what it asks, whole and in its parts (questionParts),
+// what y does and what n does, and when it was put, in ms. `asks` is its
+// words, or its parts where it says what stays.
 function asked(asks, yes, no, now) {
-    return { question: asks, yes, no, at: now };
+    const whole = typeof asks === "string" ? { head: asks, clause: "", tail: "" } : asks;
+    return { question: joined(whole), parts: whole, yes, no, at: now };
+}
+
+// An ask's parts said whole, a space between each there is.
+function joined(ask) {
+    return [ask.head, ask.clause, ask.tail].filter(part => part !== "").join(" ");
+}
+
+// An ask as it fits where `fits(words)` says it's drawn: whole, else its
+// clause saying what stays giving way from its end a whole word at a time
+// behind an ellipsis, so what it does, to what, and its keys are always
+// read, as "Close TESTQC? Its folder\u2026(y/n)" (VKCF3Z, 2026-11-07). One
+// with no clause is said whole, and its line cuts it.
+function fitted(ask, fits) {
+    const whole = joined(ask);
+    if (ask.clause === "" || fits(whole)) {
+        return whole;
+    }
+    const words = ask.clause.split(" ");
+    for (let count = words.length - 1; count > 0; count -= 1) {
+        const shorter = `${ask.head} ${words.slice(0, count).join(" ")}\u2026${ask.tail}`;
+        if (fits(shorter)) {
+            return shorter;
+        }
+    }
+    return `${ask.head} \u2026${ask.tail}`;
 }
 
 // The keys that answer no, as Vim's ask_yesno takes them.
@@ -32,13 +59,33 @@ function answer(ask, key, now, guard) {
 // one row by its name, as "Close Notes? (y/n)", and more by their count
 // and kind, each verb with its own in the order they come, as "Close 2
 // windows and forget 1 copy? (y/n)", so Joel needn't look to see what
-// they are (VKCF3Z, 2026-11-05).
+// they are (VKCF3Z, 2026-11-05). One row that says what its ending
+// leaves (`leaves`) says it before y/n, as "Close Lamplight? Its worktree
+// stays. (y/n)", so ending a session never reads as losing its work,
+// begun as the sentence it is.
 function question(rows, words) {
-    const said = rows.length === 1
-        ? (words.ask ?? "").replace("{ends}", saysItself(rows[0], words) ? ""
-            : verbOf(rows[0], words)).replace("{name}", rows[0].name ?? "").trim()
-        : (words.asks ?? "").replace("{what}", listed(parts(rows, words), words));
-    return said.charAt(0).toUpperCase() + said.slice(1);
+    return joined(questionParts(rows, words));
+}
+
+// The same ask in its parts: its head, what it does and to what; the
+// clause saying what stays, where one does; and the keys after it, so
+// fitted can give the clause way alone.
+function questionParts(rows, words) {
+    const left = rows.length === 1 ? String(rows[0].leaves ?? "") : "";
+    const clause = left.charAt(0).toUpperCase() + left.slice(1);
+    const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
+    if (rows.length !== 1) {
+        const many = (words.asks ?? "").replace("{what}", listed(parts(rows, words), words));
+        return { head: capital(many), clause: "", tail: "" };
+    }
+    const filled = text => text
+        .replace("{ends}", saysItself(rows[0], words) ? "" : verbOf(rows[0], words))
+        .replace("{name}", rows[0].name ?? "").trim();
+    if (clause === "") {
+        return { head: capital(filled(words.ask ?? "")), clause: "", tail: "" };
+    }
+    const [before, after] = (words.askLeaves ?? "{leaves}").split("{leaves}");
+    return { head: capital(filled(before)), clause, tail: filled(after ?? "") };
 }
 
 // Whether a row's name already begins with what's done to it, as Forget

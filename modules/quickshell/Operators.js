@@ -356,11 +356,15 @@ function copiesIn(rows, actionsOf, copies) {
 // it's put back (`undo`), for u to take back. What the language calls
 // undoable asks too until its row says how, since nothing could bring it
 // back; one the language doesn't name asks, as nothing says it can be.
+// One saying what it leaves, as a session's Close, asks: the ask says so.
 function asks(actions, commands) {
     const alone = actions.length === 1;
     return actions.some(action => {
         if (typeof action.undo === "function") {
             return false;
+        }
+        if ((action.leaves ?? "") !== "") {
+            return true;
         }
         const flags = commands[action.command ?? ""] ?? {};
         return !(flags.guarded === true && alone);

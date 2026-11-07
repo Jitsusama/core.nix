@@ -3581,8 +3581,9 @@ Scope {
             const of = one => one.act === one.thing && held.length > 0
                 ? held[held.length - 1].row : one.thing;
             const question = asked.ask === "some" ? fill(words.some)
-                : Confirm.question(found.map(one => ({ ends: one.act.ends || verbOf(one.act),
-                    name: of(one)?.name ?? "", kind: kindOf(of(one)) })),
+                : Confirm.questionParts(found.map(one => ({ ends: one.act.ends || verbOf(one.act),
+                    name: one.act.askedAs || (of(one)?.name ?? ""), kind: kindOf(of(one)),
+                    leaves: one.act.leaves ?? "" })),
                     Words.field.operators ?? {});
             askOnce(question, sure, () => {}, found.map(one => matches.indexOf(one.thing))
                 .filter(at => at >= 0));
@@ -4639,7 +4640,7 @@ Scope {
         askedOver = covering ?? [];
         askTaking = false;
         askReady.restart();
-        Report.say(`asked ${question}`);
+        Report.say(`asked ${asked.question}`);
     }
 
     // A key while the ask stands, as Prompt.qml hands it over.
@@ -4999,8 +5000,11 @@ Scope {
         }
         const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
-            name: rowAt(ending.at)?.name ?? "", kind: kindOf(rowAt(ending.at)) }));
-        askOnce(Confirm.question(named, words), doing, null, endings.map(ending => ending.at));
+            name: ending.action.askedAs || (rowAt(ending.at)?.name ?? ""),
+            kind: kindOf(rowAt(ending.at)),
+            leaves: ending.action.leaves ?? "" }));
+        askOnce(Confirm.questionParts(named, words), doing, null,
+            endings.map(ending => ending.at));
     }
 
     // Text typed faster than it's searched, as a program types it, reaches
@@ -5776,6 +5780,7 @@ Scope {
             question: prompt.asking,
             takesAnswer: prompt.asking !== "" && root.askTaking,
             questionWhole: prompt.askedWhole,
+            questionShown: prompt.askedShown,
             placeSays: root.placeSays,
             // What the mode word's room says: a count, a search, what's
             // chosen; and the foot's start, the mode in three capitals.
@@ -6799,6 +6804,7 @@ Scope {
                         // no keys asked is said in the line's place.
                         confirming: root.asked !== null
                         asking: root.asked?.question ?? ""
+                        askingParts: root.asked?.parts ?? null
                         onAnswered: key => root.answerAsk(key)
                         // There's a drawer to go into while it's out with
                         // words to sit on.

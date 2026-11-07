@@ -1956,6 +1956,35 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     desktop.photograph(f"launcher-agents-closed-at-{shot}")
 
 
+def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str) -> None:
+    """Photograph a session's Close on the cursor, then its ask, which says what stays.
+
+    Close ends the session, so Return puts it on the command line and a fresh Return asks,
+    naming the session by its address and what of it stays (VKCF3Z, 2026-11-06); n leaves
+    it running.
+    """
+    desktop.down_to(title)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Close" in shown["rows"])
+    desktop.down_to("Close")
+    desktop.photograph(f"launcher-agents-close-at-{shot}")
+    desktop.machine.send_key("ret")
+    asked = f"Close {address}? Its folder stays. (y/n)"
+    with desktop.told("ask ready"), desktop.told(f"asked {asked}"):
+        desktop.machine.send_key("ret")
+    # The ask takes the whole head, so what it closes is read, its path given way.
+    shown = desktop.showing()
+    drawn = shown["questionShown"]
+    assert drawn.startswith(f"Close {address}?"), f"at {shot} the ask lost its subject: {drawn}"
+    assert drawn.endswith("(y/n)"), f"at {shot} the ask lost its keys: {drawn}"
+    assert shown["questionWhole"], f"at {shot} the ask was cut: {drawn}"
+    desktop.photograph(f"launcher-agents-close-asks-at-{shot}")
+    with desktop.told("answered no"):
+        desktop.machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["question"] == "")
+    desktop.step_out()
+
+
 def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
     """Photograph a quest's step in from Start a Session: Start Here, then Orchestrate.
 
@@ -2033,6 +2062,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
             returns_said_in_the_foot(desktop, titles, shot)
             fold_steps_in(desktop, shot)
+            close_asks_what_stays(desktop, titles["TESTQC"], "TESTQC", shot)
             closed_stand_last(desktop, shot)
             a_quest_offers_to_orchestrate(desktop, shot)
             desktop.close_launcher()

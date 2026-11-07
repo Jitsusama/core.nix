@@ -249,12 +249,18 @@ QtObject {
             true);
         holds("unless it says how it's put back",
             Operators.asks([Object.assign({ undo: run }, close)], commands), false);
+        // One that says what it leaves asks even where it's guarded and
+        // alone, as a session's Close does, since the ask says it.
+        holds("one guarded thing saying what it leaves asks",
+            Operators.asks([Object.assign({ leaves: "Its folder stays." }, as("close"))],
+                commands), true);
         // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
         // It names the one row it ends, and more by their count and kind,
         // each verb with its own, so Joel needn't look to see what they are
         // (VKCF3Z, 2026-11-05).
         const asking = { ask: "{ends} {name}? (y/n)", asks: "{what}? (y/n)",
+            askLeaves: "{ends} {name}? {leaves} (y/n)",
             part: "{ends} {count} {kind}", ends: "end", thing: "thing", and: "and",
             many: { copy: "copies" } };
         const closing = name => ({ ends: "close", name, kind: "window" });
@@ -266,6 +272,26 @@ QtObject {
         holds("and one whose name begins with its verb by its name alone",
             Confirm.question([{ ends: "forget", name: "Forget the Clipboard" }], asking),
             "Forget the Clipboard? (y/n)");
+        holds("and one that says what it leaves says so before y/n, as a sentence",
+            Confirm.question([Object.assign({ leaves: "its worktree stays." },
+                closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");
+        // Where the line can't hold it, what stays gives way from its end
+        // at a whole word, never what it does, to what, or its keys, so
+        // it's still a true question (VKCF3Z, 2026-11-07).
+        const staying = Confirm.questionParts([Object.assign(
+            { leaves: "its worktree and 1 Needs You item stay." }, closing("TESTQC"))], asking);
+        holds("one saying what stays is asked in its parts", staying, { head: "Close TESTQC?",
+            clause: "Its worktree and 1 Needs You item stay.", tail: "(y/n)" });
+        const within = most => words => words.length <= most;
+        holds("said whole where it fits", Confirm.fitted(staying, within(60)),
+            "Close TESTQC? Its worktree and 1 Needs You item stay. (y/n)");
+        holds("what stays gives way from its end at a whole word",
+            Confirm.fitted(staying, within(32)), "Close TESTQC? Its worktree\u2026(y/n)");
+        holds("and all of it before what it closes does", Confirm.fitted(staying, within(20)),
+            "Close TESTQC? \u2026(y/n)");
+        holds("one saying nothing stays is said whole, its line cutting it",
+            Confirm.fitted(Confirm.questionParts([closing("Notes")], asking), within(5)),
+            "Close Notes? (y/n)");
         holds("and counts more by their kind", Confirm.question([closing("Notes"),
             closing("Mail")], asking), "Close 2 windows? (y/n)");
         holds("and each verb with its own, the first first", Confirm.question([closing("Notes"),
@@ -282,6 +308,9 @@ QtObject {
         // a key typed on from what asked can't answer it; any other no.
         const ask = Confirm.asked("Close Notes? (y/n)", run, run, 1000);
         holds("the ask holds its question", ask.question, "Close Notes? (y/n)");
+        holds("and one asked in its parts holds it whole",
+            Confirm.asked(staying, run, run, 1000).question,
+            "Close TESTQC? Its worktree and 1 Needs You item stay. (y/n)");
         holds("a key in the ask's first 300 ms is let by", Confirm.answer(ask, "y", 1299, 300),
             "early");
         holds("y after it answers yes", Confirm.answer(ask, "y", 1300, 300), "yes");

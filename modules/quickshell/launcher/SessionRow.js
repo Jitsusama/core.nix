@@ -156,8 +156,10 @@ function tree(sessions, folds) {
 // paused, resumed and stopped; one with no window offers no Go To, and
 // only one under way can be stopped. One parked has no process to pause
 // or stop and no window known to go to: it can be woken, or talked to,
-// which wakes it too.
-function acts(standing, windowed) {
+// which wakes it too. Only one here can be closed, last, since the
+// harness ends a session on a close Joel steers it from this machine and
+// drops one a node relays (harness #1023).
+function acts(standing, windowed, here) {
     if (standing === "parked") {
         return ["wake", "talk"];
     }
@@ -167,7 +169,25 @@ function acts(standing, windowed) {
     if (standing === "working" || standing === "inLine") {
         ids.push("stop");
     }
+    if (here) {
+        ids.push("close");
+    }
     return ids;
+}
+
+// What Close's ask says stays, so ending a session never reads as losing
+// its work (VKCF3Z, 2026-11-06: "Close 8IDU4E? Its worktree and 1 Needs
+// You item stay."): its worktree, or its folder where it works outside
+// one, and its quest's Needs You items, by their count, in the agents'
+// words (`said`).
+function leaves(inTree, needs, said) {
+    const place = inTree ? said.tree : said.folder;
+    if (needs === 0) {
+        return String(said.stays ?? "").replace("{kept}", place);
+    }
+    const items = String((needs === 1 ? said.needItem : said.needItems) ?? "")
+        .replace("{count}", needs);
+    return String(said.stay ?? "").replace("{kept}", `${place} ${said.and} ${items}`);
 }
 
 // The act Return does, one of `acts`: the one its state makes harmless
