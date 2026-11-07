@@ -5,12 +5,5 @@
     "owner_pr": null,
     "reason": "failed, then passed, at cb5b9b12dce0",
     "test": "vm-desktop-launcher-draws-still"
-  },
-  {
-    "at": 1794014496,
-    "commit": "cb5b9b12dce0b805e89b7b9b075394f151dff7a6",
-    "owner_pr": null,
-    "reason": "failed, then passed, at cb5b9b12dce0",
-    "test": "vm-desktop-launcher-holds-meetings"
   }
 ]
