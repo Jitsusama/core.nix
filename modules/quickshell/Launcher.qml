@@ -2395,6 +2395,8 @@ Scope {
     // category's (Joel, 2026-10-25: "jumpy ... at home arrowing around").
     property real footReturnWidest: 0
     property real footKeysWidest: 0
+    // The step and what's typed that the foot's room was last weighed for.
+    property string footWeighedFor: ""
     // How many figures the chosen count holds room for: as many as the
     // place has rows, three while the drawer is out, and only ever more
     // within a place, so rows arriving with no key pressed, as a scan's,
@@ -2406,8 +2408,8 @@ Scope {
     onFootFiguresNowChanged: footFiguresWidest = Math.max(footFiguresWidest, footFiguresNow)
 
     // Return's place starts from nothing and grows from the rows it may
-    // name, as design.md's foot says: on the find those listed as it opens,
-    // growing for a wider row found within that find; in normal and visual
+    // name, as design.md's foot says: on the find those what's typed lists,
+    // weighed afresh as each keystroke changes it (noteKeys); in normal and visual
     // the place's own rows, weighed again as the place changes, since room
     // for a verb no row there can say ranks nothing, and over two windows
     // in visual it cost the foot its y (VKCF3Z, 2026-11-06). Held as wide
@@ -2437,6 +2439,17 @@ Scope {
     }
 
     function noteKeys() {
+        // A keystroke that changes what's typed changes every row, and a row
+        // no longer listed can't be named, so it holds no room: the room is
+        // weighed afresh for the rows the text now lists, and grows only as
+        // more of them come or the cursor moves among them. Held from a
+        // letter passed, Sleep's ":suspend" on "s" left a gap before
+        // "\u21b5 more" once "swayimg" was typed (VKCF3Z, 2026-11-07).
+        const weighing = `${stepsTaken}|${typed}`;
+        if (weighing !== footWeighedFor) {
+            footWeighedFor = weighing;
+            footReset();
+        }
         const rows = asking ? matches.concat([asking]) : matches;
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
         // Room for the drawer's own only once the keys have gone in, so

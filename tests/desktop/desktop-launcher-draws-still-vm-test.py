@@ -769,11 +769,28 @@ A_KEYS_WORD = 10
 HINTS_DOT = "\u00b7"
 
 
-def moved(before: Json, after: Json) -> list[str]:
-    """Say each word drawn in both that reads the same and isn't where it was."""
+def stays(was: Json, word: Json, slides: int) -> bool:
+    """Say whether a word is where it was, or only slid along its line by slides.
+
+    Rounded apart, Return's place and a word's start may differ by a pixel.
+    """
+    if (was["starts"], was["y"]) == (word["starts"], word["y"]):
+        return True
+    return (
+        slides != 0 and word["y"] == was["y"] and abs(word["starts"] - was["starts"] - slides) <= 1
+    )
+
+
+def moved(before: Json, after: Json, slid: int = 0) -> list[str]:
+    """Say each word drawn in both that reads the same and isn't where it was.
+
+    The foot's words may go along their line by slid, as far as Return's place narrowed.
+    """
     shifts = []
 
-    def compare(where: str, old: list[Json], new: list[Json], *, paired: bool = False) -> None:
+    def compare(
+        where: str, old: list[Json], new: list[Json], *, paired: bool = False, slides: int = 0
+    ) -> None:
         def reads(words: list[Json], at: int) -> str:
             word, later = words[at], words[at + 1] if at + 1 < len(words) else None
             beside = (
@@ -795,14 +812,14 @@ def moved(before: Json, after: Json) -> list[str]:
             if not same:
                 continue
             was = same.pop(0)
-            if (was["starts"], was["y"]) != (word["starts"], word["y"]):
+            if not stays(was, word, slides):
                 shifts.append(
                     f"{where}: {word['text']!r} moved from {was['starts']},{was['y']}"
                     f" to {word['starts']},{word['y']}"
                 )
 
     compare("the field", before["field"], after["field"])
-    compare("the foot", before["foot"], after["foot"], paired=True)
+    compare("the foot", before["foot"], after["foot"], paired=True, slides=slid)
     rows = {row["at"]: row for row in before["rows"]}
     for row in after["rows"]:
         was = rows.get(row["at"])
@@ -859,11 +876,16 @@ def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
 
 
 def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:
-    """Nothing on the launcher moves unless it changes, as letters, erasures and arrows go."""
+    """Nothing on the launcher moves but what a key changed, as letters, erasures and arrows go.
+
+    Letters and erasures may move the foot's keys as its rows change, since Return's place
+    holds only the rows what's typed lists, and arrows move nothing (VKCF3Z, 2026-11-07).
+    """
     machine = desktop.machine
     closed_from_normal(desktop)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
+    was_place = desktop.showing()["keysRoom"]["place"]
     before = laid_out(desktop)
     shifts: list[str] = []
     typed = ""
@@ -885,6 +907,7 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
             return shown["typed"] == typed and (not arrowed or shown["selected"] != was)
 
         desktop.launcher_until(heard)
+        place = desktop.showing()["keysRoom"]["place"]
         after = laid_out(desktop)
         desktop.photograph(f"launcher-still-{step:02}-{key}")
         # What the foot read before and after, so a move says what took
@@ -892,9 +915,10 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
         read = [" ".join(word["text"] for word in laid["foot"]) for laid in (before, after)]
         shifts += [
             f"after {key!r} ({typed!r}) {shift}, the foot reading {read[0]!r} then {read[1]!r}"
-            for shift in moved(before, after)
+            for shift in moved(before, after, 0 if arrowed else was_place - place)
         ]
         before = after
+        was_place = place
     desktop.close_launcher()
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
 
