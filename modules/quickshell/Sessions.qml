@@ -22,8 +22,10 @@ pragma Singleton
 // A session's window is found through its terminal, as its record names it
 // (`terminal`, or the kitty its process was started in): kitty says which
 // of its windows the session is in, and niri lists each of kitty's windows
-// by kitty's process. Its quest's whole title is the first line of the
-// quest's README, read once the quests are listed. Nothing is asked of pi;
+// by kitty's process. Its quest's whole title and its folder are as its
+// record says them (`questInfo` and `cwd`, which the harness publishes),
+// or for a record from before it did, as its window's label cuts them;
+// no README is read for them. Nothing is asked of pi;
 // a want is said by starting pi-wants-you (home.nix), which posts its notice.
 import Qt.labs.folderlistmodel
 import Quickshell
@@ -42,7 +44,7 @@ Singleton {
     readonly property string quests: `${Quickshell.env("XDG_DATA_HOME") || `${home}/.local/share`}/pi/agentic-harness.pi/quest-workflow/quests`
 
     // Each session running: its window or null, its address, its quest's
-    // title as its README gives it or its record's label does, its folder,
+    // title and its folder as its record says them (named()), its record,
     // its record, the kitty window it runs in or null, the id its holder
     // keeps it by or null, the machine it runs on and whether that's this
     // one, the words that attach it from here or null, whether its
@@ -73,12 +75,12 @@ Singleton {
     function shown(record, kitties) {
         const presence = record.presence;
         const address = (presence.addresses ?? [])[0];
-        const label = labelled(typeof presence.title === "string" ? presence.title : "");
+        const name = named(presence);
         return {
             window: windowOf(record.kitty, kitties),
             address: address,
-            title: titles[address] || label.cut || address,
-            folder: label.folder,
+            title: name.title || address,
+            folder: name.folder,
             presence: presence,
             kitty: record.kitty,
             held: record.held,
@@ -1697,6 +1699,21 @@ Singleton {
         return String(said[wants.kind] ?? said.question ?? "");
     }
 
+    // A session's quest's whole title and its folder's name, as its record
+    // says them: `questInfo.title` and the last part of `cwd`, as the
+    // harness publishes them from #1006 on. A record from before then, as
+    // a parked one's stays until it wakes, is named by its window's label,
+    // cut short as it is.
+    function named(presence) {
+        const label = labelled(typeof presence.title === "string" ? presence.title : "");
+        const title = presence.questInfo?.title;
+        const cwd = typeof presence.cwd === "string" ? presence.cwd.replace(/\/+$/, "") : "";
+        return {
+            title: typeof title === "string" && title !== "" ? title : label.cut,
+            folder: cwd !== "" ? cwd.slice(cwd.lastIndexOf("/") + 1) : label.folder
+        };
+    }
+
     // The label a session's record gives its window, "π - ", its quest's
     // name and " - " its folder, split at the last " - ", since a quest's
     // name may hold one and a folder's name hyphens. Only ever shown.
@@ -1865,7 +1882,6 @@ Singleton {
         }
         present = by;
         live = next;
-        learn();
         ask();
     }
 
@@ -1975,70 +1991,6 @@ Singleton {
             root.relive();
             root.ask();
         }
-    }
-
-    // A quest's whole title, by the address its id ends in, read once it's
-    // found; until then, and while its quest isn't listed, the record's
-    // label, looked for again as the sessions and the quests change. It's
-    // learned outside the list's binding, since reading each README
-    // through one file view moves what the binding has just read.
-    property var titles: ({})
-    function learn() {
-        if (folders.status !== FolderListModel.Ready)
-            return;
-        const next = Object.assign({}, titles);
-        let changed = false;
-        for (const record of live.concat(resting)) {
-            const address = record.presence.addresses[0];
-            if (next[address])
-                continue;
-            const title = titleOf(address);
-            if (title !== "") {
-                next[address] = title;
-                changed = true;
-            }
-        }
-        if (changed)
-            titles = next;
-    }
-    function titleOf(address) {
-        for (let i = 0; i < folders.count; i++) {
-            const name = folders.get(i, "fileName");
-            // A folder Qt fell back to when the quests' own isn't there.
-            if (!folders.get(i, "filePath").startsWith(quests) || !name.endsWith(`-${address}`))
-                continue;
-            readme.path = `${quests}/${name}/README.md`;
-            readme.reload();
-            readme.waitForJob();
-            return heading(readme.text());
-        }
-        return "";
-    }
-
-    // The first heading of a README, past any front matter.
-    function heading(text) {
-        let lines = text.split("\n");
-        if (lines[0].trim() === "---") {
-            const end = lines.findIndex((line, i) => i > 0 && line.trim() === "---");
-            lines = end < 0 ? [] : lines.slice(end + 1);
-        }
-        const first = lines.find(line => line.startsWith("# "));
-        return first ? first.slice(2).trim() : "";
-    }
-
-    FolderListModel {
-        id: folders
-        folder: `file://${root.quests}`
-        showFiles: false
-        showDotAndDotDot: false
-        onStatusChanged: root.learn()
-        onCountChanged: root.learn()
-    }
-
-    FileView {
-        id: readme
-        blockLoading: true
-        printErrors: false
     }
 
     // The machine's mycelium node, for the realm the machine is in: the

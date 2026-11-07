@@ -121,6 +121,9 @@ ShellRoot {
             JSON.stringify(live.kitty));
         expect("its label shown, cut at its folder",
             live.title === "Live One" && live.folder === "core.nix", `${live.title} ${live.folder}`);
+        expect("its quest's title and its folder as its record says them, not its label",
+            other.title === "Lighthouse - Keep It Lit" && other.folder === "lamp",
+            `${other.title} ${other.folder}`);
         expect("the second of kitty's windows is niri's second", other.window.id === 21,
             other.window.id);
         expect("its kitty from its record's terminal",
