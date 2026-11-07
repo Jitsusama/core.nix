@@ -507,9 +507,12 @@ Item {
     // line's E492 or the act a landing's second Return does, stands until
     // the next one.
     property int keysTaken: 0
+    // The last of them, by name, as Vim writes it.
+    property string keyTaken: ""
 
     function modalKey(event: KeyEvent) {
         const key = named(event);
+        keyTaken = key;
         keysTaken += 1;
         woken();
         // A held key's repeats never answer it.
