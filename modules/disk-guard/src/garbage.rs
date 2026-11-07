@@ -310,10 +310,25 @@ const OUTPUT_LIMIT: usize = 256 << 20;
 /// and what each weighs and refers to, through `nix path-info`. With
 /// `idle`, at idle priority. A path that died since is found at the next
 /// listing; one that came alive is refused by Nix when it's deleted.
+///
+/// The listing asks for no experimental features. With content-addressed
+/// derivations on and `keep-outputs`, Nix parses and hashes every
+/// derivation the trace meets to look up its outputs' realisations: on 7
+/// November a store of 101,000 paths, none of them floating or impure,
+/// took 675 s of CPU to list that way and 137 s without. A floating
+/// output that only a realisation keeps is listed dead, and Nix, deleting
+/// with the machine's own settings, refuses it as alive.
 pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
     let store = nix.with_file_name("nix-store");
     let listed = ran(
-        &[store.as_os_str(), "--gc".as_ref(), "--print-dead".as_ref()],
+        &[
+            store.as_os_str(),
+            "--option".as_ref(),
+            "experimental-features".as_ref(),
+            "".as_ref(),
+            "--gc".as_ref(),
+            "--print-dead".as_ref(),
+        ],
         LIST_TIMEOUT,
         idle,
     )?;

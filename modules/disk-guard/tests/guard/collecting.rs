@@ -114,7 +114,7 @@ impl Store {
                    fi\n\
                    echo '1.0 GiB freed by hard-linking 3 files' >&2; exit 0\n\
                  fi\n\
-                 [ \"$*\" = '--gc --print-dead' ] || exit 9\n\
+                 [ \"$*\" = '{listing}' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
                  if [ -e {listed} ]; then while [ -e {slow_list} ]; do sleep 0.05; done; fi\n\
                  : > {listed}\n\
@@ -123,6 +123,7 @@ impl Store {
                    [ -e \"$p/alive\" ] && [ ! -e {stale} ] || echo \"$p\"\n\
                  done\n\
                  rm -f {stale}; exit 0\n",
+                listing = crate::garbage::LISTING,
                 log = log.display(),
                 store = root.join("store").display(),
                 linked = linked.display(),

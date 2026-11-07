@@ -116,7 +116,11 @@ or launchd, and [`home.nix`][2] the account's.
   large store takes a core for minutes. A listing that expired generations
   or found its batches stale brings another, though on a healthy disk not
   until the last has rested nine times its own length, a rest a restart
-  keeps, so listing takes at most a tenth of its time. It deletes them oldest first,
+  keeps, so listing takes at most a tenth of its time. It lists with no
+  experimental features, since content-addressed derivations made Nix parse
+  and hash every derivation it met, five times the CPU; one that only a
+  realisation keeps is listed dead, and Nix refuses it when it's deleted.
+  It deletes them oldest first,
   in a pass of their own once something has let some go. While the disk is healthy it keeps what
   was built in the last hour, up to 5% of the disk, unless a machine gives
   its own `garbage.keep` and `garbage.budget`. A path a running process
