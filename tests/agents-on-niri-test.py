@@ -270,6 +270,19 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
     # Its drawer gives its figures by gen_ai's names after what's known of it.
     figures = ["Model", "Context", "Last Turn", "Turns Today", "Tokens", "Cache"]
     shell.launcher_until(lambda shown: shown["drawer"]["facts"][-6:] == figures)
+    # Context alone draws a figure beside its value, Meter's stroke of how full.
+    shell.launcher_until(
+        lambda shown: (
+            {
+                fact: figure
+                for fact, figure in zip(
+                    shown["drawer"]["drawnFacts"], shown["drawer"]["figures"], strict=True
+                )
+                if figure
+            }
+            == {"Context": "stroke"}
+        )
+    )
 
 
 def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: Shell) -> None:

@@ -276,6 +276,16 @@ QtObject {
             failures.push(`the figures a day on: "${dayAfter}", not "${dayAfterWant}"`);
         if (SessionRow.figures(undefined, "2026-11-07", figureWords, id => id).length !== 0)
             failures.push("one with no usage had figures");
+        // Context alone carries a figure, Meter's stroke of how full, warning
+        // from 80%.
+        const drawnOf = given => SessionRow.figures(given, "2026-11-07", figureWords, id => id)
+            .filter(fact => fact.figure)
+            .map(fact => `${fact.label}:${fact.figure.shape}:${fact.figure.values}:`
+                + `${fact.figure.warn}`).join(" ");
+        const strokes = [drawnOf(usage),
+            drawnOf(Object.assign({}, usage, { context: { used: 168000, limit: 200000 } }))];
+        if (strokes.join(" | ") !== "context:stroke:0.71:false | context:stroke:0.84:true")
+            failures.push(`the drawer's strokes: "${strokes.join(" | ")}"`);
         // When a quest's session was last live: the harness's `at` where it
         // says one, else when a UUIDv7 id says it began, else never.
         const lives = [

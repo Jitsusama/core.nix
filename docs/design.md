@@ -1188,6 +1188,11 @@ works the same way everywhere.
   figures by OpenTelemetry's gen_ai names: Model, Context ("142k of
   200k"), Last Turn, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.
+  Context draws Meter's stroke of how full after its value, in warning
+  from 80%. A drawer's fact may carry a figure so, a stroke or Graph's
+  spark, on its value's baseline in the line's room alone: it moves no
+  value, gives way before the value where the line is short, and is no
+  line for the cursor.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,

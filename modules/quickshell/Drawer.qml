@@ -961,6 +961,21 @@ Floating {
             : Theme.level.figure.pointSize * drawer.scriptGrown
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
     }
+    // A fact's figure (the fact rows', below): Graph's ten braille cells at
+    // Figure, which Meter's stroke is as wide as so the two read as kin, and
+    // a capital at Figure, whose middle the stroke is centred on, as Meter's.
+    TextMetrics {
+        id: figureInk
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        text: String.fromCharCode(0x28ff).repeat(10)
+    }
+    TextMetrics {
+        id: figureCapital
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        text: "H"
+    }
     // The digits of a script that has its own, which a value may be
     // written in beside the figures' (VKCF3Z, 2026-11-05).
     readonly property var scriptDigits: ({
@@ -1119,6 +1134,14 @@ Floating {
                 under += 1;
         }
         return under;
+    }
+    // Each fact's figure as drawn: its shape where it shows, "" where it
+    // carries none or has given way, for the launcher to report.
+    function figuresDrawn() {
+        return Array.from({ length: factRows.count }, (_, at) => {
+            const row = factRows.itemAt(at);
+            return row && row.figureShown ? String(row.figure.shape ?? "") : "";
+        });
     }
     // The facts' rows drawn, each a fact row's item.
     function drawnRows() {
@@ -1978,6 +2001,68 @@ Floating {
                                 // column too, as every other value's do,
                                 // rather than at the plate's far edge.
                                 horizontalAlignment: Text.AlignLeft
+                            }
+
+                            // Its figure, where it carries one, drawn from
+                            // what it holds, never asked for: Meter's stroke
+                            // for a share, as Context's is, or Graph's spark
+                            // for a history, as Today's (VKCF3Z, 2026-11-07),
+                            // as `figure: { shape, values, warn }`. It
+                            // follows its value on the value's line, the
+                            // names' gap apart, only where it fits whole, so
+                            // it takes room on its own fact alone, gives way
+                            // before the value, and moves no value. It's no
+                            // line for the cursor, as a picture isn't.
+                            readonly property var figure: !heading && known
+                                ? modelData.figure ?? null : null
+                            readonly property real figureFrom: {
+                                const face = drawer.faceOf(modelData);
+                                void face.font;
+                                return valueFrom + (known ? face.advanceWidth(
+                                    drawer.unbroken(modelData.value)) : 0) + drawer.labelsGap;
+                            }
+                            // A spark keeps Graph's ten cells; a stroke,
+                            // having no letters, takes what room the line
+                            // leaves, up to as wide, and down to four of them.
+                            readonly property real figureRoom: width - figureFrom
+                            readonly property real figureWide: figure?.shape === "stroke"
+                                ? Math.min(figureInk.advanceWidth, figureRoom)
+                                : figureInk.advanceWidth
+                            readonly property bool figureShown: figure !== null
+                                && value.lineCount <= 1 && figureWide <= figureRoom
+                                && figureWide >= figureInk.advanceWidth * 0.4
+                            // The value's baseline, down from the fact's top.
+                            readonly property real valueBase: value.y + value.baselineOffset
+                            readonly property real share: Math.max(0, Math.min(1,
+                                Number(figure?.values?.[0] ?? 0) || 0))
+
+                            Graph {
+                                x: fact.figureFrom
+                                y: fact.valueBase - baselineOffset
+                                reading: fact.figureShown && fact.figure.shape === "spark"
+                                    ? fact.figure : null
+                                // In the values' ink, its newest a step
+                                // brighter, as a selected row's is.
+                                selected: true
+                            }
+
+                            // Meter's stroke: four hairlines, the edge's
+                            // track under the share, centred on the capitals
+                            // on whole pixels, the warning's where it warns.
+                            Rectangle {
+                                visible: fact.figureShown && fact.figure.shape === "stroke"
+                                x: Math.round(fact.figureFrom)
+                                width: Math.floor(fact.figureWide)
+                                height: 4 * Theme.border
+                                y: Math.round(fact.valueBase
+                                    - figureCapital.tightBoundingRect.height / 2 - height / 2)
+                                color: Theme.edge
+
+                                Rectangle {
+                                    width: parent.width * fact.share
+                                    height: parent.height
+                                    color: fact.figure?.warn === true ? Theme.warning : Theme.text
+                                }
                             }
                         }
                     }
