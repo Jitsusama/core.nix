@@ -617,10 +617,12 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.land()
-    shown = desktop.showing()
-    assert shown["selected"]["told"][:1] == ["\u21b5 go to"], shown
-    assert shown["selected"]["side"].endswith("listening"), shown
+    desktop.launcher_until(
+        lambda shown: (
+            shown["selected"]["told"][:1] == ["\u21b5 go to"]
+            and shown["selected"]["side"].endswith("listening")
+        )
+    )
     desktop.close_launcher()
     wakes_parked_orchestrator(desktop)
     desktop.as_account(
