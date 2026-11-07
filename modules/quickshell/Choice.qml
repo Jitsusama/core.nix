@@ -25,9 +25,8 @@
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Shapes
 import "Reading.js" as Reading
-import "MarkSize.js" as MarkSize
+import "Columns.js" as Columns
 
 Rectangle {
     id: row
@@ -59,7 +58,8 @@ Rectangle {
     // inset in from the row's left, and what's flush right an inset in from
     // its right, as the card's frame holds all its text (docs/design.md,
     // The Ladder).
-    readonly property real glyphColumn: Theme.level.name.pitch + Theme.space.rung.mark
+    readonly property real glyphColumn: Columns.across(0, 0, Columns.ofMark(Theme.level.name.pitch),
+        Theme.space.rung).text
     // How tall the name's capitals stand, which are centred in the row, and
     // its ground set round.
     readonly property real capitals: capitalsFace.tightBoundingRect.height
@@ -180,67 +180,21 @@ Rectangle {
             : "transparent"
     }
 
-    // The glyph's ink and the name's capitals as the faces draw them,
-    // measured as they load at many times their size and read back down,
-    // since a measure at the size drawn comes in whole pixels, a twelfth of
-    // a mark's height.
+    // What the row says at its right is measured as it loads at many times
+    // its size and read back down, since a measure at the size drawn comes
+    // in whole pixels.
     readonly property real fine: 8
-    TextMetrics {
-        id: markInk
-        text: row.glyph
-        font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize * row.fine
-    }
-    // Qt's tight measure of a glyph runs down to the baseline, so a mark
-    // standing above it, as the keyboard and people do, measures taller
-    // than its ink and centres high (VKCF3Z, 2026-11-05: a pixel at 1.5).
-    // Its top is true; its outline gives its height. Measuring the outline
-    // rather than Qt's box fixes that cause, where a size or offset tuned
-    // per glyph would only hide it until the next mark.
-    Shape {
-        id: markOutline
-        visible: false
-        ShapePath {
-            PathText {
-                text: row.glyph
-                font.family: Theme.level.figure.family
-                font.pointSize: Theme.level.figure.pointSize * row.fine
-            }
-        }
-    }
-    // The ink's height, its top and its middle, at the fine size.
-    readonly property real inkTall: markOutline.boundingRect.height > 0
-        ? Math.min(markOutline.boundingRect.height, markInk.tightBoundingRect.height)
-        : markInk.tightBoundingRect.height
-    readonly property real inkMiddle: markInk.tightBoundingRect.y + inkTall / 2
-    // Every mark at one optical size beside the type, whatever its shape,
-    // and never wider than its cell (MarkSize.js).
-    readonly property real markScale: MarkSize.scale(markInk.tightBoundingRect.width / fine,
-        inkTall / fine, Theme.level.figure.pointSize, Theme.level.name.pitch)
-    // Where the mark's ink centres, down from the row's top: on the name's
-    // capitals' middle, its baseline less half their height as drawn on
-    // this screen, whose pixels round them: measured at its own scale.
-    readonly property real markOn: (height + capitals) / 2
-        - capitalsDrawn.tightBoundingRect.height / ratio / 2
-    readonly property real ratio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-    TextMetrics {
-        id: capitalsDrawn
-        text: "H"
-        font.family: Theme.level.name.family
-        font.pointSize: Theme.level.name.pointSize * row.ratio
-    }
 
-    Text {
+    // Its glyph, on the name's capitals (Mark.qml), whose baseline is the
+    // row's middle less half the capitals.
+    Mark {
         x: Theme.space.rung.inset + row.indent
-        // Its ink's middle on the capitals'.
-        y: row.markOn - row.inkMiddle / row.fine * row.markScale - baselineOffset
+        line: (row.height + row.capitals) / 2
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph
         color: row.flashed && !row.swatch ? row.flashInk
             : row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
-        font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize * row.markScale
     }
 
     // Selected, a name too long for its room reads on (ReadsOn.qml), and

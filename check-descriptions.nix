@@ -955,6 +955,11 @@
   nothing-spells-a-mark = ''
     no module but the theme's spells a mark's code point instead of naming it
   '';
+  notices-stand-on-the-cards-columns = ''
+    a notice drawn on the one card, as the pop-up does and as the held list does with a gutter,
+    holds its ink the inset from the frame on every side, at 2 and at 1.5, with its mark centred
+    on the title's capitals and its text column moved by the gutter alone
+  '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
     left on, by name within each, and a group it doesn't know last

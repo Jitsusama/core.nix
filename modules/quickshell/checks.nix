@@ -599,6 +599,7 @@ onLinux {
       cards = [
         "HeldNotices.qml"
         "Launcher.qml"
+        "NoticeRow.qml"
         "Notifications.qml"
       ];
       surfaces = lib.fileset.toSource {
@@ -2747,6 +2748,8 @@ onLinux {
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
       cp ${./MarkSize.js} MarkSize.js
+      cp ${./Mark.qml} Mark.qml
+      cp ${./Columns.js} Columns.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${../../tests/graphs.qml} shell.qml
@@ -2776,6 +2779,40 @@ onLinux {
         touch $out
       '';
 
+  # A notice stands in its card's columns: drawn as the pop-up draws it and
+  # as the held list will, through the one card and row, at 2 and at 1.5,
+  # its ink stands the inset from the frame on every side, its mark centred
+  # on the title's capitals, and the two cards' text columns differ by the
+  # gutter alone, as tests/notice-columns.py reads the pictures back.
+  notices-stand-on-the-cards-columns =
+    let
+      machine = graphical.config;
+      measure = lib.getExe (pkgs.python3.withPackages (python: [ python.pillow ]));
+    in
+    pkgs.runCommandLocal "notices-stand-on-the-cards-columns" { } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      for scale in 2 1.5; do
+        mkdir at-$scale
+        cd at-$scale
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Floating.qml} Floating.qml
+        cp ${./Card.qml} Card.qml
+        cp ${./NoticeRow.qml} NoticeRow.qml
+        cp ${./Mark.qml} Mark.qml
+        cp ${./MarkSize.js} MarkSize.js
+        cp ${./Columns.js} Columns.js
+        cp ${./Signature.qml} Signature.qml
+        cp ${../../tests/notice-columns.qml} shell.qml
+        ${shellFolderLint}
+        QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
+        ${measure} ${../../tests/notice-columns.py} . said
+        cd ..
+      done
+      touch $out
+    '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
@@ -2798,6 +2835,8 @@ onLinux {
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
       cp ${./MarkSize.js} MarkSize.js
+      cp ${./Mark.qml} Mark.qml
+      cp ${./Columns.js} Columns.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
