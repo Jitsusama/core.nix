@@ -4145,7 +4145,9 @@ Scope {
 
     // A row of `from`'s, by its key, drawn as `row` from now until its source
     // makes it so, or left out where `row` is null. What's said if it never
-    // comes names the row as `name` and what was asked by `act`'s verb.
+    // comes names the row as `name` and what was asked by `act`'s verb. One
+    // whose outcome can't be foretold says when it's `done`, and one slower
+    // than a daemon how long it's waited for, `within` ms (Becoming.js).
     function becomes(from, key, row, said) {
         becomesAll(from, [{ key: key, row: row }], said);
     }
@@ -4156,9 +4158,11 @@ Scope {
             return;
         const now = Object.assign({}, becoming);
         const at = Date.now();
+        const how = Object.assign(typeof said.done === "function" ? { done: said.done } : {},
+            said.within > 0 ? { within: said.within } : {});
         for (const one of holds) {
-            now[one.key] = { key: one.key, from: from, row: one.row, name: said.name,
-                act: said.act, at: at };
+            now[one.key] = Object.assign({ key: one.key, from: from, row: one.row,
+                name: said.name, act: said.act, at: at }, how);
             Report.say(`becoming ${one.key}`);
         }
         becoming = now;

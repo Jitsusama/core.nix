@@ -119,12 +119,34 @@ Provider {
         // One parked is woken in its own window, never joined by a second.
         const resting = session && !ongoing
             ? Sessions.parked.find(one => one.address === session.address) : undefined;
-        if (ongoing)
+        if (ongoing) {
             Sessions.goTo(ongoing);
-        else if (resting)
+        } else if (resting) {
+            starting(quest, "wake");
             Sessions.wake(resting);
-        else
+        } else {
+            starting(quest, "start");
             Sessions.start(quest.id, quest.folder);
+        }
+    }
+
+    // A quest woken or started on reads from this key's frame as it will once
+    // its session is up, which Return then goes to, until it is: a second
+    // Return while pi still loads went on to start a second session (Joel,
+    // 2026-11-07: "it should show right away").
+    function starting(quest, act) {
+        const up = () => Sessions.running.find(session => session.presence?.quest === quest.id);
+        provider.becomes(`quest:${quest.id}`, {
+            verb: Words.verb("verb:quest:switch"),
+            run: () => {
+                const session = up();
+                if (session)
+                    Sessions.goTo(session);
+            }
+        }, quest.title || quest.id, act, {
+            done: () => up() !== undefined,
+            within: Sessions.startsWithin
+        });
     }
 
     function made(quest) {
@@ -206,7 +228,10 @@ Provider {
                 glyph: Words.glyph("verb:quest:orchestrate"),
                 hue: "action",
                 later: true,
-                run: () => Sessions.start(quest.id, quest.folder, true)
+                run: () => {
+                    provider.starting(quest, "start");
+                    Sessions.start(quest.id, quest.folder, true);
+                }
             }) : null;
         return [thing({
             key: first,
@@ -245,7 +270,10 @@ Provider {
             note: one.cannot || one.rather || (one.name === Sessions.machine ? "this machine" : ""),
             gone: one.cannot !== "",
             later: true,
-            run: () => Sessions.startOn(one.name, quest.id, quest.folder)
+            run: () => {
+                provider.starting(quest, "start");
+                Sessions.startOn(one.name, quest.id, quest.folder);
+            }
         });
         const anywhere = thing({
             key: `quest:${quest.id}:start:anywhere`,
@@ -256,7 +284,10 @@ Provider {
             note: Sessions.fits !== "" ? `on ${Sessions.fits}` : "no machine can take one now",
             gone: Sessions.fits === "",
             later: true,
-            run: () => Sessions.startOn("", quest.id, quest.folder)
+            run: () => {
+                provider.starting(quest, "start");
+                Sessions.startOn("", quest.id, quest.folder);
+            }
         });
         return Sessions.places.map(on).concat([anywhere]);
     }

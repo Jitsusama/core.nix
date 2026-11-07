@@ -104,7 +104,7 @@ Provider {
             note: one.title ?? "",
             depth: 0,
             verb: Words.verb("verb:orchestrator:reopen"),
-            run: () => orchestrators.start(one),
+            run: () => provider.reopenNow(one, orchestrators),
             verbs: () => provider.closedActs(one, orchestrators)
         });
         if (gone !== null)
@@ -131,7 +131,8 @@ Provider {
             run: run
         });
         const gone = orchestrators.goneFrom(one);
-        const first = gone === null ? [act("reopen", () => orchestrators.start(one))]
+        const reopen = () => provider.reopenNow(one, orchestrators);
+        const first = gone === null ? [act("reopen", reopen)]
             : gone.afresh ? [act("afresh", gone.afresh)] : [];
         return first.concat(orchestrators.talksOf(one.address));
     }
@@ -410,6 +411,57 @@ Provider {
         return !!(session.window || session.kitty || (!session.here && session.attach));
     }
 
+    // Wakes a parked session, its row reading as listening from this key's
+    // frame (Joel, 2026-11-07: "it should show right away") until it's
+    // parked no more, however it comes back, listening or at work.
+    function wakeNow(session) {
+        const key = `agent:${session.address}`;
+        const id = String(session.presence?.session ?? "");
+        const asleep = word("parked");
+        const awake = word("listening");
+        const now = all.find(row => row.key === key);
+        const items = now ? now.sideItems.map(item => (item.said === asleep
+            ? Object.assign({}, item, { said: awake }) : item))
+            : SessionRow.side(awake, "");
+        const full = SessionRow.full(session.presence?.usage, Words.of("agents").said ?? {});
+        provider.becomes(key, {
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items,
+            hue: SessionRow.hue("listening", full !== "")
+        }, session.title, "wake", {
+            done: () => !Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
+            within: Sessions.startsWithin
+        });
+        Sessions.wake(session);
+    }
+
+    // Reopens a closed orchestrator, its row reading as listening until its
+    // session is up, so Return on it then goes to that session rather than
+    // starting a second while the first is still loading. One with no
+    // session to resume starts afresh on its quest, under a new address;
+    // one up and parked since is up too.
+    function reopenNow(one, orchestrators) {
+        const its = session => session.address === one.address
+            || (!!one.quest && session.presence?.quest === one.quest);
+        const up = () => Sessions.running.find(its);
+        const awake = word("listening");
+        provider.becomes(`orchestrator:${one.address}`, {
+            side: awake,
+            sideItems: [{ said: awake, keep: 3 }],
+            hue: SessionRow.hue("listening", false),
+            verb: Words.verb("verb:agent:switch"),
+            run: () => {
+                const session = up();
+                if (session)
+                    Sessions.goTo(session);
+            }
+        }, one.short || one.title || one.address, "reopen", {
+            done: () => up() !== undefined || Sessions.parked.some(its),
+            within: Sessions.startsWithin
+        });
+        orchestrators.start(one);
+    }
+
     // One of a session's acts, by its id in SessionRow.js's acts.
     function sessionAct(session, id) {
         const act = (id, fields) => thing(Object.assign({
@@ -432,7 +484,9 @@ Provider {
                             ?.replace("{name}", session.title) ?? "";
                 }
             }),
-            wake: () => act("wake", { run: () => Sessions.wake(session) }),
+            // Wake keeps the launcher, its row reading as it will be at once,
+            // since the session wakes in its own window without the focus.
+            wake: () => act("wake", { stays: true, run: () => provider.wakeNow(session) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
             // Stop ends the turn under way, which nothing puts back, so it's

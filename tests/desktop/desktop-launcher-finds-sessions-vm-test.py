@@ -612,12 +612,15 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     assert said[1:] == ["--session", "01a1-lighthouse", ""], said
     # Reopening one takes Joel to it, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
-    # Found from anywhere by its name, its row says the same, Reopen its Return.
+    # Found again while its pi still loads, its row reads as it will once it's up, and
+    # Return goes to it rather than starting a second.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     desktop.land()
-    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
+    shown = desktop.showing()
+    assert shown["selected"]["told"][:1] == ["\u21b5 go to"], shown
+    assert shown["selected"]["side"].endswith("listening"), shown
     desktop.close_launcher()
     wakes_parked_orchestrator(desktop)
     desktop.as_account(
@@ -677,7 +680,16 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     machine.wait_until_succeeds(
         desktop.in_session('grep -q \'"session":"s-testqa"\' "$XDG_RUNTIME_DIR/testqa.wake"')
     )
-    desktop.launcher_until(lambda shown: not shown["open"])
+    # It wakes in its own window, so the launcher stays, its row reading as it will be
+    # from the key's own frame, though its record still says it's parked until pi is up.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and (shown["selected"] or {}).get("name") == "Lighthouse"
+            and shown["selected"]["side"].endswith("listening")
+        )
+    )
+    desktop.close_launcher()
     desktop.as_account(f"rm -rf {parked} {PI_PRESENCE}/testqa.json $XDG_RUNTIME_DIR/testqa.wake")
 
 
