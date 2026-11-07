@@ -256,10 +256,14 @@ def the_disk(machine: QemuMachine) -> str:
     pytest.fail(f"QEMU named no drive on empty0.qcow2: {said}")
 
 
+def read_in(path: Path, ink: bytes) -> str:
+    """Give the words a photograph shows in ink's colour, as OCR reads them."""
+    return perform_ocr_on_screenshot(Picture.read(path).words(ink, path.with_suffix(".pgm")))
+
+
 def says(path: Path, words: str, ink: bytes) -> bool:
     """Whether a photograph shows words in ink's colour."""
-    read = Picture.read(path).words(ink, path.with_suffix(".pgm"))
-    return re.search(words, perform_ocr_on_screenshot(read)) is not None
+    return re.search(words, read_in(path, ink)) is not None
 
 
 def shown(machine: QemuMachine, words: str, ink: bytes) -> bool:
@@ -353,8 +357,9 @@ def test_the_screen_says_it_restores_while_the_image_is_read(
     assert reading, f"none of {len(restored.shots)} photographs was taken as the image was read"
     middle = reading[len(reading) // 2]
     for shot in dict.fromkeys([reading[0], middle, reading[-1]]):
-        assert says(shot.path, RESTORING, colour(values["words"])), (
-            f"photograph {shot.path.name}, taken as it read, doesn't"
+        read = read_in(shot.path, colour(values["words"]))
+        assert re.search(RESTORING, read), (
+            f"photograph {shot.path.name}, taken as it read, says only {read!r}"
         )
     kept(restored.machine, middle.path, "restoring")
 
