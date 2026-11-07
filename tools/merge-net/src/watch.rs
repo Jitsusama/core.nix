@@ -244,12 +244,14 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
 }
 
 /// Run each check at `commit`, `AT_ONCE` at a time, and give each outcome
-/// in the order asked.
+/// in the order asked. `then` hears each outcome the moment its check
+/// ends, on the thread that ran it, while the others still run.
 pub fn attempt_all(
     world: &dyn World,
     state: &State,
     commit: &str,
     checks: &[String],
+    then: &(dyn Fn(&str, Outcome) + Sync),
 ) -> Vec<Outcome> {
     let next = Mutex::new(0_usize);
     let outcomes = Mutex::new(vec![Outcome::Unsent; checks.len()]);
@@ -272,6 +274,7 @@ pub fn attempt_all(
                         continue;
                     }
                     let outcome = attempt(world, state, commit, check);
+                    then(check, outcome);
                     outcomes
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)[index] = outcome;
@@ -634,10 +637,19 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         .into_iter()
         .filter(|test| Some(test) != pending.as_ref())
         .collect();
-    let outcomes = attempt_all(world, state, &head, &tests);
     let quarantined = world.quarantined(&head);
     let on_hold = |test: &str| hold.as_ref().is_some_and(|hold| hold["test"] == test);
     let owner_in = |test: &str| owner_of(world, &base, &head, test, &tests);
+    let breaking = Breaking {
+        world,
+        state,
+        base: &base,
+        head: &head,
+        left_be: |test: &str| quarantined.iter().any(|kept| kept == test) || on_hold(test),
+        done: Mutex::new(Ok(())),
+    };
+    let outcomes = attempt_all(world, state, &head, &tests, &|test, ran| breaking.heard(test, ran));
+    breaking.done()?;
     let mut failed = false;
     let mut unfinished = false;
     for (test, outcome) in tests.iter().zip(outcomes) {
@@ -678,13 +690,8 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                     "at": now(),
                 }))?;
             }
-            Outcome::Failed => {
-                failed = true;
-                if on_hold(test) {
-                    continue;
-                }
-                broke(world, state, &base, &head, test)?;
-            }
+            // Its merge was found as it failed, above.
+            Outcome::Failed => failed = true,
             Outcome::Unsent => unfinished = true,
             // A test that stalls twice at the head is held like one that
             // fails there, so it runs again only once its inputs change,
@@ -709,6 +716,43 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     state.set_heads(&head, &head)?;
     state.say(&format!("{} passed every VM test it changed", short(&head)));
     Ok(Round::Passed(head))
+}
+
+/// A test that fails for real has its merge found and reverted the moment
+/// it does, while the round's other tests still run. On 7 November
+/// vm-checks-go-first failed twice at 12:46, but the search for its merge
+/// waited 34 minutes behind the round's slower desktop tests, and main
+/// stayed broken 113 minutes in all. One merge is looked for at a time,
+/// since each writes the hold, and the first error stops the rest.
+struct Breaking<'a, F> {
+    world: &'a dyn World,
+    state: &'a State,
+    base: &'a str,
+    head: &'a str,
+    /// Tests whose failure reverts nothing: quarantined, or already held.
+    left_be: F,
+    done: Mutex<Result<(), String>>,
+}
+
+impl<F: Fn(&str) -> bool> Breaking<'_, F> {
+    fn heard(&self, test: &str, outcome: Outcome) {
+        if outcome != Outcome::Failed || (self.left_be)(test) {
+            return;
+        }
+        let mut done = self
+            .done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if done.is_ok() {
+            *done = broke(self.world, self.state, self.base, self.head, test);
+        }
+    }
+
+    fn done(self) -> Result<(), String> {
+        self.done
+            .into_inner()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 /// Run a test held with no revert at the new head before anything else, and
@@ -852,6 +896,8 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::fs;
+    use std::sync::Condvar;
+    use std::time::Duration;
 
     /// The exit the stand-in gives for a run stopped before it ended.
     const STALL: i32 = -1;
@@ -873,6 +919,11 @@ mod tests {
         still: Vec<(String, String)>,
         quarantined: Vec<String>,
         reverted: Mutex<Vec<String>>,
+        /// Checks whose runs end only once a merge is reverted, or after a
+        /// while without one, when they're put in `waited_out`.
+        after_revert: Vec<String>,
+        revert_seen: Condvar,
+        waited_out: Mutex<Vec<String>>,
         put_in_quarantine: Mutex<Vec<String>>,
         held: Option<String>,
     }
@@ -933,6 +984,19 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((commit.to_owned(), check.to_owned()));
+            if self.after_revert.iter().any(|waits| waits == check) {
+                let reverted = self.reverted.lock().unwrap();
+                let (reverted, waited) = self
+                    .revert_seen
+                    .wait_timeout_while(reverted, Duration::from_secs(10), |reverted| {
+                        reverted.is_empty()
+                    })
+                    .unwrap();
+                drop(reverted);
+                if waited.timed_out() {
+                    self.waited_out.lock().unwrap().push(check.to_owned());
+                }
+            }
             let mut exits = self.exits.lock().unwrap();
             let left = exits
                 .entry((commit.to_owned(), check.to_owned()))
@@ -949,6 +1013,7 @@ mod tests {
         }
         fn revert(&self, bad: &Bad) -> Result<Merged, String> {
             self.reverted.lock().unwrap().push(bad.commit.clone());
+            self.revert_seen.notify_all();
             Ok(Merged {
                 pr: 9,
                 commit: Some("revert".to_owned()),
@@ -1170,6 +1235,28 @@ mod tests {
             round(&world, &state, "s").unwrap(),
             Round::Idle,
             "a head is failed once"
+        );
+    }
+
+    #[test]
+    fn a_test_that_fails_is_reverted_while_the_round_s_others_still_run() {
+        let state = state("reverts-at-once");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a vm-slow"),
+            after_revert: names("vm-slow"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "the slow test was still running when its round reverted the merge"
         );
     }
 

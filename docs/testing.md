@@ -149,7 +149,8 @@ The rest run after the merge, on the net: `merge-net watch`, which
 `modules/merge-net` runs as a daemon, follows main and runs each VM test
 a head changed since the last head it passed, on the VM builders, twelve
 at once. A test that fails twice at one commit is broken: the net finds
-which merge broke it, checks that the merge changed the test and that the
+which merge broke it the moment it does, while the round's other tests
+run on, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, reverts it through a PR merged on its own checks, and
 writes a finding for its owner in `~/.local/state/net/findings`. A check
