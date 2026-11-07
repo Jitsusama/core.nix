@@ -281,6 +281,15 @@ onLinux {
     given = [ "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}" ];
   };
 
+  # The launcher, the held notices and a window share the keys by one rule:
+  # the newest Joel opened takes them, a notice arriving never does, and a
+  # click on a window gives it them (tests/focus-on-niri-test.py).
+  the-newest-surface-takes-the-keys-on-niri = launcherOnNiri {
+    name = "the-newest-surface-takes-the-keys-on-niri";
+    tests = ../../tests/focus-on-niri-test.py;
+    given = [ "WLRCTL=${lib.getExe pkgs.wlrctl}" ];
+  };
+
   # A switch restarts Quickshell when any file it reads changes, so the shell
   # on screen is never the one from before the switch.
   quickshell-restarts-with-its-files =

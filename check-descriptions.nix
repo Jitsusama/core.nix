@@ -1583,6 +1583,12 @@
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
     figures and its parts' heat answer
   '';
+  the-newest-surface-takes-the-keys-on-niri = ''
+    on niri, the launcher opened over held notices takes the keys and gives them back as it
+    closes; held notices take them from the open launcher and give them back, and a notice
+    arriving never takes them; and a click on a window gives that window the keys, leaving the
+    launcher open without them
+  '';
   an-agents-return-does-its-harmless-act-on-niri = ''
     on the account's whole shell on niri, its sessions the realm's mycelium node's, a listening
     agent's Return asks what to say to it and a paused one's lands on Resume, which a second
