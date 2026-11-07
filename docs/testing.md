@@ -161,8 +161,8 @@ that didn't exist before it, as when a split moves a failing case under a
 new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
 code broke it. So is one that passes at main's newest head, since a fix
-forward has landed: the net asks before it searches, and skips the search,
-and again before it reverts. One that
+forward has landed: the net asks beside the search's first step, stops the
+search if it was, and asks again before it reverts. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
