@@ -13,8 +13,8 @@ onLinux {
   # The feed's tests run as it builds, against recorded sign-ins and answers:
   # a plan's windows are caps of a share, labelled for the plan, as the
   # contract example beside them says; a window the plan lacks or that has
-  # rolled isn't said; nothing signed in is no fault, an expired sign-in
-  # stalls without asking, and an answer with nothing usable is an error;
+  # rolled isn't said; nothing signed in is no fault, an expired sign-in is
+  # a plan not in use and fine, and an answer with nothing usable is an error;
   # and it reads at spend-watch's pace, backing off while the endpoint fails
   # or asks it to wait.
   claude-plan-feed-says-how-the-plan-stands = pkgs.callPackage ./package.nix { };
