@@ -1901,12 +1901,15 @@ Floating {
                             // line, measured in the face it's drawn in: a
                             // laid-out text can't tell, since a word too wide
                             // for its line runs past the edge on that one.
+                            // A fact with a figure needs the figure's least
+                            // room after it too, or it's laid under its name
+                            // as a long value is, so the figure stays whole.
                             readonly property bool fitsBeside: {
                                 const face = drawer.faceOf(modelData);
                                 void face.font;
                                 return !known || face.advanceWidth(drawer.unbroken(
-                                    modelData.value)) <= width - drawer.labelsWide
-                                    - drawer.labelsGap;
+                                    modelData.value)) + figureLeast <= width
+                                    - drawer.labelsWide - drawer.labelsGap;
                             }
                             readonly property bool under: !drawer.listsKeys
                                 && (!nameFits || !fitsBeside)
@@ -2008,10 +2011,11 @@ Floating {
                             // for a share, as Context's is, or Graph's spark
                             // for a history, as Today's (VKCF3Z, 2026-11-07),
                             // as `figure: { shape, values, warn }`. It
-                            // follows its value on the value's line, only
-                            // where it fits, so
-                            // it takes room on its own fact alone, gives way
-                            // before the value, and moves no value. It's no
+                            // follows its value on the value's line; where it
+                            // won't fit beside the name, the fact is laid
+                            // under its name, as a long value is, and where it
+                            // still won't, it gives way before the value. It
+                            // moves no other fact's value aside, and is no
                             // line for the cursor, as a picture isn't.
                             readonly property var figure: !heading && known
                                 ? modelData.figure ?? null : null
@@ -2033,9 +2037,12 @@ Floating {
                             readonly property real figureWide: figure?.shape === "stroke"
                                 ? Math.min(figureInk.advanceWidth, figureRoom)
                                 : figureInk.advanceWidth
+                            readonly property real figureLeast: figure === null ? 0
+                                : Theme.space.rung.apart + figureInk.advanceWidth
+                                    * (figure.shape === "stroke" ? 0.3 : 1)
                             readonly property bool figureShown: figure !== null
                                 && value.lineCount <= 1 && figureWide <= figureRoom
-                                && figureWide >= figureInk.advanceWidth * 0.3
+                                && figureWide + Theme.space.rung.apart >= figureLeast
                             // The value's baseline, down from the fact's top.
                             readonly property real valueBase: value.y + value.baselineOffset
                             readonly property real share: Math.max(0, Math.min(1,
