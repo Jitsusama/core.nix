@@ -250,6 +250,31 @@ QtObject {
             true);
         expect("no want is none", Waiting.asksJoel({ wants: null }, by), false);
 
+        // One ask, one notice: Needs You says an action's item itself.
+        expect("an action is Needs You's to say",
+            Waiting.saidByNeedsYou({ kind: "action" }), true);
+        expect("a question, a yes and a stuck run are the session's",
+            ["question", "approval", "blocked"].map(kind =>
+                Waiting.saidByNeedsYou({ kind: kind })), [false, false, false]);
+        expect("as is no want", Waiting.saidByNeedsYou(null), false);
+
+        // A want is who it is, whatever its words say as they count up.
+        const since = "2026-11-06T21:00:00.000Z";
+        expect("a want reworded is the same want",
+            Waiting.wantKey("8IDU4E", { kind: "approval", since, said: "Holds 2 calls" }),
+            Waiting.wantKey("8IDU4E", { kind: "approval", since, said: "Holds 3 calls" }));
+        expect("one raised again later is another",
+            Waiting.wantKey("8IDU4E", { kind: "approval", since }) === Waiting.wantKey(
+                "8IDU4E", { kind: "approval", since: "2026-11-06T21:05:00.000Z" }), false);
+        expect("as is another kind begun at once",
+            Waiting.wantKey("8IDU4E", { kind: "approval", since }) === Waiting.wantKey(
+                "8IDU4E", { kind: "question", since }), false);
+        expect("the harness's own id comes first",
+            Waiting.wantKey("8IDU4E", { id: "approval-1", since }), "8IDU4E approval-1");
+        expect("its words only when it gives no start",
+            Waiting.wantKey("8IDU4E", { kind: "question", said: "Push it?" }),
+            "8IDU4E question Push it?");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

@@ -841,16 +841,37 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 
 
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
-    """A session wanting Joel to do one of its items is in Needs You once, as the item."""
+    """A session wanting Joel to do one of its items is in Needs You once, as the item.
+
+    And it's said once, by Needs You's notice: the session's own notice for the same thing
+    put two up in the same second (2026-11-06).
+    """
     desktop.pi_session()
+    # From another window, so the session's notices aren't passed over.
+    desktop.as_account(
+        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
+    )
     asked = f"{MISSION}/waiting/TESTQA.json"
     desktop.as_account(f"mkdir -p {MISSION}/waiting")
-    kept(desktop, asked, {"items": [{"id": "sign", "title": "Sign the Form", "ready": True}]})
+    begun = desktop.mark()
+    with desktop.told("shows card Sign the Form"):
+        kept(desktop, asked, {"items": [{"id": "sign", "title": "Sign the Form", "ready": True}]})
     since = desktop.machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
     # The session's presence mirrors the item as an action it wants.
     action = {"kind": "action", "since": since, "said": "Sign the Form"}
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
     try:
+        # A question after it is the session's to say, so once its card shows, the
+        # action's would have shown before it.
+        question = {"kind": "question", "since": since, "said": "Which way now?"}
+        with desktop.told("shows card A quest of its own & whole asks you"):
+            desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+        cards = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(begun)} | grep -o 'report\\[shows card [^]]*'"
+        ).splitlines()
+        assert cards.count("report[shows card A quest of its own & whole asks you") == 1, cards
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
         desktop.launcher_until(

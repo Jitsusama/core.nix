@@ -1600,15 +1600,19 @@ Singleton {
     // home.nix), unless
     // Joel is in that window already, and one that stood before the shell
     // began isn't, since the margin's mark says it. Each is known by its
-    // session, when it began and what it said, and kept known: a presence
+    // session and its want's own id or start (Waiting.wantKey), never by
+    // its words, so one rewording itself isn't said again. It's kept
+    // known: a presence
     // file replaced by rename leaves its folder for a moment, which would
     // otherwise make a want that never ended look new. Its notice carries
     // that key, and is withdrawn once the want ends or its session goes.
+    // An action is Needs You's to say (Waiting.saidByNeedsYou), so it
+    // only sounds here.
     readonly property real began: Date.now()
     property var told: ({})
     function key(session) {
         const wants = session.presence.wants;
-        return `${session.address} ${wants.since ?? ""} ${wants.said ?? ""}`;
+        return Waiting.wantKey(session.address, session.presence.wants);
     }
     onWantingChanged: {
         withdrawing.restart();
@@ -1621,9 +1625,10 @@ Singleton {
             const window = session.window ? String(session.window.id) : "";
             if (window === String(Niri.current) || (since < began))
                 continue;
-            Niri.spawn(["pi-wants-you", session.address, known,
-                `${session.title} ${wanted(session.presence.wants)}`,
-                plain(session.presence.wants.said ?? "")]);
+            if (!Waiting.saidByNeedsYou(session.presence.wants))
+                Niri.spawn(["pi-wants-you", session.address, known,
+                    `${session.title} ${wanted(session.presence.wants)}`,
+                    plain(session.presence.wants.said ?? "")]);
             // Softly, and never while notices are held.
             if (Options.sounds.wants !== "" && !Quiet.on)
                 Niri.spawn([Options.sounds.player, "--volume=0.5", Options.sounds.wants]);

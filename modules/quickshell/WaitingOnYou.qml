@@ -222,12 +222,18 @@ Singleton {
     }
 
     // A notice offering to go where it's done, which notify-send prints
-    // when Joel takes it. It's named by what's asked, its minutes below,
-    // and its sender says it waits on him: named "Waiting on you", the
-    // notices kept since were a second thing of that name beside Now's row.
-    function minutes(item) {
-        const said = (Words.of("on:waiting").said ?? {}).minutes ?? "{minutes} min";
-        return typeof item.minutes === "number" ? said.replace("{minutes}", item.minutes) : "";
+    // when Joel takes it. It's named by what's asked, its minutes and its
+    // quest below, and its sender says it waits on him: named "Waiting on
+    // you", the notices kept since were a second thing of that name beside
+    // Now's row. It's the only notice of an action, which its session no
+    // longer says too (Waiting.saidByNeedsYou), so the quest it's for is
+    // said here, as plain text, since a body is read as markup.
+    function told(item) {
+        const said = Words.of("on:waiting").said ?? {};
+        const minutes = typeof item.minutes === "number"
+            ? (said.minutes ?? "{minutes} min").replace("{minutes}", item.minutes) : "";
+        return [minutes, questOf(item)].filter(part => part !== "").join(" \u00b7 ")
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     Component {
@@ -242,7 +248,7 @@ Singleton {
             command: item === null ? [] : ["notify-send", "--app-name=waiting",
                 `--action=go=${Words.name("verb:on:waiting:go")}`,
                 `--hint=string:x-waiting:${root.identity(item)}`,
-                item.title, root.minutes(item)]
+                item.title, root.told(item)]
             stdout: SplitParser {
                 onRead: line => {
                     if (line.trim() === "go")
