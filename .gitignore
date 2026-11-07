@@ -1,6 +1,7 @@
 vendor/
 .claude/settings.local.json
 result
+result-*
 .direnv/
 target/
 .mypy_cache/
