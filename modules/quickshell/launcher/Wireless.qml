@@ -60,7 +60,7 @@ Provider {
         // an option already set, so a word from wifid still on its way never
         // keeps :set nowifi from turning it off.
         if (typeof to === "boolean") {
-            Wifi.turn(to);
+            provider.turn(to);
             return "";
         }
         if (!Wifi.isSaved(to))
@@ -85,19 +85,76 @@ Provider {
         onTriggered: Wifi.scan()
     }
 
-    readonly property var radio: thing({
-        key: "wifi:radio",
-        // An act, not a network, so it says no kind (docs/design.md).
-        what: "",
-        verb: Words.verb("wifi:radio", on ? "" : "off"),
-        name: Words.name("wifi:radio", on ? "" : "off"),
-        glyph: Words.glyph("wifi:radio", on ? "" : "off"),
-        // Its words' state, so the : line names the command for it.
-        wordState: on ? "" : "off",
-        hue: "machine",
-        stays: true,
-        run: () => Wifi.turn(!provider.on)
-    })
+    readonly property var radio: radioRow(on)
+
+    // Wi-Fi Off while the radio's on, as it is, or as it will be once
+    // turned.
+    function radioRow(lit) {
+        return thing({
+            key: "wifi:radio",
+            // An act, not a network, so it says no kind (docs/design.md).
+            what: "",
+            verb: Words.verb("wifi:radio", lit ? "" : "off"),
+            name: Words.name("wifi:radio", lit ? "" : "off"),
+            glyph: Words.glyph("wifi:radio", lit ? "" : "off"),
+            // Its words' state, so the : line names the command for it.
+            wordState: lit ? "" : "off",
+            hue: "machine",
+            stays: true,
+            run: () => provider.turn(!lit)
+        });
+    }
+
+    // What wifid is asked, each row it changes drawn as it will be until
+    // wifid says so, and put back if it won't (launcher/Becoming.js).
+    function turn(lit) {
+        becomes("wifi:radio", radioRow(lit), provider.what, lit ? "on" : "off");
+        Wifi.turn(lit, (_, refused) => provider.refused("wifi:radio", why(refused)));
+    }
+
+    function leave(network) {
+        const key = `wifi:${network.name}`;
+        becomes(key, made(Object.assign({}, network, { connected: false })), network.name,
+            "disconnect");
+        // Inside the network, Disconnect It goes, as it will once it's left.
+        becomes("verb:wifi-leave", null, network.name, "disconnect");
+        Wifi.leave(network.name, (_, refused) => {
+            for (const each of [key, "verb:wifi-leave"])
+                provider.refused(each, why(refused));
+        });
+    }
+
+    function trust(network, trusted) {
+        becomes("verb:wifi-trust", trustRow(Object.assign({}, network, { trusted: trusted })),
+            network.name, trusted ? "trust" : "distrust");
+        Wifi.trust(network.name, trusted,
+            (_, refused) => provider.refused("verb:wifi-trust", why(refused)));
+    }
+
+    // Forgotten, the network is one never met, and what only a network saved
+    // can have done to it goes.
+    function forget(network) {
+        const key = `wifi:${network.name}`;
+        becomes(key, made(Object.assign({}, network, { known: false, trusted: false })),
+            network.name, "forget");
+        becomes("verb:wifi-trust", null, network.name, "forget");
+        becomes("verb:wifi-forget", null, network.name, "forget");
+        Wifi.forget(network.name, (_, refused) => {
+            for (const each of [key, "verb:wifi-trust", "verb:wifi-forget"])
+                provider.refused(each, why(refused));
+        });
+    }
+
+    // Why wifid wouldn't, in the foot's words, or "" where it did.
+    function why(refused) {
+        if (refused === "")
+            return "";
+        return {
+            NotJoined: "not connected",
+            NotSaved: "not saved",
+            Declared: "nix keeps it"
+        }[refused] ?? "wifid couldn't";
+    }
 
     things: !present ? [] : SignIn.network !== "" ? [signIn, radio] : [radio]
 
@@ -286,7 +343,7 @@ Provider {
                     kind: "switch",
                     now: () => network.trusted,
                     set: to => {
-                        Wifi.trust(network.name, to);
+                        provider.trust(network, to);
                         return "";
                     }
                 }
@@ -300,7 +357,7 @@ Provider {
             chip: network.name,
             given: asks ? password => provider.join(network, password)
                 : opening ? opening.given : null,
-            run: signing ? () => SignIn.open() : joined ? () => Wifi.leave(network.name)
+            run: signing ? () => SignIn.open() : joined ? () => provider.leave(network)
                 : () => provider.join(network),
             verbs: () => provider.verbs(network, locked),
             // Joined, its Return disconnects, which Return typed in insert
@@ -812,6 +869,17 @@ Provider {
         });
     }
 
+    // Trust It, as the network is trusted now, or will be.
+    function trustRow(network) {
+        return thing(act("wifi-trust", network.trusted ? "trusted" : "", {
+            note: network.trusted ? "this machine stops finding others on it, and they it"
+                : "this machine finds others on it, and they it",
+            glyph: Theme.glyph.trust,
+            stays: true,
+            run: () => provider.trust(network, !network.trusted)
+        }));
+    }
+
     function verbs(network, locked) {
         const rows = [];
         // A sign-in is what's next while the network wants one.
@@ -827,7 +895,7 @@ Provider {
             rows.push(thing(act("wifi-leave", "", {
                 glyph: Theme.glyph.offline,
                 stays: true,
-                run: () => Wifi.leave(network.name),
+                run: () => provider.leave(network),
                 undo: () => provider.join(network)
             })));
         else if (network.known || !locked.locked || locked.password)
@@ -855,17 +923,11 @@ Provider {
                         chip: "account"
                     }), { key: `verb:wifi-account-${method}` })));
         if (network.known && !network.declared) {
-            rows.push(thing(act("wifi-trust", network.trusted ? "trusted" : "", {
-                note: network.trusted ? "this machine stops finding others on it, and they it"
-                    : "this machine finds others on it, and they it",
-                glyph: Theme.glyph.trust,
-                stays: true,
-                run: () => Wifi.trust(network.name, !network.trusted)
-            })));
+            rows.push(trustRow(network));
             rows.push(thing(act("wifi-forget", "", {
                 glyph: Theme.glyph.forget,
                 stays: true,
-                run: () => Wifi.forget(network.name)
+                run: () => provider.forget(network)
             })));
         }
         return rows.concat(facts(network));

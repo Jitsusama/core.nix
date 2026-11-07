@@ -35,12 +35,30 @@ Provider {
         }, fields));
     }
 
-    readonly property var awake: said("session:awake", Caffeinate.on ? "on" : "", {
-        side: !Caffeinate.on ? "" : Caffeinate.lidShutToo ? "awake, lid shut too" : "awake while open",
-        hue: "machine",
-        stays: true,
-        run: () => Caffeinate.on ? Caffeinate.release() : Caffeinate.keep()
-    })
+    readonly property var awake: awakeRow(Caffeinate.on, Caffeinate.lidShutToo)
+
+    // Keep Awake as it stands, or as it will once systemd has started or
+    // stopped what keeps it so: kept, a shut lid goes on too wherever the
+    // machine's on the charger (Caffeinate.qml).
+    function awakeRow(kept, lidToo) {
+        return said("session:awake", kept ? "on" : "", {
+            side: !kept ? "" : lidToo ? "awake, lid shut too" : "awake while open",
+            hue: "machine",
+            stays: true,
+            run: () => provider.keepAwake(!kept)
+        });
+    }
+
+    // Its row says so at once, until the services' files say so too
+    // (launcher/Becoming.js).
+    function keepAwake(kept) {
+        becomes("session:awake", awakeRow(kept, Caffeinate.plugged), Words.name("session:awake"),
+            kept ? "on" : "off");
+        if (kept)
+            Caffeinate.keep();
+        else
+            Caffeinate.release();
+    }
 
     // The session's options, each named as VKCF3Z named it (2026-11-05).
     // :set dnd holds notices until it's ended, as an option stays on until
@@ -77,9 +95,9 @@ Provider {
             now: () => Caffeinate.on,
             set: to => {
                 if (!to)
-                    Caffeinate.release();
+                    provider.keepAwake(false);
                 else if (!Caffeinate.on)
-                    Caffeinate.keep();
+                    provider.keepAwake(true);
                 return "";
             }
         },
@@ -190,7 +208,12 @@ Provider {
         side: `recording ${Recorder.what}`,
         hue: "machine",
         stays: true,
-        run: () => Recorder.stop()
+        run: () => {
+            // Stopped, it goes at once, as it will once its process ends.
+            becomes("session:recording", null,
+                ((Words.field.becoming ?? {}).objects ?? {}).recording ?? "", "stop");
+            Recorder.stop();
+        }
     })
 
     // What ending the session closes, said before it's done.

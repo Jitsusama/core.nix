@@ -139,8 +139,20 @@ Provider {
         return `${doing} ${device.name}\u2026`;
     }
 
-    function made(device) {
-        const joined = device.connected;
+    // Disconnected, the device's row says so at once, and inside it
+    // Disconnect It goes, until bluez says so too (launcher/Becoming.js).
+    // bluez answers nothing to a disconnect, so only its word on the device
+    // tells it took.
+    function leave(device) {
+        becomes(`bluetooth:${device.address}`, made(device, false), device.name, "disconnect");
+        becomes("verb:bluetooth-disconnect", null, device.name, "disconnect");
+        device.disconnect();
+    }
+
+    // The device's row, as connected as `joinedAs` says where it's given,
+    // or as bluez says.
+    function made(device, joinedAs) {
+        const joined = joinedAs ?? device.connected;
         // The side says connected or paired, so the note says only what it
         // doesn't: the battery, or that the device is new.
         const told = joined || device.paired ? "" : "new";
@@ -167,7 +179,7 @@ Provider {
             // Connecting or disconnecting keeps the launcher, which says how
             // it went.
             stays: true,
-            run: joined ? () => device.disconnect() : () => provider.join(device),
+            run: joined ? () => provider.leave(device) : () => provider.join(device),
             verbs: () => provider.verbs(device),
             // Joined, its Return disconnects, which Return typed in insert
             // never does.
@@ -638,7 +650,7 @@ Provider {
             glyph: Theme.glyph.disconnect,
             hue: "action",
             stays: true,
-            run: () => device.disconnect(),
+            run: () => provider.leave(device),
             // A device connected was paired, so joining it again is how u
             // puts it back.
             undo: () => provider.join(device)

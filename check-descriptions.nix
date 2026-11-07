@@ -1685,6 +1685,11 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
+  an-act-shows-before-its-daemon-answers = ''
+    a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
+    of it, until its source's row reads the same; one to go is left out until it's gone; a hold
+    comes due once its time is up; and the foot says what wasn't done, then why
+  '';
   the-launcher-lays-sessions-under-their-orchestrators = ''
     every list of pi sessions keeps one order of how they stand, and Agents lays each under the
     session orchestrating it, a step in and at most two, an orchestration standing where its most

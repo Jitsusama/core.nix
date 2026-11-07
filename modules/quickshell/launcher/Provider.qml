@@ -165,6 +165,22 @@ Scope {
         }).join("\u241e");
     }
 
+    // A row of its own, by its key, drawn as `row` from now until it makes
+    // it so, as an act asking a daemon has it (launcher/Becoming.js); null
+    // for a row that goes. If it never comes, the foot names the row as
+    // `name` and what was asked by the verb `act` names in words.json's
+    // field.becoming.did.
+    function becomes(key, row, name, act) {
+        launcher?.becomes(provider, key, row, { name: name, act: act });
+    }
+
+    // What an act asked wasn't done, said in its own words, lowercase; ""
+    // when it was, which says nothing.
+    function refused(key, why) {
+        if (why !== "")
+            launcher?.becameNot(key, why);
+    }
+
     function answer(typed) {
         return null;
     }
