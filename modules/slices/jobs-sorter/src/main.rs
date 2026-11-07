@@ -29,7 +29,8 @@
 //! holds the most of it, so it would end every session's builds at once
 //! rather than the one that filled swap. Each `--split` cgroup's work, a
 //! process tree whose root was written there, goes into a scope of its own,
-//! work-<pid>-<start>.scope, which systemd drops once it empties. The scopes
+//! work-<pid>-<start>.scope, once it has run a second, as `SETTLE` says
+//! why. systemd drops the scope once it empties. The scopes
 //! go in the slice named after `=`, or else the one the unit sits in. Its
 //! scopes share that slice's weight, as the work shared the unit's, so a
 //! cgroup that sits beside slices of other weights names a slice of its own.
@@ -294,6 +295,23 @@ struct Piece {
     comm: String,
     start: u64,
     pids: Vec<u32>,
+}
+
+/// How long a tree runs in its unit's cgroup before it's given a scope of
+/// its own. Most commands an agent writes, a git call say, are done within
+/// it, and one that ends in the moment between this reading it and systemd
+/// making its scope leaves systemd logging that the scope failed to start:
+/// 7 did in the minutes after a boot on 7 November, as 57 sessions came
+/// back at once. A tree that runs on gets its scope at the next look,
+/// which is all the scope is for: oomd ending one tree's work rather than
+/// every session's.
+const SETTLE: Duration = Duration::from_secs(1);
+
+/// Whether a tree that started at `start` has run for `SETTLE` by `now`,
+/// both in ticks since boot. Without a clock, every tree has.
+fn settled(start: u64, now: Option<u64>) -> bool {
+    let ticks = u64::try_from(SETTLE.as_millis()).unwrap_or(u64::MAX) / MS_PER_TICK;
+    now.is_none_or(|now| now.saturating_sub(start) >= ticks)
 }
 
 /// The trees in a cgroup, one for each process whose parent is elsewhere,
@@ -569,7 +587,11 @@ fn split(
     if holder.is_none_or(|pid| !procs.iter().any(|proc| proc.pid == pid)) {
         *holder = main_pid(unit);
     }
+    let now = uptime_ticks();
     for mut piece in pieces(&procs, *holder) {
+        if !settled(piece.start, now) {
+            continue;
+        }
         piece.pids = still_in(&piece.pids, cgroup, |pid| cgroup_of(pid, manager));
         if piece.pids.is_empty() {
             continue;
@@ -1196,6 +1218,14 @@ mod tests {
         );
         assert_eq!(pieces[0].comm, "bash");
         assert_eq!(pieces[0].ppid, 900);
+    }
+
+    #[test]
+    fn a_tree_gets_its_scope_once_it_has_run_a_second() {
+        assert!(!settled(1000, Some(1000)));
+        assert!(!settled(1000, Some(1099)));
+        assert!(settled(1000, Some(1100)));
+        assert!(settled(1000, None));
     }
 
     #[test]
