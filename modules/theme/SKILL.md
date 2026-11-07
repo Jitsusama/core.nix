@@ -17,7 +17,9 @@ building things and his verdicts on them. The system built from it, the type
 and space scales, the colours, the marks, the shapes and kinds of
 surface, motion and the keyboard's language, is the design document:
 `design.md` beside this file where the theme module installs it, and
-`docs/design.md` in core.nix. Read both before designing anything.
+`docs/design.md` in core.nix. Read both before designing anything. A website,
+any page or app in a browser, is built to the `web-design` skill as well,
+which says what a browser changes and gives the theme as CSS and fonts.
 
 - **Build to it, and judge by it yourself.** Don't hand a design back to
   Joel to look at. A question this skill and the design document answer

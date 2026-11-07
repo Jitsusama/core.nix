@@ -81,7 +81,9 @@ before adding a test.
   principles before designing it, and judge it by them rather than asking
   Joel to look. Surfaces name the
   theme's roles and faces, never a colour or a font, and a new program goes
-  through its checklist. A theme from elsewhere is
+  through its checklist. A website, any page or app in a browser, is built
+  to the `web-design` skill too ([modules/theme/web/skill/SKILL.md][22]),
+  on the theme's web kit. A theme from elsewhere is
   translated with the `translate-a-theme` skill.
 - Comments say why, in full sentences. A file opens with a comment saying
   what it is for when its path alone doesn't.
@@ -162,6 +164,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
   and what's left
 - [modules/theme/SKILL.md][10]: Joel's aesthetic, and how to judge a design
   by it
+- [modules/theme/web/skill/SKILL.md][22]: how a website is built to it, and
+  the kit the theme writes for one
 - [docs/design.md][9]: how everything on a screen looks, reads and behaves
 - [docs/decisions/][6]: why the design is what it is
 - The four modules that are programs of their own keep a guide beside their
@@ -189,3 +193,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [19]: docs/testing.md#the-desktop-on-niri
 [20]: docs/testing.md#virtual-machines
 [21]: docs/delivery.md
+[22]: modules/theme/web/skill/SKILL.md

@@ -94,7 +94,10 @@
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design
   # document installed for agents beside the aesthetic skill is passed over:
-  # it describes themes, Osaka Jade among them, and draws nothing.
+  # it describes themes, Osaka Jade among them, and draws nothing. So is the
+  # web kit's theme.css, which carries the dark look beside the light one on
+  # purpose, for a site's reader to choose; the-web-kit-carries-the-theme
+  # proves its own side follows the machine's theme.
   a-theme-changes-everything =
     let
       osakaJade = (builtins.fromTOML (builtins.readFile ./osaka-jade.toml)).palette;
@@ -109,10 +112,49 @@
       test ${lib.escapeShellArg home.jitsusama.theme.colours.background} = '#FFFCF0'
       if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
         --glob '!**/skills/aesthetic/design.md' \
+        --glob '!**/jitsusama/web/theme.css' \
         ${
           lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
         } ${home.home-files}/; then
         echo "The files above kept Osaka Jade's colours when the theme changed."
+        exit 1
+      fi
+      touch $out
+    '';
+
+  # The web kit a site copies holds every role of both looks at the theme's
+  # own values, the machine's in its own scheme and core's other theme in the
+  # other, so a site that names the properties can never drift from the
+  # theme as the hand-copied sites did; and it sends a first view's two
+  # faces in under 200 KB, the budget the web-design skill sets, so cutting
+  # them can't silently grow back to the 1.5 MB of whole font files.
+  the-web-kit-carries-the-theme =
+    let
+      home = account workstation;
+      kit = home.xdg.dataFile."jitsusama/web".source;
+      flexoki =
+        let
+          theme = builtins.fromTOML (builtins.readFile ./flexoki-light.toml);
+        in
+        lib.mapAttrs (_: pigment: theme.palette.${pigment}) theme.colours;
+      declares =
+        colours:
+        lib.concatMapStringsSep " " (
+          role: lib.escapeShellArg "--${lib.replaceStrings [ "_" ] [ "-" ] role}: ${colours.${role}};"
+        ) (lib.attrNames colours);
+    in
+    pkgs.runCommandLocal "the-web-kit-carries-the-theme" { } ''
+      dark=$(sed -n '/^:root,$/,/^}/p' ${kit}/theme.css)
+      light=$(sed -n '/^:root\[data-theme="light"\] {$/,/^}/p' ${kit}/theme.css)
+      for line in ${declares home.jitsusama.theme.colours}; do
+        grep -qF -- "$line" <<<"$dark" || { echo "The dark look lacks $line"; exit 1; }
+      done
+      for line in ${declares flexoki}; do
+        grep -qF -- "$line" <<<"$light" || { echo "The light look lacks $line"; exit 1; }
+      done
+      first=$(( $(stat -c %s ${kit}/fonts/fraunces.woff2) + $(stat -c %s ${kit}/fonts/monaspace.woff2) ))
+      if [ "$first" -gt 204800 ]; then
+        echo "A first view's faces come to $first bytes, past 200 KB."
         exit 1
       fi
       touch $out
