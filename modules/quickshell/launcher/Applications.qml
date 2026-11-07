@@ -716,9 +716,9 @@ Provider {
     // What a program holds, said by its row on the cursor where no other
     // provider says its note, so what's inside shows without a key
     // (VKCF3Z, 2026-11-07): how many it has open, Chrome's as tabs, how
-    // many its Recent keeps, and its next meeting or how many of its
-    // other parts there are, as "3 tabs \u00b7 9 recent" or "next in 5
-    // min Design Review". Read only from what's already kept, so reading
+    // many its Recent keeps, and its next meeting or how much of its mail
+    // is new, as "3 tabs \u00b7 9 recent" or "next in 5 min Design
+    // Review". A part that's no news, as Slack's theme, isn't counted. Read only from what's already kept, so reading
     // it asks no program anything: Chrome's tabs are counted once its
     // Recent was asked for, as typing its name does.
     function holding(entry) {
@@ -731,10 +731,12 @@ Provider {
             .filter(address => address !== "")).size : open.length;
         const kept = provider.recents.of(entry.id).length + givenRecent(entry.id).length;
         const parts = provider.launcher?.partsOfRows[`program:${entry.id}`] ?? [];
-        const first = parts[0] ?? null;
-        const next = first === null ? "" : first.what === "meeting"
-            ? (words.next ?? "").replace("{when}", first.side ?? "").replace("{name}", first.name)
-            : fill(words.parts, parts.length);
+        const meeting = parts.find(part => part.what === "meeting") ?? null;
+        const mail = parts.filter(part => part.what === "mail").length;
+        const next = meeting !== null
+            ? (words.next ?? "").replace("{when}", meeting.side ?? "")
+                .replace("{name}", meeting.name)
+            : mail > 0 ? fill(words.parts, mail) : "";
         return [opened > 0 ? fill(site ? words.tabs : words.open, opened) : "",
             kept > 0 ? fill(words.recent, kept) : "", next]
             .filter(said => said !== "").join(" \u00b7 ");
