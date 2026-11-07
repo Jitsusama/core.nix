@@ -29,11 +29,11 @@ never a guess.
 - `read`, `cloud`: when eero last answered, and whether it's answering,
   unreachable or signed out.
 - `internet`: the home network's way out, its settings, the last speed
-  test and every one eero kept, firmware, outages and the day's usage.
+  test and every one eero kept, firmware, outages and the day's traffic.
 - `nodes[]`: each eero by `id`, its `backhaul` (Ethernet, or the
   `upstream` node's location and radio over Wi-Fi), each radio's band,
   channel, width, power, how busy and its devices, each port's speed,
-  and the day's usage.
+  and the day's traffic.
 - `devices[]`: each device on now, by `mac`, its `node`, band, channel,
   signal, SNR, each direction's rate with its MCS, streams, width, guard
   interval and Wi-Fi generation, retries, packets, and its speed now.

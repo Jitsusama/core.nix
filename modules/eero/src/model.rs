@@ -374,7 +374,10 @@ mod tests {
         match (left, right) {
             (Value::Object(l), Value::Object(r)) => {
                 for key in l.keys().chain(r.keys().filter(|k| !l.contains_key(*k))) {
-                    let (a, b) = (l.get(key).unwrap_or(&Value::Null), r.get(key).unwrap_or(&Value::Null));
+                    let (a, b) = (
+                        l.get(key).unwrap_or(&Value::Null),
+                        r.get(key).unwrap_or(&Value::Null),
+                    );
                     if l.contains_key(key) != r.contains_key(key) {
                         out.push(format!("{path}.{key}: only on one side"));
                     } else {
@@ -400,6 +403,10 @@ mod tests {
         let read: Value = serde_json::from_str(MODEL).unwrap();
         let mut out = Vec::new();
         differences("", &again, &read, &mut out);
-        assert!(out.is_empty(), "written back differently:\n{}", out.join("\n"));
+        assert!(
+            out.is_empty(),
+            "written back differently:\n{}",
+            out.join("\n")
+        );
     }
 }
