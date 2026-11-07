@@ -2202,7 +2202,16 @@ fits whole on the laptop's plate.
   read and "d forget" where it doesn't; :forg forgets a card unread, :reply
   writes one, and :g/Slack/d takes all of one sender's. `:e Notices` opens
   their history. :q, ZZ, Space w and Super+N let them go, and Escape at
-  rest does nothing.
+  rest does nothing. It's a launcher page in shape (2026-11-06, so the two
+  can't drift apart): its numbers on the inset, as wide as it numbers, the
+  sender's mark in the mark column and every line on the text column, a
+  band a line, meeting the next with no gap, the cursor's ground filling
+  its band from one inside edge of the frame to the other. The cursor's
+  card makes its band taller, keeping as much room under its last line as
+  over its first, and signs it with when at the far end. Its head is a
+  band of the same height, its mark in the mark column, where the find's
+  / and the command line's : take its cell while they last, and the Title
+  on the text column.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
   lights only the number, and a block only in visual, which starts on the

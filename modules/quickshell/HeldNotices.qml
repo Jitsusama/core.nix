@@ -27,14 +27,19 @@ import Quickshell
 import QtQuick
 import "Bands.js" as Bands
 import "Changes.js" as Changes
+import "Columns.js" as Columns
 import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
 import "Search.js" as Search
 import "launcher/Notice.js" as Notice
 
-Floating {
+Card {
     id: held
+
+    // A head, its rows and its foot, each a band from the frame's inside
+    // edge, as the launcher's card is laid.
+    bands: true
 
     // The stack these are (Notifications.qml), for when each arrived, what
     // each opens, the history it hands on to, and whether it holds them.
@@ -236,21 +241,33 @@ Floating {
 
     // Whether the cursor's row starts where the rule has it, read from
     // where its parts are drawn, for a test to hold: its number on the
-    // head's inset, its Name and its card's lines a tie and a mark past
-    // the gutter's figures, which are only as wide as the most it numbers.
+    // inset, only as wide as the most it numbers, its mark in the mark
+    // column, and its Name and its card's lines on the text column.
     function sayColumns() {
         const row = lines.itemAt(cursor - shownTop) as Line;
         if (!row)
             return;
-        const past = row.nameX - (row.gutterX + row.gutterWide);
-        const card = row.cardX - row.nameX;
         const near = (a, b) => Math.abs(a - b) < 0.01;
-        const ok = near(row.gutterX, slash.x)
-            && near(past, Theme.space.rung.tie + Theme.space.rung.mark) && near(card, 0)
-            && near(row.gutterWide, noteWide("9".repeat(String(rows.length).length)));
+        const drawn = numbers.said();
+        const ends = drawn.length > 0 ? drawn[0].ends : -1;
+        // How far each band stands from where the one before ends, the
+        // first from a tie under the head's hairline: none, as Vim's lines
+        // tile (Joel, 2026-11-06).
+        const gaps = [];
+        let end = headRule.y + headRule.height + Theme.space.rung.tie;
+        for (let at = 0; at < lines.count; at++) {
+            const band = lines.itemAt(at) as Line;
+            gaps.push(Math.round(band.mapToItem(sheet, 0, 0).y - end));
+            end = band.mapToItem(sheet, 0, 0).y + band.height;
+        }
+        const ok = near(numbers.x, 0)
+            && near(ends, Math.ceil(noteWide("9".repeat(String(listed.length).length))))
+            && near(row.markX, columns.mark) && near(row.nameX, columns.text)
+            && near(row.cardX, columns.text) && gaps.every(gap => gap === 0);
         Report.say(ok ? "notice rows start on the inset"
-            : `notice rows start ${Math.round(row.gutterX)}, `
-                + `${Math.round(past)} past the gutter, card ${Math.round(card)}`);
+            : `notice rows start ${Math.round(numbers.x)}, numbers end ${Math.round(ends)}, `
+                + `mark ${Math.round(row.markX)}, name ${Math.round(row.nameX)}, `
+                + `card ${Math.round(row.cardX)}, bands apart ${gaps.join(" ")}`);
     }
 
     // Whether the status line reaches the frame, so its text centres in
@@ -410,6 +427,14 @@ Floating {
         cursorId = left[Math.min(cursor, left.length - 1)] ?? null;
         changes = redone.history;
         said = `${ids.length} taken again`;
+    }
+
+    // Whether the cursor's card has somewhere to go: what it offers, or
+    // its sender's window.
+    function opensCurrent() {
+        const one = current;
+        return one !== null && (stack.opens(one) !== null
+            || Notices.senderWindow(one.appName) !== null);
     }
 
     // Goes to whoever sent the cursor card: what it's about, by its
@@ -775,7 +800,12 @@ Floating {
         case "open":
             found = findLine.text;
             mode = "normal";
-            open();
+            // Where what it found opens nothing, it lands on it, as Vim's
+            // / lands on its match (VKCF3Z, 2026-11-06).
+            if (opensCurrent())
+                open();
+            else
+                Report.say(`notice lands on ${found}`);
             break;
         case "choose":
         case "chooseBack":
@@ -1117,16 +1147,15 @@ Floating {
         }
         const hintMode = listing ? "listing" : pending ? "pending" : mode;
         const ids = mode === "visual" ? selected : [listed[cursor]];
-        const one = current;
-        const opens = one !== null && (stack.opens(one) !== null
-            || Notices.senderWindow(one.appName) !== null);
-        return NoticeKeys.hints(hintMode, { open: opens }, { done: doneWord(ids) });
+        return NoticeKeys.hints(hintMode, { open: opensCurrent() }, { done: doneWord(ids) });
     }
 
     // A held notice is a notice row of the launcher's (VKCF3Z,
-    // 2026-11-05), so it takes the launcher's row (Choice.qml): four beats
-    // tall, its Name's capitals centred in it, its ground close round its
-    // ink. Every line's ink stands the inset from the frame's inside edge.
+    // 2026-11-05), so it takes the launcher's row (Choice.qml): a band four
+    // beats tall, its Name's capitals centred in it, the bands meeting with
+    // no gap and the cursor's ground filling its band edge to edge, as
+    // Vim's cursorline (Joel, 2026-11-06). The cursor's card makes its band
+    // taller, keeping as much room under its last line as over its first.
     readonly property real rowHeight: 4 * Theme.space.beat
     readonly property real rowCaps: nameCaps.tightBoundingRect.height
     // Where a row's Name has its baseline, down from the row's top.
@@ -1140,16 +1169,24 @@ Floating {
     // ascent as the baseline, as it is for styled text; placed by that, a
     // washed card's Words dropped 3 device pixels at 2 under a find.
     readonly property real richBase: Theme.level.words.pitch * 4 / 5
-    // The columns, a held row being the toast's notice in a list (VKCF3Z,
-    // 2026-11-06): the gutter's figures from the inset, only as wide as the
-    // most it numbers, the ground a tie after them, and every line of the
-    // row, its Name, words, sender and acts, the ground's mark inside it.
-    // A glyph's column before the Name, and the room of three figures,
-    // stepped the rows in three times past the head and the foot (Joel,
-    // 2026-11-06: "I don't like the indent when I'm in list view").
-    readonly property real groundAt: Theme.space.rung.inset + gutterFigures.advanceWidth
-        + Theme.space.rung.tie
-    readonly property real nameAt: groundAt + Theme.space.rung.mark
+    // The columns, a held row being the pop-up's notice in a list and a
+    // launcher row in its place (VKCF3Z, 2026-11-06): its number on the
+    // inset, the gutter only as wide as the most it numbers, the sender's
+    // mark in the mark column and every line of the row, its Name, words,
+    // signature and acts, on the text column, so it differs from the
+    // pop-up's notice by the gutter alone and from a launcher row by the
+    // gutters' widths alone (Joel, 2026-11-06: "they need to share more
+    // code and UI/UX design to stop them from constantly drifting").
+    readonly property var columns: Columns.across(sheet.width, gutter,
+        Columns.ofMark(Theme.level.name.pitch), Theme.space.rung)
+    // How much wider than a pop-up notice the list stands, so a notice
+    // breaks its words held as it does popped (VKCF3Z, 2026-11-06): its
+    // gutter, the numbers' room and the mark rung after them.
+    readonly property real gutter: Columns.gutterOf(numbers.room, Theme.space.rung)
+    // Where a mark centres across in the mark column, which the mode's
+    // marks in the head and on the : line centre on too, as Vim keeps one
+    // cell for its mode (Y2YBTS, 2026-11-06).
+    readonly property real cellMiddle: columns.mark + columns.markWidth / 2
     // Space ?'s pitch, the drawer's key list's: Figure's, at Note.
     readonly property real keyPitch: Theme.level.figure.pitch
     // How many of its lines show: as many as stand within the rows' room,
@@ -1180,27 +1217,37 @@ Floating {
         font.weight: Theme.level.name.weight
     }
 
-    // A line in view, saying where its parts are drawn so sayColumns can
-    // read them by type.
-    component Line: Column {
-        property real gutterX
-        property real gutterWide
+    // A line in view, its band, saying where its parts are drawn so
+    // sayColumns can read them by type, and which it is, for its number.
+    component Line: Item {
+        property int at
+        property real markX
         property real nameX
         property real cardX
     }
 
-    // The gutter's width, by the widest it holds: as many figures as the
+    // The gutter's room, by the widest it holds: as many figures as the
     // most cards held since the keys were taken, so a card arriving or
-    // going never moves the rows, and ten widen it only once.
+    // going never moves the rows, and ten widen it only once. Its numbers
+    // take as many figures as the lines listed need, on the inset.
     property int gutterDigits: 1
     onRowsChanged: noteDigits()
     function noteDigits() {
         gutterDigits = Math.max(gutterDigits, String(Math.max(1, rows.length)).length);
     }
-    TextMetrics {
-        id: gutterFigures
-        font: note.font
-        text: "9".repeat(held.gutterDigits)
+
+    // Where each line in view has its Name's baseline, down from the first
+    // line's top, for its number: set as the lines are laid, since a
+    // binding can't follow the lines a Repeater makes.
+    property var numbered: []
+    function placeNumbers() {
+        const out = [];
+        for (let at = 0; at < lines.count; at += 1) {
+            const line = lines.itemAt(at) as Line;
+            if (line)
+                out.push({ at: line.at, base: line.y + rowBase });
+        }
+        numbered = out;
     }
 
     // How wide a run of Note's is, asked again as the face loads.
@@ -1234,6 +1281,8 @@ Floating {
     // The keys' column, as wide as the widest line's chords.
     readonly property real keysWide: keyList.reduce((most, one) =>
         Math.max(most, chordsWide(one.chords)), 0)
+    // Where what the keys do starts, a group past the widest chords.
+    readonly property real doesAt: keysWide + Theme.space.rung.groups
 
     FontMetrics {
         id: figure
@@ -1259,14 +1308,11 @@ Floating {
     }
 
     // The head is a band, the frame's inside to its hairline, its one line
-    // centred in it by eye (docs/design.md: text in a band centres in it),
-    // and as tall as leaves that line a row over the first row's, as the
-    // launcher's head stands (Y2YBTS, 2026-11-05). Its largest level is
-    // always the Title, so the band is sized by the Title's lift, not the
-    // Figure's the launcher rests on, and the line never settles.
-    readonly property real headLift: Bands.lift(titleCaps.tightBoundingRect.height,
-        titleSmall.tightBoundingRect.height)
-    readonly property real headTall: Bands.above(rowHeight, rowCaps, headLift, Theme.border)
+    // centred in it by eye (docs/design.md: text in a band centres in it):
+    // a row's band, as the launcher's head is now its Title is the line's
+    // size, so the card keeps one rhythm (VKCF3Z, 2026-11-06). Its largest
+    // level is always the Title, which centres it.
+    readonly property real headTall: rowHeight
     readonly property real headBase: Bands.baseline(headTall, titleCaps.tightBoundingRect.height,
         titleSmall.tightBoundingRect.height)
 
@@ -1325,14 +1371,18 @@ Floating {
         };
     }
 
-    // The frame's inside edge to edge, its head's capitals the inset under
-    // its top, and the foot's baseline the inset over its bottom.
+    // The card's content, the inset in on either side and from the frame's
+    // top to its foot, a band at a time: the head, its hairline, the lines
+    // a tie under it, a tie over the foot's hairline, and the foot, its
+    // baseline the inset over the frame. What reaches the frame, a ground
+    // or the status line, reaches out past the content by the card's
+    // inset.
     Column {
         id: sheet
         width: parent.width
         // The foot's room under its row, so its baseline, where the row's
         // box puts it, stands the inset over the frame (Launcher.qml's).
-        bottomPadding: Math.round(Theme.space.rung.inset
+        bottomPadding: Math.round(held.inset
             - (held.rowHeight - (held.rowHeight - note.height) / 2 - note.ascent))
 
         // The wheel scrolls three lines a notch, as his Neovim's mousescroll
@@ -1352,16 +1402,15 @@ Floating {
             }
         }
 
-        // The head: where Joel is, the notices' glyph and their Title, as a
-        // place in the launcher reads, led by the find's /, which types
-        // here, since a find narrows the list beneath. The / stands at the
-        // inset over the gutter, as Vim's lines start at column 0, in the
-        // accent, and only while it finds: in normal or visual the column
-        // stands empty, held so nothing after it moves (VKCF3Z, 2026-11-06,
-        // on Joel's "when in normal mode, it shouldn't have a / at the
-        // front"). The glyph and the Title follow a mark apart, as one
-        // place, and what's typed follows the Title at Figure, on its
-        // baseline (VKCF3Z's family mocks, 2026-11-05).
+        // The head: where Joel is, the notices' mark and their Title, as a
+        // place in the launcher reads, on the rows' columns. The mark
+        // stands in the mark column, where the find's / takes its cell
+        // while it lasts, as Vim keeps one cell for its mode, so nothing
+        // after it moves between normal and / (Y2YBTS, 2026-11-06, as the
+        // launcher's head). The Title stands on the text column, the
+        // line's size and set apart by its weight (Joel, 2026-11-06: "use
+        // weights and not size for that"), and what's typed follows it at
+        // Figure, on its baseline (VKCF3Z's family mocks, 2026-11-05).
         Item {
             id: head
 
@@ -1375,90 +1424,100 @@ Floating {
                 text: held.findLine.text.slice(0, held.findLine.caret)
             }
 
-            Text {
-                id: slash
-                x: Theme.space.rung.inset
-                y: held.headBase - baselineOffset
-                text: "/"
-                // Hidden rather than emptied, so its width still sets the
-                // glyph's column.
-                visible: held.mode === "find"
-                color: Theme.accent
+            // The /'s ink, so its middle stands on the cell's.
+            TextMetrics {
+                id: slashInk
                 font: figure.font
+                text: "/"
             }
 
-            Text {
-                id: placeMark
-                x: slash.x + slash.implicitWidth + Theme.space.rung.mark
-                y: held.headBase - baselineOffset
+            Mark {
+                x: held.columns.mark
+                line: held.headBase
+                visible: held.mode !== "find"
                 text: Theme.glyph.notifications
                 color: Theme.accent
-                // At Figure, as a held thing's glyph leads the launcher's
-                // place (VKCF3Z, 2026-11-05).
-                font.family: Theme.level.figure.family
-                font.pointSize: Theme.level.figure.pointSize
             }
 
             Text {
-                id: place
-                x: placeMark.x + placeMark.implicitWidth + Theme.space.rung.mark
+                x: held.cellMiddle - slashInk.tightBoundingRect.x
+                    - slashInk.tightBoundingRect.width / 2
                 y: held.headBase - baselineOffset
-                text: "Notices"
-                // The Title level whole, its weight and colour as the
-                // launcher's place draws it (VKCF3Z, 2026-11-05).
-                color: Theme.level.title.colour
-                font: titleCaps.font
-            }
-
-            // What's sought, typed or kept once its line is left, and how
-            // many it found, a mark each side of the dot, as
-            // the hints are joined; the count stays whole, the sought words
-            // giving way before it.
-            Text {
-                id: sought
-                visible: held.pattern !== ""
-                x: place.x + place.implicitWidth + Theme.space.rung.items
-                width: Math.max(0, Math.min(implicitWidth, parent.width - x
-                    - Theme.space.rung.inset - 2 * Theme.space.rung.mark - dot.implicitWidth
-                    - count.implicitWidth))
-                y: held.headBase - baselineOffset
-                text: held.pattern
-                textFormat: Text.PlainText
-                elide: Text.ElideLeft
-                // Strong while it types, as every line being typed is; the
-                // text colour once kept, a fact like the count.
-                color: held.mode === "find" ? Theme.strong : Theme.text
+                visible: held.mode === "find"
+                text: "/"
+                color: Theme.accent
                 font: figure.font
             }
 
-            Text {
-                id: dot
-                visible: sought.visible
-                x: sought.x + sought.width + Theme.space.rung.mark
-                y: held.headBase - baselineOffset
-                text: "\u00b7"
-                color: Theme.muted
-                font: note.font
-            }
+            // The Title, then what's sought, typed or kept once its line is
+            // left, and how many it found, a mark each side of the dot, as
+            // the hints are joined; the count stays whole, the sought words
+            // giving way before it.
+            Row {
+                id: placed
+                x: held.columns.text
+                y: held.headBase - place.baselineOffset
+                spacing: Theme.space.rung.items
 
-            Text {
-                id: count
-                visible: sought.visible
-                x: dot.x + dot.implicitWidth + Theme.space.rung.mark
-                y: held.headBase - baselineOffset
-                text: held.foundCount
-                color: Theme.muted
-                font: note.font
-            }
+                Text {
+                    id: place
+                    text: "Notices"
+                    // The Title level whole, its weight and colour as the
+                    // launcher's place draws it (VKCF3Z, 2026-11-05).
+                    color: Theme.level.title.colour
+                    font: titleCaps.font
+                }
 
-            Rectangle {
-                visible: held.mode === "find"
-                opacity: held.caretLight
-                x: sought.x + soughtBefore.advanceWidth
-                y: held.headBase - figure.ascent
-                width: Math.max(1, Math.round(figure.averageCharacterWidth / 4))
-                height: figure.ascent + figure.descent
-                color: Theme.strong
+                // Shown while a find types, so its caret shows before a
+                // letter has.
+                Row {
+                    visible: held.pattern !== "" || held.mode === "find"
+                    spacing: Theme.space.rung.mark
+
+                    Text {
+                        id: sought
+                        y: place.baselineOffset - baselineOffset
+                        width: Math.max(0, Math.min(implicitWidth, head.width - placed.x
+                            - place.width - Theme.space.rung.items - 2 * Theme.space.rung.mark
+                            - dot.implicitWidth - count.implicitWidth))
+                        text: held.pattern
+                        textFormat: Text.PlainText
+                        elide: Text.ElideLeft
+                        // Strong while it types, as every line being typed
+                        // is; the text colour once kept, a fact like the
+                        // count.
+                        color: held.mode === "find" ? Theme.strong : Theme.text
+                        font: figure.font
+
+                        Rectangle {
+                            visible: held.mode === "find"
+                            opacity: held.caretLight
+                            x: soughtBefore.advanceWidth
+                            y: sought.baselineOffset - figure.ascent
+                            width: Math.max(1, Math.round(figure.averageCharacterWidth / 4))
+                            height: figure.ascent + figure.descent
+                            color: Theme.strong
+                        }
+                    }
+
+                    Text {
+                        id: dot
+                        visible: held.pattern !== ""
+                        y: place.baselineOffset - baselineOffset
+                        text: "\u00b7"
+                        color: Theme.muted
+                        font: note.font
+                    }
+
+                    Text {
+                        id: count
+                        visible: held.pattern !== ""
+                        y: place.baselineOffset - baselineOffset
+                        text: held.foundCount
+                        color: Theme.muted
+                        font: note.font
+                    }
+                }
             }
         }
 
@@ -1466,28 +1525,69 @@ Floating {
         // meeting the frame would cut the card into boxes (VKCF3Z's family
         // cut, 2026-11-05).
         Rectangle {
-            x: Theme.space.rung.inset
-            width: sheet.width - 2 * Theme.space.rung.inset
+            id: headRule
+            width: sheet.width
             height: Theme.border
             color: Theme.edge
         }
 
-        // The lines in view, or Space ?'s list in their place.
-        Repeater {
-            id: lines
-            model: held.listing ? [] : held.inView
+        // A tie between the hairline and the first band, so a ground never
+        // touches a rule, as the launcher's rows stand (VKCF3Z, 2026-11-06).
+        Item {
+            width: sheet.width
+            height: Theme.space.rung.tie
+        }
+
+        // The lines in view, numbered, or Space ?'s list in their place.
+        Item {
+            width: sheet.width
+            height: inViewLines.height
+
+            Column {
+                id: inViewLines
+                width: parent.width
+
+                Repeater {
+                    id: lines
+                    model: held.listing ? [] : held.inView
+                    onItemAdded: Qt.callLater(held.placeNumbers)
+                    onItemRemoved: Qt.callLater(held.placeNumbers)
+                    delegate: lineBand
+                }
+            }
+
+            // The launcher's gutter, over the bands' grounds, which reach
+            // under it: the cursor line's own number in text, the rest how
+            // far from it, muted, on the inset.
+            Gutter {
+                id: numbers
+                z: 1
+                height: parent.height
+                slots: held.inView.length
+                rows: held.numbered
+                current: held.cursor
+                relative: held.relative
+                digits: held.gutterDigits
+                figures: String(Math.max(1, held.listed.length)).length
+                shown: true
+            }
+        }
+
+        // A line in view, its band: one row's, or taller under the
+        // cursor, holding its card whole.
+        Component {
+            id: lineBand
 
             Line {
                 id: line
 
-                gutterX: gutter.x
-                gutterWide: gutter.width
-                nameX: who.x
+                at: held.shownTop + index
+                markX: mark.x
+                nameX: named.x
                 cardX: card.x
 
                 required property var modelData
                 required property int index
-                readonly property int at: held.shownTop + index
                 readonly property var one: held.notice(modelData)
                 readonly property bool atCursor: at === held.cursor
                 readonly property bool chosenLine: held.selected.includes(modelData)
@@ -1498,53 +1598,52 @@ Floating {
                     && held.targets.includes(modelData)
                 readonly property var from: one ? Notices.sender(one.appName) : null
                 readonly property bool washed: held.pattern !== ""
+                // When it came, said at the far end of its only line, or of
+                // its signing line under the cursor.
+                readonly property real now: clock.date.getTime()
+                readonly property string when: one
+                    ? held.stack.since(held.stack.arrived[one.id] ?? now, now) : ""
 
                 width: sheet.width
+                height: card.visible ? held.rowHeight + card.height : held.rowHeight
+                onYChanged: Qt.callLater(held.placeNumbers)
 
-                Item {
-                    width: parent.width
-                    height: held.rowHeight
+                // Chosen in visual, under the cursor in normal, or waiting
+                // on an operator, its band wears the selection's ground,
+                // as the launcher's tinted rows do; a command line's
+                // targets lie on raised.
+                Ground {
+                    from: held.inset
+                    width: parent.width + 2 * held.inset
+                    height: parent.height
+                    ink: line.targeted ? "raised" : line.chosenLine ? "selection" : ""
+                }
 
-                    // Chosen in visual, or waiting on an operator, each row
-                    // wears the selection's ground, as the launcher's tinted
-                    // rows do; a command line's targets lie on raised. It's
-                    // the launcher's ground, close round the row's ink: a
-                    // mark round the glyph and the time, above the capitals
-                    // and below the baseline, so more room stands outside
-                    // it than in; the gutter stands outside it, as it
-                    // numbers the row rather than being part of it.
-                    Rectangle {
-                        x: held.groundAt
-                        y: held.rowLeaves - Theme.space.rung.mark
-                        width: parent.width - Theme.space.rung.inset + Theme.space.rung.mark - x
-                        height: held.rowCaps + 2 * Theme.space.rung.mark
-                        radius: Theme.inner
-                        visible: line.chosenLine || line.targeted
-                        color: Qt.alpha(line.targeted ? Theme.raised : Theme.selection,
-                            Theme.floating.selection)
-                    }
+                // Its sender's mark, centred on its Name's capitals.
+                Mark {
+                    id: mark
+                    x: held.columns.mark
+                    line: held.rowBase
+                    text: line.from ? String.fromCodePoint(line.from.glyph) : ""
+                    color: line.from ? Theme[line.from.hue] : Theme.muted
+                }
 
-                    // The gutter: the cursor line's own number in text, the
-                    // rest how far from it, muted.
-                    Text {
-                        id: gutter
-                        x: Theme.space.rung.inset
-                        width: gutterFigures.advanceWidth
-                        anchors.baseline: who.baseline
-                        horizontalAlignment: Text.AlignRight
-                        text: NoticeList.number(line.at, held.cursor, held.relative)
-                        color: line.atCursor ? Theme.text : Theme.muted
-                        font: note.font
-                    }
+                // Its Name, its capitals centred in the row, and its first
+                // words after it. Washed by the find, they're rich text, set
+                // on the same baseline.
+                Row {
+                    id: named
+                    x: held.columns.text
+                    y: held.rowBase - who.baselineOffset
+                    spacing: Theme.space.rung.items
 
-                    // Its Name, its capitals centred in the row. Washed by
-                    // the find, it's rich text, set on the same baseline.
                     Text {
                         id: who
-                        x: held.nameAt
-                        y: held.rowBase - baselineOffset
-                        width: Math.min(implicitWidth, (time.x - x - Theme.space.rung.groups)
-                            * (first.text === "" ? 1 : 0.6))
+                        // Giving way a group before the time, or reaching the
+                        // far end where its card signs it.
+                        width: Math.min(implicitWidth, (time.visible
+                            ? time.x - named.x - Theme.space.rung.groups
+                            : line.width - named.x) * (first.text === "" ? 1 : 0.6))
                         text: !line.one ? "" : line.washed
                             ? Search.washed(line.one.summary, held.pattern,
                                 held.wash(line.chosenLine))
@@ -1562,9 +1661,9 @@ Floating {
                     // words show whole beneath.
                     Text {
                         id: first
-                        x: who.x + who.width + Theme.space.rung.items
                         // Giving way a group before the time.
-                        width: Math.max(time.x - x - Theme.space.rung.groups, 0)
+                        width: Math.max(time.x - named.x - who.width - Theme.space.rung.items
+                            - Theme.space.rung.groups, 0)
                         anchors.baseline: who.baseline
                         visible: text !== ""
                         text: !line.one || line.atCursor ? ""
@@ -1580,39 +1679,42 @@ Floating {
                         font.weight: Theme.level.words.weight
                         font.variableAxes: Theme.level.words.variableAxes
                     }
+                }
 
-                    Text {
-                        id: time
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.space.rung.inset
-                        anchors.baseline: who.baseline
-                        readonly property real now: clock.date.getTime()
-                        text: line.one ? held.stack.since(held.stack.arrived[line.one.id] ?? now,
-                            now) : ""
-                        color: Theme.level.note.colour
-                        font: note.font
-                    }
+                // At the far end, on the inset, unless its card signs it.
+                Text {
+                    id: time
+                    x: parent.width - implicitWidth
+                    y: held.rowBase - baselineOffset
+                    visible: !card.visible
+                    text: line.when
+                    color: Theme.level.note.colour
+                    font: note.font
+                }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (line.atCursor)
-                                held.open();
-                            else
-                                held.cursorId = line.modelData;
-                        }
+                MouseArea {
+                    width: parent.width
+                    height: held.rowHeight
+                    onClicked: {
+                        if (line.atCursor)
+                            held.open();
+                        else
+                            held.cursorId = line.modelData;
                     }
                 }
 
-                // The cursor card whole under its line, on the Name's
-                // column, each line set by its baseline, down in beats
+                // The cursor card whole under its line, in its band, on the
+                // text column, each line set by its baseline, down in beats
                 // (VKCF3Z, 2026-11-05): what it says a pitch under the
                 // Name, as lines of one saying; who sent it Note's pitch and
-                // a beat on, as the toast signs it; its acts as commands a
-                // pitch under that, and a reply's field two beats under
-                // them.
+                // a beat on, as the pop-up signs it, when it came at the far
+                // end; its acts as commands a pitch under that, and a
+                // reply's field two beats under them.
                 Item {
                     id: card
+
+                    x: held.columns.text
+                    y: held.rowHeight
 
                     // Its row's Name's baseline, down from its top, which
                     // is the row's bottom.
@@ -1647,14 +1749,13 @@ Floating {
                     // Folded while the command line's menu is up, which
                     // takes its room.
                     visible: line.atCursor && line.one !== null && held.mode !== "command"
-                    x: held.nameAt
-                    width: parent.width - x - Theme.space.rung.inset
+                    width: parent.width - x
                     // A field ends it as a row does. Else it leaves what a
-                    // row leaves under its last baseline, so the hairline
-                    // under it stands as far off, less a beat where a row
-                    // follows: the next Name a row less a beat under the
-                    // card's last line, as VKCF3Z's family mocks set it.
-                    height: tall - (line.index < held.inView.length - 1 ? Theme.space.beat : 0)
+                    // row leaves under its last baseline, so its band keeps
+                    // as much room under its last line as over its first,
+                    // and the next band meets it (Joel, 2026-11-06: rows
+                    // tile like Vim's cursorline).
+                    height: tall
                     readonly property real tall: field.visible ? field.y + field.height
                         : lastBase + held.rowLeaves
                     // Told to the list, which gives it room on a short
@@ -1693,14 +1794,14 @@ Floating {
                         font.variableAxes: Theme.level.words.variableAxes
                     }
 
-                    // Who sent it, its mark before its name, as the toast
-                    // signs it; its bottom is the line's baseline.
+                    // Who sent it, as the pop-up signs it, its mark already
+                    // in the mark column, and when at the far end; its
+                    // bottom is the line's baseline.
                     Signature {
                         y: card.senderBase - implicitHeight
                         width: parent.width
-                        mark: line.from ? String.fromCodePoint(line.from.glyph) : ""
-                        hue: line.from ? Theme[line.from.hue] : Theme.muted
                         name: line.from ? line.from.name : ""
+                        side: line.when
                     }
 
                     // Its own acts as the commands that do them, ":reply" and
@@ -1723,21 +1824,20 @@ Floating {
                     // A reply's words, typed on the card it answers, in a
                     // prompt's field: a row, its words on the card's column
                     // and ending at its inset, as every line of the card,
-                    // and its ground the inset out from them on each side,
-                    // so it meets the frame's inside edge at the right
-                    // (VKCF3Z, 2026-11-05).
+                    // and its ground a band's, raised, from the frame's
+                    // inside edge to its other (VKCF3Z, 2026-11-05).
                     Item {
                         id: field
                         visible: line.atCursor && held.replyTo === line.modelData
-                        x: -Theme.space.rung.inset
                         y: card.lastBase + 2 * Theme.space.beat
-                        width: parent.width + 2 * Theme.space.rung.inset
+                        width: parent.width
                         height: held.rowHeight
 
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: Theme.inner
-                            color: Qt.alpha(Theme.raised, Theme.floating.selection)
+                        Ground {
+                            from: card.x + held.inset
+                            width: sheet.width + 2 * held.inset
+                            height: parent.height
+                            ink: "raised"
                         }
 
                         // How far in the caret stands.
@@ -1752,8 +1852,7 @@ Floating {
                         Text {
                             id: words
                             z: 1
-                            x: Theme.space.rung.inset
-                            width: parent.width - 2 * x
+                            width: parent.width
                             anchors.verticalCenter: parent.verticalCenter
                             text: held.promptLine.text === "" && held.mode === "insert"
                                 ? line.one?.inlineReplyPlaceholder ?? "" : held.promptLine.text
@@ -1782,10 +1881,11 @@ Floating {
             }
         }
 
-        // Nothing left: said, so the list never looks broken.
+        // Nothing left: said, on the text column, so the list never looks
+        // broken.
         Text {
             visible: !held.listing && held.listed.length === 0
-            x: Theme.space.rung.inset
+            x: held.columns.text
             height: held.rowHeight
             verticalAlignment: Text.AlignVCenter
             text: held.pattern !== "" ? `nothing holds ${held.pattern}` : "no notices"
@@ -1798,7 +1898,7 @@ Floating {
         // What arrived while the lines held their order.
         Text {
             visible: held.arrivals > 0
-            x: Theme.space.rung.inset
+            x: held.columns.text
             height: held.rowHeight
             verticalAlignment: Text.AlignVCenter
             text: `${held.arrivals} new`
@@ -1843,7 +1943,6 @@ Floating {
                     width: sheet.width
 
                     Text {
-                        x: Theme.space.rung.inset
                         y: listedKey.base - baselineOffset
                         visible: listedKey.modelData.heading !== ""
                         text: listedKey.modelData.heading
@@ -1857,7 +1956,6 @@ Floating {
                     }
 
                     Row {
-                        x: Theme.space.rung.inset
                         y: listedKey.base - baselineOffset
                         spacing: Theme.space.rung.apart
                         visible: listedKey.modelData.heading === ""
@@ -1887,8 +1985,8 @@ Floating {
                     }
 
                     Text {
-                        x: Theme.space.rung.inset + held.keysWide + Theme.space.rung.groups
-                        width: parent.width - x - Theme.space.rung.inset
+                        x: held.doesAt
+                        width: parent.width - x
                         y: listedKey.base - baselineOffset
                         visible: listedKey.modelData.heading === ""
                         text: listedKey.modelData.does
@@ -1904,7 +2002,10 @@ Floating {
         // many lines as the screen has room for.
         CommandMenu {
             id: commandMenu
-            width: sheet.width
+            // From the frame's inside edge to its other, as it stands its
+            // own lines' ink at the inset.
+            x: -held.inset
+            width: sheet.width + 2 * held.inset
             all: held.entries
             lines: held.menuFound.shown
             chosen: held.menuChosen
@@ -1927,19 +2028,29 @@ Floating {
                 text: held.commandLine.text.slice(0, held.commandLine.caret)
             }
 
+            // The :'s ink, so its middle stands on the cell's.
+            TextMetrics {
+                id: colonInk
+                font: figure.font
+                text: ":"
+            }
+
+            // In the mark column's cell, as the find's / takes it.
             Text {
                 id: sigil
-                x: Theme.space.rung.inset
+                x: held.cellMiddle - colonInk.tightBoundingRect.x
+                    - colonInk.tightBoundingRect.width / 2
                 anchors.verticalCenter: parent.verticalCenter
                 text: ":"
                 color: Theme.accent
                 font: figure.font
             }
 
+            // On the text column, where the rows' names stand.
             Text {
                 id: typed
-                x: sigil.x + sigil.width
-                width: parent.width - x - Theme.space.rung.inset
+                x: held.columns.text
+                width: parent.width - x
                 anchors.baseline: sigil.baseline
                 text: held.commandLine.text
                 textFormat: Text.PlainText
@@ -1958,22 +2069,30 @@ Floating {
             }
         }
 
+        // A tie between the last band and the foot's hairline, as under
+        // the head's.
+        Item {
+            width: sheet.width
+            height: Theme.space.rung.tie
+        }
+
         // The foot a region of its own, as the launcher's is: under one
-        // hairline, inset to inset as the head's, which whatever is last
-        // above meets with what a row leaves.
+        // hairline, inset to inset as the head's.
         Rectangle {
-            x: Theme.space.rung.inset
-            width: sheet.width - 2 * Theme.space.rung.inset
+            width: sheet.width
             height: Theme.border
             color: Theme.edge
         }
 
         // The foot: how things stand, the mode's word in its room, and the
-        // hints, or what was just done until the next key.
+        // hints, or what was just done until the next key. From the frame's
+        // inside edge to its other, as the status line stands its own ink
+        // at the card's inset.
         Item {
             id: foot
 
-            width: sheet.width
+            x: -held.inset
+            width: sheet.width + 2 * held.inset
             height: held.rowHeight
 
             // The mode word's room, kept for the widest it says often, so
@@ -2004,7 +2123,7 @@ Floating {
                 // in it), not in the foot's row above that room.
                 width: parent.width
                 height: parent.height + sheet.bottomPadding
-                inset: Theme.space.rung.inset
+                inset: held.inset
                 mark: held.modeMark
                 resting: held.modeMark === NoticeKeys.mark("normal")
                 hints: hinted.shown
@@ -2026,7 +2145,7 @@ Floating {
                 id: facts
                 x: foot.factsAt
                 width: Math.min(implicitWidth, foot.width - foot.factsAt
-                    - Theme.space.rung.inset - Theme.space.rung.groups - hinted.wide)
+                    - held.inset - Theme.space.rung.groups - hinted.wide)
                 visible: !hinted.crowded
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
@@ -2045,7 +2164,7 @@ Floating {
                 id: modeWord
                 x: foot.factsAt + foot.factsTake
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - foot.factsAt - Theme.space.rung.inset - foot.factsTake
+                    - foot.factsAt - held.inset - foot.factsTake
                     - hinted.wide - Theme.space.rung.groups))
                 anchors.baseline: parent.top
                 anchors.baselineOffset: statusLine.base
@@ -2064,7 +2183,7 @@ Floating {
                 // the hints have it all, and none gives way while there's
                 // room for it (VKCF3Z, 2026-11-05).
                 readonly property real fits: foot.width - foot.factsAt
-                    - Theme.space.rung.inset - factsNow.advanceWidth - Theme.space.rung.groups
+                    - held.inset - factsNow.advanceWidth - Theme.space.rung.groups
                     - (held.modeWord === "" ? 0
                         : wordNow.advanceWidth + Theme.space.rung.groups)
 
@@ -2119,9 +2238,10 @@ Floating {
     // its lines.
     readonly property real commandTall: listTall - Theme.border - rowHeight
     // How tall the lines may be: the screen less its rung each side, the
-    // frame's hairlines, the head and its rule, and the foot and its rule.
+    // frame's hairlines, the head and its rule, the ties inside the rules,
+    // and the foot and its rule.
     readonly property real listTall: screenHeight - 2 * Theme.space.rung.screen
-        - 4 * Theme.border - headTall - rowHeight - sheet.bottomPadding
+        - 4 * Theme.border - headTall - 2 * Theme.space.rung.tie - rowHeight - sheet.bottomPadding
     // The lines that leave the menu three where the screen has the room.
     readonly property int commandRows: Math.max(1, Math.min(room,
         Math.floor((commandTall - 4 * commandMenu.pitch) / rowHeight)))

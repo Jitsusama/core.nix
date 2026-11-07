@@ -20,9 +20,13 @@ naming each line, on:
 - a mark, name or number placed across by hand, an x or a side's margin set
   from a rung or a pitch, outside the files listed as not yet on the card,
   since every column comes from Columns.js;
-- a listed file that neither takes Floating, reads the inset nor places
-  anything by hand any more, or that isn't a card surface, so the list only
-  ever shrinks.
+- a row's ground drawn of its own, read from the selection's tint, outside
+  the files listed as not yet on the card, since every row's ground is
+  Ground.qml's, which fills its band edge to edge (Joel, 2026-11-06:
+  rows tile like Vim's cursorline);
+- a listed file that neither takes Floating, reads the inset, places
+  anything by hand nor draws a ground any more, or that isn't a card
+  surface, so the list only ever shrinks.
 
 Usage: every-card-is-the-one-card.py FOLDER UNMOVED SURFACE...
 """
@@ -42,6 +46,8 @@ HAND_SET = re.compile(
     r"^\s*(?:x|anchors\.(?:left|right|horizontalCenter)Margin|anchors\.margins"
     r"|leftPadding|rightPadding)\s*:.*\bTheme\.(?:space\.rung\.\w+|level\.\w+\.pitch)\b"
 )
+# A row's ground, tinted as only the shared row tints one.
+GROUND = re.compile(r"\bTheme\.floating\.selection\b")
 
 
 def code(line: str) -> str:
@@ -72,6 +78,7 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
     floated: list[str] = []
     inset: list[str] = []
     placed: list[str] = []
+    grounded: list[str] = []
     stale: list[str] = []
     for name in surfaces:
         path = folder / name
@@ -79,11 +86,13 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
         floats = found(path, name, FLOATING)
         insets = found(path, name, INSET)
         hands = found(path, name, HAND_SET)
+        grounds = found(path, name, GROUND)
         if name not in allowed:
             floated.extend(floats)
             inset.extend(insets)
             placed.extend(hands)
-        elif not floats and not insets and not hands:
+            grounded.extend(grounds)
+        elif not floats and not insets and not hands and not grounds:
             stale.append(
                 f"{name} is listed as not yet on the card but is on it; take it off {unmoved.name}."
             )
@@ -96,6 +105,7 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
         (floated, "The lines above take Floating for a card; take Card, whose frame it is."),
         (inset, "The lines above read the inset; stand them on the card's content, at the inset."),
         (placed, "The lines above place ink across by hand; stand it on a column (Columns.js)."),
+        (grounded, "The lines above draw a row's ground; draw it through Ground.qml."),
     ]
     for lines, why in said:
         for line in lines:
@@ -104,7 +114,7 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
             print(why)
     for line in stale:
         print(line)
-    return 1 if framed or floated or inset or placed or stale else 0
+    return 1 if framed or floated or inset or placed or grounded or stale else 0
 
 
 if __name__ == "__main__":
