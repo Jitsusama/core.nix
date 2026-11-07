@@ -55,6 +55,13 @@ And, as the design grew:
 - Type and colour run through everything and are easy to swap, end to end.
 - He's very nerdy: useful information is always present. But no useless
   information and no busyness for its own sake.
+- "every integration has an insanely high bar of nerdiness and integration
+  and each should be given the same care" (2026-11-07, of the eero: "i want
+  insanely nerdy integration with the eero"). Every program, device and
+  service the desktop touches goes as deep as the deepest: every true
+  figure it has, live, in its place, its drawer, its : commands and its
+  command line. With a poor memory, a thinner one teaches him that what he
+  wants may not be there, and he stops looking.
 - Every choice comes with deep room to customise it, and performance always.
 - He has a very poor memory, so everything has to be intuitive and work the
   same way everywhere.
