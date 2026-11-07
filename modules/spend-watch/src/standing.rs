@@ -293,7 +293,10 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
     }
 }
 
-/// What a budget is, in a few words: whose money and what kind.
+/// What a budget is, in a few words: whose money and what kind. An
+/// employer's cap says only who pays, since its label already names the
+/// credential, and the kind's code name never reaches a row (VKCF3Z,
+/// 2026-11-07).
 fn words(declared: Option<&BudgetConfig>) -> String {
     use crate::config::{BudgetKind, Whose};
     let Some(budget) = declared else {
@@ -307,7 +310,7 @@ fn words(declared: Option<&BudgetConfig>) -> String {
     let kind = match budget.kind {
         BudgetKind::Plan => "plan",
         BudgetKind::Key => "key",
-        BudgetKind::Cap => "cap",
+        BudgetKind::Cap => "money",
         BudgetKind::Team => "token",
     };
     format!("{whose} {kind}")
@@ -471,6 +474,29 @@ mod tests {
     use crate::logs::{Cost, Event, Kind, Tokens, Turn};
 
     const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z, a Wednesday
+
+    #[test]
+    fn a_budget_s_words_never_say_what_a_window_s_name_never_says() {
+        let said = |kind: &str, whose: &str| {
+            let budget: BudgetConfig = serde_json::from_value(serde_json::json!({
+                "name": "b", "label": "B", "kind": kind, "whose": whose
+            }))
+            .unwrap();
+            words(Some(&budget))
+        };
+        assert_eq!(said("cap", "employer"), "the employer's money");
+        assert_eq!(said("plan", "own"), "your own plan");
+        assert_eq!(said("team", "team"), "a team's token");
+        for kind in ["plan", "key", "cap", "team"] {
+            for whose in ["own", "employer", "team"] {
+                let words = said(kind, whose);
+                assert!(
+                    !words.split_whitespace().any(crate::feed::unsaid),
+                    "{kind} {whose}: {words}"
+                );
+            }
+        }
+    }
 
     fn config() -> Config {
         serde_json::from_value(serde_json::json!({
