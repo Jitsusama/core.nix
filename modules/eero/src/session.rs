@@ -4,7 +4,7 @@
 //! written in the clear. systemd's credential service seals it for this
 //! account, with the TPM where there is one and the machine's own key, so
 //! the file opens only here and only for Joel. Opening it takes the TPM
-//! about two seconds, which a command pays once and the watch once a start.
+//! about two seconds, which a command pays once and the daemon once a start.
 
 use std::fs;
 use std::io::{self, Write};
@@ -41,7 +41,7 @@ pub fn open() -> io::Result<String> {
         .output()?;
     if !output.status.success() {
         return Err(io::Error::other(format!(
-            "couldn't open {}",
+            "couldn't open {}: run `eero sign-in <email or phone>` to seal a new one",
             file.display()
         )));
     }

@@ -73,6 +73,14 @@ pub fn id_of(url: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The ids of the nodes the network names, in eero's order.
+pub fn node_ids(network: &Value) -> Vec<String> {
+    list(network, "/eeros/data")
+        .filter_map(|node| text(node, "/url"))
+        .filter_map(|url| id_of(&url))
+        .collect()
+}
+
 fn internet(answers: &Answers) -> Internet {
     let n = &answers.network;
     Internet {

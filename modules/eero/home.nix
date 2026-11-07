@@ -2,13 +2,15 @@
 # same at home and away, since the eero itself has no local API
 # (src/main.rs says how). Joel signs in once with `eero sign-in`, typing the
 # code eero sends him, and the session is sealed for his account on this
-# machine. Until then the watch doesn't start.
+# machine. Until then the daemon doesn't start.
 #
-# The watch keeps $XDG_RUNTIME_DIR/eero/status.json, each network's line,
-# its last speed test, "Optimize for conferencing and gaming" and how many
-# devices are on it, every five minutes, for the shell to read as it reads
-# the shaper's. It's background work, a few small requests over the line,
-# so it runs in background.slice, behind everything Joel uses.
+# The daemon keeps $XDG_RUNTIME_DIR/eero/home-network.json, the whole home
+# network as one record (home-network.json is its shape), and tells each
+# change to whoever listens on $XDG_RUNTIME_DIR/eero/socket. It reads each
+# part as often as its figures move, the network every 30 seconds while the
+# shell listens and every five minutes when nothing does (src/schedule.rs
+# says each pace). It's background work, a few small requests over the
+# internet, so it runs in background.slice, behind everything Joel uses.
 { lib, pkgs, ... }:
 let
   eero = pkgs.callPackage ./package.nix { };
@@ -16,9 +18,9 @@ in
 {
   home.packages = [ eero ];
 
-  systemd.user.services.eero-watch = {
+  systemd.user.services.eero-daemon = {
     Unit = {
-      Description = "Keeps the eero's status for the shell";
+      Description = "Keeps the home network's eero for the shell";
       # %S is the account's state folder, where `eero sign-in` seals the
       # session.
       ConditionPathExists = "%S/eero/session.cred";
@@ -26,7 +28,7 @@ in
     };
     Service = {
       Slice = "background.slice";
-      ExecStart = "${lib.getExe eero} watch";
+      ExecStart = "${lib.getExe eero} daemon";
       # systemd-creds opens the sealed session.
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
       Restart = "on-failure";
