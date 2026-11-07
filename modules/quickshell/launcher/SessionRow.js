@@ -186,11 +186,37 @@ function returns(standing, windowed) {
 }
 
 // The theme's role its glyph is drawn in: a program's, as a live one
-// is, and muted for one paused or parked, which never looks live
+// is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name
 // stays in text and the far-end word says how it stands.
 function hue(stands) {
-    return stands === "paused" || stands === "parked" ? "muted" : "program";
+    return ["paused", "parked", "off"].includes(stands) ? "muted" : "program";
+}
+
+// When the session a quest resumes by was last live, in milliseconds, from
+// what the quest index says of it ({ id, cwd, at }): its `at`, the harness's
+// own word for it, else the start its id holds as a UUIDv7's first 48
+// bits, which is when it began rather than when it was last live, else 0.
+const DASHES = /-/g;
+const UUID_V7 = /^[0-9a-f]{12}7/i;
+const STAMP_DIGITS = 12;
+const HEX = 16;
+function liveAt(resume) {
+    const said = Date.parse(resume?.at ?? "");
+    if (!Number.isNaN(said)) {
+        return said;
+    }
+    const hex = String(resume?.id ?? "").replace(DASHES, "");
+    return UUID_V7.test(hex) ? Number.parseInt(hex.slice(0, STAMP_DIGITS), HEX) : 0;
+}
+
+// Addresses from [{ address, at }], the one last live first, those
+// equally live in the order given (VKCF3Z, 2026-11-07 [9a4b1dd0]: the one
+// Joel last used is the one he's likeliest to want).
+function lastLiveFirst(ones) {
+    return ones.map((one, given) => ({ one, given }))
+        .sort((a, b) => b.one.at - a.one.at || a.given - b.given)
+        .map(each => each.one.address);
 }
 
 // What a session's row says at its right, each item with how much it's

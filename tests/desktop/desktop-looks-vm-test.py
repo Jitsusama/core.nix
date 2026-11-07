@@ -1703,8 +1703,21 @@ SPENT = {
     "helpers": {},
     "families": {
         "QEST-20261022-TESTQA": {"all": "$14.20", "own": "$3.10", "under": "$11.10"},
+        "QEST-20261022-LAMPLT": {"all": "$2.40", "own": "$2.40", "under": "$0.00"},
     },
 }
+# Orchestrators no session runs, as the harness lists them, each with when it was last live:
+# they stand dimmed at the tree's end, the one live last first, and only one that spent today
+# says what all of it spent (VKCF3Z, 2026-11-07 [9a4b1dd0]).
+CLOSED = [
+    # address, its short name, its quest's title, when it was last live
+    ("BEACON", "Beacon", "Light the beacon", "2026-11-06T22:00:00Z"),
+    ("LAMPLT", "Lamplight", "Keep the lamp lit", "2026-11-07T04:00:00Z"),
+]
+# A quest nothing orchestrates and no session has, whose step in offers to orchestrate it.
+UNSTARTED = "Chart the harbour"
+WORKFLOW = "~/.local/state/pi/agentic-harness.pi/quest-workflow"
+UNSTARTED_QUEST = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HARBOR"
 
 
 def window_of(address: str, title: str) -> str:
@@ -1739,6 +1752,33 @@ def orchestrated(desktop: Desktop) -> None:
         " > $XDG_RUNTIME_DIR/spend-watch/.c"
         " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
     )
+    closed_listed(desktop)
+
+
+def closed_listed(desktop: Desktop) -> None:
+    """List the closed orchestrators, as the harness does, and a quest nothing has started."""
+    listed = {
+        "orchestrators": [
+            {"quest": f"QEST-20261022-{address}", "address": address, "short": short,
+             "title": title}
+            for address, short, title, _ in CLOSED
+        ]
+    }  # fmt: skip
+    index = {
+        "quests": [
+            {"id": f"QEST-20261022-{address}", "title": title,
+             "resume": {"id": f"01a1-{address.lower()}", "cwd": "/home/jitsusama", "at": at}}
+            for address, _, title, at in CLOSED
+        ]
+    }  # fmt: skip
+    desktop.as_account(
+        f"mkdir -p {WORKFLOW} {UNSTARTED_QUEST}"
+        f" && echo '{json.dumps(index)}' > {WORKFLOW}/.q && mv {WORKFLOW}/.q {WORKFLOW}/quests.json"
+        f" && echo '{json.dumps(listed)}' > {WORKFLOW}/.o"
+        f" && mv {WORKFLOW}/.o {WORKFLOW}/orchestrators.json"
+        " && printf '%s\\n' '---' 'id: QEST-20261022-HARBOR' 'kind: quest' 'status: active'"
+        f" 'priority: queued' 'rank: 1' '---' '# {UNSTARTED}' > {UNSTARTED_QUEST}/README.md"
+    )
 
 
 def unorchestrated(desktop: Desktop) -> None:
@@ -1747,7 +1787,10 @@ def unorchestrated(desktop: Desktop) -> None:
         window = desktop.window_titled(window_of(address, title))
         desktop.as_account(f"niri msg action close-window --id {window['id']}")
         desktop.as_account(f"rm -f {desktop_session.PI_PRESENCE}/{address.lower()}.json")
-    desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")
+    desktop.as_account(
+        "rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json"
+        f" {WORKFLOW}/orchestrators.json {WORKFLOW}/quests.json && rm -rf {UNSTARTED_QUEST}"
+    )
     desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 
 
@@ -1895,6 +1938,37 @@ def fold_steps_in(desktop: Desktop, shot: str) -> None:
     desktop.step_out()
 
 
+def closed_stand_last(desktop: Desktop, shot: str) -> None:
+    """Photograph the closed orchestrators at the tree's end, one on the cursor, one at rest.
+
+    Each is dimmed, says it's closed, and what all of it spent only where it spent today;
+    Return reopens it.
+    """
+    desktop.down_to("Lamplight")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("side") == "closed \u00b7 $2.40 in all"
+            and shown["selected"]["hue"] == "muted"
+        )
+    )
+    rows = desktop.showing()["rows"]
+    assert rows.index("Lamplight") + 1 == rows.index("Beacon"), f"at {shot}: {rows}"
+    desktop.photograph(f"launcher-agents-closed-at-{shot}")
+
+
+def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
+    """Photograph a quest's step in from Start a Session: Start Here, then Orchestrate."""
+    desktop.down_to("Start a Session")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: UNSTARTED in shown["rows"])
+    desktop.down_to(UNSTARTED)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
+    desktop.photograph(f"launcher-agents-start-quest-at-{shot}")
+    desktop.step_out()
+    desktop.step_out()
+
+
 def glyphs_stand_on_names(rows: list[Json], titles: dict[str, str], scale: str) -> None:
     """Hold each row's glyph where the name above it starts, the first word a row draws."""
     words = {address_of(row): row["words"] for row in rows}
@@ -1947,6 +2021,8 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
             returns_said_in_the_foot(desktop, titles, shot)
             fold_steps_in(desktop, shot)
+            closed_stand_last(desktop, shot)
+            a_quest_offers_to_orchestrate(desktop, shot)
             desktop.close_launcher()
         orchestrator_says_whose_spend_is_whose(desktop)
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,

@@ -1,20 +1,11 @@
-// The orchestrators, a collection in Agents: each quest whose session
-// orchestrates others, as the harness lists them (orchestrators.json under
-// its quest workflow, written whole whenever one changes), so Joel can pick
-// one and talk to it (Joel, 2026-10-25: "it needs a good name and should
-// allow me to pick an orchestrator"), in the one order every list of
-// sessions keeps (SessionRow.js): those needing him, then those working,
-// in line, listening, paused and parked, then those not running, each saying so
-// beside its name, as its session says, and what its whole orchestration
-// spent today, as Agents says it.
-//
-// One running is its session, drawn as every session is (Agents.qml,
-// SessionRow.js): Return goes to its window, and stepping in gives its acts,
-// Talk, Pause or Resume and Stop, each left in its steer inbox
-// (Sessions.qml), then what's known of it. One parked is its session too,
-// which Return wakes in its own window. One not running reopens where it
-// left off instead, as every closed session does (Reopen), Resume being a
-// paused one's alone (VKCF3Z, 2026-11-06).
+// What Agents knows of the orchestrators, and no place of its own: each
+// quest whose session orchestrates others, as the harness lists them
+// (orchestrators.json under its quest workflow, written whole whenever one
+// changes), which of them is closed, and how a closed one reopens. One
+// running or parked is its session, a row of Agents' tree like any other;
+// one closed stands dimmed at the tree's end, as Agents draws it, the one
+// last live first (VKCF3Z, 2026-11-07 [9a4b1dd0]: the Orchestrators
+// collection, a second listing of the same sessions, goes).
 //
 // After those come the talks Joel has had with a session, newest first, as
 // it writes what became of each (the harness's talk files, one a talk,
@@ -38,15 +29,10 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
-import "../Fuzzy.js" as Fuzzy
 import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
-
-    what: Words.of("orchestrators").what
-
-    collection: Words.collection("orchestrators")
 
     // As the harness wrote them, or none before it has.
     property var listed: []
@@ -64,6 +50,9 @@ Provider {
     // where it would start instead, before Return (VKCF3Z, 2026-11-07
     // [4a00987e]).
     property var resumeFolders: ({})
+    // When each of those was last live, in milliseconds, which orders the
+    // closed ones (SessionRow.liveAt).
+    property var resumedAt: ({})
     function lookForFolders() {
         if (provider.launcher?.open)
             Sessions.lookForFolders(Object.values(resumeFolders)
@@ -73,19 +62,6 @@ Provider {
     readonly property string harness: Sessions.state
     readonly property string inboxes: Sessions.inboxes
 
-    // How one stands (SessionRow.js): as its running session does, as
-    // Agents reads it, or by its presence alone while no session is found
-    // for it, as one whose window isn't open yet, its want judged as
-    // Sessions judges any, and "off" with neither.
-    function standing(address) {
-        const session = sessionOf(address);
-        const agents = source("agents");
-        if (session && agents)
-            return agents.stateOf(session);
-        const presence = Sessions.present[address] ?? null;
-        return SessionRow.state(presence, Sessions.asks({ presence: presence }), false);
-    }
-
     // Its session, running or parked, by its address, or null: one parked
     // is woken, never resumed in a second window beside its own.
     function sessionOf(address) {
@@ -93,110 +69,26 @@ Provider {
             ?? Sessions.parked.find(one => one.address === address) ?? null;
     }
 
-    readonly property var all: {
+    // Those closed, neither running nor parked nor present at all, the one
+    // last live first, in the order fixed as the launcher opened, so none
+    // moves under the cursor while it's open; one closed since comes last.
+    readonly property var closed: {
         Sessions.present;
-        Niri.revision;
-        // What a session's state reads besides its presence: its want and
-        // its place in line.
-        WaitingOnYou.standing;
-        Jobs.jobs;
-        const rows = listed.map((one, at) => ({ one: one, at: at,
-            stands: standing(one.address) }));
-        rows.sort((a, b) => SessionRow.rank(a.stands) - SessionRow.rank(b.stands)
-            || a.at - b.at);
-        return rows.map(row => made(row.one, row.stands));
+        const shut = listed.filter(one => !sessionOf(one.address)
+            && !Sessions.present[one.address]);
+        const at = one => {
+            const placed = closedOrder.indexOf(one.address);
+            return placed < 0 ? closedOrder.length : placed;
+        };
+        return shut.slice().sort((a, b) => at(a) - at(b));
     }
-    onAllChanged: changedTo(all)
-
-    function said(stands, presence) {
-        const words = stands === "off" ? Words.of("orchestrators").said ?? {}
-            : Words.of("agents").said ?? {};
-        const step = stands === "working" && presence && presence.step
-            ? `, ${presence.step}` : "";
-        return `${words[stands] ?? stands}${step}`;
-    }
-
-    // Another provider, by its name, as Agents finds its own.
-    function source(name) {
-        return (provider.launcher?.sources ?? []).find(other => other.settings.name === name)
-            ?? null;
-    }
-
-    function made(one, stands) {
-        const presence = Sessions.present[one.address] ?? null;
-        // A running one is its session, the one row a session is wherever
-        // it shows (SessionRow.js): its acts, its drawer and what's inside are
-        // Agents' own, under the orchestrator's name.
-        const session = stands === "off" ? null : sessionOf(one.address);
-        const own = session ? source("agents")?.made(session, { orchestrates: true }) ?? null
-            : null;
-        // Its talks with Joel follow what the session holds, as only an
-        // orchestrator's inbox keeps them.
-        const inside = own?.verbs ?? null;
-        if (own)
-            return Object.assign(own, {
-                key: `orchestrator:${one.address}`,
-                name: one.short || one.title || one.address,
-                glyph: Theme.glyph[stands === "needs" ? "waitsOnJoel" : "agent"],
-                stands: stands,
-                // A list of orchestrators is no tree, so it has no ranked
-                // reading of its own, which would be the agent's row.
-                ranked: null,
-                verbs: () => (inside ? inside() : []).concat(provider.talksOf(one.address))
-            });
-        const row = member({
-            thing: true,
-            key: `orchestrator:${one.address}`,
-            verb: "open",
-            name: one.short || one.title || one.address,
-            glyph: Theme.glyph[stands === "needs" ? "waitsOnJoel" : "agent"],
-            hue: "program",
-            side: said(stands, presence),
-            note: one.title ?? "",
-            stands: stands,
-            verbs: () => provider.verbs(one, stands)
-        });
-        // A closed one reopens on Return, its Reopen leading the step in;
-        // one whose folder is gone says so, and starts afresh in its
-        // quest's start folder by an act named for that, or, with none to
-        // start in, holds nothing but its talks.
-        if (stands === "off") {
-            const gone = goneFrom(one);
-            Object.assign(row, gone === null ? {
-                verb: Words.verb("verb:orchestrator:reopen"),
-                run: () => provider.start(one)
-            } : {
-                side: gone.side,
-                alerts: true,
-                hue: "alert",
-                verb: gone.afresh ? Words.verb("verb:orchestrator:afresh") : "more",
-                run: gone.afresh ? gone.afresh : () => provider.launcher?.enter(row)
-            });
-        }
-        return row;
-    }
-
-    function act(id, fields) {
-        return thing(Object.assign({
-            key: `verb:orchestrator:${id}`,
-            verb: Words.verb(`verb:orchestrator:${id}`),
-            name: Words.name(`verb:orchestrator:${id}`),
-            glyph: Words.glyph(`verb:orchestrator:${id}`),
-            hue: "action"
-        }, fields));
-    }
-
-    // A closed one's only act is to reopen it; a running one's are its
-    // session's, as made() gives them, and one whose session isn't found
-    // yet offers its talks alone.
-    function verbs(one, stands) {
-        if (stands !== "off")
-            return talksOf(one.address);
-        const gone = goneFrom(one);
-        if (gone === null)
-            return [act("reopen", { run: () => provider.start(one) })];
-        return (gone.afresh ? [act("afresh", { run: gone.afresh })] : [])
-            .concat(talksOf(one.address));
+    // Their addresses, the one last live first, as the launcher last opened.
+    property var closedOrder: []
+    function orderClosed() {
+        closedOrder = SessionRow.lastLiveFirst(listed.map(one => ({
+            address: one.address,
+            at: resumedAt[one.quest] ?? 0
+        })));
     }
 
     // How a closed one's folder is gone, as last looked for: what its row
@@ -368,22 +260,6 @@ Provider {
 
     Component.onCompleted: lookForTalks()
 
-    // Each orchestrator not running as a row whose Return starts its
-    // session, for Agents' Start a Session, named as its own row is.
-    readonly property var startable: {
-        Sessions.present;
-        return listed.filter(one => standing(one.address) === "off")
-            .map(one => thing({
-                key: `orchestrator:start:${one.address}`,
-                verb: Words.verb("verb:orchestrator:reopen"),
-                name: one.short || one.title || one.address,
-                glyph: Theme.glyph.agent,
-                hue: "program",
-                note: one.title ?? "",
-                run: () => provider.start(one)
-            }));
-    }
-
     // A closed orchestrator reopened where it left off: the session the
     // quest index names to resume, in the folder
     // that session ran in (Joel, 2026-10-28: "i want to be able to easily
@@ -407,31 +283,6 @@ Provider {
             : [homely(cwd), String(said.isGone ?? ""), Theme.alert];
         Sessions.resume(last, one.quest, startFolders[one.quest] ?? "", (cwd, startedIn) =>
             provider.launcher?.tellOnOpen([told(cwd, startedIn)]));
-    }
-
-    function everything() {
-        return all;
-    }
-
-    // Its name, and its quest's title, as a search reads them.
-    function readyTexts(row) {
-        return [row.prepared, row.note !== "" ? Fuzzy.kept(row.note) : null];
-    }
-
-    // Found by its name, or by its quest's title, best first.
-    function search(typed) {
-        const words = Fuzzy.words(typed);
-        const found = [];
-        for (const row of all) {
-            const byName = Fuzzy.match(row.prepared, words, false);
-            const byTitle = row.note !== "" ? Fuzzy.match(Fuzzy.kept(row.note), words, false)
-                : byName;
-            const best = byName.score >= byTitle.score ? byName : byTitle;
-            if (best.score >= 0)
-                found.push({ score: best.score, grade: best.grade, row: row });
-        }
-        found.sort((a, b) => b.score - a.score);
-        return { rows: found.map(f => f.row), grade: 0 };
     }
 
     // Each inbox's talks: its replies folder listed, its newest files
@@ -500,6 +351,7 @@ Provider {
             if (provider.launcher.open) {
                 orchestrators.reload();
                 questIndex.reload();
+                provider.orderClosed();
                 provider.lookForFolders();
                 provider.looked += 1;
                 provider.lookForTalks();
@@ -519,6 +371,8 @@ Provider {
             } catch (e) {
                 provider.listed = [];
             }
+            if (!provider.launcher?.open)
+                provider.orderClosed();
         }
         onLoadFailed: provider.listed = []
     }
@@ -534,6 +388,7 @@ Provider {
                 const out = {};
                 const resumes = {};
                 const folders = {};
+                const lastLive = {};
                 for (const quest of JSON.parse(text()).quests ?? []) {
                     if (quest.start)
                         out[quest.id] = quest.start;
@@ -541,15 +396,23 @@ Provider {
                         resumes[quest.id] = quest.resume.id;
                     if (typeof quest.resume?.cwd === "string")
                         folders[quest.id] = quest.resume.cwd;
+                    if (quest.resume)
+                        lastLive[quest.id] = SessionRow.liveAt(quest.resume);
                 }
                 provider.startFolders = out;
                 provider.resumable = resumes;
                 provider.resumeFolders = folders;
+                provider.resumedAt = lastLive;
             } catch (e) {
                 provider.startFolders = {};
                 provider.resumable = {};
                 provider.resumeFolders = {};
+                provider.resumedAt = {};
             }
+            // Ordered afresh while the launcher is shut, never under the
+            // cursor while it's open.
+            if (!provider.launcher?.open)
+                provider.orderClosed();
             provider.lookForFolders();
         }
     }

@@ -30,7 +30,10 @@
 // leading its note, as a row that arrives while the list is open is
 // (Steady.js). An orchestrator says what its whole orchestration spent
 // today, as spend-watch sums it by quest, and its drawer what of that was
-// its own and its sessions'.
+// its own and its sessions'. Those closed stand at the tree's end,
+// dimmed, the one last live first, and Return reopens one where it left
+// off (VKCF3Z, 2026-11-07 [9a4b1dd0]), so the tree is the one place an
+// orchestrator is listed.
 import qs
 import Quickshell
 import QtQuick
@@ -64,13 +67,72 @@ Provider {
         const running = Sessions.running.concat(Sessions.parked);
         // The orchestrators the harness lists, which say what their whole
         // orchestration spent even with none of theirs running.
-        const listed = (source("orchestrators")?.listed ?? []).map(one => one.address);
+        const orchestrators = source("orchestrators");
+        const listed = (orchestrators?.listed ?? []).map(one => one.address);
         const laid = SessionRow.tree(running.map(session => ({
             address: session.address,
             under: session.presence?.orchestratedBy ?? "",
             state: stateOf(session)
         })), true);
-        return rowsOf(laid, running, listed);
+        return rowsOf(laid, running, listed)
+            .concat((orchestrators?.closed ?? []).map(one => closedRow(one, orchestrators)));
+    }
+
+    // A closed orchestrator's row: its glyph muted, as one paused is, its
+    // name in text, "closed" at its right with what its whole orchestration
+    // spent today when that's anything, its quest's title as its note, and
+    // Return reopening it where it left off. One whose folder is gone says
+    // so in alert, and starts afresh in its quest's start folder
+    // (Orchestrators.qml's goneFrom), or, with none, steps in to its talks.
+    function closedRow(one, orchestrators) {
+        const family = one.quest && !Quiet.sharing ? SpendWatch.families[one.quest] ?? null
+            : null;
+        const items = SessionRow.side(word("closed"),
+            family ? word("allOf", { spent: family.all }) : "");
+        const gone = orchestrators.goneFrom(one);
+        const row = member({
+            thing: true,
+            key: `orchestrator:${one.address}`,
+            kind: SessionRow.KIND,
+            name: one.short || one.title || one.address,
+            also: Fuzzy.prepare(`${one.address} ${one.quest ?? ""} ${one.title ?? ""}`),
+            glyph: Theme.glyph.agent,
+            hue: SessionRow.hue("off"),
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items,
+            note: one.title ?? "",
+            depth: 0,
+            verb: Words.verb("verb:orchestrator:reopen"),
+            run: () => orchestrators.start(one),
+            verbs: () => provider.closedActs(one, orchestrators)
+        });
+        if (gone !== null)
+            Object.assign(row, {
+                side: gone.side,
+                sideItems: [{ said: gone.side, keep: 3 }],
+                alerts: true,
+                hue: "alert",
+                verb: gone.afresh ? Words.verb("verb:orchestrator:afresh") : "more",
+                run: gone.afresh ? gone.afresh : () => provider.launcher?.enter(row)
+            });
+        return row;
+    }
+
+    // A closed orchestrator's acts: Reopen, or Start Afresh where its
+    // folder is gone, then its talks, newest first.
+    function closedActs(one, orchestrators) {
+        const act = (id, run) => thing({
+            key: `verb:orchestrator:${id}`,
+            verb: Words.verb(`verb:orchestrator:${id}`),
+            name: Words.name(`verb:orchestrator:${id}`),
+            glyph: Words.glyph(`verb:orchestrator:${id}`),
+            hue: "action",
+            run: run
+        });
+        const gone = orchestrators.goneFrom(one);
+        const first = gone === null ? [act("reopen", () => orchestrators.start(one))]
+            : gone.afresh ? [act("afresh", gone.afresh)] : [];
+        return first.concat(orchestrators.talksOf(one.address));
     }
     onAllChanged: changedTo(all)
 
@@ -194,6 +256,12 @@ Provider {
             ? word("under", { address: orchestrator }) : "";
         // What it spent today, an orchestrator's whole orchestration's.
         const figure = family ? word("allOf", { spent: family.all }) : spent;
+        // An orchestrator is found by what the harness lists it as too,
+        // its short name and its quest's title, as it was in the place of
+        // its own this tree replaced.
+        const listedAs = place?.orchestrates ? (source("orchestrators")?.listed ?? [])
+            .find(one => one.address === session.address) ?? null : null;
+        const known = listedAs ? ` ${listedAs.short ?? ""} ${listedAs.title ?? ""}` : "";
         const items = SessionRow.side(doing, figure);
         const row = member({
             thing: true,
@@ -207,7 +275,7 @@ Provider {
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since
             // a member keeps its words as given.
-            also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}`),
+            also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}${known}`),
             glyph: Theme.glyph.agent,
             hue: SessionRow.hue(state),
             side: items.map(item => item.said).join(" \u00b7 "),
@@ -269,7 +337,7 @@ Provider {
 
     // A session's own acts, in the one order every session keeps
     // (SessionRow.js), each steering it through its inbox but Go To; an
-    // orchestrator's row offers the same ones (Orchestrators.qml).
+    // orchestrator's row is its session's, with its talks after them.
     function sessionActs(session) {
         return SessionRow.acts(stateOf(session), windowedOf(session))
             .map(id => sessionAct(session, id));
@@ -388,10 +456,13 @@ Provider {
     // Starting a session, Agents' own last row, after the sessions running
     // (Joel, 2026-10-28: "i'm also not able to start an orchestrator agent
     // session from the launcher ... it is also a bit non-intuitive"): one
-    // row, then a choice of a session on a quest or one as an
-    // orchestrator, each listing what it can start, the quests' and the
-    // orchestrators' own rows, whose Return starts it. Found by its name
-    // from anywhere, and folded, so home names the sessions, never it.
+    // row listing the unfinished quests with no session, each the quest's
+    // own row, whose Return starts one on it and whose step in holds Start
+    // Here, then Orchestrate (Quests.qml), so whether it orchestrates is
+    // an act, never a question asked first (VKCF3Z, 2026-11-07
+    // [9a4b1dd0]). A closed orchestrator reopens on its own row. Found by
+    // its name from anywhere, and folded, so home names the sessions,
+    // never it.
     function source(name) {
         return (provider.launcher?.sources ?? []).find(one => one.settings.name === name) ?? null;
     }
@@ -399,24 +470,12 @@ Provider {
     readonly property var start: {
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
-        const orchestrators = () => source("orchestrators")?.startable ?? [];
-        const choice = (id, note, rows) => thingRow({
-            key: `agents:start:${id}`,
-            name: Words.name(`agents:start:${id}`),
-            note: note,
-            glyph: Theme.glyph.agent,
-            hue: "action"
-        }, rows);
         return Object.assign(thingRow({
             key: "agents:start",
             name: Words.name("agents:start"),
             glyph: Theme.glyph.agent,
             hue: "action"
-        }, () => [
-            choice("quest", "a session working on one of your quests", quests),
-            choice("orchestrator", "a session that runs a quest and the quests under it",
-                orchestrators)
-        ]), {
+        }, quests), {
             folded: true
         });
     }

@@ -187,13 +187,35 @@ QtObject {
         const drawn = SessionRow.drawer("A Quest", { worksOn: "the row" }, told);
         if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
             failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
-        // One paused or parked never looks live: its glyph is muted, every
-        // other a program's, as the live rows' are.
-        const hues = ["needs", "working", "inLine", "listening", "paused", "parked"].map(state => `${state}:${SessionRow.hue(state)}`)
-            .join(" ");
+        // One paused, parked or closed never looks live: its glyph is muted,
+        // every other a program's, as the live rows' are.
+        const hues = ["needs", "working", "inLine", "listening", "paused", "parked", "off"]
+            .map(state => `${state}:${SessionRow.hue(state)}`).join(" ");
         if (hues !== "needs:program working:program inLine:program listening:program"
-            + " paused:muted parked:muted")
+            + " paused:muted parked:muted off:muted")
             failures.push(`the glyphs' roles by state: "${hues}"`);
+        // When a quest's session was last live: the harness's `at` where it
+        // says one, else when a UUIDv7 id says it began, else never.
+        const lives = [
+            [{ id: "01a1b20b-e05f-7367-9461-074e26d23c53", at: "2026-11-07T05:00:00Z" },
+                Date.parse("2026-11-07T05:00:00Z")],
+            [{ id: "01a1b20b-e05f-7367-9461-074e26d23c53" }, 0x01a1b20be05f],
+            [{ id: "01a1b20b-e05f-4367-9461-074e26d23c53" }, 0],
+            [{ id: "not-a-uuid", at: "whenever" }, 0],
+            [null, 0]
+        ];
+        for (const [resume, want] of lives) {
+            const got = SessionRow.liveAt(resume);
+            if (got !== want)
+                failures.push(`last live from ${JSON.stringify(resume)}: ${got}, not ${want}`);
+        }
+        // The closed, the one last live first, those as live as each other
+        // in the order given.
+        const lastLive = SessionRow.lastLiveFirst([{ address: "OLDEST", at: 1 },
+            { address: "NEVER", at: 0 }, { address: "NEWEST", at: 3 },
+            { address: "TIEDA", at: 2 }, { address: "TIEDB", at: 2 }]).join(" ");
+        if (lastLive !== "NEWEST TIEDA TIEDB OLDEST NEVER")
+            failures.push(`the closed, last live first: "${lastLive}"`);
         // It names things from the world, so it's set as they're written.
         if (drawn.eyebrowNames !== true)
             failures.push("the drawer's eyebrow isn't said to name things");

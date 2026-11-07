@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 
 # How late, in seconds, the journal may stamp a line of the shell's on a busy machine.
 JOURNAL_LAG = 0.1
+# Pi's session's row, its quest's title, which Lighthouse's is while it runs.
+LIGHTHOUSE = "A quest of its own & whole"
 
 
 @pytest.fixture(scope="module")
@@ -300,10 +302,10 @@ def an_orchestrator(desktop: Desktop) -> None:
 
 
 def into_lighthouse(desktop: Desktop) -> None:
-    """Open Orchestrators, and step into Lighthouse."""
-    desktop.as_account("qs ipc call launcher collection orchestrators")
+    """Open Agents, find Lighthouse's session there by its short name, and step into it."""
+    desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lighthouse")
+    desktop.type_in("lighthouse", selecting=LIGHTHOUSE)
     desktop.follow()
     desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
 
@@ -314,32 +316,31 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     """An orchestrator is found by its name, and talked to through its session's inbox."""
     machine = desktop.machine
     an_orchestrator(desktop)
-    # A running one is its session, drawn as every session is: what it's
-    # doing beside it and its address in its drawer, and its Return goes to
-    # its window.
-    desktop.as_account("qs ipc call launcher collection orchestrators")
+    # A running one is its session, a row of Agents' tree drawn as every
+    # session is: what it's doing beside it and its address in its drawer,
+    # and its Return goes to its window.
+    desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Lighthouse"
+            (shown["selected"] or {}).get("name") == LIGHTHOUSE
             and "TESTQA" not in str(shown["selected"]["side"])
             and str(shown["drawer"]["eyebrow"]).startswith("TESTQA \u00b7 ")
             and shown["selected"]["verb"] == "go to"
         )
     )
     desktop.close_launcher()
-    # Found from the root by its name, Ctrl+] in normal goes
-    # straight inside it, though its Return goes to its window, the crumbs
-    # saying where it lives; - comes back to the search,
-    # Lighthouse selected (VKCF3Z, 2026-10-29: "\u2190 is where you came
-    # from").
+    # Found from the root by the short name the harness lists it by, Ctrl+]
+    # in normal goes straight inside it, though its Return goes to its
+    # window, the crumbs saying where it lives; - comes back to the search,
+    # it selected (VKCF3Z, 2026-10-29: "\u2190 is where you came from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.type_in("lighthouse", selecting=LIGHTHOUSE)
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Orchestrators", "Lighthouse"]
+            shown["path"] == ["Agents", LIGHTHOUSE]
             and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
         )
     )
@@ -348,18 +349,18 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         lambda shown: (
             shown["held"] == []
             and shown["typed"] == "lighthouse"
-            and (shown["selected"] or {}).get("name") == "Lighthouse"
+            and (shown["selected"] or {}).get("name") == LIGHTHOUSE
         )
     )
     desktop.close_launcher()
     # Inside, its acts come in the order every session keeps them.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.type_in("lighthouse", selecting=LIGHTHOUSE)
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Orchestrators", "Lighthouse"]
+            shown["path"] == ["Agents", LIGHTHOUSE]
             and shown["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
         )
     )
@@ -447,9 +448,7 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     assert said["text"].startswith("what is a fjord?\n\nThe launcher answered: "), said
     assert said["from"] == "joel", said
     desktop.launcher_until(
-        lambda shown: (
-            shown["path"] == ["Agents", "Orchestrators", "Lighthouse"] and "Talk" in shown["rows"]
-        )
+        lambda shown: shown["path"] == ["Agents", LIGHTHOUSE] and "Talk" in shown["rows"]
     )
     desktop.close_launcher()
 
@@ -544,13 +543,14 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
 def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop: Desktop,
 ) -> None:
-    """Agents resumes a closed orchestrator where it left off, from one row and a choice."""
+    """Agents resumes a closed orchestrator where it left off, from its row at the tree's end."""
     machine = desktop.machine
     opened = "$XDG_RUNTIME_DIR/pi-opened"
     # Lighthouse orchestrates a quest, and no session runs it; the quest
     # index names the session to resume, which ran in ~/lighthouse, as
     # pi's file for it says, never the index's sessions, which can hold
     # one long dead.
+    a_quest_offers_to_orchestrate(desktop)
     lighthouse_listed(desktop)
     index = {
         "quests": [
@@ -576,20 +576,29 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.launcher_until(
         lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
     )
-    # The sessions come first, then starting one, then Agents' places.
+    # Starting one lists the quests themselves; one orchestrating already
+    # reopens on its own row, so its step in holds Start Here alone.
     desktop.down_to("Start a Session")
     desktop.photograph("launcher-agents-start")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["On a Quest", "As an Orchestrator"])
-    desktop.photograph("launcher-agents-start-which")
-    desktop.down_to("As an Orchestrator")
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Lighthouse"])
-    # Reopening changes how things stand (the key language's reopen), so
-    # Return from the find lands on it, saying what a second Return does.
+    desktop.launcher_until(lambda shown: LIGHTHOUSE in shown["rows"])
+    desktop.down_to(LIGHTHOUSE)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Start Here"])
+    assert "Orchestrate" not in desktop.showing()["rows"], desktop.showing()
+    desktop.close_launcher()
+    # The closed orchestrator stands dimmed at the tree's end, its Return
+    # reopening it, which changes how things stand (the key language's
+    # reopen), so Return from the find lands on it, saying what a second
+    # Return does.
+    desktop.as_account("qs ipc call launcher collection agents")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    selected = desktop.showing()["selected"]
+    assert (selected["side"], selected["hue"]) == ("closed", "muted"), selected
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
-    desktop.photograph("launcher-agents-start-orchestrator")
+    desktop.photograph("launcher-agents-closed-orchestrator")
     # Return reopens its last session where it ran, as the harness
     # restores one, through a login shell so pi can reach its model.
     machine.send_key("ret")
@@ -602,7 +611,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     assert said[1:] == ["--session", "01a1-lighthouse", ""], said
     # Reopening one takes Joel to it, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
-    # Its own row under Orchestrators says the same, Reopen its Return.
+    # Found from anywhere by its name, its row says the same, Reopen its Return.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
@@ -614,6 +623,29 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
         f"rm -rf {opened} {sessions} ~/lighthouse {HARNESS}/quest-workflow/orchestrators.json"
         f" {HARNESS}/quest-workflow/quests.json"
     )
+
+
+def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
+    """Start a Session lists a quest nothing orchestrates, whose step in offers Orchestrate.
+
+    It holds Start Here, then Orchestrate, never a question asked first.
+    """
+    desktop.as_account(
+        f"rm -f {HARNESS}/quest-workflow/orchestrators.json {PI_PRESENCE}/testqa.json"
+        f" && mkdir -p {PI_QUEST}"
+        f" && printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
+        f" 'priority: driving' 'rank: 1' '---' '# {LIGHTHOUSE}' > {PI_QUEST}/README.md"
+    )
+    desktop.as_account("qs ipc call launcher collection agents")
+    desktop.launcher_ready()
+    desktop.down_to("Start a Session")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: LIGHTHOUSE in shown["rows"])
+    desktop.down_to(LIGHTHOUSE)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
+    desktop.photograph("launcher-agents-start-quest")
+    desktop.close_launcher()
 
 
 def wakes_parked_orchestrator(desktop: Desktop) -> None:

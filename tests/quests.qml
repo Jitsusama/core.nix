@@ -43,6 +43,9 @@ ShellRoot {
         id: launcher
 
         property bool open: false
+        // The orchestrators the harness lists, as the launcher's sources
+        // hold them, which a case fills.
+        property var sources: []
     }
 
     Launcher.Quests {
@@ -123,21 +126,40 @@ ShellRoot {
             const facts = prompt.verbs();
             // Each fact named first, as every part is, then what it says.
             expect("stepping in", names(facts)
-                === "Start a Session, ID, Status, Last Touched, Part Of, Folder", names(facts));
-            const sides = facts.slice(1).map(row => row.side).join(", ");
+                === "Start Here, Orchestrate, ID, Status, Last Touched, Part Of, Folder",
+                names(facts));
+            // Return says the act that leads, so stepping in never lifts a
+            // second one before it (Catalogue.js's leading).
+            expect("Return says Start Here's verb", prompt.verb === facts[0].verb,
+                `${prompt.verb} and ${facts[0].verb}`);
+            // Orchestrate starts one that orchestrates it, where Start Here
+            // would start.
+            facts[1].run();
+            expect("orchestrating it from where it would start",
+                JSON.stringify(Sessions.started) === JSON.stringify(
+                    ["QEST-20261003-PROMPT", `${root.here}/session`, "orchestrating"]),
+                JSON.stringify(Sessions.started));
+            // One the harness lists as orchestrating already reopens on its
+            // own row in Agents, so it isn't offered again.
+            launcher.sources = [{ settings: { name: "orchestrators" },
+                listed: [{ quest: "QEST-20261003-PROMPT", address: "PROMPT" }] }];
+            expect("no Orchestrate where it orchestrates already",
+                !names(prompt.verbs()).includes("Orchestrate"), names(prompt.verbs()));
+            launcher.sources = [];
+            const sides = facts.slice(2).map(row => row.side).join(", ");
             expect("what each says", sides
                 === `QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
                 + "Bootstrap the laptop, ~/session", sides);
             const folder = facts[facts.length - 1];
             expect("its folder copied whole", folder.copy === `${root.here}/session`, folder.copy);
-            expect("a fact copies itself", facts[1].verb === "copy", facts[1].verb);
+            expect("a fact copies itself", facts[2].verb === "copy", facts[2].verb);
             // What y takes is what its first fact copies, made without its
             // facts, since y over hundreds asks every row.
             const taken = typeof prompt.operands === "function" ? prompt.operands() : [];
             expect("y takes its id, as its first fact copies it", taken.length === 1
-                && taken[0].verb === "copy" && taken[0].copies === facts[1].copies(),
+                && taken[0].verb === "copy" && taken[0].copies === facts[2].copies(),
                 JSON.stringify(taken.map(one => one.copies)));
-            expect("with this machine alone, Start a Session holds no step",
+            expect("with this machine alone, Start Here holds no step",
                 facts[0].verbs === null && facts[0].note === "", facts[0].note);
             expect("the node asked where sessions may go", Sessions.lookedAround > 0,
                 Sessions.lookedAround);
@@ -149,7 +171,7 @@ ShellRoot {
             ];
             Sessions.fits = "alpha";
             const start = prompt.verbs()[0];
-            expect("Start a Session says where Return starts one", start.note === "this machine",
+            expect("Start Here says where Return starts one", start.note === "this machine",
                 start.note);
             const machines = start.verbs();
             expect("stepping into the machines, this one first, Wherever It Fits last",
