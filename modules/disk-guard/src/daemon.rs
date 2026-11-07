@@ -372,7 +372,7 @@ pub struct Guard {
     /// holder can say how much of it the guard may clear, and how much a
     /// clear would take now; none before the first survey, which a disk
     /// well under its budget may not make for six hours.
-    offered: Option<Vec<crate::holders::Offered>>,
+    offered: Option<crate::holders::Offers>,
     /// Whether the holders are to be measured again on the next step,
     /// since a clear has just changed them.
     remeasure: bool,
@@ -1935,7 +1935,7 @@ impl Guard {
             return Ok((scan, offers));
         }
         self.kept = kept;
-        self.offered = Some(
+        self.offered = Some(crate::holders::Offers::new(
             offers
                 .iter()
                 .map(|offer| crate::holders::Offered {
@@ -1944,7 +1944,7 @@ impl Guard {
                     now: crate::plan::clears(&offer.candidate),
                 })
                 .collect(),
-        );
+        ));
         offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
         offers.extend(self.asked_offers());
@@ -2052,7 +2052,7 @@ impl Guard {
             if *outcome == Outcome::Reclaimed
                 && let Some(offered) = &mut self.offered
             {
-                offered.retain(|offer| &offer.path != taken);
+                offered.forget(taken);
             }
             let offered = here.iter().find(|offer| &offer.candidate.path == taken);
             match offered.map(|offer| &offer.action) {
@@ -2252,7 +2252,7 @@ impl Guard {
             &*self.measured.lock().unwrap_or_else(PoisonError::into_inner)
         {
             status.holders =
-                crate::holders::holders(measured, self.offered.as_deref(), &self.kept, grew, home);
+                crate::holders::holders(measured, self.offered.as_ref(), &self.kept, grew, home);
             status.holders_at = Some(*at);
         }
         mark(&mut status, self.state(), home);
