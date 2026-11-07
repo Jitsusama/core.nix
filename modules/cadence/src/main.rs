@@ -1,0 +1,316 @@
+//! cadence watches the delivery cycle from outside every session, so it
+//! stays watched when the session keeping it fast dies, parks or loses its
+//! model. Each `cadence tick`, run by a timer, reads the cycle's raw
+//! records (core's merges, the switches update-to-main's follower made,
+//! the runs nix-offload sent, the net's round, the machine's pressure and
+//! memory), writes the last hour's card to `card.txt` in its state folder,
+//! and asks the watcher, by its mesh address, a question for each target
+//! newly missed and for a card overdue. When the watcher leaves a question
+//! unanswered for twenty minutes, or is gone for ten, it asks the steward
+//! above it instead, once. Given no watcher, it writes the card alone.
+//!
+//!     cadence tick [--watcher ADDRESS --steward ADDRESS]
+
+mod card;
+mod mesh;
+mod records;
+mod stats;
+mod watch;
+
+use std::env;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
+
+use mesh::{Mesh, Message};
+use watch::{Landing, Round, Snapshot, State, To};
+
+/// The address cadence's questions come from.
+const FROM: &str = "CADENCE";
+/// Core's repository, which cadence keeps a bare clone of to read merges.
+const CORE: &str = "https://github.com/Jitsusama/core.nix";
+/// How far back the records are read, so the hour and the six hours a
+/// merge may wait in are both covered.
+const DAY: i64 = 86_400;
+
+struct Args {
+    watcher: Option<String>,
+    steward: Option<String>,
+}
+
+fn main() -> ExitCode {
+    let mut args = env::args().skip(1);
+    if args.next().as_deref() != Some("tick") {
+        eprintln!("usage: cadence tick [--watcher ADDRESS --steward ADDRESS]");
+        return ExitCode::from(2);
+    }
+    let mut parsed = Args {
+        watcher: None,
+        steward: None,
+    };
+    while let Some(flag) = args.next() {
+        let value = args.next();
+        match (flag.as_str(), value) {
+            ("--watcher", Some(v)) => parsed.watcher = Some(v),
+            ("--steward", Some(v)) => parsed.steward = Some(v),
+            _ => {
+                eprintln!("cadence: {flag} isn't a flag it takes, or has no value");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    match run(&parsed) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("cadence: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(args: &Args) -> io::Result<()> {
+    let home = PathBuf::from(env::var_os("HOME").ok_or_else(|| io::Error::other("no HOME"))?);
+    let state_home =
+        env::var_os("XDG_STATE_HOME").map_or_else(|| home.join(".local/state"), PathBuf::from);
+    let folder = state_home.join("cadence");
+    fs::create_dir_all(&folder)?;
+    let mesh = Mesh {
+        root: state_home.join("pi/agentic-harness.pi"),
+    };
+    let now = now_ms() / 1000;
+    let snapshot = gather(&folder, &state_home, &mesh, args, now)?;
+    write_whole(&folder.join("card.txt"), &card::card(&snapshot, clock))?;
+
+    let (Some(watcher), Some(steward)) = (&args.watcher, &args.steward) else {
+        return Ok(());
+    };
+    let path = folder.join("state.json");
+    let mut state: State = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    for question in watch::tick(&snapshot, &mut state) {
+        let to = match question.to {
+            To::Watcher => watcher,
+            To::Steward => steward,
+        };
+        let text = match question.to {
+            To::Watcher => format!(
+                "{} Answer with re set to this question once handled.",
+                question.text
+            ),
+            To::Steward => question.text.clone(),
+        };
+        let message = new_question(to, text);
+        mesh.send(&message)?;
+        if let Some(key) = &question.key {
+            state.asked_as(key, &message.id, now, &question.text);
+        }
+    }
+    write_whole(&path, &serde_json::to_string_pretty(&state)?)
+}
+
+fn gather(
+    folder: &Path,
+    state_home: &Path,
+    mesh: &Mesh,
+    args: &Args,
+    now: i64,
+) -> io::Result<Snapshot> {
+    let core = folder.join("core.git");
+    if !core.exists() {
+        command(
+            "git",
+            &["clone", "--bare", "--quiet", CORE, &core.to_string_lossy()],
+        )?;
+    }
+    let git = |args: &[&str]| -> io::Result<String> {
+        let mut all = vec!["-C", core.to_str().unwrap_or_default()];
+        all.extend_from_slice(args);
+        command("git", &all)
+    };
+    git(&[
+        "fetch",
+        "--quiet",
+        "origin",
+        "+refs/heads/main:refs/heads/main",
+    ])?;
+    let since = format!("--since=@{}", now - DAY);
+    let journal = command(
+        "journalctl",
+        &[
+            "--user",
+            "-u",
+            "update-to-main-follows",
+            "-o",
+            "short-unix",
+            "--no-pager",
+            &since,
+        ],
+    )
+    .unwrap_or_default();
+    let follower = records::parse_follower(&journal);
+    let log = git(&[
+        "log",
+        "--first-parent",
+        "--merges",
+        &since,
+        "--format=%H %ct %P %s",
+        "main",
+    ])?;
+    let mut landings = Vec::new();
+    for (mut merge, main, branch) in records::parse_merges(&log) {
+        merge.last_commit = git(&["show", "-s", "--format=%ct", &branch])
+            .ok()
+            .and_then(|t| t.trim().parse().ok());
+        merge.files = git(&["diff", "--name-only", &main, &merge.sha])?
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let on = follower
+            .looks
+            .iter()
+            .find(|look| {
+                look.at >= merge.at
+                    && git(&["merge-base", "--is-ancestor", &merge.sha, &look.core]).is_ok()
+            })
+            .cloned();
+        landings.push(Landing { merge, on });
+    }
+    let net = state_home.join("net");
+    let round = fs::read_to_string(net.join("state.json"))
+        .ok()
+        .and_then(|s| records::net_round(&s))
+        .and_then(|head| {
+            let merged = git(&["show", "-s", "--format=%ct", &head])
+                .ok()?
+                .trim()
+                .parse()
+                .ok()?;
+            let behind = git(&[
+                "rev-list",
+                "--count",
+                "--first-parent",
+                &format!("{head}..main"),
+            ])
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?;
+            Some(Round {
+                head,
+                merged,
+                behind,
+            })
+        });
+    let (available_gib, swap_gib) =
+        records::memory(&fs::read_to_string("/proc/meminfo").unwrap_or_default());
+    let kernel = command(
+        "journalctl",
+        &[
+            "-k",
+            "-o",
+            "short-unix",
+            "--no-pager",
+            &format!("--since=@{}", now - 7 * DAY),
+            "--grep=oom-kill:",
+        ],
+    )
+    .unwrap_or_default();
+    let watcher = args.watcher.as_deref().and_then(|a| mesh.presence(a));
+    let sent = args
+        .watcher
+        .as_deref()
+        .map(|a| mesh.sent_by(a))
+        .unwrap_or_default();
+    let steward = args.steward.as_deref().map(|s| format!("@{s}"));
+    Ok(Snapshot {
+        now,
+        landings,
+        follower,
+        runs: records::parse_runs(
+            &fs::read_to_string(state_home.join("nix-offload/there.jsonl")).unwrap_or_default(),
+            now - DAY,
+        ),
+        cpu_avg300: records::avg300(&fs::read_to_string("/proc/pressure/cpu").unwrap_or_default()),
+        available_gib,
+        swap_gib,
+        last_oom_kill: records::last_machine_oom_kill(&kernel),
+        watched: args.watcher.is_some(),
+        round,
+        net_holds: net.join("hold.json").exists(),
+        watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
+            Path::new(&format!("/proc/{pid}")).exists()
+        }),
+        watcher_session: watcher.map(|w| w.session),
+        last_card: sent
+            .iter()
+            .filter(|m| {
+                steward.as_ref().is_some_and(|s| m.to.contains(s)) && m.text.starts_with("Card ")
+            })
+            .filter_map(|m| mesh::stamped_at(&m.id))
+            .max()
+            .map(|ms| ms / 1000),
+        answered: sent.into_iter().filter_map(|m| m.re).collect(),
+    })
+}
+
+fn new_question(to: &str, text: String) -> Message {
+    let ms = now_ms();
+    let pid = std::process::id();
+    // Apart from another process's ids by its pid and the moment's
+    // nanoseconds, as the harness's random tail keeps them apart.
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let tail = nanos ^ pid.rotate_left(16);
+    Message {
+        v: 1,
+        id: format!("{ms}-{FROM}-{pid}-{tail:08x}"),
+        at: Timestamp::from_millisecond(ms).map_or_else(|_| String::new(), |t| t.to_string()),
+        from: FROM.to_owned(),
+        to: vec![format!("@{to}")],
+        intent: "question".to_owned(),
+        text,
+        pid,
+        re: None,
+    }
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
+        .unwrap_or_default()
+}
+
+fn clock(at: i64) -> String {
+    Timestamp::from_second(at)
+        .map(|t| t.to_zoned(TimeZone::system()).strftime("%H:%M").to_string())
+        .unwrap_or_default()
+}
+
+fn command(program: &str, args: &[&str]) -> io::Result<String> {
+    let out = Command::new(program).args(args).output()?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(io::Error::other(format!(
+            "{program} {} failed: {}",
+            args.first().unwrap_or(&""),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )))
+    }
+}
+
+fn write_whole(path: &Path, text: &str) -> io::Result<()> {
+    let staged = path.with_extension("new");
+    fs::write(&staged, text)?;
+    fs::rename(staged, path)
+}

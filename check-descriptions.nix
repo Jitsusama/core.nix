@@ -201,6 +201,13 @@
   btrfs-reclaims-its-chunks = ''
     tmpfiles turns Btrfs's reclaim on for data and metadata
   '';
+  cadence-asks-when-a-target-slips = ''
+    cadence asks the session keeping the cycle fast once about each missed target or overdue card,
+    and the steward when that session doesn't answer or is gone
+  '';
+  cadence-passes-clippy = ''
+    clippy finds nothing in cadence or its tests
+  '';
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';

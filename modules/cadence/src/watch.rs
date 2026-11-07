@@ -1,0 +1,499 @@
+//! What the cycle's records say now, which targets that misses, and whom
+//! to ask about it: the session keeping the cycle fast first, and the
+//! steward above it when that session doesn't answer or isn't there.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::records::{Follower, Look, Merge, Run};
+use crate::stats::spread;
+
+/// A merge not on the machine this long after it merged, in minutes.
+pub const NOT_ON_MIN: i64 = 20;
+/// A VM run's median wait for a builder over the last hour, past which it
+/// is said, in minutes; the target is 2, and a few slow runs aren't a trend.
+pub const VM_WAIT_MEDIAN_MIN: f64 = 5.0;
+/// CPU pressure over five minutes, machine-wide; the target is 15 from
+/// agents' work alone, so only well past it is said.
+pub const CPU_AVG300: f64 = 40.0;
+/// The net's round this many hours behind main's head.
+pub const NET_BEHIND_H: f64 = 3.0;
+/// The card is overdue when the watcher sent none this long, in seconds.
+pub const CARD_EVERY: i64 = 75 * 60;
+/// How long the watcher has to answer before the steward is asked.
+pub const ANSWER_WITHIN: i64 = 20 * 60;
+/// How long the watcher may be gone before the steward is asked.
+pub const DOWN_FOR: i64 = 10 * 60;
+/// How long a key is remembered, so a target missed all day is said once.
+const REMEMBER: i64 = 2 * 86_400;
+
+/// A merge, and the look that put it on the machine, when one has.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Landing {
+    pub merge: Merge,
+    pub on: Option<Look>,
+}
+
+/// The net's round: the head it tests, when that head merged, and how many
+/// merges main has past it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Round {
+    pub head: String,
+    pub merged: i64,
+    pub behind: usize,
+}
+
+/// Everything the watch and the card read, gathered at one moment.
+#[derive(Debug, Clone, Default)]
+pub struct Snapshot {
+    pub now: i64,
+    pub landings: Vec<Landing>,
+    pub follower: Follower,
+    pub runs: Vec<Run>,
+    pub cpu_avg300: Option<f64>,
+    pub available_gib: f64,
+    pub swap_gib: f64,
+    /// When the newest machine-wide out-of-memory kill in the last week was.
+    pub last_oom_kill: Option<i64>,
+    pub round: Option<Round>,
+    /// Whether the net holds switches while it tests.
+    pub net_holds: bool,
+    /// Whether a watcher was named, so its being there is read at all.
+    pub watched: bool,
+    pub watcher_alive: bool,
+    /// The watcher's session, for the steward to restart it by.
+    pub watcher_session: Option<String>,
+    /// When the watcher last sent the steward a card.
+    pub last_card: Option<i64>,
+    /// The ids the watcher's messages answer.
+    pub answered: Vec<String>,
+}
+
+/// A target missed: a key it is said under once, and what to say.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Breach {
+    pub key: String,
+    pub text: String,
+}
+
+/// The targets the snapshot misses now.
+#[must_use]
+pub fn breaches(s: &Snapshot) -> Vec<Breach> {
+    let hour = s.now / 3600;
+    let mut out = Vec::new();
+    if let Some(breach) = not_on(s) {
+        out.push(breach);
+    }
+    let waits: Vec<f64> = s
+        .runs
+        .iter()
+        .filter(|r| r.vm() && r.at >= s.now - 3600)
+        .filter_map(|r| r.waited.map(|w| w / 60.0))
+        .collect();
+    if let Some(w) = spread(&waits).filter(|w| w.n >= 4 && w.median > VM_WAIT_MEDIAN_MIN) {
+        out.push(Breach {
+            key: format!("vmwait:{hour}"),
+            text: format!(
+                "VM runs waited a median {:.0} min for a builder over the last hour (n {}, target 2)",
+                w.median, w.n
+            ),
+        });
+    }
+    if let Some(cpu) = s.cpu_avg300.filter(|&c| c > CPU_AVG300) {
+        out.push(Breach {
+            key: format!("cpu:{hour}"),
+            text: format!("the machine's CPU pressure over five minutes is {cpu:.0}% (target 15)"),
+        });
+    }
+    if let Some(round) = &s.round {
+        #[expect(clippy::cast_precision_loss, reason = "seconds within a lifetime")]
+        let hours = (s.now - round.merged) as f64 / 3600.0;
+        if hours > NET_BEHIND_H {
+            // Said at three hours and again each time its age doubles: a long
+            // search is known once it's said.
+            let mut tier = NET_BEHIND_H;
+            while tier * 2.0 <= hours {
+                tier *= 2.0;
+            }
+            let short: String = round.head.chars().take(9).collect();
+            out.push(Breach {
+                key: format!("net:{short}:{tier}"),
+                text: format!(
+                    "the net's round at {short} is {hours:.1} h old, {} merges behind main",
+                    round.behind
+                ),
+            });
+        }
+    }
+    if let Some(at) = s.last_oom_kill.filter(|&at| s.now - at < 3600) {
+        out.push(Breach {
+            key: format!("oom:{at}"),
+            text: format!(
+                "a machine-wide out-of-memory kill {} min ago; the week without one starts again",
+                (s.now - at) / 60
+            ),
+        });
+    }
+    out
+}
+
+/// The oldest merge that should be on the machine by now and isn't, unless
+/// a switch that began after it is under way or one waits out a call.
+fn not_on(s: &Snapshot) -> Option<Breach> {
+    if s.follower.meeting {
+        return None;
+    }
+    let mut waiting: Vec<&Landing> = s
+        .landings
+        .iter()
+        .filter(|l| l.on.is_none() && !l.merge.tests_only())
+        .filter(|l| s.now - l.merge.at >= NOT_ON_MIN * 60 && s.now - l.merge.at < 6 * 3600)
+        .collect();
+    waiting.sort_by_key(|l| l.merge.at);
+    let oldest = waiting.first()?;
+    if s.follower
+        .going
+        .is_some_and(|began| began >= oldest.merge.at)
+    {
+        return None;
+    }
+    let held = if s.net_holds {
+        " (the net holds switches)"
+    } else {
+        ""
+    };
+    Some(Breach {
+        key: format!(
+            "noton:{}",
+            oldest.merge.sha.chars().take(12).collect::<String>()
+        ),
+        text: format!(
+            "{} merged {} min ago and isn't on the machine yet{held}",
+            oldest.merge.name(),
+            (s.now - oldest.merge.at) / 60
+        ),
+    })
+}
+
+/// A question cadence asked, waiting on its answer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Asked {
+    pub id: String,
+    pub at: i64,
+    pub text: String,
+}
+
+/// What cadence remembers between ticks.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct State {
+    #[serde(default)]
+    pub asked: BTreeMap<String, Asked>,
+    #[serde(default)]
+    pub seen: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub escalated: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub down_since: Option<i64>,
+}
+
+/// Who a question goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum To {
+    Watcher,
+    Steward,
+}
+
+/// A question to send, and the key it was asked under, when it waits on an
+/// answer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Question {
+    pub to: To,
+    pub key: Option<String>,
+    pub text: String,
+}
+
+/// One tick: what to ask whom, given the snapshot and what was asked
+/// before. Each question to the watcher is remembered by its key once it
+/// has gone, with [`State::asked_as`], so its answer can be waited on.
+pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
+    let mut out = Vec::new();
+    let mut escalate = |state: &mut State, key: String, text: String| {
+        if !state.escalated.contains_key(&key) {
+            state.escalated.insert(key, s.now);
+            out.push(Question {
+                to: To::Steward,
+                key: None,
+                text,
+            });
+        }
+    };
+
+    if s.watcher_alive {
+        state.down_since = None;
+    } else {
+        let down = *state.down_since.get_or_insert(s.now);
+        if s.now - down >= DOWN_FOR {
+            let restart = s
+                .watcher_session
+                .as_ref()
+                .map_or_else(String::new, |session| {
+                    format!(" Its session is {session}, which `pi --session` starts again.")
+                });
+            escalate(
+                state,
+                format!("down:{down}"),
+                format!(
+                    "The session keeping the delivery cycle fast has been gone {} min, so nobody \
+                     answers the cycle's alarms.{restart} The latest card is in cadence's state folder.",
+                    (s.now - down) / 60
+                ),
+            );
+        }
+    }
+
+    state.asked.retain(|_, q| !s.answered.contains(&q.id));
+    let silent: Vec<(String, Asked)> = state
+        .asked
+        .iter()
+        .filter(|(_, q)| s.now - q.at > ANSWER_WITHIN)
+        .map(|(k, q)| (k.clone(), q.clone()))
+        .collect();
+    if s.watcher_alive {
+        for (key, q) in silent {
+            escalate(
+                state,
+                format!("silent:{key}"),
+                format!(
+                    "The session keeping the delivery cycle fast hasn't answered cadence for {} min: \
+                     \"{}\" Pivot or restart it.",
+                    (s.now - q.at) / 60,
+                    q.text
+                ),
+            );
+        }
+    }
+
+    let mut ask = |state: &mut State, key: String, text: String| {
+        if !state.seen.contains_key(&key) {
+            state.seen.insert(key.clone(), s.now);
+            out.push(Question {
+                to: To::Watcher,
+                key: Some(key),
+                text,
+            });
+        }
+    };
+    for breach in breaches(s) {
+        ask(
+            state,
+            format!("alarm:{}", breach.key),
+            format!("Cadence alarm: {}.", breach.text),
+        );
+    }
+    if s.last_card.is_none_or(|at| s.now - at > CARD_EVERY) {
+        ask(
+            state,
+            format!("card:{}", s.now / 3600),
+            "The hourly card is overdue; send it to the steward.".to_owned(),
+        );
+    }
+
+    let keep = |at: &i64| s.now - *at < REMEMBER;
+    state.seen.retain(|_, at| keep(at));
+    state.escalated.retain(|_, at| keep(at));
+    state.asked.retain(|_, q| keep(&q.at));
+    out
+}
+
+impl State {
+    /// Remembers that the question asked under `key` went as `id`, so its
+    /// answer is known.
+    pub fn asked_as(&mut self, key: &str, id: &str, at: i64, text: &str) {
+        self.asked.insert(
+            key.to_owned(),
+            Asked {
+                id: id.to_owned(),
+                at,
+                text: text.to_owned(),
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn merge(sha: &str, at: i64) -> Merge {
+        Merge {
+            sha: sha.into(),
+            at,
+            pr: Some(1),
+            last_commit: None,
+            files: vec!["modules/a/home.nix".into()],
+        }
+    }
+
+    fn calm(now: i64) -> Snapshot {
+        Snapshot {
+            now,
+            watcher_alive: true,
+            last_card: Some(now - 60),
+            ..Snapshot::default()
+        }
+    }
+
+    #[test]
+    fn a_calm_cycle_asks_nothing() {
+        let mut state = State::default();
+        assert!(tick(&calm(100_000), &mut state).is_empty());
+    }
+
+    #[test]
+    fn a_merge_off_the_machine_past_twenty_minutes_is_said_once() {
+        let mut s = calm(100_000);
+        s.landings = vec![Landing {
+            merge: merge("abc", 100_000 - 25 * 60),
+            on: None,
+        }];
+        let mut state = State::default();
+        let first = tick(&s, &mut state);
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].to, To::Watcher);
+        assert!(
+            first[0].text.contains("#1 merged 25 min ago"),
+            "{}",
+            first[0].text
+        );
+        assert!(tick(&s, &mut state).is_empty());
+    }
+
+    #[test]
+    fn a_merge_waits_quietly_behind_a_switch_under_way_or_a_call() {
+        let mut s = calm(100_000);
+        s.landings = vec![Landing {
+            merge: merge("abc", 100_000 - 25 * 60),
+            on: None,
+        }];
+        s.follower.going = Some(100_000 - 60);
+        assert!(breaches(&s).is_empty());
+        s.follower.going = None;
+        s.follower.meeting = true;
+        assert!(breaches(&s).is_empty());
+    }
+
+    #[test]
+    fn a_merge_on_the_machine_or_of_docs_alone_isnt_said() {
+        let mut s = calm(100_000);
+        let mut docs = merge("doc", 100_000 - 30 * 60);
+        docs.files = vec!["docs/delivery.md".into()];
+        let look = Look {
+            at: 100_000 - 60,
+            core: "abc".into(),
+            switched: true,
+        };
+        s.landings = vec![
+            Landing {
+                merge: merge("abc", 100_000 - 30 * 60),
+                on: Some(look),
+            },
+            Landing {
+                merge: docs,
+                on: None,
+            },
+        ];
+        assert!(breaches(&s).is_empty());
+    }
+
+    #[test]
+    fn the_nets_lag_is_said_at_three_hours_then_at_each_doubling() {
+        let mut s = calm(100_000);
+        s.round = Some(Round {
+            head: "cb5b9b12dce0".into(),
+            merged: 100_000 - 4 * 3600,
+            behind: 5,
+        });
+        assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:3");
+        s.round = Some(Round {
+            head: "cb5b9b12dce0".into(),
+            merged: 100_000 - 7 * 3600,
+            behind: 9,
+        });
+        assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:6");
+    }
+
+    #[test]
+    fn slow_waits_and_high_pressure_and_a_kill_are_each_said() {
+        let mut s = calm(100_000);
+        let run = |w| Run {
+            at: 99_900,
+            on: "nix-offload-vm".into(),
+            seconds: 600.0,
+            waited: Some(w),
+            status: 0,
+        };
+        s.runs = vec![run(400.0), run(400.0), run(400.0), run(400.0)];
+        s.cpu_avg300 = Some(45.0);
+        s.last_oom_kill = Some(99_000);
+        let keys: Vec<String> = breaches(&s).into_iter().map(|b| b.key).collect();
+        assert_eq!(keys, ["vmwait:27", "cpu:27", "oom:99000"]);
+        s.last_oom_kill = Some(100_000 - 3600);
+        assert_eq!(breaches(&s).len(), 2);
+    }
+
+    #[test]
+    fn an_overdue_card_is_asked_for() {
+        let mut s = calm(100_000);
+        s.last_card = Some(100_000 - CARD_EVERY - 1);
+        let asked = tick(&s, &mut State::default());
+        assert!(asked[0].text.contains("card is overdue"));
+    }
+
+    #[test]
+    fn a_question_unanswered_past_twenty_minutes_goes_to_the_steward_once() {
+        let mut state = State::default();
+        state.asked_as(
+            "alarm:cpu:1",
+            "1-CADENCE-1-aa",
+            100_000 - ANSWER_WITHIN - 1,
+            "Cadence alarm: hot.",
+        );
+        let s = calm(100_000);
+        let asked = tick(&s, &mut state);
+        assert_eq!(asked.len(), 1);
+        assert_eq!(asked[0].to, To::Steward);
+        assert!(asked[0].text.contains("Cadence alarm: hot."));
+        assert!(tick(&s, &mut state).is_empty());
+    }
+
+    #[test]
+    fn an_answered_question_is_let_go() {
+        let mut state = State::default();
+        state.asked_as(
+            "alarm:cpu:1",
+            "1-CADENCE-1-aa",
+            100_000 - ANSWER_WITHIN - 1,
+            "hot",
+        );
+        let mut s = calm(100_000);
+        s.answered = vec!["1-CADENCE-1-aa".into()];
+        assert!(tick(&s, &mut state).is_empty());
+        assert!(state.asked.is_empty());
+    }
+
+    #[test]
+    fn a_watcher_gone_ten_minutes_is_told_to_the_steward_with_its_session() {
+        let mut state = State::default();
+        let mut s = calm(100_000);
+        s.watcher_alive = false;
+        s.watcher_session = Some("01a1ae37".into());
+        assert!(tick(&s, &mut state).is_empty());
+        s.now += DOWN_FOR;
+        s.last_card = Some(s.now);
+        let asked = tick(&s, &mut state);
+        assert_eq!(asked.len(), 1);
+        assert_eq!(asked[0].to, To::Steward);
+        assert!(asked[0].text.contains("01a1ae37"));
+    }
+}

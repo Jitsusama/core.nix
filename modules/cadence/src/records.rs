@@ -1,0 +1,411 @@
+//! The raw records the card and the watch read, each parsed from the text
+//! its source writes, so the parsing is tested without the machine.
+
+use serde::Deserialize;
+
+/// One merge to core's main.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Merge {
+    pub sha: String,
+    /// When it merged, in seconds since the epoch.
+    pub at: i64,
+    /// The pull request it merged, when its subject names one.
+    pub pr: Option<u32>,
+    /// When its branch's last commit was made, which a change's own checks
+    /// and review run from.
+    pub last_commit: Option<i64>,
+    /// The files it changed against main before it.
+    pub files: Vec<String>,
+}
+
+impl Merge {
+    /// What the card calls it.
+    #[must_use]
+    pub fn name(&self) -> String {
+        self.pr
+            .map_or_else(|| self.sha.chars().take(8).collect(), |n| format!("#{n}"))
+    }
+
+    /// Whether it changed only tests and docs, which no machine runs.
+    #[must_use]
+    pub fn tests_only(&self) -> bool {
+        !self.files.is_empty() && self.files.iter().all(|f| tests_or_docs(f))
+    }
+
+    /// Whether it touched what boots or installs a machine, whose VM tests
+    /// run whole before a merge, so its time to merge is measured apart.
+    #[must_use]
+    pub fn boot(&self) -> bool {
+        self.files.iter().any(|f| boot(f))
+    }
+}
+
+fn tests_or_docs(path: &str) -> bool {
+    path.starts_with("tests/")
+        || path.starts_with("docs/")
+        || path.ends_with(".md")
+        || path == "check-descriptions.nix"
+        || path == "checks.nix"
+        || path.ends_with("/checks.nix")
+        || path.contains("/tests/")
+        || path.contains("/test/")
+}
+
+fn boot(path: &str) -> bool {
+    const AREAS: [&str; 11] = [
+        "boot",
+        "initrd",
+        "kernel",
+        "disk",
+        "luks",
+        "tpm",
+        "secure-boot",
+        "install",
+        "stick",
+        "greeter",
+        "lock",
+    ];
+    path.starts_with("hardware/")
+        || path == "flake.lock"
+        || path.starts_with("modules/nix-offload")
+        || path
+            .strip_prefix("modules/")
+            .is_some_and(|rest| AREAS.iter().any(|area| rest.starts_with(area)))
+}
+
+/// Merges from `git log --first-parent --merges --format='%H %ct %P %s'`:
+/// the sha, when it merged, its two parents and its subject, with neither
+/// the last commit's time nor the files filled in.
+#[must_use]
+pub fn parse_merges(log: &str) -> Vec<(Merge, String, String)> {
+    log.lines()
+        .filter_map(|line| {
+            let mut words = line.splitn(5, ' ');
+            let sha = words.next()?.to_owned();
+            let at = words.next()?.parse().ok()?;
+            let main = words.next()?.to_owned();
+            let branch = words.next()?.to_owned();
+            let subject = words.next().unwrap_or_default();
+            let pr = subject
+                .split_once('#')
+                .and_then(|(_, rest)| rest.split(|c: char| !c.is_ascii_digit()).next())
+                .and_then(|digits| digits.parse().ok());
+            let merge = Merge {
+                sha,
+                at,
+                pr,
+                last_commit: None,
+                files: Vec::new(),
+            };
+            Some((merge, main, branch))
+        })
+        .collect()
+}
+
+/// One look the follower took at main: a switch, or a build that came out
+/// as what the machine already runs, which puts a merge on as surely.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Look {
+    pub at: i64,
+    /// The core it built.
+    pub core: String,
+    /// Whether it switched the machine, rather than finding it unchanged.
+    pub switched: bool,
+}
+
+/// The follower's state now, from its journal.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Follower {
+    pub looks: Vec<Look>,
+    /// When its newest ask began, while it hasn't ended.
+    pub going: Option<i64>,
+    /// Whether its newest answer put a switch off for a meeting or a call,
+    /// a wait chosen rather than a fault.
+    pub meeting: bool,
+}
+
+#[derive(Deserialize)]
+struct Step {
+    step: Option<String>,
+    followed: Option<Followed>,
+}
+
+#[derive(Deserialize)]
+struct Followed {
+    core: Option<String>,
+}
+
+/// The follower's looks from `journalctl -u update-to-main-follows -o
+/// short-unix`. An ask names the core main stood at, as `asking at
+/// [@<zone commit>] core@<sha>`, and the step that ends it names the core it
+/// built, which wins: main can move between the two.
+#[must_use]
+pub fn parse_follower(journal: &str) -> Follower {
+    let mut follower = Follower::default();
+    let mut asked: Option<(i64, String)> = None;
+    for line in journal.lines() {
+        let Some((stamp, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        let Ok(at) = stamp.parse::<f64>() else {
+            continue;
+        };
+        #[expect(clippy::cast_possible_truncation, reason = "a time in seconds")]
+        let at = at as i64;
+        if let Some(core) = rest.split_once(" core@").map(|(_, sha)| sha.trim()) {
+            if rest.contains("asking at") {
+                asked = Some((at, core.to_owned()));
+                follower.going = Some(at);
+                continue;
+            }
+        }
+        let Some(brace) = rest.find('{') else {
+            continue;
+        };
+        if rest.contains("a meeting or a call") {
+            follower.meeting = true;
+        } else if rest[brace..].contains("\"step\"") {
+            follower.meeting = false;
+        }
+        let Ok(step) = serde_json::from_str::<Step>(&rest[brace..]) else {
+            continue;
+        };
+        let ended = matches!(
+            step.step.as_deref(),
+            Some("done" | "unchanged" | "failed" | "refused")
+        );
+        if let Some((_, core)) = asked.as_ref().filter(|_| ended) {
+            let built = step
+                .followed
+                .and_then(|f| f.core)
+                .unwrap_or_else(|| core.clone());
+            match step.step.as_deref() {
+                Some("done") => follower.looks.push(Look {
+                    at,
+                    core: built,
+                    switched: true,
+                }),
+                Some("unchanged") => follower.looks.push(Look {
+                    at,
+                    core: built,
+                    switched: false,
+                }),
+                _ => {}
+            }
+            asked = None;
+            follower.going = None;
+        }
+    }
+    follower
+}
+
+/// One run nix-offload sent to a builder.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Run {
+    pub at: i64,
+    #[serde(default)]
+    pub on: String,
+    #[serde(default)]
+    pub seconds: f64,
+    /// How long it waited for room on a builder, when recorded.
+    pub waited: Option<f64>,
+    #[serde(default)]
+    pub status: i64,
+}
+
+impl Run {
+    /// Whether it ran on a VM builder.
+    #[must_use]
+    pub fn vm(&self) -> bool {
+        self.on.contains("vm")
+    }
+}
+
+/// The runs in `there.jsonl` since `since`, a line that isn't one skipped.
+#[must_use]
+pub fn parse_runs(text: &str, since: i64) -> Vec<Run> {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Run>(line).ok())
+        .filter(|run| run.at >= since)
+        .collect()
+}
+
+/// A pressure file's `some` average over five minutes, in percent.
+#[must_use]
+pub fn avg300(pressure: &str) -> Option<f64> {
+    pressure
+        .lines()
+        .find(|line| line.starts_with("some"))?
+        .split_whitespace()
+        .find_map(|field| field.strip_prefix("avg300="))?
+        .parse()
+        .ok()
+}
+
+/// Memory available and swap in use, in GiB, from `/proc/meminfo`.
+#[must_use]
+pub fn memory(meminfo: &str) -> (f64, f64) {
+    let kib = |name: &str| -> f64 {
+        meminfo
+            .lines()
+            .find_map(|line| line.strip_prefix(name))
+            .and_then(|rest| rest.trim_start_matches(':').split_whitespace().next())
+            .and_then(|n| n.parse::<f64>().ok())
+            .unwrap_or(0.0)
+    };
+    let gib = 1024.0 * 1024.0;
+    let available = kib("MemAvailable") / gib;
+    let swap = (kib("SwapTotal") - kib("SwapFree")) / gib;
+    (available, swap)
+}
+
+/// When the newest machine-wide out-of-memory kill was, from the kernel's
+/// journal as `journalctl -k -o short-unix` writes it, leaving out a
+/// cgroup's own limit, which kills inside it and restarts no week.
+#[must_use]
+pub fn last_machine_oom_kill(kernel: &str) -> Option<i64> {
+    kernel
+        .lines()
+        .filter(|line| line.contains("oom-kill:") && !line.contains("CONSTRAINT_MEMCG"))
+        .filter_map(|line| line.split_once(' ')?.0.parse::<f64>().ok())
+        .map(|at| {
+            #[expect(clippy::cast_possible_truncation, reason = "a time in seconds")]
+            let at = at as i64;
+            at
+        })
+        .max()
+}
+
+/// The net's round from its `state.json`: the head it tests, when testing.
+#[must_use]
+pub fn net_round(state: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct State {
+        round: Option<String>,
+    }
+    serde_json::from_str::<State>(state).ok()?.round
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_merge_reads_its_pull_request_and_parents() {
+        let merges = parse_merges("abc 1700 p1 p2 Merge pull request #2066 from x/y\n");
+        let (merge, main, branch) = &merges[0];
+        assert_eq!((merge.pr, merge.at), (Some(2066), 1700));
+        assert_eq!((main.as_str(), branch.as_str()), ("p1", "p2"));
+    }
+
+    #[test]
+    fn a_merge_of_docs_alone_is_tests_only() {
+        let merge = Merge {
+            sha: "a".into(),
+            at: 0,
+            pr: None,
+            last_commit: None,
+            files: vec!["docs/delivery.md".into(), "modules/x/checks.nix".into()],
+        };
+        assert!(merge.tests_only());
+        assert!(!merge.boot());
+    }
+
+    #[test]
+    fn a_merge_to_the_kernel_or_the_lock_is_boot() {
+        for path in [
+            "modules/kernel/package.nix",
+            "flake.lock",
+            "hardware/x/default.nix",
+        ] {
+            let merge = Merge {
+                sha: "a".into(),
+                at: 0,
+                pr: None,
+                last_commit: None,
+                files: vec![path.into()],
+            };
+            assert!(merge.boot(), "{path}");
+        }
+    }
+
+    const JOURNAL: &str = "\
+100.5 host update-to-main[1]: asking at @033663e08dd3 core@032dbeb6ecdb
+101.0 host update-to-main[1]: {\"step\":\"fetching\"}
+102.0 host update-to-main[1]: {\"step\":\"building\",\"commit\":\"ab\"}
+200.0 host update-to-main[1]: {\"step\":\"done\",\"commit\":\"ab\",\"followed\":{\"core\":\"bebf965b8b6c\"}}
+300.0 host update-to-main[1]: asking at core@be57b747568f
+301.0 host update-to-main[1]: {\"step\":\"unchanged\",\"commit\":\"ab\"}
+400.0 host update-to-main[1]: asking at core@ffff
+";
+
+    #[test]
+    fn a_look_names_the_core_it_built_over_the_one_it_asked_at() {
+        let follower = parse_follower(JOURNAL);
+        assert_eq!(
+            follower.looks,
+            vec![
+                Look {
+                    at: 200,
+                    core: "bebf965b8b6c".into(),
+                    switched: true
+                },
+                Look {
+                    at: 301,
+                    core: "be57b747568f".into(),
+                    switched: false
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn an_ask_with_no_end_yet_is_going() {
+        assert_eq!(parse_follower(JOURNAL).going, Some(400));
+    }
+
+    #[test]
+    fn a_switch_put_off_for_a_call_is_a_meeting() {
+        let journal = "1.0 h u[1]: asking at core@aa\n2.0 h u[1]: {\"step\":\"waiting\",\"why\":\"a meeting or a call\"}\n";
+        assert!(parse_follower(journal).meeting);
+    }
+
+    #[test]
+    fn runs_before_the_window_and_lines_that_arent_runs_are_left_out() {
+        let text = "{\"at\":5,\"on\":\"nix-offload-vm\",\"seconds\":60,\"waited\":30,\"status\":0}\n\
+                    not json\n{\"at\":1,\"on\":\"nix-offload\",\"seconds\":9,\"status\":1}\n";
+        let runs = parse_runs(text, 2);
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].vm());
+        assert_eq!(runs[0].waited, Some(30.0));
+    }
+
+    #[test]
+    fn cpu_pressure_reads_the_some_line() {
+        let text = "some avg10=1.00 avg60=2.00 avg300=45.50 total=1\nfull avg10=0 avg60=0 avg300=9 total=0\n";
+        assert_eq!(avg300(text), Some(45.5));
+    }
+
+    #[test]
+    fn memory_reads_available_and_swap_used() {
+        let text = "MemTotal: 100 kB\nMemAvailable: 2097152 kB\nSwapTotal: 4194304 kB\nSwapFree: 3145728 kB\n";
+        assert_eq!(memory(text), (2.0, 1.0));
+    }
+
+    #[test]
+    fn a_cgroups_own_kill_isnt_the_machines() {
+        let text = "5.0 k: x invoked oom-killer\n9.0 k: oom-kill:constraint=CONSTRAINT_MEMCG,task=a\n\
+                    7.5 k: oom-kill:constraint=CONSTRAINT_NONE,task=b\n";
+        assert_eq!(last_machine_oom_kill(text), Some(7));
+        assert_eq!(last_machine_oom_kill(""), None);
+    }
+
+    #[test]
+    fn the_nets_round_is_read_when_testing() {
+        assert_eq!(
+            net_round("{\"round\":\"cb5b\",\"passed\":\"61b0\"}"),
+            Some("cb5b".into())
+        );
+        assert_eq!(net_round("{\"passed\":\"61b0\"}"), None);
+    }
+}
