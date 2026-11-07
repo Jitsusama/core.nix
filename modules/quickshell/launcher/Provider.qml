@@ -79,6 +79,44 @@ Scope {
     // A collection's things changed while it might be open.
     signal changed
 
+    // An answer worked out too late to say, as the maths' is when the
+    // machine stalls past its patience, is asked again a moment later, a
+    // few times at most for what's typed, rather than left unsaid until
+    // the next key (the net's vm-desktop-looks, 2026-11-07: "12*7" lost).
+    readonly property int lateTimes: 3
+    property string lateFor: ""
+    property int lateAsked: 0
+    function late(typed) {
+        if (typed !== lateFor) {
+            lateFor = typed;
+            lateAsked = 0;
+        }
+        if (lateAsked >= lateTimes || askAgain.running)
+            return;
+        lateAsked += 1;
+        askAgain.restart();
+    }
+
+    // The shell's maths as an answer asks it for what's typed, a late sum
+    // noted so the answer is asked again.
+    function heeding(maths, typed) {
+        return {
+            calculate: expression => {
+                const worked = maths.calculate(expression);
+                if (worked.late)
+                    late(typed);
+                return worked;
+            }
+        };
+    }
+
+    Timer {
+        id: askAgain
+
+        interval: 100
+        onTriggered: provider.answered()
+    }
+
     // Says `changed` only when what its rows show has, for a collection
     // whose rows are made again whenever anything they're made from moves,
     // as the agents' are every few seconds, since each change searches an

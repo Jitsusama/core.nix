@@ -3,6 +3,7 @@
 // what's plainly theirs and how it's said). `calculate` gives back, as a map:
 //
 //   answered  whether it was worked out in time, with no error or warning
+//   late      whether it ran past its patience, so it's no answer yet
 //   plain     whether nothing was worked out: a lone number or constant
 //   units     whether a unit, or a constant carrying one, is in it
 //   currency  whether money is in it, which the Currency answer owns
@@ -26,7 +27,7 @@
 namespace {
 
 // The most milliseconds one expression may take, well inside a key's
-// budget, past which it simply isn't answered.
+// budget, past which it isn't answered yet.
 constexpr int patience = 50;
 // The longest whole number given digit by digit; longer ones are written
 // with an exponent, as no one reads past this.
@@ -193,23 +194,29 @@ void Maths::prepare() const {
 }
 
 QVariantMap Maths::calculate(const QString &expression) const {
+    return calculate(expression, patience);
+}
+
+QVariantMap Maths::calculate(const QString &expression, int waits) const {
     if (expression == lastAsked && !lastSaid.isEmpty())
         return lastSaid;
-    QVariantMap said{{"answered", false}};
+    QVariantMap said{{"answered", false}, {"late", false}};
     Engine &maths = engine();
     if (!maths.ready())
         return said;
     CALCULATOR->clearMessages();
     MathStructure parsed;
     MathStructure target;
-    CALCULATOR->startControl(patience);
+    CALCULATOR->startControl(waits);
     const MathStructure result = CALCULATOR->calculate(
         CALCULATOR->unlocalizeExpression(expression.toStdString(),
                                          maths.evaluation.parse_options),
         maths.evaluation, &parsed, &target);
     // A warning is as good as a refusal: libqalculate warns where it
     // guessed, as at "12*" or "8.8.8.8", and those aren't sums.
-    bool troubled = CALCULATOR->aborted() || result.isAborted();
+    const bool late = CALCULATOR->aborted() || result.isAborted();
+    said["late"] = late;
+    bool troubled = late;
     for (CalculatorMessage *message = CALCULATOR->message(); message != nullptr;
          message = CALCULATOR->nextMessage())
         troubled = troubled || message->type() != MESSAGE_INFORMATION;
@@ -256,7 +263,13 @@ QVariantMap Maths::calculate(const QString &expression) const {
         }
     }
     CALCULATOR->stopControl();
-    lastAsked = expression;
-    lastSaid = said;
+    // One too late is never kept, since it's no answer: kept, asking the
+    // same words again gave the same refusal until another key was typed,
+    // and a machine stalled for a moment lost "12*7" for good (the net's
+    // vm-desktop-looks, 2026-11-07).
+    if (!late) {
+        lastAsked = expression;
+        lastSaid = said;
+    }
     return said;
 }
