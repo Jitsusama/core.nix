@@ -66,6 +66,9 @@ Item {
         color: row.hue
     }
 
+    // Its capitals' top at the row's top, or lower by as far as the mark's
+    // ink stands above them, so the row's top is its highest ink. A notice
+    // with no mark has no ink there, and so no overhang.
     Text {
         id: who
         x: row.columns.text
