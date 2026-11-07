@@ -49,11 +49,25 @@ import "Stack.js" as Stack
 Scope {
     id: root
 
-    // Wide enough that what a notice says holds about 44 letters of the
-    // reading face at the launcher's size on a line, inside its room on
-    // each side: a short message in one or two lines. Each card is the one
-    // card (Card.qml), its ink the inset from its frame on every side.
-    readonly property int width: 440
+    // Wide enough that what a notice says holds about 40 letters of the
+    // reading face at the launcher's size on a line, beside its mark: a
+    // short message in one or two lines (docs/design.md). A letter is the
+    // lowercase alphabet's average, as a measure is set in type, since the
+    // face's own average counts capitals and runs a fifth wide. Each card
+    // is the one card (Card.qml), its ink the inset from its frame on every
+    // side, and its columns are a notice's (Columns.js).
+    readonly property int letters: 40
+    readonly property int width: Math.ceil(Columns.cardFor(
+        letters * alphabet.advanceWidth / alphabet.text.length,
+        Columns.ofMark(Theme.level.name.pitch), Theme.space.rung, Theme.border))
+    TextMetrics {
+        id: alphabet
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.weight: Theme.level.words.weight
+        font.variableAxes: Theme.level.words.variableAxes
+        text: "abcdefghijklmnopqrstuvwxyz"
+    }
     // How far the signature's capitals clear the message above them: a
     // beat more than Note's pitch from the message's last baseline, less
     // the capitals' own height, so the signature reads as a group of its
@@ -149,7 +163,9 @@ Scope {
             root.settled++;
         }
     }
-    onInsideChanged: Report.say(`places notices ${inside.right} ${inside.top} ${inside.width}`)
+    // Led by how wide a card would be with room for it, which its words set.
+    onInsideChanged: Report.say(
+        `places notices ${root.width} ${inside.right} ${inside.top} ${inside.width}`)
 
     // The launcher, for the history the stack hands on to.
     property var launcher: null

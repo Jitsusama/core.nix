@@ -20,7 +20,8 @@ function ofPicture(wide) {
 }
 
 // The columns of a card whose content is `width` across, given its gutter,
-// what stands in its mark column, and the theme's rungs. The text column
+// what stands in its mark column, and the theme's rungs. The gutter starts
+// at the content's edge, so only its width is said. The text column
 // follows a mark by the mark rung, since a mark stands on its words, and a
 // picture by apart, since a picture is a thing beside them (VKCF3Z,
 // 2026-11-06).
@@ -28,11 +29,18 @@ function across(width, gutter, held, rungs) {
     const gutterWidth = Math.max(0, gutter);
     const after = held.picture ? rungs.apart : rungs.mark;
     return {
-        gutter: 0,
         gutterWidth,
         mark: gutterWidth,
         markWidth: held.wide,
         text: gutterWidth + held.wide + after,
         end: width,
     };
+}
+
+// How wide a card with no gutter is whose text column holds `measure`
+// across: the measure, the mark column before it, and the inset and a
+// `border` on either side. A card is sized for what it says, so its words
+// keep their measure whatever stands beside them (VKCF3Z, 2026-11-06).
+function cardFor(measure, held, rungs, border) {
+    return across(0, 0, held, rungs).text + measure + 2 * (rungs.inset + border);
 }

@@ -1365,16 +1365,20 @@ def test_the_notices_sit_the_frames_rung_inside_the_window_under_them(desktop: D
     (left, top), (width, _) = min(whole, key=lambda t: (-(t[0][0] + t[1][0]), t[0][1]))
     step, edge = space["rung"]["frames"], space["rung"]["screen"]
     right = int(max(screen - (left + width) + step, edge) + 0.5)
+    # A card's own width, which its words' measure sets, leads what the shell says.
+    card, *notices_at = (
+        int(n)
+        for n in desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
+        ).split()[-4:]
+    )
     wanted_at = [
         right,
         int(max(top + step, edge) + 0.5),
-        min(440, int(screen - right - (left + step))),
+        min(card, int(screen - right - (left + step))),
     ]
-    notices_at = desktop.as_account(
-        "journalctl --user --unit=quickshell --no-pager --output=cat"
-        " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
-    ).split()[-3:]
-    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't inside the window"
+    assert notices_at == wanted_at, "the notices aren't inside the window"
     desktop.as_account("qs ipc call notices putAway")
     desktop.as_account(f"niri msg action close-window --id {under['id']}")
     machine.wait_until_fails(
