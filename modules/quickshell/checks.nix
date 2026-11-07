@@ -1432,8 +1432,10 @@ onLinux {
 
   # The orchestrators' talks (tests/talks.qml), over 120 inboxes with 120
   # sessions running, two inboxes holding talks: only those are read, and
-  # focus moving makes no reader again, so the shell's threads, and with
-  # them its file watchers, stay bounded.
+  # focus moving makes no reader again, so the shell's folder readers, and
+  # with them its file watchers, stay as many, counted by their threads'
+  # name rather than every thread, which the reloads an opening sets off
+  # can add to for a while.
   the-launcher-reads-talks-boundedly =
     let
       niri = singleton "Niri.qml" ''

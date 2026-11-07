@@ -1656,7 +1656,8 @@
   '';
   the-launcher-reads-talks-boundedly = ''
     the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
-    moving among 120 sessions makes no reader again, so the shell's threads stay bounded
+    moving among 120 sessions makes no reader again: the shell's folder readers, each a thread
+    of Qt's own, stay as many
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
