@@ -291,12 +291,23 @@ pub fn attempt_all(
 /// that broke it, the commit before the first being where it passed. A
 /// commit without the check counts as passing it, so what it finds is
 /// checked by `before` before it's blamed. None when a run wasn't taken, so it
-/// can't be told.
-pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) -> Option<String> {
+/// can't be told, or when `go_on`, asked before each step after the first,
+/// says to stop.
+pub fn bisect(
+    world: &dyn World,
+    state: &State,
+    merges: &[String],
+    check: &str,
+    go_on: &dyn Fn() -> bool,
+) -> Option<String> {
     // `good` is how many of the merges are known to pass, `bad` the index
     // of the first known to fail.
     let (mut good, mut bad) = known(state, merges, check)?;
+    let mut first = true;
     while good < bad {
+        if !std::mem::take(&mut first) && !go_on() {
+            return None;
+        }
         let tried = spread(good, bad, SPLITS);
         let passed = std::thread::scope(|scope| {
             let runs: Vec<_> = tried
@@ -829,19 +840,40 @@ fn broke(
     head: &str,
     test: &str,
 ) -> Result<(), String> {
-    if fixed_forward(world, state, head, test, None)? {
+    let merges = world.merges(base, head)?;
+    // Whether main's newest head fixed it is asked beside the search's first
+    // step, and the search waits for the answer before its second. On
+    // 7 November asking first took 16 minutes, two VM runs one after the
+    // other, before the search began; a fix forward now costs at most one
+    // step's runs.
+    let (told, answered) = std::sync::mpsc::channel();
+    let answer: Mutex<Option<Result<bool, String>>> = Mutex::new(None);
+    let fixed = || {
+        answer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert_with(|| {
+                answered.recv().unwrap_or_else(|_| {
+                    Err(format!("asking whether {test} was fixed forward failed"))
+                })
+            })
+            .clone()
+    };
+    let bad = std::thread::scope(|scope| {
+        scope.spawn(|| told.send(fixed_forward(world, state, head, test, None)));
+        if merges.len() == 1 {
+            merges.first().cloned()
+        } else {
+            state.say(&format!(
+                "finding which of {} merges broke {test}",
+                merges.len()
+            ));
+            bisect(world, state, &merges, test, &|| fixed() == Ok(false))
+        }
+    });
+    if fixed()? {
         return Ok(());
     }
-    let merges = world.merges(base, head)?;
-    let bad = if merges.len() == 1 {
-        merges.first().cloned()
-    } else {
-        state.say(&format!(
-            "finding which of {} merges broke {test}",
-            merges.len()
-        ));
-        bisect(world, state, &merges, test)
-    };
     let failing = bad.clone().unwrap_or_else(|| head.to_owned());
     let log = state.log(&failing, test, 2).display().to_string();
     let bad = match bad {
@@ -941,6 +973,11 @@ mod tests {
         /// while without one, when they're put in `waited_out`.
         after_revert: Vec<String>,
         revert_seen: Condvar,
+        /// Whether a run at main's newest head ends only once the search
+        /// has run one at an older merge, or after a while without, when
+        /// it's put in `waited_out`.
+        newest_waits_for_search: bool,
+        build_seen: Condvar,
         waited_out: Mutex<Vec<String>>,
         reaches_main_after: usize,
         put_in_quarantine: Mutex<Vec<String>>,
@@ -1003,6 +1040,23 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((commit.to_owned(), check.to_owned()));
+            self.build_seen.notify_all();
+            if self.newest_waits_for_search && commit == self.head {
+                let searched = |built: &mut Vec<(String, String)>| {
+                    !built
+                        .iter()
+                        .any(|(at, _)| self.merges[..self.merges.len() - 1].contains(at))
+                };
+                let built = self.built.lock().unwrap();
+                let (built, waited) = self
+                    .build_seen
+                    .wait_timeout_while(built, Duration::from_secs(10), searched)
+                    .unwrap();
+                drop(built);
+                if waited.timed_out() {
+                    self.waited_out.lock().unwrap().push(check.to_owned());
+                }
+            }
             if self.after_revert.iter().any(|waits| waits == check) {
                 let reverted = self.reverted.lock().unwrap();
                 let (reverted, waited) = self
@@ -1282,6 +1336,32 @@ mod tests {
     }
 
     #[test]
+    fn whether_main_s_newest_head_fixed_it_is_asked_beside_the_search() {
+        let state = state("forward-beside-search");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("m1 m2 h"),
+            changed: changed("vm-a"),
+            newest_waits_for_search: true,
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("n", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("m2"));
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "the search began while main's newest head was still being tried"
+        );
+    }
+
+    #[test]
     fn a_hold_is_cleared_as_its_revert_reaches_main_mid_round() {
         let state = state("cleared-mid-round");
         state
@@ -1331,7 +1411,7 @@ mod tests {
         state.begin("h").unwrap();
         let world = Stand {
             head: "n".into(),
-            merges: names("a b h"),
+            merges: names("a b c d e f g h"),
             changed: changed("vm-a"),
             ..Stand::default()
         }
@@ -1340,11 +1420,20 @@ mod tests {
             round(&world, &state, "s").unwrap(),
             Round::Failed("h".into())
         );
+        let mut built = world.built();
+        built.sort();
         assert_eq!(
-            world.built(),
-            [("h", "vm-a"), ("h", "vm-a"), ("n", "vm-a")]
-                .map(|(commit, check)| (commit.to_owned(), check.to_owned())),
-            "no merge is searched for once main's head passes"
+            built,
+            [
+                ("b", "vm-a"),
+                ("d", "vm-a"),
+                ("f", "vm-a"),
+                ("h", "vm-a"),
+                ("h", "vm-a"),
+                ("n", "vm-a"),
+            ]
+            .map(|(commit, check)| (commit.to_owned(), check.to_owned())),
+            "the search stops after its first step once main's head passes"
         );
         assert_eq!(
             state.heads(),
