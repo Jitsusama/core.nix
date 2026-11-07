@@ -53,12 +53,14 @@
         nativeBuildInputs = (args.nativeBuildInputs or [ ]) ++ [ zstd ];
         # Before configuring, which clippy's check keeps though it replaces
         # the build. Without its fingerprint, the stub's crate is built again
-        # from the program's source. The setup copies the vendored crates
-        # stamped with the time it ran, and cargo builds a crate again when a
-        # file its build script watches is newer than what it left, so the
-        # target folder is stamped now, after them (-m).
+        # from the program's source. cargo builds a crate again when a file
+        # its build script watches, or a crate under it, is newer than what
+        # it left, and the setup copied the vendored crates stamped with the
+        # time it ran: they are dated back to the store's own time, and the
+        # target folder keeps the times it was built at.
         preConfigure = ''
-          tar --zstd -m -xf ${dependencies}/target.tar.zst
+          find "$NIX_BUILD_TOP/$(stripHash "$cargoDeps")" -exec touch -h -d @1 {} +
+          tar --zstd -xf ${dependencies}/target.tar.zst
           find target -path '*/.fingerprint/${args.pname}-*' -prune -exec rm -rf {} +
         ''
         + (args.preConfigure or "");
