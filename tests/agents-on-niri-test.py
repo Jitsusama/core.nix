@@ -273,6 +273,37 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
     assert [one["act"] for one in told] == ["resume"], told
 
 
+def test_a_sessions_stop_is_an_ending_return_writes_and_a_second_steers(shell: Shell) -> None:
+    """Return on Stop writes :interrupt rather than stopping; a second steers a stop, unasked."""
+    opened(shell)
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(lambda shown: "Stop" in shown["rows"])
+    shell.down_to("Stop")
+    inbox = STEER / "BOSSES"
+
+    def stops() -> list[Path]:
+        return [p for p in inbox.glob("*.json") if json.loads(p.read_text())["act"] == "stop"]
+
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("line") == "interrupt" and not shown["linedFresh"]
+        )
+    )
+    assert stops() == [], "the first Return stopped the session"
+    shell.send_key("ret")
+    deadline = time.monotonic() + 10
+    while not stops():
+        assert time.monotonic() < deadline, "nothing reached the orchestrator's inbox"
+        assert not shell.showing()["takesAnswer"], shell.showing()
+        time.sleep(0.1)
+    told = [json.loads(path.read_text()) for path in stops()]
+    assert [(one["act"], one["from"]) for one in told] == [("stop", "joel")], told
+    # Close's case below reads every word the orchestrator was sent.
+    for path in stops():
+        path.unlink()
+
+
 def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: Shell) -> None:
     """Close, last among a session's acts, asks what it leaves, and y steers it a close."""
     opened(shell)

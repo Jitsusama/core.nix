@@ -6448,7 +6448,9 @@
       "in": "agents",
       "name": "Stop",
       "verb": "stop",
-      "glyph": "stopped"
+      "glyph": "stopped",
+      "act": "ending",
+      "ends": "stop"
     },
     {
       "id": "verb:agent:close",
