@@ -1,0 +1,397 @@
+Open the next window asked for as a column at an index
+
+OpenNextWindowOn (opens-next-window-on.patch) puts a window on the
+workspace asked for, wherever niri adds it there, and niri moves only
+the focused column to an index, so the shell putting a reopened session
+back in its column took the focus to do it: Reopen Them All moved
+Joel's focus once for every session it reopened.
+
+OpenNextWindowOn gains `column`, the index from 1 the window opens at
+as a new column, the last past the last, as niri's own
+NewColumnAt places it, so it opens where it goes without the focus
+moving. Without it, the window is added as before.
+
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index a3551a8..1e8d068 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -266,6 +266,7 @@ pub enum Action {
+     OpenNextWindowOn {
+         app_id: String,
+         reference: WorkspaceReference,
++        column: Option<usize>,
+     },
+     FocusMonitorLeft,
+     FocusMonitorRight,
+@@ -561,9 +562,14 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::UnsetWorkspaceName {
+                 reference: Some(reference),
+             } => Self::UnsetWorkSpaceNameByRef(WorkspaceReference::from(reference)),
+-            niri_ipc::Action::OpenNextWindowOn { app_id, reference } => Self::OpenNextWindowOn {
++            niri_ipc::Action::OpenNextWindowOn {
++                app_id,
++                reference,
++                column,
++            } => Self::OpenNextWindowOn {
+                 app_id,
+                 reference: WorkspaceReference::from(reference),
++                column,
+             },
+             niri_ipc::Action::FocusMonitorLeft {} => Self::FocusMonitorLeft,
+             niri_ipc::Action::FocusMonitorRight {} => Self::FocusMonitorRight,
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 2a9b314..18a1706 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -606,8 +606,8 @@ pub enum Action {
+     /// Open the next window with an app ID on a workspace.
+     ///
+     /// The window opens there from its first frame, rather than on the focused workspace and
+-    /// moved after. The expectation is used once, and forgotten if no such window opens within
+-    /// 30 seconds.
++    /// moved after, and as a new column at the index given, if one is. The expectation is used
++    /// once, and forgotten if no such window opens within 30 seconds.
+     #[cfg_attr(
+         feature = "clap",
+         clap(about = "Open the next window with an app ID on a workspace")
+@@ -620,6 +620,10 @@ pub enum Action {
+         /// Reference (index or name) of the workspace to open it on.
+         #[cfg_attr(feature = "clap", arg())]
+         reference: WorkspaceReferenceArg,
++
++        /// Index of the column it opens as, from 1 for the first; past the last, it's last.
++        #[cfg_attr(feature = "clap", arg(long))]
++        column: Option<usize>,
+     },
+     /// Focus the monitor to the left.
+     FocusMonitorLeft {},
+diff --git a/src/handlers/compositor.rs b/src/handlers/compositor.rs
+index 0c0d6fa..1163610 100644
+--- a/src/handlers/compositor.rs
++++ b/src/handlers/compositor.rs
+@@ -21,7 +21,7 @@ use smithay::{delegate_compositor, delegate_shm};
+ use super::xdg_shell::add_mapped_toplevel_pre_commit_hook;
+ use crate::handlers::XDG_ACTIVATION_TOKEN_TIMEOUT;
+ use crate::layout::{ActivateWindow, AddWindowTarget, LayoutElement as _};
+-use crate::niri::{CastTarget, ClientState, LockState, State};
++use crate::niri::{CastTarget, ClientState, LockState, State, WindowOpening};
+ use crate::utils::transaction::Transaction;
+ use crate::utils::{is_mapped, send_scale_transform};
+ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped};
+@@ -119,6 +119,7 @@ impl CompositorHandler for State {
+                         // Check that the workspace still exists: the one asked for the window,
+                         // else the one its rules named.
+                         let workspace_id = opens_on
++                            .map(|opening| opening.workspace)
+                             .filter(|id| self.niri.layout.find_workspace_by_id(*id).is_some())
+                             .or_else(|| {
+                                 workspace_name
+@@ -214,7 +215,14 @@ impl CompositorHandler for State {
+                         // Open dialogs next to their parent window.
+                         AddWindowTarget::NextTo(p)
+                     } else if let Some(id) = workspace_id {
+-                        AddWindowTarget::Workspace(id)
++                        // A column asked for with its workspace is had only on that workspace.
++                        match opens_on.filter(|opening| opening.workspace == id) {
++                            Some(WindowOpening {
++                                column: Some(column),
++                                ..
++                            }) => AddWindowTarget::WorkspaceColumn(id, column),
++                            _ => AddWindowTarget::Workspace(id),
++                        }
+                     } else if let Some(output) = &output {
+                         AddWindowTarget::Output(output)
+                     } else {
+diff --git a/src/handlers/xdg_shell.rs b/src/handlers/xdg_shell.rs
+index 7a8a56a..b4dd085 100644
+--- a/src/handlers/xdg_shell.rs
++++ b/src/handlers/xdg_shell.rs
+@@ -1068,7 +1068,7 @@ impl State {
+         // Pick the target monitor. First, check if a workspace was asked for the window, then if
+         // we had a workspace set in the window rules.
+         let mon = opens_on
+-            .and_then(|id| self.niri.layout.monitor_for_workspace_id(id))
++            .and_then(|opening| self.niri.layout.monitor_for_workspace_id(opening.workspace))
+             .or_else(|| {
+                 rules
+                     .open_on_workspace
+@@ -1132,7 +1132,8 @@ impl State {
+         let is_floating = rules.compute_open_floating(toplevel);
+ 
+         // Tell the surface the preferred size and bounds for its likely output.
+-        let asked = opens_on.and_then(|id| mon.and_then(|mon| mon.find_workspace_by_id(id)));
++        let asked = opens_on
++            .and_then(|opening| mon.and_then(|mon| mon.find_workspace_by_id(opening.workspace)));
+         let ws = asked.or_else(|| {
+             rules
+                 .open_on_workspace
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index 22423fa..df8ebb1 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -49,7 +49,7 @@ use self::spatial_movement_grab::SpatialMovementGrab;
+ use crate::dbus::freedesktop_a11y::KbMonBlock;
+ use crate::layout::scrolling::ScrollDirection;
+ use crate::layout::{ActivateWindow, LayoutElement as _};
+-use crate::niri::{CastTarget, PointerVisibility, State};
++use crate::niri::{CastTarget, PointerVisibility, State, WindowOpening};
+ use crate::ui::mru::{WindowMru, WindowMruUi};
+ use crate::ui::screenshot_ui::ScreenshotUi;
+ use crate::utils::spawning::{spawn, spawn_sh};
+@@ -1534,10 +1534,17 @@ impl State {
+             Action::UnsetWorkSpaceNameByRef(reference) => {
+                 self.niri.layout.unset_workspace_name(Some(reference));
+             }
+-            Action::OpenNextWindowOn { app_id, reference } => {
++            Action::OpenNextWindowOn {
++                app_id,
++                reference,
++                column,
++            } => {
+                 if let Some(workspace) = self.niri.layout.find_workspace_by_ref(reference) {
+-                    let workspace = workspace.id();
+-                    self.niri.expect_window_on(app_id, workspace);
++                    let opening = WindowOpening {
++                        workspace: workspace.id(),
++                        column: column.map(|column| column.saturating_sub(1)),
++                    };
++                    self.niri.expect_window_on(app_id, opening);
+                 }
+             }
+             Action::ConsumeWindowIntoColumn => {
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+index 8e4a323..cd61c59 100644
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -521,6 +521,8 @@ pub enum AddWindowTarget<'a, W: LayoutElement> {
+     Output(&'a Output),
+     /// On this workspace.
+     Workspace(WorkspaceId),
++    /// On this workspace, as a new column at this index, or last past its last.
++    WorkspaceColumn(WorkspaceId, usize),
+     /// Next to this existing window.
+     NextTo(&'a W::Id),
+ }
+@@ -968,6 +970,27 @@ impl<W: LayoutElement> Layout<W> {
+                             },
+                         )
+                     }
++                    AddWindowTarget::WorkspaceColumn(ws_id, column_idx) => {
++                        let (mon_idx, ws) = monitors
++                            .iter()
++                            .enumerate()
++                            .find_map(|(idx, mon)| {
++                                mon.workspaces
++                                    .iter()
++                                    .find(|ws| ws.id() == ws_id)
++                                    .map(|ws| (idx, ws))
++                            })
++                            .unwrap();
++                        let column_idx = column_idx.min(ws.column_count());
++
++                        (
++                            mon_idx,
++                            MonitorAddWindowTarget::Workspace {
++                                id: ws_id,
++                                column_idx: Some(column_idx),
++                            },
++                        )
++                    }
+                     AddWindowTarget::NextTo(next_to) => {
+                         if let Some(output) = self
+                             .interactive_move
+@@ -1050,6 +1073,14 @@ impl<W: LayoutElement> Layout<W> {
+                         let ws_idx = workspaces.iter().position(|ws| ws.id() == ws_id).unwrap();
+                         (ws_idx, WorkspaceAddWindowTarget::Auto)
+                     }
++                    AddWindowTarget::WorkspaceColumn(ws_id, column_idx) => {
++                        let ws_idx = workspaces.iter().position(|ws| ws.id() == ws_id).unwrap();
++                        let columns = workspaces[ws_idx].column_count();
++                        (
++                            ws_idx,
++                            WorkspaceAddWindowTarget::NewColumnAt(column_idx.min(columns)),
++                        )
++                    }
+                     AddWindowTarget::NextTo(next_to) => {
+                         if self
+                             .interactive_move
+diff --git a/src/layout/workspace.rs b/src/layout/workspace.rs
+index 49548a8..c3c2f60 100644
+--- a/src/layout/workspace.rs
++++ b/src/layout/workspace.rs
+@@ -1977,6 +1977,11 @@ impl<W: LayoutElement> Workspace<W> {
+         self.layout_config.as_ref()
+     }
+ 
++    /// How many columns its scrolling layout holds.
++    pub fn column_count(&self) -> usize {
++        self.scrolling.columns().count()
++    }
++
+     #[cfg(test)]
+     pub fn scrolling(&self) -> &ScrollingSpace<W> {
+         &self.scrolling
+diff --git a/src/niri.rs b/src/niri.rs
+index f803b88..82d88f9 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -205,6 +205,14 @@ const FRAME_CALLBACK_THROTTLE: Option<Duration> = Some(Duration::from_millis(995
+ // shouldn't leave the next window with its app ID opening somewhere unasked, hours later.
+ const WINDOW_OPENING_TIMEOUT: Duration = Duration::from_secs(30);
+ 
++/// Where OpenNextWindowOn asked a window to open: its workspace, and the index from 0 of the
++/// column it opens as there, if one was given.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct WindowOpening {
++    pub workspace: WorkspaceId,
++    pub column: Option<usize>,
++}
++
+ pub struct Niri {
+     pub config: Rc<RefCell<Config>>,
+ 
+@@ -262,7 +270,7 @@ pub struct Niri {
+ 
+     /// Workspaces the next window with an app ID opens on, as OpenNextWindowOn asked, with when
+     /// each was asked.
+-    pub window_openings: Vec<(String, WorkspaceId, Instant)>,
++    pub window_openings: Vec<(String, WindowOpening, Instant)>,
+ 
+     /// Layer surfaces which don't have a buffer attached yet.
+     pub unmapped_layer_surfaces: HashSet<WlSurface>,
+@@ -2295,20 +2303,22 @@ impl State {
+ impl Niri {
+     /// Expects the next window with this app ID to open on this workspace, in place of any
+     /// expectation for it before.
+-    pub fn expect_window_on(&mut self, app_id: String, workspace: WorkspaceId) {
++    pub fn expect_window_on(&mut self, app_id: String, opening: WindowOpening) {
+         self.window_openings
+             .retain(|(id, _, at)| *id != app_id && at.elapsed() < WINDOW_OPENING_TIMEOUT);
+-        self.window_openings.push((app_id, workspace, Instant::now()));
++        self.window_openings.push((app_id, opening, Instant::now()));
+     }
+ 
+-    /// The workspace a window with this app ID was expected on, if it was asked for in time and
+-    /// is still there. The expectation is used up.
+-    pub fn take_window_opening(&mut self, app_id: &str) -> Option<WorkspaceId> {
++    /// Where a window with this app ID was expected to open, if it was asked for in time and its
++    /// workspace is still there. The expectation is used up.
++    pub fn take_window_opening(&mut self, app_id: &str) -> Option<WindowOpening> {
+         self.window_openings
+             .retain(|(_, _, at)| at.elapsed() < WINDOW_OPENING_TIMEOUT);
+         let at = self.window_openings.iter().position(|(id, _, _)| id == app_id)?;
+-        let (_, workspace, _) = self.window_openings.remove(at);
+-        self.layout.find_workspace_by_id(workspace).map(|_| workspace)
++        let (_, opening, _) = self.window_openings.remove(at);
++        self.layout
++            .find_workspace_by_id(opening.workspace)
++            .map(|_| opening)
+     }
+ 
+     pub fn new(
+diff --git a/src/tests/window_opening.rs b/src/tests/window_opening.rs
+index a20c14e..f2e1549 100644
+--- a/src/tests/window_opening.rs
++++ b/src/tests/window_opening.rs
+@@ -943,6 +943,7 @@ fn opens_on_the_workspace_asked_for_its_app_id() {
+         Action::OpenNextWindowOn {
+             app_id: String::from("spawned.1"),
+             reference: WorkspaceReference::Id(asked.get()),
++            column: None,
+         },
+         false,
+     );
+@@ -959,9 +960,69 @@ fn opens_on_the_workspace_asked_for_its_app_id() {
+         Action::OpenNextWindowOn {
+             app_id: String::from("spawned.2"),
+             reference: WorkspaceReference::Id(asked.get()),
++            column: None,
+         },
+         false,
+     );
+     open_with_app_id(&mut f, id, "spawned.3", "other");
+     assert_eq!(workspace_of(&mut f, "other"), focused);
+ }
++
++// The titles of a workspace's columns, left to right, by each one's first window.
++fn columns_of(f: &mut Fixture, workspace: WorkspaceId) -> Vec<String> {
++    let (_, _, ws) = f
++        .niri()
++        .layout
++        .workspaces()
++        .find(|(_, _, ws)| ws.id() == workspace)
++        .expect("the workspace is gone");
++    ws.scrolling()
++        .columns()
++        .filter_map(|column| column.tiles().next())
++        .map(|(tile, _)| {
++            with_toplevel_role(tile.window().toplevel(), |role| {
++                role.title.clone().unwrap_or_default()
++            })
++        })
++        .collect()
++}
++
++// Asks for the next window with an app ID on a workspace, as a column at an index from 1.
++fn expect_column(f: &mut Fixture, app_id: &str, workspace: WorkspaceId, column: usize) {
++    f.niri_state().do_action(
++        Action::OpenNextWindowOn {
++            app_id: String::from(app_id),
++            reference: WorkspaceReference::Id(workspace.get()),
++            column: Some(column),
++        },
++        false,
++    );
++}
++
++#[test]
++fn opens_as_the_column_asked_for_its_app_id() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    let id = f.add_client();
++
++    // Two columns on the first workspace, then the one below it focused.
++    open_with_app_id(&mut f, id, "left", "left");
++    open_with_app_id(&mut f, id, "right", "right");
++    let asked = workspace_of(&mut f, "left");
++    f.niri_state().do_action(Action::FocusWorkspaceDown, false);
++    let focused = f.niri().layout.active_workspace().unwrap().id();
++
++    // The first column asked for opens before both, the second between them, and one past
++    // the last opens last, each without the focus.
++    expect_column(&mut f, "spawned.1", asked, 1);
++    open_with_app_id(&mut f, id, "spawned.1", "first");
++    expect_column(&mut f, "spawned.2", asked, 3);
++    open_with_app_id(&mut f, id, "spawned.2", "third");
++    expect_column(&mut f, "spawned.3", asked, 9);
++    open_with_app_id(&mut f, id, "spawned.3", "last");
++    assert_eq!(
++        columns_of(&mut f, asked),
++        ["first", "left", "third", "right", "last"]
++    );
++    assert_eq!(f.niri().layout.active_workspace().unwrap().id(), focused);
++}
+diff --git a/src/window/unmapped.rs b/src/window/unmapped.rs
+index d3167f1..a791d60 100644
+--- a/src/window/unmapped.rs
++++ b/src/window/unmapped.rs
+@@ -5,7 +5,7 @@ use smithay::wayland::shell::xdg::ToplevelSurface;
+ use smithay::wayland::xdg_activation::XdgActivationTokenData;
+ 
+ use super::ResolvedWindowRules;
+-use crate::layout::workspace::WorkspaceId;
++use crate::niri::WindowOpening;
+ 
+ #[derive(Debug)]
+ pub struct Unmapped {
+@@ -13,8 +13,8 @@ pub struct Unmapped {
+     pub state: InitialConfigureState,
+     /// Activation token, if one was used on this unmapped window.
+     pub activation_token_data: Option<XdgActivationTokenData>,
+-    /// Workspace it opens on, as OpenNextWindowOn asked for its app ID, over its rules'.
+-    pub opens_on: Option<WorkspaceId>,
++    /// Where it opens, as OpenNextWindowOn asked for its app ID, over its rules'.
++    pub opens_on: Option<WindowOpening>,
+ }
+ 
+ #[allow(clippy::large_enum_variant)]

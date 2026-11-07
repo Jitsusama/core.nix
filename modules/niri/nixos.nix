@@ -131,7 +131,10 @@
     # column taken from him. The patch (opens-next-window-on.patch) adds
     # OpenNextWindowOn, which says the next window with an app ID opens
     # on a workspace, by its id, from its first frame and without the
-    # focus; it's used once and forgotten after 30 seconds.
+    # focus; it's used once and forgotten after 30 seconds. niri moves only
+    # the focused column to an index, so the next patch
+    # (opens-next-window-as-column.patch) lets it say the index it opens
+    # at as a new column, which Reopen Them All puts each session back at.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -159,6 +162,7 @@
         ./virtual-keys-are-activity.patch
         ./lid-read-before-outputs.patch
         ./opens-next-window-on.patch
+        ./opens-next-window-as-column.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
