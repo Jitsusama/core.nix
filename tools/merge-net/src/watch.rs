@@ -479,9 +479,11 @@ fn blames_none(
 /// merge a search found broke it, none before the search. A round and its
 /// search take hours while merges keep landing: on 5 November both tests
 /// the round at b74ab91b searched for were fixed forward, and the search
-/// held the net nine hours behind main. So it is asked before a search,
-/// which it then skips, and again before a revert, which would only undo
-/// the merge a fix sits on.
+/// held the net nine hours behind main. So it is asked beside a search,
+/// which it then stops, and again before a revert, which would only undo
+/// the merge a fix sits on. A newest head that builds the test's very
+/// derivation fails it as `head` does, so it isn't run there: on 7 November
+/// two such runs took 28 minutes of a search.
 fn fixed_forward(
     world: &dyn World,
     state: &State,
@@ -491,6 +493,7 @@ fn fixed_forward(
 ) -> Result<bool, String> {
     let newest = world.head()?;
     if newest == head
+        || same_drv(world, &newest, head, test)
         || !matches!(
             attempt(world, state, &newest, test),
             Outcome::Passed | Outcome::Flaky
@@ -568,6 +571,60 @@ fn family(test: &str) -> &str {
 pub fn pr_of(subject: &str) -> Option<u64> {
     let rest = subject.strip_prefix("Merge pull request #")?;
     rest.split_whitespace().next()?.parse().ok()
+}
+
+/// Whether `test` builds the same derivation at both commits, so it does
+/// there what it does here; not when either fails to evaluate.
+fn same_drv(world: &dyn World, one: &str, other: &str, test: &str) -> bool {
+    matches!(
+        (world.drv(one, test), world.drv(other, test)),
+        (Ok(one), Ok(other)) if one == other
+    )
+}
+
+/// The merges from `base` to `head` that could have broken `test`, said
+/// when there are several to search.
+fn to_search(
+    world: &dyn World,
+    state: &State,
+    base: &str,
+    head: &str,
+    test: &str,
+) -> Result<Vec<String>, String> {
+    let all = world.merges(base, head)?;
+    let merges = movers(world, &all, test);
+    if merges.len() > 1 {
+        state.say(&format!(
+            "finding which of {} merges broke {test}, the {} that changed it",
+            all.len(),
+            merges.len()
+        ));
+    }
+    Ok(merges)
+}
+
+/// The merges among `merges` (oldest first, on main's first parents) worth
+/// searching for what broke `test`: those that changed its derivation from
+/// the commit before them, or that it couldn't be told for. Only these can
+/// have broken it, since a test whose derivation is the same at two
+/// commits does there what it does here, and each is a few seconds'
+/// evaluation against minutes a run. On 7 November the search among 16
+/// merges took 73 minutes. The first merge stays all the same, so a test
+/// failing from the range's start, which no merge changed, is still told
+/// apart as broken outside the code rather than blamed on the next merge.
+fn movers(world: &dyn World, merges: &[String], test: &str) -> Vec<String> {
+    let mut before: Option<String> = None;
+    merges
+        .iter()
+        .enumerate()
+        .filter(|(at, merge)| {
+            let now = world.drv(merge, test).ok();
+            let moved = *at == 0 || now.is_none() || now != before;
+            before = now;
+            moved
+        })
+        .map(|(_, merge)| merge.clone())
+        .collect()
 }
 
 /// Clear the hold once its revert is on main, fetching main first when the
@@ -843,7 +900,7 @@ fn broke(
     head: &str,
     test: &str,
 ) -> Result<(), String> {
-    let merges = world.merges(base, head)?;
+    let merges = to_search(world, state, base, head, test)?;
     // Whether main's newest head fixed it is asked beside the search's first
     // step, and the search waits for the answer before its second. On
     // 7 November asking first took 16 minutes, two VM runs one after the
@@ -867,10 +924,6 @@ fn broke(
         if merges.len() == 1 {
             merges.first().cloned()
         } else {
-            state.say(&format!(
-                "finding which of {} merges broke {test}",
-                merges.len()
-            ));
             bisect(world, state, &merges, test, &|| fixed() == Ok(false))
         }
     });
@@ -990,6 +1043,8 @@ mod tests {
         reaches_main_after: usize,
         lands_on_fetch: bool,
         fetched_since_revert: Mutex<bool>,
+        /// A commit main's newest head builds every check as.
+        newest_builds_as: Option<String>,
         put_in_quarantine: Mutex<Vec<String>>,
         held: Option<String>,
     }
@@ -1040,6 +1095,11 @@ mod tests {
         /// A merge in `same`, or in `still` with this check, builds what
         /// the merge before it built.
         fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
+            if let Some(like) = &self.newest_builds_as
+                && commit == self.head
+            {
+                return self.drv(like, check);
+            }
             let still = (commit.to_owned(), check.to_owned());
             if self.same.iter().any(|same| same == commit) || self.still.contains(&still) {
                 return self.drv(&self.parent(commit)?, check);
@@ -1630,6 +1690,64 @@ mod tests {
         assert!(
             world.built().contains(&("m1".into(), "vm-a".into())),
             "m1, before m2, passes"
+        );
+    }
+
+    #[test]
+    fn only_the_merges_that_changed_a_test_are_searched() {
+        let state = state("searches-what-moved");
+        state.set_heads("s", "s").unwrap();
+        let unmoved = names("m1 m2 m4 m5 m6 m7 h");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 m3 m4 m5 m6 m7 h"),
+            changed: changed("vm-a"),
+            still: unmoved
+                .iter()
+                .map(|merge| (merge.clone(), "vm-a".to_owned()))
+                .collect(),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("m3"));
+        let searched: Vec<String> = world
+            .built()
+            .into_iter()
+            .map(|(commit, _)| commit)
+            .filter(|commit| !["h", "m1", "m2"].contains(&commit.as_str()))
+            .collect();
+        assert!(
+            searched.is_empty(),
+            "only m3 changed vm-a, so nothing is run but the first merge and the one before m3: \
+             {searched:?}"
+        );
+    }
+
+    #[test]
+    fn a_newest_head_building_the_failing_test_unchanged_isn_t_run() {
+        let state = state("newest-unchanged");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            newest_builds_as: Some("h".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert!(
+            !world.built().contains(&("n".into(), "vm-a".into())),
+            "main's newest head builds vm-a as h does, so it fails there too"
         );
     }
 
