@@ -139,6 +139,7 @@ def shell() -> Iterator[Shell]:
     under = {"orchestratedBy": "BOSSES", "busy": False}
     lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
     lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
+    lost_on_the_last_boot()
     orchestrators_listed()
     SPEND.parent.mkdir(parents=True, exist_ok=True)
     SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
@@ -159,9 +160,6 @@ def shell() -> Iterator[Shell]:
         assert time.monotonic() < deadline, f"the node holds {held_by_node()}, not {wanted}"
         time.sleep(0.1)
     started = launcher_on_niri.started()
-    # Laid once the shell has started, since a shell starting on a last
-    # boot's sessions reopens them by itself, and these are for the row.
-    lost_on_the_last_boot()
     yield started
     started.stop()
     node.terminate()
