@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::mesh::{Mesh, Presence};
-use crate::revive::{self, Gate, Memory, Seen, Verdict};
+use crate::revive::{self, Gate, Held, Holder, Memory, Seen, Verdict};
 
 /// What reviving is told: whom to watch and tell, and how a session is
 /// started, as the words a login shell runs, before `--session <id>`.
@@ -52,6 +52,7 @@ pub fn revive(
         .unwrap_or_default();
     let seen = seen(mesh);
     let windows = windows();
+    let node = node_holders(revive::realm_of(&reviving.restart));
     let mut said = Vec::new();
     for s in revive::watched(
         &seen,
@@ -69,21 +70,35 @@ pub fn revive(
             .as_ref()
             .and_then(|q| fs::read_to_string(reviving.quests.join(q).join("README.md")).ok())
             .map(|readme| revive::quest(&readme));
-        let Verdict::Died { cwd } = revive::judge(s, quest.as_ref(), is_pi, held(&s.session))
-        else {
+        let hold = node.as_deref().map_or_else(
+            || {
+                if held(&s.session) {
+                    Held::Running
+                } else {
+                    Held::Not
+                }
+            },
+            |all| revive::held(all, &s.session, is_pi),
+        );
+        let named = matches!(hold, Held::Running | Held::Parked);
+        let Verdict::Died { cwd } = revive::judge(s, quest.as_ref(), is_pi, named) else {
             continue;
         };
         let line = match revive::gate(&memory, &s.session, now) {
             Gate::Go => {
                 revive::started(&mut memory, &s.session, now);
                 fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
-                let line = start(
+                let closed = close_dead(&s.session, &hold, node.as_deref().unwrap_or_default());
+                let mut line = start(
                     reviving,
                     mesh,
                     s,
                     &cwd,
                     memory.homes.get(&s.session).copied(),
                 );
+                if closed > 0 {
+                    line = format!("{line} It closed {closed} window(s) left showing it dead.");
+                }
                 tell(reviving, s, &line, send)?;
                 line
             }
@@ -207,6 +222,97 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
 /// Whether `pid` is a pi, rather than gone or reused by another program.
 fn is_pi(pid: u32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "pi")
+}
+
+/// What the machine's node holds, by `mycelium held`, or none when it
+/// doesn't answer.
+fn node_holders(realm: Option<&str>) -> Option<Vec<Holder>> {
+    let mut ask = Command::new("mycelium");
+    if let Some(realm) = realm {
+        ask.args(["--realm", realm]);
+    }
+    let out = ask
+        .arg("held")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    Some(revive::holders(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Closes every kitty window left showing `session` dead before it is
+/// started again, so a restart replaces its window rather than adding one
+/// beside it, as the harness does when it reopens a session: the windows
+/// of its holders whose pi is gone, and those the harness marked as the
+/// session's with no pi left under them. Says how many it closed.
+fn close_dead(session: &str, hold: &Held, holders: &[Holder]) -> usize {
+    let kitty = |w: &&revive::HeldWindow| w.terminal == "kitty";
+    let mut dead: Vec<(String, String)> = match hold {
+        Held::Dead(windows) => windows
+            .iter()
+            .filter(kitty)
+            .map(|w| (w.within.clone(), w.id.clone()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let sockets: std::collections::BTreeSet<&str> = holders
+        .iter()
+        .flat_map(|h| &h.windows)
+        .filter(kitty)
+        .map(|w| w.within.as_str())
+        .collect();
+    for within in sockets {
+        let Some(listing) = Command::new("kitty")
+            .args(["@", "--to", within, "ls"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| serde_json::from_slice(&o.stdout).ok())
+        else {
+            continue;
+        };
+        for (id, pid) in revive::marked(&listing, session) {
+            if !pid.is_some_and(pi_under) {
+                dead.push((within.to_owned(), id));
+            }
+        }
+    }
+    dead.sort();
+    dead.dedup();
+    dead.iter()
+        .filter(|(within, id)| {
+            Command::new("kitty")
+                .args(["@", "--to", within, "close-window", "--match"])
+                .arg(format!("id:{id}"))
+                .status()
+                .is_ok_and(|s| s.success())
+        })
+        .count()
+}
+
+/// Whether a pi runs at or below `pid`.
+fn pi_under(pid: u32) -> bool {
+    let mut queue = vec![pid];
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(at) = queue.pop() {
+        if !seen.insert(at) {
+            continue;
+        }
+        if is_pi(at) {
+            return true;
+        }
+        let Ok(tasks) = fs::read_dir(format!("/proc/{at}/task")) else {
+            continue;
+        };
+        for task in tasks.filter_map(Result::ok) {
+            let children = fs::read_to_string(task.path().join("children")).unwrap_or_default();
+            queue.extend(
+                children
+                    .split_whitespace()
+                    .filter_map(|c| c.parse::<u32>().ok()),
+            );
+        }
+    }
+    false
 }
 
 /// Whether a process other than a pi holds `session`, naming it after
