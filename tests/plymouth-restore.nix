@@ -7,12 +7,31 @@
 # was reading for the theme's words for a restore. Once the machine is back,
 # the hook says how long the restore took after the disk opened. The
 # machine holds incompressible bytes in memory first, so the image takes
-# seconds to read rather than the moment a bare machine's does. The script is
+# seconds to read rather than the moment a bare machine's does.
+#
+# It runs core's kernel, whose patch fills a bar on every screen as the
+# image is read (modules/kernel/hibernate-progress.patch), on two screens
+# of different sizes, as a laptop's panel and a monitor are. The disk is
+# held to a crawl until the kernel starts reading, so both screens are
+# photographed with the theme's track still empty, then let go, and the
+# photographs taken while it reads must show the kernel's bar lying exactly
+# on the track, partly filled and never going back. The script is
 # plymouth-restore-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";
   passphrase = "4815";
+  # The first is the console the test driver reads; the second is larger in
+  # both directions, so the bar has to follow the canvas Plymouth centres
+  # on each, as tests/plymouth-screens.nix has it.
+  small = {
+    width = 1280;
+    height = 800;
+  };
+  large = {
+    width = 1920;
+    height = 1200;
+  };
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "plymouth-restore";
@@ -26,6 +45,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       imports = [
         self.nixosModules.graphical
         self.nixosModules.hibernate
+        self.nixosModules.kernel
       ];
       # The GPU's driver in the initrd, so Plymouth has a screen before the
       # disk opens, and Plymouth drawing though the test reads the machine
@@ -40,7 +60,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       virtualisation = {
         memorySize = 3072;
         cores = 4;
-        qemu.options = [ "-vga none -device virtio-gpu-pci,xres=1280,yres=800" ];
+        qemu.options = [
+          "-vga none"
+          "-device virtio-gpu-pci,xres=${toString small.width},yres=${toString small.height}"
+          "-device virtio-gpu-pci,id=large,xres=${toString large.width},yres=${toString large.height}"
+        ];
         useEFIBoot = true;
         # The hook knows the machine started from its image by the TPM's
         # counts, as hibernate.nix's does, and the firmware without TPM
@@ -83,5 +107,19 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
 
   tests = ./plymouth-restore-vm-test.py;
-  values = _: pkgs.writeText "plymouth-restore-values.json" (builtins.toJSON { inherit passphrase; });
+  # The track's colour and the bar's, the account's theme's edge and text
+  # (modules/plymouth/nixos.nix), and the words', which OCR reads alone.
+  values =
+    { nodes, ... }:
+    let
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colours;
+    in
+    pkgs.writeText "plymouth-restore-values.json" (
+      builtins.toJSON {
+        inherit passphrase small large;
+        track = colours.edge;
+        bar = colours.text;
+        words = colours.text;
+      }
+    );
 }

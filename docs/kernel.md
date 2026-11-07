@@ -50,6 +50,7 @@ are fixes written here, kept until the kernel has its own:
 | `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
 | `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
+| `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -92,6 +93,17 @@ the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
 address. The patch records the name first. Most access points name their
 country, but hostapd doesn't unless it's told to.
+
+The hibernation fix is for a hibernated machine that showed nothing while it
+read its image back. The kernel freezes every process before it reads the
+image, Plymouth included, so the boot screen held its last frame for the
+whole read, the longer the more memory was in use. The patch has the panic
+screen's drawing, which needs no process and writes straight into each
+screen's buffer, fill a bar as `kernel/power/swap.c` counts the image's
+pages. It draws nothing until told the bar's size and place through the
+`drm` module's parameters, which the boot screen sets as the read starts
+(`modules/plymouth/nixos.nix`), since its own pictures say where its empty
+track goes, under the words saying the machine is restoring.
 
 ### The Settings
 

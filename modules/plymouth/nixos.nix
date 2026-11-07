@@ -63,6 +63,15 @@ let
   # Room round the padlock's ink as it's drawn, more than it reaches past
   # its cell; none of it shows.
   inkRoom = space.l;
+  # While a hibernation's image is read, a meter's rule
+  # (../quickshell/Meter.qml) lies under the words saying so: a stroke four
+  # hairlines thick, as wide as the words' ink and under it, the apart
+  # rung below their descenders, its empty track the edge colour as a
+  # meter's is, so a cream fill reads against a darker groove on any ground.
+  # The kernel fills it in the words' colour as it reads the image
+  # (../kernel/hibernate-progress.patch), so where it lies is measured with
+  # the pictures and told the kernel too (imageBar).
+  track.height = 4 * border;
   # How far a shadow can reach, its offset and twice its blur, past which a
   # blur's tail is too faint to see.
   farthest = lib.foldl' lib.max 0;
@@ -202,6 +211,33 @@ let
             (lib.reverseList theme.wallpaper.shadows)
         } \( -clone 0 \) -delete 0 -background none -flatten ${out}
       '';
+      # The image's track, as wide as the ink of the words saying the image
+      # is read, centred on it and the apart rung under its lowest ink, and
+      # where that is: from the middle, as the script centres the words'
+      # picture, and over the foot, as the script stacks the column up from
+      # it (lay_out): the voice's capitals, a beat, the panel, three beats,
+      # the words' baseline, and the words' picture's margin. The words are
+      # drawn as their picture is, before its shadows, so their ink lies as
+      # it does there. The script and the kernel read the same measures.
+      rule = ''
+        voice_tall=$tall
+        ${words "ink.png" serif (points "serif" "large") colours.text pad under.restoring}
+        picture=$(magick identify -format %w ink.png)
+        ink=$(magick ink.png -format %@ info:)
+        wide=''${ink%%x*}
+        rest=''${ink#*x}
+        tall=''${rest%%+*}
+        rest=''${rest#*+}
+        left=$((''${rest%%+*} - (picture + 1) / 2))
+        below=$((''${rest#*+} + tall + ${at space.rung.apart}))
+        rise=$((voice_tall + ${at (4 * space.beat + panel.height + pad)} + under_baseline - below))
+        echo 'measured["rule-left-${toString scale}"] = '$left';' >> measured
+        echo 'measured["rule-top-${toString scale}"] = '$below';' >> measured
+        echo $wide > $out/rule-width-${toString scale}
+        echo $left > $out/rule-left-${toString scale}
+        echo $rise > $out/rule-rise-${toString scale}
+        magick -size ''${wide}x${at track.height} xc:'${colours.edge}' ${file "track"}
+      '';
       # The panel and its shadows, the farthest first, on a canvas with room
       # for them, the frame's hairline drawn on its own pixels.
       framed =
@@ -235,8 +271,10 @@ let
     ''
       ${capitals "name" "${mono} ${toString (points "mono" "hero")}"}
       ${capitals "under" "${serif} ${toString (points "serif" "large")}"}
+      under_baseline=$((top + tall))
       ${capitals "said" "${serif} ${toString (points "serif" "body")}"}
       ${capitals "voice" voice}
+      ${rule}
       ${capitals "typed" "${mono} ${toString (points "mono" "large")}"}
       ${lifted (file "name") mono (points "mono" "hero") config.networking.hostName}
       ${lib.concatStrings (
@@ -389,6 +427,31 @@ let
 
   waits = pkgs.callPackage ./waits/package.nix { };
 
+  # Tells the kernel where the image's track is, so the bar it fills as it
+  # reads the image lies on it, through the drm module's parameters: the
+  # track's width, how far its left end is from the middle and how far its
+  # top is over the foot the column is set from, each as the pictures
+  # measured them at both scales; its height; the least foot; and the
+  # words' colour. A kernel without ../kernel/hibernate-progress.patch has
+  # none of them and is left as it is. The width goes last, since it's what
+  # turns the bar on.
+  measures = pkgs.runCommand "plymouth-image-bar" { } ''
+    dir=${art}/share/plymouth/themes/jitsusama
+    mkdir $out
+    for measure in width left rise; do
+      echo "$(cat $dir/rule-$measure-1),$(cat $dir/rule-$measure-2)" > $out/$measure
+    done
+  '';
+  imageBar = pkgs.writeShellScript "plymouth-image-bar" ''
+    cd /sys/module/drm/parameters 2>/dev/null && [ -w progress_width ] || exit 0
+    echo ${toString track.height} > progress_height
+    echo ${toString space.rung.screen} > progress_foot
+    cat ${measures}/left > progress_left
+    cat ${measures}/rise > progress_rise
+    echo 0x${lib.removePrefix "#" colours.text} > progress_color
+    cat ${measures}/width > progress_width
+  '';
+
   # The shutdown's screens, which systemd's last stage would otherwise end
   # with its first kill, the moment it starts waiting on what's left: the
   # screen froze at a hung restart with nothing more to say.
@@ -471,15 +534,24 @@ in
     # its next frame, fifty a second, and says nothing when it has, so the
     # resume waits a tenth of a second first. One that finds no image to read
     # carries on with the boot, which says it's starting again. systemd's
-    # generator starts the unit only when there may be an image.
+    # generator starts the unit only when there may be an image. The words
+    # saying so have the image's empty track under them, and the kernel is
+    # told where it is first, to fill it as it reads (imageBar).
     boot.initrd.systemd.services.systemd-hibernate-resume.serviceConfig = {
       ExecStartPre = [
+        "-${imageBar}"
         "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:restoring"
         "-${lib.getExe' pkgs.coreutils "sleep"} 0.1"
       ];
       ExecStopPost = [ "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:none" ];
     };
-    boot.initrd.systemd.storePaths = [ (lib.getExe' pkgs.coreutils "sleep") ];
+    boot.initrd.systemd.storePaths = [
+      (lib.getExe' pkgs.coreutils "sleep")
+      imageBar
+      # The initrd takes a script's own path but not those it names, so the
+      # measures it reads go in too.
+      measures
+    ];
 
     # As soon as the splash is up, so the generation shows before the disk
     # asks for its PIN.
