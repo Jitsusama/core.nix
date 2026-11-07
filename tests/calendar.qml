@@ -181,17 +181,23 @@ QtObject {
         for (const [what, one, meant] of joins)
             check(`Return joins ${what}`, Calendar.joinable(one, now), meant);
 
-        // On or starting today: [what, the meeting, today]
+        // Now's next meeting, on, starting today or within the hour, so one
+        // just past midnight is still next: [what, the meeting, when, next]
+        const nearly = at(26, 23, 55);
         const todays = [
-            ["one this evening", meeting("evening", at(26, 23, 0), at(26, 23, 30)), true],
-            ["one on", meeting("on", at(26, 15, 0), at(26, 16, 0)), true],
-            ["one past midnight", meeting("late", at(27, 0, 0), at(27, 0, 30)), false],
-            ["one tomorrow", meeting("tomorrow", at(27, 9, 0), at(27, 9, 30)), false],
-            ["one over", meeting("over", at(26, 14, 0), at(26, 15, 0)), false],
-            ["no meeting", null, false]
+            ["one this evening", meeting("evening", at(26, 23, 0), at(26, 23, 30)), now, true],
+            ["one on", meeting("on", at(26, 15, 0), at(26, 16, 0)), now, true],
+            ["one past midnight", meeting("late", at(27, 0, 0), at(27, 0, 30)), now, false],
+            ["one past midnight, eight minutes on",
+                meeting("soon", at(27, 0, 3), at(27, 0, 33)), nearly, true],
+            ["one tomorrow morning, late at night",
+                meeting("morning", at(27, 9, 0), at(27, 9, 30)), nearly, false],
+            ["one tomorrow", meeting("tomorrow", at(27, 9, 0), at(27, 9, 30)), now, false],
+            ["one over", meeting("over", at(26, 14, 0), at(26, 15, 0)), now, false],
+            ["no meeting", null, now, false]
         ];
-        for (const [what, one, meant] of todays)
-            check(`today, ${what}`, Calendar.today(one, now), meant);
+        for (const [what, one, when, meant] of todays)
+            check(`next, ${what}`, Calendar.upNext(one, when), meant);
 
         check("its day and times in full", Calendar.dated(
             meeting("m", at(26, 14, 0), at(26, 14, 30))), "Monday 26 October, 14:00 to 14:30");

@@ -132,10 +132,13 @@ function midnight(time) {
     return day.getTime();
 }
 
-// Whether a meeting is on or starts today, as the Today row shows only
-// today's.
-function today(meeting, now) {
-    return Boolean(meeting) && meeting.start < midnight(now) + DAY && meeting.end > now;
+// Whether Now holds a meeting as its next: on, starting today, or
+// starting within the hour, the hour it wants Joel from (`wanting`). One
+// just past midnight is next too, so Now shows the calendar's own row for
+// it rather than the coming meeting's piece, which has no details.
+function upNext(meeting, now) {
+    return Boolean(meeting) && meeting.end > now
+        && meeting.start < Math.max(midnight(now) + DAY, now + SOON);
 }
 
 // The day `time` is on, as said before its time: nothing for today,
