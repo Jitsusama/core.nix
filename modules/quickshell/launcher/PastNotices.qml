@@ -66,7 +66,7 @@ Provider {
         const row = member({
             thing: true,
             key: `notice:${notice.app}:${notice.summary}`,
-            verb: nowhere ? "more" : opened || !from.window ? "open" : "go",
+            verb: nowhere ? "more" : opened || !from.window ? "open" : "go to",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
             // The whole of what it said, each part once: the summary as

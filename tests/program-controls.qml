@@ -308,7 +308,7 @@ ShellRoot {
                 + "site site:https://another.example.com/b site site:https://behind.example.com/ "
                 + `site site:https://example.org/${reading}`);
             same("Return goes to one open, and opens one that was",
-                sites.map(row => row.verb).join(" "), "go go go go open");
+                sites.map(row => row.verb).join(" "), "go to go to go to go to open");
             const inside = sites[0].verbs();
             same("one open holds Go To, Close It, its window, then Copy the Link", names(inside),
                 "Go To, Close It, Open A, Copy the Link");
@@ -415,7 +415,7 @@ ShellRoot {
                 + `file:${root.home}/paper.pdf open \u00b7 ~ | file file:${root.home}/notes.md `
                 + `open in 2 windows \u00b7 ~ | file file:${root.home}/old.pdf ~`);
             same("Return goes to one open, and opens one that was",
-                files.map(row => row.verb).join(" "), "go go go open");
+                files.map(row => row.verb).join(" "), "go to go to go to open");
             same("one in a window niri names holds Go To, then Copy the Path, and no Close It",
                 names(files[2].verbs()), "Go To, Copy the Path");
             Niri.acted = [];

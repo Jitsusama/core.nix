@@ -390,7 +390,7 @@ Provider {
 
     readonly property var start: {
         const quests = () => (source("quests")?.everything() ?? [])
-            .filter(row => row.unfinished && row.verb !== "go");
+            .filter(row => row.unfinished && row.verb !== "go to");
         const orchestrators = () => source("orchestrators")?.startable ?? [];
         const choice = (id, note, rows) => thingRow({
             key: `agents:start:${id}`,

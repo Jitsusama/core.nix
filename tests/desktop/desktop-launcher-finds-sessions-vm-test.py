@@ -131,7 +131,8 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Go To" and shown["selected"]["verb"] == "go"
+            (shown["selected"] or {}).get("name") == "Go To"
+            and shown["selected"]["verb"] == "go to"
         )
     )
     # Its acts in the order every session keeps them, then what's known of
@@ -323,7 +324,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
             (shown["selected"] or {}).get("name") == "Lighthouse"
             and "TESTQA" not in str(shown["selected"]["side"])
             and str(shown["drawer"]["eyebrow"]).startswith("TESTQA \u00b7 ")
-            and shown["selected"]["verb"] == "go"
+            and shown["selected"]["verb"] == "go to"
         )
     )
     desktop.close_launcher()
