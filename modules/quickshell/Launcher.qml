@@ -1605,10 +1605,15 @@ Scope {
     }
 
     // A collection as a row the search finds: as it is at home, but for its
-    // count, which would read all of it at every change.
+    // count, which would read all of it at every change, unless it says
+    // what it holds without reading it, as Agents says how its sessions
+    // stand (homeSays), which is then its answer by name, read as the
+    // launcher opens, as home is.
     function named(source) {
         const collection = source.collection;
-        const row = Object.assign(whole(source, false, false), { weight: source.weight });
+        const says = source.homeSays();
+        const row = Object.assign(whole(source, false, false), { weight: source.weight },
+            says !== null ? { side: says } : {});
         row.prepared = Fuzzy.prepare(row.name);
         row.keywords = Fuzzy.prepare([row.name, collection.noun].join(" "));
         // Its words are what a person calls it, so they count as its name.
@@ -2671,7 +2676,11 @@ Scope {
         // title doesn't, it says how many it holds, as its own count does,
         // and never that it holds none (Joel, 2026-10-28: "agents shows no
         // sessions when i super space right now").
-        const rest = names.length > 0 && fitted === "" ? source.counted() : fitted;
+        // A place whose things are better counted than named says so
+        // instead, as Agents says how its sessions stand together.
+        const says = source.homeSays();
+        const rest = says !== null ? says
+            : names.length > 0 && fitted === "" ? source.counted() : fitted;
         const placed = Object.assign({}, row, {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 "),

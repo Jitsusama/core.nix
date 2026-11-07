@@ -203,6 +203,30 @@ function side(doing, spent) {
         .filter(item => item.said !== "");
 }
 
+// How the sessions stand together, from how each stands (`states`) and
+// what they all spent today as spend-watch sums it (`spent`, "" while
+// it's unsaid or the screen is shared): those working, those needing Joel,
+// then the day's dollars, "3 working \u00b7 1 needs you \u00b7 $214 today",
+// as Home's Agents row and the agents answer both say it (VKCF3Z,
+// 2026-11-06). With none working nor needing him, it says how many run
+// instead, parked ones not among them, and nothing for what isn't there.
+// `said` is the vocabulary's agents words.
+function summary(states, spent, said) {
+    const count = standing => states.filter(one => one === standing).length;
+    const filled = (key, fill) => String(said[key] ?? "").replace("{count}", fill);
+    const working = count("working");
+    const needing = count("needs");
+    const running = states.filter(one => one !== "parked" && one !== "off").length;
+    const parts = [
+        working > 0 ? filled("workingCount", working) : "",
+        needing === 1 ? filled("needsCount", 1) : needing > 1 ? filled("needCount", needing)
+            : "",
+        working === 0 && needing === 0 && running > 0 ? filled("running", running) : "",
+        spent !== "" ? String(said.today ?? "").replace("{spent}", spent) : ""
+    ];
+    return parts.filter(part => part !== "").join(" \u00b7 ");
+}
+
 // What its drawer says: its address, where it works and since when it's
 // run as the eyebrow over its title, "8IDU4E \u00b7 core.nix \u00b7 since
 // 21:52" (VKCF3Z, 2026-11-06); then what it works on, its step, what it

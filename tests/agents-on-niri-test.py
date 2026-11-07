@@ -9,7 +9,8 @@ A drawer's eyebrow names the repo a record says, rather than the folder it works
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
 folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
-counts only the other.
+counts only the other. Home's Agents row, and the row "agents" finds, say how they stand
+together and what they spent today, as spend-watch sums it.
 """
 
 from __future__ import annotations
@@ -51,6 +52,10 @@ def lost_on_the_last_boot() -> None:
     sessions = [{"id": key, "address": address, "title": title, "cwd": str(cwd), "lostAt": 1}
                 for key, address, title, cwd in lost]  # fmt: skip
     RESTORE.write_text(json.dumps({"v": 1, "boot": "an-earlier-boot", "sessions": sessions}))
+
+
+# What spend-watch writes for the launcher, here only the day's whole spend.
+SPEND = Path(os.environ["XDG_RUNTIME_DIR"]) / "spend-watch" / "collection.json"
 
 
 def owner() -> Json:
@@ -110,6 +115,8 @@ def shell() -> Iterator[Shell]:
     lay("LISTEN", "Listening Quest", {**under, "state": "listening", "repo": "core.nix"})
     lay("PAUSED", "Paused Quest", {**under, "state": "paused"})
     lost_on_the_last_boot()
+    SPEND.parent.mkdir(parents=True, exist_ok=True)
+    SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214.10"}))
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
     with (logs / "mycelium.log").open("w") as log:
@@ -300,3 +307,26 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     shell.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
     kept = [one["id"] for one in json.loads(RESTORE.read_text())["sessions"]]
     assert kept == ["01b2-harbour", "01b3-given"], kept
+
+
+def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
+    shell: Shell,
+) -> None:
+    """Home's Agents row and the row "agents" finds read "1 working \u00b7 $214.10 today"."""
+    together = "1 working \u00b7 $214.10 today"
+    shell.close_launcher()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.launcher_until(
+        lambda shown: any(
+            thing["is"] == "collection:agents"
+            and thing["reads"].startswith(f"Agents \u00b7 {together}")
+            for thing in shown["things"]
+        )
+    )
+    # Found by its name it says the same at its right, and Return still opens it.
+    shell.type_in("agents", selecting="Agents")
+    row = shell.showing()["selected"]
+    assert (row["name"], row["side"]) == ("Agents", together), row
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"])

@@ -271,13 +271,17 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
     assert named in first, first
 
 
-def test_the_launchers_home_counts_the_sessions_whose_names_are_too_long_to_list(
+def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     desktop: Desktop,
 ) -> None:
-    """The launcher's home counts the sessions whose names are too long to list."""
+    """The launcher's home says how its sessions stand together, never their names.
+
+    "1 working", as "3 working \u00b7 1 needs you \u00b7 $214 today" would, however long a
+    quest's name is (VKCF3Z, 2026-11-06).
+    """
     desktop.pi_session()
     # A session whose quest's name is longer than home's row has room for,
-    # as Joel's are, in the window used last, so it's listed first.
+    # as Joel's are, in the window used last.
     long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
     desktop.pi_window("TESTQC", long)
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True, "title": long}, "TESTQC")
@@ -286,12 +290,13 @@ def test_the_launchers_home_counts_the_sessions_whose_names_are_too_long_to_list
     desktop.launcher_until(
         lambda shown: any(
             thing["is"] == "collection:agents"
-            and re.match(r"Agents \u00b7 \d+ running", thing["reads"])
+            and re.match(r"Agents \u00b7 \d+ working", thing["reads"])
             for thing in shown["things"]
         )
     )
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
     assert "No sessions" not in reads["collection:agents"], reads
+    assert "Bootstrap" not in reads["collection:agents"], reads
     desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")

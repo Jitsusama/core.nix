@@ -566,12 +566,30 @@ Provider {
         return all.concat(toReopen ? [toReopen] : [], [start]);
     }
 
+    // How every session stands, running and parked, read from Sessions
+    // itself, so it holds while the launcher is shut, as Home's row is read.
+    function states() {
+        return Sessions.running.concat(Sessions.parked).map(session => stateOf(session));
+    }
+
+    // How they stand together, "3 working \u00b7 1 needs you \u00b7 $214
+    // today" (SessionRow.js), the day's dollars as spend-watch sums every
+    // session's, never added up here, and none of them while the screen is
+    // shared.
+    function summary() {
+        const spent = Quiet.sharing ? "" : String(SpendWatch.said?.agentsToday ?? "");
+        return SessionRow.summary(states(), spent, Words.of("agents").said ?? {});
+    }
+
+    // What it holds, at its row's right wherever it's found, and what
+    // Home's row says in place of naming its sessions (VKCF3Z,
+    // 2026-11-06). Found by its name, "agents", its row is the answer, as
+    // Processor's is for "cpu", and Return still opens it, since that's
+    // what Joel types its name for.
     function counted() {
-        // As the launcher's foot says it (pieces/Pi.qml).
-        const wanting = Sessions.wanting.length;
-        return [`${Sessions.running.length} running`,
-            Sessions.working > 0 ? `${Sessions.working} working` : "",
-            wanting > 0 ? `${wanting} ${wanting === 1 ? "wants" : "want"} you` : ""]
-            .filter(part => part !== "").join(", ");
+        return summary();
+    }
+    function homeSays() {
+        return summary();
     }
 }

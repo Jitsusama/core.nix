@@ -118,6 +118,7 @@
       "ask": "which session?",
       "empty": "No sessions running.",
       "said": {
+        "today": "{spent} today",
         "needs": "needs you",
         "needCount": "{count} need you",
         "needsCount": "1 needs you",
