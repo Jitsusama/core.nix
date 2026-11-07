@@ -380,6 +380,14 @@ fn made_here(cgroup: &str) -> bool {
         .is_some_and(|name| name.starts_with("work-") && name.ends_with(".scope"))
 }
 
+/// How long a work scope's processes have to end once asked, before
+/// systemd kills what's left. They're asked with a hangup as well as
+/// SIGTERM, since an interactive shell ignores SIGTERM and ends on a
+/// hangup. Without either, a scope took the user manager's 90 s, longer
+/// than a reboot waits: on 7 November one bash kept the reboot waiting
+/// its whole 60 s, which systemd then forced.
+const WORK_STOP: Duration = Duration::from_secs(5);
+
 /// What busctl is given to start a scope named `name` in `slice` around
 /// `pids`: the user manager's `StartTransientUnit`, with its description.
 /// A command can exit between being read and being moved, and systemd
@@ -387,6 +395,8 @@ fn made_here(cgroup: &str) -> bool {
 /// a failed scope is unloaded as a finished one is. When only some have
 /// exited, systemd moves the rest and logs "PID ... vanished before we could
 /// move it" for each one gone: that is this race, and no fault.
+///
+/// A scope is stopped as `WORK_STOP` says.
 fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<String> {
     let mut args: Vec<String> = [
         "--user",
@@ -399,7 +409,7 @@ fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<S
         "ssa(sv)a(sa(sv))",
         name,
         "fail",
-        "4",
+        "6",
         "Slice",
         "s",
         slice,
@@ -409,12 +419,17 @@ fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<S
         "CollectMode",
         "s",
         "inactive-or-failed",
-        "PIDs",
-        "au",
+        "SendSIGHUP",
+        "b",
+        "true",
+        "TimeoutStopUSec",
+        "t",
     ]
     .iter()
     .map(|arg| (*arg).to_string())
     .collect();
+    args.push(WORK_STOP.as_micros().to_string());
+    args.extend(["PIDs".into(), "au".into()]);
     args.push(pids.len().to_string());
     args.extend(pids.iter().map(u32::to_string));
     args.push("0".into());
@@ -1277,7 +1292,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scope_is_asked_for_with_its_slice_every_process_and_no_trace_if_it_fails() {
+    fn a_scope_is_asked_for_with_its_slice_every_process_a_short_stop_and_no_trace_if_it_fails() {
         let args = scope_call("work-40-7.scope", "jobs.slice", "bash (40)", &[40, 41, 42]);
         let tail: Vec<&str> = args[6..].iter().map(String::as_str).collect();
         assert_eq!(
@@ -1287,7 +1302,7 @@ mod tests {
                 "ssa(sv)a(sa(sv))",
                 "work-40-7.scope",
                 "fail",
-                "4",
+                "6",
                 "Slice",
                 "s",
                 "jobs.slice",
@@ -1297,6 +1312,12 @@ mod tests {
                 "CollectMode",
                 "s",
                 "inactive-or-failed",
+                "SendSIGHUP",
+                "b",
+                "true",
+                "TimeoutStopUSec",
+                "t",
+                "5000000",
                 "PIDs",
                 "au",
                 "3",
