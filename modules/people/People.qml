@@ -384,7 +384,7 @@ Provider {
             .recent(person, provider)
             .map((one, at) => ({ key: one.row?.key || `${which}:${at}`, at: one.at,
                 row: one.row }))), []).map(one => one.row);
-        const stands = Recent.said(rows.length, rows[0]?.name ?? "", false,
+        const stands = Recent.said(rows.map(row => row.name), false,
             Words.of("person:recent").said);
         return [holding("person:recent", rows, stands.side, stands.note)];
     }

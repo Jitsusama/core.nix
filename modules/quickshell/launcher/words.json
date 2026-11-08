@@ -5419,7 +5419,8 @@
       "glyph": "recent",
       "empty": "Nothing yet.",
       "said": {
-        "none": "none"
+        "none": "none",
+        "more": "and {more} more"
       }
     },
     {
