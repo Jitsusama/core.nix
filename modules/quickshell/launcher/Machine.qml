@@ -407,7 +407,7 @@ Provider {
 
     // The disk records, the machine's own first.
     function diskRecords() {
-        const held = disked.revision >= 0 ? disked.held : {};
+        const held = diskWatch.revision >= 0 ? diskWatch.held : {};
         return Object.keys(held).filter(key => key.startsWith("disk:")).map(key => held[key]);
     }
 
@@ -903,7 +903,7 @@ Provider {
     }
 
     Connections {
-        target: disked
+        target: diskWatch
 
         function onHeard(keys) {
             const own = provider.machineDisk();
@@ -1515,7 +1515,7 @@ Provider {
     }
 
     Daemon {
-        id: disked
+        id: diskWatch
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "disk"
