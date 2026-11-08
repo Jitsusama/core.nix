@@ -253,6 +253,7 @@ let
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Warp.js"
+    "launcher/Machines.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
     "launcher/WifiLink.js"
@@ -713,6 +714,7 @@ let
     waits = ./launcher/Waits.qml;
     firmware = ./launcher/Firmware.qml;
     warp = ./launcher/Warp.qml;
+    machines = ./launcher/Machines.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
     keyboards = ./launcher/Keyboards.qml;
@@ -1448,6 +1450,16 @@ in
         enable = systemWarpCli != null;
         warp = lib.getExe (pkgs.callPackage ../warp/package.nix { });
         warpCli = if systemWarpCli != null then lib.getExe systemWarpCli else "";
+      };
+      # Every machine of the realms this one's mycelium nodes run, each
+      # node's records watched; a machine with no node lists itself alone.
+      machines = {
+        order = 92;
+        source = "machines";
+        weight = 0.9;
+        realms =
+          lib.optional ((config.jitsusama.mycelium.realm or null) != null) config.jitsusama.mycelium.realm
+          ++ lib.attrNames (config.jitsusama.mycelium.alsoJoins or { });
       };
       # The date's week, day of the year, UTC, zone and epoch.
       today = {

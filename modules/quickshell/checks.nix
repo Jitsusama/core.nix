@@ -1176,6 +1176,24 @@ onLinux {
       touch $out
     '';
 
+  # Machines says every machine of the realms this one links, this one
+  # first, each in words with how it stands, and its drawer from what
+  # moves most to the model's identifier, leaving out what no node said, as
+  # tests/machines.qml holds launcher/Machines.js to it in Qt's own engine.
+  the-launcher-says-every-machine-of-the-realm =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-says-every-machine-of-the-realm" { } ''
+      cp ${../../tests/machines.qml} machines.qml
+      cp ${./launcher/Machines.js} Machines.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml machines.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
