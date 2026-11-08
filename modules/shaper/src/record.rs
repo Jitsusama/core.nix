@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Public resolvers, by operator, that a timestamp may be asked of. On
-/// 3 November four of eleven tried answered from a home line.
+/// 3 November four of eleven tried answered from a home connection.
 pub const CANDIDATES: &[(&str, [u8; 4])] = &[
     ("Quad9", [9, 9, 9, 9]),
     ("Quad9", [149, 112, 112, 112]),

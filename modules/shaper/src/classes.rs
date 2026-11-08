@@ -75,7 +75,7 @@ pub fn read(root: &Path) -> Sets {
             set.push(path.to_string());
         }
     }
-    // The recorder's probes measure the line too, so they go first.
+    // The recorder's probes measure the connection too, so they go first.
     let recorder = "system.slice/shaper-record.service";
     if exists(recorder) {
         sets.voice2.push(recorder.to_string());
