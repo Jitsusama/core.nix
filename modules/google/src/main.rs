@@ -18,7 +18,9 @@
 //! The shell asks it to answer an invitation, to mark mail read or
 //! archive it, to fetch a file mail carries, to make a Meet meeting for
 //! its link, which Joel's sign-in must grant, and to list a Drive folder
-//! or download a file in one, as acts on the same socket (ask.rs), which
+//! or download a file in one, and to follow the Meet calls open in
+//! windows of their own, asking Meet who's in each every half minute while
+//! they're open, as acts on the same socket (ask.rs), which
 //! it does at once, telling every watch what changed. A file to open, or
 //! to hand a program through the picker, is kept in google-files, in the
 //! session's runtime folder; one to save goes where Joel
@@ -63,6 +65,10 @@ const EVERY: Duration = Duration::from_secs(60);
 const LONGEST: Duration = Duration::from_secs(600);
 /// How often the wall's clock is looked at.
 const TICK: Duration = Duration::from_secs(10);
+/// How often Meet is asked who's in a call followed, since people come
+/// and go by the minute; a call starting is a window opening, which the
+/// shell's follow says at once.
+const CALLS_EVERY: Duration = Duration::from_secs(30);
 
 fn main() -> ExitCode {
     let mut args = env::args_os().skip(1);
@@ -102,6 +108,7 @@ fn main() -> ExitCode {
     let mut wait = EVERY;
     let mut failures: u32 = 0;
     let mut last: Option<SystemTime> = None;
+    let mut called: Option<SystemTime> = None;
     loop {
         let due = last.is_none_or(|last| {
             SystemTime::now()
@@ -120,6 +127,15 @@ fn main() -> ExitCode {
             };
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
             tell(state);
+        }
+        let calls_due = called.is_none_or(|called| {
+            SystemTime::now()
+                .duration_since(called)
+                .map_or(true, |since| since >= CALLS_EVERY)
+        });
+        if watch.following() && calls_due {
+            called = Some(SystemTime::now());
+            tell(watch.calls(&Zoned::now()));
         }
         // A shell's ask is done the moment it comes; otherwise the clock
         // is looked at again a tick on.
@@ -144,6 +160,10 @@ fn main() -> ExitCode {
                         watch.make(&now)
                     }
                     Some(Ask::List { folder }) => watch.list(&folder, &now),
+                    Some(Ask::Follow { codes }) => {
+                        called = Some(SystemTime::now());
+                        watch.follow(codes, &now)
+                    }
                     Some(Ask::Download { file, how, to }) => {
                         tell(watch.downloading(&file, how, to, &now));
                         watch.download(&places, &now)

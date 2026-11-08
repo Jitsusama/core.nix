@@ -7,6 +7,7 @@ use crate::calendar::Meeting;
 use crate::drive::{Document, Drive};
 use crate::files::Fetched;
 use crate::mail::Mail;
+use crate::meet::Call;
 
 /// How the account stands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -49,6 +50,8 @@ pub struct State {
     pub meet: Meet,
     /// The Drive folders listed and the files downloaded lately.
     pub drive: Drive,
+    /// The Meet calls the shell follows, each as Meet last said it.
+    pub calls: Vec<Call>,
 }
 
 /// Making a Meet meeting to copy its link: whether the sign-in lets this

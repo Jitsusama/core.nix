@@ -399,7 +399,12 @@ def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
 
 @pytest.mark.usefixtures("google")
 def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -> None:
-    """A Meet call in a window of its own is in Now named for its meeting, and goes from it."""
+    """A Meet call in a window of its own is in Now named for its meeting, and goes from it.
+
+    It's the call itself, named for its meeting, saying first whether Joel can be heard and
+    how long it's gone on; inside are the microphone, who's in it, then its acts (VKCF3Z,
+    2026-11-08). Who's in it and the rest of its words are Meet.js's (tests/calendar.qml).
+    """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # Standup's call, in the window Chrome would open its link in as an
@@ -413,11 +418,14 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
     # Another window takes the keys, so Return going to the call is seen.
     other = desktop.opened("Beside the call")
     now_rows(desktop)
-    desktop.down_to("In a call")
-    # Return goes to the call, as its first act, Go To the Call, says.
+    desktop.down_to("Standup")
     desktop.launcher_until(
-        lambda shown: shown["selected"]["side"] == "Standup" and shown["selected"]["verb"] == "go"
+        lambda shown: shown["selected"]["side"].startswith(("live \u00b7 ", "muted \u00b7 "))
     )
+    desktop.step_in()
+    inside = ["Microphone", "People", "Show the Call", "Copy the Link", "Leave It"]
+    desktop.launcher_until(lambda shown: shown["rows"] == inside)
+    desktop.down_to("Show the Call")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     machine.wait_until_succeeds(
@@ -431,7 +439,11 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    assert "In a call" not in now_rows(desktop)["rows"], desktop.showing()
+    # The meeting itself may still be in Now, as it's to come, but not as a call.
+    if "Standup" in now_rows(desktop)["rows"]:
+        desktop.down_to("Standup")
+        side = desktop.showing()["selected"]["side"]
+        assert not side.startswith(("live \u00b7 ", "muted \u00b7 ")), desktop.showing()
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 

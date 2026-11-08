@@ -7,7 +7,8 @@
 //! own places (drive.rs),
 //! what the shell is told (state.rs) and how, in the daemon interface
 //! (daemon.rs), what the shell asks (ask.rs), what Joel saves into Drive
-//! (saves.rs), and the account as it stands (watch.rs).
+//! (saves.rs), the Meet calls Joel is in (meet.rs), and the account as it
+//! stands (watch.rs).
 
 pub mod account;
 pub mod api;
@@ -18,6 +19,7 @@ pub mod drive;
 pub mod files;
 pub mod link;
 pub mod mail;
+pub mod meet;
 pub mod saves;
 pub mod state;
 pub mod token;

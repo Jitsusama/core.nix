@@ -611,6 +611,10 @@ Singleton {
             .filter(call => call.code !== "")
             .map(call => Object.assign(call, { meeting: Calls.calledBy(meetings, call.code) }));
     }
+    // Their codes, which the google program follows, asking Meet who's in
+    // each while its window is open (Google.qml's follow).
+    readonly property string followed: calls.map(call => call.code).join(" ")
+    onFollowedChanged: Google.follow(followed === "" ? [] : followed.split(" "))
 
     // The meeting's own page in Google Calendar.
     function open(meeting) {

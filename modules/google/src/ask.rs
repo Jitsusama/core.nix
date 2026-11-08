@@ -14,7 +14,9 @@
 //! `{"download": {"file": "…", "how": "pick"}}`, a save naming where as
 //! a fetch's does; and to send a file staged in drive-saves up to Drive,
 //! `{"upload": {"path": "/…"}}`, as this program asks itself once the
-//! picker has written one (saves.rs).
+//! picker has written one (saves.rs); and to follow the Meet calls open
+//! in windows of their own, `{"follow": {"codes": ["abc-defg-hij"]}}`,
+//! which asks Meet who's in each while they're followed (meet.rs).
 //!
 //! A line that isn't one of these is let go. The id goes into the path
 //! of a request to Google, so only the letters, digits and underscores
@@ -28,6 +30,7 @@ use serde::Deserialize;
 use crate::calendar::Answer;
 use crate::drive::{self, Folder};
 use crate::files::How;
+use crate::meet;
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -68,6 +71,10 @@ pub enum Ask {
     },
     /// Send the file staged at `path` up to Drive.
     Upload { path: String },
+    /// Follow the Meet calls of these meeting codes, the ones open in
+    /// windows of their own, asking Meet who's in each while they are;
+    /// none follows none.
+    Follow { codes: Vec<String> },
 }
 
 /// What a line asks, or none when it asks nothing this program does.
@@ -86,6 +93,8 @@ pub fn read(line: &str) -> Option<Ask> {
         Ask::Make {} => true,
         // Which staged file it is, if any, is the saves' to say.
         Ask::Upload { path } => Path::new(path).is_absolute(),
+        // A code goes into Meet's filter, so only one Meet could make.
+        Ask::Follow { codes } => codes.iter().all(|code| meet::is_code(code)),
     };
     taken.then_some(ask)
 }
@@ -104,6 +113,17 @@ fn named(id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn calls_are_followed_by_codes_meet_could_make() {
+        assert_eq!(
+            read(r#"{"follow": {"codes": ["abc-defg-hij"]}}"#),
+            Some(Ask::Follow {
+                codes: vec!["abc-defg-hij".into()]
+            })
+        );
+        assert_eq!(read(r#"{"follow": {"codes": ["a\" OR x"]}}"#), None);
+    }
 
     #[test]
     fn an_answer_is_read_with_the_meeting_it_names() {
