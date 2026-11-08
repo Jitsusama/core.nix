@@ -45,6 +45,7 @@ import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Plate.js" as Plate
 import "Sounds.js" as Sounds
 
 Provider {
@@ -264,7 +265,8 @@ Provider {
             hue: "machine",
             side: used ? said("chosen") : "",
             graph: loudness(node),
-            note: note
+            note: note,
+            drawer: () => provider.drawerOf(node)
         }), () => provider.verbs(node));
         // Read as :setl asks, so a port read since it was drawn is one.
         Object.defineProperty(row, "options", {
@@ -435,6 +437,88 @@ Provider {
         const key = factKey(node);
         return key === "" ? []
             : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
+    }
+
+    // A device's drawer (Plate.js): where it is and which way it goes over
+    // its name, then its parts as facts, what moves most first (VKCF3Z,
+    // 2026-11-07): its Volume with its decibels, the programs Playing
+    // through it and how loud, its Channels each at its own level, its
+    // Tuning, Port and Profile; then what describes it, its Hardware's
+    // figures each a fact and what the kernel says of its card; and last
+    // what it's known by: its node's id, as wpctl takes it, the ALSA
+    // device it opens, as aplay -D takes it, the priority that picks the
+    // one in use, and a USB card's ids. Whether it's Muted is its row's
+    // to say, so it isn't said again. Its Level is left out, since reading
+    // it opens a stream on a microphone and wakes a sleeping card, which
+    // only the step in does; so is a Bluetooth device's codec, which is
+    // Bluetooth's to say (Accessories.qml). Each figure is read as it's
+    // drawn, so the drawer follows them live, as the rows do.
+    function drawerOf(node) {
+        if (!node.audio)
+            return null;
+        const hardware = hardwarePart(node)?.verbs() ?? [];
+        const usb = `sound:${node.name}:hardware:usb-id`;
+        const channels = Array.from(node.audio.channels ?? []);
+        const volumes = Array.from(node.audio.volumes ?? []);
+        const parts = [volumePart(node), programsPart(node), channelsPart(node),
+            filterPart(node), portPart(node), profilePart(node)]
+            .concat(hardware.filter(row => row.key !== usb), factRows(node));
+        const facts = Plate.facts(parts, row => {
+            switch (row.key) {
+            case `sound:${node.name}:volume`:
+            case `sound:${node.name}:gain`:
+                return { value: Plate.runs([row.side, row.note]) };
+            case `sound:${node.name}:programs`:
+            case `sound:${node.name}:recorders`:
+                return { value: provider.programsSaid(node) || row.side };
+            case `sound:${node.name}:channels`:
+                return { value: Plate.runs([row.side].concat(channels.map((channel, i) =>
+                    `${Sounds.channel(PwAudioChannel.toString(channel)).toLowerCase()} `
+                    + provider.percent(volumes[i] ?? 0)))) };
+            case `sound:${node.name}:tuning`:
+            case `sound:${node.name}:voice`:
+                return { value: Plate.runs([row.side].concat(provider.filtersOf(node)
+                    .filter(filter => !!filter.audio)
+                    .map(filter => `${provider.named(filter)} ${provider.level(filter)}`))) };
+            default:
+                return null;
+            }
+        });
+        const properties = node.properties;
+        const known = [
+            ["node", String(node.id ?? "")],
+            ["alsa-device", String(properties["api.alsa.path"] ?? "")],
+            ["priority", String(properties["priority.session"] ?? "")]
+        ].filter(([, value]) => value !== "")
+            .map(([id, value]) => ({ label: Words.name(`sound:${id}`), value: value }));
+        return {
+            eyebrow: Plate.runs([joinedBy(node), said(node.isSink ? "plate-out" : "plate-in")]),
+            title: named(node),
+            facts: facts.concat(known, Plate.facts(hardware.filter(row => row.key === usb)))
+        };
+    }
+
+    // How a device is joined to the machine, in the vocabulary's words:
+    // through a display, over Bluetooth, by USB or built in, or "" where
+    // the sound server doesn't say.
+    function joinedBy(node) {
+        const properties = node.properties;
+        const bus = String(properties["device.bus"] ?? "");
+        const how = display(node) ? "display"
+            : Sounds.address(node.name, properties) !== "" || bus === "bluetooth" ? "bluetooth"
+            : bus === "usb" ? "usb" : bus === "pci" ? "built-in" : "";
+        return how === "" ? "" : said(`joined-${how}`);
+    }
+
+    // Each program playing through a device, or recording from it, and how
+    // loud, a run apart: "Spotify 100% \u00b7 Chrome paused at 45%".
+    function programsSaid(node) {
+        return Plate.runs(programsOf(node).map(program => {
+            const paused = program.streams
+                .every(stream => stream.properties["pulse.corked"] === "true");
+            const level = streamLevel(program.streams);
+            return `${program.name} ${paused ? said("paused-at", { level: level }) : level}`;
+        }));
     }
 
     // A device's right arrow: using it, when it isn't the one chosen, then

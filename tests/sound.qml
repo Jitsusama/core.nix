@@ -14,6 +14,7 @@
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
+import "launcher/Sounds.js" as Sounds
 
 ShellRoot {
     id: root
@@ -117,5 +118,44 @@ ShellRoot {
         const heard = sound.levelPart(calling);
         expect("so its Level is listened to", heard.side === sound.said("silent")
             && heard.note === sound.said("level-in"), `${heard.side}, ${heard.note}`);
+
+        drawers();
+    }
+
+    // A device's drawer says where it is and which way it goes, then each
+    // of its parts the step holds, what the kernel says, and what the sound
+    // server knows it by last; never whether it's muted, its row's, nor
+    // its Level, which reading would open a stream on it.
+    function drawers() {
+        const card = device("alsa_output.pci.speakers", true, { "alsa.id": "PCH",
+            "alsa.device": "1", "device.bus": "pci", "api.alsa.path": "hw:PCH,1",
+            "priority.session": "1000", "alsa.resolution_bits": "24" });
+        card.id = 52;
+        sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
+        const plate = sound.drawerOf(card);
+        expect("a built-in output says so over its name",
+            plate.eyebrow === "built in \u00b7 output", plate.eyebrow);
+        const said = plate.facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
+        const labels = plate.facts.map(fact => fact.label).join(", ");
+        // The kernel's fact is named by the launcher's vocabulary, which
+        // there's none of here, so by its own name.
+        expect("its parts, the kernel's, then what it's known by",
+            labels === "Volume, Resolution, Playing, Node, ALSA Device, Priority", said);
+        expect("its volume says its decibels after a dot",
+            plate.facts[0].value === `50% \u00b7 ${Sounds.decibels(0.5)}`, plate.facts[0].value);
+        expect("and draws its share as a stroke", plate.facts[0].figure?.shape === "stroke"
+            && plate.facts[0].figure.values[0] === 0.5, JSON.stringify(plate.facts[0].figure));
+        expect("what it's known by is as the server says it",
+            said.endsWith("Node=52; ALSA Device=hw:PCH,1; Priority=1000"), said);
+        card.audio.muted = true;
+        expect("a muted one doesn't say so again, nor its level", !sound.drawerOf(card).facts
+            .some(fact => fact.label === "Muted" || fact.label === "Level"), said);
+        expect("a headset's microphone is over Bluetooth",
+            sound.drawerOf(calling()).eyebrow === "Bluetooth \u00b7 input",
+            sound.drawerOf(calling()).eyebrow);
+    }
+
+    function calling() {
+        return microphone("headset-head-unit");
     }
 }

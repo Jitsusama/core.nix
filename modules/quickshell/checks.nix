@@ -1026,6 +1026,26 @@ onLinux {
       touch $out
     '';
 
+  # A thing's drawer says each of its parts as a fact, leaving out its
+  # acts and opening a holder of figures in place, and a screen's says
+  # what niri says it runs, where it sits and what it offers, as
+  # tests/plate.qml holds launcher/Plate.js and Screens.js to it in Qt's
+  # own engine.
+  a-things-drawer-says-its-parts =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-things-drawer-says-its-parts" { } ''
+      cp ${../../tests/plate.qml} plate.qml
+      cp ${./launcher/Plate.js} Plate.js
+      cp ${./launcher/Screens.js} Screens.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml plate.qml
+      touch $out
+    '';
+
   # Each opening of the launcher is kept as what it took: its keys by kind,
   # its pick and how long it took, and a miss only where letters were typed
   # and nothing picked, as tests/trials.qml holds launcher/Trials.js to it in
@@ -1892,6 +1912,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Sounds.js} launcher/Sounds.js
+      cp ${./launcher/Plate.js} launcher/Plate.js
       cp ${./launcher/Sound.qml} launcher/Sound.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
