@@ -95,11 +95,11 @@ function facts(parts, how) {
 // in the Name face, as identifiers end every drawer (VKCF3Z, 2026-11-08).
 // Two sources saying one, as niri and the EDID both say a screen's
 // serial, are said once, the first.
-function identified(said, labels) {
-    const known = said.filter(fact => labels.includes(fact.label))
+function identified(drawn, labels) {
+    const known = drawn.filter(fact => labels.includes(fact.label))
         .filter((fact, at, all) => all.findIndex(each => each.label === fact.label) === at)
         .map(fact => Object.assign({}, fact, { identifies: true }));
-    return said.filter(fact => !labels.includes(fact.label)).concat(known);
+    return drawn.filter(fact => !labels.includes(fact.label)).concat(known);
 }
 
 // Each value of a list, a run apart, the empty ones left out.
