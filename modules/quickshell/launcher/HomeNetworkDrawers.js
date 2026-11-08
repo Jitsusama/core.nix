@@ -208,7 +208,7 @@ function outages(list) {
 // A node's drawer: which node it is, how it stands and reaches the one
 // before it, each radio and port, its firmware, uptime and addresses, its
 // light, and the day's traffic through it.
-function node(one, now, settings) {
+function node(model, one, now, settings) {
     const devices = one.devices ?? {};
     return {
         eyebrow: joined([one.gateway ? "gateway node" : "node", Home.stateOf(one)]),
@@ -239,8 +239,24 @@ function node(one, now, settings) {
                 ? `${one.light.brightness}%` : ""]) : null),
             fact("power", one.power),
             trafficFact(one.usage, settings),
-        ])),
+        ]), onIt(model, one, settings)),
     };
+}
+
+// The devices on a node, as eero lists them, strongest first: each by
+// name, with its signal, band and channel, or its port over Ethernet.
+function onIt(model, one, settings) {
+    const listed = (model?.devices ?? []).filter((each) => each.node === one.id);
+    if (listed.length === 0) {
+        return [];
+    }
+    return [{ heading: "on-it" }].concat(listed.map((each) => ({
+        label: Home.nameOf(each),
+        value: each.ethernet
+            ? joined(["Ethernet", each.port ? each.port.name : "", linkSpeed(each.port?.mbps,
+                settings)])
+            : joined([Home.signalOf(each), Home.bandOf(each)]),
+    })));
 }
 
 // Whether a node's firmware has an update, as words.

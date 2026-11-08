@@ -209,10 +209,10 @@ Provider {
             keywords: [node.model ?? "", node.serial ?? ""].join(" "),
             glyph: Words.glyph(node.gateway ? "eero:gateway" : "eero:node"),
             gap: first,
-            drawer: () => provider.plate("node", Drawers.node(node, provider.now(),
-                provider.settings))
-        }, () => provider.parts("node", `eero:node:${node.id}`, Drawers.node(node,
-            provider.now(), provider.settings)));
+            drawer: () => provider.plate("node", Drawers.node(provider.model, node,
+                provider.now(), provider.settings))
+        }, () => provider.parts("node", `eero:node:${node.id}`, Drawers.node(provider.model,
+            node, provider.now(), provider.settings)));
     }
 
     function deviceRow(device) {

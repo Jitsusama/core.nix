@@ -2157,6 +2157,11 @@
       "name": "Port {n}"
     },
     {
+      "id": "eero:node:on-it",
+      "in": "eero:node",
+      "name": "Devices on It"
+    },
+    {
       "id": "eero:node:about",
       "in": "eero:node",
       "name": "This Node"

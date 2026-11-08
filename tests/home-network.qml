@@ -205,7 +205,7 @@ QtObject {
         expect("the day's traffic sparked by the hour", internet.traffic.figure.values.length, 20);
 
         // A node's drawer: which, how it stands, each radio and port.
-        const hall = byId(Drawers.node(node("2003"), now));
+        const hall = byId(Drawers.node(model, node("2003"), now));
         for (const [id, wanted] of [
             ["model", "eero Pro 6 \u00b7 K010011"],
             ["serial", "SERIAL0003"],
@@ -228,7 +228,7 @@ QtObject {
         ])
             expect(`the gateway node's ${id}`, value(hall, id), wanted);
         expect("no support end eero didn't give", hall.support, undefined);
-        const radios = Drawers.node(node("2003"), now).facts
+        const radios = Drawers.node(model, node("2003"), now).facts
             .filter(fact => fact.label !== undefined && fact.figure);
         expect("each radio by band", radios.map(fact => [fact.label, fact.value]), [
             ["2.4 GHz", "channel 6 \u00b7 20 MHz \u00b7 30 dBm \u00b7 1 device \u00b7 8% busy"],
@@ -238,11 +238,17 @@ QtObject {
         expect("how busy, as a stroke", radios[1].figure, {
             shape: "stroke", values: [0.41], warn: false
         });
-        const study = byId(Drawers.node(node("2002"), now));
+        const study = byId(Drawers.node(model, node("2002"), now));
         expect("a node's backhaul over Wi-Fi", value(study, "backhaul"),
             "Wi-Fi from Hall over 5 GHz high \u00b7 5 of 5 bars");
         expect("a port not linked", value(study, "port 1"), "not linked, up to 1 Gb/s");
-        expect("the eyebrow of a node", Drawers.node(node("2002"), now).eyebrow,
+        const onHall = Drawers.node(model, node("2003"), now).facts;
+        expect("the devices on a node, strongest first", onHall.slice(onHall.findIndex(fact =>
+            fact.heading === "on-it") + 1), [
+            { label: "generic 3", value: "-48 dBm \u00b7 2.4 GHz, channel 6" },
+            { label: "phone 1", value: "-52 dBm \u00b7 5 GHz, channel 149" }
+        ]);
+        expect("the eyebrow of a node", Drawers.node(model, node("2002"), now).eyebrow,
             "node \u00b7 online");
 
         // A device's drawer: each way's rate and how it's made, and the rest.
