@@ -349,6 +349,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | connection | the network link out of the machine | line, uplink | |
 | speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
 | address | an address the machine has on a network | network address, IP | `networks` |
+| lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
+| neighbour | what a cable's other end says it is, such as a switch, and the port of it the machine is plugged into | | LLDP, `neighbours` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
 | Ethernet | the network through a cable | wired | |
 | tethering | reaching out through a phone's connection, over its cable | | |
