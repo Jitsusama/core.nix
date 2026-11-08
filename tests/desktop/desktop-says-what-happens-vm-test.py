@@ -303,7 +303,7 @@ def held(drawer: Json) -> bool:
 
 
 def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Desktop) -> None:
-    """A notice's drawer says who sent it and when, and gone into, its keys scroll it.
+    """A notice's drawer says who sent it, and gone into, its keys scroll it.
 
     The foot names no Shift with the arrows, which scroll nothing now: Ctrl+W l goes in, three
     Ctrl+E scroll it three of its lines, each whole, and Ctrl+W h comes back, the selection
@@ -312,7 +312,8 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     page = InTheDrawer(desktop)
     drawer = page.drawer()
     # Signed as a card signs it: a program known by no other name by its own, in title case.
-    assert re.fullmatch(r"Desktop \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
+    # It carries no time, which is an Arrived fact, and this one files no kind to follow it.
+    assert drawer["eyebrow"] == "from Desktop", drawer
     assert drawer["more"], f"forty lines fit the drawer: {drawer}"
     # Its foot counts each of the log's lines it hides as one, the drawer showing no more of
     # them than its pitch fits in its height.
