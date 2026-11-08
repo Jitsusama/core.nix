@@ -233,6 +233,19 @@ function wholeWords(words, room, width) {
     return "";
 }
 
+// Words said as items between dots, given way by whole items from their
+// end, never inside one, so a note reads "Example ISP \u00b7 370 Mb/s down",
+// or "Example ISP" alone, never "11.9 Mb/s\u2026" (VKCF3Z, 2026-11-07).
+// The first item, where it alone doesn't fit, gives way at a whole word,
+// as any words do.
+function wholeItemsFromEnd(words, room, width) {
+    const items = words.split(ITEMS_APART);
+    while (items.length > 1 && width(items.join(ITEMS_APART)) > room) {
+        items.pop();
+    }
+    return items.length > 1 ? items.join(ITEMS_APART) : wholeWords(items[0], room, width);
+}
+
 // Words cut at each whole word but the last, longest first, an ellipsis
 // after each.
 function wordCuts(words) {
