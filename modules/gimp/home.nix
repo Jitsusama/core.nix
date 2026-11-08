@@ -14,7 +14,7 @@
 #
 # The launcher offers the newest screenshot to edit in GIMP among GIMP's own
 # acts, and every picture in Capture's Recent holds Edit in GIMP
-# (Screenshot.qml); while a picture is copied, New Image From the Copied
+# (Screenshot.qml); while a picture is copied, New Image from the Copied
 # Picture opens it too (CopiedPicture.qml).
 #
 # The launcher lists GIMP's own keys over its window, as the Picture editor.

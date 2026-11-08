@@ -1,7 +1,7 @@
 // GIMP's act on the picture copied, in Programs › GIMP after its newest
 // screenshot (programActs, which Applications.qml asks every provider
 // that has it), found from the top by its name too (foundActs): New Image
-// From the Copied Picture, there only while the clipboard holds a
+// from the Copied Picture, there only while the clipboard holds a
 // picture (Copied.qml), saying its size, type and weight where the
 // clipboard's history has it, else its type alone. GIMP opens it as a
 // picture of its own, in a file in the runtime folder named for when it
