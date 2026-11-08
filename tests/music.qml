@@ -121,8 +121,10 @@ QtObject {
         const refusing = {
             refused: "{name} not {done} \u00b7 {why}",
             nothing: "nothing is playing",
-            done: { shuffle: "shuffled", place: "moved to {at}" },
-            why: { shuffle: "it can't shuffle", place: "that isn't a time in a track" }
+            "done:shuffle": "shuffled",
+            "done:place": "moved to {at}",
+            "why:shuffle": "it can't shuffle",
+            "why:place": "that isn't a time in a track"
         };
         const told = [
             [["Spotify", "shuffle", {}], "Spotify not shuffled \u00b7 it can't shuffle"],

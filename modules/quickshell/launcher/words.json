@@ -7298,26 +7298,22 @@
         "paused": "paused · {at}",
         "refused": "{name} not {done} · {why}",
         "nothing": "nothing is playing",
-        "done": {
-          "volume": "made louder or quieter",
-          "shuffle": "shuffled",
-          "order": "put back in order",
-          "loop": "set to loop",
-          "unloop": "stopped looping",
-          "seek": "moved through its track",
-          "place": "moved to {at}",
-          "speed": "sped up or slowed down"
-        },
-        "why": {
-          "volume": "it keeps its own volume",
-          "shuffle": "it can't shuffle",
-          "order": "it can't shuffle",
-          "loop": "it can't loop",
-          "unloop": "it can't loop",
-          "seek": "it can't seek",
-          "place": "that isn't a time in a track",
-          "speed": "it plays at one speed"
-        }
+        "done:volume": "made louder or quieter",
+        "done:shuffle": "shuffled",
+        "done:order": "put back in order",
+        "done:loop": "set to loop",
+        "done:unloop": "stopped looping",
+        "done:seek": "moved through its track",
+        "done:place": "moved to {at}",
+        "done:speed": "sped up or slowed down",
+        "why:volume": "it keeps its own volume",
+        "why:shuffle": "it can't shuffle",
+        "why:order": "it can't shuffle",
+        "why:loop": "it can't loop",
+        "why:unloop": "it can't loop",
+        "why:seek": "it can't seek",
+        "why:place": "that isn't a time in a track",
+        "why:speed": "it plays at one speed"
       }
     },
     {

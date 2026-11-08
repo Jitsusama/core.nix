@@ -76,15 +76,15 @@ function standing(position, length, playing, paused) {
 
 // Why a player didn't do what it was asked, as the launcher's other refused
 // acts read (VKCF3Z): "Spotify not shuffled \u00b7 it can't shuffle", from
-// words.json's media said, `act` naming its done and its why, and `fill`
-// what's in their braces. With no player, that nothing plays.
+// words.json's media said, `act` naming its done:act and its why:act, and
+// `fill` what's in their braces. With no player, that nothing plays.
 function refusal(said, name, act, fill) {
     if (name === "") {
         return said.nothing ?? "";
     }
     let text = (said.refused ?? "").replace("{name}", name)
-        .replace("{done}", (said.done ?? {})[act] ?? act)
-        .replace("{why}", (said.why ?? {})[act] ?? "");
+        .replace("{done}", said[`done:${act}`] ?? act)
+        .replace("{why}", said[`why:${act}`] ?? "");
     for (const key of Object.keys(fill ?? {})) {
         text = text.replace(`{${key}}`, fill[key]);
     }
