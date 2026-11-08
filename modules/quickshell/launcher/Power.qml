@@ -343,7 +343,12 @@ Provider {
             rows.push(leaf("energy", `${figure(energy.now ?? 0)} of ${figure(energy.full)} Wh`, {
                 thing: charged.length > 0,
                 note: "now, of what it holds full",
-                drawer: charged.length > 0 ? { title: named("energy"), facts: charged } : undefined
+                drawer: charged.length > 0 ? {
+                    eyebrow: says("energy", "eyebrow").replace("{battery}", record.name),
+                    eyebrowNames: true,
+                    title: named("energy"),
+                    facts: charged
+                } : undefined
             }));
         }
         const volts = kept.volts.length > 0 ? kept.volts[kept.volts.length - 1] : null;
@@ -401,7 +406,11 @@ Provider {
             rows.push(leaf("model", said(record.technology) ? `${what}, ${record.technology}`
                 : what, {
                 thing: said(record.serial),
-                drawer: said(record.serial) ? { title: named("model"), facts: [{
+                drawer: said(record.serial) ? {
+                    eyebrow: said(record.manufacturer)
+                        ? says("model", "eyebrow").replace("{maker}", record.manufacturer) : "",
+                    eyebrowNames: true,
+                    title: named("model"), facts: [{
                     label: named("serial"), value: record.serial, identifies: true }] } : undefined
             }));
         const made = Power.madeOf(record.made);

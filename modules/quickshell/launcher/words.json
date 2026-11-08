@@ -2302,7 +2302,10 @@
     {
       "id": "power:energy",
       "in": "power",
-      "name": "Energy"
+      "name": "Energy",
+      "said": {
+        "eyebrow": "on {battery} \u00b7 battery"
+      }
     },
     {
       "id": "power:energy:charge",
@@ -2382,7 +2385,10 @@
       "id": "power:model",
       "in": "power",
       "name": "Model",
-      "term": "Machine/model"
+      "term": "Machine/model",
+      "said": {
+        "eyebrow": "from {maker} \u00b7 battery"
+      }
     },
     {
       "id": "power:serial",
