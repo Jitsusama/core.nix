@@ -4903,7 +4903,7 @@
       "said": {
         "volume": "volume {level}",
         "each-cycle": "{share} of each cycle",
-        "unfinished": "didn't finish in its cycle",
+        "over": "over {share}",
         "cycle": "{frames} frames \u00b7 {ms} ms",
         "chosen": "chosen",
         "muted": "muted",

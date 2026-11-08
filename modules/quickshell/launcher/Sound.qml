@@ -508,15 +508,20 @@ Provider {
         // (VKCF3Z, 2026-11-08): its Dropouts, warned past none, as a glitch
         // it recovers from rather than a failure; its Load, the share of
         // each cycle it was busy; and its Cycle, the frames it moves each
-        // time and how long that takes. Only a running node has them, and
-        // one that ran past its cycle says so, warned, as a dropout is.
+        // time and how long that takes. Only a running node has them. One
+        // that ran past its cycle has taken more than all of it, so its
+        // Load says so in its own form, its stroke full, both warned
+        // (VKCF3Z, 2026-11-08).
         const timed = timings[node.id] ?? null;
         const figure = value => Numbers.format(value, Sounds.places(value), settings.group,
             settings.point);
         const load = timed === null ? [] : timed.unfinished ? [{
             label: Words.name("sound:load"),
-            value: said("unfinished"),
-            warns: true
+            value: said("each-cycle", {
+                share: said("over", { share: `${figure(Sounds.load(1))}%` })
+            }),
+            warns: true,
+            figure: { shape: "stroke", values: [1], warn: true }
         }] : timed.busy === null ? [] : [{
             label: Words.name("sound:load"),
             value: said("each-cycle", { share: `${figure(Sounds.load(timed.busy))}%` }),

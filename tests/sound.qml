@@ -209,9 +209,10 @@ ShellRoot {
             keeping(card)[1].value === "0.0938% of each cycle", JSON.stringify(keeping(card)[1]));
         sound.timings = { 52: Object.assign({}, sound.timings[52],
             { busy: null, unfinished: true }) };
-        expect("one that ran past its cycle says so, warned",
-            keeping(card)[1].value === "didn't finish in its cycle" && keeping(card)[1].warns
-            && keeping(card)[1].figure === undefined, JSON.stringify(keeping(card)[1]));
+        expect("one that ran past its cycle is over all of it, its stroke full, warned",
+            keeping(card)[1].value === "over 100% of each cycle" && keeping(card)[1].warns
+            && keeping(card)[1].figure?.values[0] === 1 && keeping(card)[1].figure?.warn,
+            JSON.stringify(keeping(card)[1]));
         // A frame of pw-top as it comes: a driver, then its follower in
         // the driver's cycle, whole once the next header opens.
         const header = "S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME ";

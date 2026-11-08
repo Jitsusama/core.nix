@@ -190,19 +190,14 @@ function seconds(text) {
 
 // How a node is keeping time, from one line of `pw-top --batch-mode`:
 // "R  79  1024  48000  20.1us  10.2us  0.00  0.00  0  S32LE 2 48000 name",
-// its state, its id, the quantum it moves each cycle in frames, the
-// rate of the clock driving it, how long it waited and was busy in the
-// last cycle, those as shares of the cycle, and how many times it has
-// run short since it started (xruns). Only a running node has a cycle
-// to speak of: { id, quantum, rate, ms, busy, unfinished, errors,
-// drives }, busy its busy time as a share of the cycle, or null where
-// pw-top can't say, and unfinished where it says the node ran past its
-// cycle; null for the header, an idle or suspended node and a line it
-// can't read. A follower's quantum and rate are the latency it asks
-// for, not the cycle it runs in, so it takes its driver's, the line
-// before it in the frame, and is null without one. pw-top prints B/Q to
-// two places, too few for three significant digits, so busy is worked
-// out from the time.
+// its state, id, quantum in frames, clock rate, wait and busy times and
+// their shares of the cycle, and its xruns since it started. Only a
+// running node has a cycle: { id, quantum, rate, ms, busy, unfinished,
+// errors, drives }, busy its busy time over the cycle (B/Q has too few
+// places for three significant digits), null where pw-top can't say;
+// null for the header, a node not running and a line it can't read. A
+// follower's quantum and rate are the latency it asks for, so it takes
+// its driver's, the line before it in the frame, and is null without.
 function timing(line, driver) {
     const fields = String(line ?? "").trim().split(SPACES);
     const whole = [COLUMN.id, COLUMN.quantum, COLUMN.rate, COLUMN.errors]
