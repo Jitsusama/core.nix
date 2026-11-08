@@ -93,6 +93,12 @@ Item {
     // rows, which Return lists in place of doing its first act, so each
     // shows as it does everywhere else. Null for a piece that's only acts.
     property var rows: null
+    // Everything its source says, as Now's row's drawer (Drawer.qml's
+    // `drawer`), where the row can't show it all: given what the launcher
+    // allows (`{ lookups }`, whether it may ask the network), the drawer.
+    // Null for a piece whose row says all there is, or whose place's row
+    // is its own and draws its own drawer.
+    property var drawer: null
     // The things it stands for, each a fact of its own (Facts.js), where
     // it stands for several, as the Bluetooth devices' batteries do: each
     // a plain object read as a piece is, with a `key` of its own, made by

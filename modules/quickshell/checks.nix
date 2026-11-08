@@ -1142,6 +1142,7 @@ onLinux {
       cp ${./launcher/Cameras.js} Cameras.js
       cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Keyboards.js} Keyboards.js
+      cp ${./launcher/KeyCounts.js} KeyCounts.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -2049,6 +2050,8 @@ onLinux {
           property bool canGoPrevious: true
           property string trackTitle: "Song of the test"
           property string trackArtist: "The Testers"
+          property real position: 98
+          property real length: 403
           property int nexts: 0
           property int previouses: 0
           function play() { isPlaying = true; }
@@ -2181,6 +2184,8 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
+      cp ${./launcher/Media.js} launcher/Media.js
+      cp ${./Music.js} Music.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
@@ -3042,6 +3047,7 @@ onLinux {
       cp ${./launcher/Keyboard.qml} launcher/Keyboard.qml
       cp ${./launcher/Keyboards.qml} launcher/Keyboards.qml
       cp ${./launcher/Keyboards.js} launcher/Keyboards.js
+      cp ${./launcher/KeyCounts.js} launcher/KeyCounts.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -3146,6 +3152,27 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
+      touch $out
+    '';
+
+  # A media player's drawer says all its player tells MPRIS, in the order
+  # every drawer keeps, and draws its art only from where it may, as
+  # tests/media.qml holds launcher/Media.js and Pictures.js to players
+  # made up there.
+  a-player-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-player-says-all-it-knows" { } ''
+      mkdir launcher
+      cp ${../../tests/media.qml} media.qml
+      cp ${./Music.js} Music.js
+      cp ${./Pictures.js} Pictures.js
+      cp ${./launcher/Media.js} launcher/Media.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml media.qml
       touch $out
     '';
 

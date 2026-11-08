@@ -49,6 +49,7 @@ import QtQuick
 import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerPage.js" as Page
+import "Pictures.js" as Pictures
 import "Search.js" as Search
 import "Reading.js" as Reading
 
@@ -1829,7 +1830,9 @@ Floating {
                         Image {
                             id: previewDrawn
                             anchors.fill: parent
-                            source: previewBox.picture === "" ? "" : `file://${previewBox.picture}`
+                            // A path or a URL, a player's art a remote one,
+                            // which loads beside the keys, never holding one.
+                            source: Pictures.source(previewBox.picture)
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
                             sourceSize.width: 2 * width
@@ -2170,7 +2173,7 @@ Floating {
                     Image {
                         id: drawn
                         anchors.fill: parent
-                        source: drawer.picture === "" ? "" : `file://${drawer.picture}`
+                        source: Pictures.source(drawer.picture)
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
                         sourceSize.width: 2 * width

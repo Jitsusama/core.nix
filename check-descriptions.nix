@@ -65,6 +65,10 @@
     a notice's card and its row among the notices list the same acts in one order, copying last,
     and a notice gone from the screen keeps none of its sender's
   '';
+  a-player-says-all-it-knows = ''
+    a media player's drawer says everything its player tells MPRIS, what moves first and what
+    identifies it last, leaving out what it can't say, and its art only from where it may be drawn
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds

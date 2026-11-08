@@ -24,6 +24,7 @@ import "Heat.js" as Heat
 import "Power.js" as Power
 import "Links.js" as Links
 import "Keyboards.js" as Keyboards
+import "KeyCounts.js" as KeyCounts
 import "Standing.js" as Standing
 import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
@@ -1735,8 +1736,8 @@ QtObject {
             ["AT Translated Set 2 keyboard", "ZSA Technology Labs ErgoDox EZ"]);
         const [keyboardsLaptop, keyboardsErgodox] = keyboardsFound;
         machine("how each is joined", keyboardsFound.map(device => Keyboards.joined(device)),
-            ["built in", "by USB"]);
-        machine("by Bluetooth", Keyboards.joined({ phys: "f4:4e:fd:00:11:22" }), "by Bluetooth");
+            ["built in", "on USB"]);
+        machine("on Bluetooth", Keyboards.joined({ phys: "f4:4e:fd:00:11:22" }), "on Bluetooth");
         machine("the built-in one", keyboardsFound.map(device => Keyboards.builtIn(device)),
             [true, false]);
         machine("ZSA's board", keyboardsFound.map(device => Keyboards.zsa(device)), [false, true]);
@@ -1789,7 +1790,7 @@ QtObject {
             "lit again by a key or the touchpad");
         machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
         machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 },
-            "after {delay} ms, {rate} Hz"), "after 200 ms, 40 Hz");
+            "after {delay} ms \u00b7 {rate} Hz"), "after 200 ms \u00b7 40 Hz");
         // A board's layers to move to: the one it's locked on let go, then
         // each above the first but that one locked on; held by a key, every
         // layer above the first.
@@ -1800,6 +1801,80 @@ QtObject {
         ]);
         machine("a held board's layers", Keyboards.layerChoices(keyboardsLayers, "Numb", false)
             .map(choice => `${choice.layer} ${choice.index}`), ["Punk 1", "Numb 2"]);
+
+        // What key-counts tallied, as its file says it: the board's keys
+        // on two layers, some under modifiers, the two shifts one key, and
+        // the laptop's apart.
+        const counts = "board\tlayer\tmodifiers\tkey\tpresses\tholds\n"
+            + "ergodox\tcoal\t-\te\t9100\t0\n"
+            + "ergodox\tcoal\t-\tspace\t5000\t40\n"
+            + "ergodox\tcoal\tctrl\ta\t900\t0\n"
+            + "ergodox\tnumb\t-\tkp1\t800\t0\n"
+            + "ergodox\tcoal\t-\tleftshift\t2000\t2000\n"
+            + "ergodox\tcoal\t-\trightshift\t1200\t1200\n"
+            + "ergodox\tnumb\tshift\tcode193\t1000\t0\n"
+            + "laptop\tbase\t-\tj\t70\t0\n";
+        const tally = KeyCounts.board(counts, "ergodox");
+        machine("a board's presses and holds", [tally.presses, tally.holds], [20000, 3240]);
+        machine("the keys pressed most, as a chord draws them", tally.most,
+            [{ key: "E", presses: 9100 }, { key: "Space", presses: 5000 },
+                { key: "\u21e7", presses: 3200 }, { key: "F23", presses: 1000 },
+                { key: "A", presses: 900 }]);
+        const keyNamed = id => `[${id}]`;
+        const keyWords = { since: "since {day}", began: "since counting began" };
+        machine("a board's counts as facts", KeyCounts.facts(tally, keyNamed, "since 5 Nov"), [
+            { label: "[presses]", value: "20,000 since 5 Nov" },
+            { label: "[held]", value: "3,240" },
+            { label: "[layers]", value: "coal 91% \u00b7 numb 9%" },
+            { label: "[modified]", value: "9.5% \u00b7 shift 5% \u00b7 ctrl 4.5%" }
+        ]);
+        machine("the keys under their heading", KeyCounts.most(tally, keyNamed).slice(0, 2),
+            [{ heading: "[most]" }, { keys: [["E"]], value: "9.1k" }]);
+        machine("a board with nothing counted", [KeyCounts.board(counts, "other"),
+            KeyCounts.facts(null, keyNamed, ""), KeyCounts.most(null, keyNamed)], [null, [], []]);
+        machine("counts short", [870, 9100, 12400].map(KeyCounts.short), ["870", "9.1k", "12k"]);
+        machine("counting began", KeyCounts.since("1793898549\n", keyWords,
+            new Date(2026, 10, 7)), "since 5 Nov");
+        machine("counting began in another year", KeyCounts.since("1762362549", keyWords,
+            new Date(2026, 10, 7)), "since 5 Nov 2025");
+        machine("no start written", KeyCounts.since("", keyWords), "since counting began");
+
+        // A keyboard's drawer: where it is, then what moves, what it
+        // counted, how it's set, what describes it, its identifiers, and
+        // its keys last; what it doesn't say is left out.
+        const boardSaid = { usb: "on USB \u00b7 keyboard", builtIn: "built in \u00b7 keyboard",
+            caps: "caps", num: "num", scroll: "scroll", none: "none", locked: "locked" };
+        const boardDrawer = Keyboards.drawer({
+            device: keyboardsErgodox,
+            name: "ErgoDox EZ",
+            layer: { name: "Numb", locked: true },
+            locks: [{ id: "caps", on: false }, { id: "num", on: true }],
+            counted: [{ label: "[presses]", value: "20,000 since 5 Nov" }],
+            desk: [{ name: "firmware", value: "1.2" }, { name: "polling rate",
+                value: "1000 a second" }, { name: "keys", value: "76" }],
+            repeat: "after 200 ms, 40 Hz",
+            lights: "",
+            connection: "USB 2.0 at 12 Mb/s",
+            maker: "ZSA Technology Labs",
+            model: "ErgoDox EZ",
+            usbId: "3297:4976",
+            serial: "",
+            most: [{ heading: "[most]" }]
+        }, keyNamed, boardSaid);
+        machine("a board's eyebrow", boardDrawer.eyebrow, "on USB \u00b7 keyboard");
+        machine("a board's facts in order", boardDrawer.facts.map(fact => fact.label
+            ?? fact.heading), ["[layer]", "[locks]", "[presses]", "[polling-rate]",
+            "[repeat]", "[connection]", "[maker]", "[model]", "[keys]", "[firmware]",
+            "[usb-id]", "[most]"]);
+        machine("a layer locked", boardDrawer.facts[0].value, "Numb \u00b7 locked");
+        machine("only the locks on", boardDrawer.facts[1].value, "num");
+        machine("its polling rate in Hz", boardDrawer.facts[3].value, "1,000 Hz");
+        const bare = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
+            locks: [{ id: "caps", on: false }], connection: "USB" }, keyNamed, boardSaid);
+        machine("no lock on, and a bus the eyebrow says", bare.facts.map(fact =>
+            `${fact.label} ${fact.value}`), ["[locks] none"]);
+        machine("the laptop's eyebrow", Keyboards.drawer({ device: keyboardsLaptop, name: "",
+            layer: null }, keyNamed, boardSaid).eyebrow, "built in \u00b7 keyboard");
 
         // The battery's and the room's figures, from their files as the
         // kernel writes them.

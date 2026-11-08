@@ -2728,3 +2728,77 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
     finally:
         desktop.machine.succeed("systemctl stop ergodox || true")
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")
+
+
+# A player's and a keyboard's drawers say everything their sources hold (Joel, 2026-11-07:
+# "every integration has an insanely high bar of nerdiness and integration"), each where the
+# thing is and what it is above, and are photographed at each of Joel's scales for the design's
+# look: mpv's Media, playing and paused, the ErgoDox and the laptop's own board.
+def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A program's Media and each keyboard open a drawer saying where it is and what it is."""
+    machine = desktop.machine
+    desktop.as_account(
+        "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
+        f" {shlex.quote(desktop.values['track'])}"
+    )
+    named = "busctl --user list --acquired | grep -q '^org\\.mpris\\.MediaPlayer2\\.mpv'"
+    machine.wait_until_succeeds(desktop.in_session(named), timeout=timedelta(seconds=30))
+
+    def media(shot: str, side: str) -> None:
+        """Open mpv's Media, its side saying how it stands, and photograph its drawer."""
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("mpv", selecting="mpv Media Player")
+        desktop.into_program()
+        desktop.type_in("media", selecting="Media")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "Bless The Child"
+                and any(
+                    thing["reads"].startswith("Media") and side in thing["reads"]
+                    for thing in shown["things"]
+                )
+            )
+        )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
+        assert drawer["facts"][0] == "Position", drawer
+        desktop.shoot(shot)
+        desktop.close_launcher()
+
+    def board(name: str, eyebrow: str, shot: str) -> None:
+        """Open the keyboards on one, and photograph its drawer."""
+        desktop.answer("keyboards")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: name in shown["rows"])
+        desktop.down_to(name)
+        desktop.launcher_until(
+            lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == name
+        )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["eyebrow"] == eyebrow, drawer
+        desktop.shoot(shot)
+        desktop.close_launcher()
+
+    try:
+        plug_in_the_ergodox(desktop)
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            at = scale.replace(".", "-")
+            media(f"launcher-media-drawer-playing-at-{at}", "playing")
+            desktop.as_account("qs ipc call music toggle")
+            media(f"launcher-media-drawer-paused-at-{at}", "paused")
+            desktop.as_account("qs ipc call music toggle")
+            board(ERGODOX, "on USB \u00b7 keyboard", f"launcher-ergodox-drawer-at-{at}")
+            board(
+                "The Laptop's Keyboard",
+                "built in \u00b7 keyboard",
+                f"launcher-laptops-keyboard-drawer-at-{at}",
+            )
+    finally:
+        desktop.as_account("systemctl --user stop player || true")
+        machine.succeed("systemctl stop ergodox || true")
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/keyboard-layer")

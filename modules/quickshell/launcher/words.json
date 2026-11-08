@@ -1804,7 +1804,19 @@
       "answers": [
         "keyboards",
         "caps lock"
-      ]
+      ],
+      "said": {
+        "usb": "on USB \u00b7 keyboard",
+        "bluetooth": "on Bluetooth \u00b7 keyboard",
+        "builtIn": "built in \u00b7 keyboard",
+        "caps": "caps",
+        "num": "num",
+        "scroll": "scroll",
+        "none": "none",
+        "locked": "locked",
+        "since": "since {day}",
+        "began": "since counting began"
+      }
     },
     {
       "id": "keyboards:laptop",
@@ -1827,6 +1839,11 @@
       "name": "Scroll Lock"
     },
     {
+      "id": "keyboards:locks",
+      "in": "keyboards",
+      "name": "Locks"
+    },
+    {
       "id": "keyboards:layer",
       "in": "keyboards",
       "name": "Layer",
@@ -1836,7 +1853,7 @@
       "id": "keyboards:repeat",
       "in": "keyboards",
       "name": "Repeat",
-      "said": "after {delay} ms, {rate} Hz"
+      "said": "after {delay} ms \u00b7 {rate} Hz"
     },
     {
       "id": "keyboards:lights",
@@ -2442,6 +2459,56 @@
       "id": "eero:device:held",
       "in": "eero:device",
       "name": "Held Off"
+    },
+    {
+      "id": "keyboards:presses",
+      "in": "keyboards",
+      "name": "Presses"
+    },
+    {
+      "id": "keyboards:held",
+      "in": "keyboards",
+      "name": "Held"
+    },
+    {
+      "id": "keyboards:layers",
+      "in": "keyboards",
+      "name": "On Layers"
+    },
+    {
+      "id": "keyboards:modified",
+      "in": "keyboards",
+      "name": "With a Modifier"
+    },
+    {
+      "id": "keyboards:most",
+      "in": "keyboards",
+      "name": "Most Pressed"
+    },
+    {
+      "id": "keyboards:polling-rate",
+      "in": "keyboards",
+      "name": "Polling Rate"
+    },
+    {
+      "id": "keyboards:keys",
+      "in": "keyboards",
+      "name": "Keys"
+    },
+    {
+      "id": "keyboards:firmware",
+      "in": "keyboards",
+      "name": "Firmware"
+    },
+    {
+      "id": "keyboards:usb-id",
+      "in": "keyboards",
+      "name": "USB ID"
+    },
+    {
+      "id": "keyboards:serial",
+      "in": "keyboards",
+      "name": "Serial"
     },
     {
       "id": "networks",
@@ -7206,7 +7273,86 @@
       "in": "applications",
       "name": "Media",
       "verb": "more",
-      "glyph": "playing"
+      "glyph": "playing",
+      "said": {
+        "eyebrow": "on {player} \u00b7 track",
+        "on": "on",
+        "off": "off",
+        "track": "track",
+        "playlist": "playlist",
+        "disc": "disc {disc}",
+        "range": "{least} to {most}"
+      }
+    },
+    {
+      "id": "program:media:position",
+      "in": "program:media",
+      "name": "Position"
+    },
+    {
+      "id": "program:media:volume",
+      "in": "program:media",
+      "name": "Volume"
+    },
+    {
+      "id": "program:media:shuffle",
+      "in": "program:media",
+      "name": "Shuffle"
+    },
+    {
+      "id": "program:media:loop",
+      "in": "program:media",
+      "name": "Loop"
+    },
+    {
+      "id": "program:media:speed",
+      "in": "program:media",
+      "name": "Speed"
+    },
+    {
+      "id": "program:media:fullscreen",
+      "in": "program:media",
+      "name": "Full Screen"
+    },
+    {
+      "id": "program:media:artist",
+      "in": "program:media",
+      "name": "Artist"
+    },
+    {
+      "id": "program:media:album",
+      "in": "program:media",
+      "name": "Album"
+    },
+    {
+      "id": "program:media:album-artist",
+      "in": "program:media",
+      "name": "Album Artist"
+    },
+    {
+      "id": "program:media:track",
+      "in": "program:media",
+      "name": "Track"
+    },
+    {
+      "id": "program:media:genre",
+      "in": "program:media",
+      "name": "Genre"
+    },
+    {
+      "id": "program:media:rating",
+      "in": "program:media",
+      "name": "Rating"
+    },
+    {
+      "id": "program:media:link",
+      "in": "program:media",
+      "name": "Link"
+    },
+    {
+      "id": "program:media:bus-name",
+      "in": "program:media",
+      "name": "Bus Name"
     },
     {
       "id": "verb:program:play",

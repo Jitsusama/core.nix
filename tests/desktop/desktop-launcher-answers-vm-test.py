@@ -356,7 +356,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     )
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert re.search("^after \\d+ ms, \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
+    assert re.search("^after \\d+ ms \u00b7 \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
 
 
 def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
