@@ -103,45 +103,49 @@ function significant(value, number) {
 // protocol while it charges the machine, each figure its own part
 // (VKCF3Z, 2026-11-08: "45.0 W \u00b7 15.0 V \u00b7 3.00 A", never a comma),
 // that it's the machine powering what's plugged in, that something's
-// plugged in giving nothing, or that it's empty. `number` writes a figure
-// to so many places.
-function port(said, number) {
+// plugged in giving nothing, or that it's empty, in the vocabulary's
+// `words` (words.json's power:port). `number` writes a figure to so many
+// places.
+function port(said, number, words) {
     if (said.online && said.volts > 0 && said.amps > 0) {
         return [`${significant(said.volts * said.amps, number)} W`,
             `${significant(said.volts, number)} V`, `${significant(said.amps, number)} A`,
             said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.online) {
-        return ["charging", said.protocol].filter(part => part !== "").join(" \u00b7 ");
+        return [words.charging, said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.giving) {
-        return "powering what's plugged in";
+        return words.giving;
     }
     if (said.partner) {
-        return "plugged in, giving nothing";
+        return words.plugged;
     }
-    return "empty";
+    return words.empty;
 }
 
-// Volts as a power source offers them: whole, or to a tenth ("3.3").
-function volts(value) {
-    return String(Math.round(value * 10) / 10);
+// A figure a power source offers by name, never measured: as many digits
+// as it has, to the hundredth power delivery counts in, and no zeros it
+// hasn't (VKCF3Z, 2026-11-08: "5 V \u00b7 20 V at 3 A"), "3.3", "2.25".
+function offered(value) {
+    return String(Math.round(value * 100) / 100);
 }
 
 // What a charger offers, from its source capabilities, each { volts, amps }
 // or a programmable one's { volts, to, amps }: "5 V \u00b7 9 V \u00b7 20 V at
-// 3.00 A" when every one gives the same current, or each with its own.
-function offers(capabilities, number) {
-    const each = offer => offer.to === undefined ? `${volts(offer.volts)} V`
-        : `${volts(offer.volts)} to ${volts(offer.to)} V`;
-    const at = offer => `at ${significant(offer.amps, number)} A`;
+// 3 A" when every one gives the same current, or each with its own, in
+// the vocabulary's `said` (words.json's power:port:drawer).
+function offers(capabilities, said) {
+    const each = offer => offer.to === undefined ? `${offered(offer.volts)} V`
+        : filled(said.range, { from: offered(offer.volts), to: offered(offer.to) });
+    const at = (what, offer) => filled(said.at, { offers: what, amps: offered(offer.amps) });
     if (capabilities.length === 0) {
         return "";
     }
     if (capabilities.every(offer => offer.amps === capabilities[0].amps)) {
-        return `${capabilities.map(each).join(" \u00b7 ")} ${at(capabilities[0])}`;
+        return at(capabilities.map(each).join(" \u00b7 "), capabilities[0]);
     }
-    return capabilities.map(offer => `${each(offer)} ${at(offer)}`).join(" \u00b7 ");
+    return capabilities.map(offer => at(each(offer), offer)).join(" \u00b7 ");
 }
 
 // A USB-C port's drawer, from what the kernel's USB-C class says of it:
@@ -162,7 +166,7 @@ function portDrawer(known, number, named, said) {
             fact("power-role", chosen(known.power).now),
             fact("data-role", chosen(known.data).now),
             fact("mode", known.mode ? said[`mode:${known.mode}`] ?? known.mode : ""),
-            fact("offers", offers(known.capabilities ?? [], number)),
+            fact("offers", offers(known.capabilities ?? [], said)),
             fact("protocols", protocols(known.usbType ?? "")),
             fact("partner", accessory === "" || accessory === "none" ? ""
                 : filled(said.accessory, { mode: accessory })),

@@ -197,7 +197,8 @@ Provider {
             glyph: Theme.glyph.charging,
             note: usb.length === 1 ? "one USB-C port" : `${usb.length} USB-C ports`
         }), () => usb.map(port => {
-            const what = Power.port(port.said, provider.number);
+            const what = Power.port(port.said, provider.number,
+                Words.of("power:port").said);
             return copyRow({
                 thing: true,
                 key: `power:port:${port.n}`,
