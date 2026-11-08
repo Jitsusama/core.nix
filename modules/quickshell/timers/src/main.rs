@@ -614,45 +614,14 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             "id": id, "version": VERSION, "domain": "timers", "state": "answering",
             "since": daemon.since, "sources": {},
         }),
-        Ask::Watch { id, kinds } => {
-            // A watch asked again by its id replaces the one before.
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            let mut records: Vec<Value> = Vec::new();
-            if watched(&kinds, KIND) {
-                records.extend(daemon.held.timers.iter().map(Timer::json));
-            }
-            if watched(&kinds, STOPWATCH) {
-                records.push(daemon.held.stopwatch.json());
-            }
-            daemon.watches.push(Watch {
-                connection,
-                id: id.clone(),
-                kinds,
-                told: told.clone(),
-            });
-            json!({"id": id, "records": records})
-        }
+        Ask::Watch { id, kinds } => watch(&mut daemon, connection, told, id, kinds),
         Ask::Unwatch { id } => {
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
             json!({"id": id, "unwatched": true})
         }
-        Ask::Get { id, keys } => {
-            let records: Vec<Value> = keys
-                .iter()
-                .filter_map(|key| {
-                    if key == STOPWATCH {
-                        Some(daemon.held.stopwatch.json())
-                    } else {
-                        daemon.held.get(key).map(Timer::json)
-                    }
-                })
-                .collect();
-            json!({"id": id, "records": records})
-        }
+        Ask::Get { id, keys } => got(&daemon, &id, &keys),
         Ask::Start { id, name, span } => {
             let started = daemon.held.start(&name, span, at).map(Timer::json);
             changed(shared, &mut daemon, &id, started)
@@ -710,6 +679,51 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         Ask::Malformed { id, why } => error(&id, "malformed", why),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?}")),
     }
+}
+
+/// A watch begun: every record of the kinds it asked for, and every change
+/// to them told it from now on. A watch asked again by its id replaces the
+/// one before.
+fn watch(
+    daemon: &mut Daemon,
+    connection: u64,
+    told: &Sender<String>,
+    id: Value,
+    kinds: Vec<String>,
+) -> Value {
+    daemon
+        .watches
+        .retain(|watch| !(watch.connection == connection && watch.id == id));
+    let mut records: Vec<Value> = Vec::new();
+    if watched(&kinds, KIND) {
+        records.extend(daemon.held.timers.iter().map(Timer::json));
+    }
+    if watched(&kinds, STOPWATCH) {
+        records.push(daemon.held.stopwatch.json());
+    }
+    daemon.watches.push(Watch {
+        connection,
+        id: id.clone(),
+        kinds,
+        told: told.clone(),
+    });
+    json!({"id": id, "records": records})
+}
+
+/// The records asked for by key, the stopwatch's included, passing over a
+/// key nothing holds.
+fn got(daemon: &Daemon, id: &Value, keys: &[String]) -> Value {
+    let records: Vec<Value> = keys
+        .iter()
+        .filter_map(|key| {
+            if key == STOPWATCH {
+                Some(daemon.held.stopwatch.json())
+            } else {
+                daemon.held.get(key).map(Timer::json)
+            }
+        })
+        .collect();
+    json!({"id": id, "records": records})
 }
 
 /// The answer to an ask that changed one record, told to every watch too,
