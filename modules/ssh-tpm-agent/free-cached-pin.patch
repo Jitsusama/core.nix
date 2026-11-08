@@ -1,0 +1,30 @@
+agent: Free the cached PIN's buffer after each use
+
+Each signature with a PIN-protected key reads the PIN cached in the kernel's
+keyring into a fresh buffer that memcall maps and locks, and the callback
+returns that buffer without ever freeing it. Every signature leaks its
+locked pages, so once the unit's locked-memory limit fills, every later
+signature fails with "<memcall> could not acquire lock ... limit reached"
+until the agent restarts. On a busy machine that took three hours.
+
+Copy the PIN out and free the buffer at once, as the askpass path already
+hands back a plain slice. Upstream's fix (pull request 135) instead hands
+the buffer to the caller to free after signing; this is the smaller change
+for 0.9.0.
+
+diff -ru a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
+--- a/cmd/ssh-tpm-agent/main.go
++++ b/cmd/ssh-tpm-agent/main.go
+@@ -274,7 +274,11 @@
+ 			case err == nil:
+ 				slog.Debug("providing cached userauth for key", slog.String("fp", key.Fingerprint()))
+ 				// TODO: This is not great, but easier for now
+-				return auth.Read(), nil
++				pin := slices.Clone(auth.Read())
++				if err := auth.Free(); err != nil {
++					slog.Warn("freeing the cached userauth's buffer", slog.Any("err", err))
++				}
++				return pin, nil
+ 			}
+ 			return nil, fmt.Errorf("failed getting pin for key: %w", err)
+ 		},

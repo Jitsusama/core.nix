@@ -82,6 +82,11 @@
     # signature after login failed. The patch is the change upstream needs; take
     # it out once a release carries it.
     #
+    # Each signature with a key that has a PIN also locked a page of memory it
+    # never gave back, so after a few hundred the agent refused every signature
+    # until it restarted. The second patch frees it; upstream's own fix (pull
+    # request 135) isn't in a release yet, so take it out once one carries it.
+    #
     # Patched, it builds here rather than coming from the cache, and four of its
     # tests check which error the kernel's keyring gives for a missing key. That
     # depends on the kernel: nixpkgs rewrites them to expect ENOENT, and some
@@ -90,7 +95,10 @@
     # parentheses or question marks: the build's shell reads those as a glob and
     # drops the flag without a word.
     services.ssh-tpm-agent.package = pkgs.ssh-tpm-agent.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./keys-before-serving.patch ];
+      patches = (old.patches or [ ]) ++ [
+        ./keys-before-serving.patch
+        ./free-cached-pin.patch
+      ];
       checkFlags = (old.checkFlags or [ ]) ++ [
         "-skip=^TestNoKey$|^TestRemoveKey$|^TestNoKeyThreaded$|^TestRemoveKeyThreaded$"
       ];
