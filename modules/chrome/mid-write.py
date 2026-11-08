@@ -17,6 +17,10 @@ from pathlib import Path
 
 PAGES = 2000
 
+# When the first page was visited, as Chrome counts time, in microseconds
+# since 1601: 1 800 000 000 seconds since 1970, each page a second later.
+VISITED = (11_644_473_600 + 1_800_000_000) * 1_000_000
+
 
 def main() -> None:
     """Write the history, start the write and copy both files halfway."""
@@ -31,7 +35,10 @@ def main() -> None:
     )
     connection.executemany(
         "INSERT INTO urls(url, title, last_visit_time) VALUES (?, ?, ?)",
-        [(f"https://site{page}.example.org/", "Kept", page) for page in range(PAGES)],
+        [
+            (f"https://site{page}.example.org/", "Kept", VISITED + page * 1_000_000)
+            for page in range(PAGES)
+        ],
     )
     connection.execute("PRAGMA cache_size=1")
     connection.execute("BEGIN")

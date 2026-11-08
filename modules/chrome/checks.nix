@@ -38,7 +38,7 @@ onLinux {
         sha256sum profile/History profile/History-journal > before
         listed=$(XDG_RUNTIME_DIR=$PWD/runtime ${pkgs.lib.getExe recent-sites} profile)
         expected=$(for n in 1999 1998 1997 1996 1995 1994 1993 1992 1991; do
-          printf 'https://site%s.example.org/\tKept\n' $n
+          printf 'https://site%s.example.org/\tKept\t%s\n' $n $((1800000000 + n))
         done)
         [ "$listed" = "$expected" ] || { echo "listed:"; echo "$listed"; exit 1; }
         sha256sum -c --quiet before || { echo "reading changed Chrome's history"; exit 1; }

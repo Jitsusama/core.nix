@@ -132,6 +132,7 @@ in
       kind = "site";
       asked = true;
       list = [ recentSites ];
+      dated = true;
       opened = [
         recentSites
         "open"

@@ -180,15 +180,16 @@ Provider {
     }
 
     // The pages a closed browser's saved session holds, each as a line of
-    // the sites it visited, its address, a tab and its title, newest looked
-    // at first, each once.
+    // the sites it visited (`line`, its address, a tab and its title) and
+    // when it was last looked at (`at`, in milliseconds), newest first,
+    // each once.
     function savedSites(entry) {
         const seen = new Set();
         return provider.recents.openIn(entry.id).map(line => line.split("\t"))
             .filter(tab => (tab[4] ?? "") !== "")
             .sort((a, b) => Number(b[3]) - Number(a[3]))
             .filter(tab => !seen.has(tab[4]) && seen.add(tab[4]))
-            .map(tab => `${tab[4]}\t${tab[5] ?? ""}`);
+            .map(tab => ({ line: `${tab[4]}\t${tab[5] ?? ""}`, at: Number(tab[3]) || undefined }));
     }
 
     // Its windows but the one used last and those a row it has open
@@ -731,9 +732,10 @@ Provider {
 
     // What its Recent holds, as Recent.js lays them out, each { key, at,
     // row } with `row` what its row is made from (`made`), so counting
-    // them makes no rows: a closed browser's saved pages, then what its
-    // list keeps, then what other providers give, none of what it has open
-    // now.
+    // them makes no rows: a closed browser's saved pages, what its list
+    // keeps and what other providers give, merged by when each was last
+    // used where its source says (a dated source, recents.nix), none of
+    // what it has open now.
     function kept(entry) {
         const source = provider.sourceOf(entry);
         const site = source?.kind === "site";
@@ -743,10 +745,14 @@ Provider {
             return keyOf(kind, site && tab >= 0 ? line.slice(0, tab) : line);
         };
         const saved = site && !provider.isRunning(entry) ? provider.savedSites(entry)
-            .map(line => ({ key: keyed(line), row: { line: line } })) : [];
-        const listed = provider.recents.of(entry.id)
-            .map(line => ({ key: keyed(line), row: { line: line } }));
-        const given = givenRecent(entry.id).map(row => ({ key: row.key, row: { made: row } }));
+            .map(one => ({ key: keyed(one.line), at: one.at, row: { line: one.line } })) : [];
+        const listed = provider.recents.of(entry.id).map(line => ({
+            key: keyed(line),
+            at: provider.recents.atOf(entry.id, line),
+            row: { line: line }
+        }));
+        const given = givenRecent(entry.id)
+            .map(row => ({ key: row.key, at: row.at, row: { made: row } }));
         return Recent.listed([saved, listed, given], provider.openKeys(entry),
             provider.recents.most);
     }
