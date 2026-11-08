@@ -23,8 +23,10 @@
 //! knows its card, and a card lost with a server that went, as the
 //! shell's does on a switch, is said again to the one that takes its place.
 //!
-//! Given PLAYER, SOUND and CALL, a timer coming due is heard too, once,
-//! however often its notice is said: PLAYER (PipeWire's pw-play) plays
+//! Given PLAYER, SOUND and CALL, a timer coming due within a minute of its
+//! end is heard too, once, however often its notice is said; one found
+//! long past it, after a reboot or a suspend, is only said, late. PLAYER
+//! (PipeWire's pw-play) plays
 //! SOUND, at a third of its volume while CALL (a-call-is-on) says a call
 //! is on, so a ring never drowns one out.
 
@@ -187,14 +189,16 @@ fn main() {
         // ring is said where it isn't up, once the notifications server
         // is reached, which the first of them sets going.
         let mut daemon = lock(&shared);
-        let due = daemon.held.due(now());
+        let at = now();
+        let heard = daemon.held.heard(at);
+        let due = daemon.held.due(at);
         let changed: Vec<Value> = due
             .iter()
             .filter_map(|key| daemon.held.get(key).map(Timer::json))
             .collect();
         changes(&shared, &mut daemon, &changed, &[]);
         drop(daemon);
-        if !due.is_empty() {
+        if heard {
             aloud(&shared);
         }
         for key in rung(&shared) {
@@ -340,14 +344,16 @@ fn keep_time(shared: &Shared, clock: &OwnedFd) {
         let _ = rustix::io::read(clock, &mut count);
         let _ = rustix::io::read(&shared.wake, &mut count);
         let mut daemon = lock(shared);
-        let rung = daemon.held.due(now());
+        let at = now();
+        let heard = daemon.held.heard(at);
+        let rung = daemon.held.due(at);
         let changed: Vec<Value> = rung
             .iter()
             .filter_map(|key| daemon.held.get(key).map(Timer::json))
             .collect();
         changes(shared, &mut daemon, &changed, &[]);
         drop(daemon);
-        if !rung.is_empty() {
+        if heard {
             aloud(shared);
         }
         for key in rung {
@@ -356,7 +362,8 @@ fn keep_time(shared: &Shared, clock: &OwnedFd) {
     }
 }
 
-/// Plays the ring once, for every timer that came due together, in a
+/// Plays the ring once, for every timer that came due together within a
+/// minute of its end (`Held::heard`), in a
 /// thread of its own, since asking whether a call is on takes a couple of
 /// seconds and no notice waits on it.
 fn aloud(shared: &Shared) {

@@ -558,6 +558,28 @@ fn a_timer_coming_due_is_heard_once_and_quietly_during_a_call() {
     waits_for(|| after.shown.lock().unwrap().len() == 2);
     waits_for(|| heard().len() == 2);
     assert_eq!(heard()[1], format!("--volume=0.3 {}", sound.display()));
+    // One found long past its end as the daemon starts, as after a night's
+    // suspend, is said late but not heard: were it heard, its ring would
+    // come next, at full volume with no call on.
+    client.ask(&json!({"id": 3, "ask": "start", "span": 3_600_000, "name": "bread"}));
+    let kept = folder.join("state").join("held.json");
+    waits_for(|| {
+        std::fs::read_to_string(&kept).is_ok_and(|text| text.matches(r#""notice":"#).count() == 2)
+    });
+    running.stop();
+    let mut held: Value = serde_json::from_str(&std::fs::read_to_string(&kept).unwrap()).unwrap();
+    let ends = held["timers"][2]["ends"].as_u64().unwrap();
+    held["timers"][2]["ends"] = json!(ends - 3_700_000);
+    std::fs::write(&kept, held.to_string()).unwrap();
+    std::fs::remove_file(&calling).unwrap();
+    let running = Running::heard(&folder, &bus, &[&player, &sound, &call]);
+    waits_for(|| after.shown.lock().unwrap().len() == 3);
+    assert!(after.shown.lock().unwrap()[2].body.ends_with("rang late"));
+    std::fs::write(&calling, "").unwrap();
+    let mut client = running.client();
+    client.ask(&json!({"id": 4, "ask": "start", "span": 100}));
+    waits_for(|| heard().len() == 3);
+    assert_eq!(heard()[2], format!("--volume=0.3 {}", sound.display()));
     running.stop();
 }
 
