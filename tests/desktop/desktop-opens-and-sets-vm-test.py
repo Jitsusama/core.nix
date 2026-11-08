@@ -1835,6 +1835,13 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
         desktop.normal()
         machine.send_chars("G")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
+        # The card draws the pick a frame or more after the shell says it, and at 2 the list
+        # scrolls to it first, so the shot waits for a frame drawn since.
+        drawn = int(desktop.as_account("qs ipc call launcher frames"))
+        machine.wait_until_succeeds(
+            desktop.in_session(f'test "$(qs ipc call launcher frames)" -gt {drawn}'),
+            timeout=timedelta(seconds=30),
+        )
         desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
