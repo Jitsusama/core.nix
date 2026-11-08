@@ -112,6 +112,21 @@ function side(record, place) {
         .filter(part => part !== "").join(BETWEEN);
 }
 
+// A machine as Start a Session lists it, from the same records as
+// Machines (the design's Elsewhere): why it can't take a session, or what
+// it would rather not start one under, as the node's placement says; else
+// how it stands, as its row in Machines says it. With no record, as from a
+// node too old to list this machine, it says nothing it wasn't told.
+function startNote(placed, record, place) {
+    if (placed.cannot !== "") {
+        return placed.cannot;
+    }
+    if (placed.rather !== "") {
+        return placed.rather;
+    }
+    return record ? side(record, place) : "";
+}
+
 // The machines in the order they're listed: this one first, then those
 // reached, then those out of reach, each by name. A machine two realms
 // both list is one machine, kept once with the realm that said it last.

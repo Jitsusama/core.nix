@@ -176,6 +176,20 @@ QtObject {
             measured === "as of 01:20" && gone.some(fact => fact.value === "4.0%"),
             `${measured} ${JSON.stringify(gone)}`);
 
+        // Start a Session's machines, from the same records: the node's
+        // placement first, then how each stands.
+        const offered = [
+            [{ cannot: "out of reach", rather: "" }, byName("hermit")],
+            [{ cannot: "", rather: "it's on its battery" }, byName("penelope")],
+            [{ cannot: "", rather: "" }, byName("methuselah")],
+            [{ cannot: "", rather: "" }, byName("optimus")],
+            [{ cannot: "", rather: "" }, null]
+        ].map(([placed, record]) => Machines.startNote(placed, record, one));
+        expect("Start a Session says why the node won't place there, else how it stands",
+            JSON.stringify(offered) === JSON.stringify(["out of reach", "it's on its battery",
+                "busy \u00b7 short of memory and processors", "this machine", ""]),
+            JSON.stringify(offered));
+
         // How an update ended, from what `mycelium update` printed.
         const ended = [
             '{"Ok":{"Updated":{"step":"done","commit":"c0ffee1234","restarted":[]}}}',

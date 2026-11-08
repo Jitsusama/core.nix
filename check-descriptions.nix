@@ -1979,7 +1979,8 @@
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
-    in the folder the harness names or goes to its session, and sees one made since
+    in the folder the harness names or goes to its session, offers the machines the node places on,
+    each saying how it stands as Machines does, and sees one made since
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -2051,7 +2052,7 @@
   the-launcher-says-every-machine-of-the-realm = ''
     Machines says every machine of the realms this one links, this one first, each in words with how
     it stands, and its drawer from what moves most to the model's identifier, leaving out what no
-    node said, and says how an update it was asked for ended
+    node said, says how an update it was asked for ended, and how Start a Session says each machine
   '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a

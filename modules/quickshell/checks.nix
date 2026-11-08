@@ -1793,6 +1793,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
       cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/Machines.js} launcher/Machines.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
