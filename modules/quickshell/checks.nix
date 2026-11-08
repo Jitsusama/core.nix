@@ -3379,6 +3379,7 @@ onLinux {
       mkdir launcher
       cp ${../../tests/captured.qml} captured.qml
       cp ${./launcher/Captured.js} launcher/Captured.js
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

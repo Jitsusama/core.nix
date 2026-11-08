@@ -8,21 +8,16 @@
 .pragma library
 .import "../FileFacts.js" as FileFacts
 .import "../When.js" as When
+.import "Recent.js" as Recent
 
 // A number keeps to its unit, and a dimension's two sides to the ×.
 const KEPT = "\u00a0";
+const BETWEEN = " \u00b7 ";
 const PICTURE = /\.(png|jpe?g|webp|avif|gif)$/i;
 const VIDEO = /\.(mp4|mkv|webm|mov)$/i;
-const FIELD = /\{(\w+)\}/g;
-const YESTERDAY = "\u0000yesterday";
 // What Capture calls what lands in each of its folders, each a word the
 // vocabulary says.
 const KINDS = ["screenshot", "recording", "photo", "video"];
-
-// "{n}" in a sentence the vocabulary gives, filled.
-function filled(template, fields) {
-    return String(template ?? "").replace(FIELD, (whole, name) => String(fields[name] ?? whole));
-}
 
 function twoFigures(number) {
     return String(number).padStart(2, "0");
@@ -37,31 +32,26 @@ function mark(path) {
     return VIDEO.test(path) ? "film" : "";
 }
 
-// When it was taken, to the second, since two screenshots a moment apart
-// are told apart by it: "04:39:15 today", "04:39:15 yesterday", "04:39:15
-// on Thursday", "04:39:15 on 28 Oct". `said` holds the vocabulary's words
-// and `date(date, format)`, Qt's formatDate in the shell.
-function taken(at, now, said) {
+// When it was taken, to the minute, its day as When.js says every day
+// and nothing today: "04:39", "yesterday \u00b7 23:05", "Thursday \u00b7
+// 12:00", "28 Oct \u00b7 08:01" (VKCF3Z, 2026-11-08). `days` gives the
+// launcher's word for yesterday and `date(date, format)`, Qt's formatDate
+// in the shell.
+function taken(at, now, days) {
     const moment = new Date(at);
-    const time = [moment.getHours(), moment.getMinutes(), moment.getSeconds()]
-        .map(twoFigures).join(":");
-    // Yesterday is a sentence of its own, so When.js is asked for it by a
-    // word no day is named.
-    const day = When.day(at, now, { yesterday: YESTERDAY, date: said.date });
-    if (day === "") {
-        return filled(said.today, { time });
-    }
-    return filled(day === YESTERDAY ? said.yesterday : said.on, { time, day });
+    const time = `${twoFigures(moment.getHours())}:${twoFigures(moment.getMinutes())}`;
+    const day = When.day(at, now, days);
+    return day === "" ? time : `${day.replace(/ /g, KEPT)}${BETWEEN}${time}`;
 }
 
 // Its facts, each { id, value }, in order: when it was taken, its size,
 // then a picture's dimensions, or a recording's length, once file-preview
 // has said them (`shown`, null until then).
-function facts(file, shown, now, said) {
+function facts(file, shown, now, days) {
     const size = shown?.size ?? file.size;
     const own = shown?.picture === file.path && shown?.across > 0;
     return [
-        { id: "taken", value: typeof file.at === "number" ? taken(file.at, now, said) : "" },
+        { id: "taken", value: typeof file.at === "number" ? taken(file.at, now, days) : "" },
         { id: "size", value: typeof size === "number" ? FileFacts.weighed(size) : "" },
         {
             id: "dimensions",
@@ -86,18 +76,17 @@ function preview(file, shown) {
 // The drawer for one thing taken: `file` its { path, name, where, kind, at,
 // size }, where its folder from ~ and kind what Capture calls what lands
 // there; `shown` what file-preview said of it, or null; and `told` the
-// moment it's drawn (now), the label of each fact by its id (named) and
-// the vocabulary's words (said).
+// moment it's drawn (now), the label of each fact by its id (named), the
+// vocabulary's words (said) and how days are said (days, FileFacts.js's).
+// Its eyebrow is the one Recent's pictures wear (Recent.takenEyebrow),
+// giving way from the folder's middle, never two of them.
 function drawer(file, shown, told) {
-    const { now, named, said } = told;
+    const { now, named, said, days } = told;
     const kind = KINDS.includes(file.kind) ? said[file.kind] ?? "" : "";
-    return {
-        eyebrow: filled(kind === "" ? said.within : said.eyebrow, { where: file.where, kind }),
-        // A folder is said as it's written, not in the eyebrow's capitals.
-        eyebrowNames: true,
+    return Object.assign(Recent.takenEyebrow(file.where, kind, said), {
         title: file.name,
         preview: preview(file, shown),
-        facts: facts(file, shown, now, said)
+        facts: facts(file, shown, now, days)
             .map(fact => ({ label: named(fact.id), value: fact.value }))
-    };
+    });
 }

@@ -6951,16 +6951,9 @@
         "none": "none",
         "in": "in {folder}",
         "screenshot": "screenshot",
-        "photo": "photo",
-        "eyebrow": "in {where} · {kind}",
-        "within": "in {where}",
-        "screenshot": "screenshot",
         "recording": "recording",
         "photo": "photo",
-        "video": "video",
-        "today": "{time} today",
-        "yesterday": "{time} yesterday",
-        "on": "{time} on {day}"
+        "video": "video"
       }
     },
     {

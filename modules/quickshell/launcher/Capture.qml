@@ -465,9 +465,6 @@ Provider {
             provider.previewAsked[path] = true;
             Qt.callLater(() => provider.preview(path));
         }
-        const said = Object.assign({}, Words.of("capture:recent").said, {
-            date: (date, format) => Qt.formatDate(date, format)
-        });
         return Captured.drawer({
             path,
             name,
@@ -478,7 +475,8 @@ Provider {
         }, shown ?? null, {
             now: Date.now(),
             named: id => Words.name(id === "size" ? "file-chooser:size" : `capture:${id}`),
-            said
+            said: Words.of("capture:recent").said ?? {},
+            days: provider.factWords.days
         });
     }
 
