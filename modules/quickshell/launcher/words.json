@@ -2199,6 +2199,41 @@
       "name": "Last Read"
     },
     {
+      "id": "eero:internet:probe",
+      "in": "eero:internet",
+      "name": "From This Machine"
+    },
+    {
+      "id": "eero:internet:looked",
+      "in": "eero:internet",
+      "name": "Last Look"
+    },
+    {
+      "id": "eero:internet:to-gateway",
+      "in": "eero:internet",
+      "name": "To the Gateway Node"
+    },
+    {
+      "id": "eero:internet:to-internet",
+      "in": "eero:internet",
+      "name": "To the Internet"
+    },
+    {
+      "id": "eero:internet:lookup",
+      "in": "eero:internet",
+      "name": "Name Lookup"
+    },
+    {
+      "id": "eero:internet:outage-list",
+      "in": "eero:internet",
+      "name": "Outages in the Last 30 Days"
+    },
+    {
+      "id": "eero:internet:joins-and-leaves",
+      "in": "eero:internet",
+      "name": "Joined and Left in the Last Day"
+    },
+    {
       "id": "eero:node:model",
       "in": "eero:node",
       "name": "Model",
@@ -2319,6 +2354,16 @@
       "in": "eero:node",
       "name": "Traffic",
       "term": "Network/traffic"
+    },
+    {
+      "id": "eero:node:busy",
+      "in": "eero:node",
+      "name": "How Busy"
+    },
+    {
+      "id": "eero:node:radio-power",
+      "in": "eero:node",
+      "name": "Transmit Power"
     },
     {
       "id": "eero:device:kind",
@@ -2509,6 +2554,16 @@
       "id": "keyboards:serial",
       "in": "keyboards",
       "name": "Serial"
+    },
+    {
+      "id": "eero:device:snr",
+      "in": "eero:device",
+      "name": "Above the Noise"
+    },
+    {
+      "id": "eero:device:roams",
+      "in": "eero:device",
+      "name": "Moved in the Last Day"
     },
     {
       "id": "networks",

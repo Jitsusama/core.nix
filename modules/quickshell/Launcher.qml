@@ -8214,8 +8214,10 @@ Scope {
                             const once = root.onceCalled(choice);
                             if (once !== "")
                                 return once;
+                            // A row whose drawer says its note says it
+                            // once, there, while the drawer is out.
                             if ((choice.note ?? "") !== "")
-                                return choice.note;
+                                return choice.noteInDrawer && drawerCard.out ? "" : choice.note;
                             if (choice.plain && root.answer)
                                 return root.answer.missed === true ? "" : root.answer.note ?? "";
                             if (root.held.length > 0)
