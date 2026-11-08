@@ -65,6 +65,15 @@ Provider {
         return things.slice().sort((a, b) => places.indexOf(a.key) - places.indexOf(b.key));
     }
 
+    // What its drawer in Programs says of its calls (Applications.qml asks
+    // every provider's programFacts).
+    function programFacts(program) {
+        if (program !== "tuple")
+            return [];
+        return Log.held(Tuple.recent, Date.now(), said)
+            .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+    }
+
     function recentOf(program) {
         return program === "tuple" ? Tuple.recent.map(past => provider.pastRow(past)) : [];
     }

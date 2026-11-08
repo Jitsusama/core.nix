@@ -136,6 +136,16 @@ Provider {
             .concat(Spotify.LISTS.filter(name => name in lists).map(name => listed(name)));
     }
 
+    // What its drawer in Programs says it holds (Applications.qml asks
+    // every provider's programFacts), as last read; resting on its row
+    // reads nothing, since Spotify is read only as it's stepped into.
+    function programFacts(app) {
+        if (app !== program)
+            return [];
+        return Spotify.held(liked, lists, stands)
+            .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+    }
+
     function recentOf(app) {
         if (app !== program || stands === "signedOut")
             return [];

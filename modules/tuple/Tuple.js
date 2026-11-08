@@ -156,6 +156,27 @@ function rang(past, said) {
     return caller === undefined ? "" : filled(said.called, { name: who([caller], said) });
 }
 
+// What Tuple's drawer in Programs says of its Recent, newest first, by
+// each fact's id in the launcher's words (VKCF3Z, 2026-11-08), its parts
+// by dots and a call's state first: its last call, "missed \u00b7 Ada
+// Brightwater \u00b7 14:10", where one that wasn't missed says only who and
+// when, then how many it keeps and how many of those were missed, "6
+// \u00b7 2 missed". Nothing while it keeps none.
+function held(recent, now, said) {
+    if (recent.length === 0) {
+        return [];
+    }
+    const [last] = recent;
+    const missed = recent.filter(past => past.missed).length;
+    const dotted = parts => parts.filter(part => part !== "").join(" \u00b7 ");
+    return [
+        { id: "tuple:last-call", value: dotted([last.missed ? said.missed : "",
+            who(last.people, said), began(last.since, now, said)]) },
+        { id: "tuple:calls-lately", value: dotted([String(recent.length),
+            missed > 0 ? filled(said.missedCount, { count: missed }) : ""]) }
+    ];
+}
+
 // A past call's drawer, each thing said once (VKCF3Z, 2026-11-08): over
 // its name where it was and what it is, as every eyebrow says them, "on
 // Tuple \u00b7 call" or "on Tuple \u00b7 missed call", in Note since Tuple's

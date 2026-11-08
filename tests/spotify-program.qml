@@ -207,6 +207,10 @@ ShellRoot {
             ["Liked Songs", "Playlists", "Albums", "Artists", "Podcasts"]);
         same("each counted, none while empty", sides(acts),
             ["1,234 songs", "2", "1", "1", "none"]);
+        same("its drawer in Programs counts each, leaving out what holds none",
+            well.programFacts("spotify").map(fact => `${fact.label} ${fact.value}`),
+            ["Liked Songs 1,234", "Playlists 2", "Albums 1", "Artists 1"]);
+        same("and another program's says nothing of Spotify", well.programFacts("slack"), []);
         const lists = acts[1].targets();
         same("every playlist inside", names(lists), ["Focus", "Road trip"]);
         same("each noting its size and who made it, its kind its list's", notes(lists),
@@ -264,6 +268,7 @@ ShellRoot {
         const acts = signedOut.programActs("spotify");
         same("and Sign In leads", acts.map(act => `${act.name} ${act.leads}`), ["Sign In true"]);
         same("with no Recent", signedOut.recentOf("spotify"), []);
+        same("and nothing in its drawer", signedOut.programFacts("spotify"), []);
         acts[0].run();
         same("Sign In runs spotify-player's sign-in", Niri.spawned,
             ["kitty", "spotify_player", "authenticate"]);

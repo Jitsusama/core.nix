@@ -240,6 +240,18 @@ ShellRoot {
                     { option: "vf", value: "%9%lavfi=[x]" }] }]));
         same("still to play", Mpv.clock(Mpv.toGo(read[0])), "29:05");
 
+        // Its drawer in Programs: how many videos and audio files it left
+        // part way, one watched whole not among them.
+        const counts = { video1: "1 video", videos: "{count} videos", audio1: "1 audio file",
+            audios: "{count} audio files" };
+        const left = Mpv.stopped(["/a.mkv\t724\t2470\t1\t1\tvideo",
+            "/b.mkv\t5\t60\t1\t1\tvideo", "/c.mp3\t60\t60\t1\t1\taudio",
+            "/d.mp3\t5\t60\t1\t1\taudio"]);
+        same("what's left to finish", JSON.stringify(Mpv.held(left, counts)),
+            JSON.stringify([{ id: "mpv:to-finish", value: "2 videos \u00b7 1 audio file" }]));
+        same("one video alone", Mpv.held(left.slice(1, 3), counts)[0].value, "1 video");
+        same("nothing left part way, nothing said", Mpv.held(left.slice(2, 3), counts).length, 0);
+
         // [when it was left, before now, in seconds, as its side says it]
         const words = mpv.words;
         const sides = [[30, "12:04 of 41:10 \u00b7 just now"],
