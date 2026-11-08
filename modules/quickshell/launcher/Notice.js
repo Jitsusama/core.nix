@@ -9,7 +9,8 @@
 // offers, whether it's read, and forgetting it, since what changes a
 // notice comes before what ends it; then, on the card, what's done to
 // the whole stack; and copying what it said last of all, never first (Joel, 2026-10-28: "having the separate copy
-// option at the top is very confusing"). Apart from the shell, so
+// option at the top is very confusing"). Then how its drawer tells it:
+// its kind, its eyebrow and its facts. Apart from the shell, so
 // tests/notice.qml can hold it in Qt's own engine.
 .pragma library
 
@@ -89,4 +90,55 @@ function readOffer(actions) {
 // Whether its sender opens what it's about, from its actions.
 function opens(actions) {
     return actions.some((action) => action.identifier === "default");
+}
+
+// What kind of notice it is, in its drawer's words, from the category its
+// sender gives as the spec's `class.subtype`: "message" for `im`, an error
+// subtype as "transfer failed", and a bounced mail as "mail bounced"
+// (VKCF3Z, 2026-11-08). A category it doesn't name is left out, never
+// shown raw. `named` holds each class's word (`kinds`, by class), and
+// what `failed` and `bounced` say.
+function kind(category, named) {
+    const given = String(category ?? "");
+    const dot = given.indexOf(".");
+    const type = dot < 0 ? given : given.slice(0, dot);
+    const subtype = dot < 0 ? "" : given.slice(dot + 1);
+    const word = named.kinds[type] ?? "";
+    if (word === "") {
+        return "";
+    }
+    if (given === "email.bounced") {
+        return named.bounced;
+    }
+    return subtype === "error" ? named.failed.replace("{kind}", word) : word;
+}
+
+// Its drawer's eyebrow: where it's from, then its kind, never a time,
+// which a fact says (VKCF3Z, 2026-11-08). `from` says the sender with
+// `{who}`.
+function eyebrow(who, kindSaid, from) {
+    return [who === "" ? "" : from.replace("{who}", who), kindSaid]
+        .filter((part) => part !== "")
+        .join(" \u00b7 ");
+}
+
+// Its drawer's facts, each a label and a value: when it arrived, how it
+// left, and the urgency its sender asked. Arrived goes where Left would
+// say the same time, "put away at 10:51" then standing for both (VKCF3Z,
+// 2026-11-08). Each is given as `{ label, said }`, Left's said holding
+// `{at}` where it tells a time, and the times as the drawer writes them.
+function facts(arrived, left, urgency) {
+    const out = [];
+    const leftSays = left.said.replace("{at}", left.at);
+    const sameTime = left.said.includes("{at}") && left.at === arrived.at;
+    if (arrived.at !== "" && !sameTime) {
+        out.push({ label: arrived.label, value: arrived.at });
+    }
+    if (leftSays !== "") {
+        out.push({ label: left.label, value: leftSays });
+    }
+    if (urgency.said !== "") {
+        out.push({ label: urgency.label, value: urgency.said });
+    }
+    return out;
 }
