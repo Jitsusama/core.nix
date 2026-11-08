@@ -341,6 +341,20 @@ ShellRoot {
         const inside = clock.verbs().map(each => each.name);
         expect("the clock holds each of its figures, in their order",
             inside.join(", ") === ids("time:clock").join(", "), inside.join(", "));
+        // Its plate says where it's kept from, is named as itself, and
+        // lists the same figures, never its side (VKCF3Z, 2026-11-07).
+        const clockPlate = clock.thing === true ? clock.drawer() : null;
+        expect("the clock's plate is via the chosen server, titled Clock",
+            clockPlate?.eyebrow === "via time.harbour.test" && clockPlate?.title === "Clock",
+            JSON.stringify(clockPlate));
+        expect("the clock's plate says the same figures",
+            clockPlate.facts.map(fact => fact.label).join(", ") === inside.join(", "),
+            JSON.stringify(clockPlate.facts));
+        const figure = id => clock.verbs().find(each => each.name === Words.name(id));
+        const told = ["time:clock:rms-offset", "time:clock:stratum",
+            "time:clock:update-interval"].map(id => figure(id)?.side).join(", ");
+        expect("the clock says its RMS offset, stratum and update interval",
+            told === "200 \u00b5s, 3, 1 min 4 s", told);
         const servers = row("time:servers").verbs();
         expect("the servers are each a thing, the chosen first",
             servers.map(each => `${each.name} ${each.note}`).join(", ")
@@ -354,6 +368,9 @@ ShellRoot {
         expect("each server is known as itself", new Set(known).size === servers.length,
             known.join(", "));
         const chosen = servers[0];
+        const offset = chosen.verbs().find(each => each.name === Words.name("time:server:offset"));
+        expect("a server's offset notes what was measured",
+            offset?.note === "measured \u2212391 \u00b5s \u00b7 within 20 \u00b5s", offset?.note);
         const figures = chosen.verbs().map(each => each.name);
         const plate = chosen.drawer();
         expect("the chosen server holds every figure the vocabulary names for one",

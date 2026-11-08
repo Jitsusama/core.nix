@@ -29,6 +29,13 @@
 // figure, and each is one Return copies. It's asked only while home or the
 // time here is shown; with nothing keeping the time that way, Clock says
 // so and no more.
+//
+// Every figure timekeeping reads is shown (docs/design.md, As deep as the
+// deepest) but four, each left out as the same figure told again: a
+// server's last exchange gives its stratum, its leap and its offset, which
+// its own Stratum and Offset already say, and the clock's address is the
+// chosen server's, which its plate's eyebrow names and Servers lists.
+// Leap is the clock's to say.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -261,10 +268,12 @@ Provider {
     }
 
     // The clock's figures, each a part named and its figure, in the order
-    // Clock's inside lists them (VKCF3Z): how far it's out and how fast it
-    // runs, the skew, root delay and dispersion its reference gives, the
-    // leap second, the last sync and the next poll, the hardware clock and
-    // its drift, and the service keeping it.
+    // Clock's inside lists them (VKCF3Z): how far it's out, and its
+    // long-run average, and how fast it runs, the skew, the stratum, root
+    // delay and dispersion its reference gives, the leap second, the last
+    // sync, how long between the last two updates and the next poll, the
+    // hardware clock, its drift and the samples it's reckoned from, and the
+    // service keeping it (VKCF3Z, 2026-11-07).
     function clockParts(now) {
         const clock = kept.clock;
         const said = clockSaid;
@@ -275,20 +284,30 @@ Provider {
         return [
             part("offset", Keeping.out(-clock.correction, said), said.lastOffset
                 .replace("{offset}", Keeping.seconds(clock.lastOffset, true))),
+            part("rms-offset", Keeping.seconds(clock.rmsOffset, false), said.average),
             part("frequency", Keeping.runs(clock.frequency, said), said.residual
                 .replace("{ppm}", Keeping.ppm(clock.residualFrequency, true))),
             part("skew", Keeping.ppm(clock.skew, false)),
+            part("stratum", clock.stratum > 0 ? String(clock.stratum) : ""),
             part("root-delay", Keeping.seconds(clock.rootDelay, false)),
             part("root-dispersion", Keeping.seconds(clock.rootDispersion, false)),
             part("leap", Keeping.leap(clock.leap, said)),
             part("last-sync", clock.lastSync ? Ago.ago(clock.lastSync, now) : said.never,
                 clock.reference ? said.by.replace("{server}", clock.reference) : ""),
+            part("update-interval", clock.updateInterval > 0 ? Keeping.span(clock.updateInterval)
+                : "", said.between),
             part("next-poll", chosen ? said.next.replace("{span}",
                 Keeping.span(Keeping.nextPoll(chosen))) : "",
                 chosen ? said.every.replace("{span}", Keeping.span(chosen.poll)) : ""),
             part("hardware", hardware ? Keeping.out(hardware.fast, said) : ""),
             part("drift", hardware ? Keeping.daily(hardware.gain, said) : "",
                 hardware ? Keeping.ppm(hardware.gain, true) : ""),
+            part("hardware-samples", hardware && hardware.samples > 0 ? said.samples
+                .replace("{samples}", String(hardware.samples))
+                .replace("{span}", Keeping.span(hardware.span)) : "",
+                hardware ? said.runs.replace("{runs}", String(hardware.runs)) : ""),
+            part("hardware-measured", typeof hardware?.measured === "number"
+                ? Ago.ago(hardware.measured, now) : ""),
             part("service", settings.chrony ? `chrony ${settings.chrony}` : "chrony",
                 said.running)
         ].filter(each => each.side !== "");
@@ -304,45 +323,54 @@ Provider {
         const part = (id, side, note) => ({ id: id, side: side, note: note ?? "" });
         const exchanged = exchange ? [
             part("reference", exchange.reference),
+            part("reference-time", typeof exchange.referenceTime === "number"
+                ? Ago.ago(exchange.referenceTime, Date.now()) : ""),
             part("ntp-version", String(exchange.version)),
+            part("exchange", Keeping.exchanged(exchange, said)),
+            part("local-address", exchange.localAddress ?? ""),
             part("precision", Keeping.seconds(exchange.precision, false)),
             part("root-delay", Keeping.seconds(exchange.rootDelay, false)),
             part("root-dispersion", Keeping.seconds(exchange.rootDispersion, false)),
             part("delay", Keeping.seconds(exchange.delay, false)),
             part("dispersion", Keeping.seconds(exchange.dispersion, false)),
             part("response", Keeping.seconds(exchange.responseTime, false)),
+            part("jitter-asymmetry", Keeping.asymmetry(exchange.jitterAsymmetry)),
             part("tests", said.tests.replace("{passed}", String(exchange.testsPassed))),
-            part("packets", said.packets.replace("{sent}", String(exchange.sent))
-                .replace("{received}", String(exchange.received))
-                .replace("{good}", String(exchange.good)))
+            part("packets", Keeping.packets(exchange, said))
         ] : [];
         const sampled = samples ? [
             part("samples", said.samples.replace("{samples}", String(samples.count))
-                .replace("{span}", Keeping.span(samples.span))),
+                .replace("{span}", Keeping.span(samples.span)),
+                said.runs.replace("{runs}", String(samples.runs))),
             part("estimate", Keeping.seconds(samples.offset, true), said.within
                 .replace("{error}", Keeping.seconds(samples.offsetError, false))),
             part("deviation", Keeping.seconds(samples.deviation, false)),
             part("frequency", Keeping.ppm(samples.residualFrequency, true)),
             part("skew", Keeping.ppm(samples.skew, false))
         ] : [];
+        const sampledNow = server.lastSample !== null && server.lastSample !== undefined;
         return [
+            part("mode", Keeping.mode(server, said)),
             part("address", server.address !== server.name ? server.address : ""),
             part("why", Keeping.why(server, said)),
             part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
             // Its name already says it's an interval, so the span stands alone.
             part("poll", Keeping.span(server.poll)),
             part("reach", Keeping.reach(server.reach, said)),
-            part("last-sample", server.lastSample !== null && server.lastSample !== undefined
+            part("last-sample", sampledNow
                 ? said.ago.replace("{span}", Keeping.span(server.lastSample)) : ""),
-            part("offset", server.lastSample !== null && server.lastSample !== undefined
-                ? Keeping.seconds(server.offset, true) : "", said.within
-                    .replace("{error}", Keeping.seconds(server.error, false))),
+            // Adjusted for the slewing since, as chronyc sources says it,
+            // with what was measured beside it.
+            part("offset", sampledNow ? Keeping.seconds(server.offset, true) : "", said.measured
+                .replace("{offset}", Keeping.seconds(server.measured, true))
+                .replace("{error}", Keeping.seconds(server.error, false))),
             // What chronyc's selectdata calls the Interval: the range expected
             // to hold the clock's true offset at the last selection, named
             // Error Bounds here since it bounds how wrong this source may be.
             part("interval", chosen && chosen.high > chosen.low ? said.interval
                 .replace("{low}", Keeping.seconds(chosen.low, true))
-                .replace("{high}", Keeping.seconds(chosen.high, true)) : "")
+                .replace("{high}", Keeping.seconds(chosen.high, true)) : ""),
+            part("score", chosen ? Keeping.score(chosen.score) : "")
         ].concat(sampled, exchanged).filter(each => each.side !== "");
     }
 
@@ -366,7 +394,7 @@ Provider {
                 eyebrow: Words.name("time:server"),
                 title: name,
                 facts: parts.map(each => ({ label: Words.name(`time:server:${each.id}`),
-                    value: each.side }))
+                    value: Keeping.told(each) }))
             })
         }, () => parts.map(each => figure(`time:server:${each.id}`, each.side, each.note)));
     }
@@ -397,18 +425,39 @@ Provider {
         const parts = clockParts(now);
         const servers = kept.servers;
         const out = servers.filter(server => Keeping.answered(server.reach) === 0).length;
+        const chosen = servers.find(server => server.standing === "chosen") ?? null;
+        // Servers' note: how many are out of reach, then what chronyd's
+        // activity says beyond their count, each part with nothing in it
+        // giving way (VKCF3Z, 2026-11-07).
+        const serversNote = (out > 0 ? [serversSaid.outOfReach.replace("{count}", String(out))]
+            : []).concat(Keeping.activity(kept.activity ?? null, serversSaid)).join(" \u00b7 ");
         return [
+            // A thing with a plate, as each server is: the eyebrow says
+            // where it's kept from, the chosen server; the title is its
+            // name; and its state, synchronised, stays the row's side
+            // alone (VKCF3Z, 2026-11-07).
             thingRow({
                 key: "time:clock",
                 name: Words.name("time:clock"),
                 side: kept.synchronised ? said.synchronised : said.unsynchronised,
-                glyph: Theme.glyph.clock
+                glyph: Theme.glyph.clock,
+                thing: true,
+                drawer: () => ({
+                    eyebrow: chosen ? said.via.replace("{server}", chosen.name || chosen.address)
+                        : "",
+                    // A server's name from the world, never re-cased
+                    // (docs/design.md, Label).
+                    eyebrowNames: true,
+                    title: Words.name("time:clock"),
+                    facts: parts.map(each => ({ label: Words.name(`time:clock:${each.id}`),
+                        value: Keeping.told(each) }))
+                })
             }, () => parts.map(each => figure(`time:clock:${each.id}`, each.side, each.note))),
             servers.length > 0 ? holderRow({
                 key: "time:servers",
                 name: Words.name("time:servers"),
                 side: String(servers.length),
-                note: out > 0 ? serversSaid.outOfReach.replace("{count}", String(out)) : "",
+                note: serversNote,
                 glyph: Theme.glyph.clock
             }, () => servers.map(server => serverThing(server))) : null
         ].filter(row => row !== null);

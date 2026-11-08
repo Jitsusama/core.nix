@@ -1,12 +1,14 @@
 // What only Joel can do, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `needs-you-is-true` check copies Waiting.js
-// beside this file and runs `qml -platform offscreen waiting-on-you.qml`.
+// shell runs it in. The `needs-you-is-true` check copies Waiting.js,
+// launcher/NeedsYou.js and the Ago.js it says a span by beside this file
+// and runs `qml -platform offscreen waiting-on-you.qml`.
 // The files are those the agents kept on 2026-10-26, cut to what's read,
 // when Waiting on You counted eleven things and three were Joel's to do,
 // and one written as mesh_wait writes them since 2026-10-30 (v 2), each
 // given as the mycelium node serves it.
 import QtQuick
 import "Waiting.js" as Waiting
+import "NeedsYou.js" as NeedsYou
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -310,6 +312,35 @@ QtObject {
         expect("its words only when it gives no start",
             Waiting.wantKey("8IDU4E", { kind: "question", said: "Push it?" }),
             "8IDU4E question Push it?");
+
+        // What an item tells beyond its title (NeedsYou.js): its note leads
+        // with its owner's when, unless its side says it, and ends with how
+        // long it has waited (VKCF3Z, 2026-11-07).
+        const said = { at: "at {time}", by: "by {time}", on: "on {machine}",
+            nobody: "nobody's watching this", waitedFor: "waiting {span}" };
+        const raised = Date.parse("2026-11-07T06:46:47.006Z");
+        const cable = { v: 2, id: "dock-cable", title: "Swap the network cable",
+            why: "Only Joel can swap a cable.", minutes: 2, when: "any time, outside a call",
+            raisedAt: "2026-11-07T06:46:47.006Z" };
+        const told = { at: "", by: "", machine: "", watched: true, side: "2 min",
+            now: raised + 15 * 3600 * 1000 + 5000 };
+        expect("a note leads with when and ends with how long it's waited",
+            NeedsYou.note(cable, said, told), "any time, outside a call \u00b7 waiting 15 h");
+        expect("when the side says when, the note doesn't",
+            NeedsYou.note(cable, said, with_(told, { side: "any time, outside a call",
+                watched: false, by: "18:00" })),
+            "by 18:00 \u00b7 nobody's watching this \u00b7 waiting 15 h");
+        expect("a wait shorter than a minute is a minute",
+            NeedsYou.waited(cable.raisedAt, raised + 20_000), "1 min");
+        expect("one of days says days", NeedsYou.waited(cable.raisedAt, raised + 3 * 86_400_000),
+            "3 d");
+        expect("one raised at no time says none", NeedsYou.waited(undefined, raised), "");
+        expect("an older file's item that says nothing else says why",
+            NeedsYou.note({ why: "It needs you." }, said, with_(told, { now: raised })),
+            "It needs you.");
+        expect("and how long it has waited after",
+            NeedsYou.note({ why: "It needs you.", raisedAt: cable.raisedAt }, said, told),
+            "It needs you. \u00b7 waiting 15 h");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

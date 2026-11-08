@@ -568,7 +568,15 @@ QtObject {
             servers: { reach: "{count} of the last 8", unreachable: "out of reach",
                 unusable: "set aside", aside: "set aside: {why}",
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
-                "why:tooFewSamples": "too few samples yet" }
+                "why:tooFewSamples": "too few samples yet",
+                "kind:reference": "reference clock", interleaved: "interleaved",
+                basic: "basic", authenticated: "authenticated",
+                unauthenticated: "unauthenticated", exchange: "{mode} \u00b7 {authentication}",
+                allGood: "{sent} sent, all good",
+                packets: "{sent} sent \u00b7 {received} received \u00b7 {valid} valid \u00b7 "
+                    + "{good} good",
+                offline: "{count} offline", burst: "{count} in a burst",
+                unresolved: "{count} unresolved" }
         };
         // A night in Toronto's November as the daemon says it, the clock
         // given as hours and minutes in local time and a kelvin bare, so
@@ -695,7 +703,32 @@ QtObject {
             ["by day, the sunset comes first, and no room's white without a sensor",
                 Warmth.figures(Object.assign({}, WarmthCases.night, { seesColour: false }),
                     WarmthCases.noon, WarmthCases.said, WarmthCases.told)
-                    .map(figure => figure.id).join(" "), "sunset sunrise night"]
+                    .map(figure => figure.id).join(" "), "sunset sunrise night"],
+            // What a server is asked as, how its exchange went, its packets
+            // saying only what differs, its score, its delay's asymmetry,
+            // and what the servers' activity says beyond their count, a
+            // part with nothing in it giving way (VKCF3Z, 2026-11-07).
+            ["a reference clock", Keeping.mode({ kind: "reference" }, KeepingCases.servers),
+                "reference clock"],
+            ["an interleaved exchange, authenticated", Keeping.exchanged({ interleaved: true,
+                authenticated: true }, KeepingCases.servers),
+                "interleaved \u00b7 authenticated"],
+            ["a basic exchange", Keeping.exchanged({ interleaved: false,
+                authenticated: false }, KeepingCases.servers), "basic \u00b7 unauthenticated"],
+            ["every packet good", Keeping.packets({ sent: 13, received: 13, valid: 13, good: 13 },
+                KeepingCases.servers), "13 sent, all good"],
+            ["packets lost", Keeping.packets({ sent: 13, received: 12, valid: 12, good: 11 },
+                KeepingCases.servers),
+                "13 sent \u00b7 12 received \u00b7 12 valid \u00b7 11 good"],
+            ["a score", Keeping.score(1), "1.0"],
+            ["no asymmetry", Keeping.asymmetry(0), "+0.00"],
+            ["an asymmetry", Keeping.asymmetry(-0.125), "\u22120.13"],
+            ["activity with nothing beyond the count", Keeping.activity({ online: 2,
+                offline: 0, burstOnline: 0, burstOffline: 0, unresolved: 0 },
+                KeepingCases.servers).join(", "), ""],
+            ["activity beyond the count", Keeping.activity({ online: 1, offline: 1,
+                burstOnline: 1, burstOffline: 1, unresolved: 1 }, KeepingCases.servers)
+                .join(", "), "1 offline, 2 in a burst, 1 unresolved"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

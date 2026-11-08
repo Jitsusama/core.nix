@@ -1197,9 +1197,14 @@ Floating {
     }
     // Whether every value drawn keeps each of its words whole, none so
     // wide where it's drawn that it breaks partway, for the launcher to
-    // report when asked.
+    // report when asked. An identifier's words are its parts between
+    // slashes too, since Qt breaks a line after a slash, as a typesetter
+    // breaks a path, and a check's command is mostly paths.
     function valuesWhole() {
-        return drawnRows().every(row => !row.known || unbroken(row.modelData.value).split(" ")
+        const words = row => (row.modelData.identifies === true
+            ? unbroken(row.modelData.value).replace(/\//g, "/ ")
+            : unbroken(row.modelData.value)).split(" ");
+        return drawnRows().every(row => !row.known || words(row)
             .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide
                 && !breaksAtItsHyphen.test(word)));
     }

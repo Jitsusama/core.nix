@@ -8,17 +8,21 @@ const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86_400;
 
-// How long before `now` the moment `at` was, both in milliseconds.
-function ago(at, now) {
+// How long from `at` to `now`, both in milliseconds, in the largest unit
+// it's whole in: "12 min", "15 h", "3 d", never less than a minute, as
+// Needs You says how long an item has waited.
+function span(at, now) {
     const seconds = Math.max(0, (now - at) / SECOND);
-    if (seconds < MINUTE) {
-        return "just now";
-    }
     if (seconds < HOUR) {
-        return `${Math.floor(seconds / MINUTE)} min ago`;
+        return `${Math.max(1, Math.floor(seconds / MINUTE))} min`;
     }
     if (seconds < DAY) {
-        return `${Math.floor(seconds / HOUR)} h ago`;
+        return `${Math.floor(seconds / HOUR)} h`;
     }
-    return `${Math.floor(seconds / DAY)} d ago`;
+    return `${Math.floor(seconds / DAY)} d`;
+}
+
+// How long before `now` the moment `at` was, both in milliseconds.
+function ago(at, now) {
+    return (now - at) / SECOND < MINUTE ? "just now" : `${span(at, now)} ago`;
 }

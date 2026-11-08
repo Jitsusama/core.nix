@@ -4246,13 +4246,23 @@
         "by": "by {server}",
         "next": "in {span}",
         "every": "every {span}",
-        "running": "running"
+        "running": "running",
+        "average": "the long-run average",
+        "between": "between the last two updates",
+        "samples": "{samples} over {span}",
+        "runs": "{runs} runs of one sign",
+        "via": "via {server}"
       }
     },
     {
       "id": "time:clock:offset",
       "in": "time:clock",
       "name": "Offset"
+    },
+    {
+      "id": "time:clock:rms-offset",
+      "in": "time:clock",
+      "name": "RMS Offset"
     },
     {
       "id": "time:clock:frequency",
@@ -4263,6 +4273,11 @@
       "id": "time:clock:skew",
       "in": "time:clock",
       "name": "Skew"
+    },
+    {
+      "id": "time:clock:stratum",
+      "in": "time:clock",
+      "name": "Stratum"
     },
     {
       "id": "time:clock:root-delay",
@@ -4285,6 +4300,11 @@
       "name": "Last Sync"
     },
     {
+      "id": "time:clock:update-interval",
+      "in": "time:clock",
+      "name": "Update Interval"
+    },
+    {
       "id": "time:clock:next-poll",
       "in": "time:clock",
       "name": "Next Poll"
@@ -4300,6 +4320,16 @@
       "name": "Hardware Clock Drift"
     },
     {
+      "id": "time:clock:hardware-samples",
+      "in": "time:clock",
+      "name": "Hardware Clock Samples"
+    },
+    {
+      "id": "time:clock:hardware-measured",
+      "in": "time:clock",
+      "name": "Hardware Clock Measured"
+    },
+    {
       "id": "time:clock:service",
       "in": "time:clock",
       "name": "Service"
@@ -4310,6 +4340,20 @@
       "name": "Servers",
       "said": {
         "outOfReach": "{count} out of reach",
+        "offline": "{count} offline",
+        "burst": "{count} in a burst",
+        "unresolved": "{count} unresolved",
+        "kind:server": "server",
+        "kind:peer": "peer",
+        "kind:reference": "reference clock",
+        "interleaved": "interleaved",
+        "basic": "basic",
+        "authenticated": "authenticated",
+        "unauthenticated": "unauthenticated",
+        "exchange": "{mode} \u00b7 {authentication}",
+        "measured": "measured {offset} \u00b7 within {error}",
+        "allGood": "{sent} sent, all good",
+        "runs": "{runs} runs of one sign",
         "standing:chosen": "chosen",
         "standing:combined": "agrees",
         "standing:notCombined": "agrees, not combined",
@@ -4342,7 +4386,7 @@
         "interval": "{low} to {high}",
         "samples": "{samples} over {span}",
         "tests": "{passed} of 10",
-        "packets": "{sent} sent, {received} received, {good} good"
+        "packets": "{sent} sent \u00b7 {received} received \u00b7 {valid} valid \u00b7 {good} good"
       }
     },
     {
@@ -4350,6 +4394,11 @@
       "in": "time:servers",
       "name": "Time Server",
       "term": "Desktop/time server"
+    },
+    {
+      "id": "time:server:mode",
+      "in": "time:server",
+      "name": "Mode"
     },
     {
       "id": "time:server:address",
@@ -4392,6 +4441,11 @@
       "name": "Error Bounds"
     },
     {
+      "id": "time:server:score",
+      "in": "time:server",
+      "name": "Score"
+    },
+    {
       "id": "time:server:samples",
       "in": "time:server",
       "name": "Samples"
@@ -4422,9 +4476,24 @@
       "name": "Reference"
     },
     {
+      "id": "time:server:reference-time",
+      "in": "time:server",
+      "name": "Reference Time"
+    },
+    {
       "id": "time:server:ntp-version",
       "in": "time:server",
       "name": "NTP Version"
+    },
+    {
+      "id": "time:server:exchange",
+      "in": "time:server",
+      "name": "Exchange"
+    },
+    {
+      "id": "time:server:local-address",
+      "in": "time:server",
+      "name": "Local Address"
     },
     {
       "id": "time:server:precision",
@@ -4455,6 +4524,11 @@
       "id": "time:server:response",
       "in": "time:server",
       "name": "Response Time"
+    },
+    {
+      "id": "time:server:jitter-asymmetry",
+      "in": "time:server",
+      "name": "Jitter Asymmetry"
     },
     {
       "id": "time:server:tests",

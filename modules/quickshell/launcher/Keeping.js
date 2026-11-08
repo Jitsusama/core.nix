@@ -152,3 +152,64 @@ function standing(server, said) {
 function why(server, said) {
     return server.chosen ? (said[`why:${server.chosen.why}`] ?? "") : "";
 }
+
+// A figure as a plate says it, its note after its side as an item of its
+// own, so the plate holds what the step in does: "+3 µs · last update
+// −1 µs" (Y2YBTS's review of #2303).
+function told(part) {
+    return part.note ? `${part.side} \u00b7 ${part.note}` : part.side;
+}
+
+// What chronyd asks a server as: a server, a peer or a reference clock.
+function mode(server, said) {
+    return said[`kind:${server.kind}`] ?? "";
+}
+
+// How a server's last exchange went: interleaved or basic, and whether it
+// was authenticated, as NTS or a key would make it (VKCF3Z, 2026-11-07:
+// runs of items join with dots).
+function exchanged(exchange, said) {
+    return said.exchange
+        .replace("{mode}", exchange.interleaved ? said.interleaved : said.basic)
+        .replace("{authentication}", exchange.authenticated ? said.authenticated
+            : said.unauthenticated);
+}
+
+// A server's packets, saying only what differs: "13 sent, all good" while
+// every one sent came back valid and good, else each count (VKCF3Z).
+function packets(exchange, said) {
+    const counts = [exchange.received, exchange.valid, exchange.good];
+    if (counts.every(count => count === exchange.sent)) {
+        return said.allGood.replace("{sent}", String(exchange.sent));
+    }
+    return said.packets.replace("{sent}", String(exchange.sent))
+        .replace("{received}", String(exchange.received))
+        .replace("{valid}", String(exchange.valid))
+        .replace("{good}", String(exchange.good));
+}
+
+// The selection's score, to a tenth, as chronyc selectdata says it.
+function score(value) {
+    return value.toFixed(1);
+}
+
+// How lopsided a server's delay is, from -0.5 to +0.5, to a hundredth
+// and signed, as chronyc ntpdata says it.
+function asymmetry(value) {
+    return `${sign(value)}${Math.abs(value).toFixed(2)}`;
+}
+
+// What chronyd's activity says of the servers beyond how many there are:
+// each count that isn't none, offline, in a burst and unresolved, so a
+// part with nothing in it gives way (VKCF3Z, 2026-11-07).
+function activity(counts, said) {
+    if (!counts) {
+        return [];
+    }
+    return [
+        [counts.offline, said.offline],
+        [counts.burstOnline + counts.burstOffline, said.burst],
+        [counts.unresolved, said.unresolved]
+    ].filter(([count]) => count > 0)
+        .map(([count, words]) => words.replace("{count}", String(count)));
+}

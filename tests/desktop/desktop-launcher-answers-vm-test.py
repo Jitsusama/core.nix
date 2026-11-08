@@ -1204,8 +1204,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         assert any(it.startswith(read) for it in reads), (read, reads)
     # The clock steps into its figures, in order, each read from chronyd.
     clock = [
-        "Offset", "Frequency", "Skew", "Root Delay", "Root Dispersion", "Leap Second",
-        "Last Sync", "Next Poll",
+        "Offset", "RMS Offset", "Frequency", "Skew", "Stratum", "Root Delay",
+        "Root Dispersion", "Leap Second", "Last Sync", "Update Interval", "Next Poll",
     ]  # fmt: skip
     desktop.down_to("Clock")
     desktop.follow()
@@ -1223,7 +1223,9 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(servers)] == servers)
     desktop.down_to("time.harbour.test")
     assert desktop.showing()["selected"]["note"] == "chosen", desktop.showing()["selected"]
-    inside = ["Address", "Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
+    inside = [
+        "Mode", "Address", "Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset",
+    ]  # fmt: skip
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True
@@ -1238,6 +1240,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
     for read in (
+        "Mode \u00b7 server",
         "Address \u00b7 127.0.0.1",
         "Why \u00b7 the clock is kept by it",
         "Stratum \u00b7 2",
