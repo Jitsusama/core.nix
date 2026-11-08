@@ -1282,20 +1282,22 @@ Scope {
             drawer: drawerOf(one)
         });
         const last = trail.length > 0 ? trail[trail.length - 1] : null;
-        // A thing's own acts, Copy on Disk, are what `launcher do` does
-        // rather than rows to read, so they're said apart (VKCF3Z,
-        // 2026-11-08); a place's or a collection's rows are its things.
+        // A thing's own acts, Return's act (Copy on Disk) and its verbs, are
+        // what `launcher do` does rather than rows to read, so they're said
+        // apart (VKCF3Z, 2026-11-08); a place's or a collection's rows are
+        // its things.
         const acting = last !== null && asThing(last, among) && !last.category
             && !collects({ row: last });
-        const acts = acting ? led(last, last.verbs?.() ?? []).map(one => steadyId(one)) : [];
+        const verbs = acting ? led(last, last.verbs?.() ?? []).map(one => steadyId(one)) : [];
+        const isAct = one => String(one.key ?? "").startsWith("return:")
+            || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
         return {
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1)),
-            rows: sayable.filter(one => !acts.includes(steadyId(one)))
-                .map(one => entry(one, ids)),
-            acts: sayable.filter(one => acts.includes(steadyId(one))).map(one => entry(one, ids))
+            rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids)),
+            acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids))
         };
     }
 
