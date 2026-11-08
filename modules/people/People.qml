@@ -405,6 +405,8 @@ Provider {
     // See It's are, so it steps in at any level: inside People, where a
     // row's insides are its verbs, and inside a person found from the top,
     // where they're its targets.
+    // Its note is drawn after its name, as what a row holds is (a row's
+    // `count`).
     function holding(key, rows, side, note) {
         const had = () => rows;
         const row = thing({
@@ -414,7 +416,7 @@ Provider {
             glyph: Words.glyph(key),
             hue: "person",
             side: side,
-            note: note,
+            count: note,
             empty: Words.of(key).empty,
             nested: true,
             stays: true,
