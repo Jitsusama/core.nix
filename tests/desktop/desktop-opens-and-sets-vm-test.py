@@ -1824,11 +1824,16 @@ def pick_a_timer(desktop: Desktop, name: str) -> None:
 
 def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
     """Shoot Now with its Timers row, and the margin with its mark, at Joel's two scales."""
+    machine = desktop.machine
     for scale in ("1.5", "2"):
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: "Timers" in shown["rows"])
+        # Picked, by G as it's listed last, so it's in view at 2 and says its names and Return.
+        desktop.normal()
+        machine.send_chars("G")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
         desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
