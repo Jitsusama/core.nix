@@ -816,6 +816,7 @@ onLinux {
       cd $TMPDIR/groups
       cp ${../../tests/key-groups.qml} key-groups.qml
       cp ${./launcher/KeyGroups.js} KeyGroups.js
+      cp ${./launcher/KeyLayers.js} KeyLayers.js
       cp ${layers} layers.json
       cp ${words} words.json
       ${shellFolderLint}
@@ -830,6 +831,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/KeyMap.qml} launcher/KeyMap.qml
       cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
+      cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${files."quickshell/Theme.qml".source} Theme.qml
       cp ${files."quickshell/Shortcuts.qml".source} Shortcuts.qml
       cp ${./Words.qml} Words.qml
@@ -2551,7 +2553,7 @@ onLinux {
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
+      cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
       cp ${./launcher/Recent.js} launcher/Recent.js

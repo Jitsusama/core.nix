@@ -4772,6 +4772,44 @@
       "glyph": "web"
     },
     {
+      "id": "shortcuts:google-mail",
+      "in": "shortcuts",
+      "name": "Mail",
+      "said": {
+        "note": "works once Gmail's keyboard shortcuts are on"
+      }
+    },
+    {
+      "id": "shortcuts:google-calendar",
+      "in": "shortcuts",
+      "name": "Calendar"
+    },
+    {
+      "id": "shortcuts:google-meet",
+      "in": "shortcuts",
+      "name": "Meet"
+    },
+    {
+      "id": "shortcuts:google-docs",
+      "in": "shortcuts",
+      "name": "Docs"
+    },
+    {
+      "id": "shortcuts:google-sheets",
+      "in": "shortcuts",
+      "name": "Sheets"
+    },
+    {
+      "id": "shortcuts:google-slides",
+      "in": "shortcuts",
+      "name": "Slides"
+    },
+    {
+      "id": "shortcuts:google-drive",
+      "in": "shortcuts",
+      "name": "Drive"
+    },
+    {
       "id": "shortcuts:slack",
       "in": "shortcuts",
       "name": "Slack",
@@ -5559,6 +5597,101 @@
       "id": "shortcuts:spotify:playing",
       "in": "shortcuts",
       "name": "Playing"
+    },
+    {
+      "id": "shortcuts:google-mail:going",
+      "in": "shortcuts",
+      "name": "Moving Around"
+    },
+    {
+      "id": "shortcuts:google-mail:conversations",
+      "in": "shortcuts",
+      "name": "In a Conversation"
+    },
+    {
+      "id": "shortcuts:google-mail:writing",
+      "in": "shortcuts",
+      "name": "Writing Mail"
+    },
+    {
+      "id": "shortcuts:google-calendar:views",
+      "in": "shortcuts",
+      "name": "Choosing the Days"
+    },
+    {
+      "id": "shortcuts:google-calendar:events",
+      "in": "shortcuts",
+      "name": "Making an Event"
+    },
+    {
+      "id": "shortcuts:google-calendar:anywhere",
+      "in": "shortcuts",
+      "name": "Anywhere in Calendar"
+    },
+    {
+      "id": "shortcuts:google-meet:you",
+      "in": "shortcuts",
+      "name": "Being Heard and Seen"
+    },
+    {
+      "id": "shortcuts:google-meet:seeing",
+      "in": "shortcuts",
+      "name": "Seeing the Call"
+    },
+    {
+      "id": "shortcuts:google-docs:text",
+      "in": "shortcuts",
+      "name": "Styling Text"
+    },
+    {
+      "id": "shortcuts:google-docs:paragraphs",
+      "in": "shortcuts",
+      "name": "Shaping Paragraphs"
+    },
+    {
+      "id": "shortcuts:google-docs:reviewing",
+      "in": "shortcuts",
+      "name": "Reviewing"
+    },
+    {
+      "id": "shortcuts:google-sheets:rows",
+      "in": "shortcuts",
+      "name": "Arranging Rows and Columns"
+    },
+    {
+      "id": "shortcuts:google-sheets:cells",
+      "in": "shortcuts",
+      "name": "Filling Cells"
+    },
+    {
+      "id": "shortcuts:google-sheets:sheets",
+      "in": "shortcuts",
+      "name": "Moving Between Sheets"
+    },
+    {
+      "id": "shortcuts:google-slides:slides",
+      "in": "shortcuts",
+      "name": "Arranging Slides"
+    },
+    {
+      "id": "shortcuts:google-slides:objects",
+      "in": "shortcuts",
+      "name": "Arranging Objects"
+    },
+    {
+      "id": "shortcuts:google-slides:presenting",
+      "in": "shortcuts",
+      "name": "Presenting"
+    },
+    {
+      "id": "shortcuts:google-drive:making",
+      "in": "shortcuts",
+      "name": "Making and Finding"
+    },
+    {
+      "id": "shortcuts:google-drive:files",
+      "in": "shortcuts",
+      "name": "Handling a File"
     },
     {
       "id": "on",

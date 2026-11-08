@@ -22,7 +22,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "KeyGroups.js" as KeyGroups
+import "KeyLayers.js" as KeyLayers
 
 Provider {
     id: provider
@@ -30,13 +30,13 @@ Provider {
     what: "window"
 
     // The programs a terminal's window can be running, by the layer of keys
-    // its title gives it (KeyGroups.js's over), as their glyphs know them.
+    // its title gives it (KeyLayers.js's over), as their glyphs know them.
     readonly property var inTerminal: ({ pi: "pi", neovim: "nvim", btop: "btop" })
 
     // A window's glyph: its program's, or, in a terminal, that of the
     // program its title says it's running.
     function glyphOf(window, entry) {
-        const running = inTerminal[KeyGroups.over(window.app_id ?? "", window.title ?? "")[0]];
+        const running = inTerminal[KeyLayers.over(window.app_id ?? "", window.title ?? "")[0]];
         return programGlyph(running ?? (entry ? entry.id : window.app_id));
     }
 

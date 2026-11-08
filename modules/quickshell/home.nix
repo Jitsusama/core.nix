@@ -280,6 +280,7 @@ let
     "launcher/Traces.js"
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
+    "launcher/KeyLayers.js"
     "launcher/Keyboards.js"
     "launcher/KeyCounts.js"
     "launcher/Media.js"
@@ -414,6 +415,13 @@ let
       "zathura"
       "mpv"
       "chrome"
+      "google-mail"
+      "google-calendar"
+      "google-meet"
+      "google-docs"
+      "google-sheets"
+      "google-slides"
+      "google-drive"
       "slack"
       "onepassword"
       "gimp"
@@ -601,6 +609,15 @@ let
     mpv = nerd "f0381";
     # The theme's web, as the browser goes about it.
     chrome = nerd "f059f";
+    # Google's programs wear what they wear in Programs
+    # (launcher/Provider.qml's programGlyphs): one thing, one mark.
+    google-mail = nerd "f02ab";
+    google-calendar = mark "calendar";
+    google-meet = nerd "f0567";
+    google-docs = nerd "f0dc8";
+    google-sheets = nerd "f09f7";
+    google-slides = nerd "f0428";
+    google-drive = nerd "f02b6";
     # The theme's chat, as Slack is where people talk.
     slack = nerd "f0b79";
     # The theme's password, as 1Password keeps them.

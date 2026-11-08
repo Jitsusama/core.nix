@@ -13,6 +13,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
@@ -867,9 +869,10 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
     # theirs, nor Chrome, so none of its either. After the terminal's come
     # btop's, which every machine has, the picture viewer's, the markdown
-    # reader's, the document viewer's, the player's, Slack's (which this
-    # area's machine brings, for Now's Slack piece), 1Password's, GIMP's,
-    # Inkscape's and Spotify's.
+    # reader's, the document viewer's, the player's, Google's seven
+    # programs', whose keys are their pages' in any browser, Slack's (which
+    # this area's machine brings, for Now's Slack piece), 1Password's,
+    # GIMP's, Inkscape's and Spotify's.
     layers = [
         "Desktop",
         "Terminal",
@@ -878,6 +881,13 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Markdown Reader",
         "Document Viewer",
         "Player",
+        "Mail",
+        "Calendar",
+        "Meet",
+        "Docs",
+        "Sheets",
+        "Slides",
+        "Drive",
         "Slack",
         "Passwords",
         "Picture Editor",
@@ -963,8 +973,52 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.close_launcher()
 
 
+# Windows standing in for Google's programs in Chrome, which this machine doesn't run: a kitty
+# given the app id and title Chrome gives Mail's own window, and one given Chrome's app id and
+# the title of a tab showing a document; each by its layer's name and its picture's name
+# (launcher/KeyLayers.js reads both, VKCF3Z, 2026-11-07).
+GOOGLE_WINDOWS = [
+    ("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail", "Mail", "mail"),
+    ("google-chrome", "Notes - Google Docs - Google Chrome", "Docs", "docs-tab"),
+]
+
+
+def on_layer(layer: str, shown: Json) -> bool:
+    """Say whether Shortcuts holds the layer named, as its path ends."""
+    return cast("list[str]", shown["path"])[-1:] == [layer]
+
+
+def over_googles_programs(desktop: Desktop) -> None:
+    """Open Shortcuts over Mail's window and a Docs tab, each on its own keys, leading.
+
+    The program is told by the window's app id or its title's end, so a Docs tab in Chrome
+    names Docs and Mail's own window names Mail (VKCF3Z, 2026-11-07).
+    """
+    machine = desktop.machine
+    for app, title, layer, picture in GOOGLE_WINDOWS:
+        named_so = f"--class {shlex.quote(app)} --title {shlex.quote(title)}"
+        desktop.as_account(f"niri msg action spawn -- kitty {named_so}")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"niri msg --json windows | grep -qF {shlex.quote(title)}"),
+            timeout=STARTING,
+        )
+        window = desktop.window_titled(title)
+        try:
+            desktop.as_account(f"niri msg action focus-window --id {window['id']}")
+            machine.send_key("meta_l-shift-slash")
+            desktop.launcher_ready()
+            desktop.launcher_until(partial(on_layer, layer))
+            desktop.shoot(f"launcher-shortcuts-over-{picture}")
+            desktop.step_out()
+            desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
+            assert desktop.showing()["rows"][0] == layer, desktop.showing()["rows"]
+            desktop.close_launcher()
+        finally:
+            desktop.close(window)
+
+
 def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: Desktop) -> None:
-    """Super+Shift+/ over a terminal opens on the terminal's shortcuts."""
+    """Super+Shift+/ over a terminal, or one of Google's programs, opens on its shortcuts."""
     machine = desktop.machine
     desktop.focused_kitty()
     machine.send_key("meta_l-shift-slash")
@@ -991,6 +1045,7 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
     desktop.close_launcher()
+    over_googles_programs(desktop)
 
 
 def test_what_is_picked_inside_a_programs_page_is_learned_there(desktop: Desktop) -> None:

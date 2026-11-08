@@ -37,6 +37,13 @@ let
     zathura = "zathura, the document viewer, in a window of its own";
     mpv = "mpv, the player, in a window of its own";
     chrome = "Chrome, the browser, in a window of its own, and each window it opens for one site";
+    google-mail = "Mail, Google's, a page in the browser";
+    google-calendar = "Calendar, Google's, a page in the browser";
+    google-meet = "Meet, Google's video calls, a page in the browser";
+    google-docs = "Docs, Google's documents, a page in the browser";
+    google-sheets = "Sheets, Google's spreadsheets, a page in the browser";
+    google-slides = "Slides, Google's presentations, a page in the browser";
+    google-drive = "Drive, Google's files, a page in the browser";
     slack = "Slack, the chat, in a window of its own";
     onepassword = "1Password, the password manager, in a window of its own";
     gimp = "GIMP, the picture editor, in a window of its own";
@@ -55,6 +62,13 @@ let
     "zathura"
     "mpv"
     "chrome"
+    "google-mail"
+    "google-calendar"
+    "google-meet"
+    "google-docs"
+    "google-sheets"
+    "google-slides"
+    "google-drive"
     "slack"
     "onepassword"
     "gimp"
@@ -66,12 +80,22 @@ let
     neovim = "terminal";
     pi = "terminal";
     btop = "terminal";
+    # Google's programs are pages, so the browser hears a key before them:
+    # its own, Ctrl+t and the rest, never reach the page.
+    google-mail = "chrome";
+    google-calendar = "chrome";
+    google-meet = "chrome";
+    google-docs = "chrome";
+    google-sheets = "chrome";
+    google-slides = "chrome";
+    google-drive = "chrome";
   };
   # Two layers below the desktop sit side by side, and so never hear a key
   # at the same time, unless one is inside the other's window: Neovim, pi and
-  # btop in one terminal, the terminal, the picture viewer, the markdown reader,
-  # the document viewer, the player, the browser, Slack, 1Password, GIMP,
-  # Inkscape and Spotify in windows of their own.
+  # btop in one terminal, Google's programs in the browser, the terminal, the
+  # picture viewer, the markdown reader, the document viewer, the player, the
+  # browser, Slack, 1Password, GIMP, Inkscape and Spotify in windows of their
+  # own.
   beside =
     upper: lower:
     upper != "desktop"

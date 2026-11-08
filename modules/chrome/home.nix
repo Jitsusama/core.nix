@@ -1,6 +1,6 @@
 # Chrome's keys, for the launcher to list over its windows: the browser's
 # own, and those of a window it opens for one site, such as Calendar or
-# Mail, whose app id names the site (launcher/KeyGroups.js). Chrome comes
+# Mail, whose app id names the site (launcher/KeyLayers.js). Chrome comes
 # from wherever the machine gets it, so this lists its keys and installs
 # nothing; a machine with Chrome imports it. Chrome takes no settings for
 # its keys, so these are its own, which mostly speak the keyboard's
