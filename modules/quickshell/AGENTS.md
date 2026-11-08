@@ -87,7 +87,8 @@ machine, one path through each connection.
   `launcher/Showing.js`'s rules.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the
-  shell's `show`, so every integration has a command line at once.
+  shell's `show`, so every integration has a command line at once; zsh
+  completes its steps by asking the shell the same way.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.

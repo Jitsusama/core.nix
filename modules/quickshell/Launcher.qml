@@ -1248,16 +1248,18 @@ Scope {
     // might have meant (`near`) and where it was looked for. A path is
     // asked starting with a step's mark, since qs takes no empty argument,
     // so home is that mark alone and an empty step is no step.
-    function shownToTerminal(path) {
+    // `everyDrawer`, for `launcher show --drawers`, gives each row's
+    // drawer too, which is only built where it's asked for.
+    function shownToTerminal(path, everyDrawer) {
         cataloguing = true;
         try {
-            return shownWalked(path);
+            return shownWalked(path, everyDrawer === true);
         } finally {
             cataloguing = false;
         }
     }
 
-    function shownWalked(path) {
+    function shownWalked(path, everyDrawer) {
         freshen();
         const steps = String(path ?? "").split(catalogueStep).filter(said => said.trim() !== "");
         let rows = home();
@@ -1276,7 +1278,8 @@ Scope {
         }
         const ids = trail.map(one => steadyId(one));
         // Only the row the path names says its drawer, since a listed row's
-        // would be built for every row a long place holds, for one show.
+        // would be built for every row a long place holds, for one show;
+        // `everyDrawer` (`launcher show --drawers`) asks for each row's too.
         const entry = (one, at, drawn) => Showing.shaped(one, {
             id: at.concat([steadyId(one)]).join(catalogueStep),
             kind: Catalogue.kindOf(one),
@@ -1299,7 +1302,7 @@ Scope {
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),
-            rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, false)),
+            rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, everyDrawer)),
             acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids, false))
         };
     }
@@ -5925,7 +5928,12 @@ Scope {
         // joined by a "\u203a", each a row's name or its steady id, and
         // none for home.
         function show(path: string): string {
-            return JSON.stringify(root.shownToTerminal(path));
+            return JSON.stringify(root.shownToTerminal(path, false));
+        }
+
+        // The same, with each row's drawer, for `launcher show --drawers`.
+        function drawers(path: string): string {
+            return JSON.stringify(root.shownToTerminal(path, true));
         }
 
         // Where every word on the card is drawn, for the check that nothing
