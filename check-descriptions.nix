@@ -861,9 +861,11 @@
   '';
   meaning-adds-only-below = ''
     the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
-    the words each is known by, and adds at most three rows below what typing found, none found
-    already and none the launcher no longer holds, each saying in the foot how it was found, and at
-    most three pictures below those Recent found by their names and words, none listed already
+    the words each is known by, and the parts places hold by their names, and adds at most three
+    rows below what typing found, none found already and none the launcher no longer holds, each
+    saying in the foot how it was found, a part meant standing where its place would and each
+    part's name meant once, and at most three pictures below those Recent found by their names and
+    words, none listed already
   '';
   meaning-finds-a-picture-by-what-it-shows = ''
     the meaning daemon, on the CPU with the service's SigLIP 2 towers, looks at each picture in its
@@ -1854,7 +1856,9 @@
     as it opens, draws nothing left open and still, its caret steady, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
     letters found, glides the selection to its row by the arrows only and draws it on its row as
-    rows above it change, reads on a long name while it's selected, and warns of nothing it drew;
+    rows above it change, reads on a long name while it's selected, tells the meaning daemon the
+    parts its places hold and adds one meant below what the letters found, saying where it lives,
+    and warns of nothing it drew;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';

@@ -53,6 +53,9 @@ Provider {
     // The things last told, as text, so they're told again only when they
     // change, never as a session's row does.
     property string toldAs: ""
+    // The launcher's spots by their keys, as its keyed holds its choices,
+    // so a meaning can land on a part inside a place (Meaning.js's rows).
+    readonly property var spotsKeyed: Meaning.keyedBy(provider.launcher?.spots ?? [])
 
     // The rows found by what's typed's meaning, best first, none of them
     // in `shown` (a set of identities), or none while it's asked.
@@ -61,7 +64,8 @@ Provider {
         if (kept === null)
             return [];
         return Meaning.rows(kept.records, provider.launcher?.keyed ?? {}, shown,
-            { most: provider.most, note: Words.field.byMeaning ?? "" });
+            { most: provider.most, note: Words.field.byMeaning ?? "",
+                spots: provider.spotsKeyed });
     }
 
     // The pictures that look like what's typed, nearest first, as paths,
@@ -162,11 +166,18 @@ Provider {
         const daemon = reader.item as Daemon;
         if (!daemon || daemon.wire === null || !provider.launcher)
             return;
-        const telling = Meaning.telling(provider.launcher.choices);
+        const telling = Meaning.telling(provider.launcher.choices, provider.launcher.spots);
         if (telling.as === provider.toldAs)
             return;
         provider.toldAs = telling.as;
         daemon.ask({ ask: "know", kind: "thing", things: telling.things }, null);
+        // What was answered before was of the things told then, as before
+        // the spots were made, a moment after the first key; so each
+        // answer is kept on screen but asked again a moment later, and
+        // what's new is added below it.
+        provider.searches = provider.searches.map(search => search.kind !== "thing" ? search
+            : Object.assign({}, search, { whole: false }));
+        again.restart();
     }
 
     // The things change while the launcher is open as windows and notices
@@ -202,6 +213,14 @@ Provider {
         function onChoicesChanged(): void {
             // Started, never restarted, so a page changing faster than it
             // settles (Machine, Sound's meter) is still told every 500 ms.
+            if (provider.launcher.open && !settled.running)
+                settled.start();
+        }
+
+        // The spots are made a moment after the shell starts and by the
+        // first search when none were, and again as each closing finds
+        // their sources changed, so they're told as they come.
+        function onSpotsChanged(): void {
             if (provider.launcher.open && !settled.running)
                 settled.start();
         }

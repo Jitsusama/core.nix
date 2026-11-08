@@ -2891,10 +2891,12 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
         )
 
 
-# What's typed for the meaning daemon's stand-in to find by its meaning, and the words in the
-# keys of the things it finds for it, among those the launcher told it of.
+# What's typed for the meaning daemon's stand-in to find by its meaning, the words in the keys
+# of the things it finds for it, among those the launcher told it of, and the place it finds,
+# Screens, whose Brightness stands in its stead.
 MEANT = "too bright to read"
-MEANT_KEYS = ("bright", "display", "night")
+MEANT_KEYS = ("bright", "night")
+MEANT_PLACE = "collection:displays"
 # The most rows meaning adds below what typing found (VKCF3Z, 2026-11-07).
 MEANT_MOST = 3
 
@@ -2930,7 +2932,7 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
     typed = [row["is"] for row in desktop.showing()["things"]]
     desktop.close_launcher()
     known = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-known").split()
-    meant = [key for key in known if any(word in key for word in MEANT_KEYS)]
+    meant = [key for key in known if key == MEANT_PLACE or any(word in key for word in MEANT_KEYS)]
     assert meant, f"the launcher told of nothing a test can mean: {known}"
 
     # Two keys can name one thing, a spot and its collection, so what's added is seen by
@@ -2951,6 +2953,7 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
             assert len(meanings) <= MEANT_MOST, f"meaning added too many: {meanings}"
             assert len(set(meanings)) == len(meanings), f"a meaning came twice: {meanings}"
             assert not set(meanings) & set(typed), f"a meaning repeats a typed row: {meanings}"
+            assert MEANT_PLACE not in meanings, f"Screens stood beside its Brightness: {meanings}"
             desktop.down_to(desktop.showing()["rows"][len(typed)])
             note = desktop.showing()["selected"]["note"]
             assert note == "found by its meaning", f"a meant row says {note!r}"
