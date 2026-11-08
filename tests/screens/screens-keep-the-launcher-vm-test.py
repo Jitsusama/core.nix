@@ -206,7 +206,8 @@ def test_quickshell_warned_of_nothing_as_the_screens_came_and_went(
             f"journalctl --user -u quickshell --since @{unlocked.launcher_since} --no-pager -o cat"
             " | grep -a -F WARN"
             " | grep -a -v -E 'QWaylandTextInputv3::(en|dis)ableSurface'"
-            " | grep -a -v -E 'quickshell[.]io[.]socket.*Socket error.*::ServerNotFoundError' || true"
+            " | grep -a -v -E 'quickshell[.]io[.]socket.*Socket error.*::ServerNotFoundError'"
+            " || true"
         )
     )
     assert warned.strip() == "", f"Quickshell warned:\n{warned}"
