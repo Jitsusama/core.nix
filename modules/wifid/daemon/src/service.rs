@@ -213,7 +213,7 @@ impl Stage {
     interface = "io.jitsusama.Wifi",
     types = [
         Account, Address, Band, Best, Card, Count, Inner, Joined, Load, Management, Method, Nearby,
-        Point, Protection, Reach, Saved, Saving, Security, Stage, Trouble
+        Point, Protection, Reach, Saved, Saving, Security, Stage, Trouble, Way
     ],
     vendor = "jitsusama",
     product = "wifid",
