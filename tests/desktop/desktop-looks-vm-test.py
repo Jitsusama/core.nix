@@ -4,7 +4,7 @@ Here the launcher is laid out at Joel's two scales, on a screen as large as the 
 the other areas' screen is too small to hold the card and its drawer at: 1.5, as the HP draws it,
 and 2, as the laptop does. Its drawer is a plate whose every line lies on one of the card's
 (docs/design.md, the drawer), measured from what the launcher reports of both to a hundredth of a
-pixel, and photographed in the gallery for a person to measure too; the file picker's plate is
+pixel, and shot in the gallery for a person to measure too; the file picker's plate is
 held to the same lines for each kind of file it previews. An ErgoDox unplugged goes from the
 keyboard's layout and the launcher, and comes back plugged in. tests/desktop.nix runs this
 through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
@@ -262,7 +262,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         assert words_on_their_names(card, scale, serif) > 1, (
             f"at {scale} home's rows say nothing: {card}"
         )
-        desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-row-words-at-{scale.replace('.', '-')}")
         # No key is named in a mode where it does nothing: on the find the arrows move the
         # caret, so home's first row, a place, says Return alone, and in normal its arrow too.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
@@ -277,13 +277,13 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         told = desktop.showing()["selected"]["told"]
         assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
         # Home's head in normal: no / and no question, the column kept (Joel, 2026-11-06).
-        desktop.photograph(f"launcher-home-normal-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-home-normal-at-{scale.replace('.', '-')}")
         finds_kitty(desktop, scale)
         card = desktop.showing()["drawer"]["cardLines"]
         assert words_on_their_names(card, scale, serif) > 0, (
             f"at {scale} kitty's row says nothing: {card}"
         )
-        desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-found-words-at-{scale.replace('.', '-')}")
         # The find is a line, no mode of Vim's, so the foot names none; a prompt's insert,
         # which does, is seen whole in finds-sessions' Talk.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
@@ -306,7 +306,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         narrowing = [word for word in field if word["text"].startswith("\u00b7 ")]
         assert narrowing, f"at {scale} the narrowed find says no count: {field}"
         assert not narrowing[0]["cut"], f"at {scale} the narrowed count is cut: {narrowing}"
-        desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-found-normal-at-{scale.replace('.', '-')}")
         says_until_the_next_key(desktop, scale)
         # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
@@ -322,7 +322,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
 
 
 def says_on_its_row(desktop: Desktop, scale: str) -> None:
-    """Photograph an answer whose cursor row says how it stands, at its far end, in normal.
+    """Shoot an answer whose cursor row says how it stands, at its far end, in normal.
 
     What the selection says is a fact about the row, so it's said on the row, before its value,
     rather than in the head (VKCF3Z, 2026-11-06). Location says it here, since GeoClue never
@@ -331,12 +331,12 @@ def says_on_its_row(desktop: Desktop, scale: str) -> None:
     desktop.answer("location")
     desktop.normal()
     desktop.launcher_until(lambda shown: shown["footer"] != "")
-    desktop.photograph(f"launcher-row-says-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-row-says-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
 
 def numbers_programs(desktop: Desktop, scale: str) -> None:
-    """Step into Programs, and photograph its normal and a find in it, the gutter numbering both.
+    """Step into Programs, and shoot its normal and a find in it, the gutter numbering both.
 
     Normal counts from the cursor and the find numbers each row as it is, in one room, as wide
     as Programs' own rows need (VKCF3Z, 2026-11-05). Normal's keys give way rather than run
@@ -351,18 +351,18 @@ def numbers_programs(desktop: Desktop, scale: str) -> None:
     assert gutter["relative"], f"at {scale} normal in Programs: {gutter}"
     overlaps = desktop_session.foot_overlaps(desktop)
     assert not overlaps, f"at {scale} normal in Programs: {overlaps}"
-    desktop.photograph(f"launcher-programs-normal-at-{at}")
+    desktop.shoot(f"launcher-programs-normal-at-{at}")
     desktop.type_in("k")
     desktop.launcher_until(
         lambda shown: shown["gutter"]["shown"] and not shown["gutter"]["relative"]
     )
     assert desktop.showing()["gutter"]["room"] == gutter["room"], f"at {scale} {gutter}"
-    desktop.photograph(f"launcher-programs-found-at-{at}")
+    desktop.shoot(f"launcher-programs-found-at-{at}")
     desktop.close_launcher()
 
 
 def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
-    """Type a find that several of home's rows hold, and photograph the letters it washed.
+    """Type a find that several of home's rows hold, and shoot the letters it washed.
 
     Each row's matched letters take the Search wash, the selected row's on the ground a shade
     past the selection, as his Neovim's hlsearch washes a match.
@@ -376,12 +376,12 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     # Slack Theme among them, so every row found by its name washes what it matched.
     unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
-    desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-find-washed-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
 
 def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
-    """Step into Desktop, whose collections each open by a chord, and photograph their counts.
+    """Step into Desktop, whose collections each open by a chord, and shoot their counts.
 
     A collection listed whole outside home says how many it holds at its right, a muted dot
     from its chord, as the status line joins its facts (VKCF3Z, 2026-11-05). A find's rows
@@ -396,12 +396,12 @@ def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
     selected = desktop.showing()["selected"]
     assert selected["side"], f"at {scale} Desktop's first has no count: {selected}"
     assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
-    desktop.photograph(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
 
 def finds_kitty(desktop: Desktop, scale: str) -> None:
-    """Find kitty from its first letter, photographing the foot at k, then the folder under it.
+    """Find kitty from its first letter, shooting the foot at k, then the folder under it.
 
     The first letter tells the foot more keys than it holds, so the completion, whose ghost the
     field shows, gives way, and Tab in stays, furthest from Return (VKCF3Z, 2026-11-06).
@@ -414,7 +414,7 @@ def finds_kitty(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(lambda shown: shown["typed"] == "k")
     overlaps = desktop_session.foot_overlaps(desktop)
     assert not overlaps, f"at {scale} on k: {overlaps}"
-    desktop.photograph(f"launcher-finds-k-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-finds-k-at-{scale.replace('.', '-')}")
     desktop.type_in("itty")
 
     def holds_the_folder(shown: Json) -> bool:
@@ -472,7 +472,7 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         cut = [word["text"] for word in foot if word["cut"]]
         assert not cut, f"at {scale} the foot cuts what it says: {cut}"
-        desktop.photograph(f"launcher-{shot}-at-{at}")
+        desktop.shoot(f"launcher-{shot}-at-{at}")
     # gg stays on the first row and lets the words go.
     machine.send_chars("gg")
     desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
@@ -480,13 +480,13 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     # back to kitty.
     desktop.into_program()
     desktop.launcher_until(lambda shown: "- up" in (shown["selected"] or {}).get("told", []))
-    desktop.photograph(f"launcher-inside-at-{at}")
+    desktop.shoot(f"launcher-inside-at-{at}")
     desktop.step_out()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
-    """Show every key normal takes with Space ?, as a plate in the drawer, and photograph it.
+    """Show every key normal takes with Space ?, as a plate in the drawer, and shoot it.
 
     Each key's name is whole, and what won't fit above the foot waits for the drawer's keys.
     """
@@ -510,13 +510,13 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     assert bottom_set(drawer, drawer["lines"]["facts"]), (
         f"at {scale} the keys' last line isn't the inset above the foot: {drawer}"
     )
-    desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-keys-at-{scale.replace('.', '-')}")
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
 
 
 def shows_the_command_line(desktop: Desktop, scale: str) -> None:
-    """Open the command line on kitty's row, photograph it and its menu, and let it go.
+    """Open the command line on kitty's row, shoot it and its menu, and let it go.
 
     The menu lists kitty's acts, Return's first, before :q, :help, :set and :{n}; the foot
     names the line's own keys, Tab until a line is chosen and Return once one is, never the
@@ -545,7 +545,7 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
             and len(shown["command"]["menu"]) > len(everywhere)
         )
     )
-    desktop.photograph(f"launcher-command-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-command-at-{scale.replace('.', '-')}")
     said = foot()
     assert any("choose" in text for text in said), said
     assert not any("below" in text or "\u21b5" in text for text in said), said
@@ -558,7 +558,7 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     said = foot()
     assert any("\u21b5" in text for text in said), said
     assert not any("choose" in text or "below" in text for text in said), said
-    desktop.photograph(f"launcher-command-chosen-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-command-chosen-at-{scale.replace('.', '-')}")
     machine.send_key("esc")
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
@@ -566,12 +566,12 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
 
 
 def lines_what_ends(desktop: Desktop, scale: str) -> None:
-    """Find Lock, whose Return writes :lockscreen on the command line, and photograph both.
+    """Find Lock, whose Return writes :lockscreen on the command line, and shoot both.
 
     Locking ends what's in use, so no Return does it: the row names :lockscreen, as d carries
     none of it, and the foot's Return says the line it writes, at the right end where Return
     always is (VKCF3Z, 2026-11-05). Typed down to lo, it lists lockscreen first, and it's
-    photographed there too. Escape lets the line go, back in normal.
+    shot there too. Escape lets the line go, back in normal.
     """
     machine = desktop.machine
     at = scale.replace(".", "-")
@@ -584,10 +584,10 @@ def lines_what_ends(desktop: Desktop, scale: str) -> None:
     told = desktop.showing()["selected"]["told"]
     assert told[:1] == ["\u21b5 :lockscreen"], f"at {scale} an ending row's foot says {told}"
     assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} its foot: {told}"
-    desktop.photograph(f"launcher-ends-at-{at}")
+    desktop.shoot(f"launcher-ends-at-{at}")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "lockscreen")
-    desktop.photograph(f"launcher-ends-lined-at-{at}")
+    desktop.shoot(f"launcher-ends-lined-at-{at}")
     machine.send_key("ctrl-u")
     machine.send_chars("lo")
     desktop.launcher_until(
@@ -596,7 +596,7 @@ def lines_what_ends(desktop: Desktop, scale: str) -> None:
             and shown["command"]["menu"][:1] == ["lockscreen Lock"]
         )
     )
-    desktop.photograph(f"launcher-command-lo-at-{at}")
+    desktop.shoot(f"launcher-command-lo-at-{at}")
     takes_the_head(desktop, scale)
     machine.send_key("esc")
     desktop.launcher_until(
@@ -628,7 +628,7 @@ def takes_the_head(desktop: Desktop, scale: str) -> None:
 
 
 def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
-    """Find Keep Awake and Return, which lands on it in normal, and photograph it there.
+    """Find Keep Awake and Return, which lands on it in normal, and shoot it there.
 
     Its side and the foot say what a second Return does, in the accent, and nothing is done. A
     landing is normal, so its foot keeps normal's command line and key list before Return, its
@@ -645,11 +645,11 @@ def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
     told = shown["selected"]["told"]
     assert told[:1] == [f"\u21b5 {shown['landed']}"], f"at {scale} the landed foot says {told}"
     assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} the landed foot: {told}"
-    desktop.photograph(f"launcher-landed-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-landed-at-{scale.replace('.', '-')}")
 
 
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:
-    """Type keys normal holds in the mode word's room, photograph them there, and let them go.
+    """Type keys normal holds in the mode word's room, shoot them there, and let them go.
 
     They move nothing else in the foot, and Escape lets them go without a step back.
     """
@@ -659,7 +659,7 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
     held = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
     rest = sorted(word["x"] for word in held if word["text"] != typed)
     assert rest == sorted(word["x"] for word in laid), (laid, held)
-    desktop.photograph(shot.replace(".", "-"))
+    desktop.shoot(shot.replace(".", "-"))
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and shown["counted"] == "")
 
@@ -729,7 +729,7 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
         assert shown["hints"] == [], f"at {scale} {shown}"
         assert shown["tinted"] == [shown["current"]], shown
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} d cut {shown}"
-        desktop.photograph(f"launcher-pending-at-{named}")
+        desktop.shoot(f"launcher-pending-at-{named}")
         with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
             machine.send_chars("j")
         # The ask stands on the line, in the find's place, as every ask
@@ -750,7 +750,7 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
         leading = min(laid["field"], key=lambda word: word["x"])
         assert leading["text"].startswith("Close"), f"at {scale} the line leads {leading}"
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
-        desktop.photograph(f"launcher-asks-at-{named}")
+        desktop.shoot(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
             machine.send_key("esc")
         desktop.launcher_until(lambda shown: shown["open"] and shown["question"] == "")
@@ -765,8 +765,8 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     """Copy what's selected with yy, see `rows` flash, and keep the frame furthest from after."""
     machine = desktop.machine
     desktop.normal()
-    photographs = desktop.values["photographs"]
-    if photographs:
+    shots = desktop.values["shots"]
+    if shots:
         # The output named, as Joel's recorder names it (Recorder.qml), since
         # with more than one wf-recorder asks which; and every frame taken,
         # damaged or not (-D), since on a still screen it waited for a frame
@@ -790,7 +790,7 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
     desktop.launcher_until(lambda shown: shown["flashing"] == [])
     desktop.settled_screen(settled)
-    if photographs:
+    if shots:
         machine.succeed("pkill -INT -x wf-recorder")
         machine.wait_until_fails("pgrep -x wf-recorder", timeout=timedelta(seconds=10))
         flashed_frame(desktop).save(machine.out_dir / f"{flash}.png")
@@ -824,7 +824,7 @@ def changed_from(after: Image.Image, frame: Image.Image) -> float:
 
 # Visual line counts the rows it holds in the mode word, and what arrives
 # while they're chosen waits, counted last among the foot's facts, beside
-# the mode holding them still (VKCF3Z, 2026-11-05), photographed at each
+# the mode holding them still (VKCF3Z, 2026-11-05), shot at each
 # of Joel's scales for a person to judge.
 
 
@@ -862,7 +862,7 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         assert "y copy" in hints, f"at {scale} with one new the foot drew {hints}"
         overlaps = desktop_session.foot_overlaps(desktop)
         assert not overlaps, f"at {scale} with one new: {overlaps}"
-        desktop.photograph(f"launcher-visual-waits-at-{named}")
+        desktop.shoot(f"launcher-visual-waits-at-{named}")
         machine.send_key("esc")
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 0 and not shown["glance"].endswith("new")
@@ -876,10 +876,10 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
 def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Go into the key list's drawer at each of Joel's scales, move there, and photograph it.
+    """Go into the key list's drawer at each of Joel's scales, move there, and shoot it.
 
     Gone into, the drawer holds the keys: its frame takes the accent and its cursor's line the
-    rule in its left margin. Five lines down and four letters along, it's photographed with the
+    rule in its left margin. Five lines down and four letters along, it's shot with the
     foot at the laptop's size, for a person to judge, then with x's E21 and q's words where the
     line and the foot were, and Ctrl+W h comes back.
     """
@@ -901,14 +901,14 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
         drawn = desktop.showing()["drawer"]
         assert drawn["keys"], f"at {scale} the drawer doesn't hold the keys: {drawn}"
         assert drawn["cursor"]["rule"]["width"] > 0, f"at {scale} no rule: {drawn['cursor']}"
-        desktop.photograph(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
         # A page can't be changed, so x says Vim's E21 where the line was, and q how to close.
         pressed(desktop, "x")
         desktop.launcher_until(lambda shown: shown["commandSaid"] == "E21: Cannot make changes")
-        desktop.photograph(f"launcher-drawer-refused-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-drawer-refused-at-{scale.replace('.', '-')}")
         pressed(desktop, "q")
         desktop.launcher_until(lambda shown: shown["saying"] == ["q does nothing", ":q closes"])
-        desktop.photograph(f"launcher-drawer-quit-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-drawer-quit-at-{scale.replace('.', '-')}")
         # Space ? in it lists the drawer's own keys there; the pair come apart leaves ? alone,
         # a search back, which Escape lets go.
         pressed_until(
@@ -917,7 +917,7 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
             lambda shown: shown["drawer"]["title"] == "The Drawer's Keys",
             lambda: pressed(desktop, "esc"),
         )
-        desktop.photograph(f"launcher-drawer-listed-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-drawer-listed-at-{scale.replace('.', '-')}")
         # The h alone moves the cursor a letter, which leaves nothing to put back.
         pressed_until(
             desktop,
@@ -928,10 +928,10 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
         closed_from_the_list(desktop)
 
 
-def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
+def test_the_drawers_search_and_visual_are_shot_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Search the key list's drawer, choose in it and copy, photographing each at both scales.
+    """Search the key list's drawer, choose in it and copy, shooting each at both scales.
 
     What's typed after / is washed as it's typed; v chooses letters and V lines, the mode word
     counting them, "3 chosen"; and y flashes what it took. Each is kept for a person
@@ -951,15 +951,15 @@ def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
         )
         pressed(desktop, "slash d o w n")
         desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "down")
-        desktop.photograph(f"launcher-drawer-washed-at-{named}")
+        desktop.shoot(f"launcher-drawer-washed-at-{named}")
         pressed(desktop, "ret")
         desktop.launcher_until(partial(landed_on, "Down"))
         pressed(desktop, "v l l l l")
         desktop.launcher_until(partial(chose, "letters", 5))
-        desktop.photograph(f"launcher-drawer-letters-at-{named}")
+        desktop.shoot(f"launcher-drawer-letters-at-{named}")
         pressed(desktop, "esc shift-v j j")
         desktop.launcher_until(partial(chose, "lines", 3))
-        desktop.photograph(f"launcher-drawer-lines-at-{named}")
+        desktop.shoot(f"launcher-drawer-lines-at-{named}")
         caught_flash(desktop, f"launcher-drawer-flash-at-{named}")
         pressed_until(
             desktop,
@@ -1022,7 +1022,7 @@ def caught_flash(desktop: Desktop, name: str) -> None:
         for shot, after in shots:
             before, since = changed(shot, choice), changed(shot, page)
             if before >= FLASHED and since >= FLASHED:
-                if desktop.values["photographs"]:
+                if desktop.values["shots"]:
                     shot.save(desktop.machine.out_dir / f"{name}.png")
                 return
             seen.append(f"{after * 1000:.0f} ms: {before} from the choice, {since} from the page")
@@ -1140,7 +1140,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         # On the card's beat, two Title pitches or more under the title.
         assert after_the_title(lines["words"], lines, card), drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
-        desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
 
@@ -1201,7 +1201,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         assert says_what_it_hides(drawer, facts), (
             f"at {scale} the last line doesn't count what's hidden: {drawer}"
         )
-        desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
         # The zone's plate, under its eyebrow: a value that won't sit beside its name on one
         # line, as "none before 2046", takes the plate's width under it instead, so no fact
@@ -1228,7 +1228,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
             f"at {scale} the zone's facts are off the pitch: {drawer}"
         )
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
-        desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
 
@@ -1277,13 +1277,13 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
             )
         )
         home_network_plate(desktop, scale, "Internet")
-        desktop.photograph(f"launcher-home-network-at-{at}")
+        desktop.shoot(f"launcher-home-network-at-{at}")
         desktop.down_to("Study")
         home_network_plate(desktop, scale, "Study")
-        desktop.photograph(f"launcher-home-network-node-at-{at}")
+        desktop.shoot(f"launcher-home-network-node-at-{at}")
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
-        desktop.photograph(f"launcher-home-network-device-at-{at}")
+        desktop.shoot(f"launcher-home-network-device-at-{at}")
         desktop.close_launcher()
 
 
@@ -1351,7 +1351,7 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
             f"at {scale} the status line ends at {ends}, not the inset at {shown['footEnd']}: "
             f"{foot}"
         )
-        desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
 
@@ -1462,7 +1462,7 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                     assert facts[0] > drawer["lines"]["preview"], f"{name}'s facts lead: {drawer}"
                 assert facts[-1] < drawer["foot"], f"at {scale} {name}'s facts are cut: {drawer}"
                 said = name.replace(".", "-")
-                desktop.photograph(f"file-picker-{said}-at-{scale.replace('.', '-')}")
+                desktop.shoot(f"file-picker-{said}-at-{scale.replace('.', '-')}")
             # :q refuses the ask from any folder, Escape closing nothing.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
@@ -1532,7 +1532,7 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             assert "Open the Gathered" not in shown["rows"], shown["rows"]
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
-            desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
+            desktop.shoot(f"file-picker-one-file-at-{scale.replace('.', '-')}")
             at_the_top(desktop, scale)
             # :q refuses the ask from any folder, Escape closing nothing.
             desktop.close_launcher()
@@ -1542,7 +1542,7 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
 
 
 def at_the_top(desktop: Desktop, scale: str) -> None:
-    """Go up by - to /, a dialog's top, where - says it has nowhere to go; photograph it.
+    """Go up by - to /, a dialog's top, where - says it has nowhere to go; shoot it.
 
     Each folder's foot offers - up, and / offers none, since - there would leave the ask.
     The head still says where he is, "Open the Notes \u203a /", as it does a folder down.
@@ -1568,7 +1568,7 @@ def at_the_top(desktop: Desktop, scale: str) -> None:
             and shown["path"][-1:] == ["/"]
         )
     )
-    desktop.photograph(f"file-picker-at-the-top-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"file-picker-at-the-top-at-{scale.replace('.', '-')}")
 
 
 def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
@@ -1603,9 +1603,9 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
                     and "a.md" not in shown["rows"]
                 )
             )
-            desktop.photograph(f"file-picker-save-name-at-{shot}")
+            desktop.shoot(f"file-picker-save-name-at-{shot}")
             desktop.normal()
-            desktop.photograph(f"file-picker-save-name-normal-at-{shot}")
+            desktop.shoot(f"file-picker-save-name-normal-at-{shot}")
             machine.send_key("ret")
             desktop.launcher_until(
                 lambda shown: (
@@ -1615,7 +1615,7 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
                     and shown["questionWhole"]
                 )
             )
-            desktop.photograph(f"file-picker-save-replace-at-{shot}")
+            desktop.shoot(f"file-picker-save-replace-at-{shot}")
             machine.send_chars("n")
             desktop.launcher_until(lambda shown: shown["question"] == "" and shown["open"])
             # :q, from normal on the name, refuses the ask, Escape closing nothing.
@@ -1649,7 +1649,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             assert desktop.showing()["hint"] == "open which files?", desktop.showing()
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
-            desktop.photograph(f"file-picker-nothing-gathered-at-{said}")
+            desktop.shoot(f"file-picker-nothing-gathered-at-{said}")
             # V takes rows, tinted, and the mode word and the foot say how many.
             desktop.normal()
             machine.send_chars("Vj")
@@ -1661,7 +1661,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
                     and selected_is(shown, name="b.md", told="\u21b5 open 2")
                 )
             )
-            desktop.photograph(f"file-picker-visual-at-{said}")
+            desktop.shoot(f"file-picker-visual-at-{said}")
             desktop.normal()
             desktop.down_to("a.md")
             ran(desktop, "arga")
@@ -1676,23 +1676,23 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
                     and selected_is(shown, name="d.md", told="\u21b5 open 2")
                 )
             )
-            desktop.photograph(f"file-picker-two-gathered-at-{said}")
+            desktop.shoot(f"file-picker-two-gathered-at-{said}")
             ran(desktop, "args")
             desktop.launcher_until(lambda shown: "Forget Them" in shown["rows"])
             # The cursor stands on the first gathered, and Return still answers both.
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
-            desktop.photograph(f"file-picker-inside-gathered-at-{said}")
+            desktop.shoot(f"file-picker-inside-gathered-at-{said}")
             # Typed past the hint, the middle folder gives way to what's typed, and the
             # last step and what's typed stay whole (VKCF3Z, 2026-11-06).
             desktop.type_in("abcdefghijklmno")
-            desktop.photograph(f"file-picker-typed-gathered-at-{said}")
+            desktop.shoot(f"file-picker-typed-gathered-at-{said}")
             machine.send_key("ctrl-u")
             desktop.launcher_until(lambda shown: shown["typed"] == "")
             desktop.step_out()
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
-            desktop.photograph(f"file-picker-copy-last-at-{said}")
+            desktop.shoot(f"file-picker-copy-last-at-{said}")
             # :q refuses the ask from any folder, Escape closing nothing.
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
@@ -1747,7 +1747,7 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
             desktop.normal()
             machine.send_chars(":sort ")
             desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "sort ")
-            desktop.photograph(f"file-picker-sort-menu-at-{said}")
+            desktop.shoot(f"file-picker-sort-menu-at-{said}")
             machine.send_key("ctrl-u")
             machine.send_key("esc")
             desktop.launcher_until(lambda shown: shown["command"] is None)
@@ -1755,7 +1755,7 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
                 ran(desktop, line)
                 desktop.launcher_until(partial(listed_from_the_top, listed=listed))
                 shot = line.replace(" ", "-").replace("!", "-turned")
-                desktop.photograph(f"file-picker-{shot}-at-{said}")
+                desktop.shoot(f"file-picker-{shot}-at-{said}")
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
@@ -1996,7 +1996,7 @@ def orchestrator_says_whose_spend_is_whose(desktop: Desktop) -> None:
 
 
 def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str) -> None:
-    """Photograph the orchestrator's drawer, its eyebrow naming its repository as written.
+    """Shoot the orchestrator's drawer, its eyebrow naming its repository as written.
 
     The eyebrow says its address, its repository and when it started, set as they're written,
     never in capitals, since they're names from the world (VKCF3Z, 2026-11-06). Short of room,
@@ -2016,11 +2016,11 @@ def orchestrators_drawer_names_its_repo(desktop: Desktop, title: str, shot: str)
     assert drawer["eyebrowDrawn"] in {whole, "TESTQA \u00b7 core.nix", "TESTQA"}, (
         f"at {shot} the eyebrow is cut mid-fact: {drawer}"
     )
-    desktop.photograph(f"launcher-agents-drawer-at-{shot}")
+    desktop.shoot(f"launcher-agents-drawer-at-{shot}")
 
 
 def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
-    """Photograph a session past 80% full, its drawer giving its figures by gen_ai's names."""
+    """Shoot a session past 80% full, its drawer giving its figures by gen_ai's names."""
     desktop.down_to(title)
     # Its step leads, its figures follow what it spent, then its quest and machine, and what
     # its quest is about, long, comes last, so the first screen holds the rest (Joel and
@@ -2055,11 +2055,11 @@ def figures_in_the_drawer(desktop: Desktop, title: str, shot: str) -> None:
     hidden = int(said.split(maxsplit=1)[0]) if said else 0
     led = first[: first.index("Context") + 1]
     assert len(drawer["facts"]) - hidden >= len(led), f"at {shot} it hides {said}: {drawer}"
-    desktop.photograph(f"launcher-agents-figures-at-{shot}")
+    desktop.shoot(f"launcher-agents-figures-at-{shot}")
 
 
 def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str) -> None:
-    """Photograph the foot on a working, a listening and a paused row, then one's acts.
+    """Shoot the foot on a working, a listening and a paused row, then one's acts.
 
     Return does each state's harmless act, which the foot says before it's pressed
     (VKCF3Z, 2026-11-06): talk to one listening, resume one paused. A step in holds every
@@ -2071,7 +2071,7 @@ def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 resume"]
     )
-    desktop.photograph(f"launcher-agents-returns-paused-found-at-{shot}")
+    desktop.shoot(f"launcher-agents-returns-paused-found-at-{shot}")
     desktop.normal()
     feet = [("TESTQD", "working", "\u21b5 go to"), ("TESTQC", "listening", "\u21b5 talk")]
     for address, stands, said in [*feet, ("TESTQE", "paused", "\u21b5 resume")]:
@@ -2083,30 +2083,30 @@ def returns_said_in_the_foot(desktop: Desktop, titles: dict[str, str], shot: str
             return any(str(one).startswith(said) for one in told)
 
         desktop.launcher_until(foot_says)
-        desktop.photograph(f"launcher-agents-returns-{stands}-at-{shot}")
+        desktop.shoot(f"launcher-agents-returns-{stands}-at-{shot}")
     desktop.down_to(titles["TESTQC"])
     desktop.follow()
     desktop.launcher_until(lambda shown: "Talk" in shown["rows"][:2])
-    desktop.photograph(f"launcher-agents-acts-at-{shot}")
+    desktop.shoot(f"launcher-agents-acts-at-{shot}")
     desktop.step_out()
 
 
 def fold_steps_in(desktop: Desktop, shot: str) -> None:
-    """Photograph the fold's row, then what Return steps in to: each session it holds."""
+    """Shoot the fold's row, then what Return steps in to: each session it holds."""
     desktop.down_to(FOLD)
-    desktop.photograph(f"launcher-agents-fold-at-{shot}")
+    desktop.shoot(f"launcher-agents-fold-at-{shot}")
     desktop.machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
             shown["held"][-1:] == [FOLD] and all(title in shown["rows"] for title in FOLDED)
         )
     )
-    desktop.photograph(f"launcher-agents-fold-inside-at-{shot}")
+    desktop.shoot(f"launcher-agents-fold-inside-at-{shot}")
     desktop.step_out()
 
 
 def closed_stand_last(desktop: Desktop, shot: str) -> None:
-    """Photograph the closed orchestrators at the tree's end, one on the cursor, one at rest.
+    """Shoot the closed orchestrators at the tree's end, one on the cursor, one at rest.
 
     Each is dimmed, says it's closed, and what all of it spent only where it spent today;
     Return reopens it.
@@ -2120,11 +2120,11 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     )
     rows = desktop.showing()["rows"]
     assert rows.index("Lamplight") + 1 == rows.index("Beacon"), f"at {shot}: {rows}"
-    desktop.photograph(f"launcher-agents-closed-at-{shot}")
+    desktop.shoot(f"launcher-agents-closed-at-{shot}")
 
 
 def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str) -> None:
-    """Photograph a session's Close on the cursor, then its ask, which says what stays.
+    """Shoot a session's Close on the cursor, then its ask, which says what stays.
 
     Close ends the session, so Return puts it on the command line and a fresh Return asks,
     naming the session by its address and what of it stays (VKCF3Z, 2026-11-06); n leaves
@@ -2134,7 +2134,7 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     desktop.follow()
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     desktop.down_to("Close")
-    desktop.photograph(f"launcher-agents-close-at-{shot}")
+    desktop.shoot(f"launcher-agents-close-at-{shot}")
     # The second Return waits out the first's, which the launcher takes for the same press
     # doubled while it's fresh, and so runs nothing.
     desktop.line("close")
@@ -2147,7 +2147,7 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
     assert drawn.startswith(f"Close {address}?"), f"at {shot} the ask lost its subject: {drawn}"
     assert drawn.endswith("(y/n)"), f"at {shot} the ask lost its keys: {drawn}"
     assert shown["questionWhole"], f"at {shot} the ask was cut: {drawn}"
-    desktop.photograph(f"launcher-agents-close-asks-at-{shot}")
+    desktop.shoot(f"launcher-agents-close-asks-at-{shot}")
     with desktop.told("answered no"):
         desktop.machine.send_chars("n")
     desktop.launcher_until(lambda shown: shown["question"] == "")
@@ -2155,7 +2155,7 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
 
 
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
-    """Photograph Landed, its count at its side, then inside it, a landing's drawer out.
+    """Shoot Landed, its count at its side, then inside it, a landing's drawer out.
 
     Each says what landed as its name and its ref in the mono at its right; its drawer says
     who landed it and when, and what to try, a sentence the row has no room for. Nothing is
@@ -2163,7 +2163,7 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     """
     desktop.down_to("Landed")
     assert desktop.showing()["selected"]["side"] == "2", f"at {shot}: {desktop.showing()}"
-    desktop.photograph(f"launcher-agents-landed-at-{shot}")
+    desktop.shoot(f"launcher-agents-landed-at-{shot}")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
     desktop.down_to(CLOSING)
@@ -2174,19 +2174,19 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
             shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
         )
     )
-    desktop.photograph(f"launcher-agents-landed-in-at-{shot}")
+    desktop.shoot(f"launcher-agents-landed-in-at-{shot}")
     desktop.step_out()
 
 
 def after_the_sessions(desktop: Desktop, shot: str) -> None:
-    """Photograph what Agents holds after its sessions: the closed, Landed, and Start a Session."""
+    """Shoot what Agents holds after its sessions: the closed, Landed, and Start a Session."""
     closed_stand_last(desktop, shot)
     landed_lists_what_sessions_landed(desktop, shot)
     a_quest_offers_to_orchestrate(desktop, shot)
 
 
 def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
-    """Photograph a quest's step in from Start a Session: Start Here, then Orchestrate.
+    """Shoot a quest's step in from Start a Session: Start Here, then Orchestrate.
 
     Normal's foot keeps : and Space ?, since the mode's word holds room only for what it
     says in normal, never for visual's count (VKCF3Z, 2026-11-07: held for "N chosen", it
@@ -2200,10 +2200,10 @@ def a_quest_offers_to_orchestrate(desktop: Desktop, shot: str) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
     hints = desktop.showing()["hints"]
     assert {": commands", "Space ? keys"} <= set(hints), f"at {shot}: {hints}"
-    desktop.photograph(f"launcher-agents-start-quest-at-{shot}")
+    desktop.shoot(f"launcher-agents-start-quest-at-{shot}")
     desktop.machine.send_chars("v")
     desktop.launcher_until(lambda shown: shown["modeWord"] == "1 chosen")
-    desktop.photograph(f"launcher-agents-start-quest-visual-at-{shot}")
+    desktop.shoot(f"launcher-agents-start-quest-visual-at-{shot}")
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["modeWord"] == "")
     desktop.step_out()
@@ -2259,7 +2259,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             assert inks["TESTQE"] != inks["TESTQC"], f"at {scale} paused looks live: {inks}"
             assert "waiting" not in " ".join(reads.values()), reads
             shot = scale.replace(".", "-")
-            desktop.photograph(f"launcher-agents-tree-at-{shot}")
+            desktop.shoot(f"launcher-agents-tree-at-{shot}")
             orchestrators_drawer_names_its_repo(desktop, titles["TESTQA"], shot)
             figures_in_the_drawer(desktop, titles["TESTQD"], shot)
             returns_said_in_the_foot(desktop, titles, shot)
@@ -2282,7 +2282,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         # And it leads the words drawn after its name, since the note is only in the foot.
         drawn = [word["text"] for word in row["words"]]
         assert any(text.startswith("under TESTQC") for text in drawn), drawn
-        desktop.photograph("launcher-agents-typed-flat")
+        desktop.shoot("launcher-agents-typed-flat")
         desktop.close_launcher()
     finally:
         unorchestrated(desktop)
@@ -2291,7 +2291,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
 def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Photograph dictation, a meter above it, and a meter alone at its least and most.
+    """Shoot dictation, a meter above it, and a meter alone at its least and most.
 
     Both are one frame at the bottom centre, the frame's inset from the ink on every side
     (docs/design.md, The Ladder). A meter that shows while dictation listens stands the space
@@ -2317,7 +2317,7 @@ def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
         return screen.crop(box).tobytes()
 
     def shot_once_in(name: str, rows: tuple[float, float], before: bytes) -> None:
-        """Photograph once the band shows something it didn't, or after three seconds.
+        """Shoot once the band shows something it didn't, or after three seconds.
 
         While dictation listens, its clock and wave move, so the screen never holds still,
         and a meter goes again in a second and a half; and niri can show dictation's first
@@ -2327,14 +2327,14 @@ def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
         deadline = time.monotonic() + 3
         while band(rows) == before and time.monotonic() < deadline:
             pass
-        if desktop.values["photographs"]:
+        if desktop.values["shots"]:
             machine.screenshot(name)
 
     def metered(level: str, name: str) -> None:
         machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
         with desktop.told("drawn volume"):
             desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {level}")
-        desktop.photograph(name)
+        desktop.shoot(name)
 
     try:
         for scale in at_each_scale:
@@ -2448,7 +2448,7 @@ BUDGETED = {
 def test_the_budgets_stand_behind_one_row_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Photograph AI spend's Budgets row, the budgets behind it, and a plan's windows.
+    """Shoot AI spend's Budgets row, the budgets behind it, and a plan's windows.
 
     One row stands for every budget, the month's whole beside it; behind it the whole first,
     then each budget nearest its allowance first, each standing in its own unit, and a plan
@@ -2470,7 +2470,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
             desktop.down_to("Budgets")
             assert desktop.showing()["selected"]["side"] == "$21,564 this month"
-            desktop.photograph(f"launcher-budgets-at-{named}")
+            desktop.shoot(f"launcher-budgets-at-{named}")
             desktop.step_in()
             rows = desktop.showing()["rows"]
             assert rows[:4] == [
@@ -2480,11 +2480,11 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
                 "Delta team token",
             ], rows
             desktop.down_to("Claude Pro")
-            desktop.photograph(f"launcher-budgets-each-at-{named}")
+            desktop.shoot(f"launcher-budgets-each-at-{named}")
             desktop.step_in()
             rows = desktop.showing()["rows"]
             assert rows[:2] == ["Five Hours", "Week"], rows
-            desktop.photograph(f"launcher-budgets-windows-at-{named}")
+            desktop.shoot(f"launcher-budgets-windows-at-{named}")
             desktop.close_launcher()
     finally:
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")
@@ -2575,7 +2575,7 @@ def the_card_turned(desktop: Desktop, since: str, before: Image.Image, layer: st
 def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
     """Give the keyboards the launcher lists, once its search finds the ErgoDox's key or not.
 
-    The keyboards are photographed each time, for the design's look.
+    The keyboards are shot each time, for the design's look.
     """
     there = plugged != "unplugged"
     desktop.answer("keypad 7")
@@ -2584,7 +2584,7 @@ def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
     desktop.answer("keyboards")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "The Laptop's Keyboard" in shown["rows"])
-    desktop.photograph(f"launcher-keyboards-{plugged}-at-{scale.replace('.', '-')}")
+    desktop.shoot(f"launcher-keyboards-{plugged}-at-{scale.replace('.', '-')}")
     rows = cast("list[str]", desktop.showing()["rows"])
     desktop.close_launcher()
     return rows
@@ -2613,13 +2613,13 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
         plug_in_the_ergodox(desktop)
         assert ERGODOX in keyboards_listed(desktop, scale, "plugged")
         boards = the_layout_drawn(desktop, "Numb")
-        desktop.photograph(f"keyboard-layout-plugged-at-{named}")
+        desktop.shoot(f"keyboard-layout-plugged-at-{named}")
         # The open card stays as the board goes, turned to the laptop's own.
         before = desktop.screen_now()
         since = desktop.mark()
         unplug_the_ergodox(desktop)
         turned = the_card_turned(desktop, since, before, LAPTOPS)
-        desktop.photograph(f"keyboard-layout-unplugged-at-{named}")
+        desktop.shoot(f"keyboard-layout-unplugged-at-{named}")
         with desktop.told("gone keyboard"):
             desktop.as_account("qs ipc call keyboard toggle")
         rows = keyboards_listed(desktop, scale, "unplugged")

@@ -109,7 +109,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     # The battery's charge leads, as the kernel's stand-in has it.
     charge = charged(desktop)
     desktop.answer("battery")
-    desktop.photograph("launcher-battery")
+    desktop.shoot("launcher-battery")
     assert yanked(desktop).startswith(f"{charge}%, ")
     # Then what feeds it: the stand-in's charger, plugged in, a step
     # into the answer's row.
@@ -128,7 +128,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
         )
     )
     # Its charge among them, drawn as a bar, and none of them a glyph.
-    desktop.photograph("launcher-charger-parts")
+    desktop.shoot("launcher-charger-parts")
     # Each part is named first, then what it says: the stand-in's health
     # is good, and its temperature has a bar.
     desktop.launcher_until(
@@ -158,7 +158,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     # the stand-in battery is one.
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
     desktop.answer("heat")
-    desktop.photograph("launcher-heat")
+    desktop.shoot("launcher-heat")
     assert re.search("^-?\\d+ \\u00b0C at the ", yanked(desktop))
     # Each part reads name first, a step in by Return; Return opens one,
     # its history first, and again once back out by -.
@@ -177,7 +177,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
 
     desktop.follow()
     desktop.launcher_until(in_battery)
-    desktop.photograph("launcher-heat-part")
+    desktop.shoot("launcher-heat-part")
     desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
@@ -278,7 +278,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.close_launcher()
     # The keyboards QEMU gives it, however many, and caps lock.
     desktop.answer("keyboards")
-    desktop.photograph("launcher-keyboards")
+    desktop.shoot("launcher-keyboards")
     assert re.search("^(one keyboard|[1-9]\\d* keyboards), caps lock off$", yanked(desktop))
     # The keyboards are a step into the answer, and each holds its parts,
     # named first, a step further by Return. QEMU's
@@ -304,7 +304,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
             and {"Repeat", "Light", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
-    desktop.photograph("launcher-keyboard-parts")
+    desktop.shoot("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
     # In normal the field names no key, since - steps out rather than
     # clearing, so a letter typed on the find, then normal, brings none.
@@ -313,7 +313,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.launcher_until(lambda shown: shown["typed"] == "l")
     desktop.normal()
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    desktop.photograph("launcher-keyboard-path-normal")
+    desktop.shoot("launcher-keyboard-path-normal")
     assert not any("\u2190" in word["text"] for word in field), field
     assert not any(word["text"].endswith(" clear") for word in field), field
     desktop.on_find()
@@ -410,7 +410,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
     )
-    desktop.photograph("launcher-disks")
+    desktop.shoot("launcher-disks")
     # Its first part, a step in after Return's own Copy, is the space the
     # headline's disk has, and the disk's speed, how busy it is and its
     # latency come after.
@@ -655,7 +655,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
             and "Holds" not in shown["rows"]
         )
     )
-    desktop.photograph("launcher-queue")
+    desktop.shoot("launcher-queue")
     desktop.close_launcher()
     desktop.as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # How busy the processors are, read again while it's shown, so a
@@ -1333,7 +1333,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
             lambda shown: firmware_reads(shown).startswith("Firmware \u00b7 1 update ready")
         )
         desktop.type_in("firm", "Firmware")
-        desktop.photograph("launcher-firmware-in-machine")
+        desktop.shoot("launcher-firmware-in-machine")
         desktop.follow()
         # A device is a thing, so the drawer is out for the BIOS: who makes
         # it, its version, what's offered and the release's own words.
@@ -1348,7 +1348,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
         reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
         assert reads[0].startswith("System Firmware \u00b7 1.12.0"), reads
         assert reads[1].startswith("PVC10 SK hynix 1024GB \u00b7 61001171"), reads
-        desktop.photograph("launcher-firmware")
+        desktop.shoot("launcher-firmware")
         desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"] == ["Install 1.13.0", "Version"])
         desktop.close_launcher()
@@ -1403,7 +1403,7 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
                 and shown["footer"] == "it can't be undone, and finishes at a restart"
             )
         )
-        desktop.photograph("launcher-firmware-install-asks")
+        desktop.shoot("launcher-firmware-install-asks")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         # Return again writes its line, banged, since the step was the asking, and a fresh
         # Return there installs, keeping the launcher and saying so; a third Return while
@@ -1427,7 +1427,7 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
                 and shown["footer"] == "restart to finish"
             )
         )
-        desktop.photograph("launcher-firmware-install-waits")
+        desktop.shoot("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()
         assert ran == ["update bios --assume-yes --no-reboot-check"], ran
         desktop.close_launcher()
@@ -1468,7 +1468,7 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
     desktop.launcher_until(lambda shown: shown["rows"][1:3] == ["Brightness", "Warmth"])
     desktop.down_to("Warmth")
     desktop.launcher_until(warmth_selected("on", "off", "5200 K, following the room"))
-    desktop.photograph("launcher-warmth")
+    desktop.shoot("launcher-warmth")
     # Return tells the daemon over the session's bus, which is heard here.
     desktop.as_account(
         "systemd-run --user --collect --quiet --unit=warmth-heard -- sh -c "
@@ -1628,7 +1628,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
             and shown["footer"] == "by the display engine"
         )
     )
-    desktop.photograph("launcher-kept-from-resting")
+    desktop.shoot("launcher-kept-from-resting")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
     desktop.close_launcher()
@@ -1665,7 +1665,7 @@ def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Des
         )
         desktop.down_to("Kept From Resting")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "12%")
-        desktop.photograph("launcher-kept-from-resting-on-battery")
+        desktop.shoot("launcher-kept-from-resting-on-battery")
         # The charger going in while it's shown doesn't move it: it stays
         # where it was, dimmed, saying why, until Power is opened again.
         desktop.power("on")

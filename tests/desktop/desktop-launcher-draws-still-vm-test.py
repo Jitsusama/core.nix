@@ -909,7 +909,7 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
         desktop.launcher_until(heard)
         place = desktop.showing()["keysRoom"]["place"]
         after = laid_out(desktop)
-        desktop.photograph(f"launcher-still-{step:02}-{key}")
+        desktop.shoot(f"launcher-still-{step:02}-{key}")
         # What the foot read before and after, so a move says what took
         # its room as well as what gave it.
         read = [" ".join(word["text"] for word in laid["foot"]) for laid in (before, after)]

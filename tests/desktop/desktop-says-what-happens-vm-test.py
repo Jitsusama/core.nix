@@ -98,14 +98,14 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # Home's Now says one was missed earlier, since it left by itself.
-    desktop.photograph("launcher-home-missed")
+    desktop.shoot("launcher-home-missed")
     desktop.type_in("build fin", selecting="the laptop is ready")
     # Its drawer says each part once: the summary as its title, then the
     # body, not the row's name over both again (VKCF3Z, 2026-11-02).
     desktop.launcher_until(lambda shown: shown["drawer"]["out"])
     drawn = desktop.showing()["drawer"]
     assert (drawn["title"], drawn["body"]) == ("Build finished", "the laptop is ready"), drawn
-    desktop.photograph("launcher-notices")
+    desktop.shoot("launcher-notices")
     # Nothing sent it that can be gone to, so Return steps in, as the right
     # arrow does in normal mode, where copying what it said comes last of
     # its acts, never first.
@@ -132,7 +132,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     )
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
-    desktop.photograph("launcher-notices-all")
+    desktop.shoot("launcher-notices-all")
     desktop.close_launcher()
 
 
@@ -312,7 +312,7 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     assert hidden, drawer
     assert int(hidden[1]) >= page.LINES - int(drawer["height"]) // PITCH, drawer
     assert "\u21e7" not in page.rows["selected"]["told"], page.rows["selected"]
-    desktop.photograph("launcher-plate")
+    desktop.shoot("launcher-plate")
     title = drawer["lines"]["title"]
     page.into()
     one = int(page.until("ctrl-e", a_line_on)["scrolled"])
@@ -396,7 +396,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         page.open()
         at = into_in_sight(desktop, page, scale)
         named = scale.replace(".", "-")
-        desktop.photograph(f"launcher-drawer-keys-at-{named}")
+        desktop.shoot(f"launcher-drawer-keys-at-{named}")
 
         def five_down(drawer: Json, below: int = int(at["line"]) + 5) -> bool:
             return bool(drawer["cursor"]["line"] == below)
@@ -413,12 +413,12 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
                 drawer["cursor"]["letter"] == min(len("line"), len(drawer["cursor"]["says"]) - 1)
             ),
         )
-        desktop.photograph(f"launcher-drawer-cursor-at-{named}")
+        desktop.shoot(f"launcher-drawer-cursor-at-{named}")
         # Scrolled a line further, for a person to judge the top's inset by: the first line
         # shown on the eyebrow's baseline, its capitals the inset under the frame.
         scrolled = page.until("ctrl-e", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
         assert a_line_on(scrolled), f"at {named} bare rows lie over the first line: {scrolled}"
-        desktop.photograph(f"launcher-drawer-scrolled-at-{named}")
+        desktop.shoot(f"launcher-drawer-scrolled-at-{named}")
     page.press("3")
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
@@ -713,9 +713,9 @@ def searched_at_each_scale(page: InTheDrawer) -> None:
         at = int(page.into()["line"])
         page.until("/ d e p l o y ret", functools.partial(first, at))
         named = scale.replace(".", "-")
-        desktop.photograph(f"launcher-drawer-search-at-{named}")
+        desktop.shoot(f"launcher-drawer-search-at-{named}")
         page.pressed_until("/ z z z ret", lambda shown: shown["saying"] == [E486_ZZZ])
-        desktop.photograph(f"launcher-drawer-missing-at-{named}")
+        desktop.shoot(f"launcher-drawer-missing-at-{named}")
     page.back("ctrl-w h")
     desktop.close_launcher()
 
@@ -790,7 +790,7 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
         page.open()
         page.into()
         page.until("v l l l l l j", chose("letters", 2))
-        desktop.photograph(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
     page.pressed_until("esc", lambda shown: shown["mode"] == "page")
     page.back("ctrl-w h")
     desktop.close_launcher()
@@ -806,14 +806,14 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     with desktop.told("shows card Lunch"):
         desktop.as_account("notify-send --expire-time=60000 'Lunch' 'at noon'")
     # notify-send waits for the answer, so it runs on its own. The
-    # photograph waits for its card's frames to settle, which is when
+    # shot waits for its card's frames to settle, which is when
     # Qt would have warned of a layout that never does.
     with desktop.told("shows card Recording saved"):
         desktop.as_account(
             "notify-send --action=play='Play it' 'Recording saved' 'x.mp4'"
             " > /tmp/answer 2>&1 < /dev/null &"
         )
-    desktop.photograph("notice-with-action")
+    desktop.shoot("notice-with-action")
     # Qt only warns when a layout never settles, which left the
     # card's words piled at its top.
     log = desktop.shell_said("polish() loop")
@@ -835,7 +835,7 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
         desktop.told("notice foot ends at the frame"),
     ):
         machine.send_key("meta_l-n")
-    desktop.photograph("notices-held")
+    desktop.shoot("notices-held")
     for key in ["tab", "backspace", "h", "l"]:
         with desktop.told("notice says not here"):
             machine.send_key(key)
@@ -845,7 +845,7 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
         desktop.told("notice offers :play"),
     ):
         machine.send_chars(":forg\n", delay=KEY_PACE)
-    desktop.photograph("notices-held-verbs")
+    desktop.shoot("notices-held-verbs")
     with desktop.told("notice menu chose play"):
         machine.send_chars(":", delay=KEY_PACE)
         machine.send_key("tab")
@@ -918,7 +918,7 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
         machine.send_chars("V")
     with desktop.told("notice selects 3"):
         machine.send_chars("kk", delay=KEY_PACE)
-    desktop.photograph(f"notice-visual-at-{named}")
+    desktop.shoot(f"notice-visual-at-{named}")
     with desktop.told("copied card Deploy log"):
         machine.send_chars("y")
     copied = desktop.as_account("wl-paste --no-newline")
@@ -929,7 +929,7 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
         machine.send_chars("Vjj", delay=KEY_PACE)
     with desktop.told("notice done 3"):
         machine.send_chars("dd", delay=KEY_PACE)
-    desktop.photograph(f"notice-done-at-{named}")
+    desktop.shoot(f"notice-done-at-{named}")
     kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     for summary in ["Build log", "Test log", "Deploy log"]:
         machine.wait_until_succeeds(
@@ -940,27 +940,27 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
         machine.send_key("u")
     with desktop.told("notice pending d"):
         machine.send_chars("d")
-    desktop.photograph(f"notice-pending-at-{named}")
+    desktop.shoot(f"notice-pending-at-{named}")
     # The : takes the head, where the find's / stands, and its completions are the list's rows
     # on its columns, as the launcher's are (Joel, 2026-11-06: "they need to share more code
     # and UI/UX design").
     with desktop.told("notice mode command"), desktop.told("notice command stands in the head"):
         machine.send_key("esc")
         machine.send_chars(":")
-    desktop.photograph(f"notice-menu-at-{named}")
+    desktop.shoot(f"notice-menu-at-{named}")
     with desktop.told("notice menu chose delete"):
         machine.send_key("tab")
     with desktop.told("notice mode normal"):
         machine.send_key("esc")
     with desktop.told("notice lists keys"):
         machine.send_chars(" ?", delay=KEY_PACE)
-    desktop.photograph(f"notice-keys-at-{named}")
+    desktop.shoot(f"notice-keys-at-{named}")
     with desktop.told("notice hides keys"):
         machine.send_key("esc")
 
 
 def found_among_them(desktop: Desktop, named: str) -> None:
-    """Show the lines, then find Deploy among them, photographed at the scale named.
+    """Show the lines, then find Deploy among them, shot at the scale named.
 
     / narrows the lines as it's typed, Escape keeps what was found, and a fresh / left empty
     lists them all again, the cursor staying on what was found, as Vim's / leaves it.
@@ -969,15 +969,15 @@ def found_among_them(desktop: Desktop, named: str) -> None:
     # The cursor on the oldest, Build log, line 3, by way of the newest, so it moves.
     with desktop.told("notice cursor Build log"):
         machine.send_chars("ggG", delay=KEY_PACE)
-    desktop.photograph(f"notice-lines-at-{named}")
+    desktop.shoot(f"notice-lines-at-{named}")
     with desktop.told("notice finds Deploy in 1"), desktop.told("notice cursor Deploy log"):
         machine.send_chars("/Deploy", delay=KEY_PACE)
-    desktop.photograph(f"notice-find-at-{named}")
+    desktop.shoot(f"notice-find-at-{named}")
     # Where what it found opens nothing, Return lands on it in normal, as Vim's / lands on its
     # match, rather than saying it isn't here (VKCF3Z, 2026-11-06).
     with desktop.told("notice mode normal"), desktop.told("notice lands on Deploy"):
         machine.send_key("ret")
-    desktop.photograph(f"notice-found-at-{named}")
+    desktop.shoot(f"notice-found-at-{named}")
     with desktop.told("notice mode normal"):
         machine.send_chars("/")
         machine.send_key("esc")
@@ -1035,7 +1035,7 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
 
 
 def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
-    """Sign a notice and photograph it, held, as a stack, under what's playing, and that alone.
+    """Sign a notice and shoot it, held, as a stack, under what's playing, and that alone.
 
     Each scale's notice comes after the last scale's track played alone, so nothing is blurred
     past the card.
@@ -1056,7 +1056,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     # Named without the point, which the driver would take for where the
     # name ends and its kind begins.
     named = scale.replace(".", "-")
-    desktop.photograph(f"notice-at-{named}")
+    desktop.shoot(f"notice-at-{named}")
     under, shown = under_the_card(desktop)
     # Held, a row is the pop-up's notice in a list and a launcher row in its place: its number on
     # the inset, its mark in the mark column, and every line of it on the text column (Joel,
@@ -1068,10 +1068,10 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
         desktop.told("notice rows start on the inset"),
     ):
         machine.send_key("meta_l-n")
-    desktop.photograph(f"notice-held-at-{named}")
+    desktop.shoot(f"notice-held-at-{named}")
     with desktop.told("notice selects 1"):
         machine.send_chars("V")
-    desktop.photograph(f"notice-held-visual-at-{named}")
+    desktop.shoot(f"notice-held-visual-at-{named}")
     with desktop.told("notice mode normal"):
         machine.send_key("esc")
     with desktop.told("lets notices go"):
@@ -1091,7 +1091,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
             desktop.as_account(
                 f"notify-send --expire-time=60000 {shlex.quote(summary)} {shlex.quote(body)}"
             )
-    desktop.photograph(f"notices-stacked-at-{named}")
+    desktop.shoot(f"notices-stacked-at-{named}")
     # Collected once it ends, since a stopped player exits failed and would
     # keep the unit's name from the next scale's.
     with desktop.told("drawn notifications"):
@@ -1099,7 +1099,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
             "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
             f" --loop {desktop.values['track']}"
         )
-    desktop.photograph(f"notices-playing-at-{named}")
+    desktop.shoot(f"notices-playing-at-{named}")
     # And alone, its player's mark in the mark column where a notice's
     # stands (VKCF3Z, 2026-11-06).
     desktop.as_account("qs ipc call notices putAway")
@@ -1107,7 +1107,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
         desktop.in_session("test \"$(qs ipc call notices front)\" = '{}'"),
         timeout=timedelta(seconds=30),
     )
-    desktop.photograph(f"playing-at-{named}")
+    desktop.shoot(f"playing-at-{named}")
     desktop.as_account("systemctl --user stop player")
 
 
@@ -1359,7 +1359,7 @@ def test_the_notices_sit_the_frames_rung_inside_the_window_under_them(desktop: D
         desktop.as_account(
             "notify-send --expire-time=60000 'Inside the window' 'a frame on a frame'"
         )
-    desktop.photograph("notice-inside")
+    desktop.shoot("notice-inside")
     # The nearest window wholly on screen, as the shell picks it.
     ws = desktop.window_titled("Under the notices")["workspace_id"]
     tiles = [
@@ -1575,7 +1575,7 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
     machine.send_chars("on my way", delay=KEY_PACE)
     for scale in JOELS_SCALES:
         desktop.as_account(f"niri msg output winit scale {scale}")
-        desktop.photograph(f"notice-reply-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"notice-reply-at-{scale.replace('.', '-')}")
     desktop.as_account("niri msg output winit scale 1")
     with desktop.told("notice mode prompt"), desktop.told("notice shows NOR"):
         machine.send_key("esc")

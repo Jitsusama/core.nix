@@ -69,7 +69,7 @@ def test_the_launcher_shows_the_volumes_chords_and_q_closes_it(desktop: Desktop)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("volume")
-    desktop.photograph("launcher-volume")
+    desktop.shoot("launcher-volume")
     desktop.close_launcher()
 
 
@@ -118,10 +118,10 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("40%, through ")
     )
-    desktop.photograph("launcher-volume-told")
+    desktop.shoot("launcher-volume-told")
     # A step in, each device's level drawn as a bar.
     desktop.follow()
-    desktop.photograph("launcher-volume-parts")
+    desktop.shoot("launcher-volume-parts")
     desktop.close_launcher()
 
 
@@ -873,7 +873,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     assert (still["scrolled"], still["selected"]) == (scrolled["scrolled"], scrolled["selected"]), (
         f"home moved as the queue changed: from {scrolled} to {still}"
     )
-    desktop.photograph("launcher-home-categories")
+    desktop.shoot("launcher-home-categories")
     desktop.close_launcher()
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"

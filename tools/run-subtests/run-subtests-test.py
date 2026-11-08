@@ -42,7 +42,7 @@ SCRIPT = "".join(
         "",
         'with subtest("the launcher opens"):',
         "    held()",
-        'photograph("desktop")',
+        'shoot("desktop")',
     ]
 )
 
@@ -200,7 +200,7 @@ def test_the_subtests_are_named_in_order(tool: Tool) -> None:
 
 def test_the_boot_and_helpers_stay_with_the_subtest_named(tool: Tool) -> None:
     cut = tool.cut(SCRIPT, ["launcher"])
-    for kept in ("start_all()", "@contextlib", "def held", "    held()", "photograph"):
+    for kept in ("start_all()", "@contextlib", "def held", "    held()", "shoot"):
         assert kept in cut
 
 

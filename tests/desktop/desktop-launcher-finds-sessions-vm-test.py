@@ -128,7 +128,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
             is not None
         )
     )
-    desktop.photograph("launcher-agents")
+    desktop.shoot("launcher-agents")
     # Gone into by Ctrl+], as Return goes to it, what's known of it, each
     # a row of its own.
     desktop.follow()
@@ -165,7 +165,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     # its own row.
     selection = laid_out(desktop)["selection"]
     assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
-    desktop.photograph("launcher-agent-facts")
+    desktop.shoot("launcher-agent-facts")
     desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
     desktop.as_account(
@@ -236,7 +236,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     )
     # Its card gone, the want still stands, so pi's mark shows.
     desktop.reported("holds margin ", lambda rest: "agent" in rest.split(), since)
-    desktop.photograph("margin-pi-wants")
+    desktop.shoot("margin-pi-wants")
     # Another, unanswered, from the other window: its notice says what
     # it wants, and goes when the want does, missed by nobody. Notices
     # missed earlier are let go first, so the margin's notices mark is
@@ -520,7 +520,7 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
             and shown["selected"]["side"] == "queued"
         )
     )
-    desktop.photograph("launcher-quests")
+    desktop.shoot("launcher-quests")
     desktop.previous_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "A quest of its own & whole"
@@ -582,7 +582,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     # Starting one lists the quests themselves; one orchestrating already
     # reopens on its own row, so its step in holds Start Here alone.
     desktop.down_to("Start a Session")
-    desktop.photograph("launcher-agents-start")
+    desktop.shoot("launcher-agents-start")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: LIGHTHOUSE in shown["rows"])
     desktop.down_to(LIGHTHOUSE)
@@ -601,7 +601,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     assert (selected["side"], selected["hue"]) == ("closed", "muted"), selected
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
-    desktop.photograph("launcher-agents-closed-orchestrator")
+    desktop.shoot("launcher-agents-closed-orchestrator")
     # Return reopens its last session where it ran, as the harness
     # restores one, through a login shell so pi can reach its model.
     machine.send_key("ret")
@@ -650,7 +650,7 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
     desktop.down_to(LIGHTHOUSE)
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Start Here", "Orchestrate"])
-    desktop.photograph("launcher-agents-start-quest")
+    desktop.shoot("launcher-agents-start-quest")
     desktop.close_launcher()
 
 
@@ -746,10 +746,10 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
             and (shown["selected"] or {}).get("side") == "1 of 2 \u00b7 1 folder gone"
         )
     )
-    desktop.photograph("launcher-agents-last-boot")
+    desktop.shoot("launcher-agents-last-boot")
     desktop.down_to("Given Back")
     assert desktop.showing()["selected"]["side"] == "~/given-back is gone", desktop.showing()
-    desktop.photograph("launcher-agents-last-boot-gone")
+    desktop.shoot("launcher-agents-last-boot-gone")
     desktop.down_to("Reopen Them All")
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
