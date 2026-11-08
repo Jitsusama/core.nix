@@ -124,6 +124,10 @@ trait Session {
 trait Manager {
     #[zbus(property)]
     fn lid_closed(&self) -> zbus::Result<bool>;
+
+    /// Said as the machine goes to sleep, `start` true, and as it wakes.
+    #[zbus(signal)]
+    fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
 }
 
 /// wl-gammarelay-rs, which sets every screen's warmth through niri.
@@ -164,6 +168,24 @@ async fn switched(said: &mut Option<watch::Receiver<bool>>) -> bool {
     } else {
         *said = None;
         std::future::pending().await
+    }
+}
+
+/// Waits for the machine to wake from sleep, however it slept: an idle
+/// suspend or a suspend asked for wakes with no lid moving. Forever once
+/// logind stops saying, or where it couldn't be heard.
+async fn woke(sleeps: &mut Option<Pin<Box<PrepareForSleepStream>>>) {
+    let Some(stream) = sleeps else {
+        return std::future::pending().await;
+    };
+    loop {
+        let Some(said) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await else {
+            *sleeps = None;
+            return std::future::pending().await;
+        };
+        if said.args().is_ok_and(|args| !*args.start()) {
+            return;
+        }
     }
 }
 
@@ -500,6 +522,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let manager = ManagerProxy::new(&bus).await?;
     // Heard before it's read, so a change between the two isn't missed.
     let mut lid = Some(Box::pin(manager.receive_lid_closed_changed().await));
+    let mut sleeps = manager.receive_prepare_for_sleep().await.ok().map(Box::pin);
     let shut = manager.lid_closed().await?;
     let mut watch = screen.watch()?;
     let seen = screen.brightness()?;
@@ -560,6 +583,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             }
             kelvin = light(&mut warm) => backlight.warmed(kelvin?),
             shut = lid_moved(&mut lid) => backlight.lid(shut?),
+            () = woke(&mut sleeps) => backlight.woke(),
             follows = switched(&mut said) => backlight.switched(follows),
             on = switched(&mut said_night) => backlight.night_switched(on),
             again = relay_started(&mut started) => if again {
@@ -946,6 +970,13 @@ impl Backlight<'_> {
         }
     }
 
+    /// The machine woke. The night's next look is counted on a clock that
+    /// stops while it sleeps, so the sun is looked at again now rather
+    /// than up to an hour late.
+    fn woke(&mut self) {
+        self.night.due = Some(Instant::now());
+    }
+
     /// The lid opened or shut, and the light heard is the lid's until it
     /// opens (follow.rs).
     fn lid(&mut self, shut: bool) {
@@ -953,11 +984,9 @@ impl Backlight<'_> {
             keys.lid(shut);
         }
         self.warm(|warmth, now| warmth.lid(shut, now));
-        // The night's next look is counted on a clock that stops while the
-        // laptop sleeps, and a lid opening is most often a wake, so the
-        // sun is looked at again now rather than up to an hour late.
+        // A lid opening is most often a wake, heard before logind says so.
         if !shut {
-            self.night.due = Some(Instant::now());
+            self.woke();
         }
         if !self.follow.lid(shut) {
             return;
