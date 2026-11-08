@@ -62,7 +62,8 @@ QtObject {
             Object.assign({ standing, unread: null, fetched: null, meet: unmade,
                 drive: undriven }, more), heard);
         const none = {
-            account: "none", meetings: [], mail: [], unread: null, documents: [], held: [],
+            account: "none", meetings: [], mail: [], finished: [], unread: null, documents: [],
+            held: [],
             lately: [], calls: [], heard: null, fetched: null, meet: unmade, drive: undriven
         };
         const later = Object.assign({}, standup, { id: "later", start: now + 60_000 });
@@ -71,6 +72,12 @@ QtObject {
         const doc = { id: "d1", kind: "document", viewed: now - 60_000 };
         const newer = { id: "d2", kind: "document", viewed: now };
         const followed = { code: "abc-defg-hij", granted: true, people: [] };
+        // Mail done elsewhere, kept a while apart from what still wants Joel,
+        // the latest done first.
+        const read = Object.assign({}, mail, { id: "m_2",
+            done: { how: "readInGmail", at: now - 1000 } });
+        const archived = Object.assign({}, mail, { id: "m_3",
+            done: { how: "archivedInGmail", at: now } });
         // [what, what's held, whether the daemon answers, what's read of it]
         const held = [
             ["the whole account",
@@ -79,14 +86,15 @@ QtObject {
                     account("ready", { unread: 3 }, 1793042446024)),
                 true,
                 {
-                    account: "ready", meetings: [standup], mail: [mail], unread: 3,
+                    account: "ready", meetings: [standup], mail: [mail], finished: [], unread: 3,
                     documents: [], held: [], lately: [], calls: [], heard: 1793042446024,
                     fetched: null, meet: unmade, drive: undriven
                 }],
             ["each kind in its order, whatever order it's held in",
                 Object.assign({}, record("meeting", "later", later, 1),
                     record("meeting", "standup", standup, 1), record("mail", "m_0", older, 1),
-                    record("mail", "m_1", mail, 1), record("file", "s1", sheet, 1),
+                    record("mail", "m_1", mail, 1), record("mail", "m_2", read, 1),
+                    record("mail", "m_3", archived, 1), record("file", "s1", sheet, 1),
                     record("file", "d1", doc, 1), record("file", "d2", newer, 1),
                     record("held", "later", later, 1), record("held", "standup", standup, 1),
                     record("lately", "m_0", older, 1), record("lately", "m_1", mail, 1),
@@ -94,7 +102,7 @@ QtObject {
                 true,
                 {
                     account: "ready", meetings: [standup, later], mail: [mail, older],
-                    unread: null, documents: [newer, doc, sheet], held: [standup, later],
+                    finished: [archived, read], unread: null, documents: [newer, doc, sheet], held: [standup, later],
                     lately: [mail, older], calls: [followed], heard: 2, fetched: null,
                     meet: unmade,
                     drive: undriven
