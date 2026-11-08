@@ -2865,10 +2865,11 @@ QtObject {
             { id: "sleep:counts-to", value: "6 d 1 h" },
             { id: "sleep:device", value: "0000:00:14.0", named: true }
         ]);
-        const rested = Power.sleepSaid(Power.sleepOf({ mode: "s2idle", modes: ["s2idle"],
+        const neverFailed = Power.sleepSaid(Power.sleepOf({ mode: "s2idle", modes: ["s2idle"],
             successes: 1, failures: 0, failed_at: {}, last_failed_step: "",
             last_failed_errno: null, last_hardware_sleep_us: null }), sleepWords, Interfaces.lasted);
-        machine("sleep that never failed says only its mode", [rested.note, rested.facts],
+        machine("sleep that never failed says only its mode",
+            [neverFailed.note, neverFailed.facts],
             ["", [{ id: "sleep:slept", value: "1 time" }]]);
         machine("sleep before the daemon answers", Power.sleepOf(null), null);
         machine("an error Linux names", Power.errorOf(-5), "EIO (\u22125)");

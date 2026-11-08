@@ -2571,7 +2571,7 @@
     {
       "id": "heat:alarm",
       "in": "heat",
-      "name": "Alarm",
+      "name": "Chip's Warning",
       "said": {
         "raised": "raised"
       }
