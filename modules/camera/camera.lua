@@ -177,7 +177,7 @@ local function draw()
       or (mode == 'picture' and options.picture or options.video)
     local timing = recording and not recording.stopping
     local word = recording and (recording.stopping and 'Saving' or elapsed())
-      or (mode == 'picture' and 'Picture' or 'Video')
+      or (mode == 'picture' and 'Photo' or 'Video')
     left = string.format(
       '{%s\\1c%s}%s  {%s\\1c%s}%s',
       marks,
@@ -326,7 +326,7 @@ local function save(frame, file, tries)
     table.concat({
       'failed() {',
       '    rm -f "$1"',
-      '    notify-send --app-name=Camera "The picture could not be saved" "$2"',
+      '    notify-send --app-name=Camera "The photo could not be saved" "$2"',
       '    exit 1',
       '}',
       'folder=$(dirname "$2")',
@@ -342,7 +342,7 @@ local function save(frame, file, tries)
       '    { rm -f "$file"; failed "$1" "$(printf %s "$said" | tail -n 1)"; }',
       'rm -f "$1"',
       'wl-copy --type image/jpeg < "$file"',
-      'notify-send --app-name=Camera --transient "Picture copied" "${file#"$HOME"/}"',
+      'notify-send --app-name=Camera --transient "Photo copied" "${file#"$HOME"/}"',
     }, '\n'),
     frame,
     file
