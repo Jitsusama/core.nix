@@ -111,14 +111,15 @@ ShellRoot {
             filling(disk("/var/cache/cargo-builds", "healthy", 21), 24500, 3)]),
         machine: status([disk("/", "healthy", 286)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
-            && piece.value === "286.0 GiB free on /"
-            && piece.context === "/var/cache/cargo-builds full in 6:48 at 3.0 GiB an hour"
+            && piece.value === "307\u00a0GB free"
+            && piece.context
+                === "/var/cache/cargo-builds full in 6 h 48 min at 3.22\u00a0GB an hour"
     }, {
         what: "a disk full in a few days",
         account: status([filling(disk("/", "healthy", 286), 2 * 24 * 3600 + 600, 4.4)]),
         machine: status([disk("/", "healthy", 286)]),
         holds: piece => !piece.active && piece.role === "text"
-            && piece.context === "/ full in 2 days at 4.4 GiB an hour"
+            && piece.context === "/ full in 2 days at 4.72\u00a0GB an hour"
     }, {
         what: "the worst disk filling",
         // Its band's forecast and its full one would be two forecasts of
@@ -126,7 +127,7 @@ ShellRoot {
         account: status([filling(disk("/", "pressure", 120.5, 5400), 20000, 4)]),
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.active && piece.role === "warning"
-            && piece.context === "nearly full in 1:30 at 4.0 GiB an hour"
+            && piece.context === "nearly full in 1 h 30 min at 4.29\u00a0GB an hour"
     }, {
         what: "a disk full past a few days",
         account: status([filling(disk("/", "healthy", 286), 5 * 24 * 3600, 2)]),
