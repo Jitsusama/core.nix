@@ -31,10 +31,10 @@ fn the_daemons_are_told_their_config_and_state() {
 #[test]
 fn the_commands_that_answer_read_their_options() {
     assert_eq!(
-        parse(&words("plan --band urgent --pretend-free 20GiB")).unwrap(),
+        parse(&words("plan --band nearly-full --pretend-free 20GiB")).unwrap(),
         Command::Plan {
             config: None,
-            band: Some(Band::Urgent),
+            band: Some(Band::NearlyFull),
             pretend_free: Some(Size::Bytes(20 << 30)),
         }
     );
@@ -166,7 +166,7 @@ fn status(at: f64, band: &str) -> String {
         r#"{{ "version": 1, "heartbeat": {at},
              "filesystems": [ {{ "path": "/home", "band": "{band}", "free": 161061273600,
                                  "total": 1073741824000, "forecast": 7200.0 }} ],
-             "last": {{ "at": {at}, "path": "/home", "band": "pressure", "end": "reached",
+             "last": {{ "at": {at}, "path": "/home", "band": "filling", "end": "reached",
                         "freed": 4509715660 }} }}"#
     )
 }
@@ -178,14 +178,14 @@ fn status_tells_of_each_guard_that_wrote_one() {
     assert_eq!(code, 3);
     assert!(err.contains("no guard"), "{err}");
 
-    write_file(&machine.env.status, &status(wall() - 12.0, "pressure"));
+    write_file(&machine.env.status, &status(wall() - 12.0, "filling"));
     let (code, out, _) = machine.run("status");
     assert_eq!(code, 0);
     assert!(out.contains("user guard"), "{out}");
     assert!(out.contains("/home"), "{out}");
-    assert!(out.contains("pressure"), "{out}");
+    assert!(out.contains("filling"), "{out}");
     assert!(out.contains("150.0 GiB free of 1000.0 GiB"), "{out}");
-    assert!(out.contains("urgent in 2.0 h"), "{out}");
+    assert!(out.contains("nearly-full in 2.0 h"), "{out}");
     assert!(out.contains("freed 4.2 GiB"), "{out}");
     assert!(!out.contains("system guard"), "{out}");
 
@@ -200,7 +200,7 @@ fn status_tells_of_each_guard_that_wrote_one() {
     let (code, out, _) = machine.run("status --json");
     assert_eq!(code, 0);
     let both: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(both["user"]["filesystems"][0]["band"], "pressure");
+    assert_eq!(both["user"]["filesystems"][0]["band"], "filling");
     assert_eq!(both["system"]["filesystems"][0]["band"], "healthy");
 }
 
@@ -332,7 +332,7 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     let now = wall();
     let line = |at: f64, path: &str| {
         format!(
-            r#"{{"event":"action","at":{at},"band":"pressure","path":"{path}","kind":"trash","size":1048576,"outcome":"reclaimed"}}"#
+            r#"{{"event":"action","at":{at},"band":"filling","path":"{path}","kind":"trash","size":1048576,"outcome":"reclaimed"}}"#
         )
     };
     fs::write(
@@ -361,7 +361,7 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     assert_eq!(out.lines().count(), 1, "{out}");
     // A pass says how it ended and how long it took.
     let pass = format!(
-        r#"{{"event":"pass","at":{},"band":"urgent","end":"reached","freed":1073741824,"seconds":60.0}}"#,
+        r#"{{"event":"pass","at":{},"band":"nearly-full","end":"reached","freed":1073741824,"seconds":60.0}}"#,
         now - 30.0
     );
     fs::write(machine.env.state.join("journal.jsonl"), format!("{pass}\n")).unwrap();
@@ -383,7 +383,7 @@ fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
         now - 60.0
     );
     let action = format!(
-        r#"{{"event":"action","at":{},"band":"pressure","path":"/src/app/target","kind":"target","size":1048576,"outcome":"reclaimed"}}"#,
+        r#"{{"event":"action","at":{},"band":"filling","path":"/src/app/target","kind":"target","size":1048576,"outcome":"reclaimed"}}"#,
         now - 60.0
     );
     fs::write(
@@ -485,9 +485,9 @@ fn explain_says_how_each_band_would_treat_a_path() {
         [
             "  in use: by nothing",
             "  healthy: after 30.0 d idle",
-            "  pressure: after 7.0 d idle",
-            "  urgent: after 24.0 h idle",
-            "  critical: at once",
+            "  filling: after 7.0 d idle",
+            "  nearly-full: after 24.0 h idle",
+            "  critically-full: at once",
         ],
         "{out}"
     );
@@ -531,9 +531,9 @@ fn plan_shows_what_a_pass_would_take() {
             trash.display()
         ),
     );
-    let (code, out, err) = machine.run("plan --band pressure");
+    let (code, out, err) = machine.run("plan --band filling");
     assert_eq!(code, 0, "{err}");
-    assert!(out.contains("pressure"), "{out}");
+    assert!(out.contains("filling"), "{out}");
     assert!(out.contains("old.txt"), "{out}");
     assert!(trash.join("files/old.txt").exists());
     assert!(

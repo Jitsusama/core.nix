@@ -103,14 +103,15 @@ impl Home {
     }
 
     /// A user config whose bands are shares of the filesystem, so `100%`
-    /// puts any disk in pressure and `0%` keeps it healthy. Its Nix store
+    /// has any disk filling and `0%` keeps it healthy. Its Nix store
     /// doesn't exist: with no system daemon answering, a user daemon
     /// collects garbage itself once nearly full, and the machine's own store
     /// is no test's to collect.
-    fn config(&self, pressure: &str, target: &str) -> Config {
+    fn config(&self, filling: &str, target: &str) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true,
-                 "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{target}" }},
+                 "bands": {{ "filling": "{filling}", "nearly_full": "0%", "critically_full": "0%",
+                            "target": "{target}" }},
                  "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
                  "sources": {{
                    "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }},
@@ -235,7 +236,7 @@ fn a_user_daemon_asks_the_system_for_the_store_garbage_in_its_turn() {
     let asked: Vec<Request> = heard.try_iter().collect();
     let collect = Request::Collect {
         path: mount,
-        band: Band::Pressure,
+        band: Band::Filling,
     };
     assert!(asked.contains(&collect), "{asked:?}");
     let garbage = home
@@ -319,7 +320,7 @@ fn what_a_guard_left_moved_aside_is_emptied_when_the_next_starts() {
     let scratch = home.root.join("scratch");
     let line = |event: &str, path: &Path| {
         format!(
-            r#"{{"event":"{event}","at":1.0,"band":"pressure","path":"{}","root":"{}","kind":"scratch","size":5,"outcome":"reclaimed"}}"#,
+            r#"{{"event":"{event}","at":1.0,"band":"filling","path":"{}","root":"{}","kind":"scratch","size":5,"outcome":"reclaimed"}}"#,
             path.display(),
             scratch.display()
         )
@@ -376,7 +377,7 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
             ],
             path: home.root.clone(),
             every: None,
-            from: Some(Band::Pressure),
+            from: Some(Band::Filling),
             watch: Vec::new(),
             timeout: Span(std::time::Duration::from_secs(10)),
         },
@@ -532,14 +533,14 @@ fn routine_upkeep_takes_what_is_due_however_busy_the_machine() {
 }
 
 /// The scheduling policy a producer ran under in one step of a guard
-/// whose bands are `pressure` and `urgent`.
-fn producer_policy(pressure: &str, urgent: f64) -> String {
+/// whose filling and nearly full bands start at `filling` and `nearly_full`.
+fn producer_policy(filling: &str, nearly_full: f64) -> String {
     use disk_guard::config::Source;
     use disk_guard::units::Span;
     let home = Home::new();
     let marker = home.root.join("policy");
-    let mut config = home.config(pressure, "100%");
-    config.bands.urgent = Size::Percent(urgent);
+    let mut config = home.config(filling, "100%");
+    config.bands.nearly_full = Size::Percent(nearly_full);
     config.sources.insert(
         "gc".to_owned(),
         Source::Producer {
@@ -550,7 +551,7 @@ fn producer_policy(pressure: &str, urgent: f64) -> String {
             ],
             path: home.root.clone(),
             every: Some(Span(std::time::Duration::from_secs(60))),
-            from: Some(Band::Urgent),
+            from: Some(Band::NearlyFull),
             watch: Vec::new(),
             timeout: Span(std::time::Duration::from_secs(10)),
         },
@@ -560,7 +561,7 @@ fn producer_policy(pressure: &str, urgent: f64) -> String {
 }
 
 #[test]
-fn a_command_runs_at_idle_priority_unless_the_pass_is_urgent() {
+fn a_command_runs_at_idle_priority_unless_the_disk_is_nearly_full() {
     assert_eq!(
         producer_policy("0%", 0.0),
         libc::SCHED_IDLE.to_string(),
@@ -569,12 +570,12 @@ fn a_command_runs_at_idle_priority_unless_the_pass_is_urgent() {
     assert_eq!(
         producer_policy("100%", 100.0),
         crate::commands::guards_policy().to_string(),
-        "urgent"
+        "nearly full"
     );
 }
 
 #[test]
-fn an_urgent_pass_never_gives_way() {
+fn a_pass_on_a_nearly_full_disk_never_gives_way() {
     let home = Home::new();
     let old = home.trashed("old.txt", "2001-09-09T01:46:40");
     let busy = home.root.join("proc/pressure");
@@ -585,7 +586,7 @@ fn an_urgent_pass_never_gives_way() {
     )
     .unwrap();
     let mut config = home.config("100%", "100%");
-    config.bands.urgent = Size::Percent(100.0);
+    config.bands.nearly_full = Size::Percent(100.0);
     let mut guard = home.guard(config);
     guard.step(&tick(), &CALM).unwrap();
     assert!(!old.exists());
@@ -594,7 +595,7 @@ fn an_urgent_pass_never_gives_way() {
         .into_iter()
         .find(|line| line["event"] == "pass")
         .unwrap();
-    assert_eq!(pass["band"], "urgent");
+    assert_eq!(pass["band"], "nearly-full");
 }
 
 fn tick_at(monotonic: f64) -> Tick {
@@ -714,7 +715,7 @@ fn a_pressed_disk_is_reclaimed_at_once_however_busy_the_machine() {
         .into_iter()
         .find(|line| line["event"] == "pass")
         .unwrap();
-    assert_eq!(pass["band"], "pressure");
+    assert_eq!(pass["band"], "filling");
 }
 
 /// A stop that comes while the survey walks ends the step there, and what
@@ -732,13 +733,13 @@ fn a_stop_during_the_survey_ends_the_step_taking_nothing() {
 }
 
 #[test]
-fn a_pass_that_falls_short_at_critical_rests_a_minute_at_most() {
+fn a_pass_that_falls_short_when_critically_full_rests_a_minute_at_most() {
     let home = Home::new();
     home.cold_scratch("run-1");
     home.hidden(300, 77);
     let mut config = home.config("100%", "100%");
-    config.bands.urgent = Size::Percent(100.0);
-    config.bands.critical = Size::Percent(100.0);
+    config.bands.nearly_full = Size::Percent(100.0);
+    config.bands.critically_full = Size::Percent(100.0);
     let mut guard = home.guard(config);
     let passes = || {
         home.journal()
@@ -759,7 +760,7 @@ fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
     let home = Home::new();
     home.cold_scratch("run-1");
     let mut guard = home.guard(home.config("0%", "100%"));
-    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    guard.preview(&tick(), Some(Band::Filling), None).unwrap();
     assert_eq!(guard.unread(), (0, None));
     home.hidden(300, 77);
     // And one of the account's, read whole.
@@ -780,7 +781,7 @@ fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
         ..home.places()
     };
     let mut guard = Guard::new(crate::unpaced(home.config("0%", "100%")), &places).unwrap();
-    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    guard.preview(&tick(), Some(Band::Filling), None).unwrap();
     let (unread, why) = guard.unread();
     assert_eq!(unread, 1);
     assert!(why.is_some(), "the system daemon didn't answer");
@@ -793,10 +794,10 @@ fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     let second = home.cold_scratch("run-2");
     let trashed = home.trashed("old.txt", "2001-09-09T01:46:40");
     let mut guard = home.guard(home.config("0%", "100%"));
-    let previews = guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    let previews = guard.preview(&tick(), Some(Band::Filling), None).unwrap();
     assert_eq!(previews.len(), 1);
     let preview = &previews[0];
-    assert_eq!(preview.band, Band::Pressure);
+    assert_eq!(preview.band, Band::Filling);
     let mut taken: Vec<_> = preview.taken.iter().map(|c| c.path.clone()).collect();
     taken.sort();
     let mut expected = vec![first.clone(), second.clone(), trashed.clone()];
@@ -925,7 +926,7 @@ fn pretending_free_space_bands_the_preview() {
     let cold = home.cold_scratch("run-1");
     let mut guard = home.guard(home.config("50%", "60%"));
     let short = guard.preview(&tick(), None, Some(Size::Bytes(0))).unwrap();
-    assert_eq!(short[0].band, Band::Pressure);
+    assert_eq!(short[0].band, Band::Filling);
     assert_eq!(short[0].free, 0);
     assert_eq!(short[0].taken[0].path, cold);
     let total = short[0].total;
@@ -934,7 +935,7 @@ fn pretending_free_space_bands_the_preview() {
         .unwrap();
     assert_eq!(roomy[0].free, total);
     let mut low = home.guard(home.config("1%", "2%"));
-    let banded = low.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    let banded = low.preview(&tick(), Some(Band::Filling), None).unwrap();
     assert!(
         banded[0].free < total / 100,
         "a band alone pretends free space just short of it: {} of {total}",
@@ -957,7 +958,7 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
     guard.step(&tick(), &CALM).unwrap();
     assert!(
         !cold.exists(),
-        "a day idle goes at pressure: {:?}",
+        "a day idle goes once filling: {:?}",
         home.journal()
     );
     let journal = home.journal();
@@ -968,10 +969,10 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
     assert_eq!(action["path"], cold.to_str().unwrap());
     assert_eq!(action["outcome"], "reclaimed");
     let pass = journal.iter().find(|line| line["event"] == "pass").unwrap();
-    assert_eq!(pass["band"], "pressure");
+    assert_eq!(pass["band"], "filling");
     assert_eq!(pass["end"], "exhausted");
     let status = home.status();
-    assert_eq!(status["filesystems"][0]["band"], "pressure");
+    assert_eq!(status["filesystems"][0]["band"], "filling");
     assert!(status["heartbeat"].as_f64().unwrap() > 0.0);
     assert!(home.root.join("state/memory.json").exists());
     assert_eq!(status["version"], 2);
@@ -1006,9 +1007,9 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     use disk_guard::config::Bands;
     use disk_guard::daemon::FilesystemStatus;
     let bands = Bands {
-        pressure: Size::Percent(25.0),
-        urgent: Size::Percent(10.0),
-        critical: Size::Percent(4.0),
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
         target: Size::Percent(35.0),
     };
     let space = |free| Space {
@@ -1018,7 +1019,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     };
     let mut status = FilesystemStatus {
         path: PathBuf::from("/"),
-        band: Band::Pressure,
+        band: Band::Filling,
         free: 200,
         total: 1000,
         size: 1000,
@@ -1030,7 +1031,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         exhausted: false,
     };
     status.measured(&space(210), &bands, 1900.0, None);
-    assert_eq!(status.band, Band::Pressure);
+    assert_eq!(status.band, Band::Filling);
     assert_eq!(status.free, 210);
     assert_eq!(status.used, 790);
     assert_eq!(
@@ -1049,7 +1050,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     assert_eq!(status.band, Band::Healthy);
     assert_eq!(status.free, 300);
     assert_eq!(status.forecast, None);
-    status.band = Band::Pressure;
+    status.band = Band::Filling;
     status.exhausted = true;
     status.full_at = None;
     status.measured(&space(200), &bands, 1900.0, None);
@@ -1060,7 +1061,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         status.says
     );
     status.measured(&space(50), &bands, 1900.0, None);
-    assert_eq!(status.band, Band::Urgent);
+    assert_eq!(status.band, Band::NearlyFull);
     assert!(!status.exhausted, "a worse band's pass hasn't run yet");
     assert!(
         status.says.contains("is clearing everything"),
@@ -1167,7 +1168,8 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
 fn owned_trees(home: &Home) -> Config {
     Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
-             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
+                        "target": "0%" }},
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{
                "src": {{ "kind": "cargo", "roots": ["{0}/trees"] }},
@@ -1361,7 +1363,8 @@ fn merged_app(home: &Home) -> (impl Fn() -> Config, PathBuf) {
     let config = move || {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "notify": false,
-                 "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+                 "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
+                            "target": "0%" }},
                  "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
                  "sources": {{
                    "src": {{ "kind": "cargo", "roots": ["{0}/src"] }},
@@ -1391,7 +1394,7 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
     assert_eq!(times_asked(&asked), 1, "routine upkeep asks once");
     drop(first);
     let mut second = home.guard(config());
-    second.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    second.preview(&tick(), Some(Band::Filling), None).unwrap();
     assert_eq!(times_asked(&asked), 1, "a finished head is known still");
 }
 
@@ -1413,7 +1416,7 @@ fn a_preview_leaves_a_damaged_memory_as_it_found_it() {
     let home = Home::new();
     fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();
     let mut guard = home.guard(home.config("0%", "0%"));
-    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    guard.preview(&tick(), Some(Band::Filling), None).unwrap();
     let kept = fs::read_to_string(home.root.join("state/memory.json")).unwrap();
     assert_eq!(kept, "{ \"learned\": ");
     assert!(!home.root.join("state/memory.json.damaged").exists());
@@ -1484,12 +1487,13 @@ impl disk_guard::freezer::Freeze for Manager {
 impl Home {
     /// A config whose disk is critically full, or healthy, with an empty scratch
     /// source on it, so a pass finds nothing to take.
-    fn critical(&self, critical: bool) -> Config {
-        let share = if critical { "100%" } else { "0%" };
+    fn critically_full(&self, critically_full: bool) -> Config {
+        let share = if critically_full { "100%" } else { "0%" };
         fs::create_dir_all(self.root.join("scratch")).unwrap();
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
-                 "bands": {{ "pressure": "{share}", "urgent": "{share}", "critical": "{share}", "target": "{share}" }},
+                 "bands": {{ "filling": "{share}", "nearly_full": "{share}",
+                            "critically_full": "{share}", "target": "{share}" }},
                  "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
                  "sources": {{ "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }} }} }}"#,
             self.root.display()
@@ -1563,10 +1567,10 @@ fn running_away(home: &Home, guard: &mut Guard, cgroup: &str) {
 }
 
 #[test]
-fn at_critical_with_nothing_left_the_runaway_writer_is_frozen_with_its_children() {
+fn critically_full_with_nothing_left_the_runaway_writer_is_frozen_with_its_children() {
     let home = Home::new();
     let manager = Manager::default();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     guard.freeze_with(Box::new(manager.clone()));
     running_away(&home, &mut guard, &app(uid()));
     assert_eq!(
@@ -1587,7 +1591,7 @@ fn at_critical_with_nothing_left_the_runaway_writer_is_frozen_with_its_children(
 fn a_writer_with_nothing_open_on_the_disk_or_writing_slowly_is_left_alone() {
     let home = Home::new();
     let manager = Manager::default();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     guard.freeze_with(Box::new(manager.clone()));
     home.writer(700, &app(uid()), 0);
     // Its only file is on another filesystem.
@@ -1601,7 +1605,7 @@ fn a_writer_with_nothing_open_on_the_disk_or_writing_slowly_is_left_alone() {
     );
 
     let home = Home::new();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     guard.freeze_with(Box::new(manager.clone()));
     home.writer(700, &app(uid()), 0);
     guard.step(&tick(), &CALM).unwrap();
@@ -1623,12 +1627,12 @@ fn a_writer_with_nothing_open_on_the_disk_or_writing_slowly_is_left_alone() {
 #[test]
 fn the_status_names_who_writes_most_while_a_disk_is_short_freezing_or_not() {
     let home = Home::new();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     running_away(&home, &mut guard, &app(uid()));
     let writer = &home.status()["writer"];
     assert_eq!(writer["name"], "dd", "{writer}");
     assert_eq!(writer["pid"], 700);
-    let mut calm = home.guard(home.critical(false));
+    let mut calm = home.guard(home.critically_full(false));
     calm.step(&tick(), &CALM).unwrap();
     assert_eq!(home.status()["writer"], serde_json::Value::Null);
 }
@@ -1637,7 +1641,7 @@ fn the_status_names_who_writes_most_while_a_disk_is_short_freezing_or_not() {
 fn nothing_in_a_session_is_ever_frozen() {
     let home = Home::new();
     let manager = Manager::default();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     guard.freeze_with(Box::new(manager.clone()));
     let session = format!(
         "/user.slice/user-{0}.slice/user@{0}.service/session.slice/foot.service",
@@ -1651,12 +1655,12 @@ fn nothing_in_a_session_is_ever_frozen() {
 fn a_frozen_writer_is_thawed_once_the_disk_has_room() {
     let home = Home::new();
     let manager = Manager::default();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     guard.freeze_with(Box::new(manager.clone()));
     running_away(&home, &mut guard, &app(uid()));
     drop(guard);
     // The next guard, the disk now healthy, remembers what it froze.
-    let mut guard = home.guard(home.critical(false));
+    let mut guard = home.guard(home.critically_full(false));
     guard.freeze_with(Box::new(manager.clone()));
     guard.step(&tick(), &CALM).unwrap();
     assert_eq!(
@@ -1670,7 +1674,7 @@ fn a_frozen_writer_is_thawed_once_the_disk_has_room() {
 fn a_writer_thawed_by_hand_is_never_frozen_again() {
     let home = Home::new();
     let manager = Manager::default();
-    let mut guard = home.guard(home.critical(true));
+    let mut guard = home.guard(home.critically_full(true));
     guard.freeze_with(Box::new(manager.clone()));
     running_away(&home, &mut guard, &app(uid()));
     manager
@@ -1707,7 +1711,7 @@ const NEW: &str = "2222222222222222";
 impl Home {
     /// A cargo source over `src`, whose app's target holds an older
     /// build of it, last written five days ago, beside the newest.
-    fn replaced_build(&self, pressure: &str) -> (Config, PathBuf) {
+    fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
         let app = self.root.join("src/app");
         fs::create_dir_all(app.join("src")).unwrap();
         fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
@@ -1727,7 +1731,8 @@ impl Home {
         );
         let config = Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
-                 "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{pressure}" }},
+                 "bands": {{ "filling": "{filling}", "nearly_full": "0%", "critically_full": "0%",
+                            "target": "{filling}" }},
                  "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
                  "sources": {{ "src": {{ "kind": "cargo", "roots": ["{0}/src"] }} }} }}"#,
             self.root.display()
@@ -1738,7 +1743,7 @@ impl Home {
 }
 
 #[test]
-fn a_replaced_build_unopened_for_days_goes_at_pressure_and_the_newest_stays() {
+fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
     let home = Home::new();
     let (config, deps) = home.replaced_build("100%");
     // Watched for three days, and nothing opened it.

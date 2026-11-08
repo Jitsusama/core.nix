@@ -3698,7 +3698,7 @@ LAG_LASTS = 3600
 
 
 def disk_filling(desktop: Desktop) -> None:
-    """Write the machine's disk guard's status, /nix urgent and filling, as the guard does."""
+    """Write the machine's disk guard's status, /nix nearly full and filling, as the guard does."""
     now = time.time()
     status = {
         "v": 1,
@@ -3706,7 +3706,7 @@ def disk_filling(desktop: Desktop) -> None:
         "filesystems": [
             {
                 "path": "/nix",
-                "band": "urgent",
+                "band": "nearly-full",
                 "free": 18 * 2**30,
                 "total": 900 * 2**30,
                 "fill_per_hour": 3 * 2**30,

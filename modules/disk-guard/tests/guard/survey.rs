@@ -394,7 +394,7 @@ fn caches_are_offered_whole_or_by_entry_with_their_rank_and_band() {
     file(&go.join("README"), "go");
     let config = config(&format!(
         r#""npm": {{ "kind": "cache", "path": "{}", "rank": 3 }},
-           "go": {{ "kind": "cache", "path": "{}", "protocol": "go-build", "rank": 1, "from": "pressure" }},
+           "go": {{ "kind": "cache", "path": "{}", "protocol": "go-build", "rank": 1, "from": "filling" }},
            "gone": {{ "kind": "cache", "path": "{}" }}"#,
         home.join(".npm/_cacache").display(),
         go.display(),
@@ -407,7 +407,7 @@ fn caches_are_offered_whole_or_by_entry_with_their_rank_and_band() {
         whole.candidate.class,
         Class::Cache {
             rank: 3,
-            from: Band::Urgent
+            from: Band::NearlyFull
         }
     );
     assert_eq!(
@@ -422,7 +422,7 @@ fn caches_are_offered_whole_or_by_entry_with_their_rank_and_band() {
         by_entry.candidate.class,
         Class::Cache {
             rank: 1,
-            from: Band::Pressure
+            from: Band::Filling
         }
     );
     assert_eq!(by_entry.action, Action::Entry { root: go.clone() });
@@ -627,7 +627,7 @@ fn producers_are_offered_where_they_free_idle_since_they_last_ran() {
         r#""tec": {{ "kind": "producer", "command": ["/bin/tec", "cache", "gc"],
                     "path": "{0}", "every": "6h", "timeout": "5m" }},
            "fresh": {{ "kind": "producer", "command": ["/bin/fresh"],
-                      "path": "{0}", "from": "urgent", "timeout": "1m" }}"#,
+                      "path": "{0}", "from": "nearly-full", "timeout": "1m" }}"#,
         trees.display()
     ));
     let ran = [("fresh".to_owned(), now() - 100.0)].into();

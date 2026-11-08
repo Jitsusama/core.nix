@@ -665,7 +665,7 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
 
 def guard_holds(status: Path, holder: Json) -> None:
     """Write what the disk guard says, holding this one folder, whole, by rename as it does."""
-    filling = {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30}
+    filling = {"path": "/", "band": "filling", "free": 5 * 2**30, "total": 30 * 2**30}
     status.parent.mkdir(parents=True, exist_ok=True)
     laid = status.with_suffix(".new")
     laid.write_text(

@@ -63,7 +63,7 @@ ShellRoot {
             // one, its room beside it alone, has no drawer.
             const guard = { shown: bytes => `${bytes} B`, duration: () => "1 h",
                 banded: band => band };
-            const short = machine.disked(guard, { path: "/nix", band: "pressure", free: 7,
+            const short = machine.disked(guard, { path: "/nix", band: "filling", free: 7,
                 total: 9, full_at: Date.now() / 1000 + 3600, says: "" }, { name: "/nix" });
             const facts = (short.drawer?.facts ?? []).map(fact => `${fact.label}=${fact.value}`);
             expect("a short disk's drawer says its size and time, its room beside it",

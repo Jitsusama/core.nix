@@ -1,20 +1,21 @@
 // Drives the disk piece (modules/quickshell/pieces/Disk.qml) through
 // Quickshell itself, over status files written where the test tells the
 // piece the guards write theirs, with niri stood in for: healthy disks are
-// shown but not true, a disk under pressure says how much is free and the
-// pass that left it short but asks for nothing, an urgent one is a warning
-// that still asks for nothing, a critical one wants Joel with nothing slow
-// to run, the worse of the two guards' words wins for a disk both watch, a
-// disk only the machine's guard watches counts, a disk full within a few
-// days says when and how fast whatever its band, and is a warning within a
-// day, with one forecast when it's the worst disk too, a writer frozen
-// wants Joel with a way to let it go on, a guard gone quiet whose unit
-// says it's starting again shows nothing, one whose heartbeat ages past
-// silence with nothing written after it and whose unit failed is a
-// warning of its own saying why, with a way to start it, and the machine's
-// guard stopped says a restart starts it, with no way of its own, what
-// holds the disks is one list from both guards, biggest first, and a guard
-// that never wrote leaves no piece. It exits 0 once every case holds, and otherwise 1, saying which
+// shown but not true, a filling disk says how much is free and the pass
+// that left it short but asks for nothing, a nearly full one is a warning
+// that still asks for nothing, a critically full one wants Joel with
+// nothing slow to run, the worse of the two guards' words wins for a disk
+// both watch, a disk only the machine's guard watches counts, a disk full
+// within a few days says when and how fast whatever its band, and is a
+// warning within a day, with one forecast when it's the worst disk too, a
+// writer frozen wants Joel with a way to let it go on, a guard gone quiet
+// whose unit says it's starting again shows nothing, one whose heartbeat
+// ages past silence with nothing written after it and whose unit failed is
+// a warning of its own saying why, with a way to start it, and the
+// machine's guard stopped says a restart starts it, with no way of its
+// own, what holds the disks is one list from both guards, biggest first,
+// and a guard that never wrote leaves no piece. It exits 0 once every case
+// holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -74,7 +75,7 @@ ShellRoot {
         what: "what holds the disks, from both guards",
         // A tree both measured is one holder, as the later measure says,
         // and every holder is listed biggest first.
-        account: held(status([disk("/", "pressure", 120.5), disk("/boot", "healthy", 0.5)]), [
+        account: held(status([disk("/", "filling", 120.5), disk("/boot", "healthy", 0.5)]), [
             holder("/home/joel/.cache/karst", 17, "cache", "karst"),
             holder("/home/joel/trees/lamp", 40, "worktree", "worktree-lamp")], root.now - 60),
         machine: held(status([disk("/", "healthy", 400)]), [
@@ -89,16 +90,16 @@ ShellRoot {
     }, {
         what: "a disk filling slowly",
         // Nearly full in three days, or never: only the margin says so.
-        account: status([disk("/", "pressure", 120.5, 3 * 24 * 3600)]),
-        machine: status([disk("/", "pressure", 120.5)]),
+        account: status([disk("/", "filling", 120.5, 3 * 24 * 3600)]),
+        machine: status([disk("/", "filling", 120.5)]),
         holds: piece => !piece.active && piece.role === "text" && !piece.wants
             && piece.value === "filling \u00b7 129\u00a0GB free"
             && piece.valueItems.length === 2
             && piece.context === "nearly full in 3 days"
     }, {
         what: "a disk nearly full within a day",
-        account: status([disk("/", "pressure", 120.5, 5400)],
-            { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
+        account: status([disk("/", "filling", 120.5, 5400)],
+            { at: root.now, path: "/", band: "filling", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants && !piece.now
             && piece.value === "filling \u00b7 129\u00a0GB free"
@@ -124,7 +125,7 @@ ShellRoot {
         what: "the worst disk filling",
         // Its band's forecast and its full one would be two forecasts of
         // one disk, so it says the nearer, with how fast it fills.
-        account: status([filling(disk("/", "pressure", 120.5, 5400), 20000, 4)]),
+        account: status([filling(disk("/", "filling", 120.5, 5400), 20000, 4)]),
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.active && piece.role === "warning"
             && piece.context === "nearly full in 1 h 30 min at 4.29\u00a0GB an hour"
@@ -134,9 +135,9 @@ ShellRoot {
         machine: status([disk("/", "healthy", 286)]),
         holds: piece => !piece.active && piece.context === ""
     }, {
-        what: "a critical disk",
-        account: status([disk("/", "critical", 8.25)],
-            { at: root.now, path: "/", band: "critical", end: "reached", freed: 3 * gib }),
+        what: "a critically full disk",
+        account: status([disk("/", "critically-full", 8.25)],
+            { at: root.now, path: "/", band: "critically-full", end: "reached", freed: 3 * gib }),
         machine: status([]),
         holds: piece => piece.active && piece.role === "alert" && piece.wants && piece.now
             && piece.value === "critically full \u00b7 8.86\u00a0GB free"
@@ -146,18 +147,18 @@ ShellRoot {
     }, {
         what: "the worse of two words",
         account: status([disk("/", "healthy", 200)]),
-        machine: status([disk("/", "urgent", 60)]),
+        machine: status([disk("/", "nearly-full", 60)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
             && piece.value === "nearly full \u00b7 64.4\u00a0GB free"
     }, {
         what: "a disk only the machine watches",
         account: status([disk("/", "healthy", 400)]),
-        machine: status([disk("/", "healthy", 400), disk("/boot", "critical", 0.01)]),
+        machine: status([disk("/", "healthy", 400), disk("/boot", "critically-full", 0.01)]),
         holds: piece => piece.wants && piece.value === "critically full \u00b7 10.7\u00a0MB free"
     }, {
         what: "a writer frozen",
-        // Thawed only above urgent, so frozen still at urgent.
-        account: status([disk("/", "urgent", 50)], null, null, [{
+        // Thawed only once no longer nearly full, so frozen still while it is.
+        account: status([disk("/", "nearly-full", 50)], null, null, [{
             unit: "disk-guard-freeze-700.scope", pid: 700, start: 5, name: "dd",
             path: "/", at: root.now }]),
         machine: status([]),

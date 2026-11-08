@@ -71,7 +71,7 @@ QtObject {
             said: said, named: named, now: now, realms: realms,
             core: "a97eea75cc7a243aca68875c9c510674a1d7bbdd",
             ago: (at, at2) => `${Math.round((at2 - at) / 60000)} min ago`,
-            band: band => (band === "healthy" ? "" : band === "pressure" ? "filling" : band)
+            band: band => (band === "healthy" ? "" : band.replace(/-/g, " "))
         };
     }
 
@@ -97,7 +97,7 @@ QtObject {
                 restart: "its kernel changed" } },
         { name: "lantern", realm: "personal", state: "ready", system: "macos",
             os: "macOS 26.6.2", arch: "aarch64", model: "Mac14,2", measured_at: at(1, 59),
-            memory: 24 * 2 ** 30, disk: 926 * 2 ** 30, disk_band: "pressure",
+            memory: 24 * 2 ** 30, disk: 926 * 2 ** 30, disk_band: "filling",
             cpu: { model: "Apple M2", cores: 8 }, accelerators: null,
             power: { on_battery: false, charge: 100 },
             room: { memory_available: 8.6 * 2 ** 30, over: ["memory", "cpu"],

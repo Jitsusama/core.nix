@@ -463,7 +463,7 @@ fn run_paced(
         &root.path().join("#gc"),
         Class::Producer {
             every: None,
-            from: Some(disk_guard::band::Band::Pressure),
+            from: Some(disk_guard::band::Band::Filling),
         },
         Action::Run {
             root: root.path().to_owned(),

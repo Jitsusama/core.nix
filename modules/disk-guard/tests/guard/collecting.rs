@@ -206,24 +206,24 @@ impl Store {
 
     /// A config keeping young garbage as a rebuild cache, as the guard did
     /// by default, so the policy's order can be shown.
-    fn config(&self, pressure: &str, urgent: &str) -> Config {
+    fn config(&self, filling: &str, nearly_full: &str) -> Config {
         self.config_keeping(
-            pressure,
-            urgent,
+            filling,
+            nearly_full,
             r#""garbage": { "keep": "3d", "budget": "10%" },"#,
         )
     }
 
     /// A config with the guard's own garbage policy, as a machine has.
-    fn config_as_given(&self, pressure: &str, urgent: &str) -> Config {
-        self.config_keeping(pressure, urgent, "")
+    fn config_as_given(&self, filling: &str, nearly_full: &str) -> Config {
+        self.config_keeping(filling, nearly_full, "")
     }
 
-    fn config_keeping(&self, pressure: &str, urgent: &str, garbage: &str) -> Config {
+    fn config_keeping(&self, filling: &str, nearly_full: &str, garbage: &str) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "system", "status_file": true,
-                 "bands": {{ "pressure": "{pressure}", "urgent": "{urgent}", "critical": "0%",
-                            "target": "{pressure}" }},
+                 "bands": {{ "filling": "{filling}", "nearly_full": "{nearly_full}",
+                            "critically_full": "0%", "target": "{filling}" }},
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
                           "temp_roots": "{0}/temproots", "roots": "{0}/gcroots",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
@@ -687,7 +687,7 @@ fn a_filling_store_on_an_overloaded_machine_is_listed_at_idle_priority() {
 }
 
 #[test]
-fn an_urgent_store_is_listed_at_full_priority_however_overloaded_the_machine() {
+fn a_nearly_full_store_is_listed_at_full_priority_however_overloaded_the_machine() {
     // Near full, what the listing finds is what keeps the disk from
     // filling, and idle priority on a busy machine may never finish.
     let store = Store::new();
@@ -743,7 +743,7 @@ fn a_listing_kept_by_names_is_listed_again() {
 }
 
 #[test]
-fn a_listing_that_failed_under_pressure_is_tried_again_within_minutes() {
+fn a_listing_that_failed_on_a_filling_disk_is_tried_again_within_minutes() {
     let store = Store::new();
     store.dead("aaa-old", 10.0 * DAY, 4096);
     fs::write(store.root.join("listing-broken"), "").unwrap();
@@ -806,7 +806,7 @@ fn a_filesystem_a_user_daemon_speaks_for_is_collected_when_it_asks() {
     asking
         .send((
             store.root.join("store"),
-            Band::Urgent,
+            Band::NearlyFull,
             Responder::new(theirs),
         ))
         .unwrap();
@@ -862,7 +862,7 @@ fn routine_upkeep_expires_old_generations_and_lists_the_garbage_again() {
 }
 
 #[test]
-fn pressure_takes_young_generations_too_but_never_one_that_boots_or_runs() {
+fn a_filling_disk_takes_young_generations_too_but_never_one_that_boots_or_runs() {
     let store = Store::new();
     let system = generations(&store);
     let mut guard = store.guard(store.config("100%", "0%"));
@@ -928,7 +928,7 @@ fn a_collect_asked_expires_young_generations_ahead_of_the_garbage() {
     asking
         .send((
             store.root.join("store"),
-            Band::Pressure,
+            Band::Filling,
             Responder::new(theirs),
         ))
         .unwrap();
@@ -955,12 +955,13 @@ fn a_collect_asked_expires_young_generations_ahead_of_the_garbage() {
     );
 }
 
-/// A user daemon's config watching the store, at `urgent` and below.
-fn user_config(store: &Store, urgent: &str) -> Config {
+/// A user daemon's config watching the store, nearly full under
+/// `nearly_full` free.
+fn user_config(store: &Store, nearly_full: &str) -> Config {
     Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user",
-             "bands": {{ "pressure": "{urgent}", "urgent": "{urgent}", "critical": "0%",
-                        "target": "{urgent}" }},
+             "bands": {{ "filling": "{nearly_full}", "nearly_full": "{nearly_full}",
+                        "critically_full": "0%", "target": "{nearly_full}" }},
              "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
                       "profiles": "{0}/profiles" }},
              "sources": {{}} }}"#,
@@ -970,7 +971,7 @@ fn user_config(store: &Store, urgent: &str) -> Config {
 }
 
 #[test]
-fn a_user_daemon_with_no_system_daemon_collects_garbage_itself_from_urgent() {
+fn a_user_daemon_with_no_system_daemon_collects_garbage_itself_once_nearly_full() {
     let store = Store::new();
     store
         .guard(user_config(&store, "0%"))
@@ -1030,7 +1031,7 @@ fn a_user_daemon_expires_its_own_profiles_generations() {
     let home = store.profile("home-manager", &ages, 3);
     let config = Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user",
-             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%",
+             "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
                         "target": "0%" }},
              "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
                       "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
@@ -1294,7 +1295,7 @@ fn a_healthy_store_spends_at_most_a_tenth_of_its_time_listing() {
 }
 
 #[test]
-fn a_filling_store_short_of_urgent_rests_between_listings_too() {
+fn a_filling_store_short_of_nearly_full_rests_between_listings_too() {
     // On 8 November a store at 75% was listed back to back, five to six
     // minutes of a core each while the machine's processors stalled half
     // the time, and each pass found nothing more to clear.
@@ -1340,7 +1341,7 @@ fn a_listings_rest_holds_for_the_next_guard() {
 }
 
 #[test]
-fn urgent_without_a_listing_collects_by_nix_store_gc_at_once() {
+fn nearly_full_without_a_listing_collects_by_nix_store_gc_at_once() {
     let store = Store::new();
     let mut guard = store.guard(store.config("100%", "100%"));
     guard.step(&tick(), &CALM).unwrap();

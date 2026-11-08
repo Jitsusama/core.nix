@@ -381,7 +381,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
             {"path": "/", "band": "healthy", "free": 10 * 2**30, "total": 30 * 2**30},
             {
                 "path": "/nix",
-                "band": "pressure",
+                "band": "filling",
                 "free": 20 * 2**30,
                 "total": 900 * 2**30,
                 "says": "The disk is filling, with 20.0 GiB free.",
@@ -705,7 +705,7 @@ def guard_says(desktop: Desktop, holders: list[Json]) -> None:
         "version": 1,
         "heartbeat": time.time() + 3600,
         "filesystems": [
-            {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30},
+            {"path": "/", "band": "filling", "free": 5 * 2**30, "total": 30 * 2**30},
         ],
         "frozen": [],
         "holders": holders,

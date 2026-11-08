@@ -108,7 +108,7 @@ fn a_reply_can_come_later_while_others_are_answered() {
     let collected = std::thread::spawn(move || {
         let collect = Request::Collect {
             path: PathBuf::from("/home"),
-            band: Band::Urgent,
+            band: Band::NearlyFull,
         };
         ask(&collecting, &collect, Duration::from_secs(10))
     });

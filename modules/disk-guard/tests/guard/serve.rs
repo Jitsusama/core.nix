@@ -95,7 +95,7 @@ fn the_system_daemon_hears_who_watches_its_store_and_passes_on_collects() {
     let collected = std::thread::spawn(move || {
         let collect = Request::Collect {
             path: asked,
-            band: Band::Urgent,
+            band: Band::NearlyFull,
         };
         ask(&asking, &collect, Duration::from_secs(10))
     });
@@ -103,7 +103,7 @@ fn the_system_daemon_hears_who_watches_its_store_and_passes_on_collects() {
         .collects
         .recv_timeout(Duration::from_secs(5))
         .unwrap();
-    assert_eq!((path, band), (root.clone(), Band::Urgent));
+    assert_eq!((path, band), (root.clone(), Band::NearlyFull));
     responder.send(&Reply::Collected("reached".to_owned()));
     assert_eq!(
         collected.join().unwrap().unwrap(),
@@ -111,7 +111,7 @@ fn the_system_daemon_hears_who_watches_its_store_and_passes_on_collects() {
     );
     let elsewhere = Request::Collect {
         path: "/proc".into(),
-        band: Band::Urgent,
+        band: Band::NearlyFull,
     };
     let refused = ask(&socket, &elsewhere, Duration::from_secs(5)).unwrap_err();
     assert!(refused.to_string().contains("no garbage"), "{refused}");
@@ -121,12 +121,12 @@ fn guard(root: &Path) -> Guard {
     guard_at(root, "0%")
 }
 
-/// A guard whose disk is filling below `pressure` free.
-/// A guard whose every band starts at `pressure`. Its disk is the real
+/// A guard whose disk is filling below `share` free.
+/// A guard whose every band starts at `share`. Its disk is the real
 /// one, which other work fills as the test runs, so at 100% the disk is
 /// critically full and has no band past it for a forecast to start a pass for.
-fn guard_at(root: &Path, pressure: &str) -> Guard {
-    guard_from(root, pressure, "")
+fn guard_at(root: &Path, share: &str) -> Guard {
+    guard_from(root, share, "")
 }
 
 /// A guard whose disk is always healthy, with the budget `budget`.
@@ -134,10 +134,11 @@ fn guard_over(root: &Path, budget: &str) -> Guard {
     guard_from(root, "0%", &format!(r#""budget": "{budget}","#))
 }
 
-fn guard_from(root: &Path, pressure: &str, more: &str) -> Guard {
+fn guard_from(root: &Path, share: &str, more: &str) -> Guard {
     let config = Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true, {more}
-             "bands": {{ "pressure": "{pressure}", "urgent": "{pressure}", "critical": "{pressure}", "target": "{pressure}" }},
+             "bands": {{ "filling": "{share}", "nearly_full": "{share}",
+                        "critically_full": "{share}", "target": "{share}" }},
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{ "trash": {{ "kind": "trash", "path": "{0}" }} }} }}"#,
         root.display()
@@ -558,7 +559,8 @@ fn a_clear_leaves_what_the_other_holders_could_clear_as_it_was() {
     }
     let config = Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true, "budget": "1",
-             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
+                        "target": "0%" }},
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{ "asked": {{ "kind": "trash", "path": "{0}/asked" }},
                            "spare": {{ "kind": "trash", "path": "{0}/spare" }} }} }}"#,

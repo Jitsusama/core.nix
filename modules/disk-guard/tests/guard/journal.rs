@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 fn action(path: &str, outcome: Outcome) -> Line {
     Line::Action {
         at: 1_760_000_000.0,
-        band: Band::Pressure,
+        band: Band::Filling,
         path: PathBuf::from(path),
         kind: "target".to_owned(),
         size: 4096,
@@ -43,7 +43,7 @@ fn each_line_is_one_json_record() {
     journal
         .write(&Line::Pass {
             at: 1_760_000_010.0,
-            band: Band::Pressure,
+            band: Band::Filling,
             end: "reached".to_owned(),
             freed: 1 << 30,
             seconds: 42.5,
@@ -54,7 +54,7 @@ fn each_line_is_one_json_record() {
     assert_eq!(read[2]["seconds"], 42.5);
     assert_eq!(read[0]["event"], "action");
     assert_eq!(read[0]["path"], "/home/u/src/app/target");
-    assert_eq!(read[0]["band"], "pressure");
+    assert_eq!(read[0]["band"], "filling");
     assert_eq!(read[0]["outcome"], "reclaimed");
     assert_eq!(read[1]["outcome"], "kept");
     assert_eq!(read[1]["reason"], "cargo holds it");
@@ -178,7 +178,7 @@ fn a_directory_is_begun_before_it_is_reclaimed_and_ended_after() {
             .map(|p| (p.clone(), dir.path().to_owned()))
             .collect(),
         at: 1.0,
-        band: Band::Pressure,
+        band: Band::Filling,
     };
     assert_eq!(journaled.reclaim(&candidate(&run)), Outcome::Reclaimed);
     assert_eq!(journaled.reclaim(&candidate(&file)), Outcome::Reclaimed);
@@ -219,7 +219,7 @@ fn what_frees_nothing_is_not_counted_as_cleared() {
     journal
         .write(&Line::Action {
             at: 1.0,
-            band: Band::Pressure,
+            band: Band::Filling,
             path: PathBuf::from("/#garbage"),
             kind: "garbage".to_owned(),
             size: 0,

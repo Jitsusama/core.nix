@@ -3,13 +3,18 @@
 use serde::{Deserialize, Serialize};
 
 /// A level of free space, least severe first, so `Ord` compares severity.
+/// Each still reads by the word it once had, since machines' configs name
+/// bands by those words and old journals and status files carry them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum Band {
     Healthy,
-    Pressure,
-    Urgent,
-    Critical,
+    #[serde(alias = "pressure")]
+    Filling,
+    #[serde(alias = "urgent")]
+    NearlyFull,
+    #[serde(alias = "critical")]
+    CriticallyFull,
 }
 
 /// A filesystem's space as the guard reads it: `free` is what an
@@ -37,9 +42,9 @@ pub struct BtrfsSpace {
 /// The configured bands in bytes on one filesystem.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Thresholds {
-    pub pressure: u64,
-    pub urgent: u64,
-    pub critical: u64,
+    pub filling: u64,
+    pub nearly_full: u64,
+    pub critically_full: u64,
     pub target: u64,
     pub margin: u64,
 }
@@ -57,13 +62,13 @@ impl Thresholds {
     /// leave the disk filling, and run again every step.
     pub fn new(bands: &crate::config::Bands, total: u64) -> Thresholds {
         let margin = crate::units::Size::Percent(Self::MARGIN_PERCENT).of(total);
-        let pressure = bands.pressure.of(total);
-        let urgent = bands.urgent.of(total).min(pressure);
+        let filling = bands.filling.of(total);
+        let nearly_full = bands.nearly_full.of(total).min(filling);
         Thresholds {
-            pressure,
-            urgent,
-            critical: bands.critical.of(total).min(urgent),
-            target: bands.target.of(total).max(pressure.saturating_add(margin)),
+            filling,
+            nearly_full,
+            critically_full: bands.critically_full.of(total).min(nearly_full),
+            target: bands.target.of(total).max(filling.saturating_add(margin)),
             margin,
         }
     }
@@ -71,9 +76,9 @@ impl Thresholds {
     /// Where each band starts, deepest first.
     fn starts(&self) -> [(Band, u64); 3] {
         [
-            (Band::Critical, self.critical),
-            (Band::Urgent, self.urgent),
-            (Band::Pressure, self.pressure),
+            (Band::CriticallyFull, self.critically_full),
+            (Band::NearlyFull, self.nearly_full),
+            (Band::Filling, self.filling),
         ]
     }
 
@@ -85,7 +90,7 @@ impl Thresholds {
             .btrfs
             .is_some_and(|btrfs| btrfs.short_of_metadata_room())
         {
-            return Band::Critical;
+            return Band::CriticallyFull;
         }
         let free = space.free;
         let raw = self

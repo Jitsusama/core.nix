@@ -95,7 +95,7 @@ fn boot_entries_name_the_generations_they_boot() {
 }
 
 #[test]
-fn what_stays_and_what_goes_routinely_and_under_pressure() {
+fn what_stays_and_what_goes_routinely_and_on_a_filling_disk() {
     let dir = tempfile::tempdir().unwrap();
     let ages = [
         (1, 30.0),
@@ -114,7 +114,7 @@ fn what_stays_and_what_goes_routinely_and_under_pressure() {
     let (routine, pressed) = expired(system, &in_use, &boot, 2, 7.0 * DAY, NOW);
     // 4 is current, 2 is in use, 3 has a boot entry, 7 and 8 the newest two.
     assert_eq!(routine, [1], "and 5 and 6 are under a week old");
-    assert_eq!(pressed, [5, 6], "which pressure takes too");
+    assert_eq!(pressed, [5, 6], "which a filling disk takes too");
 }
 
 #[test]

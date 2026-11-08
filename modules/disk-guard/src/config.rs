@@ -19,16 +19,17 @@ pub enum Scope {
 }
 
 /// Where each band starts, as free space under which it applies, and the free
-/// space a pass reclaims towards.
+/// space a pass reclaims towards. Each band still reads by the key it once
+/// had, since machines' configs outside this repository set those keys.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Bands {
-    #[serde(default = "Bands::pressure")]
-    pub pressure: Size,
-    #[serde(default = "Bands::urgent")]
-    pub urgent: Size,
-    #[serde(default = "Bands::critical")]
-    pub critical: Size,
+    #[serde(default = "Bands::filling", alias = "pressure")]
+    pub filling: Size,
+    #[serde(default = "Bands::nearly_full", alias = "urgent")]
+    pub nearly_full: Size,
+    #[serde(default = "Bands::critically_full", alias = "critical")]
+    pub critically_full: Size,
     #[serde(default = "Bands::target")]
     pub target: Size,
 }
@@ -37,13 +38,13 @@ impl Bands {
     // Routine reclaiming starts at a quarter free and reaches for over a
     // third, so a workstation keeps room for its next builds, and the
     // nearly and critically full bands begin well before the disk is full.
-    fn pressure() -> Size {
+    fn filling() -> Size {
         Size::Percent(25.0)
     }
-    fn urgent() -> Size {
+    fn nearly_full() -> Size {
         Size::Percent(10.0)
     }
-    fn critical() -> Size {
+    fn critically_full() -> Size {
         Size::Percent(4.0)
     }
     /// Refuses bands out of order where their units let it show: each
@@ -61,25 +62,25 @@ impl Bands {
             Size::Bytes(bytes) => bytes.to_string(),
             Size::Percent(share) => format!("{share}%"),
         };
-        if over(self.urgent, self.pressure) {
+        if over(self.nearly_full, self.filling) {
             return Err(format!(
-                "urgent {} is over pressure {}",
-                written(self.urgent),
-                written(self.pressure)
+                "nearly_full {} is over filling {}",
+                written(self.nearly_full),
+                written(self.filling)
             ));
         }
-        if over(self.critical, self.urgent) {
+        if over(self.critically_full, self.nearly_full) {
             return Err(format!(
-                "critical {} is over urgent {}",
-                written(self.critical),
-                written(self.urgent)
+                "critically_full {} is over nearly_full {}",
+                written(self.critically_full),
+                written(self.nearly_full)
             ));
         }
-        if over(self.pressure, self.target) {
+        if over(self.filling, self.target) {
             return Err(format!(
-                "target {} is under pressure {}",
+                "target {} is under filling {}",
                 written(self.target),
-                written(self.pressure)
+                written(self.filling)
             ));
         }
         Ok(())
@@ -124,9 +125,9 @@ impl Default for Pacing {
 impl Default for Bands {
     fn default() -> Bands {
         Bands {
-            pressure: Bands::pressure(),
-            urgent: Bands::urgent(),
-            critical: Bands::critical(),
+            filling: Bands::filling(),
+            nearly_full: Bands::nearly_full(),
+            critically_full: Bands::critically_full(),
             target: Bands::target(),
         }
     }
@@ -160,7 +161,7 @@ pub enum Source {
     /// A directory that refills on demand, emptied from a band on.
     Cache {
         path: PathBuf,
-        #[serde(default = "urgent")]
+        #[serde(default = "nearly_full")]
         from: Band,
         #[serde(default)]
         protocol: Option<CacheProtocol>,
@@ -245,8 +246,8 @@ pub enum Source {
     NixBuilds { path: PathBuf },
 }
 
-fn urgent() -> Band {
-    Band::Urgent
+fn nearly_full() -> Band {
+    Band::NearlyFull
 }
 
 fn middle_rank() -> u8 {

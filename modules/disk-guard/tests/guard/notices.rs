@@ -56,8 +56,8 @@ fn shown(change: Option<Change>) -> Notice {
 #[test]
 fn a_writer_frozen_is_told_at_once_with_how_to_let_it_go_on() {
     let short = status(
-        &[("/", Band::Critical, 2)],
-        Some(pass(1.0, Band::Critical, "exhausted", 0)),
+        &[("/", Band::CriticallyFull, 2)],
+        Some(pass(1.0, Band::CriticallyFull, "exhausted", 0)),
     );
     let mut frozen = short.clone();
     frozen.frozen.push(disk_guard::writers::Frozen {
@@ -88,15 +88,15 @@ fn a_writer_frozen_is_told_at_once_with_how_to_let_it_go_on() {
 fn what_stands_now_is_kept_for_whoever_reads_the_status_file() {
     let calm = status(&[("/", Band::Healthy, 400)], None);
     assert_eq!(standing(&calm), None, "a healthy disk has nothing to say");
-    let pressed = status(&[("/", Band::Pressure, 140)], None);
+    let pressed = status(&[("/", Band::Filling, 140)], None);
     assert_eq!(
         standing(&pressed),
         None,
-        "pressure before a pass, nothing yet"
+        "filling before a pass, nothing yet"
     );
     let spent = status(
-        &[("/", Band::Pressure, 140)],
-        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+        &[("/", Band::Filling, 140)],
+        Some(pass(1.0, Band::Filling, "exhausted", 0)),
     );
     let notice = standing(&spent).unwrap();
     assert_eq!(
@@ -114,32 +114,32 @@ fn what_stands_now_is_kept_for_whoever_reads_the_status_file() {
         None,
         "still never a desktop notice"
     );
-    let urgent = status(&[("/", Band::Urgent, 60)], None);
+    let nearly_full = status(&[("/", Band::NearlyFull, 60)], None);
     assert_eq!(
-        standing(&urgent).unwrap().summary,
+        standing(&nearly_full).unwrap().summary,
         "The disk is nearly full"
     );
     let short = status(
-        &[("/", Band::Urgent, 60)],
-        Some(pass(1.0, Band::Urgent, "exhausted", 0)),
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "exhausted", 0)),
     );
     assert_eq!(
         standing(&short).unwrap().summary,
         "The disk is still nearly full"
     );
     let reached = status(
-        &[("/", Band::Pressure, 200)],
-        Some(pass(1.0, Band::Pressure, "reached", 40)),
+        &[("/", Band::Filling, 200)],
+        Some(pass(1.0, Band::Filling, "reached", 40)),
     );
     assert_eq!(standing(&reached), None, "a pass that made room");
     let eased = status(
         &[("/", Band::Healthy, 300)],
-        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+        Some(pass(1.0, Band::Filling, "exhausted", 0)),
     );
     assert_eq!(standing(&eased), None, "once the disk is healthy again");
     let worse = status(
-        &[("/", Band::Urgent, 60)],
-        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::Filling, "exhausted", 0)),
     );
     assert_eq!(
         standing(&worse).unwrap().summary,
@@ -152,21 +152,21 @@ fn what_stands_now_is_kept_for_whoever_reads_the_status_file() {
 fn nothing_changing_says_nothing() {
     let calm = status(&[("/", Band::Healthy, 400)], None);
     assert_eq!(change(&calm, &calm), None);
-    let urgent = status(
-        &[("/", Band::Urgent, 60)],
-        Some(pass(1.0, Band::Urgent, "exhausted", 1)),
+    let nearly_full = status(
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "exhausted", 1)),
     );
-    assert_eq!(change(&urgent, &urgent), None);
+    assert_eq!(change(&nearly_full, &nearly_full), None);
 }
 
 #[test]
-fn pressure_is_the_launchers_to_show_and_never_a_notice() {
+fn filling_is_the_launchers_to_show_and_never_a_notice() {
     let calm = status(&[("/", Band::Healthy, 400)], None);
-    let pressed = status(&[("/", Band::Pressure, 140)], None);
+    let pressed = status(&[("/", Band::Filling, 140)], None);
     assert_eq!(change(&calm, &pressed), None, "entering it");
     let passed = status(
-        &[("/", Band::Pressure, 140)],
-        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+        &[("/", Band::Filling, 140)],
+        Some(pass(1.0, Band::Filling, "exhausted", 0)),
     );
     assert_eq!(
         change(&pressed, &passed),
@@ -175,16 +175,16 @@ fn pressure_is_the_launchers_to_show_and_never_a_notice() {
     );
     let freed = status(
         &[("/", Band::Healthy, 300)],
-        Some(pass(2.0, Band::Pressure, "reached", 160)),
+        Some(pass(2.0, Band::Filling, "reached", 160)),
     );
     assert_eq!(change(&passed, &freed), None, "nor one that made room");
 }
 
 #[test]
 fn nearly_full_says_what_the_guard_does_and_that_nothing_is_needed_yet() {
-    let pressed = status(&[("/", Band::Pressure, 140)], None);
-    let urgent = status(&[("/", Band::Urgent, 60)], None);
-    let notice = shown(change(&pressed, &urgent));
+    let pressed = status(&[("/", Band::Filling, 140)], None);
+    let nearly_full = status(&[("/", Band::NearlyFull, 60)], None);
+    let notice = shown(change(&pressed, &nearly_full));
     assert_eq!(notice.summary, "The disk is nearly full");
     assert_eq!(
         notice.body,
@@ -196,9 +196,9 @@ fn nearly_full_says_what_the_guard_does_and_that_nothing_is_needed_yet() {
 
 #[test]
 fn critically_full_says_saves_may_fail_and_is_urgent() {
-    let urgent = status(&[("/", Band::Urgent, 60)], None);
-    let critical = status(&[("/", Band::Critical, 20)], None);
-    let notice = shown(change(&urgent, &critical));
+    let nearly_full = status(&[("/", Band::NearlyFull, 60)], None);
+    let critically_full = status(&[("/", Band::CriticallyFull, 20)], None);
+    let notice = shown(change(&nearly_full, &critically_full));
     assert_eq!(notice.summary, "The disk is critically full");
     assert_eq!(
         notice.body,
@@ -206,7 +206,11 @@ fn critically_full_says_saves_may_fail_and_is_urgent() {
          whatever is filling the disk if that isn't enough."
     );
     assert_eq!(notice.urgency, Urgency::Critical);
-    assert_eq!(change(&critical, &urgent), None, "easing says nothing");
+    assert_eq!(
+        change(&critically_full, &nearly_full),
+        None,
+        "easing says nothing"
+    );
 }
 
 #[test]
@@ -216,7 +220,7 @@ fn the_worst_of_several_disks_is_told_by_its_name() {
         None,
     );
     let both = status(
-        &[("/", Band::Pressure, 140), ("/data", Band::Urgent, 60)],
+        &[("/", Band::Filling, 140), ("/data", Band::NearlyFull, 60)],
         None,
     );
     assert_eq!(shown(change(&calm, &both)).summary, "/data is nearly full");
@@ -224,10 +228,10 @@ fn the_worst_of_several_disks_is_told_by_its_name() {
 
 #[test]
 fn room_made_when_nearly_full_says_how_much_and_that_nothing_is_needed() {
-    let before = status(&[("/", Band::Urgent, 60)], None);
+    let before = status(&[("/", Band::NearlyFull, 60)], None);
     let reached = status(
         &[("/", Band::Healthy, 200)],
-        Some(pass(1.0, Band::Urgent, "reached", 140)),
+        Some(pass(1.0, Band::NearlyFull, "reached", 140)),
     );
     let notice = shown(change(&before, &reached));
     assert_eq!(notice.summary, "Made room on the disk");
@@ -240,10 +244,10 @@ fn room_made_when_nearly_full_says_how_much_and_that_nothing_is_needed() {
 
 #[test]
 fn a_pass_left_short_says_what_to_do_and_who_is_filling_the_disk() {
-    let before = status(&[("/", Band::Urgent, 60)], None);
+    let before = status(&[("/", Band::NearlyFull, 60)], None);
     let mut short = status(
-        &[("/", Band::Critical, 25)],
-        Some(pass(1.0, Band::Critical, "exhausted", 5)),
+        &[("/", Band::CriticallyFull, 25)],
+        Some(pass(1.0, Band::CriticallyFull, "exhausted", 5)),
     );
     let notice = shown(change(&before, &short));
     assert_eq!(notice.summary, "The disk is still critically full");
@@ -264,8 +268,8 @@ fn a_pass_left_short_says_what_to_do_and_who_is_filling_the_disk() {
             .ends_with(" cargo (pid 4242) is writing most, at 120.0 MiB a second."),
     );
     let nearly = status(
-        &[("/", Band::Urgent, 60)],
-        Some(pass(1.0, Band::Urgent, "exhausted", 0)),
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "exhausted", 0)),
     );
     let notice = shown(change(&before, &nearly));
     assert_eq!(notice.summary, "The disk is still nearly full");
@@ -280,10 +284,10 @@ fn a_pass_left_short_says_what_to_do_and_who_is_filling_the_disk() {
 
 #[test]
 fn a_pass_that_stalled_or_failed_says_so_plainly() {
-    let before = status(&[("/", Band::Urgent, 60)], None);
+    let before = status(&[("/", Band::NearlyFull, 60)], None);
     let stalled = status(
-        &[("/", Band::Urgent, 60)],
-        Some(pass(1.0, Band::Urgent, "stalled", 0)),
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "stalled", 0)),
     );
     assert_eq!(
         shown(change(&before, &stalled)).body,
@@ -291,8 +295,8 @@ fn a_pass_that_stalled_or_failed_says_so_plainly() {
          guard waits a little before trying again; nothing is needed from you yet."
     );
     let failed = status(
-        &[("/", Band::Urgent, 60)],
-        Some(pass(1.0, Band::Urgent, "failed: reading space: gone", 0)),
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "failed: reading space: gone", 0)),
     );
     assert_eq!(
         shown(change(&before, &failed)).body,
@@ -313,13 +317,13 @@ fn routine_upkeep_says_nothing() {
 
 #[test]
 fn the_notice_goes_once_no_disk_is_nearly_full() {
-    let urgent = status(&[("/", Band::Urgent, 60)], None);
-    let pressed = status(&[("/", Band::Pressure, 140)], None);
-    assert_eq!(change(&urgent, &pressed), Some(Change::Withdraw));
+    let nearly_full = status(&[("/", Band::NearlyFull, 60)], None);
+    let pressed = status(&[("/", Band::Filling, 140)], None);
+    assert_eq!(change(&nearly_full, &pressed), Some(Change::Withdraw));
     let calm = status(&[("/", Band::Healthy, 400)], None);
     assert_eq!(
         change(&pressed, &calm),
         None,
-        "nothing was shown for pressure"
+        "nothing was shown for filling"
     );
 }

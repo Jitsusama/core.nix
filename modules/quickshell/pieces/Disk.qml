@@ -32,7 +32,7 @@ Piece {
     id: piece
 
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
-    readonly property var bands: ["healthy", "pressure", "urgent", "critical"]
+    readonly property var bands: ["healthy", "filling", "nearly-full", "critically-full"]
     readonly property var said: [account.said, machine.said].filter(status => status !== null)
     readonly property var disks: {
         const byPath = {};
@@ -45,12 +45,12 @@ Piece {
     readonly property var worst: disks.reduce(
         (worst, disk) => worst === null || worse(disk, worst) ? disk : worst, null)
     readonly property bool short: worst !== null && worst.band !== "healthy"
-    readonly property bool pressed: short && worst.band !== "pressure"
+    readonly property bool pressed: short && worst.band !== "filling"
     // A filling disk that will be nearly full within a day.
     readonly property real day: 24 * 60 * 60
-    readonly property bool soon: short && worst.band === "pressure"
+    readonly property bool soon: short && worst.band === "filling"
         && typeof worst.forecast === "number" && worst.forecast < day
-    readonly property bool critical: short && worst.band === "critical"
+    readonly property bool criticallyFull: short && worst.band === "critically-full"
     // The disk soonest full, of those either guard says will be within
     // `few` seconds at the fill's trend, or null: { path, full_at,
     // fill_per_hour }. Each guard's own figure counts, since each watches
@@ -98,9 +98,9 @@ Piece {
 
     present: said.length > 0
     active: pressed || soon || fullSoon || silent || frozen.length > 0
-    role: critical || frozen.length > 0 ? "alert" : active ? "warning" : "text"
-    // Only critical or frozen wants Joel, and then at once.
-    wants: critical || frozen.length > 0
+    role: criticallyFull || frozen.length > 0 ? "alert" : active ? "warning" : "text"
+    // Only critically full or frozen wants Joel, and then at once.
+    wants: criticallyFull || frozen.length > 0
     now: wants
     value: frozen.length > 0 ? "froze " + frozen.map(writer => writer.name).join(", ")
         : short || !silent ? valueItems.map(item => item.said).join(" \u00b7 ")
@@ -223,7 +223,7 @@ Piece {
     }
 
     // A band in Joel's words, the glossary's: filling, nearly full and
-    // critically full, never the guard's own names for them.
+    // critically full, never as the guard's status file spells them.
     function banded(band) {
         return (Words.of("machine:disk").said ?? {})[band] ?? band;
     }

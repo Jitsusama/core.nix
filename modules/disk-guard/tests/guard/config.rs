@@ -7,14 +7,14 @@ use std::time::Duration;
 const USER: &str = r#"{
   "version": 1,
   "scope": "user",
-  "bands": { "pressure": "15%", "urgent": "8%", "critical": "3%", "target": "20%" },
+  "bands": { "filling": "15%", "nearly_full": "8%", "critically_full": "3%", "target": "20%" },
   "notify": true,
   "status_file": true,
   "sources": {
     "src": { "kind": "cargo", "roots": ["/home/u/src"], "depth": null },
     "trees": { "kind": "cargo", "roots": ["/home/u/trees"], "depth": 3 },
     "go-build": { "kind": "cache", "path": "/home/u/.cache/go-build",
-                  "from": "urgent", "protocol": "go-build", "rank": 1 },
+                  "from": "nearly-full", "protocol": "go-build", "rank": 1 },
     "npm": { "kind": "cache", "path": "/home/u/.npm/_cacache" },
     "scratch": { "kind": "scratch", "path": "/home/u/.dev/cargo", "healthy": "30d" },
     "snapshots": { "kind": "snapshots", "path": "/home/u/snapshots",
@@ -37,7 +37,7 @@ fn with(text: &str, from: &str, to: &str) -> String {
 fn a_user_config_is_read() {
     let config = Config::parse(USER).unwrap();
     assert_eq!(config.scope, Scope::User);
-    assert_eq!(config.bands.pressure, Size::Percent(15.0));
+    assert_eq!(config.bands.filling, Size::Percent(15.0));
     assert!(config.notify && config.status_file);
     assert_eq!(
         config.sources["trees"],
@@ -50,7 +50,7 @@ fn a_user_config_is_read() {
         config.sources["go-build"],
         Source::Cache {
             path: PathBuf::from("/home/u/.cache/go-build"),
-            from: Band::Urgent,
+            from: Band::NearlyFull,
             protocol: Some(CacheProtocol::GoBuild),
             rank: 1,
         }
@@ -59,7 +59,7 @@ fn a_user_config_is_read() {
         config.sources["npm"],
         Source::Cache {
             path: PathBuf::from("/home/u/.npm/_cacache"),
-            from: Band::Urgent,
+            from: Band::NearlyFull,
             protocol: None,
             rank: 50,
         }
@@ -89,10 +89,39 @@ fn a_user_config_is_read() {
 #[test]
 fn bands_default_to_shares_of_the_filesystem() {
     let config = Config::parse(r#"{"version": 1, "scope": "user", "sources": {}}"#).unwrap();
-    assert_eq!(config.bands.pressure, Size::Percent(25.0));
-    assert_eq!(config.bands.urgent, Size::Percent(10.0));
-    assert_eq!(config.bands.critical, Size::Percent(4.0));
+    assert_eq!(config.bands.filling, Size::Percent(25.0));
+    assert_eq!(config.bands.nearly_full, Size::Percent(10.0));
+    assert_eq!(config.bands.critically_full, Size::Percent(4.0));
     assert_eq!(config.bands.target, Size::Percent(35.0));
+}
+
+#[test]
+fn bands_still_read_by_the_words_they_once_had() {
+    // Machines' configs outside this repository set the bands by their old
+    // keys and name a source's band by its old word, so both still read.
+    let config = Config::parse(
+        r#"{"version": 1, "scope": "user",
+            "bands": {"pressure": "30%", "urgent": "12%", "critical": "5%", "target": "40%"},
+            "sources": {
+              "brew": {"kind": "producer", "command": ["/bin/brew", "cleanup"],
+                       "path": "/home/u/brew", "from": "pressure", "timeout": "10m"},
+              "go": {"kind": "cache", "path": "/home/u/go", "from": "urgent"},
+              "npm": {"kind": "cache", "path": "/home/u/npm", "from": "critical"}
+            }}"#,
+    )
+    .unwrap();
+    assert_eq!(config.bands.filling, Size::Percent(30.0));
+    assert_eq!(config.bands.nearly_full, Size::Percent(12.0));
+    assert_eq!(config.bands.critically_full, Size::Percent(5.0));
+    assert_eq!(config.bands.target, Size::Percent(40.0));
+    let from = |name: &str| match &config.sources[name] {
+        Source::Producer { from, .. } => *from,
+        Source::Cache { from, .. } => Some(*from),
+        other => panic!("{name} read as {other:?}"),
+    };
+    assert_eq!(from("brew"), Some(Band::Filling));
+    assert_eq!(from("go"), Some(Band::NearlyFull));
+    assert_eq!(from("npm"), Some(Band::CriticallyFull));
 }
 
 #[test]
@@ -133,8 +162,15 @@ fn a_temp_source_with_no_path_is_the_accounts_own() {
 
 #[test]
 fn a_band_may_be_set_in_bytes() {
-    let config = Config::parse(&with(USER, r#""urgent": "8%""#, r#""urgent": 80000000000"#));
-    assert_eq!(config.unwrap().bands.urgent, Size::Bytes(80_000_000_000));
+    let config = Config::parse(&with(
+        USER,
+        r#""nearly_full": "8%""#,
+        r#""nearly_full": 80000000000"#,
+    ));
+    assert_eq!(
+        config.unwrap().bands.nearly_full,
+        Size::Bytes(80_000_000_000)
+    );
 }
 
 #[test]
@@ -249,7 +285,7 @@ fn refusals_say_why() {
             "span",
         ),
         (
-            with(USER, r#""from": "urgent""#, r#""from": "dire""#),
+            with(USER, r#""from": "nearly-full""#, r#""from": "dire""#),
             "dire",
         ),
         (
@@ -278,11 +314,15 @@ fn refusals_say_why() {
         ),
         (
             with(USER, r#""target": "20%""#, r#""target": "10%""#),
-            "target 10% is under pressure 15%",
+            "target 10% is under filling 15%",
         ),
         (
-            with(USER, r#""critical": "3%""#, r#""critical": "9%""#),
-            "critical 9% is over urgent 8%",
+            with(
+                USER,
+                r#""critically_full": "3%""#,
+                r#""critically_full": "9%""#,
+            ),
+            "critically_full 9% is over nearly_full 8%",
         ),
         (
             r#"{"version": 1, "scope": "system", "sources": {}}"#.to_string(),

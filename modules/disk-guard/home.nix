@@ -250,7 +250,7 @@ in
             ];
             path = "${home}/Library/Caches/Homebrew";
             every = "7d";
-            from = "pressure";
+            from = "filling";
             timeout = "10m";
           }
         );

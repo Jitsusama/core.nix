@@ -467,9 +467,9 @@ now, and keep or stop keeping a folder.
 | disk guard | the program that keeps each filesystem from filling: one for the machine, one for the account | | `disk-guard system`, `disk-guard user` |
 | freeze | the disk guard stopping a program that fills a filesystem, until there's room | frozen | `SIGSTOP` |
 | thaw | letting a frozen program carry on | | `disk-guard thaw` |
-| filling | the disk guard's first band, under a quarter free, when it starts taking room back | pressure | `pressure` |
-| nearly full | the disk guard's second band, under a tenth free, when it takes more | urgent | `urgent` |
-| critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | critical | `critical` |
+| filling | the disk guard's first band, under a quarter free, when it starts taking room back | pressure | `filling` |
+| nearly full | the disk guard's second band, under a tenth free, when it takes more | urgent | `nearly-full`, a config's `nearly_full` |
+| critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | critical | `critically-full`, a config's `critically_full` |
 | forecast | how long a filesystem has until it's full, at the rate it's filling | | |
 | holder | a folder the disk guard names as taking a filesystem's room, with whose it is | | `holders` |
 | ledger | the disk guard's record of what held each filesystem over two days, so a holder says how much it grew | history | `ledger.json`, a holder's `grew` |

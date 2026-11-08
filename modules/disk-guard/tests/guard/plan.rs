@@ -24,7 +24,12 @@ impl Draw {
     }
 
     fn band(&mut self) -> Band {
-        [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical][self.index(4)]
+        [
+            Band::Healthy,
+            Band::Filling,
+            Band::NearlyFull,
+            Band::CriticallyFull,
+        ][self.index(4)]
     }
 
     fn class(&mut self) -> Class {
@@ -141,7 +146,7 @@ fn everything() -> Vec<Candidate> {
             "cache-go",
             Class::Cache {
                 rank: 0,
-                from: Band::Urgent,
+                from: Band::NearlyFull,
             },
             0.0,
         ),
@@ -181,8 +186,8 @@ fn healthy_takes_only_waste_and_week_old_leftovers() {
 }
 
 #[test]
-fn pressure_adds_idle_targets_but_not_installs_or_occupied_trees() {
-    let names = sorted(taken(&everything(), Band::Pressure));
+fn filling_adds_idle_targets_but_not_installs_or_occupied_trees() {
+    let names = sorted(taken(&everything(), Band::Filling));
     let expected = [
         "replaced-2d",
         "scratch-2d",
@@ -199,8 +204,8 @@ fn pressure_adds_idle_targets_but_not_installs_or_occupied_trees() {
 }
 
 #[test]
-fn urgent_adds_caches_idle_installs_old_cores_and_trees_occupied_a_day() {
-    let names = taken(&everything(), Band::Urgent);
+fn nearly_full_adds_caches_idle_installs_old_cores_and_trees_occupied_a_day() {
+    let names = taken(&everything(), Band::NearlyFull);
     for name in [
         "cache-go",
         "install-7h",
@@ -216,9 +221,9 @@ fn urgent_adds_caches_idle_installs_old_cores_and_trees_occupied_a_day() {
 }
 
 #[test]
-fn critical_takes_everything_offered() {
+fn critically_full_takes_everything_offered() {
     assert_eq!(
-        taken(&everything(), Band::Critical).len(),
+        taken(&everything(), Band::CriticallyFull).len(),
         everything().len()
     );
 }
@@ -277,11 +282,11 @@ fn a_clear_takes_what_a_critically_full_disk_would_but_nothing_in_use() {
 fn a_finished_tree_someone_sits_in_is_judged_as_occupied() {
     let tree = occupied(spent(candidate("merged-shell", Class::Target, HOUR)));
     assert_eq!(
-        taken(std::slice::from_ref(&tree), Band::Pressure),
+        taken(std::slice::from_ref(&tree), Band::Filling),
         Vec::<String>::new()
     );
     assert_eq!(
-        plan(&[tree], Band::Critical, None, |_| 1.0)[0].group,
+        plan(&[tree], Band::CriticallyFull, None, |_| 1.0)[0].group,
         Group::Occupied
     );
 }
@@ -292,7 +297,7 @@ fn a_cache_is_taken_from_its_own_band_on() {
         "soon",
         Class::Cache {
             rank: 0,
-            from: Band::Pressure,
+            from: Band::Filling,
         },
         0.0,
     );
@@ -300,15 +305,15 @@ fn a_cache_is_taken_from_its_own_band_on() {
         "late",
         Class::Cache {
             rank: 0,
-            from: Band::Critical,
+            from: Band::CriticallyFull,
         },
         0.0,
     );
     let both = [soon, late];
     assert_eq!(taken(&both, Band::Healthy), Vec::<String>::new());
-    assert_eq!(taken(&both, Band::Pressure), ["soon"]);
-    assert_eq!(taken(&both, Band::Urgent), ["soon"]);
-    assert_eq!(taken(&both, Band::Critical), ["soon", "late"]);
+    assert_eq!(taken(&both, Band::Filling), ["soon"]);
+    assert_eq!(taken(&both, Band::NearlyFull), ["soon"]);
+    assert_eq!(taken(&both, Band::CriticallyFull), ["soon", "late"]);
 }
 
 #[test]
@@ -322,7 +327,7 @@ fn the_plan_goes_cheapest_loss_first() {
             "cache-modules",
             Class::Cache {
                 rank: 5,
-                from: Band::Urgent,
+                from: Band::NearlyFull,
             },
             0.0,
         ),
@@ -330,7 +335,7 @@ fn the_plan_goes_cheapest_loss_first() {
             "cache-build",
             Class::Cache {
                 rank: 0,
-                from: Band::Urgent,
+                from: Band::NearlyFull,
             },
             0.0,
         ),
@@ -338,7 +343,7 @@ fn the_plan_goes_cheapest_loss_first() {
             "producer",
             Class::Producer {
                 every: None,
-                from: Some(Band::Pressure),
+                from: Some(Band::Filling),
             },
             2.0 * HOUR,
         ),
@@ -353,7 +358,7 @@ fn the_plan_goes_cheapest_loss_first() {
         ),
         candidate("snapshot", Class::Snapshot, 0.0),
     ];
-    let order = taken(&candidates, Band::Critical);
+    let order = taken(&candidates, Band::CriticallyFull);
     let expected = [
         "snapshot",
         "garbage",
@@ -398,10 +403,10 @@ fn a_plan_stops_once_its_predicted_free_covers_the_shortfall() {
     let candidates: Vec<_> = (0..10)
         .map(|n| candidate(&format!("t{n}"), Class::Target, f64::from(10 + n) * HOUR))
         .collect();
-    let steps = plan(&candidates, Band::Pressure, Some(3 * GIB), |_| 1.0);
+    let steps = plan(&candidates, Band::Filling, Some(3 * GIB), |_| 1.0);
     assert_eq!(steps.len(), 3);
     // Compressed targets free half their size, so twice as many are planned.
-    let steps = plan(&candidates, Band::Pressure, Some(3 * GIB), |class| {
+    let steps = plan(&candidates, Band::Filling, Some(3 * GIB), |class| {
         if class == Class::Target { 0.5 } else { 1.0 }
     });
     assert_eq!(steps.len(), 6);
@@ -418,30 +423,30 @@ fn a_producer_runs_on_its_schedule_and_from_its_band_at_most_hourly() {
     assert!(runs(six, None, 7.0 * HOUR, Band::Healthy), "due");
     assert!(!runs(six, None, 5.0 * HOUR, Band::Healthy), "not yet due");
     assert!(
-        !runs(six, None, 5.0 * HOUR, Band::Critical),
+        !runs(six, None, 5.0 * HOUR, Band::CriticallyFull),
         "no band of its own"
     );
-    let pressure = Some(Band::Pressure);
-    assert!(!runs(None, pressure, f64::INFINITY, Band::Healthy));
-    assert!(runs(None, pressure, 2.0 * HOUR, Band::Pressure));
+    let filling = Some(Band::Filling);
+    assert!(!runs(None, filling, f64::INFINITY, Band::Healthy));
+    assert!(runs(None, filling, 2.0 * HOUR, Band::Filling));
     assert!(
-        !runs(None, pressure, 0.5 * HOUR, Band::Pressure),
+        !runs(None, filling, 0.5 * HOUR, Band::Filling),
         "ran within the hour"
     );
-    assert!(runs(None, pressure, 2.0 * HOUR, Band::Critical));
+    assert!(runs(None, filling, 2.0 * HOUR, Band::CriticallyFull));
     assert!(
-        runs(six, pressure, 7.0 * HOUR, Band::Healthy),
+        runs(six, filling, 7.0 * HOUR, Band::Healthy),
         "either says when"
     );
 }
 
 #[test]
-fn podman_prunes_after_the_caches_from_urgent_and_its_unused_images_at_critical() {
+fn podman_prunes_after_the_caches_once_nearly_full_and_its_unused_images_once_critically_full() {
     let dangling = Class::Podman { unused: false };
     let unused = Class::Podman { unused: true };
     let cache = Class::Cache {
         rank: 200,
-        from: Band::Urgent,
+        from: Band::NearlyFull,
     };
     let candidates = [
         candidate("podman-unused", unused, 2.0 * HOUR),
@@ -449,20 +454,23 @@ fn podman_prunes_after_the_caches_from_urgent_and_its_unused_images_at_critical(
         candidate("cache", cache, 0.0),
         candidate("idle", Class::Target, 7.0 * HOUR),
     ];
-    assert_eq!(taken(&candidates, Band::Pressure), ["idle"]);
+    assert_eq!(taken(&candidates, Band::Filling), ["idle"]);
     assert_eq!(
-        taken(&candidates, Band::Urgent),
+        taken(&candidates, Band::NearlyFull),
         ["cache", "podman", "idle"]
     );
     assert_eq!(
-        taken(&candidates, Band::Critical),
+        taken(&candidates, Band::CriticallyFull),
         ["cache", "podman", "idle", "podman-unused"]
     );
     let recent = [
         candidate("podman-unused", unused, 0.5 * HOUR),
         candidate("podman", dangling, 0.5 * HOUR),
     ];
-    assert!(taken(&recent, Band::Critical).is_empty(), "at most hourly");
+    assert!(
+        taken(&recent, Band::CriticallyFull).is_empty(),
+        "at most hourly"
+    );
     assert!(dangling.command() && unused.command());
 }
 
@@ -477,7 +485,7 @@ fn garbage_goes_in_its_own_order_and_healthy_keeps_what_its_budget_allows() {
     ];
     assert_eq!(taken(&candidates, Band::Healthy), ["first", "second"]);
     assert_eq!(
-        taken(&candidates, Band::Pressure),
+        taken(&candidates, Band::Filling),
         ["first", "second", "kept"]
     );
     assert!(garbage(true, 0).command(), "measured alone");
@@ -486,7 +494,12 @@ fn garbage_goes_in_its_own_order_and_healthy_keeps_what_its_budget_allows() {
 #[test]
 fn an_oversized_log_is_trimmed_as_waste_in_every_band() {
     let log = [candidate("app.log", Class::Log, 0.0)];
-    for band in [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical] {
+    for band in [
+        Band::Healthy,
+        Band::Filling,
+        Band::NearlyFull,
+        Band::CriticallyFull,
+    ] {
         let steps = plan(&log, band, None, |_| 1.0);
         assert_eq!(steps.len(), 1, "{band:?}");
         assert_eq!(steps[0].group, Group::Waste, "{band:?}");
