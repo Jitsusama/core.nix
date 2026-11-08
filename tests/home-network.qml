@@ -81,6 +81,12 @@ QtObject {
             ["generic 3", "phone 1"]);
         expect("a node's devices", groups[1].devices.map(one => one.name),
             ["generic 2", "laptop computer 2", "printer 1", "tablet 1"]);
+        // This machine, the weakest under its node, comes first under it and
+        // says so where every row shows it.
+        expect("this machine first under its node", groups[2].devices.map(one => one.name)
+            .slice(0, 2), ["laptop computer 1", "generic 4"]);
+        expect("this machine's side", Home.deviceRow(device("laptop computer 1")).side,
+            "this machine \u00b7 \u221275 dBm");
         const astray = Object.assign({}, model, {
             devices: model.devices.concat([Object.assign({}, device("phone 1"),
                 { mac: "02:00:00:00:00:ff", node: "9999" })])

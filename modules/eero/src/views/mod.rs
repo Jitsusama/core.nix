@@ -243,6 +243,18 @@ fn location<'a>(model: &'a HomeNetwork, id: Option<&'a str>) -> &'a str {
 }
 
 /// A device's name, the one eero shows, or its hardware address.
+/// The devices on the node `id` names, this machine first and the rest as
+/// eero orders them, so this machine is found where it hangs.
+fn on_node<'a>(model: &'a HomeNetwork, id: Option<&str>) -> Vec<&'a Device> {
+    let mut on: Vec<&Device> = model
+        .devices
+        .iter()
+        .filter(|device| device.node.as_deref() == id)
+        .collect();
+    on.sort_by_key(|device| !device.this_machine);
+    on
+}
+
 fn device_name(device: &Device) -> &str {
     device
         .name

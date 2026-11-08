@@ -373,6 +373,10 @@ pub struct Light {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
     pub mac: String,
+    /// Whether it's the machine the daemon runs on: one of that machine's
+    /// own hardware addresses is this one (`read::mark_this_machine`).
+    #[serde(default)]
+    pub this_machine: bool,
     pub name: Option<String>,
     pub nickname: Option<String>,
     pub hostname: Option<String>,

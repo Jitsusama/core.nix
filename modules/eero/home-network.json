@@ -1402,6 +1402,7 @@
   "devices": [
     {
       "mac": "02:00:00:00:00:0a",
+      "this_machine": false,
       "name": "generic 2",
       "nickname": null,
       "hostname": "generic 2",
@@ -1484,6 +1485,7 @@
     },
     {
       "mac": "02:00:00:00:00:11",
+      "this_machine": false,
       "name": "laptop computer 2",
       "nickname": null,
       "hostname": "laptop computer 2",
@@ -1566,6 +1568,7 @@
     },
     {
       "mac": "02:00:00:00:00:13",
+      "this_machine": false,
       "name": "printer 1",
       "nickname": "printer 1",
       "hostname": "printer 2",
@@ -1640,6 +1643,7 @@
     },
     {
       "mac": "02:00:00:00:00:01",
+      "this_machine": false,
       "name": "tablet 1",
       "nickname": null,
       "hostname": "tablet 1",
@@ -1723,6 +1727,7 @@
     },
     {
       "mac": "02:00:00:00:00:15",
+      "this_machine": false,
       "name": "generic 4",
       "nickname": null,
       "hostname": "generic 4",
@@ -1805,6 +1810,7 @@
     },
     {
       "mac": "02:00:00:00:00:17",
+      "this_machine": false,
       "name": "audio 1",
       "nickname": "audio 1",
       "hostname": "audio 2",
@@ -1879,6 +1885,7 @@
     },
     {
       "mac": "02:00:00:00:00:16",
+      "this_machine": false,
       "name": "media streamer 1",
       "nickname": "media streamer 1",
       "hostname": "thermostat 1",
@@ -1954,6 +1961,7 @@
     },
     {
       "mac": "02:00:00:00:00:08",
+      "this_machine": false,
       "name": "unknown computer 1",
       "nickname": null,
       "hostname": "unknown computer 1",
@@ -2036,6 +2044,7 @@
     },
     {
       "mac": "02:00:00:00:00:0d",
+      "this_machine": false,
       "name": "thermostat 1",
       "nickname": null,
       "hostname": "thermostat 1",
@@ -2118,6 +2127,7 @@
     },
     {
       "mac": "02:00:00:00:00:0f",
+      "this_machine": false,
       "name": "game console 1",
       "nickname": "game console 1",
       "hostname": null,
@@ -2199,6 +2209,7 @@
     },
     {
       "mac": "02:00:00:00:00:07",
+      "this_machine": false,
       "name": "generic 1",
       "nickname": null,
       "hostname": "generic 1",
@@ -2274,6 +2285,7 @@
     },
     {
       "mac": "02:00:00:00:00:03",
+      "this_machine": false,
       "name": "phone 1",
       "nickname": null,
       "hostname": "phone 1",
@@ -2349,6 +2361,7 @@
     },
     {
       "mac": "02:00:00:00:00:0e",
+      "this_machine": true,
       "name": "laptop computer 1",
       "nickname": null,
       "hostname": "laptop computer 1",
@@ -2431,6 +2444,7 @@
     },
     {
       "mac": "02:00:00:00:00:0b",
+      "this_machine": false,
       "name": "generic 3",
       "nickname": null,
       "hostname": "generic 3",
@@ -2505,6 +2519,7 @@
     },
     {
       "mac": "02:00:00:00:00:05",
+      "this_machine": false,
       "name": "phone 1",
       "nickname": null,
       "hostname": "phone 1",

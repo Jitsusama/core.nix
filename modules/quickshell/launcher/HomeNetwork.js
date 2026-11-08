@@ -174,11 +174,14 @@ function nodesInOrder(nodes) {
 }
 
 // Each node in that order with its devices, as eero orders them (by node,
-// the strongest signal first), and the devices on no node eero listed,
-// as one group with no node, last.
+// the strongest signal first) but for this machine, first under its node,
+// and the devices on no node eero listed, as one group with no node, last.
 function grouped(model) {
     const nodes = nodesInOrder(model?.nodes ?? []);
-    const devices = model?.devices ?? [];
+    const listed = model?.devices ?? [];
+    const devices = listed
+        .filter((device) => device.this_machine)
+        .concat(listed.filter((device) => !device.this_machine));
     const known = new Set(nodes.map((node) => node.id));
     const groups = nodes.map((node) => ({
         node,
@@ -287,21 +290,20 @@ function speedOf(device, settings) {
 
 // A signal in dBm, as Wi-Fi says one, with the real minus.
 function signalOf(device) {
-    return device.signal_dbm === null || device.signal_dbm === undefined
-        ? ""
-        : `${signed(device.signal_dbm)} dBm`;
+    return typeof device.signal_dbm === "number" ? `${signed(device.signal_dbm)} dBm` : "";
 }
-
 
 // What a device's row says: its signal at its side, as a bar too, and
 // after its name its band and channel, its rate each way, its speed now,
-// its address and the profile it's in, given the profiles.
+// its address and the profile it's in, given the profiles. This machine
+// says so at its side, which every row shows, not in its note, which only
+// the cursor's row does.
 function deviceRow(device, settings, profiles) {
-    const signal = signalOf(device);
     const profile = (profiles ?? []).find((one) => one.id === device.profile) ?? null;
+    const side = [device.this_machine ? "this machine" : "", device.ethernet ? "Ethernet" : signalOf(device)];
     return {
         name: nameOf(device),
-        side: device.ethernet ? "Ethernet" : signal,
+        side: side.filter((part) => part !== "").join(" \u00b7 "),
         note: [
             bandOf(device),
             ratesOf(device, settings),
