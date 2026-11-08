@@ -195,6 +195,16 @@ ShellRoot {
     function parks() {
         expect("only the one parked this boot whose marker stands is parked",
             parkedAs() === "NAPPER", parkedAs());
+        // Those here that ended this boot and aren't parked are closed, the
+        // one parked before this boot among them, the latest first, by id
+        // when they ended at once, each saying when it ended.
+        const closed = Sessions.closed;
+        expect("closed, as each ended here this boot unparked",
+            closed.map(one => one.id).join(" ") === "s-ENDED3 s-STALE7 s-WOKEN8",
+            JSON.stringify(closed.map(one => one.id)));
+        expect("each saying when it ended, and its address",
+            closed.every(one => !isNaN(Date.parse(one.endedAt))) && closed[0].address === "ENDED3",
+            JSON.stringify(closed[0]));
         const napper = Sessions.parked[0];
         expect("one parked is named by its record, with no window",
             napper.title === "Napper" && napper.window === null, JSON.stringify(napper));

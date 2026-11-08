@@ -66,6 +66,19 @@ Singleton {
     // the records are. Never among `running`, so nothing counts it as
     // running or starts another session in its place.
     readonly property var parked: resting.map(record => shown(record, {}))
+    // Each session here that ended this boot and isn't parked, closed or
+    // gone with its process, the one that ended last first, by id when
+    // two ended at once: shown as each parked one is, with `id`, its
+    // `quest` where it had one, and `endedAt`, when the node last heard of
+    // it, as an ISO time. What a closed session's record can't tell, as
+    // when it was lost or whether it was carried, isn't said. Agents'
+    // Recent reads it beside toReopen, the last boot's.
+    readonly property var closed: ending.map(record => Object.assign(shown(record, {}), {
+        id: String(record.presence.session ?? record.file),
+        quest: record.presence.questInfo?.id ?? record.presence.quest ?? null,
+        endedAt: new Date(record.changed).toISOString()
+    })).sort((one, other) => other.endedAt.localeCompare(one.endedAt)
+        || one.id.localeCompare(other.id))
 
     // A session as `running` lists it, from its record.
     function shown(record, kitties) {
@@ -1990,9 +2003,13 @@ Singleton {
     // Each parked session's record, { file, presence, kitty, held }, as
     // `live` keeps the running ones'.
     property var resting: []
+    // Each record of a session here that ended this boot, unparked, as
+    // `resting` keeps the parked ones', with when it changed last.
+    property var ending: []
     function relive() {
         const next = [];
         const sleeping = [];
+        const ended = [];
         const markers = parkedMarkers();
         const held = node?.held ?? {};
         for (const key of Object.keys(held).sort()) {
@@ -2010,6 +2027,12 @@ Singleton {
             // its record says it's parked.
             if (state === "ended" && here && parks(presence, markers)) {
                 sleeping.push({ file: id, presence: presence, kitty: null, held: null });
+                continue;
+            }
+            if (state === "ended" && here && presence && (presence.addresses ?? []).length > 0
+                && changed >= bootedAt) {
+                ended.push({ file: id, presence: presence, kitty: null, held: null,
+                    changed: changed });
                 continue;
             }
             if (!running || !presence || (presence.addresses ?? []).length === 0)
@@ -2036,11 +2059,12 @@ Singleton {
                     changed: changed
                 });
         }
-        const said = JSON.stringify([next, sleeping]);
+        const said = JSON.stringify([next, sleeping, ended]);
         if (said === liveSaid)
             return;
         liveSaid = said;
         resting = sleeping;
+        ending = ended;
         const by = {};
         for (const record of next) {
             for (const address of record.presence.addresses)
