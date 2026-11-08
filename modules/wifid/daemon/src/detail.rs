@@ -82,15 +82,38 @@ pub struct Joined {
     pub noise: Option<i32>,
     /// How far the signal stands above the noise, in dB.
     pub margin: Option<i32>,
-    /// The rates it last heard and sent at, in Mb/s.
-    pub receive: Option<u32>,
-    pub send: Option<u32>,
+    /// What it hears and what it sends, each way on its own.
+    pub receive: Way,
+    pub send: Way,
+    /// What the driver expects the link to carry, after the air's own
+    /// overhead, in Mb/s.
+    pub expected: Option<u32>,
+    /// How long since a frame last came or went, in milliseconds.
+    pub idle: Option<u32>,
     /// As the driver says it, as 80 MHz.
     pub width: Option<String>,
     pub frequency: Option<u32>,
-    /// The modulation and coding it last heard at, and on how many streams.
+}
+
+/// One way of a card's link, as its driver last read it: the rate, how it
+/// was coded, and how much has gone that way since the card joined. Each
+/// is none where the driver doesn't say, as wpa_supplicant leaves out a
+/// reading of nothing, MCS 0 among them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Way {
+    /// In Mb/s.
+    pub mbps: Option<u32>,
+    /// 4 to 6, as the coding says it: HE is Wi-Fi 6, VHT 5 and HT 4.
+    pub generation: Option<u8>,
+    /// The modulation and coding, and on how many streams.
     pub mcs: Option<u32>,
     pub streams: Option<u32>,
+    /// The pause between symbols, in microseconds.
+    pub guard: Option<f64>,
+    pub bytes: Option<u64>,
+    pub packets: Option<u32>,
 }
 
 /// The access point wifid would pick.
@@ -114,12 +137,12 @@ pub struct Polled {
     pub signal: Option<i32>,
     pub average: Option<i32>,
     pub noise: Option<i32>,
-    pub receive: Option<u32>,
-    pub send: Option<u32>,
+    pub receive: Way,
+    pub send: Way,
+    pub expected: Option<u32>,
+    pub idle: Option<u32>,
     pub width: Option<String>,
     pub frequency: Option<u32>,
-    pub mcs: Option<u32>,
-    pub streams: Option<u32>,
 }
 
 impl Polled {
@@ -134,28 +157,72 @@ impl Polled {
             Some(Value::U32(reading)) => Some(*reading),
             _ => None,
         };
-        let speed = unsigned("linkspeed");
-        let rate = |key: &str| unsigned(key).map(|kbps| kbps / 1000).or(speed);
         let width = match value("width") {
             Some(Value::Str(width)) => Some(width.to_string()),
             _ => None,
+        };
+        let speed = unsigned("linkspeed");
+        let way = |rate: &str, from: &str| {
+            let key = |figure: &str| format!("{from}-{figure}");
+            let (generation, mcs, streams) = coding(|figure| unsigned(&key(figure)));
+            Way {
+                mbps: unsigned(rate).map(mbps).or(speed),
+                generation,
+                mcs,
+                streams,
+                guard: match value(&key("guard-interval")) {
+                    Some(Value::F64(microseconds)) => Some(*microseconds),
+                    _ => None,
+                },
+                bytes: match value(&key("bytes")) {
+                    Some(Value::U64(bytes)) => Some(*bytes),
+                    _ => None,
+                },
+                packets: unsigned(&key("packets")),
+            }
         };
         Polled {
             point,
             signal: signed("rssi"),
             average: signed("avg-rssi"),
             noise: signed("noise"),
-            receive: rate("linkrxspeed"),
-            send: rate("linktxspeed"),
+            receive: way("linkrxspeed", "rx"),
+            send: way("linktxspeed", "tx"),
+            expected: unsigned("expected-throughput").map(mbps),
+            idle: unsigned("inactive-time"),
             width,
             frequency: unsigned("frequency"),
-            mcs: unsigned("rx-he-mcs")
-                .or_else(|| unsigned("rx-vht-mcs"))
-                .or_else(|| unsigned("rx-mcs")),
-            streams: unsigned("rx-he-nss").or_else(|| unsigned("rx-vht-nss")),
         }
     }
 }
+
+/// A rate in kb/s, as nl80211 says it, to the nearest Mb/s.
+fn mbps(kbps: u32) -> u32 {
+    kbps.saturating_add(500) / 1000
+}
+
+/// One way's generation, MCS and streams, from its figures by name (`he-mcs`,
+/// `vht-nss`), the newest coding said: HE's and VHT's say their streams,
+/// and HT's index does, eight to a stream.
+fn coding(figure: impl Fn(&str) -> Option<u32>) -> (Option<u8>, Option<u32>, Option<u32>) {
+    if let Some(mcs) = figure("he-mcs") {
+        return (Some(6), Some(mcs), figure("he-nss"));
+    }
+    if let Some(mcs) = figure("vht-mcs") {
+        return (Some(5), Some(mcs), figure("vht-nss"));
+    }
+    match figure("mcs") {
+        Some(index) => (
+            Some(4),
+            Some(index % HT_PER_STREAM),
+            Some(index / HT_PER_STREAM + 1),
+        ),
+        None => (None, None, None),
+    }
+}
+
+/// How many of Wi-Fi 4's MCS indexes each stream count takes.
+const HT_PER_STREAM: u32 = 8;
 
 /// What wpa_supplicant calls a reading the driver didn't give.
 const INVALID: i32 = 9999;
@@ -209,12 +276,12 @@ pub fn detail<'a>(
                 .signal
                 .zip(noise)
                 .map(|(signal, noise)| signal - noise),
-            receive: polled.receive,
-            send: polled.send,
+            receive: polled.receive.clone(),
+            send: polled.send.clone(),
+            expected: polled.expected,
+            idle: polled.idle,
             width: polled.width.clone(),
             frequency: polled.frequency,
-            mcs: polled.mcs,
-            streams: polled.streams,
         }
     });
     let joined = joined.collect();
@@ -407,12 +474,24 @@ mod tests {
             signal: Some(-59),
             average: Some(-58),
             noise: None,
-            receive: Some(458),
-            send: Some(458),
+            receive: way(458, 9),
+            send: way(458, 8),
+            expected: Some(371),
+            idle: Some(12),
             width: Some("40 MHz".into()),
             frequency: Some(5200),
-            mcs: Some(9),
+        }
+    }
+
+    fn way(mbps: u32, mcs: u32) -> Way {
+        Way {
+            mbps: Some(mbps),
+            generation: Some(6),
+            mcs: Some(mcs),
             streams: Some(2),
+            guard: Some(0.8),
+            bytes: None,
+            packets: None,
         }
     }
 
@@ -574,10 +653,23 @@ mod tests {
         let joined = &detail.joined[0];
         assert_eq!(joined.card, "wlan0");
         assert_eq!(joined.bssid.as_deref(), Some("e6:55:b8:57:49:e0"));
+        assert_eq!(joined.signal, Some(-59));
         assert_eq!(
-            (joined.signal, joined.receive, joined.mcs),
-            (Some(-59), Some(458), Some(9))
+            (joined.receive.mbps, joined.receive.mcs),
+            (Some(458), Some(9))
         );
+    }
+
+    #[test]
+    fn a_card_on_it_says_its_send_side_what_it_can_carry_and_how_long_it_has_been_idle() {
+        let hotel = hotel();
+        let on = polled(1);
+
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
+
+        let joined = &detail.joined[0];
+        assert_eq!(joined.send, way(458, 8));
+        assert_eq!((joined.expected, joined.idle), (Some(371), Some(12)));
     }
 
     #[test]
@@ -593,7 +685,8 @@ mod tests {
 
     #[test]
     fn signal_poll_is_read_as_the_driver_says_it() {
-        // As an Intel card said it of a hotel's 5 GHz access point.
+        // As an Intel card said it of a hotel's 5 GHz access point, the
+        // figures each way as iw read them of a home one.
         let said = HashMap::from([
             ("rssi".into(), owned(&Value::from(-59i32))),
             ("avg-rssi".into(), owned(&Value::from(-58i32))),
@@ -605,6 +698,19 @@ mod tests {
             ("width".into(), owned(&Value::from("40 MHz"))),
             ("rx-he-mcs".into(), owned(&Value::from(9u32))),
             ("rx-he-nss".into(), owned(&Value::from(2u32))),
+            ("rx-guard-interval".into(), owned(&Value::from(0.8f64))),
+            ("tx-he-mcs".into(), owned(&Value::from(7u32))),
+            ("tx-he-nss".into(), owned(&Value::from(1u32))),
+            ("tx-guard-interval".into(), owned(&Value::from(1.6f64))),
+            (
+                "expected-throughput".into(),
+                owned(&Value::from(887_703u32)),
+            ),
+            ("rx-bytes".into(), owned(&Value::from(23_661_070_224u64))),
+            ("tx-bytes".into(), owned(&Value::from(10_734_060_673u64))),
+            ("rx-packets".into(), owned(&Value::from(27_210_952u32))),
+            ("tx-packets".into(), owned(&Value::from(12_881_183u32))),
+            ("inactive-time".into(), owned(&Value::from(1u32))),
         ]);
 
         let polled = Polled::read("/fi/w1/wpa_supplicant1/Interfaces/0/BSSs/1".into(), &said);
@@ -617,14 +723,62 @@ mod tests {
                 average: Some(-58),
                 // The driver's way of saying it doesn't know.
                 noise: None,
-                receive: Some(458),
-                send: Some(286),
+                // Each rate to the nearest Mb/s, as iw's are shown.
+                receive: Way {
+                    mbps: Some(459),
+                    generation: Some(6),
+                    mcs: Some(9),
+                    streams: Some(2),
+                    guard: Some(0.8),
+                    bytes: Some(23_661_070_224),
+                    packets: Some(27_210_952),
+                },
+                send: Way {
+                    mbps: Some(287),
+                    generation: Some(6),
+                    mcs: Some(7),
+                    streams: Some(1),
+                    guard: Some(1.6),
+                    bytes: Some(10_734_060_673),
+                    packets: Some(12_881_183),
+                },
+                expected: Some(888),
+                idle: Some(1),
                 width: Some("40 MHz".into()),
                 frequency: Some(5200),
-                mcs: Some(9),
-                streams: Some(2),
             }
         );
+    }
+
+    #[test]
+    fn signal_poll_of_a_wifi_5_link_says_its_coding_as_vht() {
+        let said = HashMap::from([
+            ("rx-vht-mcs".into(), owned(&Value::from(8u32))),
+            ("rx-vht-nss".into(), owned(&Value::from(2u32))),
+            ("tx-vht-mcs".into(), owned(&Value::from(9u32))),
+            ("tx-vht-nss".into(), owned(&Value::from(1u32))),
+        ]);
+
+        let polled = Polled::read(String::new(), &said);
+
+        let coded = |way: &Way| (way.generation, way.mcs, way.streams);
+        assert_eq!(coded(&polled.receive), (Some(5), Some(8), Some(2)));
+        assert_eq!(coded(&polled.send), (Some(5), Some(9), Some(1)));
+    }
+
+    #[test]
+    fn signal_poll_of_a_wifi_4_link_takes_its_streams_from_the_index() {
+        // HT numbers MCS 0 to 31, eight to a stream.
+        let said = HashMap::from([
+            ("rx-mcs".into(), owned(&Value::from(15u32))),
+            ("tx-mcs".into(), owned(&Value::from(4u32))),
+        ]);
+
+        let polled = Polled::read(String::new(), &said);
+
+        let coded = |way: &Way| (way.generation, way.mcs, way.streams);
+        assert_eq!(coded(&polled.receive), (Some(4), Some(7), Some(2)));
+        assert_eq!(coded(&polled.send), (Some(4), Some(4), Some(1)));
     }
 
     #[test]
@@ -637,7 +791,7 @@ mod tests {
         let polled = Polled::read(String::new(), &said);
 
         assert_eq!(
-            (polled.receive, polled.send, polled.mcs),
+            (polled.receive.mbps, polled.send.mbps, polled.receive.mcs),
             (Some(54), Some(54), Some(7))
         );
     }
