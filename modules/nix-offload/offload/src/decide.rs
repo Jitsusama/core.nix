@@ -140,6 +140,25 @@ pub fn give_back(hours: Hours, tick: Tick, used: u64, ends: u64, gone: bool) -> 
     }
 }
 
+/// Why a lent builder is given back now, as [`give_back`] says, unless
+/// its last proofs all failed (`unanswered`): then it's lost, whatever
+/// else holds it, so another is asked for at once. On 8 November a switch
+/// hung 20 minutes on one that had run out of memory, its line standing.
+pub fn give_back_proven(
+    hours: Hours,
+    tick: Tick,
+    used: u64,
+    ends: u64,
+    gone: bool,
+    unanswered: bool,
+) -> Option<Event> {
+    if unanswered {
+        Some(Event::Lost)
+    } else {
+        give_back(hours, tick, used, ends, gone)
+    }
+}
+
 /// Whether a builder last used at `used`, asked to live until `ends`, is
 /// asked whether a run outliving its caller still builds there: only once
 /// it would otherwise be given back idle, so it's asked once each idle
@@ -301,6 +320,28 @@ mod tests {
     /// An end past every tick these tests make, for a builder whose time
     /// hasn't run out.
     const LATER: u64 = 10_000_000;
+
+    #[test]
+    fn one_in_use_that_fails_its_proofs_is_lost_and_another_asked_for_at_once() {
+        let tick = at(12 * 3600, true);
+        assert_eq!(
+            give_back_proven(ANY_HOUR, tick, tick.now, LATER, false, false),
+            None,
+            "in use and answering"
+        );
+        assert_eq!(
+            give_back_proven(ANY_HOUR, tick, tick.now, LATER, false, true),
+            Some(Event::Lost),
+            "in use, but not answering"
+        );
+        let idle = tick.now - IDLE;
+        assert_eq!(
+            give_back_proven(ANY_HOUR, tick, idle, LATER, false, false),
+            Some(Event::Stopped)
+        );
+        let hold = next_after(Event::Lost, true, tick.now, LATER, false, tick.now);
+        assert_eq!(lend(ANY_HOUR, tick, hold, 0), Some(12 * 3600));
+    }
 
     fn at(into_day: u32, wants: bool) -> Tick {
         Tick {

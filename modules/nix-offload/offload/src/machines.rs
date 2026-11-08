@@ -1091,7 +1091,11 @@ mod tests {
         let before = heard(kept);
         let ending = Instant::now() + Duration::from_secs(5);
         let mut dropped = kept_beside(kept, line, nix, now);
-        while heard(kept) == before && Instant::now() < ending {
+        // One just kept has heard no proof yet.
+        let unheard = |kept: &Vec<(String, Keeper)>| {
+            heard(kept) == before || heard(kept) == Some((None, None, 0))
+        };
+        while unheard(kept) && Instant::now() < ending {
             std::thread::sleep(Duration::from_millis(10));
             dropped = kept_beside(kept, line, nix, now);
         }

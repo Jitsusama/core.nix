@@ -1614,6 +1614,60 @@ fn kept(
     keeper.health.dropped()
 }
 
+/// What's known at this tick.
+fn ticked(settings: &Settings, sleep: &mut sleep::Sleep) -> Tick {
+    let asked = there::wanted(&settings.dir);
+    Tick {
+        now: now(),
+        into_day: into_day(),
+        wants: decide::wants(
+            settings.only_there,
+            || fs::read_to_string(&settings.queue).is_ok_and(|queue| queue::wants(&queue, now())),
+            asked,
+        ),
+        asked,
+        woke: sleep.woke(now()),
+    }
+}
+
+/// Give back `builder` as `event` says: as one unanswered when its
+/// proofs in `keeper` say it failed them, keeping them for its folder to
+/// say so until another stands, else forgetting them.
+fn given_back(
+    settings: &Settings,
+    machines: &mut Machines,
+    builder: Lent,
+    event: Event,
+    keeper: &mut Option<Keeper>,
+) {
+    let unanswered = keeper
+        .as_ref()
+        .is_some_and(|keeper| keeper.health.builder == builder.name && keeper.health.dropped());
+    if unanswered {
+        give_back_unanswered(settings, machines, builder);
+    } else {
+        *keeper = None;
+        give_back(settings, machines, builder, event);
+    }
+}
+
+/// Name the one `lent`, if any, in every file a build reads, and say how
+/// it stands by the proofs `keeper` holds in `dir`'s health.json, beside
+/// the builders beside. Only its own proofs say how the one lent stands:
+/// a successor that just took over is yet to be proven.
+fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Option<&Keeper>) {
+    let health = keeper.map(|keeper| &keeper.health);
+    let state = match (lent, health) {
+        (Some(builder), Some(health)) if health.builder == builder.name => health.state(),
+        (Some(_), _) => State::Unproven,
+        (None, Some(health)) => health.state(),
+        (None, None) => State::None,
+    };
+    machines.proven(lent.map(|builder| builder.line.as_str()), state);
+    machines.show(lent.map(Lent::lending));
+    proof::write(dir, health, machines.beside_health().as_deref(), now());
+}
+
 /// Give back `builder`, which failed its last proofs, as lost: no build
 /// is sent there from now, since every file this lender writes leaves it
 /// out, and ending its helper ends the relay, closing every connection
@@ -1678,21 +1732,7 @@ fn serve(settings: &Settings) -> bool {
     // them, so its folder says so until another stands.
     let mut keeper: Option<Keeper> = None;
     while !ENDING.load(Ordering::SeqCst) {
-        let asked = there::wanted(dir);
-        let tick = Tick {
-            now: now(),
-            into_day: into_day(),
-            wants: decide::wants(
-                settings.only_there,
-                || {
-                    fs::read_to_string(&settings.queue)
-                        .is_ok_and(|queue| queue::wants(&queue, now()))
-                },
-                asked,
-            ),
-            asked,
-            woke: sleep.woke(now()),
-        };
+        let tick = ticked(settings, &mut sleep);
         let unreturned = give_back_unreturned(settings, lent.as_ref(), &leaving);
         let mut reached = false;
         lent = match lent.take() {
@@ -1712,22 +1752,10 @@ fn serve(settings: &Settings) -> bool {
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
                 let unanswered =
                     !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
-                // One that doesn't answer is lost, so another is asked for
-                // at once.
-                let event = if unanswered {
-                    Some(Event::Lost)
-                } else {
-                    decide::give_back(settings.hours, tick, builder.used, builder.ends, gone)
-                };
-                match event {
+                let (used, ends) = (builder.used, builder.ends);
+                match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
-                        let (used, ends) = (builder.used, builder.ends);
-                        if unanswered {
-                            give_back_unanswered(settings, &mut machines, builder);
-                        } else {
-                            keeper = None;
-                            give_back(settings, &mut machines, builder, event);
-                        }
+                        given_back(settings, &mut machines, builder, event, &mut keeper);
                         hold = decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
@@ -1757,18 +1785,7 @@ fn serve(settings: &Settings) -> bool {
             say_others(settings);
             said_on = Some(day);
         }
-        // Only its own proofs say how the one lent stands: a successor
-        // that just took over is yet to be proven.
-        let health = keeper.as_ref().map(|keeper| &keeper.health);
-        let state = match (&lent, health) {
-            (Some(builder), Some(health)) if health.builder == builder.name => health.state(),
-            (Some(_), _) => State::Unproven,
-            (None, Some(health)) => health.state(),
-            (None, None) => State::None,
-        };
-        machines.proven(lent.as_ref().map(|builder| builder.line.as_str()), state);
-        machines.show(lent.as_ref().map(Lent::lending));
-        proof::write(dir, health, machines.beside_health().as_deref(), now());
+        named(dir, &mut machines, lent.as_ref(), keeper.as_ref());
         if ends_superseded(tick.wants, reached, &mut said_superseded) {
             restarts = true;
             break;
