@@ -67,11 +67,28 @@ function where(position, length, playing) {
 
 // How a player stands, as the Media place's row says it at its far end,
 // its state first as a timer's is (VKCF3Z, 2026-11-08): "1:38 of 6:43"
-// playing, "paused \u00b7 1:38 of 6:43" paused, and a stream with no
-// length only how far it's come.
-function standing(position, length, playing) {
+// playing, and paused as `paused` says it (words.json's media said,
+// "paused \u00b7 {at}"), and a stream with no length only how far it's come.
+function standing(position, length, playing, paused) {
     const at = length > 0 ? `${time(position)} of ${time(length)}` : time(position);
-    return playing ? at : `paused \u00b7 ${at}`;
+    return playing ? at : paused.replace("{at}", at);
+}
+
+// Why a player didn't do what it was asked, as the launcher's other refused
+// acts read (VKCF3Z): "Spotify not shuffled \u00b7 it can't shuffle", from
+// words.json's media said, `act` naming its done and its why, and `fill`
+// what's in their braces. With no player, that nothing plays.
+function refusal(said, name, act, fill) {
+    if (name === "") {
+        return said.nothing ?? "";
+    }
+    let text = (said.refused ?? "").replace("{name}", name)
+        .replace("{done}", (said.done ?? {})[act] ?? act)
+        .replace("{why}", (said.why ?? {})[act] ?? "");
+    for (const key of Object.keys(fill ?? {})) {
+        text = text.replace(`{${key}}`, fill[key]);
+    }
+    return text;
 }
 
 // A place in a track as typed: seconds, as 90, or m:ss or h:mm:ss, as

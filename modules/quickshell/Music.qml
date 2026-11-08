@@ -156,24 +156,30 @@ Singleton {
     // What else a player can be asked, by the Media place (launcher/
     // Players.qml), its :set options and the command line, each only where
     // the player says it can, so none does nothing without a word. Each
-    // says what it did, or why it didn't, for whoever asked.
+    // says nothing where it did, or why it didn't, for whoever asked, in
+    // words.json's words (refused).
+    function refused(player: MprisPlayer, act: string, fill: var): string {
+        return Players.refusal(Words.of("media").said ?? {}, player ? player.identity : "", act,
+            fill);
+    }
+
     function louden(player: MprisPlayer, share: real): string {
         if (!player || !player.volumeSupported || !player.canControl)
-            return "no volume";
+            return refused(player, "volume", {});
         player.volume = Math.max(0, Math.min(1, share));
         return "";
     }
 
     function shuffled(player: MprisPlayer, on: bool): string {
         if (!player || !player.shuffleSupported || !player.canControl)
-            return "no shuffle";
+            return refused(player, on ? "shuffle" : "order", {});
         player.shuffle = on;
         return "";
     }
 
     function looped(player: MprisPlayer, word: string): string {
         if (!player || !player.loopSupported || !player.canControl)
-            return "no loop";
+            return refused(player, word === "off" ? "unloop" : "loop", {});
         player.loopState = Players.loopState(word);
         return "";
     }
@@ -181,7 +187,7 @@ Singleton {
     // A step through the track, back or ahead, in seconds.
     function seekBy(player: MprisPlayer, seconds: real): string {
         if (!player || !player.canSeek)
-            return "can't seek";
+            return refused(player, "seek", {});
         player.seek(seconds);
         position = player.position;
         return "";
@@ -190,7 +196,7 @@ Singleton {
     // A place in the track, in seconds from its start.
     function seekTo(player: MprisPlayer, seconds: real): string {
         if (!player || !player.canSeek || !player.positionSupported)
-            return "can't seek";
+            return refused(player, "seek", {});
         player.position = Math.max(0, player.lengthSupported
             ? Math.min(seconds, player.length) : seconds);
         position = player.position;
@@ -199,7 +205,7 @@ Singleton {
 
     function sped(player: MprisPlayer, rate: real): string {
         if (!player || !player.canControl || player.minRate >= player.maxRate)
-            return "one speed";
+            return refused(player, "speed", {});
         player.rate = Math.max(player.minRate, Math.min(player.maxRate, rate));
         return "";
     }
@@ -229,7 +235,7 @@ Singleton {
         // A place in the track, as 90 or 1:30.
         function position(at: string): string {
             const seconds = Players.placeIn(at);
-            return seconds === null ? `not a place in a track: ${at}`
+            return seconds === null ? root.refused(root.player, "place", { at: at })
                 : root.seekTo(root.player, seconds);
         }
         function shuffle(on: bool): string {

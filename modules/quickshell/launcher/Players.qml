@@ -18,8 +18,9 @@
 // The : line sets the player that matters now (Music.qml), as the media keys
 // act on it: :set shuffle, noshuffle and shuffle!, loop=off|track|playlist,
 // playervolume=40 with += and -=, and position=90 or 1:30 with += and -=
-// to seek; volume is Sound's. The command line has the same through `qs ipc
-// call music`.
+// to seek; volume is Sound's. On a player's row, or a step into it, :setl
+// sets that player's own, as Vim's :setlocal sets a buffer's, and its acts
+// name :setl. The command line has the same through `qs ipc call music`.
 //
 // MPRIS says when a player or what it plays changes, so nothing is asked but
 // the position, which it never reports: read once a second while the place
@@ -139,7 +140,8 @@ Provider {
             glyph: provider.programGlyph(player.desktopEntry),
             hue: "program",
             side: loaded || player.isPlaying
-                ? Players.standing(position, player.length, player.isPlaying) : "",
+                ? Players.standing(position, player.length, player.isPlaying, said("paused"))
+                : "",
             verb: Words.verb("verb:media:pause", player.isPlaying ? "" : "paused"),
             wordsId: "verb:media:pause",
             wordState: player.isPlaying ? "" : "paused",
@@ -147,6 +149,8 @@ Provider {
             now: true,
             run: () => provider.toggle(player),
             verbs: () => provider.parts(player),
+            // Its own, which :setl sets here and a step in (CommandBinding.js).
+            options: provider.playerOptions(player),
             drawer: () => {
                 void clock.date;
                 // Its position is said once, at the row's side, so the
@@ -221,7 +225,7 @@ Provider {
         return setting({
             key: `player:${player.dbusName}:position`,
             name: Words.name("media:position"),
-            side: Players.standing(position, player.length, true),
+            side: Players.standing(position, player.length, true, said("paused")),
             glyph: Theme.glyph.position,
             graph: known ? bar(position / player.length) : null
         }, () => [act("verb:media:back", "", Theme.glyph.previous,
@@ -314,39 +318,43 @@ Provider {
         });
     }
 
-    // The options :set takes, on the player that matters now, as the media
-    // keys act on it. None while there's no player.
-    readonly property bool heard: Music.player !== null
-    setOptions: !heard ? ({}) : ({
-        shuffle: {
-            kind: "switch",
-            now: () => Music.player?.shuffle ?? null,
-            set: to => Music.shuffled(Music.player, to)
-        },
-        loop: {
-            kind: "choice",
-            values: ["off", "track", "playlist"],
-            now: () => Music.player ? Players.loopOf(Music.player.loopState) : null,
-            set: to => Music.looped(Music.player, to)
-        },
-        playervolume: {
-            kind: "number",
-            least: 0,
-            most: 100,
-            now: () => Music.player?.volumeSupported ? Math.round(Music.player.volume * 100)
-                : null,
-            set: to => Music.louden(Music.player, to / 100)
-        },
-        position: {
-            kind: "number",
-            least: 0,
-            // Seconds, or a clock, as 1:30 (SetWords.js).
-            clock: true,
-            now: () => Music.player?.positionSupported
-                ? Math.round(provider.secondsIn(Music.player)) : null,
-            set: to => Music.seekTo(Music.player, to)
-        }
-    })
+    // A player's options, which :setl sets on its row or a step into it,
+    // and :set on the player that matters now, as the media keys act on
+    // it (VKCF3Z, 2026-11-08). Each says why where the player can't.
+    function playerOptions(player) {
+        return {
+            shuffle: {
+                kind: "switch",
+                now: () => player.shuffle,
+                set: to => Music.shuffled(player, to)
+            },
+            loop: {
+                kind: "choice",
+                values: ["off", "track", "playlist"],
+                now: () => Players.loopOf(player.loopState),
+                set: to => Music.looped(player, to)
+            },
+            playervolume: {
+                kind: "number",
+                least: 0,
+                most: 100,
+                now: () => player.volumeSupported ? Math.round(player.volume * 100) : null,
+                set: to => Music.louden(player, to / 100)
+            },
+            position: {
+                kind: "number",
+                least: 0,
+                // Seconds, or a clock, as 1:30 (SetWords.js).
+                clock: true,
+                now: () => player.positionSupported
+                    ? Math.round(provider.secondsIn(player)) : null,
+                set: to => Music.seekTo(player, to)
+            }
+        };
+    }
+
+    // None while there's no player.
+    setOptions: Music.player === null ? ({}) : playerOptions(Music.player)
 
     // A collection's rows are what it lists and what its search looks
     // through, as Sound's devices are.

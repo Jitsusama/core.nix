@@ -7294,7 +7294,30 @@
         "off": "off",
         "chosen": "chosen",
         "speeds": "{speed} · {least} to {most}",
-        "workspace": "workspace {n}"
+        "workspace": "workspace {n}",
+        "paused": "paused · {at}",
+        "refused": "{name} not {done} · {why}",
+        "nothing": "nothing is playing",
+        "done": {
+          "volume": "made louder or quieter",
+          "shuffle": "shuffled",
+          "order": "put back in order",
+          "loop": "set to loop",
+          "unloop": "stopped looping",
+          "seek": "moved through its track",
+          "place": "moved to {at}",
+          "speed": "sped up or slowed down"
+        },
+        "why": {
+          "volume": "it keeps its own volume",
+          "shuffle": "it can't shuffle",
+          "order": "it can't shuffle",
+          "loop": "it can't loop",
+          "unloop": "it can't loop",
+          "seek": "it can't seek",
+          "place": "that isn't a time in a track",
+          "speed": "it plays at one speed"
+        }
       }
     },
     {
@@ -7338,7 +7361,7 @@
     },
     {
       "id": "verb:media:back",
-      "command": "set",
+      "command": "setlocal",
       "argument": "position-=10",
       "in": "media:position",
       "name": "Back 10 Seconds",
@@ -7346,7 +7369,7 @@
     },
     {
       "id": "verb:media:ahead",
-      "command": "set",
+      "command": "setlocal",
       "argument": "position+=10",
       "in": "media:position",
       "name": "Ahead 10 Seconds",
@@ -7354,7 +7377,7 @@
     },
     {
       "id": "verb:media:further",
-      "command": "set",
+      "command": "setlocal",
       "argument": "position+=30",
       "in": "media:position",
       "name": "Ahead 30 Seconds",
@@ -7362,7 +7385,7 @@
     },
     {
       "id": "verb:media:start",
-      "command": "set",
+      "command": "setlocal",
       "argument": "position=0",
       "in": "media:position",
       "name": "From the Start",
@@ -7376,7 +7399,7 @@
     },
     {
       "id": "verb:media:louder",
-      "command": "set",
+      "command": "setlocal",
       "argument": "playervolume+=10",
       "in": "media:volume",
       "name": "Louder",
@@ -7384,7 +7407,7 @@
     },
     {
       "id": "verb:media:quieter",
-      "command": "set",
+      "command": "setlocal",
       "argument": "playervolume-=10",
       "in": "media:volume",
       "name": "Quieter",
@@ -7398,7 +7421,7 @@
     },
     {
       "id": "media:shuffle",
-      "command": "set",
+      "command": "setlocal",
       "argument": "noshuffle",
       "in": "media",
       "name": "Shuffle",
@@ -7419,7 +7442,7 @@
     },
     {
       "id": "media:loop:off",
-      "command": "set",
+      "command": "setlocal",
       "argument": "loop=off",
       "in": "media:loop",
       "name": "Off",
@@ -7427,7 +7450,7 @@
     },
     {
       "id": "media:loop:track",
-      "command": "set",
+      "command": "setlocal",
       "argument": "loop=track",
       "in": "media:loop",
       "name": "Track",
@@ -7435,7 +7458,7 @@
     },
     {
       "id": "media:loop:playlist",
-      "command": "set",
+      "command": "setlocal",
       "argument": "loop=playlist",
       "in": "media:loop",
       "name": "Playlist",

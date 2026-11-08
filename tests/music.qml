@@ -111,9 +111,30 @@ QtObject {
         ];
         for (const [position, length, playing, expected] of standings) {
             asked++;
-            const got = Music.standing(position, length, playing);
+            const got = Music.standing(position, length, playing, "paused \u00b7 {at}");
             if (got !== expected)
                 failures.push(`standing at ${position}s said "${got}", not "${expected}"`);
+        }
+
+        // Why a player didn't, as the launcher's other refused acts read,
+        // in words.json's words; with no player, that nothing plays.
+        const refusing = {
+            refused: "{name} not {done} \u00b7 {why}",
+            nothing: "nothing is playing",
+            done: { shuffle: "shuffled", place: "moved to {at}" },
+            why: { shuffle: "it can't shuffle", place: "that isn't a time in a track" }
+        };
+        const told = [
+            [["Spotify", "shuffle", {}], "Spotify not shuffled \u00b7 it can't shuffle"],
+            [["mpv", "place", { at: "soon" }],
+                "mpv not moved to soon \u00b7 that isn't a time in a track"],
+            [["", "shuffle", {}], "nothing is playing"]
+        ];
+        for (const [[name, act, fill], expected] of told) {
+            asked++;
+            const got = Music.refusal(refusing, name, act, fill);
+            if (got !== expected)
+                failures.push(`${act} refused said "${got}", not "${expected}"`);
         }
 
         // A place typed for :set position, in seconds or as a clock.
