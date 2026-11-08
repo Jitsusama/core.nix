@@ -1,7 +1,5 @@
-//! What the status says: a line a network for a person, and the same as
-//! JSON for `eero status --json`.
-
-use serde_json::{Value, json};
+//! What `eero sqm` says once eero reads the setting back: a line a network,
+//! straight from eero's answer, since the record may not hold it yet.
 
 use crate::api::Network;
 
@@ -41,25 +39,6 @@ fn when(stamp: &str) -> String {
         .map_or_else(|| stamp.to_owned(), |minute| minute.replace('T', " "))
 }
 
-/// The status file's contents for networks read at a moment.
-pub fn file(at: u64, networks: &[(Network, Option<usize>)]) -> Value {
-    let networks: Vec<Value> = networks
-        .iter()
-        .map(|(network, devices)| {
-            json!({
-                "name": network.name,
-                "online": network.online,
-                "down_mbps": network.down_mbps,
-                "up_mbps": network.up_mbps,
-                "tested": network.tested,
-                "sqm": network.sqm,
-                "devices": devices,
-            })
-        })
-        .collect();
-    json!({"version": 1, "at": at, "networks": networks})
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,17 +75,5 @@ mod tests {
             ..home()
         };
         assert_eq!(line(&network, Some(1)), "home  online unknown  1 device");
-    }
-
-    #[test]
-    fn the_file_holds_each_network_and_when_it_was_read() {
-        let file = file(1_792_970_000, &[(home(), Some(14))]);
-        assert_eq!(file["version"], 1);
-        assert_eq!(file["at"], 1_792_970_000);
-        assert_eq!(file["networks"][0]["name"], "home");
-        assert_eq!(file["networks"][0]["online"], true);
-        assert_eq!(file["networks"][0]["sqm"], false);
-        assert_eq!(file["networks"][0]["devices"], 14);
-        assert!(file.get("error").is_none());
     }
 }

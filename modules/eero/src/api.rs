@@ -35,14 +35,6 @@ pub struct Network {
     pub settings_url: Option<String>,
 }
 
-/// A device on a network.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Device {
-    pub name: String,
-    pub ip: Option<String>,
-    pub wired: bool,
-}
-
 /// The data of an answer, or why there's none.
 pub fn data(body: &Value) -> Result<&Value, String> {
     match body.get("data") {
@@ -135,32 +127,6 @@ fn speed(reading: Option<&Value>) -> Option<f64> {
     Some(value * per_mbit)
 }
 
-/// The devices connected now, from a network's devices list.
-pub fn devices(list: &Value) -> Vec<Device> {
-    list.as_array()
-        .into_iter()
-        .flatten()
-        .filter(|device| device.get("connected").and_then(Value::as_bool) == Some(true))
-        .map(|device| {
-            let text = |key: &str| {
-                device
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_owned)
-            };
-            Device {
-                name: text("nickname")
-                    .or_else(|| text("hostname"))
-                    .or_else(|| text("mac"))
-                    .unwrap_or_else(|| "unknown".into()),
-                ip: text("ip"),
-                wired: device.get("wireless").and_then(Value::as_bool) == Some(false),
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,28 +205,6 @@ mod tests {
         ]}});
         assert_eq!(networks(&account), ["/2.2/networks/1", "/2.2/networks/2"]);
         assert!(networks(&json!({})).is_empty());
-    }
-
-    #[test]
-    fn only_connected_devices_are_listed_by_their_best_name() {
-        let list = json!([
-            {"connected": true, "nickname": "laptop", "hostname": "nixos", "ip": "192.168.4.20", "wireless": true},
-            {"connected": true, "nickname": null, "hostname": "dock", "ip": "192.168.4.21", "wireless": false},
-            {"connected": true, "nickname": "", "hostname": null, "mac": "6c:ae:f6:00:00:01"},
-            {"connected": false, "nickname": "old phone"}
-        ]);
-        let names: Vec<_> = devices(&list)
-            .into_iter()
-            .map(|d| (d.name, d.wired))
-            .collect();
-        assert_eq!(
-            names,
-            [
-                ("laptop".to_owned(), false),
-                ("dock".to_owned(), true),
-                ("6c:ae:f6:00:00:01".to_owned(), false)
-            ]
-        );
     }
 
     #[test]

@@ -1,0 +1,308 @@
+//! The command line's views of the home network, each read from the record
+//! the daemon keeps (`model.rs`) and set either as text for a person or as
+//! the record's own slice in JSON, for a program.
+//!
+//! Every page is a pure function of the record, the time and the ink, so
+//! each is held by a golden page drawn from `home-network.json`
+//! (`golden/`). Each opens with what it's of and how old the reading is,
+//! and says plainly when eero's cloud isn't answering or the reading has
+//! grown old, since a figure that looks current and isn't is worse than
+//! none.
+
+mod clock;
+mod devices;
+mod figures;
+mod graph;
+mod home;
+mod json;
+mod marks;
+mod speeds;
+mod text;
+pub mod theme;
+
+pub use clock::Clock;
+pub use text::Ink;
+
+use crate::model::{CloudState, Device, HomeNetwork, Node};
+use figures::joined;
+use marks::marks;
+use text::{Line, Page, Role, muted, plain, run, strong};
+
+/// A reading older than this, while the record still says eero answers, is
+/// one the daemon has stopped renewing.
+const STALE_S: u64 = 15 * 60;
+
+/// Every view, by the word that names it, and what it's of when it needs
+/// one thing named.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum View {
+    Status,
+    Nodes,
+    Node(String),
+    Mesh,
+    Devices,
+    Device(String),
+    Internet,
+    Speeds,
+    Firmware,
+    Radio,
+    Usage,
+    Profiles,
+    Profile(String),
+    Events,
+}
+
+/// The views' words, as a person types them and completion offers them,
+/// with what each shows.
+pub const VIEWS: [(&str, &str); 14] = [
+    ("status", "the home network at a glance"),
+    ("nodes", "every node: state, backhaul, devices, firmware"),
+    (
+        "node",
+        "one node: backhaul, radios, ports, addresses, devices",
+    ),
+    ("mesh", "the nodes as a tree from the gateway"),
+    ("devices", "every device on now, under its node"),
+    ("device", "one device: every figure eero has for it"),
+    ("internet", "the way out and every setting that shapes it"),
+    ("speeds", "each speed test eero kept"),
+    ("firmware", "what runs, what's next and when it updates"),
+    ("radio", "every node's radios, band by band"),
+    ("usage", "bytes by hour, for the home network and each node"),
+    ("profiles", "each profile and its devices"),
+    ("profile", "one profile: its devices, on now or not"),
+    ("events", "what happened, newest first"),
+];
+
+impl View {
+    /// The view the words name, or why they name none.
+    pub fn parse(words: &[&str]) -> Result<Self, String> {
+        let one = |what: &str, by: &str, name: Option<&&str>, view: fn(String) -> Self| match name {
+            Some(name) => Ok(view((*name).to_owned())),
+            None => Err(format!("name the {what}: eero {what} <{by}>")),
+        };
+        let view = match words {
+            ["status"] => Self::Status,
+            ["nodes"] => Self::Nodes,
+            ["node", rest @ ..] if rest.len() <= 1 => {
+                one("node", "location|id", rest.first(), Self::Node)?
+            }
+            ["mesh"] => Self::Mesh,
+            ["devices"] => Self::Devices,
+            ["device", rest @ ..] if rest.len() <= 1 => {
+                one("device", "name|mac", rest.first(), Self::Device)?
+            }
+            ["internet"] => Self::Internet,
+            ["speeds"] => Self::Speeds,
+            ["firmware"] => Self::Firmware,
+            ["radio"] => Self::Radio,
+            ["usage"] => Self::Usage,
+            ["profiles"] => Self::Profiles,
+            ["profile", rest @ ..] if rest.len() <= 1 => {
+                one("profile", "name|id", rest.first(), Self::Profile)?
+            }
+            ["events"] => Self::Events,
+            _ => return Err(format!("no view is eero {}", words.join(" "))),
+        };
+        Ok(view)
+    }
+
+    /// Whether a word names a view, so the dispatcher can hand it on.
+    pub fn named(word: &str) -> bool {
+        VIEWS.iter().any(|(name, _)| *name == word)
+    }
+}
+
+/// A view as text for a person.
+pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Result<String, String> {
+    let page = match view {
+        View::Status => home::page(model, clock),
+        View::Devices => devices::all(model, clock),
+        View::Device(name) => devices::one(model, find_device(model, name)?, clock),
+        View::Speeds => speeds::page(model, clock, ink),
+        _ => return Err(unbuilt(view)),
+    };
+    Ok(ink.page(&page))
+}
+
+/// A view as JSON: the record's own slice of it, under the record's own
+/// names, with when it was read and whether eero was answering.
+pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
+    match view {
+        View::Status => home::json(model),
+        View::Devices => devices::all_json(model),
+        View::Device(name) => devices::one_json(model, find_device(model, name)?),
+        View::Speeds => speeds::json(model),
+        _ => Err(unbuilt(view)),
+    }
+}
+
+/// What a view not yet set says.
+fn unbuilt(view: &View) -> String {
+    format!("{view:?} isn't set yet")
+}
+
+/// The head every page opens with: what it's of, how old the reading is,
+/// and, when eero isn't answering or the reading has grown old, a line
+/// saying so and what to do.
+fn head(page: &mut Page, model: &HomeNetwork, clock: &Clock, title: Line) {
+    let mut line = title;
+    let age = clock::parse(&model.read).map(|read| clock.age(read));
+    let separator = format!(" {} ", marks().separator);
+    line.push(muted(separator.clone()));
+    line.push(muted(match clock::parse(&model.read) {
+        Some(read) => format!("read {}", clock.ago(read)),
+        None => format!("read {}", model.read),
+    }));
+    page.line(line);
+    let since = clock::parse(&model.cloud.since).map_or_else(
+        || model.cloud.since.clone(),
+        |since| format!("{} ({})", clock.minute(since), clock.ago(since)),
+    );
+    let reason = model
+        .cloud
+        .reason
+        .as_deref()
+        .map(|reason| format!(": {reason}"))
+        .unwrap_or_default();
+    match model.cloud.state {
+        CloudState::Unreachable => page.line(vec![
+            run(&marks().failed, Role::Alert),
+            plain(format!(" eero's cloud unreachable since {since}{reason}")),
+        ]),
+        CloudState::SignedOut => page.line(vec![
+            run(&marks().on, Role::Warning),
+            plain(format!(
+                " signed out of eero since {since}{reason}; sign in with "
+            )),
+            strong("eero sign-in <email or phone>"),
+        ]),
+        CloudState::Answering => {
+            if let Some(age) = age.filter(|age| *age > STALE_S) {
+                page.line(vec![
+                    run(&marks().on, Role::Warning),
+                    plain(format!(
+                        " nothing new for {}; eero-daemon may have stopped: ",
+                        clock::span(age)
+                    )),
+                    strong("systemctl --user start eero-daemon"),
+                ]);
+            }
+        }
+    }
+    page.blank();
+}
+
+/// A node's name, its location, or its id where eero gives none.
+fn node_name(node: &Node) -> &str {
+    node.location.as_deref().unwrap_or(&node.id)
+}
+
+/// The location of the node with an id.
+fn location<'a>(model: &'a HomeNetwork, id: Option<&'a str>) -> &'a str {
+    let Some(id) = id else { return "no node" };
+    model
+        .nodes
+        .iter()
+        .find(|node| node.id == id)
+        .map_or(id, node_name)
+}
+
+/// A device's name, the one eero shows, or its hardware address.
+fn device_name(device: &Device) -> &str {
+    device
+        .name
+        .as_deref()
+        .or(device.nickname.as_deref())
+        .or(device.hostname.as_deref())
+        .unwrap_or(&device.mac)
+}
+
+/// Words listing names: Hall, Study and Den.
+fn listed(names: &[&str]) -> String {
+    match names {
+        [] => "none".into(),
+        [one] => (*one).into(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, String> {
+    if let Some(device) = model
+        .devices
+        .iter()
+        .find(|d| d.mac.eq_ignore_ascii_case(name))
+    {
+        return Ok(device);
+    }
+    let called = |device: &&Device| {
+        [&device.name, &device.nickname, &device.hostname]
+            .into_iter()
+            .flatten()
+            .any(|said| said.eq_ignore_ascii_case(name))
+    };
+    let matches: Vec<&Device> = model.devices.iter().filter(called).collect();
+    match matches.as_slice() {
+        [one] => Ok(one),
+        [] => Err(format!("no device on now is called {name}")),
+        many => {
+            let each: Vec<String> = many
+                .iter()
+                .map(|d| format!("{} on {}", d.mac, location(model, d.node.as_deref())))
+                .collect();
+            let each: Vec<&str> = each.iter().map(String::as_str).collect();
+            Err(format!(
+                "{} devices are called {name}: {}; name one by its hardware address",
+                many.len(),
+                listed(&each)
+            ))
+        }
+    }
+}
+
+/// A count and its noun, the noun made plural past one: 1 device, 15 devices.
+fn counted(count: usize, noun: &str) -> String {
+    if count == 1 {
+        format!("{count} {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
+
+/// The title of a page about the home network as a whole.
+fn titled(model: &HomeNetwork, about: Option<String>) -> Line {
+    let mut line = vec![strong(&model.name)];
+    if let Some(about) = about {
+        line.push(muted(format!(" {} ", marks().separator)));
+        line.push(plain(about));
+    }
+    line
+}
+
+/// A line of facts joined by the separator.
+fn facts(parts: Vec<Line>) -> Line {
+    joined(parts)
+}
+
+/// A figure after the muted word saying what it is.
+fn labelled(label: &str, value: Line) -> Line {
+    let mut line = vec![muted(format!("{label} "))];
+    line.extend(value);
+    line
+}
+
+/// One of eero's times, to the minute in the machine's zone, and how long
+/// ago it was.
+fn when(stamp: Option<&str>, clock: &Clock) -> Line {
+    stamp
+        .and_then(clock::parse)
+        .map_or_else(figures::unknown, |at| {
+            vec![
+                plain(clock.minute(at)),
+                muted(format!(", {}", clock.ago(at))),
+            ]
+        })
+}
+
+#[cfg(test)]
+mod golden;
