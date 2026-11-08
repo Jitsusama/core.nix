@@ -239,14 +239,11 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>) -> String {
         Some(Line::Switching { commit }) => {
             format!("the update is switching to {commit}, so it runs on")
         }
-        Some(Line::Building { commit }) => {
-            run::stop(worker);
-            format!("stopped the update building {commit}")
+        _ if run::stop(worker).is_none() => {
+            "the update switches what a hold was given for, so it runs on".to_owned()
         }
-        _ => {
-            run::stop(worker);
-            "stopped the update".to_owned()
-        }
+        Some(Line::Building { commit }) => format!("stopped the update building {commit}"),
+        _ => "stopped the update".to_owned(),
     }
 }
 
