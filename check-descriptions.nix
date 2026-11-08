@@ -774,7 +774,14 @@
   meaning-adds-only-below = ''
     the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
     the words each is known by, and adds at most three rows below what typing found, none found
-    already and none the launcher no longer holds, each saying in the foot how it was found
+    already and none the launcher no longer holds, each saying in the foot how it was found, and at
+    most three pictures below those Recent found by their names and words, none listed already
+  '';
+  meaning-finds-a-picture-by-what-it-shows = ''
+    the meaning daemon, on the CPU with the service's SigLIP 2 towers, looks at each picture in its
+    folders and finds each drawn shape by words saying what it shows and no other, finds nothing
+    for words showing none, hears and finds one saved while it runs, and after a restart looks at
+    none again
   '';
   meaning-finds-a-thing-by-what-it-means = ''
     the meaning daemon, on the CPU with the service's model, finds each of the launcher's things by

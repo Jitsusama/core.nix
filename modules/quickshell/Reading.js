@@ -67,7 +67,27 @@ function keptItems(items, room, width) {
         const least = kept.reduce((low, item) => (item.keep < low.keep ? item : low));
         kept.splice(kept.indexOf(least), 1);
     }
-    return kept.map(item => item.said);
+    return pathsFitted(kept, room, width);
+}
+
+// The items kept, as said: one naming its `path`, where they still don't
+// fit, gives that way from its middle as a path does (pathTries: "in
+// ~/\u2026/Screenshots"), its last folder whole, so a folder kept is never
+// lost (VKCF3Z, 2026-11-08); the longest that fits, or the shortest
+// where none does.
+function pathsFitted(kept, room, width) {
+    const ways = kept.map(item => (item.path
+        ? pathTries(item.path, true).map(way => item.said.replace(item.path, way))
+        : [item.said]));
+    const most = Math.max(1, ...ways.map(way => way.length));
+    let said = [];
+    for (let step = 0; step < most; step += 1) {
+        said = ways.map(way => way[Math.min(step, way.length - 1)]);
+        if (width(said.join(ITEMS_APART)) <= room) {
+            break;
+        }
+    }
+    return said;
 }
 
 // What a styled text needs written as its entity, so a side's words are
@@ -236,14 +256,19 @@ function wholeWords(words, room, width) {
 // Words said as items between dots, given way by whole items from their
 // end, never inside one, so a note reads "Example ISP \u00b7 370 Mb/s down",
 // or "Example ISP" alone, never "11.9 Mb/s\u2026" (VKCF3Z, 2026-11-07).
-// The first item, where it alone doesn't fit, gives way at a whole word,
-// as any words do.
+// Where it's several items, its first, where it alone doesn't fit, isn't
+// said at all, since no ellipsis is drawn on a note, never "found
+// by\u2026" (VKCF3Z, 2026-11-08); words that are one item, a sentence,
+// give way at a whole word, as any words do.
 function wholeItemsFromEnd(words, room, width) {
     const items = words.split(ITEMS_APART);
-    while (items.length > 1 && width(items.join(ITEMS_APART)) > room) {
+    if (items.length === 1) {
+        return wholeWords(words, room, width);
+    }
+    while (items.length > 0 && width(items.join(ITEMS_APART)) > room) {
         items.pop();
     }
-    return items.length > 1 ? items.join(ITEMS_APART) : wholeWords(items[0], room, width);
+    return items.join(ITEMS_APART);
 }
 
 // Words cut at each whole word but the last, longest first, an ellipsis

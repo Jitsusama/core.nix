@@ -3,14 +3,15 @@
     stand-in-meaning SOCKET MEANS
 
 It speaks the daemon interface, version 1, as the real one does
-(modules/dictation/src/bin/meaning/known.rs), for kind thing: hello, a watch, which holds
-nothing, a know, which takes the launcher's things and says how many, and a search, which
-gives the things MEANS names for the words asked, if the launcher told of them. MEANS is a JSON
+(modules/dictation/src/bin/meaning/known.rs), for kinds thing and picture: hello, a watch,
+which holds nothing, a know, which takes the launcher's things and says how many, and a
+search, which gives the things MEANS names for the words asked, if the launcher told of them,
+or of kind picture the pictures it names, by their paths, if they're there. MEANS is a JSON
 object of keys by the words that mean them, read again at every search, so a test writes it
 rather than loading a model. Each connection, each know with how many things it told, and each
-search are written down in meaning-asked in the runtime folder, a line each, so a test can see
-what the shell asked and when; the keys told last are in meaning-known, a line each, so a test
-can name things the launcher holds.
+search are written down in meaning-asked in the runtime folder, a line each (a picture's as
+"look"), so a test can see what the shell asked and when; the keys told last are in
+meaning-known, a line each, so a test can name things the launcher holds.
 """
 
 import json
@@ -24,6 +25,7 @@ MEANS = Path(sys.argv[2])
 ASKED = SOCKET.parent.parent / "meaning-asked"
 KNOWN_KEYS = SOCKET.parent.parent / "meaning-known"
 KIND = "thing"
+PICTURE = "picture"
 WRITING = threading.Lock()
 # What the launcher told of last, by key, as the daemon keeps it between connections.
 KNOWN: set[str] = set()
@@ -44,11 +46,14 @@ def means() -> dict[str, list[str]]:
     return {str(words): [str(key) for key in keys] for words, keys in said.items()}
 
 
-def search(words: str) -> list[dict[str, object]]:
-    """Give the known things the words mean, nearest first, as the daemon does."""
-    keys = [key for key in means().get(words, []) if key in KNOWN]
+def search(words: str, kind: str) -> list[dict[str, object]]:
+    """Give the known things or pictures there the words mean, nearest first, as the daemon does."""
+    if kind == PICTURE:
+        keys = [key for key in means().get(words, []) if key.startswith("/") and Path(key).exists()]
+    else:
+        keys = [key for key in means().get(words, []) if key in KNOWN]
     return [
-        {"key": key, "kind": KIND, "near": round(0.9 - 0.01 * rank, 3)}
+        {"key": key, "kind": kind, "near": round(0.9 - 0.01 * rank, 3)}
         for rank, key in enumerate(keys)
     ]
 
@@ -72,8 +77,9 @@ def answer(said: dict[str, object]) -> dict[str, object]:
             return {"id": asked, "known": len(KNOWN), "waiting": 0}
         case "search":
             words = str(said.get("words", ""))
-            written(f"search {words}")
-            return {"id": asked, "records": search(words), "whole": True}
+            kind = str(said.get("kind", KIND))
+            written(f"{'look' if kind == PICTURE else 'search'} {words}")
+            return {"id": asked, "records": search(words, kind), "whole": True}
         case _:
             return {"id": asked, "error": {"code": "unknown-ask", "message": "not asked here"}}
 

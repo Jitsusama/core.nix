@@ -34,6 +34,7 @@
 import Quickshell
 import qs
 import QtQuick
+import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Recent.js" as Recent
 
@@ -302,6 +303,18 @@ Provider {
 
     onTakenChanged: changed()
 
+    // When each thing taken was, by its path, so its row says it. Qt's
+    // engine has no Object.fromEntries.
+    readonly property var takenAt: Taken.files.reduce((at, file) => {
+        at[file.path] = file.at;
+        return at;
+    }, {})
+    // When is said as a file's row says it (FileFacts.js), in the
+    // launcher's words and the locale's days, as everywhere (Y2YBTS,
+    // 2026-11-03).
+    readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
+
     Component.onCompleted: {
         for (const folder of provider.takenIn)
             Taken.want(folder);
@@ -338,7 +351,7 @@ Provider {
             ask: "which?",
             empty: Words.of("capture:recent").empty
         }), () => provider.taken.map(path => provider.takenRow(path, ""))), {
-            finds: letters => provider.found(letters)
+            finds: letters => provider.found(letters, true)
         })]
 
     // Everything taken that what's typed finds, not only the nine Recent
@@ -347,8 +360,12 @@ Provider {
     // them below it, as a source that reads them says (`takenByText`,
     // modules/screen-text). A screenshot found both ways is listed once,
     // by its name. What's read comes a moment later, when the source says
-    // it found more.
-    function found(letters) {
+    // it found more. Inside Recent (`looking`), below them all come the
+    // few pictures that look like what's typed, as a source that sees them
+    // says (`takenBySight`, modules/meaning), each saying only that it was
+    // found by its meaning; never at the top, where Recent gathered by a
+    // guess would stand above what typing found.
+    function found(letters, looking) {
         if (Fuzzy.words(letters).length === 0)
             return [];
         const byName = Taken.named(letters, provider.takenIn, provider.most);
@@ -363,6 +380,13 @@ Provider {
                 listed.add(record.path);
                 if (rows.length < provider.most * 2)
                     rows.push(provider.takenRow(record.path, record.line));
+            }
+        const seers = !looking ? [] : (launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other.takenBySight === "function");
+        for (const seer of seers)
+            for (const path of seer.takenBySight(letters, listed) ?? []) {
+                listed.add(path);
+                rows.push(provider.takenRow(path, Words.field.byMeaning ?? ""));
             }
         return rows;
     }
@@ -383,7 +407,10 @@ Provider {
     // or mpv, and a picture is shown in the drawer. After Open come what
     // other providers give it (`fileActs(path)`), as GIMP gives Edit in
     // GIMP, then Copy the Path. One found by its words says below it the
-    // line that holds them (`line`).
+    // line that holds them (`line`). Each says when it was taken at its
+    // right, and its folder only where it's not Screenshots; a picture's
+    // folder is said once, in its drawer's eyebrow, with what it is
+    // (VKCF3Z, 2026-11-08).
     function takenRow(path, line) {
         const key = "verb:path:file:open";
         const act = thing({
@@ -398,8 +425,16 @@ Provider {
             .filter(other => other !== provider && typeof other.fileActs === "function")
             .reduce((acts, other) => acts.concat(other.fileActs(path)), []);
         const row = Files.file(path, thing, [act].concat(given));
+        const at = provider.takenAt[path];
+        const folder = Files.within(path);
+        const shots = Files.shown(`${provider.home}/Pictures/Screenshots`);
+        row.side = Recent.takenSide(at === undefined ? ""
+            : FileFacts.when(at, Date.now(), provider.factWords), folder, shots);
+        const said = Words.of("capture:recent").said ?? {};
         if (/\.(png|jpe?g|webp)$/i.test(path))
-            row.drawer = { title: row.name, picture: path };
+            row.drawer = Object.assign(Recent.takenEyebrow(folder,
+                folder === shots ? said.screenshot : said.photo, said),
+                { title: row.name, picture: path });
         if (line)
             row.note = line;
         return row;

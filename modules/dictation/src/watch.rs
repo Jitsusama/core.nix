@@ -1,6 +1,7 @@
-//! Hears pictures come into the screenshots' folder and go from it, from
-//! the kernel's inotify, so nothing is looked at while nothing changes. A
-//! picture counts once it's written whole and closed, or moved in whole.
+//! Hears pictures come into a folder and go from it, from the kernel's
+//! inotify, so nothing is looked at while nothing changes: the
+//! screenshots' for screen-text, and those meaning looks at. A picture
+//! counts once it's written whole and closed, or moved in whole.
 
 use std::ffi::{CString, OsStr, c_char};
 use std::fs::File;

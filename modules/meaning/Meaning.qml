@@ -6,7 +6,9 @@
 // and the nearest few things not already found are added below
 // everything typing found, each noting "found by its meaning" in the
 // foot. It lists no row of its own and never ranks a guess over what was
-// typed.
+// typed. Capture's Recent asks `takenBySight` alike, for the screenshots
+// and camera pictures that look like what's typed, which it lists below
+// those found by their names and words (launcher/Capture.qml).
 //
 // Nothing is asked on the shell's thread but a line down a socket: each
 // text is asked once, the last few answers kept, and an answer coming
@@ -35,13 +37,18 @@ Provider {
     // How many the daemon is asked for: more than are shown, since some
     // are already found by their letters and left out.
     readonly property int asksFor: 8
-    // The last few searches, newest last: { words, records, whole },
-    // records null while asked. One answered before every thing had its
-    // meaning (whole false) is shown, and asked again a moment after.
+    // The last few searches, newest last: { kind, words, records, whole },
+    // records null while asked, of things or of pictures. One answered
+    // before every thing had its meaning, or every picture was looked at
+    // (whole false), is shown, and asked again a moment after.
     property var searches: []
     readonly property int keeps: 8
     readonly property int againAfter: 1000
-    // Texts waiting for the connection, asked once it's made.
+    // How long the things are left to settle while the launcher is open
+    // before they're told again (the Timer `settled`).
+    readonly property int settlesIn: 500
+    // Searches waiting for the connection, { kind, words }, asked once
+    // it's made.
     property var pending: []
     // The things last told, as text, so they're told again only when they
     // change, never as a session's row does.
@@ -50,74 +57,103 @@ Provider {
     // The rows found by what's typed's meaning, best first, none of them
     // in `shown` (a set of identities), or none while it's asked.
     function meant(letters, shown) {
-        const words = Meaning.asked(letters);
-        if (!Meaning.enough(words))
-            return [];
-        const kept = provider.searches.find(search => search.words === words);
-        if (!kept) {
-            provider.searches = provider.searches
-                .concat([{ words: words, records: null, whole: false }])
-                .slice(-provider.keeps);
-            provider.askedAt = Date.now();
-            provider.request(words);
-            return [];
-        }
-        if (kept.records === null)
+        const kept = provider.searched("thing", letters);
+        if (kept === null)
             return [];
         return Meaning.rows(kept.records, provider.launcher?.keyed ?? {}, shown,
             { most: provider.most, note: Words.field.byMeaning ?? "" });
     }
 
-    function request(words) {
-        provider.pending = provider.pending.filter(text => text !== words).concat([words])
+    // The pictures that look like what's typed, nearest first, as paths,
+    // none of them in `listed` (a set of paths), or none while they're
+    // asked. Each is what the model saw in it, and nothing is said of it
+    // but that it was found by its meaning.
+    function takenBySight(letters, listed) {
+        const kept = provider.searched("picture", letters);
+        return kept === null ? [] : Meaning.paths(kept.records, listed, provider.most);
+    }
+
+    // What's typed's search of a kind, as kept, or null while it's asked,
+    // asking it now when it wasn't.
+    function searched(kind, letters) {
+        const words = Meaning.asked(letters);
+        if (!Meaning.enough(words))
+            return null;
+        const kept = provider.searches.find(search => search.kind === kind
+            && search.words === words);
+        if (!kept) {
+            provider.searches = provider.searches
+                .concat([{ kind: kind, words: words, records: null, whole: false }])
+                .slice(-provider.keeps);
+            provider.askedAt = Date.now();
+            provider.request(kind, words);
+            return null;
+        }
+        return kept.records === null ? null : kept;
+    }
+
+    function request(kind, words) {
+        provider.pending = provider.pending
+            .filter(asked => asked.kind !== kind || asked.words !== words)
+            .concat([{ kind: kind, words: words }])
             .slice(-provider.keeps);
         reader.active = true;
         provider.send();
     }
 
-    // The texts waiting sent, once there's a connection. It isn't called
-    // `ask`, which is Provider's own.
+    // Sends what waits for the connection. It isn't called `ask`, which
+    // is Provider's own, for a URL.
     function send() {
         const daemon = reader.item as Daemon;
         if (!daemon || daemon.wire === null)
             return;
         const asking = provider.pending;
         provider.pending = [];
-        for (const text of asking)
-            daemon.find({ ask: "search", kind: "thing", words: text, limit: provider.asksFor },
-                answer => provider.heard(text, answer));
+        for (const asked of asking)
+            daemon.find({ ask: "search", kind: asked.kind, words: asked.words,
+                limit: provider.asksFor },
+                answer => provider.heard(asked.kind, asked.words, answer));
     }
 
-    // A text's answer kept, unless the daemon wasn't there to give one,
-    // when it's let go to be asked again. It isn't called `answered`,
-    // which is Provider's own signal.
-    function heard(text, answer) {
-        if (answer === null || answer.error) {
-            provider.searches = provider.searches.filter(search => search.words !== text);
+    // A search's answer kept, unless the daemon wasn't there to give one,
+    // when it's let go to be asked again. A daemon that looks at no
+    // pictures says so, and is answered by nothing from then on. It isn't
+    // called `answered`, which is Provider's own signal.
+    function heard(kind, text, answer) {
+        const other = search => search.kind !== kind || search.words !== text;
+        const refused = answer?.error?.code === "unknown-kind";
+        // Any other refusal, as a search passed over once Joel typed on,
+        // is forgotten, so typing it again asks afresh.
+        if (answer === null || (answer.error && !refused)) {
+            provider.searches = provider.searches.filter(other);
             return;
         }
         const records = (answer.records ?? []).filter(record => typeof record?.key === "string");
-        provider.searches = provider.searches.map(search => search.words !== text ? search
-            : { words: text, records: records, whole: answer.whole === true });
+        const whole = refused || answer.whole === true;
+        provider.searches = provider.searches.map(search => other(search) ? search
+            : { kind: kind, words: text, records: records, whole: whole });
         if (Meaning.asked(provider.launcher?.typed ?? "") !== text)
             return;
         provider.foundMore(Date.now() - provider.askedAt < provider.freshFor);
-        if (answer.whole !== true)
+        if (!whole)
             again.restart();
     }
 
-    // An answer given before every thing had its meaning is asked again a
-    // moment later, while it's still what's typed, so what the daemon
-    // learns meanwhile is added below without a key.
+    // An answer given before every thing had its meaning, or every picture
+    // was looked at, is asked again a moment later, while it's still what's
+    // typed, so what the daemon learns meanwhile is added below without a
+    // key.
     Timer {
         id: again
 
         interval: provider.againAfter
         onTriggered: {
             const words = Meaning.asked(provider.launcher?.typed ?? "");
-            const kept = provider.searches.find(search => search.words === words);
-            if (provider.launcher?.open && kept && kept.records !== null && !kept.whole)
-                provider.request(words);
+            if (!provider.launcher?.open)
+                return;
+            for (const kept of provider.searches)
+                if (kept.words === words && kept.records !== null && !kept.whole)
+                    provider.request(kept.kind, words);
         }
     }
 
@@ -126,12 +162,22 @@ Provider {
         const daemon = reader.item as Daemon;
         if (!daemon || daemon.wire === null || !provider.launcher)
             return;
-        const things = Meaning.things(provider.launcher.choices);
-        const as = JSON.stringify(things);
-        if (as === provider.toldAs)
+        const telling = Meaning.telling(provider.launcher.choices);
+        if (telling.as === provider.toldAs)
             return;
-        provider.toldAs = as;
-        daemon.ask({ ask: "know", kind: "thing", things: things }, null);
+        provider.toldAs = telling.as;
+        daemon.ask({ ask: "know", kind: "thing", things: telling.things }, null);
+    }
+
+    // The things change while the launcher is open as windows and notices
+    // come and go, often several at once; walking them takes the shell's
+    // thread about 5 ms over a thousand in Qt's engine (2026-11-08), so a
+    // run of changes is told once, after it settles, never between keys.
+    Timer {
+        id: settled
+
+        interval: provider.settlesIn
+        onTriggered: provider.tell()
     }
 
     // The connection is made as the launcher opens, so the things are told
@@ -148,13 +194,16 @@ Provider {
                 return;
             }
             reader.active = false;
+            settled.stop();
             provider.pending = [];
             provider.searches = [];
         }
 
         function onChoicesChanged(): void {
-            if (provider.launcher.open)
-                Qt.callLater(provider.tell);
+            // Started, never restarted, so a page changing faster than it
+            // settles (Machine, Sound's meter) is still told every 500 ms.
+            if (provider.launcher.open && !settled.running)
+                settled.start();
         }
     }
 
