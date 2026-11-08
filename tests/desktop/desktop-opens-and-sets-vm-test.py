@@ -1554,6 +1554,54 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     machine.succeed("ip link delete tailscale0")
 
 
+def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
+    """A cable says how its link is doing, as it changes."""
+    machine = desktop.machine
+    # tests/desktop.nix gives this area a cable, cable0, at a gigabit.
+    machine.wait_until_succeeds(
+        "ip -4 address show cable0 | grep -q 'inet 10.9.0'", timeout=timedelta(seconds=60)
+    )
+    desktop.answer("address")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: any(row.startswith("Ethernet") for row in shown["rows"]))
+    # The kernel's name finds it, never shown, and Return opens its parts,
+    # its link among them, as its card reads it.
+    desktop.type_in("cable0", selecting="Ethernet")
+    desktop.step_in("ret")
+
+    def reads(shown: Json) -> list[str]:
+        return [thing["reads"] for thing in shown["things"]]
+
+    def lost(times: int) -> str:
+        return f"Link Lost \u00b7 {({0: 'never', 1: 'once'}).get(times, f'{times} times')}"
+
+    # However often the card's link went at its start, as the kernel counts.
+    before = int(machine.succeed("cat /sys/class/net/cable0/carrier_down_count"))
+    link = ["Speed \u00b7 1 Gb/s", "Duplex \u00b7 full", lost(before), "Errors \u00b7 none"]
+    desktop.launcher_until(lambda shown: set(link) <= set(reads(shown)))
+    desktop.photograph("launcher-addresses-ethernet")
+    # Unplugged and plugged in again, it says so while it's shown, as its
+    # card counts it.
+    machine.send_monitor_command("set_link cable off")
+    desktop.launcher_until(
+        lambda shown: "State \u00b7 up, nothing at the other end" in reads(shown),
+        timeout=timedelta(seconds=10),
+    )
+    machine.send_monitor_command("set_link cable on")
+    desktop.launcher_until(
+        lambda shown: {lost(before + 1), "State \u00b7 up"} <= set(reads(shown)),
+        timeout=timedelta(seconds=10),
+    )
+    # Its errors a step in: none either way, and what was set aside.
+    desktop.type_in("errors", selecting="Errors")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["In", "Out", "Dropped In", "Dropped Out"]
+    )
+    assert reads(desktop.showing())[:2] == ["In \u00b7 none", "Out \u00b7 none"]
+    desktop.close_launcher()
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
