@@ -3060,8 +3060,8 @@ def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
 # open layout to the laptop's own in place, the margin lets its layer's mark go, and the
 # launcher neither finds its keys nor lists it among the keyboards; Super+K then shows the
 # laptop's, and plugging it back in turns the open card to the board's again (VKCF3Z,
-# 2026-11-07). With it back, its drawer and the others' are photographed
-# (players_and_boards_drawn), here rather than in a subtest of their own, since the board is
+# 2026-11-07). With it back, its drawer and every other new drawer are photographed
+# (each_drawer_drawn), here rather than in a subtest of their own, since the board is
 # already plugged in and the file keeps to twenty.
 
 
@@ -3104,18 +3104,197 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
         with desktop.told("gone keyboard"):
             desktop.as_account("qs ipc call keyboard toggle")
         assert ERGODOX in keyboards_listed(desktop, scale, "back")
-        players_and_boards_drawn(desktop, at_each_scale)
+        each_drawer_drawn(desktop, at_each_scale)
     finally:
         desktop.machine.succeed("systemctl stop ergodox || true")
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")
 
 
-# A player's and a keyboard's drawers say everything their sources hold (Joel, 2026-11-07:
-# "every integration has an insanely high bar of nerdiness and integration"), each where the
-# thing is and what it is above, and are photographed at each of Joel's scales for the design's
-# look: mpv's Media, playing and paused, the ErgoDox and the laptop's own board.
-def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
-    """Photograph mpv's Media and each keyboard's drawer, with the ErgoDox plugged in."""
+# How long a wait lasts before Now lists Lag, as tests/desktop.nix sets it.
+LAG_LASTS = 3600
+
+
+def disk_filling(desktop: Desktop) -> None:
+    """Write the machine's disk guard's status, /nix urgent and filling, as the guard does."""
+    now = time.time()
+    status = {
+        "v": 1,
+        "heartbeat": now + 3600,
+        "filesystems": [
+            {
+                "path": "/nix",
+                "band": "urgent",
+                "free": 18 * 2**30,
+                "total": 900 * 2**30,
+                "fill_per_hour": 3 * 2**30,
+                "full_at": now + 6 * 3600,
+                "says": "The disk is nearly full, with 18.0 GiB free.",
+            }
+        ],
+        "frozen": [],
+        "holders": [
+            {"path": "/nix/store", "bytes": 610 * 2**30, "grew": {"bytes": 9 * 2**30}},
+            {"path": "/var/log", "bytes": 2 * 2**30, "grew": {"bytes": 2**29}},
+        ],
+        "holders_at": now,
+        "cleared": [
+            {"at": now - 5400, "kind": "cache", "path": "/nix/var/cache", "bytes": 6 * 2**30}
+        ],
+    }
+    desktop.machine.succeed(
+        f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+        " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+    )
+
+
+def lag_lasting(desktop: Desktop) -> None:
+    """Write a window as lag-watch does, a wait on memory begun longer ago than Lag waits.
+
+    A window with no wait goes first, heard before the next, so a wait lag-watch itself saw
+    earlier ends and the stand-in's is a run of its own.
+    """
+    now = int(desktop.machine.succeed("date +%s").strip())
+    lagged = "$XDG_RUNTIME_DIR/lag-watch/status.json"
+
+    def write(window: Json) -> None:
+        desktop.as_account(
+            f"mkdir -p $(dirname {lagged}) && echo '{json.dumps(window)}' > {lagged}.new"
+            f" && mv {lagged}.new {lagged}"
+        )
+
+    with desktop.told("heard lag nothing"):
+        write({"ended": now, "trouble": [], "worst": "", "who": "", "since": None})
+    write(
+        {
+            "ended": now,
+            "seconds": 10,
+            "stalls": {
+                "app": {"cpu_some": 2.4, "memory_some": 12.5, "io_some": 0.04},
+                "session": {"cpu_some": 0.5, "memory_some": 3.1, "io_some": 0.0},
+            },
+            "memory": {"app": {"swap_mib": 1144}},
+            "trouble": ["apps waited on memory"],
+            "worst": "memory",
+            "who": "apps",
+            "since": now - LAG_LASTS - 10,
+        }
+    )
+
+
+def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
+    """Open Now by Super+O, move down to a piece's row, and photograph its drawer."""
+    desktop.machine.send_key("meta_l-o")
+    desktop.in_now("Needs You")
+    desktop.launcher_until(lambda shown: row in shown["rows"])
+    desktop.down_to(row)
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["eyebrow"] == eyebrow
+    )
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+# Each drawer this desktop's integrations gained says everything its source holds (Joel,
+# 2026-11-07: "every integration has an insanely high bar of nerdiness and integration"), where
+# the thing is and what it is above, and each is photographed at each of Joel's scales for the
+# design's look: mpv's program row and its Media, playing and paused, the ErgoDox and the
+# laptop's own board, a picture Capture took, and Now's Disks and Lag.
+def media_drawer(desktop: Desktop, shot: str, side: str, program: str = "") -> None:
+    """Open mpv's Media, its side saying how it stands, and photograph its drawer.
+
+    On the way, mpv's own row's drawer is photographed too, where a shot is named for it.
+    """
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("mpv", selecting="mpv Media Player")
+    if program:
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "mpv Media Player"
+                and "Playing" in shown["drawer"]["facts"]
+            )
+        )
+        desktop.shoot(program)
+    desktop.into_program()
+    desktop.type_in("media", selecting="Media")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "Bless The Child"
+            and any(
+                thing["reads"].startswith("Media") and side in thing["reads"]
+                for thing in shown["things"]
+            )
+        )
+    )
+    drawer = desktop.showing()["drawer"]
+    assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
+    assert drawer["facts"][0] == "Position", drawer
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+def board_drawer(desktop: Desktop, name: str, eyebrow: str, shot: str) -> None:
+    """Open the keyboards on one, and photograph its drawer."""
+    desktop.answer("keyboards")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: name in shown["rows"])
+    desktop.down_to(name)
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == name
+    )
+    drawer = desktop.showing()["drawer"]
+    assert drawer["eyebrow"] == eyebrow, drawer
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+def recent_drawer(desktop: Desktop, shot: str) -> None:
+    """Open what Capture took lately on the newest, and photograph its drawer."""
+    desktop.capture()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.follow()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
+            and "Dimensions" in shown["drawer"]["facts"]
+        )
+    )
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+def drawers_at(desktop: Desktop, scale: str) -> None:
+    """Photograph each drawer at one of Joel's scales."""
+    at_scale(desktop, scale)
+    at = scale.replace(".", "-")
+    media_drawer(
+        desktop,
+        f"launcher-media-drawer-playing-at-{at}",
+        "playing",
+        program=f"launcher-program-drawer-at-{at}",
+    )
+    desktop.as_account("qs ipc call music toggle")
+    media_drawer(desktop, f"launcher-media-drawer-paused-at-{at}", "paused")
+    desktop.as_account("qs ipc call music toggle")
+    board_drawer(desktop, ERGODOX, "on USB \u00b7 keyboard", f"launcher-ergodox-drawer-at-{at}")
+    board_drawer(
+        desktop,
+        "The Laptop's Keyboard",
+        "built in \u00b7 keyboard",
+        f"launcher-laptops-keyboard-drawer-at-{at}",
+    )
+    recent_drawer(desktop, f"launcher-capture-drawer-at-{at}")
+    now_drawer(desktop, "Disks", "on /nix \u00b7 disk", f"launcher-disk-drawer-at-{at}")
+    now_drawer(desktop, "Lag", "on this machine \u00b7 lag", f"launcher-lag-drawer-at-{at}")
+
+
+# Called from the unplugged ErgoDox subtest once the board is back, so it's plugged in here and
+# that subtest's own finally unplugs it.
+def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
+    """Photograph a program's, its Media's, each keyboard's, a capture's, Disks' and Lag's."""
     machine = desktop.machine
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
@@ -3123,60 +3302,23 @@ def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
     )
     named = "busctl --user list --acquired | grep -q '^org\\.mpris\\.MediaPlayer2\\.mpv'"
     machine.wait_until_succeeds(desktop.in_session(named), timeout=timedelta(seconds=30))
-
-    def media(shot: str, side: str) -> None:
-        """Open mpv's Media, its side saying how it stands, and photograph its drawer."""
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        desktop.type_in("mpv", selecting="mpv Media Player")
-        desktop.into_program()
-        desktop.type_in("media", selecting="Media")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["drawer"]["out"] is True
-                and shown["drawer"]["title"] == "Bless The Child"
-                and any(
-                    thing["reads"].startswith("Media") and side in thing["reads"]
-                    for thing in shown["things"]
-                )
-            )
-        )
-        drawer = desktop.showing()["drawer"]
-        assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
-        assert drawer["facts"][0] == "Position", drawer
-        desktop.shoot(shot)
-        desktop.close_launcher()
-
-    def board(name: str, eyebrow: str, shot: str) -> None:
-        """Open the keyboards on one, and photograph its drawer."""
-        desktop.answer("keyboards")
-        desktop.step_in()
-        desktop.launcher_until(lambda shown: name in shown["rows"])
-        desktop.down_to(name)
-        desktop.launcher_until(
-            lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == name
-        )
-        drawer = desktop.showing()["drawer"]
-        assert drawer["eyebrow"] == eyebrow, drawer
-        desktop.shoot(shot)
-        desktop.close_launcher()
-
+    # lag-watch would write its own window over the stand-in's, so it rests.
+    desktop.as_account("systemctl --user stop lag-watch.service")
     try:
+        desktop.capture()
+        with desktop.captured():
+            machine.send_key("ret")
+        disk_filling(desktop)
+        lag_lasting(desktop)
         for scale in scales:
-            at_scale(desktop, scale)
-            at = scale.replace(".", "-")
-            media(f"launcher-media-drawer-playing-at-{at}", "playing")
-            desktop.as_account("qs ipc call music toggle")
-            media(f"launcher-media-drawer-paused-at-{at}", "paused")
-            desktop.as_account("qs ipc call music toggle")
-            board(ERGODOX, "on USB \u00b7 keyboard", f"launcher-ergodox-drawer-at-{at}")
-            board(
-                "The Laptop's Keyboard",
-                "built in \u00b7 keyboard",
-                f"launcher-laptops-keyboard-drawer-at-{at}",
-            )
+            drawers_at(desktop, scale)
     finally:
         desktop.as_account("systemctl --user stop player || true")
+        machine.succeed("rm -f /run/disk-guard/status.json")
+        desktop.as_account(
+            "rm -f $XDG_RUNTIME_DIR/lag-watch/status.json"
+            " && systemctl --user start lag-watch.service"
+        )
 
 
 # The device Nearby hears: btvirt's second controller, named as BlueZ names a device by what it
