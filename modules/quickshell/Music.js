@@ -109,11 +109,18 @@ function speed(rate) {
 // The file a track's address names, as a person reads it, or "" where it's
 // no file. Read without a pattern: Qt's engine matched a top-level one
 // only the first time the shell asked, and "" ever after, so two players
-// on one track were never told apart.
+// on one track were never told apart. A file straight in the Nix store
+// is named without its hash and the dash after it, "track.mp3" (VKCF3Z,
+// 2026-11-08).
 const FILE = "file://";
+const STORE = "file:///nix/store/";
+const HASHED = 33;
 function fileOf(address) {
     const given = String(address ?? "");
-    const last = given.slice(given.lastIndexOf("/") + 1);
+    const folder = given.slice(0, given.lastIndexOf("/") + 1);
+    const whole = given.slice(folder.length);
+    const last = folder === STORE && whole.charAt(HASHED - 1) === "-"
+        ? whole.slice(HASHED) : whole;
     if (!given.startsWith(FILE) || last === "") {
         return "";
     }
@@ -124,11 +131,13 @@ function fileOf(address) {
     }
 }
 
-// Each player's note in the Media place: its artist, and where two players'
-// rows would read alike, the first of its file's name or its window's
-// workspace that tells them apart (VKCF3Z, 2026-11-08). Each player is
-// `{ title, artist, file, workspace }`, and `onWorkspace` says a workspace
-// with `{n}`.
+// Each player's note in the Media place, as items a row gives way by
+// whole from its end (Choice.qml's countItems): its artist, and where two
+// players' rows would read alike, the first of its file's name or its
+// window's workspace that tells them apart, which is kept longest, a
+// file's name giving way from its middle (VKCF3Z, 2026-11-08). Each
+// player is `{ title, artist, file, workspace }`, and `onWorkspace` says
+// a workspace with `{n}`.
 function notes(players, onWorkspace) {
     return players.map(player => {
         const twins = players.filter(
@@ -136,13 +145,14 @@ function notes(players, onWorkspace) {
         );
         const apart = field =>
             player[field] !== "" && new Set(twins.map(twin => twin[field])).size === twins.length;
-        let told = "";
+        let told = null;
         if (twins.length > 1 && apart("file")) {
-            told = player.file;
+            told = { said: player.file, keep: 2, file: player.file };
         } else if (twins.length > 1 && apart("workspace")) {
-            told = onWorkspace.replace("{n}", player.workspace);
+            told = { said: onWorkspace.replace("{n}", player.workspace), keep: 2 };
         }
-        return [player.artist, told].filter(part => part !== "").join(" \u00b7 ");
+        return [{ said: player.artist, keep: 1 }, told]
+            .filter(item => item !== null && item.said !== "");
     });
 }
 

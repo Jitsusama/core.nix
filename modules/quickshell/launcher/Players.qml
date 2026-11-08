@@ -110,26 +110,32 @@ Provider {
         };
     }
 
-    // Its note, said apart from any other player's that would read alike.
-    // The player is found again by its D-Bus name: a list read back from a
-    // property is a fresh copy, whose players needn't be the same objects,
-    // and one leaving may stand in it as null for a moment.
+    // Its note as items, said apart from any other player's that would
+    // read alike. The player is found again by its D-Bus name: a list read
+    // back from a property is a fresh copy, whose players needn't be the
+    // same objects, and one leaving may stand in it as null for a moment.
     function noteOf(player) {
         const players = Playing.players.filter(other => other);
         const notes = Players.notes(players.map(other => about(other)), said("workspace"));
         const index = players.findIndex(other => other.dbusName === player.dbusName);
-        return notes[index] ?? player.trackArtist;
+        return notes[index] ?? [{ said: player.trackArtist, keep: 1 }];
     }
 
     function playerRow(player) {
         const loaded = player.trackTitle !== "";
         const position = secondsIn(player);
+        const note = loaded ? noteOf(player) : [];
         return thing({
             thing: true,
             key: `player:${player.dbusName}`,
             // With nothing loaded, the program's own name (VKCF3Z).
             name: loaded ? player.trackTitle : player.identity,
-            count: loaded ? noteOf(player) : "",
+            // Said whole where it's found by, and given way by its items
+            // beside the row's whole side as it's drawn.
+            count: note.map(item => item.said).join(" \u00b7 "),
+            countItems: note,
+            // How it stands is the row's need, so it's never cut (VKCF3Z).
+            sideWhole: true,
             keywords: [player.identity, player.trackArtist, player.trackAlbum].join(" "),
             glyph: provider.programGlyph(player.desktopEntry),
             hue: "program",

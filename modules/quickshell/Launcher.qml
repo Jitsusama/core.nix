@@ -8301,6 +8301,8 @@ Scope {
                                         ? entry.modelData.counts(root.tenth) : entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []
                                     count: entry.modelData.count ?? ""
+                                    countItems: entry.modelData.countItems ?? []
+                                    sideWhole: !!entry.modelData.sideWhole
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""

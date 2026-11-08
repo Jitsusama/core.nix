@@ -141,23 +141,36 @@ QtObject {
             !== "Bless The Child.mp3" || Music.fileOf("https://example.com/a.mp3") !== ""
             || Music.fileOf("file:///music/100%off.mp3") !== "100%off.mp3")
             failures.push("a track's file isn't read from its address");
+        // One straight in the store goes without its hash; one in a folder
+        // there is named as it is.
+        if (Music.fileOf("file:///nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-track.mp3")
+            !== "track.mp3"
+            || Music.fileOf("file:///nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-album/a-b.mp3")
+            !== "a-b.mp3")
+            failures.push("a file in the store is named with its hash");
 
         // Two rows that would read alike are told apart by the file, else the
-        // workspace; a row alone keeps its artist.
+        // workspace, which is kept longest, a file giving way from its
+        // middle; a row alone keeps its artist.
         const track = { title: "Bless The Child", artist: "Nightwish", workspace: "" };
+        const said = notes => JSON.stringify(notes);
         const byFile = Music.notes([Object.assign({ file: "a.mp3" }, track),
             Object.assign({ file: "b.mp3" }, track)], "workspace {n}");
-        if (byFile.join() !== "Nightwish \u00b7 a.mp3,Nightwish \u00b7 b.mp3")
-            failures.push(`two players on one track aren't told by file: ${byFile}`);
+        if (said(byFile) !== said([
+            [{ said: "Nightwish", keep: 1 }, { said: "a.mp3", keep: 2, file: "a.mp3" }],
+            [{ said: "Nightwish", keep: 1 }, { said: "b.mp3", keep: 2, file: "b.mp3" }]]))
+            failures.push(`two players on one track aren't told by file: ${said(byFile)}`);
         const bySpace = Music.notes([
             Object.assign({}, track, { file: "a.mp3", workspace: "1" }),
             Object.assign({}, track, { file: "a.mp3", workspace: "2" })], "workspace {n}");
-        if (bySpace.join() !== "Nightwish \u00b7 workspace 1,Nightwish \u00b7 workspace 2")
-            failures.push(`two players on one file aren't told by workspace: ${bySpace}`);
+        if (said(bySpace) !== said([
+            [{ said: "Nightwish", keep: 1 }, { said: "workspace 1", keep: 2 }],
+            [{ said: "Nightwish", keep: 1 }, { said: "workspace 2", keep: 2 }]]))
+            failures.push(`two players on one file aren't told by workspace: ${said(bySpace)}`);
         const alone = Music.notes([Object.assign({ file: "a.mp3" }, track),
-            { title: "Other", artist: "Nightwish", file: "b.mp3", workspace: "" }], "w {n}");
-        if (alone.join() !== "Nightwish,Nightwish")
-            failures.push(`players apart already gain a note: ${alone}`);
+            { title: "Other", artist: "", file: "b.mp3", workspace: "" }], "w {n}");
+        if (said(alone) !== said([[{ said: "Nightwish", keep: 1 }], []]))
+            failures.push(`players apart already gain a note: ${said(alone)}`);
 
         asked++;
         if (Music.mark("Spotify") !== String.fromCodePoint(0xf1bc)

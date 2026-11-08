@@ -73,12 +73,11 @@ function keptItems(items, room, width) {
 // The items kept, as said: one naming its `path`, where they still don't
 // fit, gives that way from its middle as a path does (pathTries: "in
 // ~/\u2026/Screenshots"), its last folder whole, so a folder kept is never
-// lost (VKCF3Z, 2026-11-08); the longest that fits, or the shortest
-// where none does.
+// lost (VKCF3Z, 2026-11-08), and one naming its `file` gives that way
+// from its middle too (fileTries); the longest that fits, or the
+// shortest where none does.
 function pathsFitted(kept, room, width) {
-    const ways = kept.map(item => (item.path
-        ? pathTries(item.path, true).map(way => item.said.replace(item.path, way))
-        : [item.said]));
+    const ways = kept.map(item => itemWays(item));
     const most = Math.max(1, ...ways.map(way => way.length));
     let said = [];
     for (let step = 0; step < most; step += 1) {
@@ -141,6 +140,35 @@ function pathTries(path, here) {
     tries.push(`${FOLDED}/${last}`);
     if (!here) {
         tries.push(FOLDED);
+    }
+    return tries;
+}
+
+// Every way an item may be said, whole first: its path's ways, its
+// file's, or only as it is.
+function itemWays(item) {
+    if (item.path) {
+        return pathTries(item.path, true).map(way => item.said.replace(item.path, way));
+    }
+    if (item.file) {
+        return fileTries(item.file).map(way => item.said.replace(item.file, way));
+    }
+    return [item.said];
+}
+
+// Every way a file's name may be said, whole first and each a letter
+// shorter, given way from its middle with its start and its extension
+// kept, "second-\u2026take.mp3", as a path keeps its ends: the one item
+// telling two rows apart is never lost (VKCF3Z, 2026-11-08).
+function fileTries(name) {
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const extension = name.slice(stem.length);
+    const tries = [name];
+    for (let kept = stem.length - 1; kept >= 1; kept -= 1) {
+        const head = Math.ceil(kept / 2);
+        const tail = stem.slice(stem.length - (kept - head));
+        tries.push(`${stem.slice(0, head)}${FOLDED}${tail}${extension}`);
     }
     return tries;
 }
