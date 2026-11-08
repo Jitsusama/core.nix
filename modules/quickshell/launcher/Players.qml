@@ -91,9 +91,15 @@ Provider {
         return holderRow(Object.assign({ offers: true }, fields), choices);
     }
 
+    // Where a player is in its track, in seconds, read again whenever asked,
+    // since MPRIS never says it moved.
+    function at(player) {
+        return Number(player?.position) || 0;
+    }
+
     function playerRow(player) {
         const loaded = player.trackTitle !== "";
-        const position = Media.position(player);
+        const position = at(player);
         return thing({
             thing: true,
             key: `player:${player.dbusName}`,
@@ -175,7 +181,7 @@ Provider {
     }
 
     function positionPart(player) {
-        const position = Media.position(player);
+        const position = at(player);
         const known = player.lengthSupported && player.length > 0;
         return setting({
             key: `player:${player.dbusName}:position`,
@@ -297,7 +303,7 @@ Provider {
             // Seconds, or a clock, as 1:30 (SetWords.js).
             clock: true,
             now: () => Music.player?.positionSupported
-                ? Math.round(Media.position(Music.player)) : null,
+                ? Math.round(provider.at(Music.player)) : null,
             set: to => Music.seekTo(Music.player, to)
         }
     })
