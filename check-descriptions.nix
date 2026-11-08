@@ -414,13 +414,17 @@
     clippy finds nothing in eero or its tests
   '';
   eero-reads-what-eero-says = ''
-    eero draws the home network from every answer in its contract exactly as home-network.json
-    holds it, its times in UTC and a read not yet made as unknown, and tells eero failing, refusing
-    and a session aged past refreshing apart; its daemon reads the network every 30 seconds while
-    anyone listens and every 5 minutes otherwise and the rest at their own paces, keeps the last
-    figures when eero can't be reached, saying since when and why, and writes each listener the
-    model on joining and on every change; and it sends the conferencing setting as a bare boolean,
-    counted taken only once eero reads it back; every view's page matches its golden one, saying
+    eero draws the home network from every answer in its contract and a short history exactly as
+    home-network.json holds it, its times in UTC and a read not yet made as unknown, and tells eero
+    failing, refusing and a session aged past refreshing apart; its daemon reads the network every
+    30 seconds while anyone listens and every 5 minutes otherwise and the rest at their own paces,
+    keeps the last figures when eero can't be reached, saying since when and why, and writes each
+    listener the model on joining and on every change; it keeps 30 days of what moves, a sample at
+    most every 25 seconds, and a coming, going or roam only between reads 10 minutes apart at
+    most, and draws the last hour's series into a model a busy hour keeps under 350 kB; it times
+    its own look at the internet, the gateway node only from home, and an outage from the first
+    look out to the first back; and it sends the conferencing setting as a bare boolean, counted
+    taken only once eero reads it back; every view's page matches its golden one, saying
     when eero isn't answering or the reading is old, colouring only on a terminal, each view's JSON
     is the record's own slice, and a watch draws its view again from each model the socket writes
   '';

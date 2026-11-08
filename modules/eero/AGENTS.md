@@ -26,19 +26,34 @@ glossary's Network words; a figure keeps its unit in its key
 (`signal_dbm`, `busy_pct`, `up_s`), and one eero doesn't give is `null`,
 never a guess.
 
+eero gives each figure only as it stands, so what moves is the daemon's
+to keep, and the model carries it as a `history` beside the figure: the
+last hour as a series, one list a figure beside its `at`, a sample a
+read, oldest first, so a spark reads one list. Its golden answer is the
+contract read through a short history `src/golden.rs` builds: six reads
+five minutes apart, a roam, a join, a leave and an outage the probe saw.
+
 - `read`, `cloud`: when eero last answered, and whether it's answering,
   unreachable or signed out.
 - `internet`: the home network's way out, its settings, the last speed
-  test and every one eero kept, firmware, outages and the day's traffic.
+  test and every one eero kept or the history kept from the last 30
+  days, firmware, outages and the day's traffic; `probe`, this machine's
+  own last look at the internet; and `history`, the last hour's looks
+  and 30 days of outages, as eero recorded them or the probe saw them.
 - `nodes[]`: each eero by `id`, its `backhaul` (Ethernet, or the
   `upstream` node's location and radio over Wi-Fi), each radio's band,
   channel, width, power, how busy and its devices, each port's speed,
-  and the day's traffic.
+  and the day's traffic; the last hour of its bars, and of each radio's
+  channel, how busy and power.
 - `devices[]`: each device on now, by `mac`, its `node`, band, channel,
   signal, SNR, each direction's rate with its MCS, streams, width, guard
-  interval and Wi-Fi generation, retries, packets, and its speed now.
+  interval and Wi-Fi generation, retries, packets, and its speed now;
+  the last hour of its signal, SNR, rates and speed, and its `roams` to
+  another node or band over the last day.
 - `profiles[]`, `events[]`: who's in which profile, and the app's
   activity list.
+- `joins_and_leaves[]`: the devices that joined or left over the last
+  day, with the name each had.
 
 ## How It Reads
 
@@ -58,6 +73,33 @@ Its socket, `$XDG_RUNTIME_DIR/eero/socket`, writes whoever connects the
 model as one line of JSON, and another on every change. While anyone
 is connected the network is read at the fast pace, and a line `read`
 asks for it now, at most once every 5 seconds.
+
+After each read the daemon records what moves in
+`$XDG_STATE_HOME/eero/history.sqlite`, beside the sealed session, and
+draws it into each model it writes ([`src/history.rs`][history]): each
+device's signal, SNR, rates and speed, each node's bars and each
+radio's channel, how busy and power, a sample a read; a device joining,
+leaving or roaming, recorded only between reads at most 10 minutes
+apart, since past that nobody saw when; every speed test; and every
+outage, eero's and the probe's. It keeps 30 days, a sample at most
+every 25 seconds, so asked reads can't grow it past the 30-second pace.
+Read at that pace all month, 24 devices with every figure come to about
+117 MB, and a busy hour, 32 devices, makes the model about 336 kB.
+
+With each read of the network, and every 10 seconds while eero can't be
+reached, the daemon takes its own look at the internet
+([`src/probe.rs`][probe]), since eero's cloud is across the internet it
+reports on: a TCP connect to the gateway node's DNS port and to 1.1.1.1
+and 8.8.8.8 on 443, and a DNS query of its own through the gateway
+node, at most 2 seconds each and all at once. Connects, not pings: a
+raw socket needs root, and a ping socket only the groups
+`net.ipv4.ping_group_range` names. What this machine sees is the home
+network's internet only from home, so the gateway is timed, and an
+outage recorded, only while eero lists one of this machine's hardware
+addresses and a route reaches the gateway node straight. An outage runs
+from the first look that finds the internet out to the first that finds
+it back, or to the last that found it out when nothing looked for over
+10 minutes between.
 
 The model's `cloud.state` says whether the figures are current:
 
@@ -99,3 +141,6 @@ offered by its hardware address.
 [schedule]: src/schedule.rs
 [watch]: src/watch.rs
 [completion]: src/completion.zsh
+
+[history]: src/history.rs
+[probe]: src/probe.rs
