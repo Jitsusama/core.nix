@@ -97,6 +97,7 @@ fn surveyed(
         kept: Vec::new(),
         counted: std::cell::RefCell::default(),
         walked: 0,
+        stop: &|| false,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));

@@ -1,4 +1,5 @@
 use disk_guard::discover::{Checkout, Found, Kind, checkout_of};
+use std::cell::Cell;
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
@@ -16,6 +17,29 @@ pub(crate) fn file(path: &Path, text: &str) {
 pub(crate) fn dir(path: &Path) -> PathBuf {
     fs::create_dir_all(path).unwrap();
     path.to_owned()
+}
+
+/// A stop that comes once it has been asked `asks` times, counting every
+/// ask in `asked`.
+pub(crate) fn stop_after(asks: usize, asked: &Cell<usize>) -> impl Fn() -> bool + '_ {
+    move || {
+        asked.set(asked.get() + 1);
+        asked.get() > asks
+    }
+}
+
+/// A walk told to stop partway ends there, interrupted, rather than
+/// walking the rest first, which held a switch's stop for 35 s.
+#[test]
+fn a_walk_told_to_stop_ends_there() {
+    let root = tempfile::tempdir().unwrap();
+    for n in 0..30 {
+        checkout(root.path(), &format!("app-{n}"), ".");
+    }
+    let asked = Cell::new(0);
+    let walked = disk_guard::discover::walk_until(root.path(), None, None, &stop_after(3, &asked));
+    assert_eq!(walked.unwrap_err().kind(), io::ErrorKind::Interrupted);
+    assert_eq!(asked.get(), 4, "it ends at the first ask that says stop");
 }
 
 /// A git checkout holding a crate at `crate_dir`.

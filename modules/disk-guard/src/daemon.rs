@@ -366,6 +366,9 @@ pub struct Guard {
     /// What freezes a runaway writer, once given one, and what each
     /// process has written lately.
     freeze: Option<Box<dyn crate::freeze::Freeze>>,
+    /// Whether the daemon has been told to stop, which a survey asks as it
+    /// walks; without one given, nothing stops a survey.
+    stop: Box<dyn Fn() -> bool>,
     writers: Writers,
     /// What the last survey couldn't read, and why it went unvouched.
     unread: (usize, Option<String>),
@@ -657,6 +660,7 @@ impl Guard {
             marked_at: None,
             home,
             freeze: None,
+            stop: Box::new(|| false),
             writers: Writers::default(),
             unread: (0, None),
             damaged,
@@ -784,6 +788,14 @@ impl Guard {
     /// left to take; without one, nothing is ever frozen.
     pub fn freeze_with(&mut self, freeze: Box<dyn crate::freeze::Freeze>) {
         self.freeze = Some(freeze);
+    }
+
+    /// Ends a survey as soon as `stop` says the daemon was told to stop,
+    /// rather than once its walks are done, and acts on nothing it found:
+    /// a stop otherwise waits out every walk, holding up the switch that
+    /// sent it.
+    pub fn stop_when(&mut self, stop: Box<dyn Fn() -> bool>) {
+        self.stop = stop;
     }
 
     /// Freezes what's filling a critically full disk with nothing left to
@@ -1928,10 +1940,19 @@ impl Guard {
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
             walked: 0,
+            stop: &*self.stop,
         };
         let mut offers = survey(part.unwrap_or(&self.config), &mut world);
         let kept = std::mem::take(&mut world.kept);
         drop(world);
+        // A walk a stop cut short found only part of what's there, and a
+        // checkout it never reached would look gone, so nothing is taken.
+        if (self.stop)() {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "told to stop during the survey, so it takes nothing",
+            ));
+        }
         // Read afresh each survey, so a keep holds from the next step. One
         // that won't read stops the survey rather than risk what it keeps.
         let keeps = crate::keeps::load(self.state())?;

@@ -647,6 +647,20 @@ fn a_pressed_disk_is_reclaimed_at_once_however_busy_the_machine() {
     assert_eq!(pass["band"], "pressure");
 }
 
+/// A stop that comes while the survey walks ends the step there, and what
+/// the survey found is taken by nobody, however full the disk.
+#[test]
+fn a_stop_during_the_survey_ends_the_step_taking_nothing() {
+    let home = Home::new();
+    let old = home.trashed("old.txt", "2001-09-09T01:46:40");
+    let mut guard = home.guard(home.config("100%", "100%"));
+    guard.stop_when(Box::new(|| true));
+    let stepped = guard.step(&tick(), &CALM);
+    assert_eq!(stepped.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+    assert!(old.exists());
+    assert!(home.journal().iter().all(|line| line["event"] != "pass"));
+}
+
 #[test]
 fn a_pass_that_falls_short_at_critical_rests_a_minute_at_most() {
     let home = Home::new();

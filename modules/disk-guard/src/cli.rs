@@ -470,6 +470,9 @@ fn daemon(
     let freezes = config.freeze;
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     guard.beat_always().map_err(failed)?;
+    // A stop waits, blocked, until a step ends, and a survey's walks once
+    // held one for 35 s; the survey asks as it goes and ends early.
+    guard.stop_when(Box::new(crate::commands::stop_waiting));
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
