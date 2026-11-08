@@ -2494,6 +2494,8 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
 # keys of the things it finds for it, among those the launcher told it of.
 MEANT = "too bright to read"
 MEANT_KEYS = ("bright", "display", "night")
+# The most rows meaning adds below what typing found (VKCF3Z, 2026-11-07).
+MEANT_MOST = 3
 
 
 def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale(
@@ -2519,7 +2521,13 @@ def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale
     known = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-known").split()
     meant = [key for key in known if any(word in key for word in MEANT_KEYS)]
     assert meant, f"the launcher told of nothing a test can mean: {known}"
-    added = [key for key in meant if key not in typed][:3]
+
+    # Two keys can name one thing, a spot and its collection, so what's added is seen by
+    # identity: rows after the typed ones, and none of them twice.
+    def added(shown: dict[str, Any]) -> list[str]:
+        found = [row["is"] for row in shown["things"]]
+        return found[len(typed) :] if found[: len(typed)] == typed else []
+
     desktop.as_account(
         f"echo {shlex.quote(json.dumps({MEANT: meant}))} > $XDG_RUNTIME_DIR/meaning-means.json"
     )
@@ -2527,9 +2535,11 @@ def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale
         for scale in at_each_scale:
             at_scale(desktop, scale)
             desktop.answer(MEANT)
-            desktop.launcher_until(
-                lambda shown: [row["is"] for row in shown["things"]] == typed + added
-            )
+            desktop.launcher_until(lambda shown: added(shown) != [])
+            meanings = added(desktop.showing())
+            assert len(meanings) <= MEANT_MOST, f"meaning added too many: {meanings}"
+            assert len(set(meanings)) == len(meanings), f"a meaning came twice: {meanings}"
+            assert not set(meanings) & set(typed), f"a meaning repeats a typed row: {meanings}"
             desktop.down_to(desktop.showing()["rows"][len(typed)])
             note = desktop.showing()["selected"]["note"]
             assert note == "Found by its meaning.", f"a meant row says {note!r}"
