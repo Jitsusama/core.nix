@@ -1,7 +1,7 @@
 // Which keyboards are plugged in, answered in the field: "keyboards",
 // "keyboard state", "connected keyboards" or "caps lock". The headline
 // says how many and whether caps lock is on; the rows are each keyboard by
-// name and how it's joined (built in, by USB or by Bluetooth), and each one
+// name and how it's joined (built in, on USB or on Bluetooth), and each one
 // holds its parts, a step in by Return or the right arrow, named first as
 // every part is: its Caps lock, Num lock and Scroll lock, as the lights it
 // has say; the Layer a board that has them is on (KeyboardLayer.qml), a

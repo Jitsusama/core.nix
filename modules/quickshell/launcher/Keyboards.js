@@ -60,6 +60,9 @@ const WAKERS = { keyboard: "a key", touchpad: "the touchpad" };
 // The lock lights an input device can have, by their bit in its LED mask
 // and the name the kernel gives each one's light, in the order a part
 // lists them: caps lock first, as it's what's asked.
+// How it's connected when that says no more than the bus a drawer's
+// eyebrow names.
+const BUSES = ["USB", "Bluetooth"];
 const LOCKS = [
     { id: "caps", bit: 1, light: "capslock" },
     { id: "num", bit: 0, light: "numlock" },
@@ -105,13 +108,14 @@ function keyboards(text) {
         });
 }
 
-// How a keyboard is joined, from where the kernel says it sits.
+// How a keyboard is joined, from where the kernel says it sits, as its
+// drawer's eyebrow says it (VKCF3Z, 2026-11-08).
 function joined(device) {
     if (ON_USB.test(device.phys)) {
-        return "by USB";
+        return "on USB";
     }
     if (ADDRESS.test(device.phys)) {
-        return "by Bluetooth";
+        return "on Bluetooth";
     }
     if (PORT.test(device.phys)) {
         return "built in";
@@ -149,7 +153,7 @@ function layout(listed, board, laptop) {
 // lights; null with none.
 function lightHolder(listed) {
     return listed.find(builtIn)
-        ?? listed.find(device => joined(device) !== "by Bluetooth" && !zsa(device))
+        ?? listed.find(device => joined(device) !== "on Bluetooth" && !zsa(device))
         ?? null;
 }
 
@@ -236,7 +240,7 @@ function wakers(said) {
 
 // How a held key repeats, as repeat.nix sets it, in the vocabulary's words
 // (keyboards:repeat's "said"), which give it in Hz as every rate is:
-// "after {delay} ms, {rate} Hz".
+// "after {delay} ms \u00b7 {rate} Hz".
 function repeats(repeat, said) {
     return String(said).replace("{delay}", repeat.delay).replace("{rate}", repeat.rate);
 }
@@ -267,25 +271,33 @@ function hertz(said) {
 // maker, model, keys and firmware; its identifiers last, its USB id and
 // serial (VKCF3Z, 2026-11-07); and the keys it presses most closing it,
 // under their heading. Each fact is named by its id (`named`), and one it
-// doesn't say is left out, never said as unknown.
+// doesn't say is left out, never said as unknown. The locks are one fact
+// naming those on, since three saying "off" say nothing, and how it's
+// connected only when it says more than the eyebrow's bus (VKCF3Z,
+// 2026-11-08).
 function drawer(known, named, said) {
     const desk = new Map((known.desk ?? []).map(one => [one.name, one.value]));
     const told = new Set(["polling rate", "keys", "firmware"]);
     const fact = (id, value) => ({ label: named(id), value: String(value ?? "") });
     const layer = known.layer === null || known.layer === undefined ? []
-        : [fact("layer", known.layer.locked ? `${known.layer.name}, ${said.locked}`
+        : [fact("layer", known.layer.locked ? `${known.layer.name} \u00b7 ${said.locked}`
             : known.layer.name)];
+    const lights = known.locks ?? [];
+    const on = lights.filter(lock => lock.on).map(lock => said[lock.id] ?? lock.id);
+    const locked = lights.length === 0 ? [] : [fact("locks", on.length === 0 ? said.none
+        : on.join(" \u00b7 "))];
+    const link = BUSES.includes(known.connection) ? "" : known.connection;
     const off = [known.timeout ?? "", known.wakers ?? ""].filter(one => one !== "")
         .join(" \u00b7 ");
     const facts = layer.concat(
-        (known.locks ?? []).map(lock => fact(lock.id, lock.on ? said.on : said.off)),
+        locked,
         known.counted ?? [],
         [
             fact("polling-rate", hertz(desk.get("polling rate"))),
             fact("repeat", known.repeat),
             fact("lights", known.lights),
             fact("timeout", off),
-            fact("connection", known.connection),
+            fact("connection", link),
             fact("maker", known.maker),
             fact("model", known.model),
             fact("keys", desk.get("keys")),

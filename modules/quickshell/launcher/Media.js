@@ -141,6 +141,9 @@ function drawer(player, named, said, lookups) {
     const title = String(player.trackTitle ?? "").trim();
     return {
         eyebrow: filled(said.eyebrow, { player: player.identity ?? "" }),
+        // It names the player by its own name, so it's set as written, never
+        // in the label's capitals (VKCF3Z, 2026-11-08).
+        eyebrowNames: true,
         title: title === "" ? String(player.identity ?? "") : title,
         preview: picture === "" ? null : { picture, across: 0, down: 0 },
         facts: facts(player, said).map(part => ({ label: named(part.id), value: part.value })),

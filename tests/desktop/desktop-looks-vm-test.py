@@ -2678,7 +2678,7 @@ def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
         drawer = desktop.showing()["drawer"]
         assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
         assert drawer["facts"][0] == "Position", drawer
-        desktop.photograph(shot)
+        desktop.shoot(shot)
         desktop.close_launcher()
 
     def board(name: str, eyebrow: str, shot: str) -> None:
@@ -2692,7 +2692,7 @@ def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
         )
         drawer = desktop.showing()["drawer"]
         assert drawer["eyebrow"] == eyebrow, drawer
-        desktop.photograph(shot)
+        desktop.shoot(shot)
         desktop.close_launcher()
 
     try:

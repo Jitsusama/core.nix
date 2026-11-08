@@ -1769,8 +1769,10 @@
         "usb": "on USB \u00b7 keyboard",
         "bluetooth": "on Bluetooth \u00b7 keyboard",
         "builtIn": "built in \u00b7 keyboard",
-        "on": "on",
-        "off": "off",
+        "caps": "Caps",
+        "num": "Num",
+        "scroll": "Scroll",
+        "none": "none",
         "locked": "locked",
         "since": "since {day}",
         "began": "since counting began"
@@ -1797,6 +1799,11 @@
       "name": "Scroll Lock"
     },
     {
+      "id": "keyboards:locks",
+      "in": "keyboards",
+      "name": "Locks"
+    },
+    {
       "id": "keyboards:layer",
       "in": "keyboards",
       "name": "Layer"
@@ -1805,7 +1812,7 @@
       "id": "keyboards:repeat",
       "in": "keyboards",
       "name": "Repeat",
-      "said": "after {delay} ms, {rate} Hz"
+      "said": "after {delay} ms \u00b7 {rate} Hz"
     },
     {
       "id": "keyboards:lights",

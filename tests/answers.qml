@@ -1681,8 +1681,8 @@ QtObject {
             ["AT Translated Set 2 keyboard", "ZSA Technology Labs ErgoDox EZ"]);
         const [keyboardsLaptop, keyboardsErgodox] = keyboardsFound;
         machine("how each is joined", keyboardsFound.map(device => Keyboards.joined(device)),
-            ["built in", "by USB"]);
-        machine("by Bluetooth", Keyboards.joined({ phys: "f4:4e:fd:00:11:22" }), "by Bluetooth");
+            ["built in", "on USB"]);
+        machine("on Bluetooth", Keyboards.joined({ phys: "f4:4e:fd:00:11:22" }), "on Bluetooth");
         machine("the built-in one", keyboardsFound.map(device => Keyboards.builtIn(device)),
             [true, false]);
         machine("ZSA's board", keyboardsFound.map(device => Keyboards.zsa(device)), [false, true]);
@@ -1735,7 +1735,7 @@ QtObject {
             "lit again by a key or the touchpad");
         machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
         machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 },
-            "after {delay} ms, {rate} Hz"), "after 200 ms, 40 Hz");
+            "after {delay} ms \u00b7 {rate} Hz"), "after 200 ms \u00b7 40 Hz");
         // A board's layers to move to: the one it's locked on let go, then
         // each above the first but that one locked on; held by a key, every
         // layer above the first.
@@ -1788,7 +1788,7 @@ QtObject {
         // counted, how it's set, what describes it, its identifiers, and
         // its keys last; what it doesn't say is left out.
         const boardSaid = { usb: "on USB \u00b7 keyboard", builtIn: "built in \u00b7 keyboard",
-            on: "on", off: "off", locked: "locked" };
+            caps: "Caps", num: "Num", scroll: "Scroll", none: "none", locked: "locked" };
         const boardDrawer = Keyboards.drawer({
             device: keyboardsErgodox,
             name: "ErgoDox EZ",
@@ -1808,11 +1808,16 @@ QtObject {
         }, keyNamed, boardSaid);
         machine("a board's eyebrow", boardDrawer.eyebrow, "on USB \u00b7 keyboard");
         machine("a board's facts in order", boardDrawer.facts.map(fact => fact.label
-            ?? fact.heading), ["[layer]", "[caps]", "[num]", "[presses]", "[polling-rate]",
+            ?? fact.heading), ["[layer]", "[locks]", "[presses]", "[polling-rate]",
             "[repeat]", "[connection]", "[maker]", "[model]", "[keys]", "[firmware]",
             "[usb-id]", "[most]"]);
-        machine("a layer locked", boardDrawer.facts[0].value, "Numb, locked");
-        machine("its polling rate in Hz", boardDrawer.facts[4].value, "1,000 Hz");
+        machine("a layer locked", boardDrawer.facts[0].value, "Numb \u00b7 locked");
+        machine("only the locks on", boardDrawer.facts[1].value, "Num");
+        machine("its polling rate in Hz", boardDrawer.facts[3].value, "1,000 Hz");
+        const bare = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
+            locks: [{ id: "caps", on: false }], connection: "USB" }, keyNamed, boardSaid);
+        machine("no lock on, and a bus the eyebrow says", bare.facts.map(fact =>
+            `${fact.label} ${fact.value}`), ["[locks] none"]);
         machine("the laptop's eyebrow", Keyboards.drawer({ device: keyboardsLaptop, name: "",
             layer: null }, keyNamed, boardSaid).eyebrow, "built in \u00b7 keyboard");
 

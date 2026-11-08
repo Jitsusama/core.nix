@@ -312,7 +312,7 @@ ShellRoot {
             const drawn = boardRow.drawer();
             expect("a board's drawer, once its files are read", unread === null
                 && drawn.eyebrow === "on USB \u00b7 keyboard"
-                && `${drawn.facts[0].label} ${drawn.facts[0].value}` === "Layer Numb, locked",
+                && `${drawn.facts[0].label} ${drawn.facts[0].value}` === "Layer Numb \u00b7 locked",
                 `${unread} ${drawn?.eyebrow} ${drawn?.facts.map(fact => fact.label)}`);
 
             slash.run();
