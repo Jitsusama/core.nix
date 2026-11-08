@@ -113,6 +113,38 @@ The model's `cloud.state` says whether the figures are current:
 - `signed-out`: the session aged past refreshing; `reason` says to run
   `eero sign-in`, and the next read opens the newly sealed session.
 
+## What It Tells
+
+The daemon tells Joel what changed on the home network as desktop
+notices, signed "Home network", on the session bus's
+`org.freedesktop.Notifications` as disk-guard raises its own
+([`src/desktop.rs`][desktop]). Which changes, and their words, are a pure
+function of the last model it compared and the new one
+([`src/notices.rs`][notices]), tested over `home-network.json` with an
+edit a case:
+
+- the internet out, as eero says while it answers or as the probe finds
+  it from home, critical; and back, saying how long it was out;
+- a node offline, by its location, with its devices and backhaul,
+  critical; and back online, saying how long it was offline;
+- a device eero first saw since its last answer, by its name, its node
+  and Ethernet or Wi-Fi; a device coming back says nothing;
+- a firmware update waiting, and the nodes' firmware changing, one
+  notice for every node that changed to the same firmware;
+- an event eero adds to its activity list that says none of these: one
+  about a device, or naming a node or the internet going offline, online
+  or updating, is told by its change instead.
+
+Only what changes while the daemon watches is told: until eero first
+answers after a start the figures are the last run's, and the first model
+it answers says nothing, setting what the next is compared with. Each
+change told is recorded in the history's `told` table by its kind and
+subject, such as a node's id and its last heartbeat, so a restart, or a
+figure flapping back, never tells it twice, and an outage told out is
+timed from when it was told. A notice about the internet, a node or the
+firmware takes the place of the last one about it, so "The internet is
+back" replaces "The internet is out".
+
 ## The Views
 
 The command line's views (`src/views/`) read the record and never eero's
@@ -150,3 +182,5 @@ offered by its hardware address.
 
 [history]: src/history.rs
 [probe]: src/probe.rs
+[notices]: src/notices.rs
+[desktop]: src/desktop.rs

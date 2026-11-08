@@ -19,6 +19,8 @@ onLinux {
   # and draws what moves in a database of its own in memory or a temporary
   # folder, the look at the internet is timed against listeners on this
   # machine and its outages drawn from sequences of looks, the status line says what eero said and nothing it didn't,
+  # each change worth a notice between two models is told once in its words, from the internet
+  # out and back to an event no other notice says, and nothing before eero's first answer,
   # and the conferencing setting is sent as eero takes it and counted only
   # once read back. Every view's page is held to a golden one drawn from
   # home-network.json (src/views/golden/), its figures lined up by their
