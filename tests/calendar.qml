@@ -448,6 +448,63 @@ QtObject {
         check("no call on a meeting with no link",
             Meet.calledBy([meeting("room", now, now, { link: null })], ""), null);
 
+        // A call Joel is in, as the google program says Meet told it
+        // (src/meet.rs), and the words its row and plate say it in.
+        const said = {
+            eyebrow: "on Meet \u00b7 call", muted: "muted", live: "live",
+            under: "under a minute", minutes: "{minutes} min", hours: "{hours} h",
+            hoursMinutes: "{hours} h {minutes} min", inCall: "{count} in the call",
+            signIn: "needs Google sign-in", unknown: "not known to Meet yet",
+            since: "since {time}", left: "left {time}",
+            people: "People", started: "Started", meeting: "Meeting", code: "Code"
+        };
+        const inCall = {
+            code: "abc-defg-hij", granted: true, known: true, started: at(26, 15, 0), people: [
+                { name: "Ada Lovelace", joined: at(26, 15, 0), left: at(26, 15, 15) },
+                { name: "Grace Hopper", joined: at(26, 15, 2), left: null },
+                { name: "Joel", joined: at(26, 15, 3), left: null }
+            ]
+        };
+        check("what Meet said of a call", Meet.heard([inCall], "abc-defg-hij").started,
+            at(26, 15, 0));
+        check("a call Meet hasn't said", Meet.heard([inCall], "xyz-abcd-efg"), null);
+        check("a call begins when its conference did", Meet.began(inCall, now), at(26, 15, 0));
+        check("else when its window opened", Meet.began(null, now), now);
+        check("a call's side, muted", Meet.side(true, at(26, 14, 57), now, said),
+            "muted \u00b7 23 min");
+        check("a call's side, heard", Meet.side(false, now - 30000, now, said),
+            "live \u00b7 under a minute");
+        check("a long call's side", Meet.side(false, at(26, 14, 15), now, said),
+            "live \u00b7 1 h 5 min");
+        check("those in it, then those who left", Meet.people(inCall).map(one => one.name),
+            ["Grace Hopper", "Joel", "Ada Lovelace"]);
+        check("its row names those in it", Meet.inIt(inCall), ["Grace Hopper", "Joel"]);
+        check("how many are in it", Meet.counted(inCall, said), "2 in the call");
+        check("who's in it waits on a sign-in",
+            Meet.counted({ code: "abc-defg-hij", granted: false, people: [] }, said),
+            "needs Google sign-in");
+        check("who's in it before Meet says, or where it keeps no record",
+            [Meet.counted(null, said), Meet.counted({ code: "abc-defg-hij", granted: true,
+                known: false, people: [] }, said)],
+            ["not known to Meet yet", "not known to Meet yet"]);
+        check("someone in it, since when", Meet.personSide(inCall.people[1], said),
+            "since 15:02");
+        check("someone who left, when", Meet.personSide(inCall.people[0], said), "left 15:15");
+        check("a call's plate",
+            Meet.details({ named: "Standup", code: "abc-defg-hij", heard: inCall,
+                since: at(26, 15, 0), meeting: meeting("Standup", at(26, 15, 0), at(26, 15, 30)) },
+                said),
+            { eyebrow: "on Meet \u00b7 call", eyebrowNames: true, title: "Standup", facts: [
+                { label: "People", value: "Grace Hopper, Joel" },
+                { label: "Started", value: "15:00" },
+                { label: "Meeting", value: "15:00 to 15:30" },
+                { label: "Code", value: "abc-defg-hij", identifies: true }
+            ], body: "" });
+        check("a call on no meeting, nobody heard yet, says when and its code",
+            Meet.details({ named: "abc-defg-hij", code: "abc-defg-hij", heard: null, since: now,
+                meeting: null }, said).facts
+                .map(fact => fact.label), ["Started", "Code"]);
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);

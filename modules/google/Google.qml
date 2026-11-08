@@ -23,7 +23,7 @@ Singleton {
         id: google
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/google.sock`
-        kind: ["meeting", "mail", "file", "held", "lately", "account"]
+        kind: ["meeting", "mail", "file", "held", "lately", "call", "account"]
         // What Google held may not be Joel's to see once it answers again,
         // and a meeting cancelled in the gap would otherwise stay.
         keptThroughGap: false
@@ -53,6 +53,9 @@ Singleton {
     // `mail` says each: what a person's Recent holds (GoogleSource.qml).
     property var held: []
     property var lately: []
+    // The Meet calls followed, as Meet last said each: { code, granted,
+    // started, people: [{ name, joined, left }] } (src/meet.rs).
+    property var calls: []
     // When Google last answered, or null.
     property var heard: null
     // The file mail carries last asked for, as it stands: { mail, file,
@@ -94,6 +97,23 @@ Singleton {
     // Asks the program to make a new Meet meeting.
     function make() {
         ask(Said.make());
+    }
+
+    // Asks the program to follow the Meet calls of these codes, the ones
+    // open in windows of their own (Calendar.qml's calls), so Meet is
+    // asked who's in each while they are.
+    function follow(codes) {
+        following = codes;
+        ask(Said.follow(codes));
+    }
+
+    // The codes last followed, asked again whenever the daemon answers
+    // anew, since a program started again follows nothing.
+    property var following: []
+    readonly property bool answering: google.state === "answering"
+    onAnsweringChanged: {
+        if (answering && following.length > 0)
+            ask(Said.follow(following));
     }
 
     // Asks the program what a Drive folder holds, which comes in

@@ -451,6 +451,88 @@ fn a_meeting_is_made_for_its_link_only_once_the_sign_in_grants_meet() {
 }
 
 #[test]
+fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
+    let failing = Arc::new(AtomicBool::new(false));
+    let fails = Arc::clone(&failing);
+    let stand_in = StandIn::new(move |path, body| {
+        if path.starts_with("GET /v2/conferenceRecords?") {
+            if fails.load(Ordering::SeqCst) {
+                return (503, "{}".into());
+            }
+            assert!(path.contains("abc-defg-hij"), "{path}");
+            return (
+                200,
+                r#"{"conferenceRecords": [{"name": "conferenceRecords/c1",
+                    "startTime": "2026-10-26T19:00:00Z"}]}"#
+                    .into(),
+            );
+        }
+        if path.starts_with("GET /v2/conferenceRecords/c1/participants") {
+            return (
+                200,
+                r#"{"participants": [
+                    {"signedinUser": {"displayName": "Grace Hopper"},
+                     "earliestStartTime": "2026-10-26T19:02:00Z"},
+                    {"signedinUser": {"displayName": "Ada Lovelace"},
+                     "earliestStartTime": "2026-10-26T19:00:30Z",
+                     "latestEndTime": "2026-10-26T19:15:00Z"}]}"#
+                    .into(),
+            );
+        }
+        google(path, body)
+    });
+    let path = credentials("calls", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    let asked = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.starts_with("GET /v2/conferenceRecords"))
+            .count()
+    };
+    assert!(!watch.following(&now()));
+    let state = watch.follow(vec!["abc-defg-hij".into()], &now()).clone();
+    assert_eq!(
+        asked(&stand_in),
+        0,
+        "Meet was asked without the scope to read it"
+    );
+    assert_eq!(state.calls.len(), 1);
+    assert!(!state.calls[0].granted && !state.calls[0].known);
+    // Joel signs in again from pi, granting the scope that reads calls.
+    let file = fs::read_to_string(&path).unwrap().replace(
+        r#""scope": "calendar""#,
+        r#""scope": "calendar https://www.googleapis.com/auth/meetings.space.readonly""#,
+    );
+    fs::write(&path, file).unwrap();
+    let state = watch.calls(&now()).clone();
+    let call = &state.calls[0];
+    assert!(call.granted && call.known, "{call:?}");
+    assert_eq!(call.started, Some(1_793_041_200_000));
+    let names: Vec<&str> = call
+        .people
+        .iter()
+        .map(|person| person.name.as_str())
+        .collect();
+    assert_eq!(names, ["Ada Lovelace", "Grace Hopper"]);
+    assert_eq!(call.people[0].left, Some(1_793_042_100_000));
+    // Meet failing keeps what it said last.
+    failing.store(true, Ordering::SeqCst);
+    assert_eq!(watch.calls(&now()).calls[0].people.len(), 2);
+    // A follow the shell doesn't say again lapses, as when it went away.
+    failing.store(false, Ordering::SeqCst);
+    assert!(watch.following(&now()));
+    let later = now().checked_add(jiff::Span::new().minutes(2)).unwrap();
+    assert!(!watch.following(&later), "a follow nobody said again held");
+    // The call's window closed: nothing followed, nothing asked.
+    watch.follow(vec!["abc-defg-hij".into()], &now());
+    let before = asked(&stand_in);
+    assert!(watch.follow(Vec::new(), &now()).calls.is_empty());
+    assert!(!watch.following(&now()));
+    assert_eq!(asked(&stand_in), before);
+}
+
+#[test]
 fn a_file_mail_carries_is_fetched_only_when_asked_and_a_program_never_to_open() {
     let stand_in = StandIn::new(carrying);
     let path = credentials("files", now().timestamp().as_millisecond() + 3_600_000);

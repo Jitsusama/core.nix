@@ -107,6 +107,9 @@ Item {
     // own, such as a piece of mail: given the launcher's `thing`, their
     // rows, which Return lists in place of doing its first act, so each
     // shows as it does everywhere else. Null for a piece that's only acts.
+    // Its second argument, `listed(parts, name, side)`, says parts after a
+    // row's name in the room left, giving way by whole parts, as Now's own
+    // row says the piece's `parts`.
     property var rows: null
     // Everything its source says, as Now's row's drawer (Drawer.qml's
     // `drawer`), where the row can't show it all: given what the launcher
