@@ -126,6 +126,14 @@ let
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
   restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
   windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
+  carryScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-carry.ts";
+
+  # What mycelium carry runs to carry a quest's trees and sessions to
+  # another machine, and to put them back on arriving: the harness's
+  # program, run by the store's node.
+  piCarry = pkgs.writeShellScriptBin "pi-carry" ''
+    exec ${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${carryScript} "$@"
+  '';
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
@@ -313,6 +321,7 @@ in
           inherit (config.jitsusama.pi) ask;
         })
       ]
+      ++ [ piCarry ]
       ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.landrun;
 
     # On the Claude plan every pi starts on it: the provider is one of the
