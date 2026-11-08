@@ -1325,7 +1325,8 @@ onLinux {
   # for.
   do-not-disturb-holds-while-sharing =
     let
-      options = singleton "Options.qml" "readonly property var doNotDisturb: ({ whileSharing: true })";
+      chosen = "readonly property var doNotDisturb: ({ whileSharing: true })";
+      options = singleton "Options.qml" chosen;
     in
     pkgs.runCommandLocal "do-not-disturb-holds-while-sharing" { } ''
       mkdir runtime && chmod 700 runtime
