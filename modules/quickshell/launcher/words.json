@@ -150,7 +150,8 @@
     {
       "id": "agents:task",
       "in": "agents",
-      "name": "Quest"
+      "name": "Quest",
+      "term": "Agents/quest"
     },
     {
       "id": "agents:to-reopen",
@@ -324,12 +325,14 @@
     {
       "id": "agents:model",
       "in": "agents",
-      "name": "Model"
+      "name": "Model",
+      "term": "Agents/model"
     },
     {
       "id": "agents:context",
       "in": "agents",
-      "name": "Context"
+      "name": "Context",
+      "term": "Agents/context"
     },
     {
       "id": "agents:last-turn",
@@ -344,12 +347,14 @@
     {
       "id": "agents:tokens",
       "in": "agents",
-      "name": "Tokens"
+      "name": "Tokens",
+      "term": "Agents/tokens"
     },
     {
       "id": "agents:cache",
       "in": "agents",
-      "name": "Cache"
+      "name": "Cache",
+      "term": "Agents/cache"
     },
     {
       "id": "agents:session",
@@ -364,7 +369,8 @@
     {
       "id": "agents:step",
       "in": "agents",
-      "name": "Doing"
+      "name": "Doing",
+      "term": "Agents/Doing"
     },
     {
       "id": "agents:last-landing",
@@ -375,6 +381,7 @@
       "id": "agents:wants",
       "in": "agents",
       "name": "Needs You For",
+      "term": "Agents/Needs You For",
       "said": {
         "question": "needs you",
         "approval": "needs your yes",
@@ -494,7 +501,8 @@
     {
       "id": "jobs:vm-test",
       "in": "jobs",
-      "name": "VM Test"
+      "name": "VM Test",
+      "term": "Checks/VM test"
     },
     {
       "id": "jobs:vm-check",
@@ -593,7 +601,8 @@
     {
       "id": "machine:memory:swap",
       "in": "machine:memory",
-      "name": "Swap"
+      "name": "Swap",
+      "term": "Machine/swap"
     },
     {
       "id": "machine:memory:cached",
@@ -669,7 +678,8 @@
     {
       "id": "machine:cpu:held-back",
       "in": "machine:cpu",
-      "name": "Held Back"
+      "name": "Held Back",
+      "term": "Machine/held back"
     },
     {
       "id": "machine:cpu:held-back-core",
@@ -731,6 +741,7 @@
       "id": "machine:cpu:kept-from-resting",
       "in": "machine:cpu",
       "name": "Kept From Resting",
+      "term": "Machine/kept from resting",
       "provider": "machine",
       "question": "kept from resting",
       "answers": [
@@ -1058,7 +1069,8 @@
       "id": "power:charger",
       "once": ["Mains"],
       "in": "power",
-      "name": "Charger"
+      "name": "Charger",
+      "term": "Machine/charger"
     },
     {
       "id": "power:port",
@@ -1182,6 +1194,7 @@
       "id": "heat:throttled",
       "in": "heat",
       "name": "Throttled",
+      "term": "Machine/throttled",
       "answers": [
         "throttled"
       ]
@@ -1204,12 +1217,14 @@
     {
       "id": "heat:graphics",
       "in": "heat",
-      "name": "Graphics"
+      "name": "Graphics",
+      "term": "Machine/graphics"
     },
     {
       "id": "heat:npu",
       "in": "heat",
-      "name": "NPU"
+      "name": "NPU",
+      "term": "Machine/NPU"
     },
     {
       "id": "heat:image-processor",
@@ -1219,12 +1234,14 @@
     {
       "id": "heat:media-engine",
       "in": "heat",
-      "name": "Media Engine"
+      "name": "Media Engine",
+      "term": "Machine/media engine"
     },
     {
       "id": "heat:display-engine",
       "in": "heat",
-      "name": "Display Engine"
+      "name": "Display Engine",
+      "term": "Machine/display engine"
     },
     {
       "id": "heat:disk",
@@ -1249,7 +1266,8 @@
     {
       "id": "heat:chipset",
       "in": "heat",
-      "name": "Chipset"
+      "name": "Chipset",
+      "term": "Machine/chipset"
     },
     {
       "id": "heat:board",
@@ -1360,6 +1378,7 @@
     {
       "id": "firmware",
       "name": "Firmware",
+      "term": "Machine/firmware",
       "glyph": "firmware",
       "answers": ["firmware", "update", "updates"]
     },
@@ -2338,7 +2357,8 @@
     {
       "id": "location",
       "in": "on",
-      "name": "Location"
+      "name": "Location",
+      "term": "Desktop/location"
     },
     {
       "id": "location:town",
