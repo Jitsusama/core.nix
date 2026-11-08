@@ -6427,6 +6427,8 @@ Scope {
                 // What its last slot says of the things it hides below, and
                 // that slot's baseline, "" and -1 when it hides none.
                 moreSays: drawerCard.moreSays,
+                // The way in as it's drawn, key by key.
+                moreKeys: drawerCard.moreKeys,
                 moreBase: drawerCard.moreSays === "" ? -1
                     : root.hundredths(drawerCard.moreBase),
                 scrolled: Math.round(drawerCard.scrolled),
