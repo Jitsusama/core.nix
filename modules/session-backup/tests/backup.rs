@@ -680,7 +680,7 @@ fn says_how_to_sign_in_for_a_folder_of_its_own() {
             && why.contains("https://www.googleapis.com/auth/drive.file"),
         "{why}"
     );
-    assert!(google.calls().is_empty());
+    assert_eq!(google.calls(), Vec::<String>::new());
 }
 
 #[test]
