@@ -62,18 +62,27 @@ QtObject {
             read(Recent.listed([many], ["a", "c"])), "b d e f g h i j k");
         check(failures, "or as many as asked", read(Recent.listed([many], [], 2)), "a b");
 
-        const words = { none: "none" };
-        check(failures, "its row says how many, and the first one's name",
-            JSON.stringify(Recent.said(2, "a", false, words)),
-            JSON.stringify({ side: "2", note: "a" }));
+        const words = { none: "none", more: "and {more} more" };
+        check(failures, "its row says how many, and their names",
+            JSON.stringify(Recent.said(["Wikipedia", "Kayak"], false, words)),
+            JSON.stringify({ side: "2", note: "Wikipedia, Kayak" }));
+        const nine = ["Wikipedia", "Kayak", "Maps", "Mail", "Docs", "News", "Weather",
+            "Photos", "Music"];
+        check(failures, "as many names whole as fit, then how many more",
+            Recent.said(nine, false, words, 30).note, "Wikipedia, Kayak and 7 more");
+        check(failures, "the last one named when it fits without saying more",
+            Recent.said(["Wikipedia", "Kayak", "Maps"], false, words, 27).note,
+            "Wikipedia, Kayak, Maps");
+        check(failures, "the first always named, the rest counted, when only it fits",
+            Recent.said(nine, false, words, 12).note, "Wikipedia and 8 more");
         check(failures, "it says none while it holds nothing",
-            JSON.stringify(Recent.said(0, undefined, false, words)),
+            JSON.stringify(Recent.said([], false, words)),
             JSON.stringify({ side: "none", note: "" }));
         check(failures, "and waits while a source hasn't answered",
-            JSON.stringify(Recent.said(0, undefined, true, words)),
+            JSON.stringify(Recent.said([], true, words)),
             JSON.stringify({ side: "\u2026", note: "" }));
         check(failures, "what one source already gave is said while another is asked",
-            Recent.said(2, "a", true, words).side, "2");
+            Recent.said(["a", "b"], true, words).side, "2");
 
         for (const failure of failures)
             console.warn(failure);

@@ -692,17 +692,17 @@ Provider {
     // (`keepsRecentOf(program)`), saying "none" while it holds nothing, and
     // an ellipsis until a source read only as it's stepped into first
     // answers, so it never comes late at the bottom of a step already
-    // drawn. Its side says how many, its note the first one's name.
+    // drawn. Its side says how many, its note their names, as many as fit.
     function recent(entry) {
         if (!provider.keepsRecent(entry))
             return [];
         provider.recents.ask(entry.id);
         const words = Words.of("program:recent");
         const kept = provider.kept(entry);
-        const first = kept.length > 0 ? provider.made(entry, kept[0]).name : "";
+        const names = kept.map(one => provider.made(entry, one).name);
         const source = provider.sourceOf(entry);
         const waiting = source?.asked === true && !(entry.id in provider.recents.lately);
-        const stands = Recent.said(kept.length, first, waiting, words.said);
+        const stands = Recent.said(names, waiting, words.said);
         return [said("program:recent", "", {
             hue: "program",
             side: stands.side,

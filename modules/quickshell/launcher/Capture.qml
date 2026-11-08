@@ -323,8 +323,8 @@ Provider {
     // own rows rather than before them. With nothing typed it holds the
     // newest nine, laid out as every Recent is (Recent.js); typed into, it
     // finds among everything taken (`finds`).
-    readonly property var stands: Recent.said(taken.length, taken.length > 0
-        ? taken[0].slice(taken[0].lastIndexOf("/") + 1) : "", false, Words.of("capture:recent").said)
+    readonly property var stands: Recent.said(taken.map(path => path.slice(path.lastIndexOf("/")
+        + 1)), false, Words.of("capture:recent").said)
     readonly property var recent: [Object.assign(entering(member({
             key: "capture:recent",
             name: Words.name("capture:recent"),

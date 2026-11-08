@@ -48,18 +48,41 @@ function listed(sources, shown, most) {
     return rows;
 }
 
-// What Recent's own row says of what it holds, given how many, the first
-// one's name, whether a source it waits on hasn't answered yet, and its
-// words: at its side how many, its words' `none` while it holds nothing,
-// and an ellipsis while it's still waiting, so the row stands in its place
-// from the first and never arrives late at the bottom; as its note, the
-// first one's name.
-function said(count, first, waiting, words) {
+// How many characters Recent's note may take beside its name and side on
+// the launcher's card, where a provider can't measure the row it makes.
+const ROOM = 40;
+
+// What Recent's own row says of what it holds, given their names, newest
+// first, whether a source it waits on hasn't answered yet, its words, and
+// the room its note has: at its side how many, its words' `none` while it
+// holds nothing, and an ellipsis while it's still waiting, so the row
+// stands in its place from the first and never arrives late at the
+// bottom; as its note, the names, as many whole as fit, then how many
+// more by its words' `more` ("Wikipedia, Kayak", "Wikipedia and 8
+// more"; VKCF3Z, 2026-11-07). The first is always named, cut by the row
+// where it's longer than the room.
+function said(names, waiting, words, room) {
+    const count = names.length;
     if (waiting && count === 0) {
         return { side: "\u2026", note: "" };
     }
     if (count === 0) {
         return { side: words?.none ?? "", note: "" };
     }
-    return { side: String(count), note: first ?? "" };
+    return { side: String(count), note: noted(names, words, room ?? ROOM) };
+}
+
+// The names that fit in `room`, whole, and how many more were left out.
+function noted(names, words, room) {
+    const more = left => ` ${(words?.more ?? "and {more} more").replace("{more}", left)}`;
+    let note = names[0];
+    for (let at = 1; at < names.length; at++) {
+        const next = `${note}, ${names[at]}`;
+        const last = at === names.length - 1;
+        if (next.length + (last ? 0 : more(names.length - at - 1).length) > room) {
+            return `${note}${more(names.length - at)}`;
+        }
+        note = next;
+    }
+    return note;
 }

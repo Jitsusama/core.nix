@@ -305,7 +305,7 @@ ShellRoot {
             same("what's open, one row a page, newest looked at first, then in Recent what was "
                 + "open, never a page open now nor one left out", names(sites),
                 `Open A, Older page, Another, Behind, Page ${reading}`);
-            same("Recent says how many, and the first one's name",
+            same("Recent says how many, and their names",
                 `${rows[8].side} ${rows[8].note}`, `1 Page ${reading}`);
             same("each saying it's open and in how many tabs, then its host",
                 sites.map(row => row.side).join(" | "),
@@ -506,8 +506,8 @@ ShellRoot {
                 "Go To, New Window, New Window Below, Private window, Open the logbook, "
                 + "Draft, Recent, Notices, Quit, Media, Sound, Copy a New Log's Link");
             const [switching, , , secret, logbook, draft, shared, told, quit, media, sound] = tester;
-            same("Recent says how many it holds, and the first one's name",
-                `${shared.side} ${shared.note}`, "3 notes.md");
+            same("Recent says how many it holds, and their names",
+                `${shared.side} ${shared.note}`, "3 notes.md, plan.md, Plan Doc");
             const files = shared.targets();
             same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",
                 `${names(files)} ${files.map(row => row.key).join(" ")}`,
