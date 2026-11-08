@@ -46,6 +46,10 @@ in
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
       Restart = "on-failure";
       RestartSec = 60;
+      # Its ask that Joel sign in again goes with it, however it stops, so
+      # Needs You never shows an ask nothing is keeping current
+      # (src/waiting.rs).
+      ExecStopPost = "${pkgs.coreutils}/bin/rm -f %S/mission/waiting/eero.json";
     };
     Install.WantedBy = [ "default.target" ];
   };
