@@ -254,10 +254,9 @@ fn a_build_waiting_on_a_held_lock_is_seen() {
     waiter.join().unwrap();
     let again = fs::File::open(&path).unwrap();
     flock(&again, FlockOperation::LockExclusive).unwrap();
-    assert!(
-        lock_waiters(Path::new("/proc/locks"), me, &[inode])
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        lock_waiters(Path::new("/proc/locks"), me, &[inode]).unwrap(),
+        [] as [i32; 0]
     );
 }
 
