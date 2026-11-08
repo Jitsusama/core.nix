@@ -21,6 +21,7 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Drawers.js" as Drawers
 
 Piece {
     id: piece
@@ -121,6 +122,24 @@ Piece {
         stays: true,
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])
+
+    // Everything the guards say of the disk shortest of room, under Now's
+    // row (Drawers.js), each figure said as the Disks place says it, and
+    // what either guard cleared last.
+    drawer: worst === null ? null : () => Object.assign({ title: piece.title }, Drawers.disk({
+        worst: piece.worst,
+        holders: piece.holders,
+        cleared: piece.said.reduce((all, status) => all.concat(status.cleared ?? []), [])
+            .sort((one, other) => other.at - one.at)
+    }, {
+        now: Date.now() / 1000,
+        named: id => Words.name(id),
+        said: Words.of("on:disk").said,
+        shown: bytes => piece.shown(bytes),
+        duration: seconds => piece.duration(seconds),
+        within: path => Files.within(path),
+        time: at => Qt.formatDateTime(new Date(at * 1000), "HH:mm")
+    }))
 
     // What the guard said of the last Keep or Release, for the foot: the
     // one sentence it prints, or why it couldn't.

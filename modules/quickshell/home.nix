@@ -230,6 +230,7 @@ let
     "Reported.qml"
     "Frames.qml"
     "Counted.qml"
+    "pieces/Drawers.js"
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"

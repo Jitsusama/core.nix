@@ -5830,6 +5830,140 @@
       "empty": "Nothing's on or waiting."
     },
     {
+      "id": "on:disk",
+      "in": "on",
+      "said": {
+        "eyebrow": "on {path} \u00b7 disk",
+        "hourly": "{amount} an hour",
+        "grew": "{path} +{amount}",
+        "cleared": "{amount} from {path} at {time}"
+      }
+    },
+    {
+      "id": "on:disk:filling",
+      "in": "on",
+      "name": "Filling"
+    },
+    {
+      "id": "on:disk:growing",
+      "in": "on",
+      "name": "Growing Most"
+    },
+    {
+      "id": "on:disk:cleared",
+      "in": "on",
+      "name": "Last Cleared"
+    },
+    {
+      "id": "on:notices",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 notices"
+      }
+    },
+    {
+      "id": "on:lag",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this machine \u00b7 lag"
+      }
+    },
+    {
+      "id": "on:lag:waiting",
+      "in": "on",
+      "name": "Waiting On"
+    },
+    {
+      "id": "on:lag:session",
+      "in": "on",
+      "name": "The Desktop"
+    },
+    {
+      "id": "on:lag:app",
+      "in": "on",
+      "name": "Its Programs"
+    },
+    {
+      "id": "on:lag:jobs",
+      "in": "on",
+      "name": "Jobs"
+    },
+    {
+      "id": "on:lag:build",
+      "in": "on",
+      "name": "Builds"
+    },
+    {
+      "id": "on:lag:swap",
+      "in": "on",
+      "name": "Swap"
+    },
+    {
+      "id": "on:sharing",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 screen share",
+        "several": "{count} things",
+        "held": "held",
+        "shown": "still show",
+        "window": "window",
+        "screen": "screen"
+      }
+    },
+    {
+      "id": "on:sharing:what",
+      "in": "on",
+      "name": "Sharing"
+    },
+    {
+      "id": "on:sharing:notices",
+      "in": "on",
+      "name": "Notices"
+    },
+    {
+      "id": "on:sharing:kind",
+      "in": "on",
+      "name": "Kind"
+    },
+    {
+      "id": "on:sharing:stream",
+      "in": "on",
+      "name": "Stream ID"
+    },
+    {
+      "id": "on:recording",
+      "in": "on",
+      "said": {
+        "eyebrow": "in {where} \u00b7 recording"
+      }
+    },
+    {
+      "id": "on:recording:showing",
+      "in": "on",
+      "name": "Showing"
+    },
+    {
+      "id": "on:quiet",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 do not disturb",
+        "one": "1 notice",
+        "many": "{count} notices",
+        "kept": "Turned on by hand.",
+        "shared": "On while the screen is shared."
+      }
+    },
+    {
+      "id": "on:quiet:since",
+      "in": "on",
+      "name": "Since"
+    },
+    {
+      "id": "on:quiet:held",
+      "in": "on",
+      "name": "Held"
+    },
+    {
       "id": "on:plate",
       "in": "on",
       "said": {

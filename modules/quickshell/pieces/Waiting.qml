@@ -4,8 +4,11 @@
 // so instead (DoNotDisturb.qml). One still on screen isn't waiting yet.
 import qs
 import QtQuick
+import "Drawers.js" as Drawers
 
 Piece {
+    id: piece
+
     readonly property var missed: Notices.waiting
     readonly property var senders: [...new Set(missed.map(notice => notice.app))]
     // The chord that opens the notices, beside the action that does.
@@ -15,6 +18,10 @@ Piece {
     active: missed.length > 0 && !Quiet.on
     wants: active
     hue: "voice"
+    // Who sent what's waiting, each with how many, under Now's row
+    // (Drawers.js).
+    drawer: missed.length === 0 ? null : () => Object.assign({ title: piece.title },
+        Drawers.notices(piece.missed, Words.of("on:notices").said))
     value: `${missed.length} waiting`
     title: "Notices"
     hint: missed.length === 1 ? "A notice came in" : `${missed.length} notices came in`

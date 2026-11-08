@@ -3338,6 +3338,26 @@ onLinux {
       touch $out
     '';
 
+  # Now's own pieces say in their drawers all their source holds, in the
+  # order every drawer keeps, as tests/piece-drawers.qml holds
+  # pieces/Drawers.js to what the disk guards, Notices, lag-watch, niri,
+  # the recorder and Quiet say.
+  a-piece-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-piece-says-all-it-knows" { } ''
+      mkdir launcher pieces
+      cp ${../../tests/piece-drawers.qml} piece-drawers.qml
+      cp ${./pieces/Drawers.js} pieces/Drawers.js
+      cp ${./launcher/Program.js} launcher/Program.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml piece-drawers.qml
+      touch $out
+    '';
+
   # What Capture took says where it is and what kind, when it was taken,
   # its size and a picture's dimensions or a recording's length, as
   # tests/captured.qml holds launcher/Captured.js to what Taken.qml reads
