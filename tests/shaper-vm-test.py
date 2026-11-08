@@ -623,14 +623,23 @@ def test_replug(replugged: Replugged) -> None:
 
 @pytest.mark.usefixtures("tunnel")
 def test_stopping(on_eth2: Connection) -> None:
-    """Stopping it leaves the links as they were."""
+    """An administrator stops it with no password, and that leaves the links as they were.
+
+    An account outside wheel can't; an administrator starts it again just as freely, as an A/B
+    turning it on and off around each call does.
+    """
     client = on_eth2.client
     eth2_ifb = on_eth2.ifb("eth2")
     wg0_ifb = on_eth2.ifb("wg0")
-    client.succeed("systemctl stop shaper.service")
+    status, said = client.execute("runuser -u alice -- systemctl stop shaper.service 2>&1")
+    assert status != 0, said
+    client.succeed("systemctl is-active shaper.service")
+    client.succeed("runuser -u bob -- systemctl stop shaper.service")
     assert not on_eth2.shaped("eth2")
     client.succeed(f"! ip link show {eth2_ifb}")
     client.succeed("! tc -j qdisc show dev eth2 | grep -q ingress")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q cake")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q ingress")
     client.succeed(f"! ip link show {wg0_ifb}")
+    client.succeed("runuser -u bob -- systemctl start shaper.service")
+    client.succeed("systemctl is-active shaper.service")
