@@ -9,7 +9,8 @@
 //! builder that evaluates, builds and answers passes. A lent builder is
 //! proven over the ssh its `there` builds take, with its store's key and
 //! host key; a builder beside, reached only by root's ssh, through the
-//! daemon's build hook, as every build sent to it is.
+//! daemon's build hook, as every build sent to it is, passing once its
+//! output comes back.
 //!
 //! Each lender says how its builder stands in its folder's `health.json`,
 //! written every tick, for a status card to read:
@@ -33,7 +34,7 @@
 
 use serde_json::{Value, json};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -274,17 +275,25 @@ pub fn over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration) -> boo
         .args(["-o", &format!("ConnectTimeout={CONNECTING}")])
         .arg(&lent.host)
         .arg(build);
-    let passed = ended_within(&mut command, within, &lent.host);
+    let passed = ended_within(&mut command, within, &lent.host, None);
     for file in [&known, &said] {
         let _ = fs::remove_file(file);
     }
     passed
 }
 
+/// What Nix says once a builder has built a proof and its output comes
+/// back, which is as far as a proof through the daemon need go: this
+/// store takes nothing while a collection holds its lock, as the disk
+/// guard's `--print-dead` did for minutes at a time on 8 November, and
+/// that's no fault of the builder's.
+const BUILT_THERE: &str = "-nix-offload-proof' from '";
+
 /// Prove the builder a machines line names through the daemon's build
 /// hook, as every build Nix sends there goes, by root's ssh: nothing is
 /// built here, and the line is given slots of its own, so a proof never
-/// waits behind the builds filling its own.
+/// waits behind the builds filling its own. It passes once its output
+/// comes back, waiting for no lock here.
 pub fn through_daemon(line: &str, nix: &str, within: Duration) -> bool {
     let fields: Vec<&str> = line.split_whitespace().collect();
     let Some(uri) = fields.first() else {
@@ -313,7 +322,7 @@ pub fn through_daemon(line: &str, nix: &str, within: Duration) -> bool {
         .arg(own.join(" "))
         .arg("--expr")
         .arg(expression(&nonce(), system, &mandatory));
-    ended_within(&mut command, within, &named(line))
+    ended_within(&mut command, within, &named(line), Some(BUILT_THERE))
 }
 
 /// The builder a machines line names, as a person reads it: its host.
@@ -326,9 +335,15 @@ pub fn named(line: &str) -> String {
         .to_owned()
 }
 
-/// Whether `command` succeeds within `within`, killed with everything it
-/// started once that's past; saying why the proof of `builder` failed.
-fn ended_within(command: &mut Command, within: Duration, builder: &str) -> bool {
+/// Whether `command` succeeds within `within`, or says `answered` on its
+/// way there, killed with everything it started once either is past;
+/// saying why the proof of `builder` failed.
+fn ended_within(
+    command: &mut Command,
+    within: Duration,
+    builder: &str,
+    answered: Option<&str>,
+) -> bool {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -339,25 +354,40 @@ fn ended_within(command: &mut Command, within: Duration, builder: &str) -> bool 
         return false;
     };
     let (said, heard) = mpsc::channel();
-    if let Some(mut errors) = running.stderr.take() {
+    if let Some(errors) = running.stderr.take() {
         thread::spawn(move || {
-            let mut text = String::new();
-            let _ = errors.read_to_string(&mut text);
-            let _ = said.send(text);
+            for line in BufReader::new(errors).lines().map_while(Result::ok) {
+                if said.send(line).is_err() {
+                    break;
+                }
+            }
         });
     }
+    let ends = |running: &mut std::process::Child| {
+        if let Ok(pid) = libc::pid_t::try_from(running.id()) {
+            // SAFETY: a signal to our own child's process group, which
+            // it leads.
+            unsafe { libc::kill(-pid, libc::SIGKILL) };
+        }
+        let _ = running.wait();
+    };
     let began = Instant::now();
+    let mut why = None;
     let status = loop {
+        for line in heard.try_iter() {
+            if answered.is_some_and(|answered| line.contains(answered)) {
+                ends(&mut running);
+                return true;
+            }
+            if !line.trim().is_empty() {
+                why = Some(line.trim().to_owned());
+            }
+        }
         match running.try_wait() {
             Ok(Some(status)) => break Some(status),
             Err(_) => break None,
             Ok(None) if began.elapsed() >= within => {
-                if let Ok(pid) = libc::pid_t::try_from(running.id()) {
-                    // SAFETY: a signal to our own child's process group,
-                    // which it leads.
-                    unsafe { libc::kill(-pid, libc::SIGKILL) };
-                }
-                let _ = running.wait();
+                ends(&mut running);
                 break None;
             }
             Ok(None) => thread::sleep(Duration::from_millis(50)),
@@ -366,15 +396,13 @@ fn ended_within(command: &mut Command, within: Duration, builder: &str) -> bool 
     if status.is_some_and(|status| status.success()) {
         return true;
     }
-    let why = heard
-        .recv_timeout(Duration::from_secs(1))
-        .ok()
-        .and_then(|text| {
-            text.lines()
-                .map(str::trim)
-                .rfind(|line| !line.is_empty())
-                .map(str::to_owned)
-        });
+    // What it said last, before it ended.
+    let ending = Instant::now() + Duration::from_secs(1);
+    while let Ok(line) = heard.recv_timeout(ending.saturating_duration_since(Instant::now())) {
+        if !line.trim().is_empty() {
+            why = Some(line.trim().to_owned());
+        }
+    }
     match (status, why) {
         (None, _) => eprintln!(
             "nix-offload: {builder} didn't build its proof within {} s",
@@ -686,6 +714,31 @@ mod tests {
             "echo 'cannot build on work-linux' >&2; exit 1",
         );
         assert!(!through_daemon(line, &failing, WITHIN));
+    }
+
+    // This store takes nothing while a collection holds its lock, as the
+    // disk guard's did for minutes on 8 November, so a proof that built
+    // there passes once its output comes back, however long this store
+    // keeps it waiting.
+    #[test]
+    fn a_builder_beside_passes_once_its_proof_comes_back_whatever_holds_this_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = "ssh-ng://work-linux x86_64-linux - 4 1 - - -";
+        let copying = "copying path '/nix/store/abc-nix-offload-proof' from 'ssh-ng://work-linux'";
+        let nix = stand_in(
+            dir.path(),
+            "nix",
+            &format!("echo \"{copying}...\" >&2; sleep 60"),
+        );
+        let began = Instant::now();
+        assert!(through_daemon(line, &nix, Duration::from_secs(10)));
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "{:?}",
+            began.elapsed()
+        );
+        let stuck = stand_in(dir.path(), "nix", "echo 'copying 1 paths...' >&2; sleep 60");
+        assert!(!through_daemon(line, &stuck, Duration::from_millis(500)));
     }
 
     #[test]
