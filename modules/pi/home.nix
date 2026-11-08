@@ -373,6 +373,17 @@ in
           } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
         '';
 
+    # pi writes its session logs readable by anyone on the machine, and a
+    # tool's output in them can hold a token: on 7 November 84 of 625 logs
+    # did. pi's own folder is kept to its account alone, which closes every
+    # file under it whatever mode pi writes it with; a umask for pi would
+    # also make every file an agent writes private, which this doesn't.
+    home.activation.piKeepsItsFolderPrivate = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/sessions"}
+      run chmod 0700 ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent"} \
+        ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/sessions"}
+    '';
+
     # Where the harness's status line learns the folder and git; its README
     # says what each field means.
     xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text = builtins.toJSON {
