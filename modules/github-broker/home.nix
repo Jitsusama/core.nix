@@ -9,8 +9,8 @@
 # the broker answers that the App isn't made yet. It opens the App with
 # the TPM identity at ~/.config/age/tpm.txt, which asks for no PIN.
 #
-# `github-broker token` prints a token, for gh: GH_TOKEN=$(github-broker
-# token) gh ...
+# `github-broker` on PATH asks the socket and prints a token, for gh by
+# hand: GH_TOKEN=$(github-broker) gh ...
 {
   config,
   lib,
