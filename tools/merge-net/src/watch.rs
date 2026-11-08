@@ -682,6 +682,25 @@ fn movers(world: &dyn World, merges: &[String], test: &str) -> Vec<String> {
         .collect()
 }
 
+/// Keeps in the hold how its revert went: the PR and commit that landed,
+/// or that it's to be tried again because no builder took its checks.
+fn keep_revert(
+    state: &State,
+    hold: &mut Value,
+    reverted: &Result<Merged, String>,
+) -> Result<(), String> {
+    match reverted {
+        Ok(merged) => {
+            hold["revert_pr"] = json!(merged.pr);
+            hold["revert_commit"] = json!(merged.commit);
+            hold["revert_again"] = json!(false);
+        }
+        Err(why) if why.starts_with(UNCHECKED) => hold["revert_again"] = json!(true),
+        Err(_) => hold["revert_again"] = json!(false),
+    }
+    state.set_hold(hold)
+}
+
 /// Try again a revert whose checks no builder took, as each round begins:
 /// on 8 November the lent builders were down when the net blamed #2263,
 /// and its hold sat with no revert until one was landed by hand.
@@ -704,27 +723,16 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         test: test.clone(),
         log: state.log(&commit, &test, 2).display().to_string(),
     };
-    match world.revert(&found) {
-        Ok(merged) => {
-            hold["revert_pr"] = json!(merged.pr);
-            hold["revert_commit"] = json!(merged.commit);
-            hold["revert_again"] = json!(false);
-            state.set_hold(&hold)?;
-            state.say(&format!(
-                "reverted {} for {test} in #{}, its checks taken this time",
-                short(&commit),
-                merged.pr
-            ));
-        }
-        Err(why) if why.starts_with(UNCHECKED) => {
-            state.say(&format!("couldn't revert {} yet: {why}", short(&commit)));
-        }
-        Err(why) => {
-            hold["revert_again"] = json!(false);
-            state.set_hold(&hold)?;
-            state.say(&format!("couldn't revert {}: {why}", short(&commit)));
-        }
-    }
+    let reverted = world.revert(&found);
+    keep_revert(state, &mut hold, &reverted)?;
+    state.say(&match &reverted {
+        Ok(merged) => format!(
+            "reverted {} for {test} in #{}, its checks taken this time",
+            short(&commit),
+            merged.pr
+        ),
+        Err(why) => format!("couldn't revert {} yet: {why}", short(&commit)),
+    });
     Ok(())
 }
 
@@ -1074,18 +1082,7 @@ fn broke(
     });
     state.set_hold(&hold)?;
     let reverted = world.revert(&found);
-    match &reverted {
-        Ok(merged) => {
-            hold["revert_pr"] = json!(merged.pr);
-            hold["revert_commit"] = json!(merged.commit);
-            state.set_hold(&hold)?;
-        }
-        Err(why) if why.starts_with(UNCHECKED) => {
-            hold["revert_again"] = json!(true);
-            state.set_hold(&hold)?;
-        }
-        Err(_) => {}
-    }
+    keep_revert(state, &mut hold, &reverted)?;
     state.find(&json!({
         "kind": "failed", "test": test, "commit": commit, "owner_pr": found.pr, "log": log,
         "revert_pr": reverted.as_ref().ok().map(|merged| merged.pr),
