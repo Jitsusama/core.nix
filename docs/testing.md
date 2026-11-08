@@ -168,7 +168,8 @@ switches to it, reverts it through a PR merged on its own checks, clears
 the hold as that PR merges, or as a test ends once it's on main, and writes a
 finding for its owner in `~/.local/state/net/findings`. A check
 that fails before the revert too doesn't stop it, or one break on main
-would keep another in place. A test that failed before that merge too, or
+would keep another in place. A revert whose checks no builder took is
+tried again as each round begins, until one does. A test that failed before that merge too, or
 that didn't exist before it, as when a split moves a failing case under a
 new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
