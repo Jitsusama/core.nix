@@ -1145,7 +1145,7 @@ onLinux {
   # what niri says it runs, where it sits and what it offers, and what the
   # backlight daemon says sets its level and has learned, as
   # tests/plate.qml holds launcher/Plate.js, Screens.js and Backlight.js to
-  # it in Qt's own engine.
+  # it in Qt's own engine, with the Numbers.js Backlight.js says lux through.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1155,6 +1155,7 @@ onLinux {
       cp ${./launcher/Plate.js} Plate.js
       cp ${./launcher/Screens.js} Screens.js
       cp ${./launcher/Backlight.js} Backlight.js
+      cp ${./launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

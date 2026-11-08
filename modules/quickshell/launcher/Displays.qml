@@ -185,8 +185,9 @@ Provider {
             warn: false };
     }
 
+    // The room's light as it's measured, Room Light's row and fact alike.
     function lux(value) {
-        return `${Numbers.format(value, value >= 10 ? 0 : 1, settings.group, settings.point)} lx`;
+        return Backlight.reading(value, settings.group, settings.point);
     }
 
     // The Brightness and, where the room is heard, the Room light, or
@@ -575,7 +576,8 @@ Provider {
                 });
             if (inTheRoom(output) && curve.length > 0)
                 facts.push({ label: partName("curve"),
-                    value: Backlight.curveSaid(curve, said, each => lux(each)) });
+                    value: Backlight.curveSaid(curve, said,
+                        each => Backlight.chosen(each, settings.group, settings.point)) });
         }
         const edid = Plate.facts(factRows(output));
         const physical = edid.some(fact => fact.label === partName("size")) ? ""
