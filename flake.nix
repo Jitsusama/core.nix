@@ -212,6 +212,7 @@
         pi-packages = ./modules/pi-packages/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
+        programs = ./modules/programs/home.nix;
         prompt = ./modules/prompt/home.nix;
         qt = ./modules/qt/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };

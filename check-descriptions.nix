@@ -1454,6 +1454,20 @@
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
   '';
+  programs-holds-whats-installed = ''
+    the programs daemon says hello on the socket systemd hands it, says an entry whole from the
+    nearest data folder with each file kind's globs and description, says an entry changed again
+    and one removed as gone, reads a program's list as its watch begins and as its file changes and
+    not while nobody watches, reads what a program has open as it's asked, and refuses an ask or a
+    kind it doesn't know
+  '';
+  programs-passes-clippy = ''
+    clippy finds nothing in the programs daemon or its tests
+  '';
+  programs-runs-beside-the-shell = ''
+    the shell brings the programs daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, given the sources each program's module lists, restarted by a switch
+  '';
   programs-nobody-starts-stay-unlisted = ''
     the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
     reads them, while the programs stay installed

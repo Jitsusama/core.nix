@@ -1240,6 +1240,7 @@ gather (
     ./modules/pnpm/checks.nix
     ./modules/power-profiles-daemon/checks.nix
     ./modules/processor-telemetry/checks.nix
+    ./modules/programs/checks.nix
     ./modules/prompt/checks.nix
     ./modules/qt/checks.nix
     ./modules/quickshell/checks.nix
