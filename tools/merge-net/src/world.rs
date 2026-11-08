@@ -1,6 +1,6 @@
 //! The net's world as it is: its own checkout of the repository, git and
-//! changed-checks there, `nix-offload there` for each VM test, which sends
-//! it to the VM builder, and gh for the PRs it lands. git, nix and gh are
+//! changed-checks there, `nix-offload there` for each check, which sends
+//! it to a builder, and gh for the PRs it lands. git, nix and gh are
 //! the person's own, with their settings, so a commit is signed as theirs
 //! are, and they're found on the path rather than pinned.
 
@@ -471,7 +471,7 @@ impl World for Real {
             .pr
             .map_or_else(|| short(&bad.commit).to_owned(), |pr| format!("#{pr}"));
         let message = format!(
-            "revert: undo {what}, which breaks a VM test\n\n{} failed twice at {}, on the same\ninput, so it comes off main until it's fixed forward.\nReverts \"{}\".",
+            "revert: undo {what}, which breaks a check\n\n{} failed twice at {}, on the same\ninput, so it comes off main until it's fixed forward.\nReverts \"{}\".",
             bad.test, bad.commit, bad.subject
         );
         let parents = self.git(&["rev-list", "--parents", "-n", "1", &bad.commit])?;
@@ -509,7 +509,7 @@ impl World for Real {
         let body = quarantine_body(test, owner, commit, reason);
         self.land(
             &format!("merge-net/quarantine-{test}"),
-            &format!("test(merge-net): quarantine a flaky VM test\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner makes it steady."),
+            &format!("test(merge-net): quarantine a flaky check\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner makes it steady."),
             &format!("Quarantine {test}, Which Failed Then Passed"),
             &body,
             || {
@@ -568,7 +568,7 @@ pub fn revert_body(bad: &Bad, log: &str) -> String {
          ### 🔧 Solution\n\nThis reverts {commit} against its first parent, so the files it changed are as they \
          were before it. Its owner fixes it forward on a new branch.\n\n\
          ### 🔬 Validation\n\n\
-         - Checked: {test} failed twice at {short} on the VM builder, through nix-offload there.\n\
+         - Checked: {test} failed twice at {short} on a builder, through nix-offload there.\n\
          - Checked: changed-checks passed on this branch, for the checks it names other than VM tests \
          and those that fail before it too.\n\
          - Watch: the net runs {test} at the next head; a failure there means this didn't undo it.\n",

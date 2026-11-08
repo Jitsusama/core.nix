@@ -2,7 +2,7 @@
 //! (`~/.local/state/net` unless `MERGE_NET_STATE` names another), so it
 //! carries on where it was after a restart or a reboot:
 //!
-//! - `state.json`: the last head every changed VM test passed at, which the
+//! - `state.json`: the last head every changed check passed at, which the
 //!   next head is compared with, and the last head it finished looking at.
 //! - `results.jsonl`: a line for each run of a check at a commit, with its
 //!   exit and its log, so no check that passed at a commit runs there again.

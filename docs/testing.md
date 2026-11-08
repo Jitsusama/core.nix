@@ -161,11 +161,14 @@ through itself with `run-subtests --there` instead. A machine switches only to m
 and a bad switch is undone by switching back to the generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which
-`modules/merge-net` runs as a daemon, follows main and runs each VM test
-a head changed since the last head it passed, on the VM builders, twelve
-at once. A test that fails twice at one commit is broken: the net finds
-which merge broke it the moment it does, while the round's other tests
-run on, searching only the merges that changed the test's derivation,
+`modules/merge-net` runs as a daemon, follows main and runs each check
+a head changed since the last head it passed, on the builders, twelve at
+once: the checks other than VM tests first, since they take seconds, then
+the VM tests. A branch built before its rebase, or that built only some of
+what it named, merges a red check main never ran; on 2026-11-08 four were
+red on main by 11:00, and none was caught. A check that fails twice at one
+commit is broken: the net finds which merge broke it the moment it does,
+while the round's other tests run on, searching only the merges that changed the test's derivation,
 since a derivation fails wherever it does, and running a searched merge's
 two runs at once, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine

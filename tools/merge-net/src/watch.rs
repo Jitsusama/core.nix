@@ -1,6 +1,11 @@
-//! The net's round: for each new head of main, run every VM test the
-//! merges since the last head it passed changed, and revert the merge that
-//! broke one.
+//! The net's round: for each new head of main, run every check the merges
+//! since the last head it passed changed, VM tests and the rest, and
+//! revert the merge that broke one.
+//!
+//! The checks other than VM tests run too, and first, since they take
+//! seconds: on 8 November four of them were red on main by 11:00, each
+//! named by changed-checks at its merge and none caught, as the net ran
+//! only VM tests and a branch built them before rebasing, or not at all.
 //!
 //! A test fails for real when it fails twice at the same commit, which is
 //! the same input. One that fails and then passes is flaky: it goes on the
@@ -92,6 +97,18 @@ impl Changed {
             .filter(|name| name.starts_with("vm-"))
             .cloned()
             .collect()
+    }
+
+    /// Every check that moved, the others before the VM tests, which take
+    /// minutes each where the others take seconds, so a broken one is
+    /// found before the round's VM tests fill the builders.
+    pub fn checks(&self) -> Vec<String> {
+        let (tests, others): (Vec<String>, Vec<String>) = self
+            .moved
+            .iter()
+            .cloned()
+            .partition(|name| name.starts_with("vm-"));
+        others.into_iter().chain(tests).collect()
     }
 }
 
@@ -815,7 +832,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         .filter(|hold| hold["revert_commit"].is_string())
         .and_then(|hold| hold["test"].as_str().map(str::to_owned));
     let tests: Vec<String> = changed
-        .vm_tests()
+        .checks()
         .into_iter()
         .filter(|test| Some(test) != pending.as_ref())
         .collect();
@@ -892,7 +909,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         return Ok(Round::Failed(head));
     }
     state.set_heads(&head, &head)?;
-    state.say(&format!("{} passed every VM test it changed", short(&head)));
+    state.say(&format!("{} passed every check it changed", short(&head)));
     Ok(Round::Passed(head))
 }
 
@@ -975,7 +992,7 @@ fn clear_if_fixed_forward(
     else {
         return Ok(hold);
     };
-    if !changed.vm_tests().contains(&test) {
+    if !changed.checks().contains(&test) {
         return Ok(hold);
     }
     if !matches!(attempt(world, state, head, &test), Outcome::Passed) {
@@ -1371,7 +1388,7 @@ mod tests {
     }
 
     #[test]
-    fn a_head_whose_tests_pass_is_the_next_base_and_runs_only_vm_tests() {
+    fn a_head_whose_checks_pass_is_the_next_base_and_runs_every_check_it_moved() {
         let state = state("passes");
         let world = Stand {
             head: "h".into(),
@@ -1387,15 +1404,42 @@ mod tests {
         built.sort();
         assert_eq!(
             built,
-            vec![("h".into(), "vm-a".into()), ("h".into(), "vm-c".into())]
+            vec![
+                ("h".into(), "b".into()),
+                ("h".into(), "vm-a".into()),
+                ("h".into(), "vm-c".into())
+            ]
         );
         assert_eq!(state.heads(), (Some("h".into()), Some("h".into())));
         assert_eq!(round(&world, &state, "s").unwrap(), Round::Idle);
         assert_eq!(
             world.built().len(),
-            2,
+            3,
             "a head already passed runs nothing again"
         );
+    }
+
+    #[test]
+    fn the_checks_other_than_vm_tests_go_first() {
+        assert_eq!(changed("vm-a b vm-c d").checks(), names("b d vm-a vm-c"));
+    }
+
+    #[test]
+    fn a_check_other_than_a_vm_test_that_fails_twice_reverts_its_merge() {
+        let state = state("fails-other");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("each-mark-means-one-thing vm-b"),
+            ..Stand::default()
+        }
+        .exits("h", "each-mark-means-one-thing", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert_eq!(state.hold().unwrap()["test"], "each-mark-means-one-thing");
     }
 
     #[test]
