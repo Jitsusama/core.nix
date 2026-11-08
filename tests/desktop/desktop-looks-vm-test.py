@@ -2984,7 +2984,7 @@ def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
 # The device Nearby hears: btvirt's second controller, named as BlueZ names a device by what it
 # calls itself, and how strong btvirt says every device is heard (emulator/btdev.c's inquiry).
 HEARD = "Buds"
-HEARD_AT = "\u221260 dBm, strong"
+HEARD_AT = "\u221260 dBm \u00b7 strong"
 # BlueZ's adapters, the first the launcher's, the second the device it hears.
 LOOKING = "/org/bluez/hci0"
 LOOKED_FOR = "/org/bluez/hci1"
@@ -3051,8 +3051,7 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
             assert looking(desktop) == "b true"
             desktop.down_to(HEARD)
             selected = desktop.showing()["selected"]
-            assert selected["side"] == "", selected
-            assert selected["note"] == HEARD_AT, selected
+            assert selected["side"] == HEARD_AT, selected
             desktop.photograph(f"launcher-nearby-at-{named}")
             desktop.step_out()
             # Out of Nearby, the radio stops looking, and Bluetooth lists only what's paired.

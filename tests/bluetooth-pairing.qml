@@ -161,7 +161,8 @@ ShellRoot {
         expect("looking while Nearby is open", air.discovering, "the radio isn't looking");
         const rows = finding.nearbyPlace.verbs();
         expect("the named heard, strongest first, then how many more had no name", said(rows)
-            === "Speaker=,Studio Buds=paired,1 more without a name=", said(rows));
+            === "Speaker=\u221248 dBm \u00b7 strong,Studio Buds=\u221281 dBm \u00b7 weak \u00b7 paired,"
+            + "1 more without a name=", said(rows));
         expect("how many it heard by name", finding.nearbyPlace.side === "2 heard",
             finding.nearbyPlace.side);
         const unnamed = rows[2].verbs();
@@ -170,8 +171,12 @@ ShellRoot {
             said(unnamed));
         expect("a stranger is paired", rows[0].verb === "pair" && rows[1].verb === "connect",
             `${rows[0].verb}, ${rows[1].verb}`);
-        expect("each heard in dBm, with a real minus", rows[0].note === "\u221248 dBm, strong"
-            && rows[1].note === "\u221281 dBm, weak", `${rows[0].note}; ${rows[1].note}`);
+        expect("each heard in dBm, with a real minus, its band muted after it",
+            rows[0].sideItems.map(item => `${item.said}/${item.hue ?? ""}`).join(",")
+                === "\u221248 dBm/,strong/muted" && rows[0].note === "",
+            JSON.stringify(rows[0].sideItems));
+        expect("paired says most, the band least", rows[1].sideItems.map(item => item.keep)
+            .join(",") === "2,1,3", JSON.stringify(rows[1].sideItems));
         expect("each its signal as a bar", rows[0].graph.shape === "bar"
             && Math.abs(rows[0].graph.values[0] - 52 / 70) < 0.001 && !rows[0].graph.warn,
             JSON.stringify(rows[0].graph));
@@ -179,8 +184,8 @@ ShellRoot {
             rows[1].glyph === finding.made(across).glyph
             && rows[1].key === finding.made(across).key, rows[1].glyph);
         speaker.rssi = -70;
-        expect("heard again, said again", finding.nearbyPlace.verbs()[0].note
-            === "\u221270 dBm, fair", finding.nearbyPlace.verbs()[0].note);
+        expect("heard again, said again", finding.nearbyPlace.verbs()[0].side
+            === "\u221270 dBm \u00b7 fair", finding.nearbyPlace.verbs()[0].side);
         launcher.held = [];
         expect("done looking once Nearby closes", !air.discovering, "the radio's still looking");
 

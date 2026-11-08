@@ -6161,7 +6161,7 @@
         "busy": "it's already pairing or connecting",
         "unready": "Bluetooth isn't ready",
         "nothing": "it offers nothing this machine uses",
-        "heard": "{dbm} dBm, {strength}",
+        "heard": "{dbm} dBm",
         "nameless": "{count} more without a name",
         "strong": "strong",
         "fair": "fair",

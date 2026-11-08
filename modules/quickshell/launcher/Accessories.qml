@@ -257,12 +257,18 @@ Provider {
 
     // A device as Nearby hears it: what kind it is, how strong it's heard,
     // as a bar and in dBm, and whether it's paired or connected; the same
-    // thing as its Bluetooth row, holding the same acts and parts.
+    // thing as its Bluetooth row, holding the same acts and parts. Its
+    // figure is said at its right as an access point's is, and how strong
+    // that is follows it muted after a dot, as every figure's qualifier
+    // does (docs/design.md; VKCF3Z, 2026-11-07); paired or connected says
+    // most, and the band gives way first.
     function nearbyRow(device, joined) {
         const strength = Nearby.strength(device);
-        const note = strength === null ? ""
-            : word("heard").replace("{dbm}", Nearby.dbm(device))
-                .replace("{strength}", word(strength.word));
+        const items = (strength === null ? [] : [
+            { said: word("heard").replace("{dbm}", Nearby.dbm(device)), keep: 2 },
+            { said: word(strength.word), keep: 1, hue: "muted" }
+        ]).concat([{ said: joined ? "connected" : device.paired ? "paired" : "", keep: 3 }])
+            .filter(item => item.said !== "");
         return member({
             thing: true,
             key: `bluetooth:${device.address}`,
@@ -270,11 +276,11 @@ Provider {
             name: device.name,
             glyph: kind(device),
             hue: "machine",
-            side: joined ? "connected" : device.paired ? "paired" : "",
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items,
             graph: strength === null ? undefined : bar(strength.value, false),
-            note: note,
             device: device,
-            state: () => provider.said(device, note),
+            state: () => provider.said(device, ""),
             stays: true,
             run: joined ? () => provider.leave(device) : () => provider.join(device),
             verbs: () => provider.verbs(device),
