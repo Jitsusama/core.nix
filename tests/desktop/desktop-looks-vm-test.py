@@ -3151,7 +3151,8 @@ def lag_lasting(desktop: Desktop) -> None:
     """Write a window as lag-watch does, a wait on memory begun longer ago than Lag waits.
 
     A window with no wait goes first, heard before the next, so a wait lag-watch itself saw
-    earlier ends and the stand-in's is a run of its own.
+    earlier ends and the stand-in's is a run of its own. Lag hears a window lag-watch stopped
+    rewriting as silent, so it's written just before its drawer is opened, each time.
     """
     now = int(desktop.machine.succeed("date +%s").strip())
     lagged = "$XDG_RUNTIME_DIR/lag-watch/status.json"
@@ -3164,21 +3165,25 @@ def lag_lasting(desktop: Desktop) -> None:
 
     with desktop.told("heard lag nothing"):
         write({"ended": now, "trouble": [], "worst": "", "who": "", "since": None})
-    write(
-        {
-            "ended": now,
-            "seconds": 10,
-            "stalls": {
-                "app": {"cpu_some": 2.4, "memory_some": 12.5, "io_some": 0.04},
-                "session": {"cpu_some": 0.5, "memory_some": 3.1, "io_some": 0.0},
-            },
-            "memory": {"app": {"swap_mib": 1144}},
-            "trouble": ["apps waited on memory"],
-            "worst": "memory",
-            "who": "apps",
-            "since": now - LAG_LASTS - 10,
-        }
-    )
+    with desktop.told("heard lag memory"):
+        write(lasting_window(now))
+
+
+def lasting_window(now: int) -> Json:
+    """Give lag-watch's window of a wait on memory begun longer ago than Lag waits."""
+    return {
+        "ended": now,
+        "seconds": 10,
+        "stalls": {
+            "app": {"cpu_some": 2.4, "memory_some": 12.5, "io_some": 0.04},
+            "session": {"cpu_some": 0.5, "memory_some": 3.1, "io_some": 0.0},
+        },
+        "memory": {"app": {"swap_mib": 1144}},
+        "trouble": ["apps waited on memory"],
+        "worst": "memory",
+        "who": "apps",
+        "since": now - LAG_LASTS - 10,
+    }
 
 
 def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
@@ -3288,6 +3293,7 @@ def drawers_at(desktop: Desktop, scale: str) -> None:
     )
     recent_drawer(desktop, f"launcher-capture-drawer-at-{at}")
     now_drawer(desktop, "Disks", "on /nix \u00b7 disk", f"launcher-disk-drawer-at-{at}")
+    lag_lasting(desktop)
     now_drawer(desktop, "Lag", "on this machine \u00b7 lag", f"launcher-lag-drawer-at-{at}")
 
 
@@ -3309,7 +3315,6 @@ def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
         with desktop.captured():
             machine.send_key("ret")
         disk_filling(desktop)
-        lag_lasting(desktop)
         for scale in scales:
             drawers_at(desktop, scale)
     finally:
