@@ -1759,6 +1759,23 @@ QtObject {
             Sounds.graphFormat({})], [
             "48 kHz \u00b7 32 bit float", "44.1 kHz \u00b7 16 bit",
             "176 kHz \u00b7 24 bit", "48 kHz \u00b7 ALAW", ""]);
+        // How a node keeps time, from a line of pw-top's batch mode: only a
+        // running one has a cycle, a share pw-top can't say is none, and a
+        // header opens the next frame.
+        const running = Sounds.timing(
+            "R   79   1024  48000  20.1us  10.2us  0.02  0.0312    2    S32LE 2 48000 "
+            + "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Speaker__sink");
+        machine("a running node's timing", [running?.id, running?.quantum, running?.rate,
+            running ? Sounds.cycleMs(running) : null, running?.busy, running?.errors,
+            running ? Sounds.load(running.busy) : null], [79, 1024, 48000, 21.3, 0.0312, 2, 3.12]);
+        machine("one not running, one pw-top can't measure, and the header", [
+            Sounds.timing("S   47      0      0    ---     ---   ---   ---     0       speaker"),
+            Sounds.timing("I   48      0      0   0.0us   0.0us  ???   ???     0  F32P 2 0 out"),
+            Sounds.timing("R   50    256  44100   1.0us   1.0us  ???   ???     0  S16LE 2 44100 a")
+                ?.busy,
+            Sounds.heading("S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME "),
+            Sounds.heading("S   47      0      0    ---     ---   ---   ---     0       speaker")],
+        [null, null, null, true, false]);
         machine("the card says it already, or not", [
             Sounds.sameFormat("48 kHz \u00b7 32 bit",
                 "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)"),

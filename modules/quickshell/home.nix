@@ -1490,8 +1490,10 @@ in
         order = 103;
         source = "sound";
         weight = 0.9;
-        # What reads a card's ports, and what moves one onto another.
+        # What reads a card's ports, what moves one onto another, and what
+        # reads how a device keeps time while its drawer is out.
         pwDump = lib.getExe' pkgs.pipewire "pw-dump";
+        pwTop = lib.getExe' pkgs.pipewire "pw-top";
         wpctl = lib.getExe' pkgs.wireplumber "wpctl";
       };
       # Every media player and what it plays, beside Sound, which holds the

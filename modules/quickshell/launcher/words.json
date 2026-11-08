@@ -4902,6 +4902,8 @@
       ],
       "said": {
         "volume": "volume {level}",
+        "each-cycle": "{share} of each cycle",
+        "cycle": "{frames} frames \u00b7 {ms} ms",
         "chosen": "chosen",
         "muted": "muted",
         "none": "none",
@@ -5154,6 +5156,21 @@
       "id": "sound:state",
       "in": "sound",
       "name": "State"
+    },
+    {
+      "id": "sound:dropouts",
+      "in": "sound",
+      "name": "Dropouts"
+    },
+    {
+      "id": "sound:load",
+      "in": "sound",
+      "name": "Load"
+    },
+    {
+      "id": "sound:cycle",
+      "in": "sound",
+      "name": "Cycle"
     },
     {
       "id": "sound:format",

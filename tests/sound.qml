@@ -187,6 +187,26 @@ ShellRoot {
         card.audio.muted = true;
         expect("a muted one doesn't say so again, nor its level", !sound.drawerOf(card).facts
             .some(fact => fact.label === "Muted" || fact.label === "Level"), said);
+        // How it keeps time, while pw-top says it runs: ahead of its
+        // Format, its Dropouts warned only past none.
+        card.state = "running";
+        card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
+        sound.timings = { 52: { id: 52, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.0312,
+            errors: 0 } };
+        const keeping = node => sound.drawerOf(node).facts
+            .filter(fact => ["Dropouts", "Load", "Cycle", "Graph Format"].includes(fact.label));
+        expect("its timing, ahead of its format", keeping(card)
+            .map(fact => `${fact.label}=${fact.value}`).join("; ") === "Dropouts=none; "
+            + "Load=3.12% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
+            + "Graph Format=48 kHz \u00b7 32 bit float", JSON.stringify(keeping(card)));
+        expect("its load a stroke, its dropouts calm at none", keeping(card)[1].figure?.values[0]
+            === 0.0312 && keeping(card)[0].warns === false, JSON.stringify(keeping(card)));
+        sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
+        expect("a dropout warns", keeping(card)[0].value === "2" && keeping(card)[0].warns,
+            JSON.stringify(keeping(card)[0]));
+        sound.timings = {};
+        expect("none while pw-top doesn't say it runs", keeping(card).length === 1,
+            JSON.stringify(keeping(card)));
         expect("a headset's microphone is over Bluetooth",
             sound.drawerOf(calling()).eyebrow === "Bluetooth \u00b7 input",
             sound.drawerOf(calling()).eyebrow);

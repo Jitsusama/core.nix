@@ -14,6 +14,16 @@
 const AIMED = /"?([A-Za-z0-9_.-]+)"?\s*[=:]\s*"([^"]*)"/g;
 // A stream's "frames/rate", as it asks for its latency or says its rate.
 const FRACTION = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
+// pw-top's mark for a node running, as against idle (I), suspended (S)
+// or created (C).
+const RUNNING = "R";
+// Where pw-top's batch line holds each figure: its state, id, quantum,
+// rate, wait and busy times, those as shares of the cycle (W/Q, B/Q),
+// then its error count; its format and name follow.
+const COLUMN = { state: 0, id: 1, quantum: 2, rate: 3, busy: 7, errors: 8 };
+const WHOLE = /^\d+$/;
+const HEADER = /^\s*S\s+ID\s+QUANT\b/;
+const PERCENT = 100;
 // A USB card names itself by its ids.
 const USB_IDS = /^USB([0-9a-f]{4}):([0-9a-f]{4})$/i;
 // A channel's name runs its words together: FrontLeft.
@@ -161,6 +171,57 @@ function graphFormat(format) {
 // and desk-facts names a float card's format by ALSA's name, FLOAT_LE.
 function sameFormat(graph, card) {
     return card === graph || String(card ?? "").startsWith(`${graph}${APART}`);
+}
+
+// How a node is keeping time, from one line of `pw-top --batch-mode`:
+// "R  79  1024  48000  20.1us  10.2us  0.02  0.01  0  S32LE 2 48000 name",
+// its state, its id, the quantum it moves each cycle in frames, the
+// rate of the clock driving it, how long it waited and was busy in the
+// last cycle, those as shares of the cycle, and how many times it has
+// run short since it started (xruns). Only a node running (R) has a
+// cycle to speak of: { id, quantum, rate, ms, busy, errors }, busy a
+// share of the cycle or null where pw-top can't say; null for the
+// header, an idle or suspended node and a line it can't read.
+function timing(line) {
+    const fields = String(line ?? "").trim().split(SPACES);
+    const whole = [COLUMN.id, COLUMN.quantum, COLUMN.rate, COLUMN.errors]
+        .every(at => WHOLE.test(fields[at] ?? ""));
+    if (fields[COLUMN.state] !== RUNNING || !whole) {
+        return null;
+    }
+    const quantum = Number(fields[COLUMN.quantum]);
+    const clock = Number(fields[COLUMN.rate]);
+    if (quantum === 0 || clock === 0) {
+        return null;
+    }
+    const busy = Number(fields[COLUMN.busy]);
+    return {
+        id: Number(fields[COLUMN.id]),
+        quantum,
+        rate: clock,
+        ms: (quantum / clock) * MILLISECONDS,
+        busy: Number.isFinite(busy) ? busy : null,
+        errors: Number(fields[COLUMN.errors])
+    };
+}
+
+// Whether a line of `pw-top --batch-mode` opens its next frame, the
+// header it prints over every node each second, so what the frame
+// before held stands whole and a node gone from running drops out.
+function heading(line) {
+    return HEADER.test(String(line ?? ""));
+}
+
+// How much of each cycle a node was busy, in percent to three
+// significant digits, as a measured figure is: 0.0312 is 3.12.
+function load(busy) {
+    return Number((busy * PERCENT).toPrecision(SIGNIFICANT));
+}
+
+// A cycle's length in milliseconds to three significant digits: a
+// quantum of 1024 at 48 kHz is 21.3.
+function cycleMs(timed) {
+    return Number(timed.ms.toPrecision(SIGNIFICANT));
 }
 
 // A stream's rate, from its "1/44100".
