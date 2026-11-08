@@ -53,6 +53,7 @@ in
       profile = "/nix/var/nix/profiles/system";
       booted = "/run/booted-system";
       power_supplies = "/sys/class/power_supply";
+      cpu_pressure = "/proc/pressure/cpu";
       tools = {
         nix = lib.getExe' config.nix.package "nix";
         nix_env = lib.getExe' config.nix.package "nix-env";
