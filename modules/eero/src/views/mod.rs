@@ -90,8 +90,8 @@ pub const VIEWS: [(&str, &str); 14] = [
         "traffic",
         "bytes by hour, for the home network and each node",
     ),
-    ("profiles", "each profile and its devices"),
-    ("profile", "one profile: its devices, on now or not"),
+    ("profiles", "each profile, what it blocks and its traffic"),
+    ("profile", "one profile: every figure eero has for it"),
     ("events", "what happened, newest first"),
 ];
 
@@ -149,7 +149,7 @@ pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Resul
         View::Firmware => firmware::page(model, clock),
         View::Traffic => traffic::page(model, clock, ink),
         View::Profiles => profiles::all(model, clock),
-        View::Profile(name) => profiles::one(model, find_profile(model, name)?, clock),
+        View::Profile(name) => profiles::one(model, find_profile(model, name)?, clock, ink),
         View::Events => events::page(model, clock),
     };
     Ok(ink.page(&page))

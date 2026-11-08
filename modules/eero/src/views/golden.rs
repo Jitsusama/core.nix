@@ -113,6 +113,10 @@ golden! {
         model, View::Profile("profile 1".into()) => "profile.txt";
     a_profile_sets_a_device_on_now_by_its_node:
         profiled, View::Profile("profile 3".into()) => "profile-on.txt";
+    a_profile_names_each_filter_it_has_on:
+        filtered, View::Profile("profile 2".into()) => "profile-filtered.txt";
+    profiles_give_a_filter_its_column_while_one_has_it:
+        filtered, View::Profiles => "profiles-filtered.txt";
     events_and_what_was_told_run_as_one_timeline: model, View::Events => "events.txt";
 }
 
@@ -122,6 +126,25 @@ fn profiled() -> HomeNetwork {
     let mut model = model();
     let on: Vec<String> = model.devices[..2].iter().map(|d| d.mac.clone()).collect();
     model.profiles[2].devices.extend(on);
+    model
+}
+
+/// The record with profile 2 the default, kept to two schedules, and with
+/// filters on of every sort a profile's page says, since none of the
+/// record's own profiles has one on.
+fn filtered() -> HomeNetwork {
+    let mut model = model();
+    let profile = &mut model.profiles[1];
+    profile.default = Some(true);
+    profile.schedules = Some(2);
+    let filters = &mut profile.filters;
+    filters.gaming = Some(true);
+    filters.social = Some(true);
+    filters.ad_block = Some(true);
+    filters.blocked_sites = vec!["example.com".into()];
+    filters.blocked_apps = vec!["tiktok".into()];
+    filters.safe_search = Some(true);
+    filters.allowed_sites = vec!["example.org".into(), "example.net".into()];
     model
 }
 

@@ -1,8 +1,12 @@
 profile 1 · id 3001 · read 1 min 7 s ago
 
-state    Active
-paused   no
-devices  10 · 0 on now
+state     Active
+paused    no
+blocks    nothing
+schedule  none
+default   no
+traffic   0 B down  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀   0 B up  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
+devices   10 · 0 on now
 
 hardware           device      node  address
 02:00:00:00:00:2b  not on now

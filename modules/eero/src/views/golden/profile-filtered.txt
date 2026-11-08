@@ -1,0 +1,16 @@
+profile 2 · id 3002 · read 1 min 7 s ago
+
+state     Active
+paused    no
+blocks    gaming · social · ads · example.com · tiktok
+enforces  safe search
+allows    example.org · example.net
+schedule  2 schedules
+default   yes
+traffic   0 B down  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀   0 B up  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
+devices   3 · 0 on now
+
+hardware           device      node  address
+02:00:00:00:00:35  not on now
+02:00:00:00:00:36  not on now
+02:00:00:00:00:37  not on now
