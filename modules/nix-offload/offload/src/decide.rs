@@ -195,13 +195,30 @@ pub fn wants(only_there: bool, queued: impl FnOnce() -> bool, waiting: bool) -> 
     waiting || (!only_there && queued())
 }
 
+/// How a lender whose unit changed ends, for systemd to start the new one.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Restart {
+    /// No build reaches its builder, so its way ends with it.
+    Ending,
+    /// A build reaches its builder, so its way is told to take no new
+    /// connection and finish those it has, outliving the lender, while the
+    /// next start takes the builder back beside it.
+    HandingOver,
+}
+
 /// Whether a lender whose unit a switch has changed (`superseded`) ends
-/// now, for systemd to start the new one: only once no build reaches its
-/// builder (`in_use`) and none `wants` one, since its end takes the way to
-/// its builder with it. Three switches on 3 November cut 8.1 hours of
-/// builds that way, restarting every lender at once.
-pub fn restarts(superseded: bool, wants: bool, in_use: bool) -> bool {
-    superseded && !wants && !in_use
+/// now, and how, given whether a build reaches its builder (`in_use`):
+/// at once, handing its builder over when one does, unless a builder it
+/// handed to a successor still finishes (`finishing`), which nothing would
+/// give back. Waiting for no build to reach it, as it did, never came
+/// under steady load: on 8 November the lenders ran the old binary for
+/// hours after a switch.
+pub fn restarts(superseded: bool, in_use: bool, finishing: bool) -> Option<Restart> {
+    match (superseded && !finishing, in_use) {
+        (false, _) => None,
+        (true, false) => Some(Restart::Ending),
+        (true, true) => Some(Restart::HandingOver),
+    }
 }
 
 #[cfg(test)]
@@ -258,11 +275,15 @@ mod tests {
     }
 
     #[test]
-    fn a_superseded_lender_ends_only_once_nothing_uses_or_wants_its_builder() {
-        assert!(restarts(true, false, false));
-        assert!(!restarts(true, true, false), "a build waits on one");
-        assert!(!restarts(true, false, true), "a build reaches it");
-        assert!(!restarts(false, false, false), "nothing changed it");
+    fn a_superseded_lender_ends_at_once_unless_a_builder_it_handed_over_finishes() {
+        assert_eq!(restarts(true, false, false), Some(Restart::Ending));
+        assert_eq!(
+            restarts(true, true, false),
+            Some(Restart::HandingOver),
+            "a build reaches it"
+        );
+        assert_eq!(restarts(true, true, true), None, "one it handed over finishes");
+        assert_eq!(restarts(false, true, false), None, "nothing changed it");
     }
 
     #[test]

@@ -22,8 +22,9 @@ onLinux {
   );
 
   # A switch that changes a lender's unit reloads it rather than restarting
-  # it, and the lender's own end once nothing uses its builder starts the
-  # new one; nix-offload-decides-when holds when that is. A VM lender runs
+  # it, and the lender's own end starts the new one, handing over through
+  # helpers that outlast the unit; nix-offload-decides-when holds when and
+  # how. A VM lender runs
   # for each of vmTests.extra and no more. Every VM lender, and no other,
   # warms each builder it stands, by default with a check core still has.
   nix-offload-lenders-outlive-a-switch =
@@ -66,12 +67,14 @@ onLinux {
         unit.Unit.X-ReloadIfChanged
         && lib.hasSuffix " -HUP $MAINPID" unit.Service.ExecReload
         && unit.Service.RestartForceExitStatus == "100"
-        && unit.Service.SuccessExitStatus == "100";
+        && unit.Service.SuccessExitStatus == "100"
+        && lib.hasInfix " --outlasting " (started unit);
     in
     holds "nix-offload-lenders-outlive-a-switch"
       (
         "a switch restarts a lender, cutting every build its builder runs, "
         + "or a lender that ends superseded isn't started again, "
+        + "or its helpers don't outlast it to hand its builder over, "
         + "or a VM lender runs past those vmTests.extra names, "
         + "or a lender other than a VM one warms, or one doesn't, "
         + "or what warms a VM builder names a check core doesn't have."
