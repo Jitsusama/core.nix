@@ -423,7 +423,7 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         lambda shown: shown["selected"]["side"].startswith(("live \u00b7 ", "muted \u00b7 "))
     )
     desktop.step_in()
-    inside = ["Microphone", "People", "Go To the Call", "Leave It", "Copy the Link"]
+    inside = ["Microphone", "People", "Go To the Call", "Leave the Call", "Copy the Link"]
     desktop.launcher_until(lambda shown: shown["rows"] == inside)
     desktop.down_to("Go To the Call")
     machine.send_key("ret")

@@ -23,7 +23,9 @@ import qs
 import Quickshell
 import Quickshell.Services.Pipewire
 import QtQuick
-import "Meet.js" as Said
+// A piece is placed in pieces/, Meet.js beside the shell's root, as
+// Calendar.qml reads it.
+import "../Meet.js" as Said
 
 Piece {
     id: piece

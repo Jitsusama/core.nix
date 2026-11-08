@@ -10489,7 +10489,7 @@
     {
       "id": "meet:call:leave",
       "in": "meet:call",
-      "name": "Leave It",
+      "name": "Leave the Call",
       "verb": "leave"
     }
   ],

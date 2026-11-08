@@ -106,8 +106,13 @@ impl Watch {
     /// Follows the Meet calls of these codes, as the shell names the ones
     /// open in windows of their own, and says who's in each now.
     pub fn follow(&mut self, codes: Vec<String>, now: &Zoned) -> &State {
-        self.followed = codes;
         self.followed_at = now.timestamp().as_millisecond();
+        // The same calls said again only keep them followed, so a Meet
+        // that can't be asked is still asked only as often as it allows.
+        if codes == self.followed {
+            return &self.state;
+        }
+        self.followed = codes;
         self.calls(now)
     }
 
