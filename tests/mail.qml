@@ -102,7 +102,8 @@ QtObject {
                 true,
                 {
                     account: "ready", meetings: [standup, later], mail: [mail, older],
-                    finished: [archived, read], unread: null, documents: [newer, doc, sheet], held: [standup, later],
+                    finished: [archived, read], unread: null, documents: [newer, doc, sheet],
+                    held: [standup, later],
                     lately: [mail, older], calls: [followed], heard: 2, fetched: null,
                     meet: unmade,
                     drive: undriven

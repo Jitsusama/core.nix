@@ -37,8 +37,10 @@ Singleton {
 
     // "none", "signedOut", "unreachable" or "ready", as the program says.
     property string account: "none"
-    // Each { id, title, start, end, allDay, answer, link, kind, page },
-    // in milliseconds since 1970, from today's start to a week on.
+    // Each { id, title, start, end, allDay, answer, link, kind, page,
+    // done }, in milliseconds since 1970, from today's start to a week on;
+    // `done` is { how, at } once it has ended or Joel declined it, else
+    // null (src/done.rs).
     property var meetings: []
     // The mail that wants Joel, newest first: each { id, from, subject,
     // at, page }.

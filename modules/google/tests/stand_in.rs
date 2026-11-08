@@ -1424,10 +1424,17 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
 
 /// Gmail as mail leaves what wants Joel, by `phase`: both listed (0); the
 /// newer gone from the list, its labels refused for now (1), then read
-/// (2); and both listed again (3).
+/// (2); both listed again (3); signed out (4); and signed in again,
+/// maybe as another, where the newer is no mail at all (5).
 fn departing(phase: &AtomicU8, path: &str, body: &str) -> (u16, String) {
     let now = phase.load(Ordering::SeqCst);
-    if now == 1 || now == 2 {
+    if now == 4 && path.starts_with("GET /gmail") {
+        return (401, "{}".into());
+    }
+    if now == 5 && path.starts_with("GET /gmail/v1/users/me/messages/new?") {
+        return (404, "{}".into());
+    }
+    if now == 1 || now == 2 || now == 5 {
         if path.starts_with("GET /gmail/v1/users/me/messages?") && !path.contains("newer_than") {
             return (
                 200,
@@ -1466,6 +1473,37 @@ fn mail_whose_labels_gmail_refuses_is_asked_about_again_on_the_next_look() {
         .map(|mail| (mail.id.as_str(), mail.done.map(|done| done.how)))
         .collect();
     assert_eq!(how, [("new", Some(Went::ReadInGmail))]);
+    let done = state.finished[0].done.expect("it's done");
+    assert_eq!(
+        done.at,
+        now().timestamp().as_millisecond(),
+        "done when it went, not when Gmail answered"
+    );
+}
+
+#[test]
+fn mail_waiting_to_be_asked_about_goes_when_the_account_does() {
+    let phase = Arc::new(AtomicU8::new(0));
+    let said = Arc::clone(&phase);
+    let stand_in = StandIn::new(move |path, body| departing(&said, path, body));
+    let path = credentials("fell", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    watch.look(&now());
+    phase.store(1, Ordering::SeqCst);
+    watch.look(&now());
+    phase.store(4, Ordering::SeqCst);
+    assert_eq!(watch.look(&now()).account, Standing::SignedOut);
+    // He signs in again, with a sign-in of its own.
+    let signed_in = fs::read_to_string(&path)
+        .unwrap()
+        .replace("\"pis\"", "\"anew\"")
+        .replace("\"refresh\"", "\"again\"");
+    fs::write(&path, signed_in).unwrap();
+    phase.store(5, Ordering::SeqCst);
+    let later = now().checked_add(jiff::Span::new().minutes(1)).unwrap();
+    let state = watch.look(&later).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert!(state.finished.is_empty(), "{:?}", state.finished);
 }
 
 #[test]

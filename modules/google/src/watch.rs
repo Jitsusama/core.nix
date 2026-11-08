@@ -56,7 +56,9 @@ pub struct Watch {
     followed_at: i64,
     /// How many times running Meet couldn't be asked about a call.
     calls_failed: u32,
-    /// When Joel was first heard to decline each meeting he declined.
+    /// When Joel was first heard to decline each meeting he declined. It's
+    /// held in memory alone, so a restart moves a declined meeting's
+    /// `done.at` to the first look after it.
     declined: HashMap<String, i64>,
     /// Mail gone from what wants Joel whose labels Gmail couldn't be asked
     /// for, and when it went, to ask again on the next look (done.rs).
@@ -507,11 +509,12 @@ impl Watch {
     }
 
     /// Asks Gmail once how each piece of mail gone from what wants Joel
-    /// left it, with when it went, and holds those done as done
-    /// (done.rs). One Gmail couldn't be asked about, a 429 or a 5xx, is
-    /// asked again on the next look, for as long as a thing done is told.
-    /// False where the account fell while asking, which keeps the rest to
-    /// ask once it's back.
+    /// left it, and holds those done as done when they went, which a
+    /// mail asked about again after an outage still says (done.rs). Once
+    /// Gmail refuses, with a 429 or a 5xx, that mail and the rest aren't
+    /// asked about this look but on the next, for as long as a thing done
+    /// is told. False where the account fell while asking, which lets
+    /// them go with the rest of what it held (`fell`).
     fn left(&mut self, left: Vec<(Mail, i64)>, now: &Zoned) -> bool {
         let at = now.timestamp().as_millisecond();
         let mut left = left.into_iter();
@@ -519,18 +522,19 @@ impl Watch {
             match self.asking(now, |google, token| google.labels(token, &mail.id)) {
                 Ok(labels) => {
                     if let Some(how) = done::left(labels.as_ref()) {
-                        self.finish(mail, how, at);
+                        self.finish(mail, how, went);
                     }
                 }
                 Err(Looked::Refused(Refused::Unreachable(why))) => {
                     eprintln!("<4>{why}");
-                    if at - went < done::KEPT {
-                        self.departed.push((mail, went));
-                    }
+                    self.departed.extend(
+                        std::iter::once((mail, went))
+                            .chain(left)
+                            .filter(|(_, went)| at - went < done::KEPT),
+                    );
+                    break;
                 }
                 Err(looked) => {
-                    self.departed.push((mail, went));
-                    self.departed.extend(left);
                     self.fell(looked, Standing::Unreachable);
                     return false;
                 }
@@ -953,14 +957,19 @@ impl Watch {
         // account's, so the shell can say why one didn't go up.
         let uploads = std::mem::take(&mut self.state.drive.uploads);
         match looked {
+            // What was held may not be Joel's to see once the account is
+            // back, maybe as another, so mail waiting to be asked about
+            // goes too: its ids would read as gone.
             Looked::Missing => {
                 self.state = State::without(Standing::None);
+                self.departed.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;
             }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
+                self.departed.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;
