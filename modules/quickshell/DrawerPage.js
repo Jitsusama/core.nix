@@ -384,6 +384,14 @@ function valueLines(items, between, wide, width) {
     return lines;
 }
 
+// How tall a preview stands: a picture its own height, so what follows it
+// is the groups' gap below the picture rather than below a band rounded
+// up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch, so
+// the words after them stay on the card's.
+function previewHeight(picture, lines, pitch) {
+    return picture > 0 ? Math.ceil(picture) : lines * pitch;
+}
+
 // The face a fact's value is set in, given the script its plate is in, ""
 // for the theme's own: "name" for an identifier (`identifies: true`), a
 // node, a serial or a bus name, which the drawer lists last in the Name

@@ -1804,8 +1804,10 @@ Floating {
                 // picture in its own shape, as wide as the plate at most and
                 // never so tall it pushes the facts after it out of sight, or
                 // lines in the mono at body size, each whole or cut short,
-                // a folder's items quiet. It takes whole lines of the pitch,
-                // so everything after it stays on the card's.
+                // a folder's items quiet. Lines take whole lines of the
+                // pitch, so everything after them stays on the card's; a
+                // picture its own height, what follows a gap below it
+                // (DrawerPage.previewHeight).
                 Item {
                     id: previewBox
                     readonly property string picture: drawer.preview?.picture ?? ""
@@ -1822,8 +1824,8 @@ Floating {
 
                     width: parent.width
                     visible: picture !== "" || lines.length > 0
-                    height: Math.ceil((picture !== "" ? previewFrame.height
-                        : lines.length * drawer.pitch) / drawer.pitch) * drawer.pitch
+                    height: Page.previewHeight(picture !== "" ? previewFrame.height : 0,
+                        lines.length, drawer.pitch)
 
                     Rectangle {
                         id: previewFrame
