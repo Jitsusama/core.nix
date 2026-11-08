@@ -10,7 +10,8 @@
 //! (history.rs), in eero's folder in the account's state. With each read
 //! of the network, and every 10 seconds while eero can't be reached, it
 //! takes its own look at the internet (probe.rs), so an outage is seen and
-//! timed even when eero can't say. And it tells Joel what changed on the
+//! timed even when eero can't say; then it asks eero again as often, so a
+//! machine that starts before its network is up has the model at once. And it tells Joel what changed on the
 //! home network while it watched, as desktop notices (notices.rs,
 //! desktop.rs): the internet out and back, a node offline and back, a
 //! device new to the home network, firmware, and eero's own events.
@@ -216,7 +217,10 @@ impl Daemon {
                 continue;
             }
             heard = Some(match self.read(*read) {
-                Ok(()) => Heard::Answered,
+                Ok(()) => {
+                    self.schedule.reached(true);
+                    Heard::Answered
+                }
                 Err(failure) => self.failed(failure),
             });
             if *read == Read::Network && heard == Some(Heard::Answered) && !was_answering {
@@ -273,6 +277,8 @@ impl Daemon {
     /// afresh, which `eero sign-in` may have replaced.
     fn failed(&mut self, failure: Failure) -> Heard {
         eprintln!("eero: {failure}");
+        self.schedule
+            .reached(!matches!(failure, Failure::Unreachable(_)));
         match failure {
             Failure::SignedOut(reason) => {
                 self.cloud = None;

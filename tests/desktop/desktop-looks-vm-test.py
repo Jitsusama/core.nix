@@ -1258,8 +1258,8 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
 
     The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
-    A node's and a device's plates lay their facts out one way, every name and value whole, at
-    both of Joel's scales.
+    A node's, a device's and a profile's plates lay their facts out one way, every name and value
+    whole, at both of Joel's scales.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session('test -s "$XDG_RUNTIME_DIR/eero/home-network.json"'),
@@ -1288,6 +1288,9 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
         desktop.shoot(f"launcher-home-network-device-at-{at}")
+        desktop.down_to("profile 1")
+        home_network_plate(desktop, scale, "profile 1")
+        desktop.shoot(f"launcher-home-network-profile-at-{at}")
         desktop.close_launcher()
         devices_plates_lie_on_the_lines(desktop, scale)
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
