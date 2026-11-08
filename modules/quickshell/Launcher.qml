@@ -1528,8 +1528,11 @@ Scope {
     // word starting with it, and then a row found only by what it holds of
     // its own (hiddenWords), each tier best match first. Such a word isn't
     // said beside the row, since it may be a name the machine knows a thing
-    // by, such as tailscale0, that Joel never sees.
-    function within(rows, letters) {
+    // by, such as tailscale0, that Joel never sees. Within a tier, one
+    // picked before for what's typed comes first, as at the top (`picked`,
+    // Picks.qml's weights), so the same letters land on the same row inside
+    // a step too.
+    function within(rows, letters, picked) {
         const typedWords = Fuzzy.words(letters);
         const need = Fuzzy.letters(typedWords);
         const found = [];
@@ -1560,7 +1563,7 @@ Scope {
                     choice: row
                 });
         }
-        return Rank.order(found, {}).map(f => f.choice);
+        return Rank.order(found, { picked: picked ?? {} }).map(f => f.choice);
     }
 
     // A row's other words, prepared to match: its keywords, which say only
@@ -1587,7 +1590,8 @@ Scope {
         const pool = offered.reduce((all, row) => all.concat([row], row.group ? row.verbs() : []),
             []);
         const inside = offered.filter(row => row.from).map(row => row.from);
-        return namedFirst(within(pool, letters).concat(gathering(letters, inside)), letters);
+        return namedFirst(within(pool, letters, picks.weights(letters))
+            .concat(gathering(letters, inside)), letters);
     }
 
     // Rows named what's typed, whole, before the rest, each in its order.
@@ -4749,7 +4753,9 @@ Scope {
             else
                 found = (held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
-                        row.offers && row.verbs ? row.verbs() : []), []), letters));
+                        row.offers && row.verbs ? row.verbs() : []), []), letters,
+                        picks.weights(Rank.stepped(held[held.length - 1].row.key ?? "",
+                            letters))));
             found = found.concat(stillActed(found));
             answer = null;
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
@@ -5540,6 +5546,12 @@ Scope {
         // been typed (Rank.js's leastOf), so a slip of two letters never
         // powers off.
         picks.picked(picking ? typed : first.typed, meant.key, knowing());
+        // Inside a thing's own page, what was picked is learned for what was
+        // typed there too, apart from the top, so the same letters land on
+        // it there next time (Rank.js's stepped).
+        const step = held.length > 0 ? held[held.length - 1].row : null;
+        if (!picking && step && step !== choice && step.key)
+            picks.picked(Rank.stepped(step.key, typed), choice.key, null);
     }
 
     function run(choice, below) {

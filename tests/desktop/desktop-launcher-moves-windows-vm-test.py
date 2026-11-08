@@ -993,6 +993,44 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     desktop.close_launcher()
 
 
+def test_what_is_picked_inside_a_programs_page_is_learned_there(desktop: Desktop) -> None:
+    """What's picked inside a program's page is learned for what was typed there.
+
+    Learning applies wherever typing searches, inside a step too (RSCH-20261030-GB56HX), so
+    "new" in kitty's page lands on the row picked for it last time. The cases are in
+    tests/ranking.qml; this is the one path from a pick there to the next opening's order.
+    """
+    machine = desktop.machine
+
+    def kittys_new() -> list[str]:
+        """Open kitty's page, type new in it, and give the rows it finds."""
+        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("kitty", selecting="kitty")
+        desktop.into_program()
+        desktop.type_in("new", selecting="New Window")
+        return cast("list[str]", desktop.showing()["rows"])
+
+    found = kittys_new()
+    assert found[:2] == ["New Window", "New Window Below"], found
+    desktop.down_to("New Window Below")
+    kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
+    before = int(desktop.as_account(kitties).strip())
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"{kitties} | grep -qx {before + 1}"), timeout=STARTING
+    )
+    # Kept under kitty's page and what was typed there, apart from the top.
+    machine.wait_until_succeeds(
+        desktop.in_session("grep -rqsE 'program:kitty.{1,3}new\"' ~/.local/state/quickshell"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    found = kittys_new()
+    assert found[:2] == ["New Window Below", "New Window"], found
+    desktop.close_launcher()
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 

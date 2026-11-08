@@ -154,6 +154,17 @@ QtObject {
         // The latches a launcher before kept read as the row each was on.
         expect("kept before", Rank.heldAt({ sl: { on: "program:slack", rival: "", times: 0 } },
             " SL "), "program:slack");
+        // What's learned inside a step is kept apart from the top: "n" in
+        // kitty's page meaning New Window Below lends nothing to "n" typed
+        // at the top, and latches nothing, so it only orders that page.
+        const inKitty = Rank.stepped("program:kitty", "n");
+        expect("a step's query", [Rank.stepped("Program:Kitty", " N ") === inKitty,
+            Rank.stepped("program:kitty", " "), Rank.isStepped(inKitty), Rank.isStepped("n")],
+            [true, "", true, false]);
+        const apart = picks({ [inKitty]: { "act:kitty:below": 4 }, n: { "program:notes": 2 } });
+        expect("a step lends the top nothing", at(apart, "n"), "program:notes");
+        expect("a step latches nothing", Rank.relatch({ n: "program:notes" }, apart, inKitty,
+            all), { n: "program:notes" });
         // Words typed together latch whole, not by their starts, and lend
         // nothing to their first word.
         const words = picks({ "vol up": { "action:up": 2 }, "time in gmt": { "notice:x": 3 } });
