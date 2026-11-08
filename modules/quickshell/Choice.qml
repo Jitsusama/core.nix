@@ -143,6 +143,17 @@ Rectangle {
     // the row, since a bare name here would find an id before a property.
     readonly property string detail: [row.also !== "" ? `\u201c${row.also}\u201d` : "",
         row.noted, row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
+    // The detail as it would be uncut, its note whole, and whether there's
+    // one at all. The side's room and share reckon from these rather than
+    // from the detail, since a note that gives way reads the side's place
+    // (row.ends), and reading the detail back would loop.
+    readonly property string detailUncut: [row.also !== "" ? `\u201c${row.also}\u201d` : "",
+        row.sideWhole && row.countItems.length > 0
+            ? row.countItems.map(item => item.said).join(" \u00b7 ") : row.count,
+        row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
+    readonly property bool detailed: detailUncut !== ""
+    readonly property real detailWide: detailed
+        ? Math.ceil(wordsFace.advanceWidth(detailUncut)) + 1 : 0
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
     // Its name is the shell speaking to Joel, in the voice's face, as an
@@ -391,8 +402,8 @@ Rectangle {
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
         readonly property real room: row.width - Theme.space.rung.inset - nameBox.x
-            - nameBox.implicitWidth - Theme.space.rung.groups - (row.detail === "" ? 0
-                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.rung.apart)
+            - nameBox.implicitWidth - Theme.space.rung.groups - (!row.detailed ? 0
+                : Math.min(row.detailWide, row.width * 0.3) + Theme.space.rung.apart)
         // A side of items down to its last that still leaves the name no
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
@@ -408,8 +419,8 @@ Rectangle {
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
             row.width - nameBox.x + row.indent - nameBox.implicitWidth
             - Theme.space.rung.groups - row.glyphColumn - Theme.space.rung.inset
-            - (row.detail === "" ? 0
-                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.rung.apart)))
+            - (!row.detailed ? 0
+                : Math.min(row.detailWide, row.width * 0.3) + Theme.space.rung.apart)))
         // As wide as the widest beside a graph in the list, so the graphs
         // line up, and never more than what's said may take; for a row
         // without one, as wide as the widest said here in this step, within
