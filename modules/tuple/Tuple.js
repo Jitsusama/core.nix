@@ -6,7 +6,6 @@
 .pragma library
 .import "When.js" as When
 
-const SECOND = 1000;
 const MINUTE = 60_000;
 const HOUR_MINUTES = 60;
 const DIGITS = 2;
@@ -138,14 +137,38 @@ function note(past, now, said) {
     return `${long} \u00b7 ${began(past.since, now, said)}`;
 }
 
-// A past call's drawer, every figure tuple-call keeps of it: the day and
-// time it began over its name, as a transcript's says them, "Tuesday 3
-// November \u00b7 14:10", with the year only when it isn't this one; who
-// was in it by name, and by address, as Tuple knew them; how long it went
-// on, or for a missed call how long it rang, to the second, since a ring
-// lasts a minute at most; and when it or the ring ended. Tuple's id for
-// each is left out, a number Joel never sees in Tuple, used only to call
-// one who has no address. `said` gives the labels too.
+// Who rang whom on a past call, in `said`'s words: "missed" for a ring
+// Joel didn't answer; "you called" where tuple-call saw Joel begin it, by
+// opening his room; "Ada Brightwater called" where it followed her ring,
+// by the name Tuple gave her, as Call Ada Brightwater Again says it; and
+// "" where tuple-call saw neither, as when Joel called through niri or
+// the call was kept before it heard who rang (call/src/lib.rs, began),
+// since a guess would say it as surely as what was seen.
+function rang(past, said) {
+    if (past.missed) {
+        return said.missed;
+    }
+    if (past.caller === "") {
+        return said.youCalled;
+    }
+    const caller = typeof past.caller === "string"
+        ? past.people.find(one => String(one.id) === past.caller) : undefined;
+    return caller === undefined ? "" : filled(said.called, { name: who([caller], said) });
+}
+
+// A past call's drawer, each thing said once (VKCF3Z, 2026-11-08): the day
+// it began over its name, as a transcript's says it, "Tuesday 3 November",
+// with the year only when it isn't this one, and its time left to the
+// row's note, which cut the eyebrow short at the drawer's least; who
+// rang whom first, left out where it isn't known; With, by name, only for
+// two or more, since the name already says one; and their addresses, as
+// Tuple knew them. How long it went on and when it ended are left to the
+// row's note, "9 min \u00b7 07:19", and so is how long a missed call
+// rang, which only says again that nobody answered. Tuple's stream holds
+// nothing else of a call Joel reads: its id, its sessions' and whether
+// Tuple's server carries it are Tuple's own, as is Tuple's id for each,
+// a number Joel never sees in Tuple, used only to call one who has no
+// address. `said` gives the labels too.
 function details(past, now, said) {
     const at = new Date(past.since);
     const thisYear = at.getFullYear() === new Date(now).getFullYear();
@@ -153,20 +176,19 @@ function details(past, now, said) {
     const names = past.people.map(one => one.name).filter(name => name !== "");
     const emails = past.people.map(one => one.email).filter(email => email !== "");
     const facts = [];
-    if (names.length > 0) {
+    const whoRang = rang(past, said);
+    if (whoRang !== "") {
+        facts.push({ label: said.rang, value: whoRang });
+    }
+    if (past.people.length >= 2 && names.length > 0) {
         facts.push({ label: said.with, value: names.join(", ") });
     }
     if (emails.length > 0) {
         facts.push({ label: emails.length === 1 ? said.email : said.emails,
             value: emails.join(", ") });
     }
-    const seconds = Math.round(Math.max(0, past.ended - past.since) / SECOND);
-    facts.push(past.missed
-        ? { label: said.rang, value: filled(said.seconds, { seconds }) }
-        : { label: said.length, value: lasted(past.since, past.ended, said) });
-    facts.push({ label: said.ended, value: began(past.ended, now, said) });
     return {
-        eyebrow: `${day} \u00b7 ${clock(past.since)}`,
+        eyebrow: day,
         title: who(past.people, said),
         facts,
         body: ""

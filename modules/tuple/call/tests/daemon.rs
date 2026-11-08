@@ -1,11 +1,12 @@
 //! The daemon over its socket, with a stand-in for Tuple: its stream is
 //! followed only while Tuple's daemon answers, and a call, a sign-in gone
 //! and a stream that ends are each said to a watch as they happen, and
-//! a call that ended kept in Recent's file and read back after a
-//! restart; a ring
-//! and a missed call are read from the log as it's written, a new log
-//! from its start; each act runs Tuple's command, and opening the room
-//! keeps its link; and an ask or kind it doesn't know is refused.
+//! a call that ended kept in Recent's file, as the caller's when a ring
+//! answered began it, and read back after a restart; a ring and a missed
+//! call are read from the log as it's written, a new log from its start;
+//! each act runs Tuple's command, and opening the room keeps its link and
+//! makes the call in it Joel's; and an ask or kind it doesn't know is
+//! refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -326,9 +327,19 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
 fn a_call_that_ends_is_kept_in_recent_and_read_back_after_a_restart() {
     let mut running = Running::start("recent", true);
     running.streams(STATE);
-    running.streams(CALL);
     let mut client = running.client();
     client.watch();
+    // Ada rings and Joel answers, so the call that follows was hers.
+    running.logs(&logged(now(), "received incoming call: 7"));
+    client.until("the ring wasn't said", |record| {
+        record["state"] == "ringing"
+    });
+    running.logs(&logged(now(), "accepting call"));
+    client.until("the answer wasn't said", |record| record["state"] == "none");
+    running.streams(CALL);
+    client.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
     running.streams("{\"type\":\"current_call\",\"data\":null}");
     let record = client.until("the call wasn't kept", |record| {
         record["recent"]
@@ -337,11 +348,17 @@ fn a_call_that_ends_is_kept_in_recent_and_read_back_after_a_restart() {
     });
     let kept = &record["recent"][0];
     assert_eq!(
-        (&kept["people"], &kept["since"], &kept["missed"]),
+        (
+            &kept["people"],
+            &kept["since"],
+            &kept["missed"],
+            &kept["caller"]
+        ),
         (
             &json!([{"id": "7", "name": "Ada Brightwater", "email": "ada@example.com"}]),
             &json!(1000),
-            &json!(false)
+            &json!(false),
+            &json!("7")
         )
     );
     assert_eq!(running.read("state/tuple-call/recent.jsonl").len(), 1);
@@ -495,6 +512,19 @@ fn opening_the_room_answers_and_keeps_its_link() {
     );
     let said = client.ask(&json!({"id": "l", "ask": "list"}));
     assert_eq!(said["records"][0]["room"], "https://tuple.app/c/joels-room");
+    // The room opened starts a call in it, so one coming to it came to
+    // Joel's call.
+    running.streams(CALL);
+    client.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    running.streams("{\"type\":\"current_call\",\"data\":null}");
+    let record = client.until("the call wasn't kept", |record| {
+        record["recent"]
+            .as_array()
+            .is_some_and(|recent| !recent.is_empty())
+    });
+    assert_eq!(record["recent"][0]["caller"], "");
 }
 
 #[test]

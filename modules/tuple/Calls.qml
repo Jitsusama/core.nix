@@ -85,9 +85,9 @@ Provider {
         with: Words.name("tuple:call:with"),
         email: Words.name("tuple:call:email"),
         emails: Words.name("tuple:call:email", "many"),
-        length: Words.name("tuple:call:length"),
         rang: Words.name("tuple:call:rang"),
-        ended: Words.name("tuple:call:ended"),
+        again: Words.name("tuple:call:again"),
+        againAll: Words.name("tuple:call:again", "all"),
         date: (date, format) => Qt.formatDate(date, format)
     })
 
@@ -108,9 +108,11 @@ Provider {
         return Object.assign({ id: someone.id, email: email, status: "" }, entry ?? {});
     }
 
-    // One past call's row. A missed call from a caller Tuple's log didn't
-    // number has nobody to call again, so it stays, dimmed, saying what
-    // it can, with nothing inside.
+    // One past call's row. A missed one's mark is in the alert role, as
+    // its drawer's first line says it was missed (VKCF3Z, 2026-11-08). A
+    // missed call from a caller Tuple's log didn't number has nobody to
+    // call again, so it stays, dimmed, saying what it can, with nothing
+    // inside.
     function pastRow(past) {
         const first = past.people.length > 0 ? contact(past.people[0]) : null;
         const busy = first?.status === "busy";
@@ -123,7 +125,10 @@ Provider {
             drawer: Log.details(past, now, said),
             side: first === null ? "" : TuplePeople.how(first).said,
             glyph: Words.glyph("tuple:call", busy ? "busy" : ""),
-            hue: "person",
+            hue: past.missed ? "alert" : "person",
+            // A call is a thing with details, so the launcher gives it its
+            // drawer (Launcher.qml, detailed), which it never does an act.
+            thing: true,
             keywords: past.people.map(one => one.email).filter(Boolean).join(" ") || null,
             at: past.since,
             later: true

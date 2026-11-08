@@ -9196,10 +9196,24 @@
         "minutes": "{minutes} min",
         "hours": "{hours} h",
         "hoursMinutes": "{hours} h {minutes} min",
-        "seconds": "{seconds} s",
-        "again": "Call {name} Again",
-        "againAll": "Call Them Again"
+        "youCalled": "you called",
+        "called": "{name} called"
       }
+    },
+    {
+      "id": "tuple:call:again",
+      "in": "tuple:call",
+      "name": "Call {name} Again",
+      "states": {
+        "all": {
+          "name": "Call Them Again"
+        }
+      }
+    },
+    {
+      "id": "tuple:call:rang",
+      "in": "tuple:call",
+      "name": "Who Rang"
     },
     {
       "id": "tuple:call:with",
@@ -9215,21 +9229,6 @@
           "name": "Emails"
         }
       }
-    },
-    {
-      "id": "tuple:call:length",
-      "in": "tuple:call",
-      "name": "Length"
-    },
-    {
-      "id": "tuple:call:rang",
-      "in": "tuple:call",
-      "name": "Rang For"
-    },
-    {
-      "id": "tuple:call:ended",
-      "in": "tuple:call",
-      "name": "Ended"
     }
   ],
   "commands": [

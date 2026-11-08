@@ -13,12 +13,18 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
-use crate::log::{Log, Missed};
+use crate::log::{Answered, Log, Missed};
 use crate::recent::{Past, Recent, Someone};
 use crate::stream::{Contact, Live, Person};
 
 /// How many missed calls are kept, the latest.
 pub const MISSED: usize = 20;
+
+/// How near to a call first being said what began it must be, in
+/// milliseconds, a ring answered or Joel's room opened, for the call to be
+/// the one it began: a ring's minute, since Tuple says the call as soon as
+/// either happens, and anything further apart may be another call.
+pub const BEGINS_WITHIN: i64 = log::RINGS_FOR;
 
 /// Everything the record is made from.
 #[derive(Debug)]
@@ -40,17 +46,24 @@ pub struct Held {
     pub recent: Recent,
     /// The call under way as Recent will keep it once it ends.
     under_way: Option<UnderWay>,
+    /// What began a call no call under way has taken yet, as
+    /// [`Held::began`] heard it: its caller and when.
+    beginning: Option<(String, i64)>,
 }
 
 /// A call under way, as it will be kept: Tuple's stream says only who's
 /// in it now, and everyone else may have left before Joel does, so
 /// whoever was in it at any point is gathered as it goes.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct UnderWay {
+    /// When Tuple's stream first said it, to tell what began it.
+    first: i64,
     /// When it connected, once Tuple says.
     since: Option<i64>,
     /// Everyone else who's been in it, in the order they came.
     people: Vec<Someone>,
+    /// Who rang whom, as Recent keeps it ([`Past::caller`]).
+    caller: Option<String>,
 }
 
 /// Adds someone to those a call has had, or fills in what was blank of
@@ -87,7 +100,42 @@ impl Held {
             personal: None,
             recent: Recent::default(),
             under_way: None,
+            beginning: None,
         }
+    }
+
+    /// Takes a ring Joel answered as what began the call that follows it,
+    /// its caller by the number Tuple knows them by. One the log doesn't
+    /// number can't be told from Joel, nor found in the call, so it says
+    /// nothing.
+    pub fn answer(&mut self, answered: Option<Answered>) {
+        let Some(answered) = answered else { return };
+        let id = log::number(&answered.who);
+        if !id.is_empty() {
+            self.began(id.to_owned(), answered.at);
+        }
+    }
+
+    /// Takes what began a call at `at`: "" for Joel opening his room, which
+    /// starts a call in it, or the id of someone whose ring he answered.
+    /// Tuple's stream may say the call before tuple-call hears either, or
+    /// after, so it goes to the call under way if Tuple first said it
+    /// near then, or else waits for the next one.
+    ///
+    /// This is all tuple-call sees of who rang whom: Tuple's stream says
+    /// only who's in a call, and Joel calling someone runs Tuple's command
+    /// through niri (TuplePeople.qml), which tuple-call never hears, so a
+    /// call it saw neither begin is kept with no caller rather than
+    /// guessed at.
+    pub fn began(&mut self, caller: String, at: i64) {
+        if let Some(way) = &mut self.under_way
+            && way.caller.is_none()
+            && (at - way.first).abs() <= BEGINS_WITHIN
+        {
+            way.caller = Some(caller);
+            return;
+        }
+        self.beginning = Some((caller, at));
     }
 
     /// Keeps a missed call, letting the oldest go past [`MISSED`], and
@@ -104,6 +152,7 @@ impl Held {
             since: missed.since,
             ended: missed.at,
             missed: true,
+            caller: None,
         });
         self.missed.push(missed);
         let over = self.missed.len().saturating_sub(MISSED);
@@ -111,13 +160,26 @@ impl Held {
     }
 
     /// Takes the call as Tuple's stream says it now, `now` being when it
-    /// did, keeping one that's over in Recent. Only a call that connected
-    /// and had someone else in it is kept: one that never connected has
-    /// no length, and one Joel had alone has nobody to call again.
+    /// did, keeping one that's over in Recent, with who began it where
+    /// [`Held::began`] heard. Only a call that connected and had someone
+    /// else in it is kept: one that never connected has no length, and one
+    /// Joel had alone has nobody to call again.
     pub fn follow(&mut self, call: Option<Live>, now: i64) {
         match &call {
             Some(live) => {
-                let mut way = self.under_way.take().unwrap_or_default();
+                let mut way = self.under_way.take().unwrap_or_else(|| {
+                    let caller = self
+                        .beginning
+                        .take()
+                        .filter(|(_, at)| (now - at).abs() <= BEGINS_WITHIN)
+                        .map(|(caller, _)| caller);
+                    UnderWay {
+                        first: now,
+                        since: None,
+                        people: Vec::new(),
+                        caller,
+                    }
+                });
                 if way.since.is_none()
                     && let Some(since) = live.since
                 {
@@ -127,6 +189,7 @@ impl Held {
                         for someone in came {
                             gather(&mut way.people, someone);
                         }
+                        way.caller = way.caller.or(past.caller);
                     }
                 }
                 for person in &live.people {
@@ -139,14 +202,21 @@ impl Held {
                 if let Some(UnderWay {
                     since: Some(since),
                     people,
+                    caller,
+                    ..
                 }) = self.under_way.take()
                     && !people.is_empty()
                 {
+                    // A ring answered began the call only if its caller
+                    // was in it; otherwise it was some other call's.
+                    let had = |id: &String| people.iter().any(|one| one.id == *id);
+                    let caller = caller.filter(|id| id.is_empty() || had(id));
                     self.recent.keep(Past {
                         people,
                         since,
                         ended: now.max(since),
                         missed: false,
+                        caller,
                     });
                 }
             }
@@ -357,7 +427,8 @@ mod tests {
             record["recent"],
             json!([{"people": [{"id": "7", "name": "Ada Brightwater",
                                 "email": "ada@example.com"}],
-                    "since": NOON - 10_000, "ended": NOON - 5_000, "missed": true}])
+                    "since": NOON - 10_000, "ended": NOON - 5_000, "missed": true,
+                    "caller": null}])
         );
     }
 
@@ -396,9 +467,93 @@ mod tests {
             json!([{"people": [
                         {"id": "7", "name": "Ada Brightwater", "email": "ada@example.com"},
                         {"id": "8", "name": "Eli Hart", "email": ""}],
-                    "since": NOON, "ended": NOON + 2_520_000, "missed": false}])
+                    "since": NOON, "ended": NOON + 2_520_000, "missed": false,
+                    "caller": null}])
         );
         assert_eq!(held.record()["state"], "none");
+    }
+
+    /// Who rang whom, as Recent kept the one call `held` had.
+    fn caller(held: &Held) -> Option<&str> {
+        held.recent.calls[0].caller.as_deref()
+    }
+
+    #[test]
+    fn a_call_after_a_ring_answered_was_the_callers() {
+        let mut held = held();
+        held.log
+            .heard("11:59:50.000|calls|received incoming call: 7", NOON);
+        let heard = held.log.heard("11:59:55.000|calls|accepting call", NOON);
+        held.answer(heard.answered);
+        held.follow(Some(live(None, &[("7", "")])), NOON);
+        held.follow(Some(live(Some(NOON), &[("7", "")])), NOON + 1_000);
+        held.follow(None, NOON + 600_000);
+        assert_eq!(caller(&held), Some("7"));
+        assert_eq!(held.record()["recent"][0]["caller"], "7");
+    }
+
+    #[test]
+    fn a_ring_answered_after_tuple_said_the_call_is_the_callers_all_the_same() {
+        let mut held = held();
+        held.follow(Some(live(None, &[("7", "")])), NOON);
+        held.answer(Some(Answered {
+            who: "7".into(),
+            at: NOON + 500,
+        }));
+        held.follow(Some(live(Some(NOON), &[("7", "")])), NOON + 1_000);
+        held.follow(None, NOON + 600_000);
+        assert_eq!(caller(&held), Some("7"));
+    }
+
+    #[test]
+    fn joels_room_opened_began_the_call_in_it() {
+        let mut held = held();
+        held.began(String::new(), NOON);
+        held.follow(Some(live(Some(NOON + 2_000), &[])), NOON + 2_000);
+        held.follow(Some(live(Some(NOON + 2_000), &[("7", "")])), NOON + 90_000);
+        held.follow(None, NOON + 600_000);
+        assert_eq!(caller(&held), Some(""));
+    }
+
+    #[test]
+    fn a_call_tuple_call_saw_nothing_begin_has_no_caller() {
+        let answered = |who: &str, at: i64| {
+            Some(Answered {
+                who: who.into(),
+                at,
+            })
+        };
+        let cases = [
+            ("nothing heard", None),
+            (
+                "a ring long before",
+                answered("7", NOON - 2 * BEGINS_WITHIN),
+            ),
+            ("a ring from someone not in it", answered("8", NOON)),
+            ("a ring the log doesn't number", answered("a caller", NOON)),
+        ];
+        for (what, heard) in cases {
+            let mut held = held();
+            held.answer(heard);
+            held.follow(Some(live(Some(NOON), &[("7", "")])), NOON);
+            held.follow(None, NOON + 600_000);
+            assert_eq!(caller(&held), None, "{what}");
+        }
+    }
+
+    #[test]
+    fn a_call_said_again_keeps_who_began_it() {
+        let mut held = held();
+        held.began(String::new(), NOON);
+        held.follow(Some(live(Some(NOON), &[("7", "")])), NOON);
+        held.follow(None, NOON + 60_000);
+        held.follow(
+            Some(live(Some(NOON), &[("7", "")])),
+            NOON + 3 * BEGINS_WITHIN,
+        );
+        held.follow(None, NOON + 600_000);
+        assert_eq!(held.recent.calls.len(), 1);
+        assert_eq!(caller(&held), Some(""));
     }
 
     #[test]

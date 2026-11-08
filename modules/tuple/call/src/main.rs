@@ -28,7 +28,8 @@
 //! the record to say from then on; until then, the record says the newest
 //! of Joel's own rooms, as Tuple's state lists them.
 //!
-//! Each call that ends and each missed is kept in Recent (recent.rs), and
+//! Each call that ends and each missed is kept in Recent (recent.rs), with
+//! who rang whom where a ring answered or Joel's room opened says, and
 //! in `tuple-call/recent.jsonl` in the state folder as it changes, read
 //! back as this starts, so Joel's last calls outlive a restart.
 
@@ -431,6 +432,7 @@ fn took(shared: &Shared, lines: &[String], wake: &Sender<()>) {
     for line in lines {
         let heard = daemon.held.log.heard(line, now);
         daemon.held.miss(heard.missed);
+        daemon.held.answer(heard.answered);
         if heard.started {
             let _ = wake.send(());
         }
@@ -742,6 +744,9 @@ fn open(shared: &Shared, doing: &Doing, id: &Value) -> Value {
     keep(&doing.room, &link);
     let mut daemon = lock(shared);
     daemon.held.room = Some(link.clone());
+    // `tuple new` starts a call in Joel's room, so whoever comes to it
+    // came to his call.
+    daemon.held.began(String::new(), now());
     changed(shared, &mut daemon);
     json!({"id": id, "done": true, "link": link})
 }

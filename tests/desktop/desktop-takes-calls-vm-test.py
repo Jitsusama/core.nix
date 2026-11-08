@@ -153,6 +153,16 @@ def test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again(desktop: Desk
     # other calls this run's tests had, whose guests Tuple never names.
     ada = A_GUEST | {"id": 7, "full_name": "Ada Brightwater", "email": "ada@example.com"}
     call = in_a_tuple_call(desktop, 9 * 60) | {"participants": [ada]}
+    # Ada rings and Joel answers, so tuple-call keeps the call as hers to
+    # have rung, which its drawer says first. Her ring's notice going says
+    # both were heard, and leaves the margin to the call. It's answered
+    # once its card is up, as the shell withdraws a notice by the id it's
+    # given only then.
+    offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action=show'"
+    with desktop.told("shows card Someone is calling"):
+        desktop.tuple_said("received incoming call: 7")
+    desktop.tuple_said("accepting call")
+    machine.wait_until_fails(offered, timeout=timedelta(seconds=10))
     with desktop.told("drawn margin"):
         desktop.tuple_streams(call)
     desktop.tuple_streams(None)
@@ -170,10 +180,23 @@ def test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again(desktop: Desk
         lambda shown: shown["held"][-1:] == ["Recent"] and "Ada Brightwater" in shown["rows"]
     )
     desktop.down_to("Ada Brightwater")
+    # The drawer fades in once the selection rests, so the shot waits until
+    # it's out and drawing her call, who rang first.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["shown"] is True
+            and shown["drawer"]["drawn"] == "Ada Brightwater"
+            and shown["drawer"]["drawnFacts"][:1] == ["Who Rang"]
+        )
+    )
     desktop.shoot("launcher-tuple-recent")
     row = desktop.showing()["selected"]
     assert row["note"].startswith("9 min \u00b7 "), row
-    assert {"label": "Email", "value": "ada@example.com"} in row["drawer"]["facts"], row
+    facts = row["drawer"]["facts"]
+    assert facts[0] == {"label": "Who Rang", "value": "Ada Brightwater called"}, row
+    # Said once: her name alone is With, and the note says how long and when.
+    assert facts[1:] == [{"label": "Email", "value": "ada@example.com"}], row
     # A call rings a person, so Return steps in, calling again first inside.
     assert row["verb"] != "call", row
     desktop.step_in("ret")

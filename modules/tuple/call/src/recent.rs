@@ -1,7 +1,8 @@
 //! The calls Joel had lately, newest first, for Tuple's Recent in the
 //! launcher: each call that ended, with everyone who was in it at any
-//! point, when it connected and when it ended, and each call missed, with
-//! its caller, when it rang and when the ring ended. Tuple keeps no such
+//! point, when it connected and when it ended, and who rang whom where
+//! tuple-call saw it, and each call missed, with its caller, when it rang
+//! and when the ring ended. Tuple keeps no such
 //! history itself: its stream says only the call under way, its log only
 //! rings, a time of day with no date, and its contacts only whether
 //! someone was called lately. So tuple-call keeps it, a JSON line a call
@@ -59,6 +60,11 @@ pub struct Past {
     pub ended: i64,
     /// Whether it rang and wasn't answered.
     pub missed: bool,
+    /// Who rang whom, for a call that connected: "" where Joel began it,
+    /// the caller's id where they rang and he answered, or none where
+    /// tuple-call didn't see which (lib.rs says what it sees). A missed
+    /// call has none, since `missed` already says Joel didn't answer.
+    pub caller: Option<String>,
 }
 
 impl Past {
@@ -69,10 +75,13 @@ impl Past {
             "since": self.since,
             "ended": self.ended,
             "missed": self.missed,
+            "caller": self.caller,
         })
     }
 
-    /// One the file kept, or none from a line that isn't one.
+    /// One the file kept, or none from a line that isn't one. A line kept
+    /// before tuple-call said who rang whom has no caller, and reads as
+    /// one it didn't see.
     pub fn read(line: &str) -> Option<Past> {
         let value: Value = serde_json::from_str(line).ok()?;
         let people = value
@@ -86,6 +95,10 @@ impl Past {
             since: value.get("since")?.as_i64()?,
             ended: value.get("ended")?.as_i64()?,
             missed: value.get("missed")?.as_bool()?,
+            caller: value
+                .get("caller")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
         })
     }
 }
@@ -160,6 +173,7 @@ mod tests {
             since,
             ended: since + 60_000,
             missed,
+            caller: None,
         }
     }
 
@@ -202,8 +216,21 @@ mod tests {
             since: 2_000,
             ended: 2_520_000,
             missed: false,
+            caller: Some("7".into()),
+        });
+        recent.keep(Past {
+            caller: Some(String::new()),
+            ..call(3_000, false)
         });
         assert_eq!(Recent::read(&recent.lines()), recent);
+    }
+
+    #[test]
+    fn a_line_kept_before_callers_were_kept_reads_as_one_unseen() {
+        let old = "{\"people\":[{\"id\":\"7\",\"name\":\"Ada Brightwater\",\
+                   \"email\":\"ada@example.com\"}],\"since\":1000,\"ended\":61000,\
+                   \"missed\":false}";
+        assert_eq!(Recent::read(old).calls, [call(1_000, false)]);
     }
 
     #[test]

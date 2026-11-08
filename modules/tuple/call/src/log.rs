@@ -57,11 +57,21 @@ pub struct Missed {
     pub at: i64,
 }
 
+/// A ring Joel answered: who rang, and when he answered, which is how
+/// Recent knows they called him (lib.rs).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Answered {
+    pub who: String,
+    pub at: i64,
+}
+
 /// What a line of the log changed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Heard {
     /// Whether the ring changed, begun or ended.
     pub rang: bool,
+    /// The ring going, answered.
+    pub answered: Option<Answered>,
     /// A ring that ended unanswered since this program started.
     pub missed: Option<Missed>,
     /// Whether Tuple's daemon has just started.
@@ -117,7 +127,11 @@ impl Log {
         let taken =
             TAKEN_WHOLE.contains(&said) || TAKEN_BEGUN.iter().any(|begun| said.starts_with(begun));
         if taken {
-            heard.rang = self.ringing.take().is_some();
+            heard.answered = self
+                .ringing
+                .take()
+                .map(|ring| Answered { who: ring.who, at });
+            heard.rang = heard.answered.is_some();
         } else if ENDING.contains(&said) || said.starts_with(TURNED_AWAY) {
             heard.rang = self.ringing.is_some();
             heard.missed = self.end(at);
@@ -244,10 +258,17 @@ mod tests {
             heard,
             Heard {
                 rang: true,
+                answered: Some(Answered {
+                    who: "7".into(),
+                    at: NOON - 2_000
+                }),
                 ..Heard::default()
             }
         );
         assert_eq!(log.ringing(), None);
+        // Taken again with nothing ringing, it answered nobody.
+        let heard = log.heard(&line("11:59:59.000", "call connected"), NOON);
+        assert_eq!(heard, Heard::default());
     }
 
     #[test]
