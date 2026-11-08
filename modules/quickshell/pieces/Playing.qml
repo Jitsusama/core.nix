@@ -2,9 +2,9 @@
 // plays, so paused is nothing to show. Now says the track, the artist
 // and the player, and offers what the media keys do, with their chords, and
 // a way to the player. Mpris says when anything changes, so nothing is asked
-// but where in the track it is, which its drawer reads each second while it
-// plays, MPRIS saying a position only when asked.
-import Quickshell
+// but where in the track it is, which its drawer reads each second while the
+// launcher shows it (Now.qml's drawn clock), MPRIS saying a position only
+// when asked.
 import qs
 import QtQuick
 import "../launcher/Media.js" as Media
@@ -18,20 +18,11 @@ Piece {
             === `qs ipc call music ${command}`) ?? { chord: [] }).chord;
     }
 
-    // Where in the track it is, read again each second while it plays.
-    SystemClock {
-        id: played
-        enabled: Music.playing
-        precision: SystemClock.Seconds
-    }
-
     // Everything the player says, under Now's row, as a program's Media
     // row draws it (launcher/Media.js).
-    drawer: Music.player === null ? null : allowed => {
-        void played.date;
-        return Media.drawer(Music.player, id => Words.name(`program:media:${id}`),
-            Words.of("program:media").said, allowed.lookups);
-    }
+    drawer: Music.player === null ? null : allowed => Media.drawer(Music.player,
+        id => Words.name(`program:media:${id}`), Words.of("program:media").said,
+        allowed.lookups)
 
     active: Music.playing
     value: Music.title

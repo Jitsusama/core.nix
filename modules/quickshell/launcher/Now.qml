@@ -163,6 +163,19 @@ Provider {
         precision: SystemClock.Minutes
     }
 
+    // What a piece's drawer says can move each second, as a song's
+    // position does, so its drawer is read again each second, but only
+    // while the launcher is open, where it can be seen: a clock running
+    // all day would wake the shell each second for nothing (Y2YBTS,
+    // 2026-11-08). Whether it runs is said for the tests.
+    readonly property bool drawing: drawnClock.enabled
+
+    SystemClock {
+        id: drawnClock
+        enabled: provider.launcher?.open ?? false
+        precision: SystemClock.Seconds
+    }
+
     // Where the laptop is, as Location says it, the one place the weather
     // and everything else that depends on it reads here from (Joel,
     // 2026-10-28: "a location area in now ... tied to what weather and
@@ -563,10 +576,15 @@ Provider {
         // everywhere else, and its own acts after them (Piece.qml's rows).
         const holding = piece.rows ? () => piece.rows(thing).concat(actions) : null;
         // Everything its source says, under the row, where the piece gives
-        // it (Piece.qml's drawer), as the network allows.
-        const drawn = typeof piece.drawer === "function"
-            ? { thing: true, drawer: () => piece.drawer({ lookups: settings.lookups !== false }) }
-            : {};
+        // it (Piece.qml's drawer), as the network allows, read again as the
+        // drawn clock turns.
+        const drawn = typeof piece.drawer === "function" ? {
+            thing: true,
+            drawer: () => {
+                void drawnClock.date;
+                return piece.drawer({ lookups: settings.lookups !== false });
+            }
+        } : {};
         return member(Object.assign({
             key: `on:${fact.entry.mark}`,
             is: provider.same[fact.entry.mark] ?? `on:${fact.entry.mark}`,
