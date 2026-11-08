@@ -6953,7 +6953,7 @@ Scope {
     // With no screen left, Qt lists a stand-in of its own, which has no name
     // and can hold no surface, so it's never one.
     readonly property var focusedScreen: {
-        Niri.revision;
+        void Niri.revision;
         void Quickshell.screens;
         return screenFocused();
     }

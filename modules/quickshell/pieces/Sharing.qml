@@ -15,7 +15,7 @@ Piece {
     // A window's title as it is now: windows change in place, and the
     // revision says when.
     readonly property var seen: {
-        Niri.revision;
+        void Niri.revision;
         return casts.map(cast => cast.target.Window
             ? (Niri.windows[cast.target.Window.id] ?? { title: "a window" }).title
             : cast.target.Output ? "the whole screen" : "nothing yet");

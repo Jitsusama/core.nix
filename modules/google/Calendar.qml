@@ -605,7 +605,7 @@ Singleton {
     // meeting }, its meeting null when the call isn't on his calendar.
     // niri's revision says when a window opens, closes or is retitled.
     readonly property var calls: {
-        Niri.revision;
+        void Niri.revision;
         return Object.values(Niri.windows)
             .map(window => ({ window: window, code: Calls.meetCall(window.app_id) }))
             .filter(call => call.code !== "")

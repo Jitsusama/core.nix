@@ -66,7 +66,7 @@ Provider {
     // last live first, in the order fixed as the launcher opened, so none
     // moves under the cursor while it's open; one closed since comes last.
     readonly property var closed: {
-        Sessions.present;
+        void Sessions.present;
         const shut = listed.filter(one => !sessionOf(one.address)
             && !Sessions.present[one.address]);
         const at = one => {
