@@ -215,7 +215,7 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
     desktop.launcher_until(lambda shown: "Image 256 \u00d7 256" in shown["rows"])
     # While the clipboard holds it, GIMP's act on it is found too, as the
     # shell's one watcher of the clipboard hears the copy's type.
-    desktop.launcher_until(lambda shown: "New Image from the Copied Picture" in shown["rows"])
+    desktop.launcher_until(lambda shown: "New Image From the Copied Picture" in shown["rows"])
     desktop.down_to("Image 256 \u00d7 256")
     desktop.launcher_until(
         lambda shown: (
@@ -230,7 +230,7 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
     desktop.launcher_ready()
     desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
     desktop.into_program()
-    desktop.launcher_until(lambda shown: "New Image from the Copied Picture" in shown["rows"])
+    desktop.launcher_until(lambda shown: "New Image From the Copied Picture" in shown["rows"])
     desktop.shoot("launcher-gimp-copied-picture")
     desktop.close_launcher()
 

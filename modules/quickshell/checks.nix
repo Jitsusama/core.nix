@@ -3778,6 +3778,7 @@ onLinux {
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
       cp ${./Copied.qml} Copied.qml
