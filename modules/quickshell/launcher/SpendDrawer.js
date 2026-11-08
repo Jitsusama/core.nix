@@ -1,10 +1,11 @@
 .pragma library
-// What the drawer says of a budget's row and a window's in AI spend
-// (Spend.qml), and of the budget a session draws on in its drawer
-// (Agents.qml), from how spend-watch says each budget stands
-// (SpendWatch.budgets, its budgets.json). The daemon words every fact,
-// so this only chooses which to show and in what order, and leaves out
-// what it didn't say rather than guessing. By the drawer's rules
+// What the drawer says of AI spend's rows (Spend.qml): a budget's, a
+// window's and a cap's, from how spend-watch says each budget stands
+// (SpendWatch.budgets, its budgets.json), and a period's, from the facts
+// its row carries in collection.json; and of the budget a session draws
+// on, in its drawer (Agents.qml). The daemon words every fact, so this
+// only chooses which to show and in what order, and leaves out what it
+// didn't say rather than guessing. By the drawer's rules
 // (VKCF3Z, 2026-11-07): no state in an eyebrow, nothing the row's side
 // or the title already says, what moves most first and identifiers
 // last; and no dollar figure while the screen is shared, as the rows
@@ -65,8 +66,9 @@ function hidden(allowance, words) {
 
 // A window's facts beyond its name, in the order they move: what its feed
 // says, which is the one thing to act on, while it says anything; its
-// standing, where `standing` asks for it; when it resets; whose reading it
-// is and when; and where it warns. A share's row already says how much,
+// standing, where `standing` asks for it; when it resets; when an
+// override of it ends and how it last changed; whose reading it is and
+// when; and where it warns. A share's row already says how much,
 // so its meter rides on Resets' line instead of a Standing that would
 // repeat it, and on Read By's where it has no reset; `meter` false leaves
 // it off, for a budget's drawer that already drew it. Dollars go while
@@ -84,6 +86,8 @@ function windowFacts(allowance, words, standing, meter) {
         ["state", told.state, null, true],
         ["standing", allowance.standing, figure, stands],
         ["resets", told.resets, riding, resets],
+        ["override", told.ends, null, true],
+        ["changed", told.changed, null, !quiet],
         ["read", told.read, resets ? null : riding, said(told.read)],
         ["warns", told.warns, null, !quiet]
     ].filter(([, value, , shows]) => shows && said(value))
@@ -125,13 +129,28 @@ function windowDrawer(budget, allowance, words) {
         facts: windowFacts(allowance, words, true, true), body: "" };
 }
 
-// The drawer for the row a key names, or null for a row that isn't a
-// budget's or a window's, or one budgets.json doesn't hold. `words` holds
-// the vocabulary's: `name` names each fact by its id, `unread` is what a
-// window not read yet says, `window` what a window is; and `sharing`
-// whether the screen is shared.
-function drawer(key, budgets, words) {
-    const found = keyed(key, budgets ?? {});
+// A period's drawer: its days over its name, then its facts as the
+// daemon gave them, each named by the vocabulary, in the words face where
+// it says words rather than a name or a figure. The daemon leaves out
+// what has an amount while the screen is shared.
+function periodDrawer(title, drawn, words) {
+    const facts = (drawn.facts ?? []).filter(one => said(one.value))
+        .map(one => Object.assign(fact(words.name(one.id), one.value),
+            one.words === true ? { words: true } : {}));
+    return { eyebrow: drawn.eyebrow ?? "", title, facts, body: "" };
+}
+
+// The drawer for a row of AI spend, or null for one with none: a
+// period's from its own facts, and a budget's, a window's or a cap's from
+// the budget or window its `budget` names in budgets.json, null where it
+// doesn't hold it. `words` holds the vocabulary's: `name` names each fact
+// by its id, `unread` is what a window not read yet says, `window` what a
+// window is; and `sharing` whether the screen is shared.
+function drawer(row, budgets, words) {
+    if (row.drawn) {
+        return periodDrawer(row.name, row.drawn, words);
+    }
+    const found = keyed(row.budget, budgets ?? {});
     if (found === null) {
         return null;
     }

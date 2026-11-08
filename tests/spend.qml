@@ -26,7 +26,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
-import "launcher/BudgetDrawer.js" as BudgetDrawer
+import "launcher/SpendDrawer.js" as SpendDrawer
 
 ShellRoot {
     id: root
@@ -337,8 +337,9 @@ ShellRoot {
 
     // How every budget stands, as budgets.json says it: a plan of two
     // share windows, one past where it warns and one not read yet; the
-    // employer's money of two dollar windows, one past where it warns and
-    // one its feed refuses; and a team's token of one window.
+    // employer's money of two dollar windows, one past where it warns,
+    // raised and overridden for a while, and one its feed refuses; and a
+    // team's token of one window.
     readonly property var standing: ({
         v: 1, default: "proxy", sessions: { "s-running": "proxy" },
         budgets: [{
@@ -361,6 +362,8 @@ ShellRoot {
                 name: "weekly", label: "Week", unit: "dollars",
                 standing: "$37,000 of $40,000", nearest: 0.925, warn: 0.9,
                 said: { window: "a week", warns: "at $36,000", resets: "",
+                    ends: "Wed 2 Dec \u00b7 a guess",
+                    changed: "raised $30,000 to $40,000 \u00b7 Thu 11:31",
                     read: "the AI proxy at 21:35", state: "" }
             }, {
                 name: "premium", label: "Premium Day", unit: "dollars",
@@ -383,11 +386,35 @@ ShellRoot {
     })
 
     // A drawer's facts as one line: each name and value, its figure's
-    // shape after, and a figure past where it warns marked so.
+    // shape after, a figure past where it warns marked so, and words set
+    // in the words face marked with a tilde.
     function factsOf(drawer) {
         return drawer.facts.map(fact => `${fact.label}=${fact.value}`
-            + (fact.figure ? `:${fact.figure.shape}${fact.figure.warn ? "!" : ""}` : ""))
+            + (fact.figure ? `:${fact.figure.shape}${fact.figure.warn ? "!" : ""}` : "")
+            + (fact.words ? "~" : ""))
             .join("; ");
+    }
+
+    // A cap's row opens its window's drawer, whichever row reaches it, and
+    // a period's opens its days and the facts its row carries, named by
+    // the vocabulary, words in the words face.
+    function capsAndPeriods(rows) {
+        SpendWatch.standing = root.standing;
+        const opened = key => {
+            const row = rows.find(one => one.key === `spend:${key}`);
+            return row?.thing === true && row.drawer ? row.drawer() : null;
+        };
+        const cap = opened("cap:weekly");
+        const window = rows.find(one => one.key === "spend:budgets").verbs()
+            .find(one => one.key === "spend:budget:proxy:weekly").drawer();
+        expect("a cap's drawer is its window's", cap !== null
+            && JSON.stringify(cap) === JSON.stringify(window), cap ? factsOf(cap) : "none");
+        const week = opened("period:this-week");
+        expect("a period's drawer", week?.eyebrow === "Mon 2 Nov to Sat 7 Nov \u00b7 week"
+            && week.title === "This week" && factsOf(week) === "Read From=the bill~; "
+            + "Rebuilding Context=$310 \u00b7 6%; "
+            + "Most by Quest=Build the shell \u00b7 31%~; "
+            + "Most by Model=claude-opus-5-5 \u00b7 all", week ? factsOf(week) : "none");
     }
 
     // A budget's row and a window's each open a drawer of every fact
@@ -418,8 +445,9 @@ ShellRoot {
         // A dollar window says its standing with its meter, and what its
         // feed says comes first, while it says anything.
         expect("a dollar window past where it warns", said("budget:proxy:weekly")
-            === "Standing=$37,000 of $40,000:stroke!; Read By=the AI proxy at 21:35; "
-            + "Warns=at $36,000", said("budget:proxy:weekly"));
+            === "Standing=$37,000 of $40,000:stroke!; Override Ends=Wed 2 Dec \u00b7 a guess; "
+            + "Last Changed=raised $30,000 to $40,000 \u00b7 Thu 11:31; "
+            + "Read By=the AI proxy at 21:35; Warns=at $36,000", said("budget:proxy:weekly"));
         expect("a window its feed refuses", said("budget:proxy:premium")
             === "Feed Says=refusing requests; Standing=$0 of $300:stroke; "
             + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; Warns=at $150",
@@ -442,15 +470,16 @@ ShellRoot {
             "budget:proxy", "budget:delta"].map(said);
         Quiet.sharing = false;
         expect("quiet drawers", quiet.join(" | ") === "Resets=16:20:stroke!; "
-            + "Read By=Claude at 14:20; Warns=at 80% | Read By=the AI proxy at 21:35:stroke! | "
+            + "Read By=Claude at 14:20; Warns=at 80% | Override Ends=Wed 2 Dec \u00b7 a guess; "
+            + "Read By=the AI proxy at 21:35:stroke! | "
             + "Five Hours=85% of 5 h:stroke!; Week=not read yet; Feed=reading fine; "
             + "Providers=claude-code | Feed=signed out | Resets=05:00 tomorrow:stroke; "
             + "Read By=the AI proxy at 21:35", quiet.join(" | "));
         expect("the Budgets row's own drawer", !budgets.drawer, "drawn");
-        expect("a session's budget", BudgetDrawer.sessionBudget(SpendWatch.budgets,
+        expect("a session's budget", SpendDrawer.sessionBudget(SpendWatch.budgets,
             SpendWatch.budgetOf, "s-running") === "Your AI proxy token \u00b7 $37,000 of $40,000"
-            && BudgetDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s-none") === "",
-            BudgetDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s-running"));
+            && SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s-none") === "",
+            SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s-running"));
     }
 
     function answers() {
@@ -523,9 +552,9 @@ ShellRoot {
                 && /today/.test(SpendWatch.budgets[drewOn]?.said?.spent ?? ""),
                 JSON.stringify(SpendWatch.standing));
             expect("a session's budget, as its drawer says it",
-                BudgetDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s1")
+                SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s1")
                     .startsWith(SpendWatch.budgets[drewOn]?.label ?? "-"),
-                BudgetDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s1"));
+                SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s1"));
 
             // While sharing, no row and no answer holds an amount.
             Quiet.sharing = true;
@@ -567,7 +596,19 @@ ShellRoot {
                 }, {
                     key: "budget:delta", name: "Delta team token", side: "$40 of $50",
                     copy: "Delta team token: $40 of $50", role: "text", mark: "agent"
-                }]
+                }].map(row => Object.assign({ budget: row.key }, row))
+            }, {
+                key: "cap:weekly", name: "Week", side: "93%",
+                copy: "Week: 93% of $40,000", mark: "clock", role: "warning", budget: "budget:proxy:weekly"
+            }, {
+                key: "period:this-week", name: "This week", side: "$4,100",
+                copy: "This week: $4,100", role: "text",
+                drawn: { eyebrow: "Mon 2 Nov to Sat 7 Nov \u00b7 week", facts: [
+                    { id: "from", value: "the bill", words: true },
+                    { id: "rebuilding", value: "$310 \u00b7 6%" },
+                    { id: "most-quest", value: "Build the shell \u00b7 31%", words: true },
+                    { id: "most-model", value: "claude-opus-5-5 \u00b7 all" }
+                ] }
             }];
             SpendWatch.said = budgeted;
             const budgets = spend.everything()[0];
@@ -583,6 +624,7 @@ ShellRoot {
                 && row.marked) && windows[0].hue === "warning" && windows[1].hue === "muted",
                 windows.map(row => row.hue).join(", "));
             root.drawers(budgets);
+            root.capsAndPeriods(spend.everything());
 
             // A finding with an action goes to its session, and steps into
             // marking it expected.

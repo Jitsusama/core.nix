@@ -38,7 +38,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "BudgetDrawer.js" as BudgetDrawer
+import "SpendDrawer.js" as SpendDrawer
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Recent.js" as Recent
@@ -372,7 +372,7 @@ Provider {
             // budgets.json says it; a standing may be an amount, so it's
             // hidden while the screen is shared.
             budget: Quiet.sharing ? ""
-                : BudgetDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf,
+                : SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf,
                     presence.session),
             since: presence.owner?.startedAt
                 ? word("since", { at: started(presence.owner.startedAt) }) : "",

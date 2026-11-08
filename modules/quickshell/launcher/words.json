@@ -529,6 +529,76 @@
       "name": "Feed"
     },
     {
+      "id": "spend:override",
+      "in": "spend",
+      "name": "Override Ends"
+    },
+    {
+      "id": "spend:changed",
+      "in": "spend",
+      "name": "Last Changed"
+    },
+    {
+      "id": "spend:ends",
+      "in": "spend",
+      "name": "Ends Near"
+    },
+    {
+      "id": "spend:from",
+      "in": "spend",
+      "name": "Read From"
+    },
+    {
+      "id": "spend:rebuilding",
+      "in": "spend",
+      "name": "Rebuilding Context"
+    },
+    {
+      "id": "spend:most-quest",
+      "in": "spend",
+      "name": "Most by Quest"
+    },
+    {
+      "id": "spend:most-model",
+      "in": "spend",
+      "name": "Most by Model"
+    },
+    {
+      "id": "spend:most-agent",
+      "in": "spend",
+      "name": "Most by Agent"
+    },
+    {
+      "id": "spend:most-repo",
+      "in": "spend",
+      "name": "Most by Repo"
+    },
+    {
+      "id": "spend:most-session",
+      "in": "spend",
+      "name": "Most by Session"
+    },
+    {
+      "id": "spend:most-tool",
+      "in": "spend",
+      "name": "Most by Tool"
+    },
+    {
+      "id": "spend:most-day",
+      "in": "spend",
+      "name": "Most by Day"
+    },
+    {
+      "id": "spend:most-source",
+      "in": "spend",
+      "name": "Most by Source"
+    },
+    {
+      "id": "spend:most-budget",
+      "in": "spend",
+      "name": "Most by Budget"
+    },
+    {
       "id": "agents:budget",
       "in": "agents",
       "name": "Budget"

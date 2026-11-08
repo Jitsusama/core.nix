@@ -2492,6 +2492,9 @@ def spend_line(key: str, name: str, side: str, note: str = "", role: str = "text
     line: Json = {"key": key, "name": name, "side": side, "copy": f"{name}: {side}", "role": role}
     if note:
         line["note"] = note
+    # A budget's row and a window's name what opens their drawer in budgets.json.
+    if key.startswith("budget:"):
+        line["budget"] = key
     return line
 
 
@@ -2503,16 +2506,41 @@ def marked(line: Json, mark: str, rows: list[Json] | None = None) -> Json:
     return line
 
 
-# How things stand with three budgets, as spend-watch writes it: today, then Budgets, the
-# month's whole in billed spend, its mark its nearest budget's colour; behind it today's whole,
-# then each budget nearest its allowance first, the plan stepping into its two windows.
+# How things stand with three budgets, as spend-watch writes it: today, with its drawer and the
+# day's cap behind it, opening its window's drawer; then Budgets, the month's whole in billed
+# spend, its mark its nearest budget's colour; behind it today's whole, then each budget nearest
+# its allowance first, the plan stepping into its two windows.
 BUDGETED = {
     "v": 2,
     "sessions": {},
     "helpers": {},
     "families": {},
     "now": [
-        marked(spend_line("today", "Today", "$412"), "date"),
+        marked(
+            spend_line("today", "Today", "$412")
+            | {
+                "drawn": {
+                    "eyebrow": "Sat 7 Nov \u00b7 day",
+                    "facts": [
+                        {"id": "ends", "value": "$520 \u00b7 likely $470 to $610"},
+                        {"id": "from", "value": "the bill \u00b7 pi's logs where it hasn't come"}
+                        | {"words": True},
+                        {"id": "rebuilding", "value": "$25 \u00b7 6%"},
+                        {"id": "most-quest", "value": "Build the shell \u00b7 31%"}
+                        | {"words": True},
+                        {"id": "most-model", "value": "claude-opus-5-5 \u00b7 all"},
+                    ],
+                }
+            },
+            "date",
+            rows=[
+                marked(
+                    spend_line("cap:premium", "Premium Day", "83%", "$250 spent", "warning")
+                    | {"budget": "budget:proxy:premium"},
+                    "clock",
+                )
+            ],
+        ),
         marked(
             spend_line("budgets", "Budgets", "$21,564 this month", "billed spend", "warning"),
             "agent",
@@ -2592,7 +2620,7 @@ def allowance(
     unit = "dollars" if standing.startswith("$") else "share"
     window: Json = {"name": name, "label": label, "unit": unit, "warn": warn}
     window |= {"standing": standing, "nearest": nearest}
-    keys = ("window", "warns", "resets", "read", "state")
+    keys = ("window", "warns", "resets", "ends", "changed", "read", "state")
     return window | {"said": {key: said.get(key, "") for key in keys}}
 
 
@@ -2716,8 +2744,9 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
     then each budget nearest its allowance first, each standing in its own unit, and a budget
     steps into its windows (docs/design.md; VKCF3Z, 2026-11-06). A budget's drawer and a
     window's say what budgets.json holds of each (VKCF3Z, 2026-11-07): a plan's, the employer's
-    money's, a share window's and a dollar window past where it warns. Each is kept for the
-    design's look at Joel's scales.
+    money's, a share window's and a dollar window past where it warns. A running period's
+    drawer says its days and what its cuts went to most, and a cap's is its window's. Each is
+    kept for the design's look at Joel's scales.
     """
     written(desktop, "budgets.json", BUDGETS)
     written(desktop, "collection.json", BUDGETED)
@@ -2728,6 +2757,20 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             desktop.as_account("qs ipc call launcher collection spend")
             desktop.launcher_ready()
             desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+            desktop.down_to("Today")
+            facts = drawer_shot(desktop, "Today", f"launcher-spend-today-at-{named}")
+            assert facts == [
+                "Ends Near",
+                "Read From",
+                "Rebuilding Context",
+                "Most by Quest",
+                "Most by Model",
+            ], facts
+            desktop.step_in()
+            desktop.down_to("Premium Day")
+            facts = drawer_shot(desktop, "Premium Day", f"launcher-spend-cap-at-{named}")
+            assert facts == ["Standing", "Resets", "Read By", "Warns"], facts
+            desktop.step_out()
             desktop.down_to("Budgets")
             assert desktop.showing()["selected"]["side"] == "$21,564 this month"
             desktop.shoot(f"launcher-budgets-at-{named}")
@@ -2740,7 +2783,9 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
                 "Delta team token",
             ], rows
             desktop.down_to("Your AI proxy token")
-            facts = drawer_shot(desktop, "Your AI proxy token", f"launcher-budgets-proxy-at-{named}")
+            facts = drawer_shot(
+                desktop, "Your AI proxy token", f"launcher-budgets-proxy-at-{named}"
+            )
             assert facts == ["Premium Day", "Week", "Spent", "Feed"], facts
             desktop.step_in()
             desktop.down_to("Premium Day")

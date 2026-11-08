@@ -3,7 +3,7 @@ pragma Singleton
 // collection.json, the collection on Super+U and its answers (the
 // launcher's Spend) and what each pi session spent today (its Agents); and
 // its budgets.json, how each budget stands, every fact of it in words for
-// a budget's drawer (BudgetDrawer.js), and which budget each session drew
+// a budget's drawer (SpendDrawer.js), and which budget each session drew
 // on last. Every figure and word is the daemon's, so this only reads them:
 // null with no file, or one of a version it doesn't know.
 //

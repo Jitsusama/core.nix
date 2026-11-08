@@ -49,7 +49,7 @@ function about(works, titles) {
 // want, then its quest's Needs You items, `said.needs`); what it landed
 // last (`said.landed`); what it's spent today (an orchestrator's whole
 // orchestration, then its own and its sessions'); the budget it drew on
-// last and how that stands (`said.budget`, BudgetDrawer.js), after the
+// last and how that stands (`said.budget`, SpendDrawer.js), after the
 // spend it's part of; its figures
 // (`said.figures`, SessionRow.figures); what rebuilding its context cost;
 // its quest, how that stands said only where it isn't active; its

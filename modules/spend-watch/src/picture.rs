@@ -127,6 +127,9 @@ pub struct Picture {
     /// What each session spent rebuilding its context today, at list, by
     /// its whole id; read each pass, since today's turns are few.
     pub rebuilt_today: HashMap<String, f64>,
+    /// The share of each period's spend that went on rebuilding context a
+    /// session already had, by the period's id, for those that spent.
+    pub rebuilt: BTreeMap<&'static str, f64>,
     pub quests: Vec<crate::quests::Quest>,
     /// Each quest's root, the quest at the top of its family, by id.
     pub roots: HashMap<String, String>,
@@ -157,6 +160,9 @@ pub struct Kept {
     /// The last seven days' waste and the last thirty days' work, by when
     /// they were read and the week's start they were read from.
     weeks: Option<Weeks>,
+    /// Each period's share rebuilt, by when it was read and the day it was
+    /// read on: a month's turns are too many to sum every pass.
+    rebuilt: Option<(f64, i64, BTreeMap<&'static str, f64>)>,
     /// The eight weeks of spend by minute a burn is judged on.
     pub minutes: crate::detect::Minutes,
 }
@@ -183,6 +189,24 @@ impl Kept {
         }
         let shares = waste_before(history, zone, today)?;
         self.waste_before = Some((today, shares.clone()));
+        Ok(shares)
+    }
+
+    fn rebuilt(
+        &mut self,
+        history: &History,
+        zone: &Zone,
+        now: f64,
+    ) -> Result<BTreeMap<&'static str, f64>, String> {
+        let today = zone.day(now);
+        if let Some((at, day, shares)) = &self.rebuilt
+            && *day == today
+            && (0.0..SETTLED).contains(&(now - at))
+        {
+            return Ok(shares.clone());
+        }
+        let shares = rebuilt_shares(history, zone, now)?;
+        self.rebuilt = Some((now, today, shares.clone()));
         Ok(shares)
     }
 
@@ -225,16 +249,7 @@ impl Picture {
         kept: &mut Kept,
     ) -> Result<Picture, String> {
         let zone = config.zone()?;
-        let first_hour: i64 = history
-            .db
-            .query_row(
-                "SELECT MIN(h) FROM
-                 (SELECT MIN(hour) AS h FROM turns UNION ALL SELECT MIN(hour) FROM billed)",
-                [],
-                |row| row.get::<_, Option<i64>>(0),
-            )
-            .map_err(fail)?
-            .unwrap_or(crate::time::hour_of(now));
+        let first_hour = first_hour(history, now)?;
         let now_hour = crate::time::hour_of(now);
         let budgets = crate::budgets::Budgets::of(config);
         let inputs = Inputs::read(history, &budgets, first_hour, now_hour + 1)?;
@@ -302,6 +317,7 @@ impl Picture {
             waste_before,
             work,
             rebuilt_today,
+            rebuilt: kept.rebuilt(history, &zone, now)?,
             roots: roots(&quests),
             titles: quests
                 .iter()
@@ -587,6 +603,39 @@ fn read_said(history: &History, now: f64) -> Result<Vec<(String, String)>, Strin
         .map_err(fail)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(fail)
+}
+
+/// The first hour anything was spent in, by pi's logs or a bill, or now's
+/// when nothing was.
+fn first_hour(history: &History, now: f64) -> Result<i64, String> {
+    Ok(history
+        .db
+        .query_row(
+            "SELECT MIN(h) FROM
+             (SELECT MIN(hour) AS h FROM turns UNION ALL SELECT MIN(hour) FROM billed)",
+            [],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .map_err(fail)?
+        .unwrap_or(crate::time::hour_of(now)))
+}
+
+/// The share of each period's spend that went on rebuilding context, by
+/// the period's id, counted as `waste` counts it, for those that spent.
+fn rebuilt_shares(
+    history: &History,
+    zone: &Zone,
+    now: f64,
+) -> Result<BTreeMap<&'static str, f64>, String> {
+    let mut shares = BTreeMap::new();
+    for period in crate::report::Period::ALL {
+        let (from, to) = period.days(zone, now);
+        let end = zone.day_start(to + 1).min(now + 1.0);
+        if let Some(share) = waste::share(history, zone.day_start(from), end)? {
+            shares.insert(period.id(), share);
+        }
+    }
+    Ok(shares)
 }
 
 /// The share of each of the eight weeks before this one that was rebuilt

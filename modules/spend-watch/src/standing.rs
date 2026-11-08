@@ -105,13 +105,15 @@ pub struct Allowance {
 
 /// An allowance's facts in words, each empty where it isn't known: how
 /// long its window is, where it warns in its own unit, when it resets,
-/// whose reading it is and when that was taken, and what its feed says of
-/// it.
+/// when an override of it ends and how it last changed, whose reading it
+/// is and when that was taken, and what its feed says of it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct AllowanceSaid {
     pub window: String,
     pub warns: String,
     pub resets: String,
+    pub ends: String,
+    pub changed: String,
     pub read: String,
     pub state: String,
 }
@@ -485,6 +487,8 @@ fn allowance(picture: &Picture, config: &Config, view: &CapView) -> Allowance {
         window: window_length(cap.window_hours),
         warns: warns(cap.unit, cap.allowance, cap.warn),
         resets: view.resets.map_or_else(String::new, clock),
+        ends: override_ends(cap),
+        changed: last_changed(picture, cap),
         read: if fed {
             format!("{from} at {}", clock(cap.at))
         } else {
@@ -513,6 +517,46 @@ fn allowance(picture: &Picture, config: &Config, view: &CapView) -> Allowance {
         nearest,
         said,
     }
+}
+
+/// The day an override of an allowance ends, a qualifier after a dot when
+/// its feed didn't say and it's guessed (VKCF3Z, 2026-11-07).
+fn override_ends(cap: &crate::caps::Cap) -> String {
+    cap.ends.map_or_else(String::new, |day| {
+        let said = Zone::day_name(day);
+        if cap.ends_known {
+            said
+        } else {
+            format!("{said} \u{b7} a guess")
+        }
+    })
+}
+
+/// How an allowance last changed, what changed leading and when after it:
+/// "raised $30,000 to $40,000 \u{b7} Thu 11:31" (VKCF3Z, 2026-11-07).
+/// A change of state isn't a change of the allowance, so it's not one.
+fn last_changed(picture: &Picture, cap: &crate::caps::Cap) -> String {
+    let limit = |amount: Option<f64>| amount.map_or_else(|| "no limit".to_owned(), whole);
+    picture
+        .events
+        .iter()
+        .filter(|event| {
+            event.feed == cap.feed
+                && event.budget == cap.budget
+                && event.name == cap.name
+                && matches!(event.kind.as_str(), "lowered" | "raised" | "lapsed")
+                && event.before != event.after
+        })
+        .max_by(|one, other| one.at.total_cmp(&other.at))
+        .map_or_else(String::new, |event| {
+            format!(
+                "{} {} to {} \u{b7} {}",
+                event.kind,
+                limit(event.before),
+                limit(event.after),
+                picture.zone.clock(event.at, picture.now)
+            )
+        })
 }
 
 /// How long a window is, as a person says it: "5 hours", "a day", "a
@@ -792,7 +836,7 @@ mod tests {
             five["said"],
             serde_json::json!({
                 "window": "5 hours", "warns": "at 80%", "resets": "16:20",
-                "read": "Claude at 14:20", "state": ""
+                "ends": "", "changed": "", "read": "Claude at 14:20", "state": ""
             })
         );
         // The week has no reading yet, so no standing, but it still says
@@ -817,6 +861,42 @@ mod tests {
             "$18,400 today \u{b7} $18,400 in 7 days \u{b7} $18,400 this month"
         );
         assert_eq!(proxy["said"]["worth"], "");
+    }
+
+    // An override's end and an allowance's last change are said where
+    // its feed gives them, what changed first and when after a dot; a
+    // change of state isn't a change of the allowance.
+    #[test]
+    fn an_allowance_says_how_it_last_changed() {
+        let config = config();
+        let mut picture = Picture::read(&history(), &config, NOW).unwrap();
+        let tomorrow = picture.zone.day(NOW) + 1;
+        let view = picture
+            .caps
+            .iter_mut()
+            .find(|view| view.cap.name == "five-hours")
+            .unwrap();
+        view.cap.ends = Some(tomorrow);
+        view.cap.ends_known = false;
+        let event = |kind: &str, at: f64, before: f64, after: f64| crate::caps::Event {
+            feed: view.cap.feed.clone(),
+            budget: view.cap.budget.clone(),
+            name: view.cap.name.clone(),
+            at,
+            kind: kind.to_owned(),
+            before: Some(before),
+            after: Some(after),
+            spent: 0.0,
+        };
+        let events = vec![
+            event("lowered", NOW - 7200.0, 20_000.0, 15_000.0),
+            event("raised", NOW - 3600.0, 15_000.0, 20_000.0),
+            event("refused", NOW - 60.0, 20_000.0, 20_000.0),
+        ];
+        picture.events = events;
+        let said = &standing(&picture, &config, None).budgets[0].allowances[0].said;
+        assert_eq!(said.ends, "Thu 15 Oct \u{b7} a guess");
+        assert_eq!(said.changed, "raised $15,000 to $20,000 \u{b7} 13:30");
     }
 
     // A feed's state and a source's health read as words, saying nothing

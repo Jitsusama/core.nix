@@ -74,6 +74,43 @@ pub struct Line {
     /// What else the right arrow steps into.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<Line>,
+    /// The budget or window whose drawer tells it whole, by its key in
+    /// budgets.json, so a cap's row and its window's open one drawer.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub budget: String,
+    /// What its drawer says that its row and footer can't: a period's days
+    /// and facts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drawn: Option<Drawn>,
+}
+
+/// A drawer's words, every one ready to draw: what it's of, above its
+/// title, and its facts in order.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Drawn {
+    pub eyebrow: String,
+    pub facts: Vec<Fact>,
+}
+
+/// One of a drawer's facts: the vocabulary's id for its name (`spend:` and
+/// it, in the launcher's words), what it says, and whether that's words
+/// rather than a name or a figure, so it's set in the words face.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Fact {
+    pub id: String,
+    pub value: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub words: bool,
+}
+
+impl Fact {
+    fn of(id: impl Into<String>, value: impl Into<String>, words: bool) -> Fact {
+        Fact {
+            id: id.into(),
+            value: value.into(),
+            words,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -160,6 +197,8 @@ fn line(key: impl Into<String>, name: impl Into<String>, side: impl Into<String>
         expect: None,
         report: String::new(),
         rows: Vec::new(),
+        budget: String::new(),
+        drawn: None,
     }
 }
 
@@ -276,13 +315,13 @@ fn cut_line(id: &str, cut: Cut, report: &Report) -> Option<Line> {
     Some(made)
 }
 
-/// A period's row: its spend beside it, where that came from below, and
-/// its cuts behind it.
+/// A period's row: its spend beside it, where that came from below, its
+/// cuts behind it, and its drawer.
 fn period_line(
+    picture: &Picture,
     period: Period,
     reports: &BTreeMap<String, (Report, Shown)>,
-    side: String,
-    note: String,
+    (side, note): (String, String),
 ) -> Line {
     let mut made = line(
         format!("period:{}", period.id()),
@@ -301,7 +340,117 @@ fn period_line(
             cut_line(&id, cut, &reports.get(&id)?.0)
         })
         .collect();
+    made.drawn = Some(period_drawn(picture, period, reports, false));
     made
+}
+
+/// A period's drawer: its days above its name, then how the day is likely
+/// to end while it runs, where its figure was read from, what went on
+/// rebuilding context, and the largest of each of its cuts (VKCF3Z,
+/// 2026-11-07). Quiet, while the screen is shared, it says no amount and
+/// keeps the shares.
+fn period_drawn(
+    picture: &Picture,
+    period: Period,
+    reports: &BTreeMap<String, (Report, Shown)>,
+    quiet: bool,
+) -> Drawn {
+    let (from, to) = period.days(&picture.zone, picture.now);
+    let pieces = picture.between(from, to);
+    let mut facts = Vec::new();
+    let ends = if period == Period::Today && !quiet {
+        picture.today_ahead()
+    } else {
+        None
+    };
+    if let Some((low, mid, high)) = ends {
+        let likely = likely(low, high);
+        facts.push(Fact::of(
+            "ends",
+            format!("{} \u{b7} {likely}", whole(mid)),
+            false,
+        ));
+    }
+    let read = read_from(pieces);
+    if !read.is_empty() {
+        facts.push(Fact::of("from", read, true));
+    }
+    if let Some(share) = picture
+        .rebuilt
+        .get(period.id())
+        .filter(|share| **share >= 0.005)
+    {
+        let spent = dollars(share * series::total(pieces));
+        let said = if quiet {
+            percent(*share)
+        } else {
+            format!("{spent} \u{b7} {}", percent(*share))
+        };
+        facts.push(Fact::of("rebuilding", said, false));
+    }
+    facts.extend(cuts_for(period).filter_map(|cut| {
+        let (report, _) = reports.get(&format!("{}/{}", period.id(), cut.id()))?;
+        most(cut, report)
+    }));
+    // The eyebrow is where, its days, then what kind of thing it is, as
+    // every drawer's is (VKCF3Z, 2026-11-08).
+    Drawn {
+        eyebrow: joined(&[&days_of(picture, period), period.kind()]),
+        facts,
+    }
+}
+
+/// The largest of a period's cut, by its share: "all" when it's the only
+/// one, rather than a hundred percent. A quest's title, a day and a
+/// budget's name are words; a model's, a repo's and the rest are names.
+fn most(cut: Cut, report: &Report) -> Option<Fact> {
+    let top = report.rows.first()?;
+    let count = report.rows.len() + report.rest.map_or(0, |(count, _)| count);
+    let share = if count == 1 {
+        "all".to_owned()
+    } else {
+        percent(top.share)
+    };
+    let words = matches!(cut, Cut::Quest | Cut::Day | Cut::Budget);
+    Some(Fact::of(
+        format!("most-{}", cut.id()),
+        format!("{} \u{b7} {share}", top.name),
+        words,
+    ))
+}
+
+/// A period's days as a person says them: one day, or its first to its
+/// last.
+fn days_of(picture: &Picture, period: Period) -> String {
+    let (from, to) = period.days(&picture.zone, picture.now);
+    if from == to {
+        Zone::day_name(from)
+    } else {
+        format!("{} to {}", Zone::day_name(from), Zone::day_name(to))
+    }
+}
+
+/// Where a period's figure was read from, each kind of source it holds:
+/// a feed's bill, pi's logs where the bill hasn't come, and pi's logs at
+/// list prices where there's no bill at all. Nothing spent, nothing said.
+fn read_from(pieces: &[series::Piece]) -> String {
+    let held = |sources: &[Source]| {
+        pieces
+            .iter()
+            .any(|piece| piece.dollars > 0.005 && sources.contains(&piece.source))
+    };
+    let billed = held(&[Source::Warehouse, Source::Meter]);
+    let estimated = match (held(&[Source::Estimated]), billed) {
+        (false, _) => "",
+        (true, true) => "pi's logs where it hasn't come",
+        (true, false) => "pi's logs where the bill hasn't come",
+    };
+    let list = if held(&[Source::List]) {
+        "pi's logs at list prices"
+    } else {
+        ""
+    };
+    joined(&[if billed { "the bill" } else { "" }, estimated, list])
 }
 
 /// How a period's spend reads, and where it came from.
@@ -329,35 +478,26 @@ fn window(hours: u32) -> String {
 fn cap_line(picture: &Picture, view: &CapView, sign_ins: Vec<Line>) -> Line {
     let cap = &view.cap;
     let now = picture.now;
+    // Its side is its share alone, as a window's is, since its drawer's
+    // Standing says it in dollars (VKCF3Z, 2026-11-08).
     let side = match (view.used, cap.allowance) {
-        (Some(used), _) => format!("{} used", percent(used)),
-        (None, Some(allowance)) => format!(
-            "{} of {}",
-            percent(view.spent / allowance),
-            whole(allowance)
-        ),
+        (Some(used), _) => percent(used),
+        (None, Some(allowance)) => percent(view.spent / allowance),
         (None, None) => format!("{} spent", whole(view.spent)),
     };
     let mut made = line(format!("cap:{}", cap.name), capitalized(&cap.label), side);
-    let counted = match (view.used, view.resets) {
-        (Some(_), Some(at)) => format!("resets {}", picture.zone.clock(at, now)),
+    made.budget = window_key(view);
+    // A cap is a window reached from another row, so it wears a window's
+    // mark, and its note keeps only what its window's drawer lacks: when
+    // it resets and when an override ends are said once, there (VKCF3Z,
+    // 2026-11-08).
+    CLOCK.clone_into(&mut made.mark);
+    made.note = match (view.used, view.resets) {
+        (Some(_), Some(_)) => String::new(),
         (Some(_), None) => format!("of {}", window(cap.window_hours)),
-        (None, Some(at)) => format!(
-            "{} spent, resets {}",
-            whole(view.spent),
-            picture.zone.clock(at, now)
-        ),
+        (None, Some(_)) => format!("{} spent", whole(view.spent)),
         (None, None) => format!("{} in {}", whole(view.spent), window(cap.window_hours)),
     };
-    let ends = cap.ends.map(|day| {
-        let said = format!("override ends {}", Zone::day_name(day));
-        if cap.ends_known {
-            said
-        } else {
-            format!("{said}, a guess")
-        }
-    });
-    made.note = joined(&[&counted, ends.as_deref().unwrap_or("")]);
     made.copy = report::cap_line(picture, view);
     let mut events: Vec<&crate::caps::Event> = picture
         .events
@@ -405,6 +545,12 @@ fn cap_line(picture: &Picture, view: &CapView, sign_ins: Vec<Line>) -> Line {
         .chain(sign_ins)
         .collect();
     made
+}
+
+/// The key in budgets.json of the window a cap is, so its row opens the
+/// drawer its window's row under Budgets does.
+fn window_key(view: &CapView) -> String {
+    format!("budget:{}:{}", view.budget, view.cap.name)
 }
 
 /// The sign-ins a feed offers for sources it can do without, each to sit
@@ -617,6 +763,7 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         budget.label.clone(),
         budget.standing.clone(),
     );
+    made.key.clone_into(&mut made.budget);
     let default = if budget.default { "the default" } else { "" };
     let resets = match budget.allowances.as_slice() {
         [one] => allowance_reset(picture, one),
@@ -660,6 +807,7 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
                 // A window's row says its standing alone: when it resets
                 // is its drawer's, so no fact there repeats the row
                 // (VKCF3Z, 2026-11-08).
+                row.key.clone_into(&mut row.budget);
                 row.role = allowance_role(Some(allowance)).into();
                 CLOCK.clone_into(&mut row.mark);
                 opens_record(picture, &budget.name, allowance, &mut row);
@@ -749,10 +897,13 @@ fn now(
         )
     });
     let mut made = period_line(
+        picture,
         Period::Today,
         reports,
-        joined(&[&today, word]),
-        joined(&[ends.as_deref().unwrap_or(""), today_basis]),
+        (
+            joined(&[&today, word]),
+            joined(&[ends.as_deref().unwrap_or(""), today_basis]),
+        ),
     );
     // What's copied leads the answer to "spend" too, so it says only the
     // likeliest end of the day; its range is in the footer.
@@ -797,13 +948,9 @@ fn now(
         .iter()
         .map(|period| {
             let (figure, basis) = figure_of(picture, *period);
-            let (from, to) = period.days(&picture.zone, picture.now);
-            let days = if from == to {
-                Zone::day_name(from)
-            } else {
-                format!("{} to {}", Zone::day_name(from), Zone::day_name(to))
-            };
-            let mut made = period_line(*period, reports, figure, joined(&[&days, basis]));
+            let days = days_of(picture, *period);
+            let note = joined(&[&days, basis]);
+            let mut made = period_line(picture, *period, reports, (figure, note));
             // A month's quests are better told with how each turned out.
             if *period == Period::Days30
                 && let Some(quest) = made
@@ -873,7 +1020,7 @@ pub fn collection(
         now,
         findings: findings.iter().map(finding_line).collect(),
         more,
-        quiet: quiet(picture, findings),
+        quiet: quiet(picture, &reports, findings),
         reports: reports
             .into_iter()
             .map(|(id, (_, shown))| (id, shown))
@@ -911,8 +1058,13 @@ pub fn collection(
 
 /// The first screen's rows, since nothing is behind a quiet one: today's
 /// standing, each window longer than a day, then the findings, where a
-/// day's cap that matters is.
-fn quiet(picture: &Picture, findings: &[Finding]) -> Vec<Line> {
+/// day's cap that matters is. Today's drawer and a window's say what they
+/// can without an amount.
+fn quiet(
+    picture: &Picture,
+    reports: &BTreeMap<String, (Report, Shown)>,
+    findings: &[Finding],
+) -> Vec<Line> {
     let mut today = line(
         "quiet:today",
         "Today",
@@ -923,6 +1075,7 @@ fn quiet(picture: &Picture, findings: &[Finding]) -> Vec<Line> {
         },
     );
     today.note = "amounts are hidden while the screen is shared".into();
+    today.drawn = Some(period_drawn(picture, Period::Today, reports, true));
     let mut quiet = vec![today];
     for view in widest_first(&picture.caps) {
         if view.cap.window_hours <= 24 {
@@ -932,11 +1085,13 @@ fn quiet(picture: &Picture, findings: &[Finding]) -> Vec<Line> {
             .used
             .or_else(|| view.cap.allowance.map(|allowance| view.spent / allowance));
         if let Some(share) = share {
-            quiet.push(line(
+            let mut made = line(
                 format!("quiet:cap:{}", view.cap.name),
                 capitalized(&view.cap.label),
                 percent(share),
-            ));
+            );
+            made.budget = window_key(view);
+            quiet.push(made);
         }
     }
     quiet.extend(findings.iter().map(quiet_finding));
@@ -1189,8 +1344,11 @@ mod tests {
         assert!(collected.more.len() <= 2, "{:?}", collected.more);
         // The cap's figure is its share; its dollars are in the footer.
         let weekly = &collected.now[1];
-        assert!(weekly.side.ends_with("of $4,000"), "{weekly:?}");
-        assert!(weekly.note.contains("the last 7 days"), "{weekly:?}");
+        assert!(weekly.side.ends_with('%'), "{weekly:?}");
+        // Its note says its spend alone, and it wears a window's clock: when
+        // it resets or an override ends is its window's drawer's to say.
+        assert!(weekly.note.ends_with("in the last 7 days"), "{weekly:?}");
+        assert_eq!(weekly.mark, "clock");
         // The week ahead is behind it, then its change, and the optional
         // sign-in too.
         let behind: Vec<&str> = weekly.rows.iter().map(|row| row.name.as_str()).collect();
@@ -1703,12 +1861,120 @@ mod tests {
     // While the screen is shared nothing says an amount, at any depth.
     #[test]
     fn a_shared_screen_shows_no_amount() {
-        let (collected, _) = collected();
+        let collected = rebuilding();
         assert!(collected.quiet.len() >= 3, "{:?}", collected.quiet);
         for line in every(&collected.quiet) {
-            for said in [&line.name, &line.side, &line.note, &line.copy] {
+            // A drawer's words too, the eyebrow and every fact.
+            let drawn = line.drawn.iter().flat_map(|drawn| {
+                std::iter::once(&drawn.eyebrow).chain(drawn.facts.iter().map(|fact| &fact.value))
+            });
+            for said in [&line.name, &line.side, &line.note, &line.copy]
+                .into_iter()
+                .chain(drawn)
+            {
                 assert!(!said.contains('$'), "{said}");
             }
         }
+        // Today's drawer keeps what went on rebuilding context as a share.
+        let today = collected.quiet[0].drawn.as_ref().unwrap();
+        assert!(
+            today.facts.iter().any(|fact| fact.id == "rebuilding"),
+            "{today:?}"
+        );
+    }
+
+    // A period's drawer says its days above it, then where its figure was
+    // read from, what rebuilding context took and its share, and the
+    // largest of each cut, "all" for the only one; a cap's row opens its
+    // window's drawer in budgets.json.
+    #[test]
+    fn a_period_and_a_cap_open_a_drawer() {
+        let collected = rebuilding();
+        let today = &collected.now[0];
+        let drawn = today.drawn.as_ref().unwrap();
+        // How the day is likely to end comes first, while there's a
+        // forecast to say it.
+        let facts: Vec<(&str, &str, bool)> = drawn
+            .facts
+            .iter()
+            .map(|fact| (fact.id.as_str(), fact.value.as_str(), fact.words))
+            .skip_while(|(id, _, _)| *id == "ends")
+            .collect();
+        assert_eq!(drawn.eyebrow, "Wed 14 Oct \u{b7} day");
+        let ids: Vec<&str> = facts.iter().map(|(id, _, _)| *id).collect();
+        assert!(ids.starts_with(&["from", "rebuilding"]), "{ids:?}");
+        assert!(ids.contains(&"most-model"), "{ids:?}");
+        assert!(
+            !ids.contains(&"most-day"),
+            "a day has no days to cut by: {ids:?}"
+        );
+        assert_eq!(facts[0].1, "the bill");
+        assert!(facts[0].2, "where it was read from is words");
+        let (_, rebuilt, _) = facts[1];
+        assert!(
+            rebuilt.starts_with('$') && rebuilt.ends_with(" \u{b7} 6%"),
+            "{rebuilt}"
+        );
+        let week = collected
+            .now
+            .iter()
+            .find(|line| line.key == "period:this-week")
+            .unwrap();
+        let days = week.drawn.as_ref().unwrap();
+        assert_eq!(days.eyebrow, "Mon 12 Oct to Wed 14 Oct \u{b7} week");
+        assert!(
+            days.facts
+                .iter()
+                .any(|fact| fact.id == "most-day" && fact.words)
+        );
+        let cap = every(&collected.now)
+            .into_iter()
+            .find(|line| line.key.starts_with("cap:"))
+            .unwrap();
+        assert!(cap.budget.starts_with("budget:"), "{}", cap.budget);
+    }
+
+    /// The busy collection, with today's and this week's spend partly
+    /// gone on rebuilding context, which its billed hours can't say.
+    fn rebuilding() -> Collection {
+        let (history, config) = (busy(), config());
+        let mut picture = Picture::read(&history, &config, NOW).unwrap();
+        picture.rebuilt.insert("today", 0.06);
+        picture.rebuilt.insert("this-week", 0.05);
+        let found = crate::detect::all(&picture, &history, &config).unwrap();
+        collection(&picture, &found, &config)
+    }
+
+    // The largest of a cut is said with its share, or "all" when it's the
+    // only one.
+    #[test]
+    fn the_most_of_a_cut_says_its_share() {
+        let row = |name: &str, share: f64| report::Row {
+            name: name.to_owned(),
+            dollars: 1.0,
+            share,
+            shown: String::new(),
+            estimated: false,
+        };
+        let mut cut = report::Report {
+            title: String::new(),
+            period: String::new(),
+            from: String::new(),
+            to: String::new(),
+            total: 1.0,
+            shown: String::new(),
+            source: String::new(),
+            rows: vec![row("claude-opus-5-5", 1.0)],
+            notes: Vec::new(),
+            rest: None,
+        };
+        assert_eq!(
+            most(Cut::Model, &cut).map(|fact| fact.value),
+            Some("claude-opus-5-5 \u{b7} all".to_owned())
+        );
+        cut.rows = vec![row("Build the shell", 0.31), row("Another", 0.2)];
+        let quest = most(Cut::Quest, &cut).unwrap();
+        assert_eq!(quest.value, "Build the shell \u{b7} 31%");
+        assert!(quest.words && quest.id == "most-quest");
     }
 }
