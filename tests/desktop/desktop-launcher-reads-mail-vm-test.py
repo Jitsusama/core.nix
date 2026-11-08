@@ -913,11 +913,14 @@ def drive_holds_its_places(desktop: Desktop, opened: str, closed: str) -> None:
     # Drive's Recent holds every kind, the menu he opened last first, each
     # the one row a Drive file is, so the documents are the rows Docs' are.
     into_drive(desktop)
+    desktop.launcher_until(lambda shown: "Starred" in shown["rows"])
+    desktop.shoot("launcher-drive-program")
     desktop.type_in("recent", selecting="Recent")
     desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["menu.pdf", "Quarterly Plan", "Team Budget"]
     )
+    desktop.shoot("launcher-drive-recent")
     menu = desktop.showing()["selected"]
     assert menu["is"] == "gdoc:menu", menu
     assert re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", menu["side"]), menu
