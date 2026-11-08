@@ -907,6 +907,8 @@ guarded = true
 
 # Signed in to a network by an account, over the way it names, as :signin
 # peap, Sign In being the glossary's word; the account typed was the asking.
+# On a password manager's program row it's Let the Launcher In, which asks
+# the manager to let Passwords in, as Sign In does a program signed out.
 # Its short form clears Neovim's :sign.
 [acts.signin]
 command = "signin"

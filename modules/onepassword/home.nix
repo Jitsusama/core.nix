@@ -9,6 +9,24 @@
 # would, so its command-line tool and Chrome's extension find it after a
 # boot. There, 1Password is also a password manager of Passwords
 # (../passwords), read through its command-line tool by manager/.
+#
+# Where the system has op, zsh completes it with op's own completion, as
+# `op completion zsh` printed it when nixpkgs built the op the system
+# wraps: a file of op's package, so nothing runs op to make it, here or on
+# the machine. The system's profile links it too, but only where the
+# system links zsh's files; given here, it comes with op wherever op does,
+# and its build fails if a release stops shipping it. It's cobra's: each
+# Tab runs `op __complete` for what to offer.
+#
+# 1Password's shell plugins are left out. Each is made by `op plugin init
+# <tool>`, which asks 1Password which item holds the tool's credentials
+# and writes the answer, naming that item, to ~/.config/op/plugins/, with
+# an alias that runs the tool through `op plugin run` in plugins.sh beside
+# it. That file is op's own state, chosen in op's prompt, which no module
+# may write; the aliases alone would have each tool stop on its every run
+# to ask in the terminal which item to use, with 1Password asking Joel to
+# let op in; and they'd put op before tools that sign in on their own
+# today, gh among them.
 { passwords }:
 {
   lib,
@@ -18,10 +36,17 @@
 }:
 let
   app = osConfig.programs._1password-gui or { };
+  cli = osConfig.programs._1password or { };
   # 1Password's command-line tool as the system wraps it, in the group
   # 1Password's app trusts to ask it (nixos.nix).
   op = "${osConfig.security.wrapperDir or "/run/wrappers/bin"}/op";
   manager = pkgs.callPackage ./manager/package.nix { };
+  # op's completion, as op's package has it.
+  opCompletion = pkgs.runCommandLocal "op-zsh-completion" { } ''
+    install -D -m 444 ${cli.package}/share/zsh/site-functions/_op \
+      $out/share/zsh/site-functions/_op
+    grep -q '^#compdef op$' $out/share/zsh/site-functions/_op
+  '';
 
   grouped = group: map (key: key // { inherit group; });
 
@@ -116,6 +141,8 @@ in
   ];
 
   jitsusama.keys.onepassword = keys;
+
+  home.packages = lib.optional (cli.enable or false) opCompletion;
 
   # The first password manager, wherever the system has 1Password's app
   # and the command-line tool that asks it.

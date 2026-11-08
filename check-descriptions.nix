@@ -1033,6 +1033,9 @@
   onepassword-answers-op = ''
     1Password's command-line tool, op, runs setgid in the onepassword-cli group, so the app answers it
   '';
+  onepassword-brings-ops-zsh-completion = ''
+    the account's zsh is given op's own completion, the file the op the system wraps was built with
+  '';
   onepassword-manager-passes-clippy = ''
     clippy finds nothing in 1Password's manager for Passwords or its tests
   '';
@@ -1058,12 +1061,25 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
+  passwords-completes-in-zsh = ''
+    passwords completes in zsh with its commands, each entry the daemon holds by its title, a held
+    entry's details by their labels, each password manager and --json, and no Tab asks a password
+    manager anything
+  '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
-    given with its secrets on, gives a secret only to the client that asked to see it or to the
-    clipboard marked sensitive and cleared when its time is up, says a one-time code's period, says
-    a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and
-    refuses an ask or a kind it doesn't know
+    given with its secrets on, answers a held list or get without asking a manager, gives a secret
+    only to the client that asked to see it or to the clipboard marked sensitive and cleared when
+    its time is up, says a one-time code's period, says a manager signed out and gives no secret
+    from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    and the passwords command sets each answer in columns under a header for a person and
+    tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
+    finds an entry by its title and a detail by its label, and exits as its usage says
+  '';
+  passwords-lists-1passwords-ssh-keys = ''
+    passwords keys lists the keys an SSH agent holds at 1Password's socket, each by its type, size,
+    fingerprint, comment and public half, as rows and as JSON, nothing for an agent holding none,
+    and says how to turn the agent on when none listens, against a stand-in agent alone
   '';
   passwords-passes-clippy = ''
     clippy finds nothing in the passwords daemon or its tests

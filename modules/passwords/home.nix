@@ -13,6 +13,12 @@
 # command that asks it. A secret goes from its manager only to whoever
 # asked to see it, or to the clipboard, marked sensitive and cleared after
 # 90 seconds; nothing here or there keeps one.
+#
+# `passwords` completes in zsh with the completion it writes itself
+# (completion.nix), which offers the entries and details the daemon holds
+# and never asks a manager anything, so a Tab can't make 1Password ask
+# Joel to let it in. `passwords help` says each command, what it prints
+# for a person and for a program, and its exit statuses.
 { quickshell }:
 {
   config,
@@ -78,7 +84,10 @@ in
   };
 
   config = lib.mkIf (managers != [ ]) {
-    home.packages = [ passwords ];
+    home.packages = [
+      passwords
+      (pkgs.callPackage ./completion.nix { })
+    ];
 
     # After Slack's program, before Search Slack, among the programs' own.
     jitsusama.quickshell.launcher.providers.passwords = {

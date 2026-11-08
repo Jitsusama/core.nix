@@ -1,174 +1,18 @@
 //! The daemon over its socket, with stand-in password managers of its own:
 //! a list holds every entry without a secret, even one a manager gives
 //! with its secrets left on; a get reads an entry in full, still without
-//! them; a secret goes only to the client that asked to see it, or to the
-//! clipboard, cleared when its time is up; a one-time code says its
-//! period; a manager signed out is said so and refuses a secret; a watch
-//! hears entries arrive; and an ask or kind it doesn't know is refused.
+//! them; a held list or get asks no manager anything; a secret goes only
+//! to the client that asked to see it, or to the clipboard, cleared when
+//! its time is up; a one-time code says its period; a manager signed out
+//! is said so and refuses a secret; a watch hears entries arrive; and an
+//! ask or kind it doesn't know is refused.
 
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+mod common;
 
+use std::path::Path;
+
+use common::{KEEPING, Running, SIGNED_OUT, until};
 use serde_json::{Value, json};
-
-/// A manager on the line protocol, in the shell the tests run in: it
-/// answers at once, knows GitHub, a bank card and a note, gives GitHub in
-/// full with its password and one-time seed left on, as op does, and
-/// logs each ask.
-const KEEPING: &str = r#"
-log=$1
-echo '{"state":"answering"}'
-while read -r line; do
-  printf '%s\n' "$line" >> "$log"
-  [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
-  [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
-  case $ask in
-    list) printf '{"id":%s,"entries":[%s,%s,%s]}\n' "$id" \
-      '{"id":"gh","title":"GitHub","category":"login","version":1,"username":"ada","websites":[{"address":"https://github.com"}]}' \
-      '{"id":"card","title":"Bank Card","category":"card","version":1}' \
-      '{"id":"note","title":"Door Codes","category":"note","version":1,"tags":["home"]}' ;;
-    get) printf '{"id":%s,"entry":%s}\n' "$id" \
-      '{"id":"gh","title":"GitHub","category":"login","version":1,"details":[{"id":"username","label":"username","type":"text","purpose":"username","value":"ada"},{"id":"password","label":"password","type":"hidden","purpose":"password","value":"hunter2"},{"id":"otp","label":"one-time password","type":"code","value":"otpauth://totp/x?secret=SEED"}]}' ;;
-    reveal) printf '{"id":%s,"value":"hunter2"}\n' "$id" ;;
-    code) printf '{"id":%s,"code":"123456","period":30,"left":12}\n' "$id" ;;
-    let-in) printf '{"id":%s}\n' "$id" ;;
-  esac
-done
-"#;
-
-/// A manager that hasn't been let in, as 1Password's is until Joel
-/// approves it: signed out, refusing everything.
-const SIGNED_OUT: &str = r#"
-echo '{"state":"signed-out","reason":"Let the launcher in"}'
-while read -r line; do
-  [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
-  printf '{"id":%s,"error":{"code":"signed-out","message":"Let the launcher in"}}\n' "$id"
-done
-"#;
-
-/// A stand-in for wl-copy in the foreground: what it's given goes to its
-/// file, and it holds on until it's ended, as wl-copy holds the clipboard.
-const COPIER: &str = r#"
-cat > "$COPIED"
-printf '%s\n' "$*" > "$COPIED.flags"
-while :; do sleep 1; done
-"#;
-
-/// The daemon, running with these managers, and where its test keeps
-/// what each manager logged.
-struct Running {
-    daemon: Child,
-    socket: PathBuf,
-    folder: PathBuf,
-}
-
-impl Running {
-    fn with(test: &str, managers: &[(&str, &str)]) -> Running {
-        let folder = std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        std::fs::create_dir_all(&folder).unwrap();
-        let shell = std::env::var("BASH").unwrap_or_else(|_| "bash".to_owned());
-        let listed: Vec<Value> = managers
-            .iter()
-            .map(|(name, script)| {
-                let log = folder.join(format!("{name}.log"));
-                json!({"name": name, "command": [shell, "-c", script, name, log]})
-            })
-            .collect();
-        let managers_file = folder.join("managers.json");
-        std::fs::write(&managers_file, json!({"managers": listed}).to_string()).unwrap();
-        let copier = folder.join("copier");
-        // Run as wl-copy is, by its path alone, so it names its own shell;
-        // it needs nothing past POSIX sh, which Nix's build sandbox has too.
-        std::fs::write(&copier, format!("#!/bin/sh\n{COPIER}")).unwrap();
-        std::fs::set_permissions(&copier, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
-        let socket = folder.join("daemons/passwords.sock");
-        let daemon = Command::new(env!("CARGO_BIN_EXE_passwords"))
-            .arg("daemon")
-            .arg(&socket)
-            .arg(&managers_file)
-            .env("PASSWORDS_COPIER", &copier)
-            .env("PASSWORDS_CLEARS_MS", "700")
-            .env("COPIED", folder.join("copied"))
-            .stdin(Stdio::null())
-            .spawn()
-            .unwrap();
-        let running = Running {
-            daemon,
-            socket,
-            folder,
-        };
-        until("the socket is there", || running.socket.exists());
-        running
-    }
-
-    fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(20)))
-            .unwrap();
-        Client {
-            reading: BufReader::new(stream.try_clone().unwrap()),
-            writing: stream,
-        }
-    }
-
-    fn copied(&self) -> PathBuf {
-        self.folder.join("copied")
-    }
-}
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        let _ = self.daemon.kill();
-        let _ = self.daemon.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
-    }
-}
-
-struct Client {
-    reading: BufReader<UnixStream>,
-    writing: UnixStream,
-}
-
-impl Client {
-    fn say(&mut self, asked: &Value) {
-        writeln!(self.writing, "{asked}").unwrap();
-    }
-
-    fn hear(&mut self) -> Value {
-        let mut line = String::new();
-        self.reading.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap_or_else(|_| panic!("not a line of JSON: {line:?}"))
-    }
-
-    /// Asks one thing and hears its answer, passing over any other.
-    fn ask(&mut self, asked: &Value) -> Value {
-        let id = asked["id"].clone();
-        self.say(asked);
-        loop {
-            let heard = self.hear();
-            if heard["id"] == id {
-                return heard;
-            }
-        }
-    }
-}
-
-fn until(what: &str, holds: impl Fn() -> bool) {
-    let started = Instant::now();
-    while !holds() {
-        assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "{what} never held"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
 
 fn keys(answer: &Value) -> Vec<String> {
     answer["records"]
@@ -215,12 +59,38 @@ fn a_list_holds_every_entry_and_no_secret() {
     holds_no_secret(&got);
     holds_no_secret(&client.ask(&json!({"id": 4, "ask": "list"})));
     // Once read, the list was asked of the manager just once.
-    let log = std::fs::read_to_string(running.folder.join("keeping.log")).unwrap();
+    let log = running.asked_of("keeping");
     assert_eq!(log.matches("\"list\"").count(), 1, "{log}");
     assert!(
         log.contains("\"asked\":true"),
         "Joel's key wasn't passed on: {log}"
     );
+}
+
+#[test]
+fn a_held_list_or_get_asks_no_manager_anything() {
+    let running = Running::with("held", &[("keeping", KEEPING)]);
+    let mut client = running.client();
+    until("the manager answers", || {
+        running.client().ask(&json!({"id": 0, "ask": "hello"}))["state"] == "answering"
+    });
+    // Nothing's been read, so nothing's held, and the manager isn't asked.
+    let held = client.ask(&json!({"id": 1, "ask": "list", "held": true}));
+    assert_eq!(held["records"], json!([]), "{held}");
+    let got = client.ask(&json!({"id": 2, "ask": "get", "keys": ["entry:keeping:gh"],
+                                 "held": true}));
+    assert_eq!(got["records"], json!([]), "{got}");
+    assert_eq!(running.asked_of("keeping"), "");
+    client.ask(&json!({"id": 3, "ask": "list", "asked": true}));
+    // Held in summary, it's answered so, and still nothing more is asked.
+    let got = client.ask(&json!({"id": 4, "ask": "get", "keys": ["entry:keeping:gh"],
+                                 "held": true}));
+    assert_eq!(got["records"][0]["title"], "GitHub");
+    assert!(got["records"][0].get("details").is_none(), "{got}");
+    let held = client.ask(&json!({"id": 5, "ask": "list", "held": true, "fresh": true}));
+    assert_eq!(keys(&held).len(), 3);
+    let log = running.asked_of("keeping");
+    assert_eq!(log.lines().count(), 1, "{log}");
 }
 
 #[test]
