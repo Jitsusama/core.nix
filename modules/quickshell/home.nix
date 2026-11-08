@@ -723,6 +723,16 @@ let
   # The program that keeps Joel's timers and rings them, for Timers.
   timers = pkgs.callPackage ./timers/package.nix { };
   keepsTimers = launcher.providers.timers.enable or false;
+  # What a timer coming due is heard with: pi's loud, low, dog-safe ding
+  # where the machine has pi (modules/pi/chime.nix), played by pw-play,
+  # quietly while a-call-is-on says a call is on. A machine without pi
+  # rings its timers as notices alone.
+  timerChime = config.jitsusama.pi.chime or null;
+  timerSound = lib.optionals (timerChime != null) [
+    timerChime.player
+    timerChime.ding
+    (lib.getExe (pkgs.callPackage ../calls/package.nix { }))
+  ];
   # What a timer's notice says, from the launcher's vocabulary, so a word
   # is said in one place.
   timerWords =
@@ -2187,7 +2197,15 @@ in
       };
       Service = {
         StateDirectory = "timers";
-        ExecStart = "${lib.getExe timers} %t/daemons/timers.sock %S/timers/held.json ${timerWords}";
+        ExecStart = lib.concatStringsSep " " (
+          [
+            (lib.getExe timers)
+            "%t/daemons/timers.sock"
+            "%S/timers/held.json"
+            "${timerWords}"
+          ]
+          ++ timerSound
+        );
         Restart = "on-failure";
         RestartSec = 1;
       };
