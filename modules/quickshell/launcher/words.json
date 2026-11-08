@@ -5865,7 +5865,8 @@
       "id": "on:lag",
       "in": "on",
       "said": {
-        "eyebrow": "on this machine \u00b7 lag"
+        "eyebrow": "on this machine \u00b7 lag",
+        "over": "{what} \u00b7 over the last {seconds} s"
       }
     },
     {

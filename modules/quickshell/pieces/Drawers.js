@@ -10,6 +10,9 @@
 
 const FIELD = /\{(\w+)\}/g;
 const SIGNIFICANT = 3;
+// A stall shorter than this share of lag-watch's window, in percent, is
+// too little to say, and gives way as none at all does (VKCF3Z, 2026-11-08).
+const LEAST = 0.1;
 // lag-watch says swap in mebibytes.
 const MEBIBYTE = 1_048_576;
 // The holders a disk's drawer names growing, the most first.
@@ -34,10 +37,9 @@ function drawn(facts) {
     return facts.filter(one => one.value.trim() !== "");
 }
 
-// A share in percent at three figures: 12.0%, 3.00%, 0%.
+// A share in percent at three figures: 12.0%, 3.00%, 0.500%.
 function percent(share) {
-    const value = Number(share) || 0;
-    return value === 0 ? "0%" : `${value.toPrecision(SIGNIFICANT)}%`;
+    return `${share.toPrecision(SIGNIFICANT)}%`;
 }
 
 // The disk short of room most, or the one Now names: how soon it's full and
@@ -93,19 +95,24 @@ function notices(missed, said) {
     };
 }
 
-// What lag-watch said of its last window: what has kept them waiting, how
-// long each slice stalled on each kind, the swap held, and its own
-// sentences of what counted as waiting.
+// What lag-watch said of its last window: what has kept them waiting, over
+// how long a window, which every share is of; how long each slice stalled
+// on each kind, as a share of it; the swap held; and its own sentences of
+// what counted as waiting.
 function lag(window, what, told) {
     const { named, said } = told;
+    const waiting = what === "" ? ""
+        : filled(said.over, { what, seconds: Math.round(Number(window.seconds) || 0) });
     const stalled = SLICES.filter(slice => window.stalls?.[slice])
-        .map(slice => fact(named, `on:lag:${slice}`, STALLS.map(([kind, word]) =>
-            `${word} ${percent(window.stalls[slice][`${kind}_some`])}`).join(" \u00b7 ")));
+        .map(slice => fact(named, `on:lag:${slice}`, STALLS
+            .map(([kind, word]) => [word, Number(window.stalls[slice][`${kind}_some`]) || 0])
+            .filter(([, share]) => share >= LEAST)
+            .map(([word, share]) => `${word} ${percent(share)}`).join(" \u00b7 ")));
     const swapped = Object.values(window.memory ?? {})
         .reduce((sum, group) => sum + (Number(group.swap_mib) || 0), 0);
     return {
         eyebrow: said.eyebrow,
-        facts: drawn([fact(named, "on:lag:waiting", what)].concat(stalled,
+        facts: drawn([fact(named, "on:lag:waiting", waiting)].concat(stalled,
             [fact(named, "on:lag:swap", swapped > 0 ? Program.memory(swapped * MEBIBYTE) : "")])),
         body: (window.trouble ?? []).join(" ")
     };

@@ -102,21 +102,30 @@ QtObject {
     }
 
     function lagged() {
-        const told = { named, said: { eyebrow: "on this machine \u00b7 lag" } };
+        const told = {
+            named,
+            said: {
+                eyebrow: "on this machine \u00b7 lag",
+                over: "{what} \u00b7 over the last {seconds} s"
+            }
+        };
         const window = {
+            seconds: 10.02,
             stalls: {
                 session: { cpu_some: 0, memory_some: 12.345, io_some: 3 },
-                app: { cpu_some: 41.06, memory_some: 0.5, io_some: 100 }
+                app: { cpu_some: 41.06, memory_some: 0.5, io_some: 100 },
+                jobs: { cpu_some: 0.04, memory_some: 0, io_some: 0 }
             },
             memory: { session: { swap_mib: 1024 }, app: { swap_mib: 120 } },
             trouble: ["Memory kept programs waiting.", "Swap is in use."]
         };
         const drawer = Drawers.lag(window, "memory", told);
-        expect("lag says what waits, each slice's stalls to three figures, the swap, its words",
+        expect("lag says what waits over what window, each slice's stalls to three figures,"
+            + " too little to say giving way, then the swap and its words",
             [drawer.eyebrow].concat(said(drawer), drawer.body), [
                 "on this machine \u00b7 lag",
-                "[on:lag:waiting] memory",
-                "[on:lag:session] processor 0% \u00b7 memory 12.3% \u00b7 disk 3.00%",
+                "[on:lag:waiting] memory \u00b7 over the last 10 s",
+                "[on:lag:session] memory 12.3% \u00b7 disk 3.00%",
                 "[on:lag:app] processor 41.1% \u00b7 memory 0.500% \u00b7 disk 100%",
                 "[on:lag:swap] 1.20 GB",
                 "Memory kept programs waiting. Swap is in use."
@@ -124,7 +133,7 @@ QtObject {
         expect("nothing waiting long and no swap says only the slices lag-watch watched",
             said(Drawers.lag({ stalls: { build: { cpu_some: 1, memory_some: 2, io_some: 0 } } },
                 "", told)),
-            ["[on:lag:build] processor 1.00% \u00b7 memory 2.00% \u00b7 disk 0%"]);
+            ["[on:lag:build] processor 1.00% \u00b7 memory 2.00%"]);
     }
 
     function shared() {
