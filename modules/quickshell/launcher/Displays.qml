@@ -478,9 +478,11 @@ Provider {
         if (light !== null) {
             facts.push({
                 label: partName("brightness"),
-                // A monitor following the panel has none of its steps.
-                value: inTheRoom(output) ? Plate.runs([`${light.share}%`, partSaid("", "steps")
-                    .replace("{now}", light.now).replace("{most}", light.most)])
+                // A monitor following the panel has none of its steps,
+                // and a hundred steps are its share again.
+                value: inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
+                    partSaid("", "steps").replace("{now}", light.now)
+                        .replace("{most}", light.most)])
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
