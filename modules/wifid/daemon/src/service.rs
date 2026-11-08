@@ -22,7 +22,7 @@ use zlink::introspect::{CustomType, Type};
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
-use crate::detail::{Best, Count, Detail, Joined, Point};
+use crate::detail::{Best, Count, Detail, Joined, Point, Way};
 use crate::radio::{Band, Load, Management, Protection};
 use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State, Trouble};
 
