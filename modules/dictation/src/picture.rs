@@ -267,7 +267,9 @@ mod tests {
     fn a_row_resized_is_what_pillow_makes_of_it() {
         // Grey rows resized across, against what Pillow 12's
         // `Image.resize((to, 1), Resampling.BILINEAR)` gave for each,
-        // which rounds to whole bytes where this keeps the fraction.
+        // which rounds to whole bytes where this keeps the fraction. A
+        // half may round either way in Pillow's fixed-point weights, and
+        // sits a float's error past a half here, so a hair more is allowed.
         let cases: [(&[u8], &[f32]); 4] = [
             (&[0, 255, 0, 255], &[109.0, 146.0]),
             (&[0, 50, 100, 150, 200, 250], &[19.0, 89.0, 161.0, 231.0]),
@@ -281,7 +283,7 @@ mod tests {
             assert!(
                 reds.iter()
                     .zip(pillow)
-                    .all(|(got, want)| (got - want).abs() <= 0.5),
+                    .all(|(got, want)| (got - want).abs() <= 0.501),
                 "{row:?} came to {reds:?}, where Pillow made {pillow:?}"
             );
         }
