@@ -1084,8 +1084,10 @@ in
     console = "a";
     means = "a credential for a service's API a password manager keeps";
   };
+  # The database with its lock, since the plain database is data's, how
+  # much there is, and this is a sign-in kept for one.
   database = {
-    glyph = nerd "f01bc";
+    glyph = nerd "f0aaa";
     console = "d";
     means = "a database's address and sign-in a password manager keeps";
   };
