@@ -273,9 +273,12 @@ Scope {
         const askedAll = Date.now();
         const listed = root.found.concat(stillActed(root.found));
         // An answer only there when nothing else is, as asking a model by a
-        // question's first word is, gives way to anything found.
+        // question's first word is, gives way to anything found. A thing
+        // found by its meaning is a guess below it, not a find: it comes
+        // late, and taking the answer away then would move the row above it.
         answer = said && said.fallback
-            && (listed.some(row => !row.category) || gathered.length > 0) ? null : said;
+            && (listed.some(row => !row.category && !row.byMeaning) || gathered.length > 0)
+            ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -291,7 +294,7 @@ Scope {
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
         // At home, every category is listed, to be browsed.
-        const things = new Set(listed.filter(row => !row.category)
+        const things = new Set(listed.filter(row => !row.category && !row.byMeaning)
             .map(row => Fuzzy.plainly(row.name)));
         const found = listed.filter(row => !row.category || atHome
             || !(things.has(Fuzzy.plainly(row.name)) || (answer && !answer.question)));
