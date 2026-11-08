@@ -434,20 +434,37 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
     wrapped(words, measure).join(&format!("\n{}", " ".repeat(lead)))
 }
 
-/// Words wrapped to `measure` cells at whole words, never parting what
-/// `held` keeps together; a piece longer than the measure stands on its
-/// own line, never broken.
+/// The mark parting a run's items, which a line may end on.
+const APART: &str = " \u{b7} ";
+
+/// Words wrapped to `measure` cells: a run gives way at its items first,
+/// each item's dot ending its line, and only an item too long for a line
+/// of its own breaks between its words, never parting what `held` keeps
+/// together (VKCF3Z, 2026-11-08). A piece longer than the measure stands
+/// on its own line, never broken.
 fn wrapped(words: &str, measure: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
-    for word in held(words) {
-        if !line.is_empty() && width(&line) + 1 + width(&word) > measure {
-            lines.push(std::mem::take(&mut line));
+    let items: Vec<&str> = words.split(APART).collect();
+    for (at, item) in items.iter().enumerate() {
+        let said = if at + 1 < items.len() {
+            format!("{} \u{b7}", item.trim())
+        } else {
+            item.trim().to_string()
+        };
+        let after = if line.is_empty() { 0 } else { width(&line) + 1 };
+        if after + width(&said) <= measure {
+            joined_to(&mut line, &said);
+        } else if width(&said) <= measure {
+            lines.push(std::mem::replace(&mut line, said));
+        } else {
+            for piece in held(&said) {
+                if !line.is_empty() && width(&line) + 1 + width(&piece) > measure {
+                    lines.push(std::mem::take(&mut line));
+                }
+                joined_to(&mut line, &piece);
+            }
         }
-        if !line.is_empty() {
-            line.push(' ');
-        }
-        line.push_str(&word);
     }
     if !line.is_empty() || lines.is_empty() {
         lines.push(line);
@@ -455,23 +472,52 @@ fn wrapped(words: &str, measure: usize) -> Vec<String> {
     lines
 }
 
-/// What a break mustn't part: a figure and the word after it (`60 Hz`), a
-/// `\u{d7}` and both its sides (`1272 \u{d7} 768`), and a `\u{b7}` and what
-/// it follows, so a line never starts by parting items. Each comes as one
-/// piece, its words a space apart.
+/// `line` with `more` after it, a space apart.
+fn joined_to(line: &mut String, more: &str) {
+    if more.is_empty() {
+        return;
+    }
+    if !line.is_empty() {
+        line.push(' ');
+    }
+    line.push_str(more);
+}
+
+/// The longest a word joining two figures is, as `at` does in `768 at 60
+/// Hz`, so one measure reads whole.
+const JOINING: usize = 2;
+
+/// What a break mustn't part: one measure, its figures with their units,
+/// `\u{d7}` and the short words between them (`1272 \u{d7} 768 at 60 Hz`),
+/// and a `\u{b7}` and what it follows, so a line never starts by parting
+/// items. Each comes as one piece, its words a space apart.
 fn held(words: &str) -> Vec<String> {
+    let figure = |word: &str| word.starts_with(|first: char| first.is_ascii_digit());
+    let all: Vec<&str> = words.split_whitespace().collect();
     let mut pieces: Vec<String> = Vec::new();
-    let mut joins = false;
-    for word in words.split_whitespace() {
-        let follows = word == "\u{d7}" || word == "\u{b7}";
+    for (at, word) in all.iter().enumerate() {
+        let before = at.checked_sub(1).map(|was| all[was]);
+        let joining = |one: &str| one == "\u{d7}" || (one.len() <= JOINING && !figure(one));
+        let joins = match before {
+            None => false,
+            Some(was) => {
+                figure(was)
+                    || *word == "\u{d7}"
+                    || *word == "\u{b7}"
+                    || (joining(was)
+                        && figure(word)
+                        && pieces
+                            .last()
+                            .is_some_and(|last| last.split(' ').any(figure)))
+            }
+        };
         match pieces.last_mut() {
-            Some(last) if joins || follows => {
+            Some(last) if joins => {
                 last.push(' ');
                 last.push_str(word);
             }
-            _ => pieces.push(word.to_string()),
+            _ => pieces.push((*word).to_string()),
         }
-        joins = word == "\u{d7}" || word.starts_with(|first: char| first.is_ascii_digit());
     }
     pieces
 }
@@ -647,9 +693,31 @@ mod tests {
     fn words_wrap_at_whole_words_and_never_break_one() {
         assert_eq!(wrapped("one two three", 7), vec!["one two", "three"]);
         assert_eq!(wrapped("unbreakable", 4), vec!["unbreakable"]);
+        // One measure reads whole, wherever the room ends; an item with a
+        // line's room breaks at its dot instead.
+        let modes = "1 \u{b7} preferred 1272 \u{d7} 768 at 60 Hz";
+        for room in [20, 22, 27] {
+            assert_eq!(
+                wrapped(modes, room),
+                vec!["1 \u{b7} preferred", "1272 \u{d7} 768 at 60 Hz"],
+                "at {room}"
+            );
+        }
         assert_eq!(
-            wrapped("1 \u{b7} preferred 1272 \u{d7} 768 at 60 Hz", 22),
-            vec!["1 \u{b7} preferred", "1272 \u{d7} 768 at 60 Hz"]
+            wrapped(modes, 29),
+            vec!["1 \u{b7}", "preferred 1272 \u{d7} 768 at 60 Hz"]
+        );
+    }
+
+    #[test]
+    fn a_run_gives_way_at_its_dots_first() {
+        assert_eq!(
+            wrapped("one two \u{b7} three four \u{b7} five", 18),
+            vec!["one two \u{b7}", "three four \u{b7} five"]
+        );
+        assert_eq!(
+            wrapped("one \u{b7} two three four five six", 14),
+            vec!["one \u{b7} two", "three four", "five six"]
         );
         assert_eq!(wrapped("", 4), vec![""]);
     }
@@ -659,7 +727,7 @@ mod tests {
         let said = "nothing called mahcine \u{b7} did you mean Machine?";
         assert_eq!(
             hung(said, 2, Room(42)),
-            "nothing called mahcine \u{b7} did you mean\n  Machine?"
+            "nothing called mahcine \u{b7}\n  did you mean Machine?"
         );
         assert_eq!(hung(said, 2, Room(80)), said);
     }
