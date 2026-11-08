@@ -297,6 +297,7 @@ impl Daemon {
             .ok_or_else(|| Failure::Refused("eero names no network on the account".into()))?;
         let answers = &mut self.answers;
         let nodes = read::node_ids(&answers.network);
+        let profiles = read::profile_ids(&answers.profiles);
         match read {
             Read::Network => {
                 answers.network = cloud.get(&network)?;
@@ -316,6 +317,10 @@ impl Daemon {
                 answers.node_usage = each_node(cloud, &nodes, &answers.node_usage, |id| {
                     format!("{network}/data_usage/eeros/{id}?{window}")
                 })?;
+                answers.profile_usage =
+                    each_node(cloud, &profiles, &answers.profile_usage, |id| {
+                        format!("{network}/data_usage/profiles/{id}?{window}")
+                    })?;
             }
             Read::Rest => {
                 for (path, answer) in [
@@ -342,7 +347,8 @@ fn look_from(model: &HomeNetwork) -> probe::Reading {
 }
 
 /// Each node's answer at the path `path` names for it, keeping a node's
-/// last answer where eero refuses this one.
+/// last answer where eero refuses this one. A profile's answer is asked
+/// for the same way.
 fn each_node(
     cloud: &mut cloud::Cloud,
     nodes: &[String],

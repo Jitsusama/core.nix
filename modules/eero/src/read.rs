@@ -88,6 +88,15 @@ pub fn node_ids(network: &Value) -> Vec<String> {
         .collect()
 }
 
+/// The id of each profile in `networks/<id>/profiles`, so its traffic can
+/// be asked for.
+pub fn profile_ids(profiles: &Value) -> Vec<String> {
+    list(profiles, "")
+        .filter_map(|profile| text(profile, "/url"))
+        .filter_map(|url| id_of(&url))
+        .collect()
+}
+
 fn internet(answers: &Answers) -> Internet {
     let n = &answers.network;
     Internet {
@@ -793,6 +802,14 @@ mod tests {
         assert_eq!(
             read.profiles[1].usage, None,
             "profile 2's traffic wasn't read"
+        );
+    }
+
+    #[test]
+    fn each_profile_is_named_by_its_id_to_ask_its_traffic() {
+        assert_eq!(
+            profile_ids(&contract("net.profiles.json")),
+            ["3001", "3002", "3003"]
         );
     }
 
