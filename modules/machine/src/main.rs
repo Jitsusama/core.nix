@@ -647,6 +647,10 @@ fn logind(connection: &zbus::blocking::Connection, slept: &Value) -> Value {
         "idle": manager.get_property::<bool>("IdleHint").ok(),
         "idle_since_ms": manager.get_property::<u64>("IdleSinceHint").ok().filter(|us| *us > 0).map(|us| us / 1000),
         "preparing": manager.get_property::<bool>("PreparingForSleep").ok(),
+        // Read each time, since the machine's idle sleep reloads logind
+        // with other settings on battery.
+        "idle_action": manager.get_property::<String>("IdleAction").ok(),
+        "idle_action_ms": manager.get_property::<u64>("IdleActionUSec").ok().map(|us| us / 1000),
         "blocked": listed("BlockInhibited"),
         "delayed": listed("DelayInhibited"),
         "inhibitors": inhibitors,
