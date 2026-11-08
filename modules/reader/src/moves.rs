@@ -377,10 +377,6 @@ pub fn written_paths(line: &Line) -> Vec<String> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "the places given, read back or added to by whole points"
-)]
 mod tests {
     use super::*;
 

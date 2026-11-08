@@ -989,10 +989,6 @@ mod tests {
     // default, and a name nobody declared still counts, so the budgets sum
     // to the whole.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "whole-dollar list prices pass through untouched"
-    )]
     fn each_turn_draws_on_its_provider_s_budget_then_its_log_s() {
         let history = history();
         budgeted(&history, "s1", H, "claude-code", Some("delta"), 1.0);
@@ -1174,10 +1170,6 @@ mod tests {
     const H: i64 = 490_000;
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "one turn's whole-dollar list price is passed through untouched"
-    )]
     fn logs_alone_are_list_prices() {
         let history = history();
         turn(&history, "s1", H, "opus", 10.0, Some("Q1"));

@@ -825,10 +825,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "the sum of the one row left is that row's figure, untouched"
-    )]
     fn a_provisional_hour_is_replaced_as_it_grows() {
         let history = History::memory();
         let billed = |dollars: f64| {

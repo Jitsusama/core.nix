@@ -3714,7 +3714,7 @@ mod tests {
         };
         let linux = asked(&words("path:/z checks.x86_64-linux.a")).unwrap();
         let (near, _) = shared(&linux, &machines, answers);
-        assert_eq!(near, [] as [(&there::Nearby, there::Asked); 0]);
+        assert_eq!(near, [] as [(&crate::there::Nearby, crate::there::Asked); 0]);
         assert_eq!(probed.get(), 0, "nothing asked is the machine's");
         let darwin = asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
         let (near, _) = shared(&darwin, &machines, answers);

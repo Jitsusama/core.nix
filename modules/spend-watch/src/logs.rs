@@ -833,10 +833,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "token counts are whole numbers, which f64 holds and subtracts exactly"
-    )]
     fn the_first_write_is_fresh_and_a_pause_rebuilds() {
         let bytes = lines(&[
             HEADER,

@@ -315,7 +315,7 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(unreturned(""), [] as [journal::Unreturned; 0]);
+        assert_eq!(unreturned(""), [] as [crate::journal::Unreturned; 0]);
     }
 
     #[test]

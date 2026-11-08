@@ -277,6 +277,6 @@ mod tests {
             .map(|i| work(&format!("s{i}"), 60.0, 0.5 + 0.01 * f64::from(i % 7)))
             .collect();
         sessions.push(work("brief", 6.0, 1.8));
-        assert!(outliers(&sessions, 0.05, 25.0).is_empty());
+        assert_eq!(outliers(&sessions, 0.05, 25.0), [] as [crate::waste::Outlier; 0]);
     }
 }

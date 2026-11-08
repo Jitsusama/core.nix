@@ -440,7 +440,7 @@ mod tests {
             "no amount in a summary"
         );
         // Told once: the same findings again change nothing.
-        assert!(plan(&history, &findings, 3, 60.0).unwrap().is_empty());
+        assert_eq!(plan(&history, &findings, 3, 60.0).unwrap(), [] as [crate::notices::Change; 0]);
     }
 
     #[test]
@@ -459,7 +459,7 @@ mod tests {
         let changes = plan(&history, &held, 3, 60.0).unwrap();
         assert!(matches!(changes.as_slice(), [Change::Withdraw { .. }]));
         apply(&history, &mut desk, changes, 60.0).unwrap();
-        assert!(desk.shown.is_empty());
+        assert_eq!(desk.shown, [] as [(u32, std::string::String); 0]);
     }
 
     // The same cap over in week one and again in week six is two
@@ -483,7 +483,7 @@ mod tests {
             DAY,
         )
         .unwrap();
-        assert!(desk.shown.is_empty());
+        assert_eq!(desk.shown, [] as [(u32, std::string::String); 0]);
         over.started = 35.0 * DAY;
         let changes = plan(&history, &[over], 3, 35.0 * DAY).unwrap();
         assert!(

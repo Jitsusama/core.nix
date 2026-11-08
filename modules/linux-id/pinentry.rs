@@ -355,14 +355,14 @@ mod tests {
             replies,
             ["D askpass", "OK", "D - - -", "OK", UNASKABLE, UNKNOWN]
         );
-        assert!(asked.is_empty());
+        assert_eq!(asked, [] as [(Kind, std::string::String); 0]);
     }
 
     #[test]
     fn stops_at_bye() {
         let (replies, asked) = run(&["BYE", "CONFIRM"], yes);
         assert_eq!(replies, ["OK closing connection"]);
-        assert!(asked.is_empty());
+        assert_eq!(asked, [] as [(Kind, std::string::String); 0]);
     }
 
     /// An askpass that writes down how it was asked beside itself, types

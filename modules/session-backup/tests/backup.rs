@@ -548,7 +548,7 @@ fn says_how_to_sign_in_when_the_login_may_not_use_drive() {
         why.contains("may not use Drive") && why.contains("https://www.googleapis.com/auth/drive"),
         "{why}"
     );
-    assert!(google.names().is_empty());
+    assert_eq!(google.names(), [] as [std::string::String; 0]);
 }
 
 #[test]
@@ -565,7 +565,7 @@ fn says_how_to_sign_in_when_there_is_no_login() {
             && why.contains("https://www.googleapis.com/auth/drive"),
         "{why}"
     );
-    assert!(google.calls().is_empty());
+    assert_eq!(google.calls(), [] as [std::string::String; 0]);
 }
 
 /// The account's settings, keeping a log Drive holds for `days`.
@@ -943,7 +943,7 @@ fn leaves_the_rows_for_the_next_run_when_drive_stays_busy() {
     assert_eq!(stopped.indexed, 0);
     assert!(stopped.busy.is_some(), "{stopped:?}");
     assert!(!account.root.join("state/index.jsonl").exists());
-    assert!(index_objects(&google).is_empty());
+    assert_eq!(index_objects(&google), [] as [std::string::String; 0]);
 
     let done = account.run().unwrap();
     assert_eq!(done.indexed, 1);

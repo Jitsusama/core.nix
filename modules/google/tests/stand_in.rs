@@ -759,7 +759,7 @@ fn a_refused_sign_in_is_signed_out_and_not_asked_again() {
     );
     let state = watch.look(&now()).clone();
     assert_eq!(state.account, Standing::SignedOut);
-    assert!(state.meetings.is_empty());
+    assert_eq!(state.meetings, [] as [google::calendar::Meeting; 0]);
     watch.look(&now());
     assert_eq!(
         stand_in.heard().len(),
@@ -1107,7 +1107,7 @@ fn a_meeting_joel_holds_is_cancelled_telling_every_guest_and_let_go_at_once() {
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
     assert!(watch.look(&now()).meetings[0].holds);
     let state = watch.cancel("e1", &now()).clone();
-    assert!(state.meetings.is_empty());
+    assert_eq!(state.meetings, [] as [google::calendar::Meeting; 0]);
     let heard = stand_in.heard();
     let written = heard.last().unwrap();
     assert!(

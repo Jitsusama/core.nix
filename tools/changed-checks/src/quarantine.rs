@@ -103,7 +103,7 @@ mod tests {
             "main quarantines it (failed then passed at abc; #12 owns it)"
         );
         assert_eq!(list[1].said(), "main quarantines it (no reason given)");
-        assert_eq!(parse("[]").expect("it reads"), [] as [quarantine::Held; 0]);
+        assert_eq!(parse("[]").expect("it reads"), [] as [crate::quarantine::Held; 0]);
     }
 
     #[test]

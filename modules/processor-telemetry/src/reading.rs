@@ -210,8 +210,8 @@ mod tests {
     #[test]
     fn nothing_holding_says_nothing() {
         let held = held_back(&region(&[]), &region(&[]), 1.0);
-        assert_eq!(held.processor, [] as [reading::Held<reading::Cause>; 0]);
-        assert_eq!(held.npu, [] as [reading::Held<layout::Kind>; 0]);
+        assert_eq!(held.processor, [] as [crate::reading::Held<crate::reading::Cause>; 0]);
+        assert_eq!(held.npu, [] as [crate::reading::Held<crate::layout::Kind>; 0]);
         assert!(held.clusters.iter().all(Vec::is_empty));
         assert_eq!(held.clusters.len(), CLUSTERS);
     }
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(held.processor.len(), 1);
         assert_eq!(held.processor[0].by, Cause::Kind(Kind::Heat));
         assert!(held.clusters[4].iter().any(|h| h.by == Kind::Heat));
-        assert_eq!(held.clusters[3], [] as [reading::Held<layout::Kind>; 0]);
+        assert_eq!(held.clusters[3], [] as [crate::reading::Held<crate::layout::Kind>; 0]);
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn a_moment_under_a_twentieth_isnt_said() {
         let after = region(&[(150, SECOND / 25)]);
-        assert_eq!(held_back(&region(&[]), &after, 1.0).processor, [] as [reading::Held<reading::Cause>; 0]);
+        assert_eq!(held_back(&region(&[]), &after, 1.0).processor, [] as [crate::reading::Held<crate::reading::Cause>; 0]);
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn a_counter_going_backwards_reads_as_nothing() {
         let held = held_back(&region(&[(150, SECOND)]), &region(&[(150, 5)]), 1.0);
-        assert_eq!(held.processor, [] as [reading::Held<reading::Cause>; 0]);
+        assert_eq!(held.processor, [] as [crate::reading::Held<crate::reading::Cause>; 0]);
     }
 
     #[test]

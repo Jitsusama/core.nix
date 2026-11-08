@@ -680,10 +680,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "whole numbers of pixels, read or kept unchanged"
-    )]
     fn a_theme_gives_the_page_its_rungs_and_its_own_line_and_beat() {
         let file = serde_json::json!({
             "space": {
@@ -721,7 +717,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::float_cmp, reason = "whole numbers of pixels, said as such")]
     fn a_page_without_a_theme_keeps_the_ladder_and_its_line() {
         let space = Theme::plain().space;
         let rungs = [
@@ -740,10 +735,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "one channel's division, done the same way on both sides"
-    )]
     fn a_colour_is_six_hex_digits_after_a_hash() {
         let jade = Colour([80, 148, 117]);
         assert_eq!(Colour::parse(&jade.hex()), Some(jade));

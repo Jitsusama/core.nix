@@ -444,7 +444,7 @@ mod tests {
         for said in [&quiet.value, &quiet.badge, &quiet.hint, &quiet.context] {
             assert!(!said.contains('$'), "{said}");
         }
-        assert!(!quiet.hint.is_empty());
+        assert_ne!(quiet.hint, "");
     }
 
     // Held, nothing is watched: the margin shows it as it shows a cap
@@ -460,16 +460,12 @@ mod tests {
         assert_eq!(held.open, held.quiet);
         // Beside the margin's one hint, its footer holds about 28.
         assert!(held.open.context.len() <= 28, "{}", held.open.context);
-        assert!(held.actions.is_empty());
+        assert_eq!(held.actions, [] as [crate::status::ShellAction; 0]);
     }
 
     // A cap a feed read this very hour, as the meter's premium day is on
     // every reading, is drawn with nothing billed after it.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "the feed's whole-dollar figure is kept untouched, with nothing billed after it"
-    )]
     fn a_cap_read_this_hour_is_drawn() {
         let history = History::memory();
         let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
@@ -517,10 +513,6 @@ mod tests {
     // Read in a day that's since reset: none of it counts, and the next
     // reset is the one after.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "nothing is billed since the reset, so the sum is exactly zero"
-    )]
     fn a_day_s_cap_read_yesterday_has_reset() {
         let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
         let history = premium_day(1100.0, "2026-10-13T12:00:00Z", "2026-10-14T04:00:00Z");

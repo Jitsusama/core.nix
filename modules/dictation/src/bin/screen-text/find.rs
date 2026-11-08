@@ -254,6 +254,6 @@ mod tests {
             }
         }
         map[15 * width + 10] = 0.99;
-        assert!(places(&map, width, height).is_empty());
+        assert_eq!(places(&map, width, height), [] as [find::Place; 0]);
     }
 }

@@ -1004,7 +1004,7 @@ fn with_no_sign_in_nothing_is_held_and_slack_is_never_asked() {
         listed(&run, "slack-account"),
         [serde_json::json!({"standing": "none"})]
     );
-    assert!(listed(&run, "slack-unread").is_empty());
+    assert_eq!(listed(&run, "slack-unread"), [] as [serde_json::Value; 0]);
     program.kill().unwrap();
     program.wait().unwrap();
     assert!(!waiting(&run).exists());

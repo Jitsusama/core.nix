@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn a_calm_cycle_asks_nothing() {
         let mut state = State::default();
-        assert_eq!(tick(&calm(100_000), &mut state), [] as [watch::Question; 0]);
+        assert_eq!(tick(&calm(100_000), &mut state), [] as [crate::watch::Question; 0]);
     }
 
     #[test]
@@ -398,7 +398,7 @@ mod tests {
             "{}",
             first[0].text
         );
-        assert_eq!(tick(&s, &mut state), [] as [watch::Question; 0]);
+        assert_eq!(tick(&s, &mut state), [] as [crate::watch::Question; 0]);
     }
 
     #[test]
@@ -409,10 +409,10 @@ mod tests {
             on: None,
         }];
         s.follower.going = Some(100_000 - 60);
-        assert_eq!(breaches(&s), [] as [watch::Breach; 0]);
+        assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
         s.follower.going = None;
         s.follower.meeting = true;
-        assert_eq!(breaches(&s), [] as [watch::Breach; 0]);
+        assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
     }
 
     #[test]
@@ -435,7 +435,7 @@ mod tests {
                 on: None,
             },
         ];
-        assert_eq!(breaches(&s), [] as [watch::Breach; 0]);
+        assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
     }
 
     #[test]
@@ -448,7 +448,7 @@ mod tests {
             reverting: false,
         };
         s.net_hold = Some(hold.clone());
-        assert_eq!(breaches(&s), [] as [watch::Breach; 0]);
+        assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
         s.net_hold = Some(NetHold {
             at: 100_000 - 12 * 60,
             ..hold.clone()
@@ -465,7 +465,7 @@ mod tests {
             reverting: true,
             ..hold
         });
-        assert_eq!(breaches(&s), [] as [watch::Breach; 0]);
+        assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
     }
 
     #[test]
@@ -534,7 +534,7 @@ mod tests {
         assert_eq!(asked.len(), 1);
         assert_eq!(asked[0].to, To::Steward);
         assert!(asked[0].text.contains("Cadence alarm: hot."));
-        assert_eq!(tick(&s, &mut state), [] as [watch::Question; 0]);
+        assert_eq!(tick(&s, &mut state), [] as [crate::watch::Question; 0]);
     }
 
     #[test]
@@ -548,7 +548,7 @@ mod tests {
         );
         let mut s = calm(100_000);
         s.answered = vec!["1-CADENCE-1-aa".into()];
-        assert_eq!(tick(&s, &mut state), [] as [watch::Question; 0]);
+        assert_eq!(tick(&s, &mut state), [] as [crate::watch::Question; 0]);
         assert!(state.asked.is_empty());
     }
 
@@ -558,7 +558,7 @@ mod tests {
         let mut s = calm(100_000);
         s.watcher_alive = false;
         s.watcher_session = Some("01a1ae37".into());
-        assert_eq!(tick(&s, &mut state), [] as [watch::Question; 0]);
+        assert_eq!(tick(&s, &mut state), [] as [crate::watch::Question; 0]);
         s.now += DOWN_FOR;
         s.last_card = Some(s.now);
         let asked = tick(&s, &mut state);

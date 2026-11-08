@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(called("q"), ["q[uit]"]);
         assert_eq!(called("list"), ["marks", "h[elp]"], "by a word of the name");
         assert_eq!(called("file"), ["e[dit]", "bn[ext]", "bp[revious]"]);
-        assert!(called("zzz").is_empty());
+        assert_eq!(called("zzz"), [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -399,8 +399,8 @@ mod tests {
             vec![format!("{typed}c.md")]
         });
         assert_eq!(files[0].writes, "edit b/c.md");
-        assert!(called("marks ").is_empty());
-        assert!(called("x ").is_empty());
+        assert_eq!(called("marks "), [] as [std::string::String; 0]);
+        assert_eq!(called("x "), [] as [std::string::String; 0]);
     }
 
     #[test]

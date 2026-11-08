@@ -372,7 +372,7 @@ mod tests {
         assert_eq!(got["records"][0]["lines"], json!(["one", "two"]));
         assert_eq!(got["records"][0]["text"], "one\ntwo");
         std::fs::remove_file(&read.path).unwrap();
-        assert!(shelf.unread(folder.path()).is_empty());
+        assert_eq!(shelf.unread(folder.path()), [] as [std::path::PathBuf; 0]);
         let listed = ask(&mut shelf, r#"{"id": 3, "ask": "list"}"#);
         assert_eq!(listed["records"], json!([]));
     }

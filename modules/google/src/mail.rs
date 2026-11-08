@@ -605,7 +605,7 @@ mod tests {
     fn mail_with_no_files_carries_none() {
         let answer = json!({"id": "m", "threadId": "t", "payload": {
             "mimeType": "text/plain", "body": {"data": encoded("Hi")}}});
-        assert_eq!(read(&answer).unwrap().attachments, [] as [mail::File; 0]);
+        assert_eq!(read(&answer).unwrap().attachments, [] as [crate::mail::File; 0]);
     }
 
     #[test]
