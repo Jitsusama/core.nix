@@ -134,9 +134,17 @@ function enough(words) {
 // so it says where it is as when typed; a note gives way from its end, so
 // how it was found always stays.
 // A meaning lands on the part rather than the place it lives in (VKCF3Z,
-// 2026-11-08): a spot found stands where a place on its trail was found,
-// and that place isn't added after it. A spot's name is meant once, so
-// "too loud" is one Volume rather than every device's, the nearest.
+// 2026-11-08): a spot found stands where the first place on its trail was
+// found, every other place on it found goes, and none is added after it.
+// A spot's name is meant once, so "too loud" is one Volume rather than
+// every device's, the nearest.
+// The places a spot lives in, which it stands for when found: its trail
+// past the first step, which is the category it's listed under, a page
+// of many more things than the one it holds.
+function placesOf(spot) {
+    return spot.trail.slice(1);
+}
+
 function rows(records, keyed, shown, how) {
     const found = [];
     const taken = new Set(shown);
@@ -157,16 +165,22 @@ function rows(records, keyed, shown, how) {
             }
             named[choice.name] = true;
             taken.add(id);
-            const place = found.findIndex(row => choice.trail.includes(row.is ?? row.key));
+            const within = placesOf(choice);
+            const place = found.findIndex(row => within.includes(row.is ?? row.key));
             if (place >= 0) {
                 found[place] = choice;
+                for (let at = found.length - 1; at > place; at--) {
+                    if (within.includes(found[at].is ?? found[at].key)) {
+                        found.splice(at, 1);
+                    }
+                }
             } else {
                 found.push(choice);
             }
             continue;
         }
         taken.add(id);
-        if (!found.some(row => isSpot(row) && row.trail.includes(id))) {
+        if (!found.some(row => isSpot(row) && placesOf(row).includes(id))) {
             found.push(choice);
         }
     }

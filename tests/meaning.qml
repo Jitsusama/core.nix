@@ -123,10 +123,16 @@ QtObject {
             spot: part
         });
         const screens = thing("collection:displays", "Screens", "Screens Displays Monitors");
-        const bright = spot(["collection:displays", "screen:edp-1"], "displays:brightness",
-            "Brightness");
-        const loud = spot(["collection:sound", "sink:speakers"], "sound:volume", "Volume");
-        const louder = spot(["collection:sound", "sink:headset"], "sound:volume", "Volume");
+        // A held spot's trail is the category it's listed under, its
+        // collection and its device, as Launcher.qml's heldSpots makes it.
+        const desktop = thing("category:desktop", "Desktop", "Desktop");
+        const builtIn = thing("screen:edp-1", "Built-in", "Built-in");
+        const bright = spot(["category:desktop", "collection:displays", "screen:edp-1"],
+            "displays:brightness", "Brightness");
+        const loud = spot(["category:desktop", "collection:sound", "sink:speakers"],
+            "sound:volume", "Volume");
+        const louder = spot(["category:desktop", "collection:sound", "sink:headset"],
+            "sound:volume", "Volume");
         expect("a spot is told by its name, after the choices",
             Meaning.things([screens], [bright]).map(told => told.text),
             ["Screens Displays Monitors", "Brightness"]);
@@ -140,7 +146,12 @@ QtObject {
         expect("spots are keyed by their keys", Object.keys(Meaning.keyedBy([bright, loud])),
             [bright.key, loud.key]);
         expect("no spots key nothing", Meaning.keyedBy(undefined), {});
-        const placesKeyed = { "collection:displays": screens, "program:kitty": kitty };
+        const placesKeyed = {
+            "category:desktop": desktop,
+            "collection:displays": screens,
+            "screen:edp-1": builtIn,
+            "program:kitty": kitty
+        };
         const spotsKeyed = Meaning.keyedBy([bright, loud, louder]);
         const inside = Object.assign({ spots: spotsKeyed }, how);
         expect("a spot found stands where its place was found",
@@ -155,6 +166,18 @@ QtObject {
             Meaning.rows(records(["collection:displays", bright.key, "program:kitty",
                 loud.key]), placesKeyed, new Set(), inside).map(row => row.key),
             [bright.key, "program:kitty", loud.key]);
+        expect("a spot stands for its place, never the category it's listed under",
+            Meaning.rows(records(["category:desktop", "collection:displays", bright.key]),
+                placesKeyed, new Set(), inside).map(row => row.key),
+            ["category:desktop", bright.key]);
+        expect("every place on a spot's trail found before it goes",
+            Meaning.rows(records(["collection:displays", "program:kitty", "screen:edp-1",
+                bright.key]), placesKeyed, new Set(), inside).map(row => row.key),
+            [bright.key, "program:kitty"]);
+        expect("a category found after its spot still stands",
+            Meaning.rows(records([bright.key, "category:desktop"]), placesKeyed, new Set(),
+                inside).map(row => row.key),
+            [bright.key, "category:desktop"]);
         expect("a spot's name is meant once, the nearest",
             Meaning.rows(records([loud.key, louder.key]), placesKeyed, new Set(), inside)
                 .map(row => row.key), [loud.key]);
