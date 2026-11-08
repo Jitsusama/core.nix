@@ -41,17 +41,20 @@ disk's layout is the same on every laptop, so it's a module, `disko`, and
 Air of 2022 (Mac14,2, board J413): Apple's M2 (T8112) with four performance
 and four efficiency cores and Apple's own GPU, a 2560x1664 panel, Broadcom's
 BCM4387 for Wi-Fi 6 and Bluetooth, two USB-C ports and MagSafe. Asahi Linux
-drives it, through [nixos-apple-silicon][32]: Asahi's kernel, m1n1, which
-Apple's boot firmware starts in a macOS stub's place, and U-Boot, which m1n1
-starts and which gives systemd-boot a plain UEFI. Asahi's installer, run
-from macOS, shrinks macOS, makes the stub and the EFI system partition, and
-copies the firmware for Wi-Fi, Bluetooth and the camera out of macOS onto
-that partition. So the kernel is Asahi's rather than core's own build, and
-`jitsusama.kernel.cpu` isn't set.
+drives it: core builds Asahi's kernel itself ([its kernel folder][34]), with
+Asahi's fairydust branch on top for a screen on the front-left port, and
+takes m1n1, which Apple's boot firmware starts in a macOS stub's place, and
+U-Boot, which m1n1 starts and which gives systemd-boot a plain UEFI, from
+[nixos-apple-silicon][32]. Asahi's installer, run from macOS, shrinks macOS,
+makes the stub and the EFI system partition, and copies the firmware for
+Wi-Fi, Bluetooth and the camera out of macOS onto that partition. The kernel
+is Asahi's tree rather than core's mainline one, so `jitsusama.kernel.cpu`
+isn't set.
 
 | Part     | What the module does                                                   |
 | -------- | ---------------------------------------------------------------------- |
-| Kernel   | Asahi's, with m1n1 and U-Boot, from nixos-apple-silicon                |
+| Kernel   | Asahi's at a tag, core's own build, with fairydust for a screen        |
+| Loaders  | m1n1 and U-Boot from nixos-apple-silicon, starting core's kernel       |
 | Boot     | systemd-boot under U-Boot's UEFI, which keeps no variables             |
 | Firmware | Asahi's copy from macOS, unpacked from the EFI partition at each boot  |
 | Stick    | how to start one from U-Boot, for the guide to say                     |
@@ -68,8 +71,9 @@ which needs systemd there.
 
 What the model lacks next to the x86 laptops, by [Asahi's table for the
 M2][33]: a TPM and a Secure Boot Linux can use, so the disk can't be sealed
-to the boot and the TPM's keys have to come from elsewhere; a display over
-USB-C, which waits on Asahi's DisplayPort work; Touch ID; and the video
+to the boot and the TPM's keys have to come from elsewhere; a second screen,
+and one on the rear port, which wait on Asahi's DisplayPort work, since
+fairydust drives the front-left port alone; Touch ID; and the video
 encoder. Spotify's own client isn't built for aarch64-linux, so its module
 leaves it out there and spotify-player and the web player stay.
 
@@ -1556,3 +1560,4 @@ sealed to.
 [31]: ../hardware/apple-macbook-air-m2-a2681/nixos.nix
 [32]: https://github.com/nix-community/nixos-apple-silicon
 [33]: https://asahilinux.org/docs/platform/feature-support/m2/
+[34]: ../hardware/apple-macbook-air-m2-a2681/kernel/README.md
