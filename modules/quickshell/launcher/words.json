@@ -6937,6 +6937,164 @@
       "name": "The Call"
     },
     {
+      "id": "vm",
+      "in": "applications",
+      "name": "VM",
+      "term": "Machine/VM",
+      "glyph": "vm",
+      "parts": [
+        "vm:processors",
+        "vm:memory",
+        "vm:most-memory",
+        "vm:processor-time",
+        "vm:autostart",
+        "vm:persistent",
+        "vm:managed-save",
+        "vm:os-type",
+        "vm:id",
+        "vm:uuid",
+        "vm:security-model",
+        "vm:security-doi",
+        "vm:security-label",
+        "vm:messages"
+      ],
+      "said": {
+        "running": "running",
+        "blocked": "blocked",
+        "paused": "paused",
+        "stopping": "powering off",
+        "off": "shut off",
+        "crashed": "crashed",
+        "asleep": "asleep",
+        "unknown": "no state",
+        "reading": "\u2026",
+        "count": "{count} {state}",
+        "system": "system",
+        "session": "VM in your session",
+        "inSystem": "VM in the system",
+        "password": "asks for your password",
+        "yes": "yes",
+        "no": "no",
+        "noLimit": "no limit"
+      },
+      "tells": {
+        "system": "It runs in the system, so starting it, powering it off, forcing it off or opening its console asks for your password."
+      }
+    },
+    {
+      "id": "vm:processors",
+      "in": "vm",
+      "name": "Processors"
+    },
+    {
+      "id": "vm:memory",
+      "in": "vm",
+      "name": "Memory in Use"
+    },
+    {
+      "id": "vm:most-memory",
+      "in": "vm",
+      "name": "Most Memory"
+    },
+    {
+      "id": "vm:processor-time",
+      "in": "vm",
+      "name": "Processor Time"
+    },
+    {
+      "id": "vm:autostart",
+      "in": "vm",
+      "name": "Starts with the Machine"
+    },
+    {
+      "id": "vm:persistent",
+      "in": "vm",
+      "name": "Kept When Off"
+    },
+    {
+      "id": "vm:managed-save",
+      "in": "vm",
+      "name": "Saved State"
+    },
+    {
+      "id": "vm:os-type",
+      "in": "vm",
+      "name": "OS Type"
+    },
+    {
+      "id": "vm:id",
+      "in": "vm",
+      "name": "ID"
+    },
+    {
+      "id": "vm:uuid",
+      "in": "vm",
+      "name": "UUID"
+    },
+    {
+      "id": "vm:security-model",
+      "in": "vm",
+      "name": "Security Model"
+    },
+    {
+      "id": "vm:security-doi",
+      "in": "vm",
+      "name": "Security DOI"
+    },
+    {
+      "id": "vm:security-label",
+      "in": "vm",
+      "name": "Security Label"
+    },
+    {
+      "id": "vm:messages",
+      "in": "vm",
+      "name": "Messages"
+    },
+    {
+      "id": "verb:vm:console",
+      "command": "open",
+      "in": "vm",
+      "name": "Open Its Console",
+      "verb": "open",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:vm:start",
+      "command": "boot",
+      "in": "vm",
+      "name": "Start It",
+      "verb": "start",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:vm:resume",
+      "command": "resume",
+      "in": "vm",
+      "name": "Resume It",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:vm:power-off",
+      "command": "off",
+      "in": "vm",
+      "name": "Power It Off",
+      "verb": "off",
+      "glyph": "poweroff",
+      "ends": "power off"
+    },
+    {
+      "id": "verb:vm:force-off",
+      "command": "forceoff",
+      "in": "vm",
+      "name": "Force It Off",
+      "verb": "off",
+      "glyph": "poweroff",
+      "act": "ending",
+      "ends": "force off"
+    },
+    {
       "id": "gimp",
       "in": "applications",
       "name": "The Newest Screenshot"
@@ -9450,7 +9608,9 @@
         "forget": "forgotten",
         "off": "turned off",
         "on": "turned on",
+        "pause": "paused",
         "reopen": "reopened",
+        "resume": "resumed",
         "set": "set",
         "start": "started",
         "stop": "stopped",

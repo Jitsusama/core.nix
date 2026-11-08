@@ -1,16 +1,18 @@
 # The checks of libvirt, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
   bareNixos,
   holds,
   lib,
+  onLinux,
+  pkgs,
   self,
+  shellFolderLint,
+  workstation,
   ...
 }:
 {
-  # greetd waits for the GPU the hardware names rather than for the boot to go
-  # idle, and the card gets the device unit it waits on. Without the udev tag
-  # the unit never appears, and the login waits out the device timeout.
   # Session machines join virbr0 without a password, which needs the bridge
   # helper to allow it and the default network to be up from boot.
   session-machines-have-a-bridge =
@@ -26,4 +28,58 @@
         && lib.elem "multi-user.target" network.wantedBy
         && lib.hasInfix "net-start default" network.script
       );
+}
+# The launcher's VMs are the Linux desktop's shell's, which a Mac never runs.
+// onLinux {
+  # A workstation with a desktop gives its account's launcher the VMs: the
+  # provider, reading through the daemon's own virsh, the library beside
+  # it, and the program's entry, hidden, which the launcher lists only
+  # while a VM exists. A workstation without the shell gets none of it,
+  # so nothing on it lists a program nobody can open.
+  vms-reach-the-launcher =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+      ];
+      home = account machine;
+      bare = account workstation;
+      provider = home.jitsusama.quickshell.launcher.providers.vms or { };
+      daemon = machine.config.virtualisation.libvirtd.package;
+      entry = home.xdg.dataFile."applications/vms.desktop".text or "";
+    in
+    holds "vms-reach-the-launcher"
+      "The workstation's launcher lacks its VMs, or one without the shell gets them."
+      (
+        (provider.source or null) == ./Machines.qml
+        && (provider.virsh or "") == lib.getExe' daemon "virsh"
+        && (provider.program or "") == "vms"
+        && home.xdg.configFile ? "quickshell/launcher/Machines.js"
+        && lib.hasInfix "\nNoDisplay=true\n" entry
+        && !(bare.xdg.dataFile ? "applications/vms.desktop")
+        && !(bare ? jitsusama.quickshell.launcher.providers)
+      );
+
+  # How Programs › VMs reads what virsh says, its lists, every figure
+  # dominfo gives, each state's word, what can be done in each state and
+  # what virsh is told for it, the order and count it shows, and an event
+  # heard, are Machines.js's, run in Qt's own engine over the launcher's
+  # own words (tests/machines.qml).
+  vms-read-as-virsh-says =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "vms-read-as-virsh-says" { } ''
+      cp ${./tests/machines.qml} machines.qml
+      cp ${./Machines.js} Machines.js
+      cp ${../quickshell/launcher/words.json} words.json
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      # The case reads the words beside it, which Qt's engine reads from a
+      # file only when told it may.
+      export QML_XHR_ALLOW_FILE_READ=1
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml machines.qml
+      touch $out
+    '';
 }

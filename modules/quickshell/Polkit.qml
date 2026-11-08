@@ -28,10 +28,12 @@ Scope {
     readonly property bool failed: flow !== null && flow.supplementaryIsError
         && flow.supplementaryMessage !== ""
     // The program owning the action: its name after its maker's reversed
-    // domain, without the version a D-Bus name ends in.
+    // domain, without the version a D-Bus name ends in. libvirt's is named
+    // for the socket it guards, org.libvirt.unix.manage, as a VM on the
+    // system's connection asks.
     readonly property string asker: {
         const parts = flow ? flow.actionId.split(".") : [];
-        const known = { policykit: "pkexec", login: "logind" };
+        const known = { policykit: "pkexec", login: "logind", unix: "libvirt" };
         const name = parts.length > 3 ? parts[2].replace(/\d+$/, "") : "";
         return known[name] ?? (name || "polkit");
     }

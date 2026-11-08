@@ -2903,6 +2903,16 @@
     radios; a stuck look is nudged, a silent access point passed, and the card dozes only on
     battery
   '';
+  vms-reach-the-launcher = ''
+    a workstation with a desktop gives its launcher the VMs, read through the daemon's own virsh,
+    under a hidden program the launcher lists only while one exists, and one without the shell
+    gets none of it
+  '';
+  vms-read-as-virsh-says = ''
+    virsh's lists and every figure dominfo gives are read, each state is said in the launcher's
+    words, each state offers its own acts and tells virsh its own command, and the VMs are
+    ordered and counted as Programs shows them
+  '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
     bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the
