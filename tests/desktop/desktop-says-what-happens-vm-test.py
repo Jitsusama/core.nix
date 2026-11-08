@@ -155,14 +155,16 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
     """Say whether the drawer is scrolled past a point to a whole line on the eyebrow's baseline.
 
     The eyebrow scrolls with the rest, so where it rests is where it is now and how far the
-    drawer has scrolled. The first of the words' lines at or under that baseline is on it, so
-    no bare rows are left over the first line shown.
+    drawer has scrolled. The first of its facts' or its words' lines at or under that baseline
+    is on it, so no bare rows are left over the first line shown.
     """
     scrolled = int(drawer["scrolled"])
     lines = drawer["lines"]
     rest = lines["eyebrow"] + drawer["scrolled"]
     first = lines["words"] + max(0, math.ceil((rest - ROUNDING - lines["words"]) / PITCH)) * PITCH
-    return scrolled > past and abs(first - rest) < ROUNDING and held(drawer)
+    facts = [fact for fact in lines.get("facts") or [] if fact is not None]
+    on = abs(first - rest) < ROUNDING or any(abs(fact - rest) < ROUNDING for fact in facts)
+    return scrolled > past and on and held(drawer)
 
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
@@ -1133,6 +1135,9 @@ def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
     desktop.shoot(f"notices-held-quiet-at-{named}")
     with desktop.told("lets notices go"):
         machine.send_chars(":q\n")
+    # Put away, so the launcher takes the keys; the history keeps each.
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("standup ten", selecting="Standup in Ten Minutes")
