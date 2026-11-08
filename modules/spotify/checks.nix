@@ -49,15 +49,20 @@ onLinux {
           function spawn(command) { spawned = command; }
         }
       '';
-      # Spotify's client running, as its player on the bus says.
+      # Spotify's client running, as its player on the bus says, typed so
+      # qmllint knows what the cases set on it.
       playing = stand "Playing.qml" ''
         pragma Singleton
         import Quickshell
         import QtQuick
         Singleton {
-          property QtObject player: QtObject {
-            property string dbusName: "org.mpris.MediaPlayer2.spotify"
-            property bool isPlaying: true
+          component Player: QtObject {
+            property string dbusName
+            property bool isPlaying
+          }
+          property Player player: Player {
+            dbusName: "org.mpris.MediaPlayer2.spotify"
+            isPlaying: true
           }
           property var players: [player]
         }
