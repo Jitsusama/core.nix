@@ -28,38 +28,44 @@ the session, so a shell restarted under a niri without this patch
 offers it only once niri restarts.
 
 diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
-index 1e8d068..7944ecb 100644
+index 78e54e8..36a69c7 100644
 --- a/niri-config/src/binds.rs
 +++ b/niri-config/src/binds.rs
-@@ -106,6 +106,8 @@ pub enum Action {
-     Suspend,
-     PowerOffMonitors,
+@@ -108,6 +108,8 @@ pub enum Action {
      PowerOnMonitors,
+     #[knuffel(skip)]
+     SetPanelSaturation(f64),
 +    PowerOffMonitor(#[knuffel(argument)] String),
 +    PowerOnMonitor(#[knuffel(argument)] String),
      ToggleDebugTint,
      DebugToggleOpaqueRegions,
      DebugToggleDamage,
-@@ -404,6 +406,8 @@ impl From<niri_ipc::Action> for Action {
-             niri_ipc::Action::Quit { skip_confirmation } => Self::Quit(skip_confirmation),
-             niri_ipc::Action::PowerOffMonitors {} => Self::PowerOffMonitors,
-             niri_ipc::Action::PowerOnMonitors {} => Self::PowerOnMonitors,
+@@ -409,6 +411,8 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::SetPanelSaturation { saturation } => {
+                 Self::SetPanelSaturation(saturation)
+             }
 +            niri_ipc::Action::PowerOffMonitor { output } => Self::PowerOffMonitor(output),
 +            niri_ipc::Action::PowerOnMonitor { output } => Self::PowerOnMonitor(output),
              niri_ipc::Action::Spawn { command } => Self::Spawn(command),
              niri_ipc::Action::SpawnSh { command } => Self::SpawnSh(command),
              niri_ipc::Action::DoScreenTransition { delay_ms } => Self::DoScreenTransition(delay_ms),
 diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
-index 18a1706..6245fde 100644
+index e82b441..a5cab8f 100644
 --- a/niri-ipc/src/lib.rs
 +++ b/niri-ipc/src/lib.rs
-@@ -201,7 +201,28 @@ pub enum Action {
+@@ -201,6 +201,8 @@ pub enum Action {
      /// Power off all monitors via DPMS.
      PowerOffMonitors {},
      /// Power on all monitors via DPMS.
 +    ///
 +    /// This also powers on the monitors powered off by name.
      PowerOnMonitors {},
+     /// Show a laptop's own panel more or less colourful than sRGB.
+     ///
+@@ -215,6 +217,25 @@ pub enum Action {
+         #[cfg_attr(feature = "clap", arg())]
+         saturation: f64,
+     },
 +    /// Power off one monitor via DPMS, by name.
 +    ///
 +    /// It stays connected and in the layout. Input doesn't power it on again unless every monitor
@@ -82,7 +88,7 @@ index 18a1706..6245fde 100644
      /// Spawn a command.
      Spawn {
          /// Command to spawn.
-@@ -1250,6 +1271,11 @@ pub struct Output {
+@@ -1263,6 +1284,11 @@ pub struct Output {
      ///
      /// `None` if the output is not mapped to any logical output (for example, if it is disabled).
      pub logical: Option<LogicalOutput>,
@@ -126,10 +132,10 @@ index 49fbc6b..fadca1c 100644
          match self {
              Backend::Tty(tty) => tty.set_output_on_demand_vrr(niri, output, enable_vrr),
 diff --git a/src/backend/tty.rs b/src/backend/tty.rs
-index 1739ef8..897b94e 100644
+index 98cb5de..beb5c59 100644
 --- a/src/backend/tty.rs
 +++ b/src/backend/tty.rs
-@@ -749,6 +749,10 @@ impl Tty {
+@@ -756,6 +756,10 @@ impl Tty {
                      self.on_output_config_changed(niri);
                  }
  
@@ -140,7 +146,7 @@ index 1739ef8..897b94e 100644
                  self.refresh_ipc_outputs(niri);
  
                  niri.notify_activity();
-@@ -2235,14 +2239,12 @@ impl Tty {
+@@ -2250,14 +2254,12 @@ impl Tty {
                      });
                  let vrr_enabled = surface.is_some_and(|surface| surface.compositor.vrr_enabled());
  
@@ -161,7 +167,7 @@ index 1739ef8..897b94e 100644
  
                  let id = device.known_crtcs.get(&crtc).map(|info| info.id);
                  let id = id.unwrap_or_else(|| {
-@@ -2262,6 +2264,7 @@ impl Tty {
+@@ -2277,6 +2279,7 @@ impl Tty {
                      vrr_supported,
                      vrr_enabled,
                      logical,
@@ -169,7 +175,7 @@ index 1739ef8..897b94e 100644
                  };
  
                  ipc_outputs.insert(id, ipc_output);
-@@ -2309,6 +2312,25 @@ impl Tty {
+@@ -2324,6 +2327,25 @@ impl Tty {
          }
      }
  
@@ -208,7 +214,7 @@ index a9bcc51..02872b4 100644
          )])));
  
 diff --git a/src/input/mod.rs b/src/input/mod.rs
-index df8ebb1..abad402 100644
+index 1ef3a78..475f48a 100644
 --- a/src/input/mod.rs
 +++ b/src/input/mod.rs
 @@ -122,7 +122,7 @@ impl State {
@@ -229,12 +235,17 @@ index df8ebb1..abad402 100644
  
                  // Notify the idle-notifier of activity only if we're also powering on the
                  // monitors.
-@@ -684,8 +684,19 @@ impl State {
+@@ -684,6 +684,7 @@ impl State {
                  self.niri.deactivate_monitors(&mut self.backend);
              }
              Action::PowerOnMonitors => {
 +                self.niri.power_on_outputs_by_name();
                  self.niri.activate_monitors(&mut self.backend);
+             }
+             Action::SetPanelSaturation(saturation) => {
+@@ -691,6 +692,16 @@ impl State {
+                     tty.set_panel_saturation(&mut self.niri, saturation);
+                 }
              }
 +            Action::PowerOffMonitor(output) => {
 +                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
@@ -249,7 +260,7 @@ index df8ebb1..abad402 100644
              Action::ToggleDebugTint => {
                  self.backend.toggle_debug_tint();
                  self.niri.queue_redraw_all();
-@@ -4839,6 +4850,8 @@ fn allowed_when_locked(action: &Action) -> bool {
+@@ -4844,6 +4855,8 @@ fn allowed_when_locked(action: &Action) -> bool {
              | Action::Suspend
              | Action::PowerOffMonitors
              | Action::PowerOnMonitors
@@ -258,7 +269,7 @@ index df8ebb1..abad402 100644
              | Action::SwitchLayout(_)
              | Action::ToggleKeyboardShortcutsInhibit
      )
-@@ -4852,6 +4865,8 @@ fn allowed_during_screenshot(action: &Action) -> bool {
+@@ -4857,6 +4870,8 @@ fn allowed_during_screenshot(action: &Action) -> bool {
              | Action::Suspend
              | Action::PowerOffMonitors
              | Action::PowerOnMonitors
