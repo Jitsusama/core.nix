@@ -12,5 +12,12 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 85a12fcab559",
     "test": "vm-desktop-starts-clean"
+  },
+  {
+    "at": 1794108655,
+    "commit": "9fdd39f8d5ebeddcd0127dd7085ff1fbb0bc665d",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 9fdd39f8d5eb",
+    "test": "vm-desktop-launcher-goes-places"
   }
 ]
