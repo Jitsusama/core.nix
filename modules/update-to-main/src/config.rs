@@ -86,6 +86,11 @@ pub struct Config {
     /// says whether `here` may build; a Mac has none, so nothing builds
     /// there.
     pub cpu_pressure: PathBuf,
+    /// How many seconds a build may say nothing, its pieces' logs
+    /// included, before it's stopped as one waiting on a builder that
+    /// doesn't answer: four minutes unless given.
+    #[serde(default = "silent_for")]
+    pub silent_for: u64,
     /// The programs it runs, by their paths in the store.
     pub tools: Tools,
     /// How a command is run in an account's login session, where a Mac's
@@ -232,6 +237,10 @@ pub struct Session {
     /// reach the folder it's given. A root daemon's temporary folder on a
     /// Mac is root's alone.
     pub jobs: PathBuf,
+}
+
+fn silent_for() -> u64 {
+    240
 }
 
 impl Config {

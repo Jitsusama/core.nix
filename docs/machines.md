@@ -197,7 +197,14 @@ CPU pressure over the last minute is below `here.busyAt`, 15% unless set;
 a Mac keeps no pressure, so there they always wait. A big build, one
 asking for `big-parallel` as the kernel does, never builds here: it goes to
 the builders first and alone, and while none takes it the machine stays as
-it is.
+it is. A build that says nothing for four minutes, its pieces' logs
+included, is taken for one waiting on a builder that doesn't answer: it's
+stopped, and what it held goes here or fails saying why.
+
+A switch that would restart what a hold covers is built, then waits. The
+ask that brings the hold's grant switches to what was built, though main
+has moved on since, and no stop ends it; the next ask takes the newer
+head. No ask starts or switches while the machine is shutting down.
 
 Code that may go to some builders and not others is named in `kept`, by
 patterns over its pieces' names. Those pieces go only to `kept.builders`,

@@ -4,11 +4,13 @@
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, OsStr};
+use std::io::{BufRead, BufReader, Read};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, ThreadId};
+use std::time::{Duration, Instant};
 
 /// By the thread running each update, the process groups of the commands
 /// it runs now and whether it's being stopped, so a stop can end what runs
@@ -19,6 +21,7 @@ static RUNNING: LazyLock<Mutex<HashMap<ThreadId, Running>>> = LazyLock::new(Mute
 struct Running {
     groups: Vec<libc::pid_t>,
     stopping: bool,
+    granted: bool,
 }
 
 fn running() -> MutexGuard<'static, HashMap<ThreadId, Running>> {
@@ -28,15 +31,25 @@ fn running() -> MutexGuard<'static, HashMap<ThreadId, Running>> {
 /// Ends every command the update on `thread` runs now, each with its
 /// whole process group, and lets it start none until it has `ended`, so
 /// the update fails at once. Says how many it ended.
-pub fn stop(thread: ThreadId) -> usize {
+pub fn stop(thread: ThreadId) -> Option<usize> {
     let mut running = running();
     let update = running.entry(thread).or_default();
+    if update.granted {
+        return None;
+    }
     update.stopping = true;
     for group in &update.groups {
         // SAFETY: kill only sends a signal; a group already gone is ESRCH.
         unsafe { libc::kill(-group, libc::SIGTERM) };
     }
-    update.groups.len()
+    Some(update.groups.len())
+}
+
+/// Marks this thread's update as one a hold was given for, which a stop
+/// leaves to run, since someone waits on its switch and a newer head
+/// would only start it over.
+pub fn granted() {
+    running().entry(thread::current().id()).or_default().granted = true;
 }
 
 /// Whether this thread's update is being stopped.
@@ -284,6 +297,129 @@ where
     })
 }
 
+/// Runs a build to its end as `said` does, but stops it, with its process
+/// group, once it has said nothing for `silent`, giving a failure that
+/// says so. Given `-L`, nix says each build's log as it goes, so a build
+/// that goes quiet that long is one waiting on a builder that doesn't
+/// answer: on 8 November one waited 20 minutes on a lent builder whose
+/// tunnel reset every 15 seconds, with the machine idle. The log's own
+/// lines, which nix starts with the piece's name and `> `, count as
+/// something said but are left out of what's given, which only needs
+/// nix's own.
+pub fn built<I, S>(
+    mut command: Command,
+    what: &str,
+    args: I,
+    silent: Duration,
+) -> Result<String, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    command
+        .args(args)
+        .process_group(0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let me = thread::current().id();
+    let stopped = || Failure::new(format!("{what}: the update was stopped"));
+    let mut child = {
+        let mut running = running();
+        let update = running.entry(me).or_default();
+        if update.stopping {
+            return Err(stopped());
+        }
+        let child = command
+            .spawn()
+            .map_err(|e| Failure::new(format!("{what}: {e}")))?;
+        update.groups.push(child.id().cast_signed());
+        child
+    };
+    let group = child.id().cast_signed();
+    let heard = Arc::new(Mutex::new((Instant::now(), String::new())));
+    let readers: Vec<_> = [
+        child
+            .stdout
+            .take()
+            .map(|out| Box::new(out) as Box<dyn Read + Send>),
+        child
+            .stderr
+            .take()
+            .map(|err| Box::new(err) as Box<dyn Read + Send>),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|stream| {
+        let heard = Arc::clone(&heard);
+        thread::spawn(move || {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                let mut heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
+                heard.0 = Instant::now();
+                if !is_log(&line) {
+                    heard.1.push_str(&line);
+                    heard.1.push('\n');
+                }
+            }
+        })
+    })
+    .collect();
+    let mut quiet = None;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => {}
+            Err(e) => break Err(e),
+        }
+        let last = heard.lock().unwrap_or_else(PoisonError::into_inner).0;
+        if quiet.is_none() && last.elapsed() >= silent {
+            // SAFETY: kill only sends a signal; a group already gone is ESRCH.
+            unsafe { libc::kill(-group, libc::SIGTERM) };
+            quiet = Some(last.elapsed());
+        }
+        thread::sleep(Duration::from_millis(200));
+    };
+    for reader in readers {
+        let _ = reader.join();
+    }
+    {
+        let mut running = running();
+        let update = running.entry(me).or_default();
+        update.groups.retain(|g| *g != group);
+        if update.stopping {
+            return Err(stopped());
+        }
+    }
+    let said = std::mem::take(&mut heard.lock().unwrap_or_else(PoisonError::into_inner).1);
+    let status = status.map_err(|e| Failure::new(format!("{what}: {e}")))?;
+    if let Some(quiet) = quiet {
+        return Err(Failure {
+            why: format!(
+                "{what} said nothing for {} minutes, so it was stopped",
+                quiet.as_secs() / 60
+            ),
+            lines: tail(&said),
+        });
+    }
+    if status.success() {
+        return Ok(said.trim().to_owned());
+    }
+    Err(Failure {
+        why: format!("{what} failed ({status})"),
+        lines: tail(&said),
+    })
+}
+
+/// Whether a line is a build's own log, as nix's `-L` gives it: the
+/// piece's name, then `> `.
+fn is_log(line: &str) -> bool {
+    line.split_once("> ").is_some_and(|(name, _)| {
+        !name.is_empty()
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-._".contains(c))
+    })
+}
+
 /// The last lines of what a command said, blank ones left out.
 pub fn tail(said: &str) -> Vec<String> {
     let lines: Vec<&str> = said.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -294,6 +430,61 @@ pub fn tail(said: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_build_that_goes_quiet_is_stopped() {
+        let mut sh = Command::new(std::env::var_os("BASH").unwrap_or_else(|| "sh".into()));
+        sh.args([
+            "-c",
+            "echo 'building x on y'; echo 'x> compiling'; sleep 30",
+        ]);
+        let started = Instant::now();
+        let failed = built(
+            sh,
+            "building",
+            std::iter::empty::<&str>(),
+            Duration::from_secs(1),
+        )
+        .unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "it waited for the end"
+        );
+        assert_eq!(
+            failed.why,
+            "building said nothing for 0 minutes, so it was stopped"
+        );
+        assert_eq!(
+            failed.lines,
+            ["building x on y"],
+            "the log's lines are left out"
+        );
+    }
+
+    #[test]
+    fn a_build_that_keeps_talking_runs_to_its_end() {
+        let mut sh = Command::new(std::env::var_os("BASH").unwrap_or_else(|| "sh".into()));
+        sh.args([
+            "-c",
+            "for i in 1 2 3 4; do echo \"x> $i\" >&2; sleep 0.4; done; echo done",
+        ]);
+        let said = built(
+            sh,
+            "building",
+            std::iter::empty::<&str>(),
+            Duration::from_secs(1),
+        );
+        assert_eq!(said.unwrap(), "done");
+    }
+
+    #[test]
+    fn a_build_log_line_is_told_from_nix_s_own() {
+        assert!(is_log("linux-7.3.1> CC kernel/fork.o"));
+        assert!(!is_log(
+            "building '/nix/store/a-b.drv' on 'ssh-ng://builder'..."
+        ));
+        assert!(!is_log("error: builder failed > 1"));
+    }
 
     #[test]
     fn said_gives_both_streams_and_output_only_what_was_printed() {
