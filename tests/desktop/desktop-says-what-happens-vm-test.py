@@ -296,8 +296,7 @@ class InTheDrawer:
             cursor = self.drawer()["cursor"]
             if str(cursor["says"]).startswith(self.FIRST):
                 return int(cursor["line"])
-            below = int(cursor["line"]) + 1
-            self.until("j", lambda drawer, below=below: drawer["cursor"]["line"] == below)
+            self.until("j", one_below(int(cursor["line"])))
         message = f"the log's first line is past its facts: {self.drawer()}"
         raise AssertionError(message)
 
@@ -310,6 +309,11 @@ class InTheDrawer:
         assert shown["open"], shown
         assert shown["selected"]["name"] == self.rows["selected"]["name"], shown
         assert shown["drawer"]["cursor"] is None, shown["drawer"]
+
+
+def one_below(line: int) -> Callable[[Json], bool]:
+    """Say whether the drawer's cursor stands on the line below this one."""
+    return lambda drawer: bool(drawer["cursor"]["line"] == line + 1)
 
 
 def held(drawer: Json) -> bool:
