@@ -1,7 +1,8 @@
 """The desktop test's launcher finds by name area.
 
 Here the launcher finds what Joel types: each thing once, by every name it had, emoji in
-their place, a category and a step by their words, and the field's keys. What it answers with
+their place, a category and a step by their words, the field's keys, and what Spotify found by
+its name holds once it's read, which needs its client's desktop entry. What it answers with
 no machine is tests/launcher-on-niri-test.py's, on a nested niri in seconds; only its shots
 are here.
 
@@ -1554,6 +1555,27 @@ def test_the_answers_are_shot_for_the_gallery(desktop: Desktop) -> None:
     after = desktop.showing()
     assert (after["selected"] or {}).get("name") == "UTC", f"a tick moved the selection: {after}"
     assert after["rows"] == before["rows"], f"a tick changed the rows: {before} then {after}"
+    desktop.close_launcher()
+
+
+def test_spotify_signed_out_offers_sign_in_and_says_so(desktop: Desktop) -> None:
+    """Spotify, never signed in here, offers Sign In inside it and says signed out on its row.
+
+    Stepping in runs the account's own spotify-recent, which finds no sign-in and says so by
+    its exit status: the provider, its command and its words wired together, as only a machine
+    with Spotify's client shows. Its many cases are tests/spotify-program.qml's.
+    """
+    desktop.answer("spotify")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Spotify")
+    desktop.into_program()
+    # Spotify is read as it's stepped into, so its acts come once it answers, and the launcher
+    # keeps what it showed in place, a row come later at the end (Steady.js).
+    desktop.launcher_until(lambda shown: "Sign In" in shown["rows"])
+    desktop.shoot("launcher-spotify-signed-out")
+    desktop.step_out()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("note") == "signed out",
+    )
     desktop.close_launcher()
 
 

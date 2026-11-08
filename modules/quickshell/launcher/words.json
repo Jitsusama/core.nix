@@ -5665,6 +5665,97 @@
       "glyph": "link"
     },
     {
+      "id": "spotify:context",
+      "of": "program:spotify",
+      "name": "Playlist, Album, Artist or Show",
+      "glyph": "playing",
+      "verb": "play",
+      "said": {
+        "playlist": "playlist",
+        "album": "album",
+        "artist": "artist",
+        "show": "show",
+        "collection": "liked songs",
+        "playing": "playing",
+        "paused": "paused",
+        "song": "1 song",
+        "songs": "{count} songs",
+        "episode": "1 episode",
+        "episodes": "{count} episodes",
+        "none": "none",
+        "signedOut": "signed out",
+        "unreachable": "can't reach Spotify",
+        "failed": "couldn't read Spotify"
+      }
+    },
+    {
+      "id": "spotify:liked",
+      "of": "program:spotify",
+      "name": "Liked Songs",
+      "glyph": "favourite",
+      "verb": "play"
+    },
+    {
+      "id": "spotify:playlists",
+      "of": "program:spotify",
+      "name": "Playlists",
+      "verb": "more",
+      "glyph": "playlist"
+    },
+    {
+      "id": "spotify:albums",
+      "of": "program:spotify",
+      "name": "Albums",
+      "verb": "more",
+      "glyph": "album"
+    },
+    {
+      "id": "spotify:artists",
+      "of": "program:spotify",
+      "name": "Artists",
+      "verb": "more",
+      "glyph": "artist"
+    },
+    {
+      "id": "spotify:shows",
+      "of": "program:spotify",
+      "name": "Shows",
+      "verb": "more",
+      "glyph": "show"
+    },
+    {
+      "id": "verb:spotify:play",
+      "command": "resume",
+      "in": "spotify:context",
+      "name": "Play",
+      "verb": "play",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:spotify:open",
+      "command": "open",
+      "in": "spotify:context",
+      "name": "Open in Spotify",
+      "verb": "open",
+      "glyph": "program"
+    },
+    {
+      "id": "verb:spotify:link",
+      "command": "yank",
+      "in": "spotify:context",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:spotify:sign-in",
+      "command": "open",
+      "in": "program:spotify",
+      "name": "Sign In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
       "id": "verb:person:favourite",
       "command": "favourite",
       "in": "people",

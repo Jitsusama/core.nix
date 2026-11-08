@@ -1,0 +1,15 @@
+{
+  "artists": {
+    "items": [
+      {
+        "uri": "spotify:artist:r1",
+        "name": "Artist",
+        "followers": { "total": 1000 },
+        "popularity": 50
+      }
+    ],
+    "next": "https://api.spotify.com/v1/me/following?type=artist&after=r1&limit=50",
+    "cursors": { "after": "r1" },
+    "total": 2
+  }
+}

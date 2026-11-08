@@ -21,7 +21,13 @@
 # Connect device of its own. It draws in the terminal's colours, which are
 # the theme's, so it needs no theme of its own, and it reports what's
 # playing to the desktop's media keys.
-{ spicetify-nix }:
+#
+# In the launcher, Programs › Spotify holds the playlists, albums and
+# shows Spotify played lately as its Recent, and Liked Songs, Playlists,
+# Albums, Artists and Shows inside it, each played from there
+# (SpotifyProgram.qml), read through spotify-recent with spotify-player's
+# sign-in only as Spotify is stepped into.
+{ spicetify-nix, quickshell }:
 {
   config,
   lib,
@@ -190,6 +196,7 @@ in
   imports = [
     ../keys/home.nix
     ../theme/home.nix
+    quickshell
     spicetify-nix.homeManagerModules.spicetify
   ];
 
@@ -214,6 +221,26 @@ in
   # Spotify's keys, for the launcher to list over its window, whose app id
   # is spotify.
   jitsusama.keys.spotify = keys;
+
+  # Spotify's Recent and what Joel keeps there in Programs › Spotify,
+  # made beside Slack's program and the other programs' acts. Each is played
+  # through spotify-recent while a Spotify runs, else opened in the
+  # client; signed out, Sign In runs spotify-player's sign-in in kitty,
+  # since it prints where to sign in and waits for Spotify's answer.
+  jitsusama.quickshell.launcher.providers.spotify-program = {
+    order = 47;
+    source = ./SpotifyProgram.qml;
+    command = [ (lib.getExe (pkgs.callPackage ./spotify-recent/package.nix { })) ];
+    spotify = [ (lib.getExe config.programs.spicetify.spicedSpotify) ];
+    signIn = [
+      "kitty"
+      (lib.getExe config.programs.spotify-player.package)
+      "authenticate"
+    ];
+  };
+
+  # What the provider works out, beside it, where its import finds it.
+  xdg.configFile."quickshell/launcher/Spotify.js".source = ./Spotify.js;
 
   programs.spotify-player = {
     enable = true;

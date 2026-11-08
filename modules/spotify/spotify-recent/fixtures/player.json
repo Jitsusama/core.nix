@@ -1,0 +1,15 @@
+{
+  "is_playing": true,
+  "currently_playing_type": "track",
+  "context": { "type": "playlist", "uri": "spotify:playlist:p9" },
+  "item": {
+    "type": "track",
+    "uri": "spotify:track:t0",
+    "name": "Now",
+    "album": {
+      "uri": "spotify:album:a0",
+      "name": "Zero",
+      "artists": [{ "name": "Band" }]
+    }
+  }
+}

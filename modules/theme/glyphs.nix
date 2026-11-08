@@ -280,6 +280,28 @@ in
     console = "<";
     means = "going back to the track before";
   };
+  # What music is kept in, each its own mark, so a playlist and an album
+  # tell apart at a glance in a list that mixes them.
+  playlist = {
+    glyph = nerd "f0cb8";
+    console = "=";
+    means = "a playlist of songs someone keeps";
+  };
+  album = {
+    glyph = nerd "f0025";
+    console = "o";
+    means = "an album, an artist's songs released together";
+  };
+  artist = {
+    glyph = nerd "f0803";
+    console = "a";
+    means = "someone who makes music";
+  };
+  show = {
+    glyph = nerd "f0994";
+    console = "s";
+    means = "a show, its episodes, as a podcast";
+  };
   resume = {
     glyph = nerd "f040a";
     console = "P";
