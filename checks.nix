@@ -1006,6 +1006,23 @@ gather (
             ${pkgs.writeText "over" (lib.concatLines over)}
           touch $out
         '';
+
+      # Every path pattern merge-net's must-run.txt and ruff.toml's per-file
+      # ignores give still names a file (tests/every-pattern-names-a-file.py),
+      # since neither tool says when one matches nothing, and a file moved
+      # from under one would quietly drop its VM tests from the net or its
+      # ignores from ruff. It's given the files' paths, not what they hold,
+      # so only a file added, moved or removed runs it again.
+      every-pattern-names-a-file =
+        let
+          paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ./. file)) (lib.fileset.toList ./.);
+        in
+        pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
+          ${lib.getExe pkgs.python3} ${./tests/every-pattern-names-a-file.py} \
+            ${./tools/merge-net/must-run.txt} ${./ruff.toml} \
+            ${pkgs.writeText "paths" (lib.concatLines paths)}
+          touch $out
+        '';
     }
     # shell-preview shows the shell nested in a Wayland session, which only
     # Linux has.
