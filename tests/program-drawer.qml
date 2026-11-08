@@ -23,6 +23,7 @@ QtObject {
     readonly property var said: ({
         on: "on {places}",
         and: "and",
+        program: "program",
         kind: "1 kind",
         kinds: "{count} kinds"
     })
@@ -42,9 +43,6 @@ QtObject {
 
     function run() {
 
-        expect("memory at three figures", [512, 980e3, 87.34e6, 512e6, 1.2449e9, 999.7e6]
-            .map(Program.memory), ["512 B", "980 kB", "87.3 MB", "512 MB", "1.24 GB",
-            "1.00 GB"]);
         expect("a share", [0.045, 0.37, 0].map(Program.percent), ["4.5%", "37%", "0%"]);
 
         expect("its windows' workspaces", Program.eyebrow([4, 1, 4], "web browser", said),
@@ -77,7 +75,6 @@ QtObject {
 
         const drawn = Program.drawer({
             name: "Google Chrome",
-            kind: "web browser",
             places: [1, 4],
             usage: { processor: 0.25, memory: 741376000, count: 4 },
             playing: "Song of the test \u00b7 The Tester",
@@ -90,11 +87,11 @@ QtObject {
             comment: " Access the Internet "
         }, named, said);
         expect("a program's drawer", [drawn.eyebrow, drawn.title, drawn.body],
-            ["on 1 and 4 \u00b7 web browser", "Google Chrome", "Access the Internet"]);
+            ["on 1 and 4 \u00b7 program", "Google Chrome", "Access the Internet"]);
         expect("what moves first, what others say, what describes, then its identifiers",
             drawn.facts, [
                 { label: "[processor]", value: "25%" },
-                { label: "[memory]", value: "741 MB" },
+                { label: "[memory]", value: "741\u00a0MB" },
                 { label: "[processes]", value: "4" },
                 { label: "[playing]", value: "Song of the test \u00b7 The Tester" },
                 { label: "Profiles", value: "2" },
@@ -104,11 +101,11 @@ QtObject {
                 { label: "[command]", value: "google-chrome-stable %U" },
                 { label: "[desktop-id]", value: "google-chrome" }
             ]);
-        const closed = Program.drawer({ name: "GIMP", kind: "image editor", places: [],
+        const closed = Program.drawer({ name: "GIMP", places: [],
             usage: null, id: "gimp", command: ["gimp"] }, named, said);
         expect("a closed program says only what describes it",
             [closed.eyebrow].concat(closed.facts.map(fact => fact.label)),
-            ["image editor", "[command]", "[desktop-id]"]);
+            ["program", "[command]", "[desktop-id]"]);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

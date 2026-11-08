@@ -5880,7 +5880,10 @@
       "id": "on:disk",
       "in": "on",
       "said": {
-        "eyebrow": "on {path} \u00b7 disk",
+        "eyebrow": "on this machine \u00b7 disk",
+        "free": "{amount} free",
+        "day": "a day",
+        "days": "{count} days",
         "hourly": "{amount} an hour",
         "grew": "{path} +{amount}",
         "cleared": "{amount} from {path} at {time}"
@@ -7818,6 +7821,7 @@
       "said": {
         "on": "on {places}",
         "and": "and",
+        "program": "program",
         "kind": "1 kind",
         "kinds": "{count} kinds"
       }

@@ -42,7 +42,7 @@ QtObject {
             now: 1000,
             named,
             said: {
-                eyebrow: "on {path} \u00b7 disk",
+                eyebrow: "on this machine \u00b7 disk",
                 hourly: "{amount} an hour",
                 grew: "{path} +{amount}",
                 cleared: "{amount} from {path} at {time}"
@@ -69,9 +69,9 @@ QtObject {
         ];
         const cleared = [{ at: 900, path: "/home/joel/.cache/nix", bytes: 70 }];
         const drawer = Drawers.disk({ worst, holders, cleared }, told);
-        expect("a disk is where it is, as written, and what moves first, its room after",
-            [drawer.eyebrow, drawer.eyebrowNames].concat(said(drawer), drawer.body), [
-                "on /home \u00b7 disk", true,
+        expect("a disk is named by its path, and says what moves first, its room after",
+            [drawer.title, drawer.eyebrow].concat(said(drawer), drawer.body), [
+                "/home", "on this machine \u00b7 disk",
                 "[machine:disk:full-in] 3600 s",
                 "[on:disk:filling] 12 B an hour",
                 "[on:disk:growing] ~/.cache/nix +90 B \u00b7 ~/.local/share +30 B \u00b7 ~/src +5 B",
@@ -117,19 +117,25 @@ QtObject {
                 jobs: { cpu_some: 0.04, memory_some: 0, io_some: 0 }
             },
             memory: { session: { swap_mib: 1024 }, app: { swap_mib: 120 } },
+            worst: "memory",
             trouble: ["Memory kept programs waiting.", "Swap is in use."]
         };
         const drawer = Drawers.lag(window, "memory", told);
-        expect("lag says what waits over what window, each slice's stalls to three figures,"
-            + " too little to say giving way, then the swap and the words its row doesn't say",
+        expect("lag says what waits, the most it stalled any slice, over what window, each"
+            + " slice's stalls to three figures, too little to say giving way, then the swap"
+            + " and its words",
             [drawer.eyebrow].concat(said(drawer), drawer.body), [
                 "on this machine \u00b7 lag",
-                "[on:lag:waiting] memory \u00b7 over the last 10 s",
+                "[on:lag:waiting] memory 12.3% \u00b7 over the last 10 s",
                 "[on:lag:session] memory 12.3% \u00b7 disk 3.00%",
                 "[on:lag:app] processor 41.1% \u00b7 memory 0.500% \u00b7 disk 100%",
-                "[on:lag:swap] 1.20 GB",
-                "Swap is in use."
+                "[on:lag:swap] 1.20\u00a0GB",
+                "Memory kept programs waiting. Swap is in use."
             ]);
+        const days = { day: "a day", days: "{count} days" };
+        expect("how long is said in its two largest units to the minute, never as a clock",
+            [21_420, 2_400, 7_200, 30, 86_400, 3 * 86_400].map(seconds => Drawers.span(seconds,
+                days)), ["5 h 57 min", "40 min", "2 h", "1 min", "a day", "3 days"]);
         expect("nothing waiting long and no swap says only the slices lag-watch watched",
             said(Drawers.lag({ stalls: { build: { cpu_some: 1, memory_some: 2, io_some: 0 } } },
                 "", told)),

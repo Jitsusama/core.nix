@@ -7,16 +7,12 @@
 // 2026-11-07). Its desktop entry's comment is its words. Plain JavaScript,
 // so tests/program-drawer.qml holds it in Qt's own engine.
 .pragma library
+.import "../FileFacts.js" as FileFacts
 
 // How many kinds of file the drawer names beside their count.
 const NAMED = 3;
 // A share under this is said with a place after its point.
 const SMALL = 0.1;
-// The figures memory is said in: 1.24 GB, 87.3 MB, 512 MB.
-const FIGURES = 3;
-const THOUSAND = 1000;
-const UNITS = [[THOUSAND ** 4, "TB"], [THOUSAND ** 3, "GB"], [THOUSAND ** 2, "MB"],
-    [THOUSAND, "kB"]];
 // A file's kind by the name its files end in, a glob as `*.pdf`.
 const ENDING = /^\*\.([a-z0-9]+)$/i;
 // A link's scheme a program handles, as its desktop entry lists it.
@@ -55,21 +51,6 @@ function eyebrow(places, kind, said) {
     }
     const on = filled(said.on, { places: listed(numbers, said.and) });
     return kind === "" ? on : `${on} \u00b7 ${kind}`;
-}
-
-// Memory in decimal units, at three figures: 1.24 GB, 87.3 MB, 512 kB.
-function memory(bytes) {
-    const unit = UNITS.find(each => bytes >= each[0]);
-    if (!unit) {
-        return `${Math.round(bytes)} B`;
-    }
-    // 999.6 MB would round to 1000 MB: it's 1.00 GB instead.
-    const scaled = Number((bytes / unit[0]).toPrecision(FIGURES));
-    const at = UNITS.indexOf(unit);
-    if (scaled >= THOUSAND && at > 0) {
-        return `${(scaled / THOUSAND).toPrecision(FIGURES)} ${UNITS[at - 1][1]}`;
-    }
-    return `${scaled.toPrecision(FIGURES)} ${unit[1]}`;
 }
 
 // A share of the whole machine, from 0 to 1, as a percentage, with a place
@@ -155,7 +136,7 @@ function facts(known, named, said) {
     const own = id => value => ({ label: named(id), value: String(value ?? "") });
     return [
         own("processor")(used ? percent(used.processor) : ""),
-        own("memory")(used ? memory(used.memory) : ""),
+        own("memory")(used ? FileFacts.weighed(used.memory) : ""),
         own("processes")(used ? String(used.count) : ""),
         own("playing")(known.playing ?? "")
     ].concat((known.given ?? []).map(fact => ({ label: fact.label,
@@ -168,10 +149,12 @@ function facts(known, named, said) {
     ]).filter(fact => fact.value !== "");
 }
 
-// A program's drawer: { eyebrow, title, facts, body }.
+// A program's drawer: { eyebrow, title, facts, body }. What it is is said
+// in our word, "program", its desktop entry's generic name staying in its
+// row's note (VKCF3Z, 2026-11-08).
 function drawer(known, named, said) {
     return {
-        eyebrow: eyebrow(known.places ?? [], known.kind ?? "", said),
+        eyebrow: eyebrow(known.places ?? [], said.program ?? "", said),
         title: known.name,
         facts: facts(known, named, said),
         body: String(known.comment ?? "").trim()

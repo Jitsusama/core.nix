@@ -21,6 +21,7 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "../FileFacts.js" as FileFacts
 import "Drawers.js" as Drawers
 
 Piece {
@@ -83,10 +84,17 @@ Piece {
     wants: critical || frozen.length > 0
     now: wants
     value: frozen.length > 0 ? "froze " + frozen.map(writer => writer.name).join(", ")
-        : short || !silent
-        ? (worst === null ? "" : `${shown(worst.free)} free on ${worst.path}`
-            + (short ? `, ${banded(worst.band)}` : ""))
+        : short || !silent ? valueItems.map(item => item.said).join(" \u00b7 ")
         : "guard stopped"
+    // How the worst disk stands, then its room, "nearly full \u00b7 8.59 GB
+    // free": a row gives way by whole items, its room first, never cut, and
+    // which disk is its drawer's to say (VKCF3Z, 2026-11-08).
+    valueItems: worst === null || frozen.length > 0 || !(short || !silent) ? []
+        : (short ? [{ said: banded(worst.band), keep: 2 }] : []).concat([{
+            said: Drawers.filled((Words.of("on:disk").said ?? {}).free ?? "{amount} free",
+                { amount: shown(worst.free) }),
+            keep: 1
+        }])
 
     title: "Disks"
     hint: frozen.length > 0 ? `${frozen[0].name} was frozen for filling ${frozen[0].path}`
@@ -126,7 +134,7 @@ Piece {
     // Everything the guards say of the disk shortest of room, under Now's
     // row (Drawers.js), each figure said as the Disks place says it, and
     // what either guard cleared last.
-    drawer: worst === null ? null : () => Object.assign({ title: piece.title }, Drawers.disk({
+    drawer: worst === null ? null : () => Drawers.disk({
         worst: piece.worst,
         holders: piece.holders,
         cleared: piece.said.reduce((all, status) => all.concat(status.cleared ?? []), [])
@@ -139,7 +147,7 @@ Piece {
         duration: seconds => piece.duration(seconds),
         within: path => Files.within(path),
         time: at => Qt.formatDateTime(new Date(at * 1000), "HH:mm")
-    }))
+    })
 
     // What the guard said of the last Keep or Release, for the foot: the
     // one sentence it prints, or why it couldn't.
@@ -204,22 +212,16 @@ Piece {
         return bands.indexOf(one.band) > bands.indexOf(other.band);
     }
 
-    // Sizes as the guard says them, but never more than there is.
+    // Sizes as every size reads, decimal at three figures, "19.3 GB", for
+    // this piece and the Disks place both (VKCF3Z, 2026-11-08).
     function shown(bytes) {
-        const units = [[40, "TiB"], [30, "GiB"], [20, "MiB"], [10, "KiB"]];
-        const [shift, unit] = units.find(([shift]) => bytes >= 2 ** shift) ?? [0, "B"];
-        return shift === 0 ? `${bytes} B`
-            : `${(Math.floor(bytes / 2 ** shift * 10) / 10).toFixed(1)} ${unit}`;
+        return FileFacts.weighed(bytes);
     }
 
-    // How long, as the battery's "full in" says it, and past a day in days.
+    // How long, "5 h 57 min", and past a day in days (Drawers.js), for
+    // this piece and the Disks place both.
     function duration(seconds) {
-        if (seconds >= day) {
-            const days = Math.round(seconds / day);
-            return days === 1 ? "a day" : `${days} days`;
-        }
-        const minutes = Math.round(seconds / 60);
-        return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0");
+        return Drawers.span(seconds, Words.of("on:disk").said ?? {});
     }
 
     // Each guard's status, the account's and the machine's.

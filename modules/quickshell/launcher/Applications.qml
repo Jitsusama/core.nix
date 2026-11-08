@@ -354,9 +354,11 @@ Provider {
         return players.find(player => player.isPlaying) ?? players[0] ?? null;
     }
 
+    // A track and who plays it, a dot between them, as every part of a
+    // value is (VKCF3Z, 2026-11-08).
     function nowPlaying(player) {
         return player.trackArtist === "" ? player.trackTitle
-            : `${player.trackTitle}, ${player.trackArtist}`;
+            : `${player.trackTitle} \u00b7 ${player.trackArtist}`;
     }
 
     // Media: playing or pausing, one row by how it stands, then the next
@@ -442,7 +444,6 @@ Provider {
         const player = playerOf(given => provider.names(entry, given, looked));
         return Program.drawer({
             name: entry.name,
-            kind: entry.genericName.toLowerCase(),
             places: (running[entry.id] ?? [])
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),

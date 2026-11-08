@@ -83,7 +83,8 @@ ShellRoot {
         account: status([disk("/", "pressure", 120.5, 3 * 24 * 3600)]),
         machine: status([disk("/", "pressure", 120.5)]),
         holds: piece => !piece.active && piece.role === "text" && !piece.wants
-            && piece.value === "120.5 GiB free on /, filling"
+            && piece.value === "filling \u00b7 129\u00a0GB free"
+            && piece.valueItems.length === 2
             && piece.context === "nearly full in 3 days"
     }, {
         what: "a disk nearly full within a day",
@@ -91,29 +92,29 @@ ShellRoot {
             { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants && !piece.now
-            && piece.value === "120.5 GiB free on /, filling"
-            && piece.context === "nearly full in 1:30; nothing more is safe to take"
+            && piece.value === "filling \u00b7 129\u00a0GB free"
+            && piece.context === "nearly full in 1 h 30 min; nothing more is safe to take"
     }, {
         what: "a critical disk",
         account: status([disk("/", "critical", 8.25)],
             { at: root.now, path: "/", band: "critical", end: "reached", freed: 3 * gib }),
         machine: status([]),
         holds: piece => piece.active && piece.role === "alert" && piece.wants && piece.now
-            && piece.value === "8.2 GiB free on /, critically full"
-            && piece.hint === "/ is short of room: 8.2 GiB free"
-            && piece.context === "freed 3.0 GiB on /"
+            && piece.value === "critically full \u00b7 8.86\u00a0GB free"
+            && piece.hint === "/ is short of room: 8.86\u00a0GB free"
+            && piece.context === "freed 3.22\u00a0GB on /"
             && piece.actions.length === 0
     }, {
         what: "the worse of two words",
         account: status([disk("/", "healthy", 200)]),
         machine: status([disk("/", "urgent", 60)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
-            && piece.value === "60.0 GiB free on /, nearly full"
+            && piece.value === "nearly full \u00b7 64.4\u00a0GB free"
     }, {
         what: "a disk only the machine watches",
         account: status([disk("/", "healthy", 400)]),
         machine: status([disk("/", "healthy", 400), disk("/boot", "critical", 0.01)]),
-        holds: piece => piece.wants && piece.value === "10.2 MiB free on /boot, critically full"
+        holds: piece => piece.wants && piece.value === "critically full \u00b7 10.7\u00a0MB free"
     }, {
         what: "a writer frozen",
         // Thawed only above urgent, so frozen still at urgent.
@@ -133,7 +134,8 @@ ShellRoot {
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.units.account.asked
             && piece.units.account.state === "activating"
-            && !piece.active && piece.value === "400.0 GiB free on /"
+            && !piece.active && piece.value === "429\u00a0GB free"
+            && piece.valueItems.length === 1
     }, {
         // After one that isn't silent, so only this one's heartbeat can
         // make it so: a second short of silence, and nothing after it, so

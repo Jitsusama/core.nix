@@ -6,7 +6,7 @@
 // only the pieces with no place of their own are here: Disk, Notices, Lag,
 // Sharing, Recording and Do Not Disturb.
 .pragma library
-.import "../launcher/Program.js" as Program
+.import "../FileFacts.js" as FileFacts
 
 const FIELD = /\{(\w+)\}/g;
 const SIGNIFICANT = 3;
@@ -17,6 +17,9 @@ const LEAST = 0.1;
 const MEBIBYTE = 1_048_576;
 // The holders a disk's drawer names growing, the most first.
 const GROWING = 3;
+const MINUTE = 60;
+const HOUR = 3600;
+const DAY = 86_400;
 // The slices lag-watch watches, in the order a drawer names them: the
 // desktop's own, the programs', then what runs on its own and builds.
 const SLICES = ["session", "app", "jobs", "build"];
@@ -42,6 +45,25 @@ function percent(share) {
     return `${share.toPrecision(SIGNIFICANT)}%`;
 }
 
+// How long until something, in its two largest units to the minute, "5 h
+// 57 min", "40 min", and past a day in days, as Cameras' Powered says how
+// long (VKCF3Z, 2026-11-08: never a clock-like "5:57"). `said` names a day
+// and days.
+function span(seconds, said) {
+    if (seconds >= DAY) {
+        const days = Math.round(seconds / DAY);
+        return days === 1 ? said.day : filled(said.days, { count: days });
+    }
+    // Never "0 min": what's due within the minute is a minute away.
+    const minutes = Math.max(1, Math.round(seconds / MINUTE));
+    const hours = Math.floor(minutes * MINUTE / HOUR);
+    const left = minutes % MINUTE;
+    if (hours === 0) {
+        return `${left} min`;
+    }
+    return left === 0 ? `${hours} h` : `${hours} h ${left} min`;
+}
+
 // The disk short of room most, or the one Now names: how soon it's full and
 // how fast it fills, what's growing most, its room and size, and what the
 // guard last cleared. `told` holds the clock (`now`, in seconds), the
@@ -62,9 +84,10 @@ function disk(state, told) {
             amount: shown(holder.grew.bytes) }));
     const [cleared] = state.cleared ?? [];
     return {
-        eyebrow: filled(said.eyebrow, { path: worst.path }),
-        // A path is said as it's written, not in the eyebrow's capitals.
-        eyebrowNames: true,
+        // The disk's own name is the title, so the eyebrow says only where
+        // and what (VKCF3Z, 2026-11-08).
+        title: worst.path,
+        eyebrow: said.eyebrow,
         facts: drawn([
             fact(named, "machine:disk:full-in", left > 0 ? told.duration(left) : ""),
             fact(named, "on:disk:filling", filling > 0
@@ -95,15 +118,19 @@ function notices(missed, said) {
     };
 }
 
-// What lag-watch said of its last window: what has kept them waiting, over
-// how long a window, which every share is of; how long each slice stalled
-// on each kind, as a share of it; the swap held; and its own sentences of
-// what counted as waiting, past the first, which Lag's row already says
-// beside it (VKCF3Z, 2026-11-08: never repeat the row's side).
+// What lag-watch said of its last window: what has kept them waiting, with
+// the most any slice stalled on it, over how long a window, which every
+// share is of, as Lag's row says only what (VKCF3Z, 2026-11-08); how long
+// each slice stalled on each kind, as a share of it; the swap held; and
+// its own sentences of what counted as waiting.
 function lag(window, what, told) {
     const { named, said } = told;
-    const waiting = what === "" ? ""
-        : filled(said.over, { what, seconds: Math.round(Number(window.seconds) || 0) });
+    const most = Math.max(0, ...SLICES
+        .map(slice => Number(window.stalls?.[slice]?.[`${window.worst}_some`]) || 0));
+    const waiting = what === "" ? "" : filled(said.over, {
+        what: most >= LEAST ? `${what} ${percent(most)}` : what,
+        seconds: Math.round(Number(window.seconds) || 0)
+    });
     const stalled = SLICES.filter(slice => window.stalls?.[slice])
         .map(slice => fact(named, `on:lag:${slice}`, STALLS
             .map(([kind, word]) => [word, Number(window.stalls[slice][`${kind}_some`]) || 0])
@@ -114,8 +141,9 @@ function lag(window, what, told) {
     return {
         eyebrow: said.eyebrow,
         facts: drawn([fact(named, "on:lag:waiting", waiting)].concat(stalled,
-            [fact(named, "on:lag:swap", swapped > 0 ? Program.memory(swapped * MEBIBYTE) : "")])),
-        body: (window.trouble ?? []).slice(1).join(" ")
+            [fact(named, "on:lag:swap",
+                swapped > 0 ? FileFacts.weighed(swapped * MEBIBYTE) : "")])),
+        body: (window.trouble ?? []).join(" ")
     };
 }
 

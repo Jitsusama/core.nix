@@ -1388,9 +1388,15 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
-      mkdir runtime launcher && chmod 700 runtime
+      # The piece says sizes as a file does, from the shell's folder above
+      # its own, so the shell is laid a folder down.
+      mkdir -p runtime shell/launcher && chmod 700 runtime
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      cd shell
       cp ${./pieces/Piece.qml} Piece.qml
       cp ${./pieces/Disk.qml} Disk.qml
+      cp ${./pieces/Drawers.js} Drawers.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${./pieces/StatusFile.qml} StatusFile.qml
@@ -3331,6 +3337,8 @@ onLinux {
       mkdir launcher
       cp ${../../tests/program-drawer.qml} program-drawer.qml
       cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3347,10 +3355,11 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "a-piece-says-all-it-knows" { } ''
-      mkdir launcher pieces
+      mkdir pieces
       cp ${../../tests/piece-drawers.qml} piece-drawers.qml
       cp ${./pieces/Drawers.js} pieces/Drawers.js
-      cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

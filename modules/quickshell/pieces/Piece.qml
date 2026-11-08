@@ -37,6 +37,10 @@ Item {
     // figure, the room Now keeps for it.
     property var counts: null
     property string widest: ""
+    // Its value as items, `{ said, keep }`, where it says several, so Now's
+    // row gives way by whole items (Choice.qml's sideItems); empty, the
+    // value is said as it is.
+    property var valueItems: []
     property string role: "text"
     // The theme's glyph its value is read by at a glance, by name, or none,
     // and what a glance needs said after it: the least that tells Joel

@@ -607,6 +607,7 @@ Provider {
                 : piece.actions[0].verb ?? piece.actions[0].name.toLowerCase(),
             name: piece.title,
             side: piece.value,
+            sideItems: piece.valueItems ?? [],
             counts: piece.counts ?? undefined,
             // What it holds, after its name, as a place's row says what
             // it holds, while its side says only how it stands (VKCF3Z,
