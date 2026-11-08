@@ -19,6 +19,7 @@ let
     no
     module
     freeform
+    option
     ;
 
   # A line of a kernel configuration fragment as a structured setting, or
@@ -92,6 +93,15 @@ buildLinux (
       # where the image went, and core's Apple laptops leave the laptop
       # role's hibernation out.
       HIBERNATION = no;
+
+      # Apple's cores run no 32-bit code at all, and 16K pages leave the
+      # kernel's 32-bit support to experts, so it's off, and the 32-bit
+      # emulation nixpkgs asks of every aarch64 kernel has nothing to
+      # emulate for. Those settings then don't exist, which they may.
+      COMPAT = no;
+      ARMV8_DEPRECATED = lib.mkForce (option no);
+      CP15_BARRIER_EMULATION = lib.mkForce (option no);
+      COMPAT_ALIGNMENT_FIXUPS = lib.mkForce (option no);
     };
 
     kernelPatches = args.kernelPatches or [ ];
