@@ -159,6 +159,22 @@ pub fn give_back_proven(
     }
 }
 
+/// How many proofs in a row a builder that builds still reach may fail
+/// before it's given back. A proof waits for a build slot like any build,
+/// so a builder every slot of which is busy can fail one while it answers:
+/// on 8 November one carrying about 40 builds failed two in 76 s, and its
+/// give-back cut them all. A dead builder's relay gives up on its own
+/// within 3 minutes, which ends what reaches it.
+pub const FAILS_WHILE_REACHED: u32 = 10;
+
+/// Whether a builder whose proofs say it's dropped (`dropped`, after
+/// `failures` in a row) is given back as lost, given whether a build
+/// reaches it (`reached`). Dropped, it's named nowhere either way, so no
+/// new build goes there.
+pub fn proven_lost(dropped: bool, failures: u32, reached: bool) -> bool {
+    dropped && (!reached || failures >= FAILS_WHILE_REACHED)
+}
+
 /// Whether a builder last used at `used`, asked to live until `ends`, is
 /// asked whether a run outliving its caller still builds there: only once
 /// it would otherwise be given back idle, so it's asked once each idle
@@ -272,6 +288,15 @@ mod tests {
         );
         assert!(leaves(200, 200, true, true));
         assert!(leaves(200, 200, false, false));
+    }
+
+    #[test]
+    fn a_builder_builds_still_reach_is_given_back_only_after_ten_failed_proofs() {
+        assert!(proven_lost(true, 2, false), "nothing reaches it");
+        assert!(!proven_lost(true, 2, true), "a build reaches it");
+        assert!(!proven_lost(true, FAILS_WHILE_REACHED - 1, true));
+        assert!(proven_lost(true, FAILS_WHILE_REACHED, true));
+        assert!(!proven_lost(false, 0, false), "it answers");
     }
 
     #[test]

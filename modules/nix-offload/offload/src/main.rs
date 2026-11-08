@@ -1756,6 +1756,7 @@ fn serve(settings: &Settings) -> bool {
     let mut said_superseded = false;
     let mut restarts = false;
     let mut handing_over = false;
+    let mut said_reached = false;
     // The lent builder's proofs, kept past its give-back when it failed
     // them, so its folder says so until another stands.
     let mut keeper: Option<Keeper> = None;
@@ -1778,8 +1779,19 @@ fn serve(settings: &Settings) -> bool {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
-                let unanswered =
-                    !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
+                let dropped = !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
+                let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
+                let unanswered = decide::proven_lost(dropped, failures, reached);
+                if dropped && !unanswered && !std::mem::replace(&mut said_reached, true) {
+                    eprintln!(
+                        "nix-offload: {} failed {failures} proofs in a row, so no new build goes \
+                         there, but builds still reach it, so it's kept until they end or it \
+                         fails {} in a row",
+                        builder.name,
+                        decide::FAILS_WHILE_REACHED
+                    );
+                }
+                said_reached &= dropped;
                 let (used, ends) = (builder.used, builder.ends);
                 match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
