@@ -5436,7 +5436,7 @@
           "said": "taken back by its sender at {at}"
         },
         "resting": {
-          "said": "off the screen, still open"
+          "said": "off the screen \u00b7 still open"
         },
         "shown": {
           "said": "still on the screen"
