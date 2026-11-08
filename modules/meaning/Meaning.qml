@@ -122,6 +122,8 @@ Provider {
     function heard(kind, text, answer) {
         const other = search => search.kind !== kind || search.words !== text;
         const refused = answer?.error?.code === "unknown-kind";
+        // Any other refusal, as a search passed over once Joel typed on,
+        // is forgotten, so typing it again asks afresh.
         if (answer === null || (answer.error && !refused)) {
             provider.searches = provider.searches.filter(other);
             return;

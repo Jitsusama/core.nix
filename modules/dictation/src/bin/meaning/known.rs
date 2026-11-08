@@ -72,8 +72,8 @@ pub struct Query {
     pub limit: usize,
     pub among: Among,
     pub told: Sender<String>,
-    /// The connection that asked, so a newer search from it, or its
-    /// closing, lets this one go.
+    /// The connection that asked, so a newer search from it lets this one
+    /// go.
     pub connection: u64,
 }
 
@@ -263,9 +263,9 @@ impl Known {
     }
 
     /// Lets go of the searches `connection` still waits on among the same,
-    /// as a newer one from it comes, since it typed on: each is answered
-    /// with nothing and as not whole, so the shell asks it again a moment
-    /// later should it be typed back.
+    /// as a newer one from it comes, since it typed on: each is refused as
+    /// passed over, so the shell forgets it and asks afresh should it be
+    /// typed back.
     fn passed_over(&mut self, connection: u64, among: Among) {
         let (over, kept): (VecDeque<Query>, VecDeque<Query>) = self
             .queries
@@ -273,7 +273,7 @@ impl Known {
             .partition(|query| query.connection == connection && query.among == among);
         self.queries = kept;
         for query in over {
-            let line = json!({"id": query.id, "records": [], "whole": false});
+            let line = error(&query.id, "passed-over", "a newer search came");
             let _ = query.told.send(line.to_string());
         }
     }
@@ -401,11 +401,11 @@ impl Answers for Known {
         }
     }
 
-    // A closed connection's searches go unanswered, since nothing would
-    // hear them.
-    fn gone(&mut self, connection: u64) {
-        self.queries.retain(|query| query.connection != connection);
-    }
+    // A connection's searches are kept once it stops asking, since a
+    // client that sends its search and closes its side, as socat does,
+    // still waits for the answer; one nobody hears costs a query's
+    // embedding, and its answer goes nowhere.
+    fn gone(&mut self, _connection: u64) {}
 }
 
 #[cfg(test)]
@@ -532,26 +532,25 @@ mod tests {
     }
 
     #[test]
-    fn a_newer_search_lets_its_connections_older_one_go_answered_as_not_whole() {
+    fn a_newer_search_lets_its_connections_older_one_go_refused_as_passed_over() {
         let (mut known, _woken, _folder) = known();
         let (_, older) = ask_on(&mut known, &searched("too"), 1);
         let (_, beside) = ask_on(&mut known, &searched("dim"), 2);
         ask_on(&mut known, &searched("too bright"), 1);
         let line: Value = serde_json::from_str(&older.recv().unwrap()).unwrap();
-        assert_eq!(line, json!({"id": "too", "records": [], "whole": false}));
+        assert_eq!(line["id"], json!("too"));
+        assert_eq!(line["error"]["code"], json!("passed-over"));
         let waiting: Vec<String> = known.queries.iter().map(|q| q.words.clone()).collect();
         assert_eq!(waiting, ["dim", "too bright"]);
         assert!(beside.try_recv().is_err());
     }
 
     #[test]
-    fn a_closed_connections_searches_go_unanswered() {
+    fn a_search_is_answered_after_its_client_stops_asking() {
         let (mut known, _woken, _folder) = known();
         ask_on(&mut known, &searched("too"), 1);
-        ask_on(&mut known, &searched("dim"), 2);
         known.gone(1);
-        let waiting: Vec<String> = known.queries.iter().map(|q| q.words.clone()).collect();
-        assert_eq!(waiting, ["dim"]);
+        assert_eq!(known.queries.len(), 1);
     }
 
     #[test]
