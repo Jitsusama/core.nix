@@ -48,6 +48,10 @@ Item {
     property string hint: value
     property string title: settings.label ?? ""
     property string context: ""
+    // What it holds, by name, for a piece standing for several things,
+    // as Timers does its timers: Now says them after its title, as a
+    // place says what it holds, giving way by whole names from the end.
+    property var parts: []
     // What its notice says beneath its hint, when it arrives: its context,
     // unless it says more there.
     property string message: context
@@ -122,6 +126,7 @@ Item {
             hint: "",
             title: "",
             context: "",
+            parts: [],
             message: own.context ?? "",
             wants: wants,
             kind: kind,
