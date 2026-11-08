@@ -246,8 +246,15 @@ Provider {
         }
     }
 
+    // Which of Start, Pause and Resume the stopwatch's Return is, by how
+    // it stands: one word for halting a count, as the timers' Pause is
+    // (VKCF3Z, 2026-11-08).
+    function watchState(watch) {
+        return watch.state === "unstarted" ? "" : watch.state;
+    }
+
     // The stopwatch's row: its count at its right, how it stands below,
-    // and Return starting or stopping it, the launcher staying.
+    // and Return starting, pausing or resuming it, the launcher staying.
     function watchRow(watch) {
         const running = watch.state === "running";
         const row = member({
@@ -266,7 +273,7 @@ Provider {
             sideWidest: running ? Timing.widest(Timing.counted(watch, Date.now())) : undefined,
             note: watchNote(watch),
             record: watch,
-            verb: Words.verb("verb:stopwatch:run", running ? "running" : ""),
+            verb: Words.verb("verb:stopwatch:run", watchState(watch)),
             stays: true,
             run: () => provider.watchAsk(running ? "stop" : "run")
         });
@@ -275,8 +282,8 @@ Provider {
         return row;
     }
 
-    // Inside the stopwatch: Start or Stop, Lap while it runs, its laps
-    // newest first, Reset once it has counted, then Copy the Time.
+    // Inside the stopwatch: Start, Pause or Resume, Lap while it runs, its
+    // laps newest first, Reset once it has counted, then Copy the Time.
     function watchActs(watch) {
         // Made once for each record the daemon sends, so a laps' list as
         // long as 999 isn't made again each time the rows are.
@@ -291,7 +298,7 @@ Provider {
 
     function watchActsOf(watch) {
         const running = watch.state === "running";
-        const rows = [act("verb:stopwatch:run", running ? "running" : "",
+        const rows = [act("verb:stopwatch:run", watchState(watch),
             { run: () => provider.watchAsk(running ? "stop" : "run") })];
         if (running)
             rows.push(act("verb:stopwatch:lap", "", { run: () => provider.watchAsk("lap") }));
@@ -299,6 +306,11 @@ Provider {
             rows.push(copyRow({
                 key: `lap:${lap.number}`,
                 name: Words.name("lap", "numbered", { number: lap.number }),
+                // Lap's flag, muted, so the marks' column runs on unbroken
+                // below the act that makes them, as a mail's rows do below
+                // Write a Mail.
+                glyph: Words.glyph("lap"),
+                hue: "muted",
                 side: Timing.tenths(lap.lap),
                 note: (watchSaid.at ?? "").replace("{count}", Timing.tenths(lap.at)),
                 copy: Timing.tenths(lap.lap)

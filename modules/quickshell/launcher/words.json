@@ -5235,7 +5235,7 @@
       "glyph": "stopwatch",
       "said": {
         "running": "running",
-        "stopped": "stopped",
+        "stopped": "paused",
         "unstarted": "not started",
         "lapsOne": "{state} \u00b7 1 lap",
         "laps": "{state} \u00b7 {count} laps",
@@ -5247,7 +5247,7 @@
       "in": "stopwatch",
       "name": "Lap",
       "term": "Desktop/lap",
-      "glyph": "stopwatch",
+      "glyph": "lap",
       "states": {
         "numbered": {
           "name": "Lap {number}"
@@ -5264,9 +5264,15 @@
       "states": {
         "running": {
           "command": "pause",
-          "name": "Stop",
-          "verb": "stop",
+          "name": "Pause",
+          "verb": "pause",
           "glyph": "pause"
+        },
+        "stopped": {
+          "command": "resume",
+          "name": "Resume",
+          "verb": "resume",
+          "glyph": "resume"
         }
       }
     },
@@ -5276,11 +5282,11 @@
       "in": "stopwatch",
       "name": "Lap",
       "verb": "lap",
-      "glyph": "stopwatch"
+      "glyph": "lap"
     },
     {
       "id": "verb:stopwatch:reset",
-      "command": "delete",
+      "command": "reset",
       "in": "stopwatch",
       "name": "Reset",
       "verb": "reset",

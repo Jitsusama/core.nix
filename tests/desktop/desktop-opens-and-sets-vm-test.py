@@ -1803,7 +1803,7 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
     desktop.close_launcher()
     shoot_now_holding_timers(desktop, "running")
-    # Bread paused and the stopwatch stopped leave only what's paused.
+    # Bread and the stopwatch paused leave only what's paused.
     pick_a_timer(desktop, "Bread")
     machine.send_key("ret")
     desktop.launcher_until(
@@ -1813,7 +1813,7 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     pick_a_timer(desktop, "Stopwatch")
     machine.send_key("ret")
     desktop.launcher_until(
-        lambda shown: str((shown["selected"] or {}).get("note")).startswith("stopped")
+        lambda shown: str((shown["selected"] or {}).get("note")).startswith("paused")
     )
     desktop.close_launcher()
     shoot_now_holding_timers(desktop, "paused")
