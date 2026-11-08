@@ -407,7 +407,7 @@ Provider {
 
     // A row holding some of their things, by the words `key` names. Its
     // rows are both what it holds and what it steps into, as a meeting's
-    // See It's are, so it steps in at any level: inside People, where a
+    // Show in Calendar's are, so it steps in at any level: inside People, where a
     // row's insides are its verbs, and inside a person found from the top,
     // where they're its targets.
     // Its note is drawn after its name, as what a row holds is (a row's
