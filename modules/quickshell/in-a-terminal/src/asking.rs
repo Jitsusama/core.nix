@@ -37,7 +37,7 @@ pub enum Answer {
 /// not answering, with what qs said where it said anything.
 pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
     let mut child = Command::new(qs)
-        .args(["ipc", "call", "launcher", "show", &steps.join(STEP)])
+        .args(["ipc", "call", "launcher", "show", &path(steps)])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -79,6 +79,15 @@ pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
             &said
         })
     })
+}
+
+/// The path the shell is asked, each step after the mark that joins them:
+/// qs takes no empty argument, so home is the mark alone.
+pub fn path(steps: &[String]) -> String {
+    if steps.is_empty() {
+        return STEP.to_string();
+    }
+    steps.iter().map(|step| format!("{STEP}{step}")).collect()
 }
 
 /// What the shell's printed answer says, or None where it isn't one:
@@ -132,6 +141,15 @@ fn plain(said: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_is_asked_as_the_mark_alone_and_a_place_after_it() {
+        assert_eq!(path(&[]), "\u{203a}");
+        assert_eq!(
+            path(&["machine".to_string(), "disk".to_string()]),
+            "\u{203a}machine\u{203a}disk"
+        );
+    }
 
     #[test]
     fn a_place_is_shown() {

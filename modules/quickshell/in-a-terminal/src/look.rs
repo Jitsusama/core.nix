@@ -122,7 +122,7 @@ impl Look {
                     .collect()
             })
             .unwrap_or_default();
-        let stand_ins = value
+        let mut stand_ins: HashMap<String, String> = value
             .get("marks")
             .and_then(Value::as_array)
             .map(|marks| {
@@ -132,10 +132,15 @@ impl Look {
                     .collect()
             })
             .unwrap_or_default();
+        // The failure mark carries its own stand-in, since it's said
+        // on stderr whether or not a row's marks hold it.
         let failed = value
             .get("failed")
             .map(|mark| text(mark, "glyph"))
             .unwrap_or_default();
+        if let Some(console) = value.get("failed").map(|mark| text(mark, "console")) {
+            stand_ins.insert(failed.clone(), console);
+        }
         Self {
             ink,
             roles,

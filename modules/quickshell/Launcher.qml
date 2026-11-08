@@ -1244,7 +1244,9 @@ Scope {
     // (`in`, its steps' names, and `path`, their steady ids), the row with
     // its drawer (`row`, null at home) and the rows a step into it holds;
     // or, where a step names nothing, that step (`missing`), the names it
-    // might have meant (`near`) and where it was looked for.
+    // might have meant (`near`) and where it was looked for. A path is
+    // asked starting with a step's mark, since qs takes no empty argument,
+    // so home is that mark alone and an empty step is no step.
     function shownToTerminal(path) {
         cataloguing = true;
         try {

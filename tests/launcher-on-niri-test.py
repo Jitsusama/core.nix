@@ -969,7 +969,8 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     """
 
     def shown(*steps: str) -> Json:
-        path = shlex.quote("\u203a".join(steps))
+        # Each step after the mark, as the program asks: qs takes no empty argument.
+        path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
         return cast("Json", json.loads(shell.as_account(shell.ipc("show", path))))
 
     home = shown()
