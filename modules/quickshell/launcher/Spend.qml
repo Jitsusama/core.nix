@@ -7,10 +7,13 @@
 // then how things stand: today, with a day's cap behind it, each longer
 // cap, with the week ahead behind the first, and the periods before; then
 // the rest of what was found, and the reports that belong behind nothing
-// else. A period steps into its cuts and a cut into its rows; a cap steps into its changes and the
-// sign-ins its feed offers. Return copies a row, or a report whole as markdown, to paste
-// where it's asked about; a finding with something to do does it, and
-// steps into marking it expected.
+// else. A period steps into its cuts and a cut into its rows; a cap steps
+// into its changes and the sign-ins its feed offers; a budget's row, a
+// window's and a cap's have a drawer of every fact budgets.json holds of
+// it, and a period's a drawer of its days and what its cuts went to most
+// (SpendDrawer.js). Return copies a row, or a report whole as markdown,
+// to paste where it's asked about; a finding with something to do does
+// it, and steps into marking it expected.
 //
 // It answers in the field too: "spend" or "ai" for how today stands, "cap"
 // for the caps, and a report by its words, "spend last week by quest" or
@@ -23,6 +26,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "SpendDrawer.js" as SpendDrawer
 
 Provider {
     id: provider
@@ -70,6 +74,15 @@ Provider {
         return role === "alert" || role === "warning" ? role : "muted";
     }
 
+    // The vocabulary's words for spend's drawers (SpendDrawer.js), and
+    // whether the screen is shared, when its dollars go as the rows' do.
+    readonly property var budgetWords: ({
+        name: id => Words.name(`spend:${id}`),
+        unread: Words.of("spend").said?.unread ?? "",
+        window: Words.of("spend").said?.window ?? "",
+        sharing: provider.sharing
+    })
+
     // A row as the daemon gave it, with what's behind it made only when
     // it's stepped into, since a month's cuts are hundreds of rows.
     function build(given) {
@@ -84,6 +97,15 @@ Provider {
             hue: marked ? markedHue(given.role) : hue(given.role),
             marked: marked
         };
+        // A row naming a budget or a window opens a drawer of every fact
+        // budgets.json holds of it, read as it's shown, so the daemon's next
+        // pass reaches an open drawer; a period's opens its own facts. Each
+        // is a thing, as the launcher's drawer rule asks of a row with
+        // details (Launcher.qml's detailed).
+        if (given.budget || given.drawn) {
+            fields.thing = true;
+            fields.drawer = () => SpendDrawer.drawer(given, SpendWatch.budgets, budgetWords);
+        }
         const row = given.run
             ? thing(Object.assign(fields, {
                 verb: given.verb || "run",

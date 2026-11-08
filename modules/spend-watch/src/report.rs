@@ -58,6 +58,17 @@ impl Period {
         }
     }
 
+    /// What kind of span it is, as its drawer's eyebrow says after its
+    /// days.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Period::Today | Period::Yesterday => "day",
+            Period::ThisWeek | Period::LastWeek => "week",
+            Period::ThisMonth | Period::LastMonth => "month",
+            Period::Days30 => "30 days",
+        }
+    }
+
     /// The ways a person might type it.
     pub fn words(self) -> &'static [&'static str] {
         match self {

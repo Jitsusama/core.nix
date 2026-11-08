@@ -6,7 +6,11 @@ council's), the harness's subagent runs and its quests, and the feeds a
 machine names for a provider's bill; keeps every dollar by
 hour in `history.db`; and writes `status.json` and `collection.json` for the
 shell, the overview's row, the margin and the collection on Super+U, and
-`budgets.json` for pi's footer.
+`budgets.json` for pi's footer, a budget's drawer in the launcher and the
+budget a session's drawer names. Every fact in it is in words too, each
+budget's and allowance's `said`, so neither pi nor the shell formats one. A
+cap's row in `collection.json` names its window there, so both open one
+drawer, and a period's row carries its own drawer's facts, `drawn`.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
 feed speaks.
 
