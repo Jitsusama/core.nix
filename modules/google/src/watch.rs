@@ -158,7 +158,9 @@ impl Watch {
             self.place(now);
         }
         if self.state.account == Standing::Ready
-            && self.recalled.is_none_or(|heard| at - heard >= RECALLED_EVERY)
+            && self
+                .recalled
+                .is_none_or(|heard| at - heard >= RECALLED_EVERY)
         {
             self.recall(now);
         }
