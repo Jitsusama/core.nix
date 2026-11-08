@@ -4,11 +4,12 @@
 // (tests/plate.qml), as the shell does: whether the mode it runs is the
 // one it prefers or one of niri's own making, its refresh exactly as niri
 // has it where its row rounds it, whether it can and does refresh
-// variably, its scale, the logical size and place it takes on the
-// desktop, how it's turned, the modes it offers and the one it prefers,
-// how fine its pixels are and its serial. Its size and whole refresh are
-// its row's to say, so they aren't said again (VKCF3Z, 2026-11-07). Displays.qml reads niri and lays the plate,
-// the light and what the EDID says around these.
+// variably, the logical size and place it takes on the desktop, how
+// it's turned, the modes it offers and the one it prefers, how fine its
+// pixels are and its serial. Its size, whole refresh and scale are its
+// row's to say, so they aren't said again (VKCF3Z, 2026-11-07).
+// Displays.qml reads niri and lays the plate, the light and what the
+// EDID says around these.
 
 // Two items of one value, as a figure's runs are set apart.
 const APART = " \u00b7 ";
@@ -86,7 +87,6 @@ function facts(output, words) {
             ? [words.said("variable", "supported"),
                 words.said("variable", output.vrr_enabled ? "on" : "off")].join(APART)
             : words.said("variable", "unsupported"));
-        add("scale", scale(logical.scale));
         add("logical", size(logical.width, logical.height));
         add("position", `${logical.x}, ${logical.y}`);
         add("rotation", words.turned(logical.transform));

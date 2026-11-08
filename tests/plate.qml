@@ -109,7 +109,7 @@ QtObject {
         const on = panel();
         check("a screen on says what it runs past its row, where it sits and what it offers",
             said(Screens.facts(on, words)) === "mode=preferred; "
-            + "refresh=120.001 Hz; variable=supported \u00b7 off; scale=2\u00d7; "
+            + "refresh=120.001 Hz; variable=supported \u00b7 off; "
             + "logical=1440 \u00d7 900; position=560, 1440; rotation=upright; "
             + "modes=2 \u00b7 preferred 2880 \u00d7 1800 at 120.001 Hz; density=244 ppi",
             said(Screens.facts(on, words)));
