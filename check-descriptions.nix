@@ -1700,6 +1700,11 @@
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
     comes due once its time is up; and the foot says what wasn't done, then why
   '';
+  the-launcher-follows-a-carry = ''
+    carrying a quest to another machine says each step mycelium starts beside what's carried, a
+    tree by its folder, and at the end where it went, or that it wasn't and mycelium's reason, a
+    line that isn't a step passed over and nothing read after a failure
+  '';
   the-launcher-paces-its-refreshes = ''
     an open launcher takes the first of its sources' changes at once and those after it a pace
     apart, together, and a refresh taken another way takes the one waiting with it, so no two

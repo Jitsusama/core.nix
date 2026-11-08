@@ -963,6 +963,23 @@ onLinux {
       touch $out
     '';
 
+  # Carrying a quest to another machine says each step mycelium starts, and
+  # what was carried or why not, as tests/carry.qml holds launcher/Carry.js
+  # to it in Qt's own engine.
+  the-launcher-follows-a-carry =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-follows-a-carry" { } ''
+      cp ${../../tests/carry.qml} carry.qml
+      cp ${./launcher/Carry.js} Carry.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml carry.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
