@@ -573,6 +573,12 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  github-broker-answers-only-its-account = ''
+    github-broker listens on a socket only its account may open, and runs in the background
+  '';
+  github-broker-passes-clippy = ''
+    clippy finds nothing in github-broker or its tests, which mint a narrow token from a stand-in
+  '';
   google-answers-on-systemds-socket = ''
     google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, made only
     once pi has signed in to Google, as google itself starts only then

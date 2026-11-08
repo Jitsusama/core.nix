@@ -182,6 +182,7 @@
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
         gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) niri quickshell; };
         git = ./modules/git/home.nix;
+        github-broker = ./modules/github-broker/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
         google = moduleFrom ./modules/google/home.nix {
