@@ -1,6 +1,8 @@
 //! Figures as the views set them: each its number and, muted beside it,
 //! its unit, sized to the unit people read it in, and a muted dash where
-//! eero didn't say.
+//! eero didn't say. A measure keeps three significant digits and takes the
+//! next unit past 999, as docs/design.md's Set, Not Styled has every
+//! surface do, so the command line reads as the launcher's place does.
 
 use super::marks::marks;
 use super::text::{Line, muted, plain};
@@ -45,32 +47,73 @@ pub fn signed(value: i64) -> String {
     }
 }
 
-/// Bytes in the powers of ten networks count in: 167.1 GB.
-pub fn bytes(value: u64) -> Line {
-    const UNITS: [(f64, &str); 4] = [(1e12, "TB"), (1e9, "GB"), (1e6, "MB"), (1e3, "kB")];
-    #[expect(clippy::cast_precision_loss, reason = "a size shown to a tenth")]
-    let size = value as f64;
-    UNITS.iter().find(|(scale, _)| size >= *scale).map_or_else(
-        || figure(count(value), "B"),
-        |(scale, unit)| figure(format!("{:.1}", size / scale), unit),
-    )
+/// How many significant digits a measure keeps.
+const DIGITS: i32 = 3;
+
+/// A measure rounded to three significant digits.
+fn rounded(value: f64) -> f64 {
+    if !value.is_normal() {
+        return value;
+    }
+    let scale = 10f64.powi(DIGITS - 1 - magnitude(value));
+    (value * scale).round() / scale
 }
 
-/// How fast data moves, in the unit that keeps it readable: 11.5 Mbit/s,
-/// 145.4 kbit/s, 98 bit/s.
-pub fn speed(mbps: f64) -> Line {
-    if mbps >= 1.0 {
-        figure(format!("{mbps:.1}"), "Mbit/s")
-    } else if mbps >= 0.001 {
-        figure(format!("{:.1}", mbps * 1e3), "kbit/s")
+/// The power of ten a measure's first digit stands at: 2 for 370.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a figure's power of ten is small"
+)]
+fn magnitude(value: f64) -> i32 {
+    value.abs().log10().floor() as i32
+}
+
+/// A measure in three significant digits, its trailing zeros kept, as
+/// 370, 11.9, 2.40 and 0.0240, and the real minus on a negative one.
+pub fn significant(value: f64) -> String {
+    let near = rounded(value);
+    if !near.is_normal() {
+        return "0".into();
+    }
+    let places = usize::try_from((DIGITS - 1 - magnitude(near)).max(0)).unwrap_or(0);
+    let set = format!("{:.places$}", near.abs());
+    if near < 0.0 {
+        format!("\u{2212}{set}")
     } else {
-        figure(format!("{:.0}", mbps * 1e6), "bit/s")
+        set
     }
 }
 
-/// A link's rate, always in Mbit/s to its tenth, as eero gives it.
+/// A measure in the largest of its units it is at least one of, once
+/// rounded, so 999.96 Mb/s reads 1.00 Gb/s rather than 1000 Mb/s.
+fn scaled(value: f64, units: &[(f64, &str)], least: (f64, &str)) -> Line {
+    let (scale, unit) = units
+        .iter()
+        .find(|(scale, _)| rounded(value / scale) >= 1.0)
+        .copied()
+        .unwrap_or(least);
+    figure(significant(value / scale), unit)
+}
+
+/// Bytes in the powers of ten networks count in: 167 GB, 3.68 MB.
+pub fn bytes(value: u64) -> Line {
+    const UNITS: [(f64, &str); 4] = [(1e12, "TB"), (1e9, "GB"), (1e6, "MB"), (1e3, "kB")];
+    #[expect(clippy::cast_precision_loss, reason = "a size shown to three digits")]
+    let size = value as f64;
+    if rounded(size) < 1e3 {
+        return figure(count(value), "B");
+    }
+    scaled(size, &UNITS, (1.0, "B"))
+}
+
+/// A rate given in Mb/s, as data moves or a link runs, in the unit that
+/// reads it in three digits: 370 Mb/s, 1.20 Gb/s, 145 kb/s, 98.2 b/s.
 pub fn rate(mbps: f64) -> Line {
-    figure(format!("{mbps:.1}"), "Mbit/s")
+    const UNITS: [(f64, &str); 3] = [(1e3, "Gb/s"), (1.0, "Mb/s"), (1e-3, "kb/s")];
+    if !mbps.is_normal() {
+        return figure("0", "b/s");
+    }
+    scaled(mbps, &UNITS, (1e-6, "b/s"))
 }
 
 /// A switch: on or off.
@@ -126,13 +169,31 @@ mod tests {
 
     #[test]
     fn a_figure_is_sized_to_the_unit_people_read_it_in() {
-        assert_eq!(text(&bytes(167_091_577_600)), "167.1 GB");
-        assert_eq!(text(&bytes(3_680_059)), "3.7 MB");
+        assert_eq!(text(&bytes(167_091_577_600)), "167 GB");
+        assert_eq!(text(&bytes(3_680_059)), "3.68 MB");
+        assert_eq!(text(&bytes(2_400_000)), "2.40 MB");
+        assert_eq!(text(&bytes(999_960)), "1.00 MB");
         assert_eq!(text(&bytes(999)), "999 B");
-        assert_eq!(text(&speed(11.452_299)), "11.5 Mbit/s");
-        assert_eq!(text(&speed(0.145_383_8)), "145.4 kbit/s");
-        assert_eq!(text(&speed(0.000_098_2)), "98 bit/s");
-        assert_eq!(text(&speed(0.0)), "0 bit/s");
+        assert_eq!(text(&rate(11.452_299)), "11.5 Mb/s");
+        assert_eq!(text(&rate(369.86)), "370 Mb/s");
+        assert_eq!(text(&rate(48.0)), "48.0 Mb/s");
+        assert_eq!(text(&rate(1_200.9)), "1.20 Gb/s");
+        assert_eq!(text(&rate(999.96)), "1.00 Gb/s");
+        assert_eq!(text(&rate(0.145_383_8)), "145 kb/s");
+        assert_eq!(text(&rate(0.023_960_4)), "24.0 kb/s");
+        assert_eq!(text(&rate(0.000_098_2)), "98.2 b/s");
+        assert_eq!(text(&rate(0.0)), "0 b/s");
+    }
+
+    #[test]
+    fn a_measure_keeps_three_significant_digits() {
+        assert_eq!(significant(369.86), "370");
+        assert_eq!(significant(11.93), "11.9");
+        assert_eq!(significant(2.4), "2.40");
+        assert_eq!(significant(0.024), "0.0240");
+        assert_eq!(significant(1_234.0), "1230");
+        assert_eq!(significant(-48.0), "\u{2212}48.0");
+        assert_eq!(significant(0.0), "0");
     }
 
     #[test]

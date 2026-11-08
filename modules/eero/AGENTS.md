@@ -123,7 +123,10 @@ reads differently. Every page is held to a golden one drawn from
 `home-network.json` (`src/views/golden/`): change a page on purpose with
 `EERO_GOLDEN=write cargo test`, and read the pages it wrote before
 committing them. A view shows every figure its part of the record has,
-figures lined up by their point with their units beside them, and colour
+figures lined up by their point with their units beside them, each
+measure in three significant digits and the unit that reads it
+(`src/views/figures.rs`, as docs/design.md's Set, Not Styled has it), a
+count saying what it counts ("24 known"), and colour
 only on a terminal, in the theme's terminal colour for each role
 (`src/views/theme.rs`): text in the text roles, and alert and warning
 only on the marks beside it. The record keeps eero's word, usage, for the

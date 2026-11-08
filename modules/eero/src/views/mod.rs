@@ -32,6 +32,15 @@ mod traffic;
 pub use clock::{Clock, changes_in};
 pub use text::Ink;
 
+/// A rate given in Mb/s as plain text, as every view sets one, for a line
+/// outside the views: 76.8 Mb/s, 1.20 Gb/s.
+pub fn rate(mbps: f64) -> String {
+    figures::rate(mbps)
+        .into_iter()
+        .map(|run| run.text)
+        .collect()
+}
+
 use crate::model::{CloudState, Device, HomeNetwork, Node, Profile};
 use figures::joined;
 use marks::marks;
@@ -336,7 +345,7 @@ fn titled(model: &HomeNetwork, about: Option<String>) -> Line {
 
 /// A line of facts joined by the separator.
 fn facts(parts: Vec<Line>) -> Line {
-    joined(parts)
+    joined(parts.into_iter().filter(|part| !part.is_empty()).collect())
 }
 
 /// A figure after the muted word saying what it is.
