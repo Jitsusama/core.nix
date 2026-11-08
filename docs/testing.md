@@ -157,8 +157,12 @@ its guide, the greeter or lock, `flake.lock` or nix-offload
 (`tools/merge-net/must-run.txt`). Of those, it names only the ones whose
 derivation moved from main, since the rest would give main's result. A
 change to nix-offload, which moves none, sends one VM test's subtests
-through itself with `run-subtests --there` instead. A machine switches only to merged main,
-and a bad switch is undone by switching back to the generation before it.
+through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
+asked before a head merges, refuses one that doesn't sit on origin's main
+as it is now, or at which no `changed-checks` run that built what it named
+passed, from nix-offload's record of what passed at each commit. A machine
+switches only to merged main, and a bad switch is undone by switching
+back to the generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which
 `modules/merge-net` runs as a daemon, follows main and runs each check

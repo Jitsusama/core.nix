@@ -20,6 +20,10 @@
 //! what can leave a machine unable to boot, unlock or sign in, which a
 //! revert after the fact comes too late for (`must-run.txt`).
 //!
+//! `merge-net ready COMMIT`, asked before a branch's head merges, exits 0
+//! only when the head sits on origin's main as it is now and changed-checks
+//! built what it named there (`ready.rs`), and otherwise says what to run.
+//!
 //! `merge-net status` says where the net is.
 //!
 //! `watch --branch` follows another branch than main, and lands its reverts
@@ -32,9 +36,10 @@
 //! mid-round and losing every run in flight.
 //!
 //! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
-//! | merge-net needs [--base REF] | merge-net status`
+//! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
 
 mod holds;
+mod ready;
 mod rules;
 mod state;
 mod watch;
@@ -51,7 +56,8 @@ use watch::Round;
 use world::Real;
 
 const USED: &str = "Usage: merge-net watch [--from COMMIT] [--branch NAME] [--once] \
-                    [--follow PATH] | merge-net needs [--base REF] | merge-net status";
+                    [--follow PATH] | merge-net needs [--base REF] | merge-net ready COMMIT \
+                    | merge-net status";
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -69,6 +75,7 @@ fn main() -> ExitCode {
         ["watch", rest @ ..] => watching(rest),
         ["needs"] => needs("refs/remotes/origin/main"),
         ["needs", "--base", base] => needs(base),
+        ["ready", commit] => ready(commit),
         ["status"] => Ok(status()),
         ["--help"] => {
             println!("{USED}");
@@ -243,6 +250,43 @@ fn needs(base: &str) -> Result<ExitCode, String> {
     if known.is_none() {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Say whether `commit` may merge: on origin's main as it is now, with what
+/// changed-checks named there built.
+fn ready(commit: &str) -> Result<ExitCode, String> {
+    let commit = git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?;
+    git(&["fetch", "--quiet", "origin", "main"])?;
+    let main = git(&["rev-parse", "refs/remotes/origin/main"])?;
+    let holds = |older: &str, newer: &str| {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", older, newer])
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    if !holds(&main, &commit) {
+        eprintln!(
+            "merge-net: {} doesn't sit on origin's main as it is now, {}, so what it was \
+             checked against isn't what it merges onto; rebase onto origin/main, push, run \
+             changed-checks, and merge again",
+            short(&commit),
+            short(&main)
+        );
+        return Ok(ExitCode::FAILURE);
+    }
+    if !ready::built_there(&ready::record(&commit), &|base| holds(base, &main)) {
+        eprintln!(
+            "merge-net: no changed-checks run that built what it named passed at {}; run \
+             changed-checks there, committed so it's sent, and merge again",
+            short(&commit)
+        );
+        return Ok(ExitCode::FAILURE);
+    }
+    println!(
+        "ready: {} sits on origin's main and changed-checks built what it named there",
+        short(&commit)
+    );
     Ok(ExitCode::SUCCESS)
 }
 

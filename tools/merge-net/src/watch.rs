@@ -927,6 +927,8 @@ struct Breaking<'a, F> {
     /// Tests whose failure reverts nothing: quarantined, or already held.
     left_be: F,
     done: Mutex<Result<(), String>>,
+    /// Main's newest head a held test with no revert was last run at.
+    tried: Mutex<Option<String>>,
 }
 
 impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
@@ -944,6 +946,7 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
             head,
             left_be,
             done: Mutex::new(Ok(())),
+            tried: Mutex::new(None),
         }
     }
 
@@ -962,6 +965,46 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
         *done = clear_if_reverted(self.world, self.state);
         if done.is_ok() && outcome == Outcome::Failed && !(self.left_be)(test) {
             *done = broke(self.world, self.state, self.base, self.head, test);
+        }
+        drop(done);
+        self.fixed_forward_since();
+    }
+
+    /// Each test's end also runs a test held with no revert at main's newest
+    /// head, once a head, and clears the hold when it passes there. Only a
+    /// round's start asked before: on 8 November #2381 fixed the held
+    /// vm-desktop-launcher-goes-places forward at 12:10, while the round
+    /// begun at 09:30 ran on, and every merge waited off the machine behind
+    /// the hold. One thread asks at a time; the rest carry on.
+    fn fixed_forward_since(&self) {
+        let Ok(mut tried) = self.tried.try_lock() else {
+            return;
+        };
+        let Some(test) = self
+            .state
+            .hold()
+            .filter(|hold| !hold["revert_commit"].is_string())
+            .and_then(|hold| hold["test"].as_str().map(str::to_owned))
+        else {
+            return;
+        };
+        let Ok(newest) = self.world.head() else {
+            return;
+        };
+        if newest == self.head || tried.as_deref() == Some(newest.as_str()) {
+            return;
+        }
+        *tried = Some(newest.clone());
+        if same_drv(self.world, &newest, self.head, &test)
+            || attempt(self.world, self.state, &newest, &test) != Outcome::Passed
+        {
+            return;
+        }
+        if self.state.clear_hold().is_ok() {
+            self.state.say(&format!(
+                "{test} passes at main's newest head {}, so the hold is cleared",
+                short(&newest)
+            ));
         }
     }
 
@@ -2185,6 +2228,32 @@ mod tests {
         assert_eq!(
             round(&world, &state, "s").unwrap(),
             Round::Passed("h".into())
+        );
+        assert!(state.hold().is_none());
+    }
+
+    #[test]
+    fn a_held_test_fixed_forward_while_a_round_runs_clears_the_hold_before_it_ends() {
+        let state = state("forward-mid-round");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        state
+            .set_hold(&json!({ "test": "vm-z", "bad": "b", "revert_commit": null }))
+            .unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("b h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        };
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        assert!(
+            world.built().contains(&("n".into(), "vm-z".into())),
+            "{:?}",
+            world.built()
         );
         assert!(state.hold().is_none());
     }
