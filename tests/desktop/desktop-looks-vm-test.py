@@ -2529,9 +2529,19 @@ MEANT_KEYS = ("bright", "display", "night")
 MEANT_MOST = 3
 
 
-def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale(
+def test_what_is_found_by_its_meaning_sits_below_what_typing_found_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
+    """Find a thing in the launcher, then a screenshot in Recent, by their meaning.
+
+    One subtest holds both, since both prove the one wiring to the meaning daemon, its things
+    and its pictures, and the looks test is at its limit (docs/testing.md).
+    """
+    a_thing_found_by_its_meaning(desktop, at_each_scale)
+    a_screenshot_found_by_what_it_shows(desktop, at_each_scale)
+
+
+def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> None:
     """Find things by their meaning, below what typing found, and shoot them.
 
     The launcher tells the meaning daemon its things as it opens and asks it what's typed, on
@@ -2593,9 +2603,7 @@ def drawn(shape: str, colour: str) -> str:
     return base64.b64encode(png.getvalue()).decode()
 
 
-def test_a_screenshot_found_by_what_it_shows_sits_below_recents_finds_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
+def a_screenshot_found_by_what_it_shows(desktop: Desktop, at_each_scale: list[str]) -> None:
     """In Capture's Recent, a screenshot found by its look sits below those found by name and words.
 
     Typing in Recent finds the screenshot named for the words, then the one whose words hold
