@@ -9,14 +9,26 @@
 .pragma library
 
 const KILOMETRE = 1000;
+const SECOND = 1000;
 const DAY = 86_400_000;
 // Decimals a position claims for how near it is: four, about 11 m, under
 // 100 m; three under a kilometre; two under ten; else one, about 11 km.
-const PLACES = [[100, 4], [1000, 3], [10_000, 2]];
+const METRES = 100;
+const KILOMETRES = 10 * KILOMETRE;
+const FOUR = 4;
+const THREE = 3;
+const TWO = 2;
+const ONE = 1;
 
 // The decimals a position may claim for its accuracy, in metres.
 function places(accuracy) {
-    return (PLACES.find(([within]) => accuracy < within) ?? [0, 1])[1];
+    if (accuracy < METRES) {
+        return FOUR;
+    }
+    if (accuracy < KILOMETRE) {
+        return THREE;
+    }
+    return accuracy < KILOMETRES ? TWO : ONE;
 }
 
 // A position as degrees and hemispheres, one figure: "43.7° N · 79.4° W".
@@ -39,7 +51,7 @@ function within(accuracy, said) {
 // day, else its day and time, as the launcher says a day ("Saturday 06:46",
 // "28 Oct 09:30").
 function located(when, now, told) {
-    const at = when * 1000;
+    const at = when * SECOND;
     if (now - at < DAY) {
         return told.ago(at, now);
     }
