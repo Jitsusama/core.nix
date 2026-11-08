@@ -765,7 +765,7 @@ mod tests {
             5,
         );
         assert_eq!(first.changed, ["entry:1password:a", "entry:1password:b"]);
-        assert!(first.gone.is_empty());
+        assert_eq!(first.gone, Vec::<String>::new());
         let again = held.list("1password", &[login("a", "GitHub", 1)], 9);
         assert!(again.changed.is_empty(), "{again:?}");
         assert_eq!(again.gone, ["entry:1password:b"]);
@@ -807,8 +807,8 @@ mod tests {
         // Every login here has GitHub's address, but only one is titled so.
         assert_eq!(found[0], "entry:1password:b");
         assert_eq!(found.len(), 3);
-        assert!(held.search("hub", 10).is_empty());
-        assert!(held.search("", 10).is_empty());
+        assert_eq!(held.search("hub", 10), Vec::<Value>::new());
+        assert_eq!(held.search("", 10), Vec::<Value>::new());
         assert_eq!(held.search("git", 1).len(), 1);
     }
 
