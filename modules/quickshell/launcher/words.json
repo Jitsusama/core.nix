@@ -4528,9 +4528,9 @@
       "term": "Machine/firmware"
     },
     {
-      "id": "sound:pipewire-id",
+      "id": "sound:graph-id",
       "in": "sound",
-      "name": "PipeWire ID"
+      "name": "Graph ID"
     },
     {
       "id": "sound:alsa-device",
