@@ -3,7 +3,7 @@
 // focus to one, or turns on one that's off; the right arrow lists its
 // Scale, Refresh, Resolution and Rotation as parts saying how each is set,
 // each stepping into its choices (which what's typed there finds too, so
-// "scale 150" needs no step in), and turning it off while another is on.
+// "scale 1.5" needs no step in), and turning it off while another is on.
 // "colour depth", "refresh rate" and the like ask the focused display's
 // part, or each display's while several are on. niri forgets these choices when its configuration is next read,
 // so they last the session, and what lasts belongs in the configuration.
@@ -400,9 +400,9 @@ Provider {
         const now = mode(output);
         if (now === null || output.logical === null)
             return "off";
-        // The scale as its part says it, "175%".
+        // The scale as its part and its drawer say it, "1.75\u00d7".
         return `${now.width} \u00d7 ${now.height} \u00b7 ${hertz(now)} Hz `
-            + `\u00b7 scale ${percent(output.logical.scale)}`;
+            + `\u00b7 scale ${Screens.scale(output.logical.scale)}`;
     }
 
     readonly property var shown: Object.values(outputs).sort((a, b) =>
@@ -578,7 +578,7 @@ Provider {
     // A display's right arrow: turning it on while it's off; while it's
     // on, each of its settings as a part saying how it's set, whose step
     // in offers the others (and whose choices what's typed finds from
-    // here, so "scale 150" is Scale to 150%), then turning it off while
+    // here, so "scale 1.5" is Scale to 1.5\u00d7), then turning it off while
     // another is on, then what its EDID says.
     function verbs(output) {
         if (output.logical === null)
@@ -619,17 +619,17 @@ Provider {
 
     readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
-    function percent(scale) {
-        return `${Math.round(scale * 100)}%`;
-    }
-
     // How it's set: Brightness and the Room light where the backlight
     // lights it, then Scale, Refresh, Resolution, Rotation.
     function setUp(output) {
         const now = mode(output);
         const scale = output.logical.scale;
-        const rows = lightRows(output).concat([setting(output, "scale", percent(scale), "scale",
-            scales.map(each => choice(`scale-${each}`, `Scale to ${percent(each)}`, "scale",
+        // A scale is a multiple, as the theme says one, never a share, so
+        // the row, the part and the drawer call it one way (VKCF3Z,
+        // 2026-11-07).
+        const rows = lightRows(output).concat([setting(output, "scale", Screens.scale(scale),
+            "scale", scales.map(each => choice(`scale-${each}`,
+                `Scale to ${Screens.scale(each)}`, "scale",
                 Math.abs(each - scale) < 0.01,
                 () => change(output, { Scale: { scale: { Specific: each } } }))))]);
         if (now !== null) {

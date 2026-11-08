@@ -107,8 +107,8 @@ QtObject {
             `${Screens.density(2880, 300)}, ${Screens.density(1920, 527)}`);
 
         const on = panel();
-        check("a screen on says what it runs, where it sits and what it offers",
-            said(Screens.facts(on, words)) === "resolution=2880 \u00d7 1800 \u00b7 preferred; "
+        check("a screen on says what it runs past its row, where it sits and what it offers",
+            said(Screens.facts(on, words)) === "mode=preferred; "
             + "refresh=120.001 Hz; variable=supported \u00b7 off; scale=2\u00d7; "
             + "logical=1440 \u00d7 900; position=560, 1440; rotation=upright; "
             + "modes=2 \u00b7 preferred 2880 \u00d7 1800 at 120.001 Hz; density=244 ppi",
@@ -118,10 +118,14 @@ QtObject {
         on.serial = "0x1234";
         on.modes[0].is_preferred = false;
         check("variable, custom and a serial say so",
-            said(Screens.facts(on, words)).startsWith("resolution=2880 \u00d7 1800 \u00b7 custom; "
-                + "refresh=120.001 Hz \u00b7 variable; variable=supported \u00b7 on;")
+            said(Screens.facts(on, words)).startsWith("mode=custom; "
+                + "refresh=120.001 Hz; variable=supported \u00b7 on;")
             && said(Screens.facts(on, words)).endsWith("serial=0x1234"),
             said(Screens.facts(on, words)));
+        on.modes[0].refresh_rate = 60000;
+        on.is_custom_mode = false;
+        check("a whole refresh and a mode neither preferred nor custom are the row's",
+            said(Screens.facts(on, words)).startsWith("variable="), said(Screens.facts(on, words)));
         const off = panel();
         off.logical = null;
         off.current_mode = null;

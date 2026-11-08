@@ -1183,9 +1183,9 @@ works the same way everywhere.
   and Notifications are found only inside it.
   A setting is a part saying how it's set, its choices a step in, so going
   into a thing lists a few parts rather than every choice: a
-  display's Scale "175%", Refresh, Resolution and Rotation, then what
+  display's Scale "1.75×", Refresh, Resolution and Rotation, then what
   its EDID says (Colour depth "10 bit"). What's typed beside them finds
-  their choices too, so "scale 150" is Scale to 150% without a step in.
+  their choices too, so "scale 1.5" is Scale to 1.5× without a step in.
   A part is found from the top by its name, three letters or more,
   saying where it lives (Rotation, Desktop › Screens › Built-in screen;
   Health, Machine › Power › Battery), and Return goes there, the path

@@ -441,8 +441,9 @@ Provider {
 
     // A device's drawer (Plate.js): where it is and which way it goes over
     // its name, then its parts as facts, what moves most first (VKCF3Z,
-    // 2026-11-07): its Volume with its decibels, the programs Playing
-    // through it and how loud, its Channels each at its own level, its
+    // 2026-11-07): its Volume in decibels, its share being its row's, the
+    // programs Playing through it and how loud, its Channels balanced or
+    // each at its own level, its
     // Tuning, Port and Profile; then what describes it, its Hardware's
     // figures each a fact and what the kernel says of its card; and last
     // what it's known by: its node's id, as wpctl takes it, the ALSA
@@ -467,14 +468,15 @@ Provider {
             switch (row.key) {
             case `sound:${node.name}:volume`:
             case `sound:${node.name}:gain`:
-                return { value: Plate.runs([row.side, row.note]) };
+                return { value: row.note };
             case `sound:${node.name}:programs`:
             case `sound:${node.name}:recorders`:
                 return { value: provider.programsSaid(node) || row.side };
             case `sound:${node.name}:channels`:
-                return { value: Plate.runs([row.side].concat(channels.map((channel, i) =>
-                    `${Sounds.channel(PwAudioChannel.toString(channel)).toLowerCase()} `
-                    + provider.percent(volumes[i] ?? 0)))) };
+                return { value: Plate.runs([row.side].concat(Sounds.channelLevels(
+                    channels.map(channel => Sounds.channel(PwAudioChannel.toString(channel))),
+                    channels.map((channel, at) => provider.percent(volumes[at] ?? 0)),
+                    said("balanced")))) };
             case `sound:${node.name}:tuning`:
             case `sound:${node.name}:voice`:
                 return { value: Plate.runs([row.side].concat(provider.filtersOf(node)

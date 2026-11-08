@@ -19,6 +19,7 @@ const USB_IDS = /^USB([0-9a-f]{4}):([0-9a-f]{4})$/i;
 // A channel's name runs its words together: FrontLeft.
 const WORD_START = /([a-z0-9])([A-Z])/g;
 const SPACES = /\s+/;
+const FRONT = /^front /;
 // A microphone chip's digital microphones are named after it.
 const DIGITAL = /-dmic$/;
 const HERTZ_PER_KILOHERTZ = 1000;
@@ -128,6 +129,26 @@ function rate(text) {
 function channel(name) {
     const words = String(name).replace(WORD_START, "$1 $2").toLowerCase();
     return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// A device's channels each at its level, as its drawer says them after
+// its layout (VKCF3Z, 2026-11-07): `balanced` alone where every one is
+// at the same level, since a part equal to the rest gives way; and
+// otherwise each by its name and level, a stereo pair's without "front",
+// as it has no back: ["left 100%", "right 80%"]. `names` are as channel()
+// says them, `levels` as shown.
+function channelLevels(names, levels, balanced) {
+    if (levels.length === 0) {
+        return [];
+    }
+    if (levels.every((level) => level === levels[0])) {
+        return [balanced];
+    }
+    const pair = names.length === 2;
+    return names.map((name, at) => {
+        const said = name.toLowerCase();
+        return `${pair ? said.replace(FRONT, "") : said} ${levels[at] ?? ""}`.trim();
+    });
 }
 
 // Each stream by the program it's of, in the order first heard, so a

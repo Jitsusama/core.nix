@@ -3393,7 +3393,8 @@
         "joined-built-in": "built in",
         "joined-usb": "USB",
         "joined-display": "display",
-        "paused-at": "paused at {level}"
+        "paused-at": "paused at {level}",
+        "balanced": "balanced"
       }
     },
     {
@@ -5198,13 +5199,17 @@
       "name": "EDID"
     },
     {
+      "id": "displays:mode",
+      "in": "displays",
+      "name": "Mode"
+    },
+    {
       "id": "displays:variable",
       "in": "displays",
       "name": "Variable Refresh",
       "said": {
         "supported": "supported",
         "unsupported": "unsupported",
-        "variable": "variable",
         "on": "on",
         "off": "off"
       }

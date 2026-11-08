@@ -1,11 +1,13 @@
 .pragma library
 // What a screen's drawer says of it from what niri says (`niri msg -j
 // outputs`), in plain JavaScript so a check runs it in Qt's own engine
-// (tests/plate.qml), as the shell does: the mode it runs, its refresh
-// exactly as niri has it, whether it can and does refresh variably, its
-// scale, the logical size and place it takes on the desktop, how it's
-// turned, the modes it offers and the one it prefers, how fine its
-// pixels are and its serial. Displays.qml reads niri and lays the plate,
+// (tests/plate.qml), as the shell does: whether the mode it runs is the
+// one it prefers or one of niri's own making, its refresh exactly as niri
+// has it where its row rounds it, whether it can and does refresh
+// variably, its scale, the logical size and place it takes on the
+// desktop, how it's turned, the modes it offers and the one it prefers,
+// how fine its pixels are and its serial. Its size and whole refresh are
+// its row's to say, so they aren't said again (VKCF3Z, 2026-11-07). Displays.qml reads niri and lays the plate,
 // the light and what the EDID says around these.
 
 // Two items of one value, as a figure's runs are set apart.
@@ -76,13 +78,10 @@ function facts(output, words) {
     const now = modeOf(output);
     const logical = output.logical ?? null;
     if (now !== null && logical !== null) {
-        add("resolution", [size(now.width, now.height),
-            now.is_preferred ? words.said("modes", "preferred") : "",
+        add("mode", [now.is_preferred ? words.said("modes", "preferred") : "",
             output.is_custom_mode ? words.said("modes", "custom") : ""]
             .filter(part => part !== "").join(APART));
-        add("refresh", [hertz(now.refresh_rate),
-            output.vrr_enabled ? words.said("variable", "variable") : ""]
-            .filter(part => part !== "").join(APART));
+        add("refresh", now.refresh_rate % MILLIHERTZ === 0 ? "" : hertz(now.refresh_rate));
         add("variable", output.vrr_supported
             ? [words.said("variable", "supported"),
                 words.said("variable", output.vrr_enabled ? "on" : "off")].join(APART)

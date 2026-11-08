@@ -141,8 +141,15 @@ ShellRoot {
         // there's none of here, so by its own name.
         expect("its parts, the kernel's, then what it's known by",
             labels === "Volume, Resolution, Playing, Node, ALSA Device, Priority", said);
-        expect("its volume says its decibels after a dot",
-            plate.facts[0].value === `50% \u00b7 ${Sounds.decibels(0.5)}`, plate.facts[0].value);
+        expect("its volume says its decibels, its share being its row's",
+            plate.facts[0].value === Sounds.decibels(0.5), plate.facts[0].value);
+        const levels = [Sounds.channelLevels(["Front Left", "Front Right"], ["100%", "100%"], "even"),
+            Sounds.channelLevels(["Front Left", "Front Right"], ["100%", "80%"], "even"),
+            Sounds.channelLevels(["Front Left", "Front Right", "Rear Left"], ["9%", "8%", "7%"],
+                "even"), Sounds.channelLevels([], [], "even")].map(each => each.join(", "));
+        expect("channels at one level are balanced, a pair's otherwise named without front",
+            levels.join("; ") === "even; left 100%, right 80%; "
+            + "front left 9%, front right 8%, rear left 7%; ", levels.join("; "));
         expect("and draws its share as a stroke", plate.facts[0].figure?.shape === "stroke"
             && plate.facts[0].figure.values[0] === 0.5, JSON.stringify(plate.facts[0].figure));
         expect("what it's known by is as the server says it",
