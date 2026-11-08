@@ -325,6 +325,7 @@ off.
 | Nearby | the Bluetooth devices heard but not paired | | |
 | Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
 | volume | how loud a device or a program plays, as a share of its full level | | |
+| microphone | what the machine hears with: built in, a headset's or plugged in, chosen in Sound | | |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
