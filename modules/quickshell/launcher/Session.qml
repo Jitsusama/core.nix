@@ -432,12 +432,16 @@ Provider {
 
     // What Sleep's row says of how sleep stands: the mode it sleeps in,
     // the step it last failed at, and its drawer (Power.js's sleepSaid).
+    // An act has no drawer (Launcher.qml's drawerOf), but Sleep holds
+    // what Linux counts of every sleep, so while it has figures to show it
+    // is a thing whose act is Return.
     function sleepFields() {
         if (sleeping === null)
             return {};
         const told = Power.sleepSaid(sleeping, Words.of("session:Suspend").said ?? {},
             Interfaces.lasted);
         return {
+            thing: told.facts.length > 0,
             side: told.side,
             note: told.note,
             drawer: {

@@ -322,7 +322,9 @@ Provider {
         const items = [{ said: degrees(part.value), keep: 3 }];
         if (left)
             items.push({ said: limitSaid(left), keep: 1, hue: left.hue });
+        // A thing, so its drawer comes out beside it (Launcher.qml's drawerOf).
         return holderRow({
+            thing: true,
             name: partName(part),
             side: degrees(part.value),
             sideItems: items,

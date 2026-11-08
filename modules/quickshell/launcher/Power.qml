@@ -341,6 +341,7 @@ Provider {
                 charged.push({ label: named("energy:designed"),
                     value: `${figure(energy.design)} Wh` });
             rows.push(leaf("energy", `${figure(energy.now ?? 0)} of ${figure(energy.full)} Wh`, {
+                thing: charged.length > 0,
                 note: "now, of what it holds full",
                 drawer: charged.length > 0 ? { title: named("energy"), facts: charged } : undefined
             }));
@@ -399,6 +400,7 @@ Provider {
         if (what !== "")
             rows.push(leaf("model", said(record.technology) ? `${what}, ${record.technology}`
                 : what, {
+                thing: said(record.serial),
                 drawer: said(record.serial) ? { title: named("model"), facts: [{
                     label: named("serial"), value: record.serial, named: true }] } : undefined
             }));
