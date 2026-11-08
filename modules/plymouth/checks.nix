@@ -157,9 +157,9 @@
       "systemd writes its lines over the splash, or a machine without one lost them."
       (!lines [ { jitsusama.login.account = "someone"; } ] && lines [ ]);
 
-  # What the boot and the shutdown tell the splash of the generation, read
-  # from each shape of entry name systemd-boot can say it chose: lanzaboote's,
-  # a specialisation of one, NixOS's own named by a hash, and none at all.
+  # What the boot tells the splash of the generation, read from each shape
+  # of entry name systemd-boot can say it chose: lanzaboote's, a
+  # specialisation of one, NixOS's own named by a hash, and none at all.
   # The variable is laid out as efivarfs gives it.
   the-splash-reads-the-generation-from-the-entry =
     let
@@ -168,7 +168,7 @@
         self.nixosModules.graphical
         { jitsusama.login.account = "someone"; }
       ];
-      inherit (machine.config) boot systemd;
+      inherit (machine.config) boot;
       selected = "/sys/firmware/efi/efivars/LoaderEntrySelected-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f";
       standIn =
         script:
@@ -199,8 +199,7 @@
         [ "$(cat told)" = "$2" ]
       }
 
-      for script in ${standIn boot.initrd.systemd.services.plymouth-generation.script} \
-        ${standIn systemd.services.plymouth-generation.script}; do
+      for script in ${standIn boot.initrd.systemd.services.plymouth-generation.script}; do
         entry=$PWD/chosen
         chose nixos-generation-192-glbpaskycnksgtrtgjna65343gjlq4bdxsvhwx6ug44f.efi
         tells "lanzaboote's" 'update --status=generation:192'
@@ -213,6 +212,83 @@
         entry=$PWD/none
         tells "no entry" ""
       done
+      touch $out
+    '';
+
+  # What a shutdown tells the splash of the generation: the newest of the
+  # profile's links that is the running system, itself or as one of its
+  # specialisations, and nothing for a system that was never made a
+  # generation. The profile and the running system are laid out under a
+  # stand-in root.
+  the-shutdown-names-the-running-generation =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      inherit (machine.config) boot systemd;
+      plymouth = lib.getExe' boot.plymouth.package "plymouth";
+      standIn = pkgs.writeText "tells-the-running-generation" (
+        lib.replaceStrings
+          [ "/run/current-system" "/nix/var/nix/profiles" plymouth ]
+          [ "$root/current-system" "$root/profiles" "plymouth" ]
+          systemd.services.plymouth-generation.script
+      );
+      client = pkgs.writeShellScriptBin "plymouth" ''
+        printf '%s\n' "$*" > "$told"
+      '';
+    in
+    pkgs.runCommandLocal "the-shutdown-names-the-running-generation" { } ''
+      PATH=${client}/bin:$PATH
+      export told=$PWD/told root=$PWD/root
+      mkdir -p store/a store/b store/c/specialisation store/d store/e root/profiles
+      ln -s $PWD/store/d store/c/specialisation/work
+      ln -s $PWD/store/a root/profiles/system-1-link
+      ln -s $PWD/store/b root/profiles/system-2-link
+      ln -s $PWD/store/c root/profiles/system-3-link
+      ln -s system-3-link root/profiles/system
+
+      tells() {
+        ln -sfn "$PWD/store/$2" root/current-system
+        : > told
+        ${pkgs.runtimeShell} -e ${standIn}
+        echo "$1: $(cat told)"
+        [ "$(cat told)" = "$3" ]
+      }
+
+      tells "an older generation running" b 'update --status=generation:2'
+      tells "a specialisation running" d 'update --status=generation:3'
+      tells "one never made a generation" e ""
+      ln -s $PWD/store/b root/profiles/system-4-link
+      tells "one made a generation twice" b 'update --status=generation:4'
+      touch $out
+    '';
+
+  # The serif the splash sets what it's told in is among the system's fonts,
+  # which a shutdown's splash reads, as well as the initrd's: without it,
+  # what a shutdown waits on fell back to a sans.
+  the-shutdown-splash-finds-its-serif =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      family = (account machine).jitsusama.theme.font.serif.text.family;
+      system = pkgs.writeText "fonts.conf" ''
+        <?xml version="1.0"?>
+        <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+        <fontconfig>
+          <include>${machine.config.environment.etc.fonts.source}/conf.d</include>
+        </fontconfig>
+      '';
+    in
+    pkgs.runCommandLocal "the-shutdown-splash-finds-its-serif" { FONTCONFIG_FILE = system; } ''
+      export HOME=$TMPDIR XDG_CACHE_HOME=$TMPDIR
+      found=$(${lib.getExe' pkgs.fontconfig "fc-match"} -f '%{family}' ${lib.escapeShellArg family})
+      echo "the system's fontconfig gives $found for ${family}"
+      [ "$found" = ${lib.escapeShellArg family} ]
       touch $out
     '';
 }

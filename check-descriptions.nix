@@ -2049,6 +2049,14 @@
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
   '';
+  the-shutdown-names-the-running-generation = ''
+    a shutdown's splash names the newest generation that is the running system, a specialisation's
+    included, and none for a system never made one
+  '';
+  the-shutdown-splash-finds-its-serif = ''
+    the serif the splash sets its words in is among the system's fonts, where a shutdown's splash
+    looks for it
+  '';
   the-sign-in-consoles-wear-the-theme = ''
     the sign-in consoles are kmscon in the account's mono face, its padding and terminal colours,
     doubled on the XPS 14, and Ctrl+Shift+plus zooms
@@ -2072,7 +2080,7 @@
     places by its capitals measured at each scale
   '';
   the-splash-reads-the-generation-from-the-entry = ''
-    the splash is told the generation only from an entry whose name carries one
+    the boot's splash is told the generation only from an entry whose name carries one
   '';
   the-splash-stays-until-niri-draws = ''
     the splash lets go of the screen as greetd starts, keeping the GPU open, and quits ten seconds

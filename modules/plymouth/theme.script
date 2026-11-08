@@ -293,11 +293,13 @@ fun lifted(text, line)
   }
 
 # What the boot or shutdown is waiting on, in the panel's place, which is
-# empty but while something is asked. A job that runs long is named with
-# the description systemd gives it (./waits); a shutdown's last stage is
-# sent as a keyword, and says what it's doing until the end. Each unit
-# systemd starts is sent too, and passes unsaid.
+# empty but while something is asked. A job that runs long is sent by its
+# kind (./waits), a person's session or anything else, and said in our
+# words as starting at a boot and stopping at a shutdown; a shutdown's last
+# stage is sent as a keyword, and says what it's doing until the end. Each
+# unit systemd starts is sent too, and passes unsaid.
 @stages@
+@waits@
 status.waiting = "";
 status.stage = "";
 status.said = "";
@@ -308,8 +310,8 @@ fun status_shown()
   {
     if (global.status.stage != "")
       local.text = global.stages[global.status.stage];
-    else if (global.status.waiting != "")
-      local.text = "waiting on " + global.status.waiting;
+    else if (global.waits[global.status.waiting + " " + going()])
+      local.text = global.waits[global.status.waiting + " " + going()];
     else
       local.text = "";
 
@@ -324,6 +326,15 @@ fun status_shown()
                                            - measure("said-top"));
         global.status.said = text;
       }
+  }
+
+# Whether the machine is going up or down, as a wait is said: stopping at a
+# shutdown or restart, starting otherwise.
+fun going()
+  {
+    if (Plymouth.GetMode() == "shutdown" || Plymouth.GetMode() == "reboot")
+      return "stop";
+    return "start";
   }
 
 # A resume from hibernation says so as it begins, and that the machine is
@@ -358,8 +369,9 @@ fun status_callback(text)
     status_shown();
   }
 
-# The generation, as ./nixos.nix sends it from the boot loader's entry, kept
-# only when it's a number the digits can draw.
+# The generation, as ./nixos.nix sends it: at a boot the boot loader's
+# entry, at a shutdown the one running. It's kept only when it's a number
+# the digits can draw.
 fun generation_told(number)
   {
     if (number == "")
