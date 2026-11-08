@@ -77,7 +77,7 @@ units, or named here as left out with the reason.
 |                 | kernel release and build                     | Kernel, its Release and Build             |
 | `using:cpu:N`   | each program's share, its processes          | Processor's Using It                      |
 | `using:memory:N`| each program's resident memory, processes    | Memory's Using It                         |
-| `tree:<pid>`    | its share, resident memory, processes, threads, every pid in it | a program's drawer, which watches it |
+| `tree:<pid>`    | its share, memory, processes, threads, pids  | a program's drawer, watching it           |
 
 ## Left Out, and Why
 
