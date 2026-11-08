@@ -58,6 +58,7 @@ import "Heat.js" as Heat
 import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -1126,10 +1127,13 @@ Provider {
         const chip = Words.glyph(kinds.disks);
         const rows = [];
         if (guard && guard.disks.length > 0) {
-            // The worst band first, as the disk piece judges it, so the
-            // first is the headline's, and within a band the least room.
-            const watched = guard.disks.slice()
-                .sort((a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free);
+            // Disks are amounts: the worst band first, as the disk piece
+            // judges it, so the first is the headline's, and within a band
+            // the least room, then A to Z.
+            const watched = guard.disks.slice().sort(Order.amounts({
+                worse: (a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free,
+                name: one => one.path
+            }));
             const each = one => disked(guard, one, {
                 name: one.path,
                 graph: bar(1 - one.free / one.total, one.band !== "healthy")
