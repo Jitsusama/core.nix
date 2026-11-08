@@ -6580,10 +6580,11 @@
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",
-      "said": { "one": "{count} notice", "many": "{count} notices" },
       "glyph": "notifications",
       "ask": "which notice?",
       "said": {
+        "one": "{count} notice",
+        "many": "{count} notices",
         "no-link": "no link here",
         "one-link": "only 1 link here",
         "links": "only {count} links here",
