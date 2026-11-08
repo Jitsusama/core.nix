@@ -97,6 +97,18 @@ fn git_top(dir: &Path) -> Option<PathBuf> {
 /// beside it holds targets, one per project of a checkout holding many.
 /// `home` is the account's home, as `checkout_of` takes it.
 pub fn walk(root: &Path, depth: Option<usize>, home: Option<&Path>) -> io::Result<Vec<Found>> {
+    walk_until(root, depth, home, &|| false)
+}
+
+/// Every target and install under `root`, as `walk` finds them, unless
+/// `stop` says yes at a directory on the way, when the walk ends as
+/// interrupted: a daemon told to stop doesn't finish a walk first.
+pub fn walk_until(
+    root: &Path,
+    depth: Option<usize>,
+    home: Option<&Path>,
+    stop: &dyn Fn() -> bool,
+) -> io::Result<Vec<Found>> {
     let root = fs::canonicalize(root)?;
     let device = fs::metadata(&root)?.dev();
     let mut found = Vec::new();
@@ -104,6 +116,9 @@ pub fn walk(root: &Path, depth: Option<usize>, home: Option<&Path>) -> io::Resul
     // once, where the device changes, rather than at every directory in it.
     let mut pending = vec![(root, 0, device)];
     while let Some((dir, level, device)) = pending.pop() {
+        if stop() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "told to stop"));
+        }
         if depth.is_some_and(|depth| level >= depth) {
             continue;
         }

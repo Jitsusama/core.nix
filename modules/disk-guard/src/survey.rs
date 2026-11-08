@@ -130,6 +130,10 @@ pub struct World<'a> {
     pub counted: RefCell<Counted>,
     /// How many times the survey walked a root for targets and installs.
     pub walked: usize,
+    /// Whether the daemon has been told to stop, asked as the survey walks,
+    /// so a stop never waits on a walk. A stopped survey offers nothing
+    /// more, and what it offered is acted on by nobody.
+    pub stop: &'a dyn Fn() -> bool,
 }
 
 /// How deep and how widely a workspace's writes are read.
@@ -163,6 +167,9 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
     // share is walked once a survey, not once a source.
     let mut walks = Walks::new();
     for (name, source) in &config.sources {
+        if (world.stop)() {
+            return offers;
+        }
         match source {
             Source::Cargo { roots, depth } => {
                 for root in roots {
@@ -554,8 +561,13 @@ impl Walks {
         let walked = self.0.entry((root.clone(), depth)).or_insert_with(|| {
             let device = device(&root)?;
             world.walked += 1;
-            let found =
-                discover::walk(&root, depth.map(|depth| depth as usize), world.home).ok()?;
+            let found = discover::walk_until(
+                &root,
+                depth.map(|depth| depth as usize),
+                world.home,
+                world.stop,
+            )
+            .ok()?;
             Some((device, found))
         });
         walked
@@ -786,15 +798,15 @@ fn resolved(root: &Path) -> PathBuf {
 
 /// What an entry holds, less what the survey has counted already.
 fn size(path: &Path, world: &World) -> u64 {
-    measured(path, &mut world.counted.borrow_mut())
+    measured(path, &mut world.counted.borrow_mut(), world.stop)
 }
 
 /// What an entry holds: a directory's allocated size beneath it, a file's
 /// own, nothing when it can't be read, less what's in `counted`.
-fn measured(path: &Path, counted: &mut Counted) -> u64 {
+fn measured(path: &Path, counted: &mut Counted, stop: &dyn Fn() -> bool) -> u64 {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.is_dir() => Dir::open(path)
-            .and_then(|dir| dir.size_counted(counted))
+            .and_then(|dir| dir.size_until(counted, stop))
             .unwrap_or(0),
         Ok(meta) => meta.blocks() * 512,
         Err(_) => 0,
@@ -808,7 +820,7 @@ fn measured(path: &Path, counted: &mut Counted) -> u64 {
 fn whole(path: &Path) -> u64 {
     let mut counted = Counted::default();
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + measured(path, &mut counted),
-        _ => measured(path, &mut counted),
+        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + measured(path, &mut counted, &|| false),
+        _ => measured(path, &mut counted, &|| false),
     }
 }

@@ -411,7 +411,14 @@ impl Dir {
     /// several directories through one counts what they share once, for
     /// the first measured, as deleting all of them frees it once.
     pub fn size_counted(&self, counted: &mut Counted) -> io::Result<u64> {
-        self.size_into(counted)
+        self.size_until(counted, &|| false)
+    }
+
+    /// The bytes allocated beneath this directory, as `size_counted` says,
+    /// unless `stop` says yes at a directory on the way, when the walk ends
+    /// as interrupted: a daemon told to stop doesn't finish a walk first.
+    pub fn size_until(&self, counted: &mut Counted, stop: &dyn Fn() -> bool) -> io::Result<u64> {
+        self.size_into(counted, stop)
     }
 
     /// Moves every entry but those kept into a fresh trash inside this
@@ -602,7 +609,10 @@ impl Dir {
         Ok(rustix::fs::chmod(link.as_str(), Mode::from_raw_mode(mode))?)
     }
 
-    fn size_into(&self, counted: &mut Counted) -> io::Result<u64> {
+    fn size_into(&self, counted: &mut Counted, stop: &dyn Fn() -> bool) -> io::Result<u64> {
+        if stop() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "told to stop"));
+        }
         let mut total = 0;
         for name in self.names()? {
             let name = OsStr::from_bytes(&name);
@@ -629,7 +639,10 @@ impl Dir {
             if kind == FileType::Directory
                 && let Ok(Some(child)) = self.entry(name)
             {
-                total += child.size_into(counted).unwrap_or(0);
+                total += match child.size_into(counted, stop) {
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => return Err(error),
+                    sized => sized.unwrap_or(0),
+                };
             }
         }
         Ok(total)

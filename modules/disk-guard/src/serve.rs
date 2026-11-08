@@ -225,7 +225,8 @@ pub fn steps(
 /// Blocks `signals` in this thread, and in every thread it starts after,
 /// and gives a wait that ends early, saying so, once one of them comes.
 /// A signal during a step waits for the step to finish, so a pass is
-/// never cut off halfway by a stop. Call it before starting any thread,
+/// never cut off halfway by a stop; a survey, which only reads, asks
+/// whether one waits and ends early. Call it before starting any thread,
 /// or a thread that doesn't block them takes them and dies.
 #[cfg(target_os = "linux")]
 pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + use<>> {

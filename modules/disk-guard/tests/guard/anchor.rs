@@ -123,6 +123,21 @@ fn a_writable_subvolume_beneath_a_root_is_reached_and_a_read_only_one_isnt() {
 }
 
 #[test]
+fn a_size_told_to_stop_ends_there() {
+    let root = sandbox();
+    for n in 0..30 {
+        fs::create_dir_all(root.path().join(format!("t/{n}/deps"))).unwrap();
+    }
+    let asked = std::cell::Cell::new(0);
+    let stop = crate::discover::stop_after(3, &asked);
+    let sized = Dir::open(root.path())
+        .unwrap()
+        .size_until(&mut Counted::default(), &stop);
+    assert_eq!(sized.unwrap_err().kind(), io::ErrorKind::Interrupted);
+    assert_eq!(asked.get(), 4, "it ends at the first ask that says stop");
+}
+
+#[test]
 fn size_counts_what_is_allocated_beneath() {
     let root = sandbox();
     fs::create_dir_all(root.path().join("t/deps")).unwrap();
