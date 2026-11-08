@@ -2589,6 +2589,10 @@
     a whole number of half rows below; and a row's words, home's lists and a found row's note,
     are in the serif a step after its name and on its baseline to half a device pixel
   '';
+  vm-desktop-looks-machine = ''
+    on the laptop's screen at 1.5 and at 2, Machine's processor, memory, disk and uptime step
+    into the parts the machine daemon reads from the guest, and those parts into their own
+  '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
     disturb, a missed notice, waiting, the muted microphone, dictation, what's playing and caps

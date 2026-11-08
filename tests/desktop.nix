@@ -34,9 +34,9 @@
   pkgs,
   area,
   gallery ? false,
-  # The screen's size in pixels. Every area but looks keeps the one its
-  # pictures were taken on; looks has the laptop's, so the launcher and its
-  # drawer fit at both of Joel's scales.
+  # The screen's size in pixels. Every area but looks and looks-machine
+  # keeps the one its pictures were taken on; those two have the laptop's,
+  # so the launcher and its drawer fit at both of Joel's scales.
   screen ? {
     width = 1280;
     height = 800;
