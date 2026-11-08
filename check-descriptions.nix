@@ -558,6 +558,12 @@
   firmware-settings-passes-clippy = ''
     clippy finds nothing in firmware-settings or its tests
   '';
+  for-you-weighs-what-needs-joel = ''
+    For You weighs what needs Joel by what it blocks, what's due, what he can do now, its kind
+    and how long it has waited, the heaviest first and ties as they came, says each row's
+    strongest reason at its side, and reads the looks folder's files into what waits and what's
+    history, newest first, leaving out any it can't read
+  '';
   formatting = ''
     everything is formatted and passes the linters
   '';

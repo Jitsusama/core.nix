@@ -1218,6 +1218,25 @@ onLinux {
       touch $out
     '';
 
+  # For You weighs what needs Joel, heaviest first and ties as they came,
+  # says each row's strongest reason, and reads the looks folder's files
+  # into what waits and what's history, as tests/for-you.qml holds
+  # ForYou.js to it in Qt's own engine.
+  for-you-weighs-what-needs-joel =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
+      cp ${../../tests/for-you.qml} for-you.qml
+      cp ${./launcher/ForYou.js} ForYou.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
