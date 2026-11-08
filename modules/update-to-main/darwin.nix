@@ -31,12 +31,14 @@ in
       state = "/var/root/.local/state/update-to-main";
       socket = "/var/run/update-to-main.sock";
       ended = "/var/run/update-to-main.last.json";
+      running = "/var/run/update-to-main.running.json";
       profile = "/nix/var/nix/profiles/system";
       # A Mac boots no NixOS system, says its power through pmset, and
       # keeps no CPU pressure, so nothing it builds elsewhere builds here.
       booted = "/var/empty";
       power_supplies = "/var/empty";
       cpu_pressure = "/var/empty";
+      small_features = [ ];
       tools = {
         nix = "${nixBin}/nix";
         nix_env = "${nixBin}/nix-env";

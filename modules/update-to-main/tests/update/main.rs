@@ -173,6 +173,7 @@ impl World {
             socket: root.join("ask.sock"),
             group: own_group(),
             ended: root.join("last.json"),
+            running: root.join("now.json"),
             profile: root.join("profile"),
             signers: Signers {
                 ssh: Some(signers),
@@ -195,6 +196,7 @@ impl World {
             holds: None,
             power_supplies: root.join("power"),
             cpu_pressure: root.join("pressure"),
+            small_features: vec!["benchmark".to_owned(), "kvm".to_owned()],
             tools: Tools {
                 git: program("git"),
                 gpg: program("gpg"),
@@ -817,6 +819,13 @@ fn asks_while_an_update_runs_join_it() {
         })
         .collect();
     thread::sleep(std::time::Duration::from_millis(300));
+    // While it runs, what it's doing is kept for another program to see.
+    let running: Line =
+        serde_json::from_str(&fs::read_to_string(&world.config.running).unwrap()).unwrap();
+    assert!(
+        matches!(running, Line::Fetching | Line::Building { .. }),
+        "{running:?}"
+    );
     fs::write(&gate, "").unwrap();
     for asker in askers {
         let (told, ending) = asker.join().unwrap();
@@ -842,6 +851,10 @@ fn how_an_update_ended_is_kept_for_its_group_to_read() {
     let kept: Line =
         serde_json::from_str(&fs::read_to_string(&world.config.ended).unwrap()).unwrap();
     assert_eq!(kept, ending, "the file says how it ended");
+    assert!(
+        !world.config.running.exists(),
+        "once it has ended, none is running"
+    );
     let meta = fs::metadata(&world.config.ended).unwrap();
     assert_eq!(meta.mode() & 0o777, 0o640);
     // SAFETY: getgid can't fail.
@@ -1516,6 +1529,23 @@ fn a_piece_the_builders_dont_take_is_built_here_small() {
     // The daemon's builders stay, for what only they take.
     assert!(!here.contains("--builders"), "{here}");
     assert!(here.contains("--max-jobs 1 --cores 4"), "{here}");
+}
+
+#[test]
+fn a_big_piece_is_left_for_a_builder_rather_than_built_here() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    world.update();
+    // Nix builds here only what asks for none but these, so a piece that
+    // asks for big-parallel, as the kernel does, waits for a builder.
+    let here = world.read("here");
+    assert!(
+        here.contains("--option system-features benchmark kvm "),
+        "{here}"
+    );
 }
 
 #[test]

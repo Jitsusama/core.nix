@@ -274,6 +274,13 @@ fn here(
     }
     local.args(["--max-jobs", &here.max_jobs.to_string()]);
     local.args(["--cores", &here.cores.to_string()]);
+    // On 8 November the lent builders were down and this built the
+    // kernel here for over an hour; a big piece now waits for a builder.
+    local.args([
+        "--option",
+        "system-features",
+        &config.small_features.join(" "),
+    ]);
     told(local, what, pieces)
 }
 

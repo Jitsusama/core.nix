@@ -11,7 +11,9 @@
 //!
 //! Each update's ending is also kept in a file the group reads, so a
 //! machine's node can say how the last update ended though the switch
-//! restarted it before it heard.
+//! restarted it before it heard. While one runs, its latest line is kept
+//! in another, so a program can tell an update is running, which an ask
+//! over the socket doesn't show in the process list.
 
 use crate::config::Config;
 use crate::line::{Applied, Line};
@@ -118,9 +120,13 @@ fn the_groups(path: &Path, group: &str, mode: u32) -> Result<(), String> {
 /// Keeps `ending` in the config's ended file, whole: written beside it,
 /// then moved into place, so a reader never finds half of one.
 fn keep(config: &Config, ending: &Line) -> Result<(), String> {
-    let file = &config.ended;
+    keep_in(config, &config.ended, ending)
+}
+
+/// Keeps `line` in `file` for the config's group, whole, as `keep` does.
+fn keep_in(config: &Config, file: &Path, line: &Line) -> Result<(), String> {
     let making = beside(file);
-    let kept = fs::write(&making, format!("{}\n", ending.json()))
+    let kept = fs::write(&making, format!("{}\n", line.json()))
         .map_err(|e| format!("{}: {e}", making.display()))
         .and_then(|()| the_groups(&making, &config.group, 0o640))
         .and_then(|()| fs::rename(&making, file).map_err(|e| format!("{}: {e}", file.display())));
@@ -219,12 +225,17 @@ fn join(config: &Arc<Config>, current: &Arc<Mutex<Option<Arc<Answer>>>>) -> Arc<
 
 fn run(config: &Config, heard: &Answer) {
     let push = |line: &Line| {
+        // Not keeping it costs only another program's sight of it.
+        if let Err(why) = keep_in(config, &config.running, line) {
+            eprintln!("couldn't keep what the update is doing: {why}");
+        }
         let mut said = heard.state.lock().expect("the answer's lock");
         said.lines.push(line.json());
         heard.grew.notify_all();
     };
     let ending = update::update(config, &mut |line| push(line));
     eprintln!("{}", ending.json());
+    let _ = fs::remove_file(&config.running);
     // Kept before the askers hear it, so one that reads the file after the
     // ending finds it there. Not keeping it costs only the node's word.
     if let Err(why) = keep(config, &ending) {
