@@ -47,7 +47,9 @@ fn github(status: &'static str, body: &'static str) -> (String, Asked) {
                 let (name, value) = header.split_once(": ").unwrap_or_default();
                 match name.to_ascii_lowercase().as_str() {
                     "content-length" => length = value.parse().unwrap(),
-                    "authorization" => bearer = value.trim_start_matches("Bearer ").to_owned(),
+                    "authorization" => {
+                        value.trim_start_matches("Bearer ").clone_into(&mut bearer);
+                    }
                     _ => {}
                 }
             }
