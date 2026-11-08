@@ -1655,7 +1655,7 @@ def timers_photographed(desktop: Desktop) -> None:
             lambda shown: " \u00b7 " in str((shown["selected"] or {}).get("name"))
         )
         desktop.close_launcher()
-    desktop.as_account("qs ipc call notices putAway || true")
+    # The rung one's notice stays up, since putting it away would end it.
     desktop.as_account("qs ipc call launcher collection timers")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
