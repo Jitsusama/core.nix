@@ -125,8 +125,12 @@ Provider {
             key: record.key,
             name: named(record),
             glyph: Words.glyph("timer"),
-            hue: record.state === "rung" ? "alert" : "machine",
+            // A clock's hue, as Time's rows wear, and an alert's once rung.
+            hue: record.state === "rung" ? "alert" : "action",
             side: side(record, now),
+            // Said after the name, muted, so a paused one reads apart from
+            // one counting on every row, not only the cursor's.
+            count: record.state === "paused" ? said.held ?? "" : "",
             note: note(record, now),
             at: record.set,
             record: record,

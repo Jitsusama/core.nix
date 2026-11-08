@@ -4820,6 +4820,7 @@
       "said": {
         "running": "of {span} \u00b7 ends {clock}",
         "paused": "paused \u00b7 of {span}",
+        "held": "paused",
         "rung": "rang {clock}",
         "late": "rang late, {clock}",
         "done": "done",

@@ -1633,6 +1633,7 @@ def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
     desktop.close_launcher()
     rang = 'qs ipc call notices front | grep -qF \'"signed":"Timers"\''
     machine.wait_until_succeeds(desktop.in_session(rang), timeout=timedelta(seconds=30))
+    desktop.photograph("notice-timer-rung")
     kept = desktop.as_account(f"cat {TIMERS_KEPT}")
     assert '"state":"rung"' in kept, kept
     desktop.as_account("qs ipc call notices putAway")
@@ -1655,7 +1656,14 @@ def timers_photographed(desktop: Desktop) -> None:
             lambda shown: " \u00b7 " in str((shown["selected"] or {}).get("name"))
         )
         desktop.close_launcher()
-    # The rung one's notice stays up, since putting it away would end it.
+    # The rung one's notice is taken back as its sender would take it, which
+    # leaves the timer rung, since putting it away would end it; the test
+    # doesn't know its number, and only the daemon's notices are up.
+    desktop.as_account(
+        "for id in $(seq 1 30); do busctl --user call org.freedesktop.Notifications"
+        " /org/freedesktop/Notifications org.freedesktop.Notifications"
+        " CloseNotification u $id 2>/dev/null || true; done"
+    )
     desktop.as_account("qs ipc call launcher collection timers")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
