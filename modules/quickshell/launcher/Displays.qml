@@ -191,7 +191,7 @@ Provider {
     // The Brightness and, where the room is heard, the Room light, or
     // nothing for a screen whose place doesn't hold them.
     function lightRows(output) {
-        const light = backlit(output) ? backlight() : null;
+        const light = backlit(output) ? provider.light : null;
         if (light === null)
             return [];
         const rows = [Object.assign(setting(output, "brightness", `${light.share}%`, "brightness",
@@ -205,7 +205,7 @@ Provider {
                 ? `${light.now} of ${light.most} steps; it follows the room, and the keys set it`
                 : "every screen follows it, and the keys set it"
         })];
-        if (inTheRoom(output) && askRoom() && room !== null)
+        if (inTheRoom(output) && room !== null)
             rows.push(copyRow({
                 key: `displays:${output.name}:room`,
                 name: partName("room"),
@@ -354,6 +354,35 @@ Provider {
         onTriggered: provider.answered()
     }
 
+    // The backlight as last read, for a screen's drawer and the rows a step
+    // into it holds. The launcher builds both inside bindings, where reading
+    // sysfs or asking the sensor writes state the binding reads, a loop; so
+    // they read only this and `room`, which are asked for here, each second
+    // while a screen is selected or held.
+    property var light: null
+    onLightChanged: changed()
+
+    function readLight() {
+        const now = backlight();
+        if (JSON.stringify(now) !== JSON.stringify(light))
+            light = now;
+    }
+
+    readonly property bool screenSelected: launcher !== null && launcher.open
+        && [launcher.selected].concat((launcher.held ?? []).map(step => step.row))
+            .some(row => String(row?.key ?? "").startsWith("display:"))
+
+    Timer {
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        running: provider.screenSelected
+        onTriggered: {
+            provider.askRoom();
+            provider.readLight();
+        }
+    }
+
     FolderListModel {
         id: backlights
         folder: "file:///sys/class/backlight"
@@ -477,7 +506,7 @@ Provider {
     // to say, so it isn't said again.
     function drawerOf(output) {
         const facts = [];
-        const light = output.logical !== null && backlit(output) ? backlight() : null;
+        const light = output.logical !== null && backlit(output) ? provider.light : null;
         if (light !== null) {
             facts.push({
                 label: partName("brightness"),
@@ -489,7 +518,7 @@ Provider {
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
-            if (inTheRoom(output) && askRoom() && room !== null)
+            if (inTheRoom(output) && room !== null)
                 facts.push({ label: partName("room"), value: lux(room) });
             if (inTheRoom(output) && warmth !== null)
                 facts.push({
