@@ -42,9 +42,10 @@
 // connection to its socket (Daemon.qml), so nothing is read or spawned
 // here: the daemon reads the kernel and asks UDisks, and says each
 // record as it changes. It reads only while watched, so the processor,
-// memory, disks and boot are watched while the launcher is open, and the
-// programs using the machine, which cost it the most to read, only once
-// a part saying them has been looked at, until the launcher closes. Its
+// memory and boot are watched while one of Machine's answers is shown,
+// the disks while a Disk answer or row is, and the programs using the machine, which cost it the most to
+// read, only while a Using row can be seen: the processor's or the
+// memory's parts stepped into, or Using asked for alone. Its
 // records come at most once a second, and once more a moment after the
 // first, whose rates are since the machine started, so a rate stands for
 // now as soon as it can; each answer here is asked again as they come.
@@ -146,7 +147,7 @@ Provider {
             // keeps it from resting, so it's kept there with no parts too;
             // and asked alone, it's what makes the telemetry be read.
             whole: resting,
-            about: resting ? kinds.cpu : undefined,
+            about: resting ? kinds.cpu : kind === "disks" ? kinds.disks : undefined,
             headline: part.side,
             copy: part.copied ?? part.side ?? "",
             graph: part.graph,
@@ -406,7 +407,7 @@ Provider {
 
     // The disk records, the machine's own first.
     function diskRecords() {
-        const held = daemon.revision >= 0 ? daemon.held : {};
+        const held = disked.revision >= 0 ? disked.held : {};
         return Object.keys(held).filter(key => key.startsWith("disk:")).map(key => held[key]);
     }
 
@@ -424,12 +425,6 @@ Provider {
         for (let rank = 1; held[`using:${of}:${rank}`]; rank++)
             found.push(held[`using:${of}:${rank}`]);
         return found;
-    }
-
-    // The programs are asked for once a part saying them is looked at.
-    function wantsPrograms() {
-        if (!usingWanted)
-            Qt.callLater(() => provider.usingWanted = true);
     }
 
     // The processors.
@@ -450,7 +445,6 @@ Provider {
 
     // The processors' parts, from the record the headline said.
     function cpuParts(p) {
-        wantsPrograms();
         const chip = Words.glyph(kinds.cpu);
         const cores = (p.cores ?? []).filter(core => core.online);
         const loads = cores.map(core => ({ n: core.n, load: core.busy_ratio ?? 0 }));
@@ -731,7 +725,6 @@ Provider {
 
     // The memory's parts, from the record the headline said.
     function memoryParts(m) {
-        wantsPrograms();
         const info = m.info_b ?? {};
         const chip = Words.glyph(kinds.memory);
         const rows = [figure({
@@ -904,6 +897,15 @@ Provider {
         target: daemon
 
         function onHeard(keys) {
+            if (provider.shown)
+                provider.answered();
+        }
+    }
+
+    Connections {
+        target: disked
+
+        function onHeard(keys) {
             const own = provider.machineDisk();
             if (own && keys.includes(own.key))
                 provider.sparked(own);
@@ -947,6 +949,7 @@ Provider {
                 : room ? bar(1 - room.available_b / room.size_b) : undefined,
             glyph: Words.glyph(kinds.disks),
             title: Words.name(kinds.disks),
+            about: kinds.disks,
             // The guard's own words are each disk's, in its drawer (disked).
             note: guard ? guardSays(guard, worst) : disk ? since(disk) : ""
         }, () => diskParts(guard, disk, room));
@@ -1457,13 +1460,23 @@ Provider {
             || launcher.held.some(step => step.row.live === provider)
             || launcher.matches.some(row => row.live === provider))
 
-    // Whether a part saying the programs has been looked at since the
-    // launcher opened, so the daemon is asked for them.
-    property bool usingWanted: false
-    onShownChanged: {
-        if (!shown)
-            usingWanted = false;
-    }
+    // Whether a Using row can be seen, so the daemon is asked for the
+    // programs: the processor's or the memory's parts stepped into, or
+    // Using asked for alone. Building parts to find one, or to search
+    // them, asks for nothing, since every process's file is read for it
+    // each second (Y2YBTS's review of #2276).
+    readonly property var usingNames: [named("cpu:using"), named("memory:using")]
+    readonly property bool usingWanted: shown && (launcher.held.some(step =>
+        step.row?.live === provider
+            && (step.row.about === kinds.cpu || step.row.about === kinds.memory))
+        || launcher.answer?.live === provider && usingNames.includes(launcher.answer.title))
+
+    // Whether a Disk answer or row is shown, listed or stepped into, so the
+    // daemon reads the disks: each read asks an NVMe disk its temperature,
+    // a command to the drive, which nothing else Machine shows needs.
+    readonly property bool disksWanted: shown && [launcher.answer,
+        ...launcher.held.map(step => step.row), ...launcher.matches]
+        .some(row => row?.live === provider && row.about === kinds.disks)
 
     // The processor's telemetry is watched while a Processor answer is
     // listed, shown or stepped into, so what held it back is there once its
@@ -1486,14 +1499,27 @@ Provider {
         onTriggered: provider.answered()
     }
 
-    // The machine daemon: the processor, memory, disks and boot while the
-    // launcher is open, and the programs while a part saying them is.
+    // The machine daemon: the processor, memory and boot while one of
+    // Machine's answers is shown, the disks while a Disk answer or row is,
+    // and the programs while a Using row can be. Nothing is read while the launcher is open for anything
+    // else; a first look holds the placeholder for the few milliseconds
+    // the daemon's first read takes.
     Daemon {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: ["processor", "memory", "disk", "boot"]
-        live: provider.launcher !== null && provider.launcher.open
+        kind: ["processor", "memory", "boot"]
+        live: provider.shown
+        keptThroughGap: false
+        answersWhole: true
+    }
+
+    Daemon {
+        id: disked
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "disk"
+        live: provider.disksWanted
         keptThroughGap: false
         answersWhole: true
     }

@@ -121,6 +121,23 @@ pub fn rounded(value: f64, places: i32) -> Value {
     serde_json::Number::from_f64((value * scale).round() / scale).map_or(Value::Null, Value::Number)
 }
 
+/// Milliseconds on the clock that counts since boot, asleep included,
+/// which reads are timed on: the wall clock steps when the time is set,
+/// as it is just after boot or a wake, and a second's counts measured
+/// over a stepped span would read several times too low while saying
+/// "now" (Y2YBTS's review of #2276).
+pub fn clock_ms() -> u64 {
+    // SAFETY: clock_gettime writes only into the timespec it's given,
+    // which is zeroed and ours.
+    let mut said: libc::timespec = unsafe { std::mem::zeroed() };
+    if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &raw mut said) } != 0 {
+        return 0;
+    }
+    let seconds = u64::try_from(said.tv_sec).unwrap_or(0);
+    let millis = u64::try_from(said.tv_nsec).unwrap_or(0) / 1_000_000;
+    seconds.saturating_mul(1000).saturating_add(millis)
+}
+
 /// Milliseconds since the epoch.
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()

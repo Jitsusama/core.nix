@@ -31,6 +31,34 @@ const FLUSHES: usize = 15;
 const FLUSH_MS: usize = 16;
 /// The kernel counts sectors in 512 bytes, whatever the disk's own.
 const SECTOR: u64 = 512;
+/// The fields the kernel prints as 32-bit milliseconds (`%u`), which wrap:
+/// the weighted time does every few days of uptime.
+const WRAPPING: [usize; 6] = [READ_MS, WRITE_MS, IO_MS, WEIGHTED_MS, DISCARD_MS, FLUSH_MS];
+
+/// How far a counter moved between two reads: a 32-bit one across its
+/// wrap, and any other as none where it went backwards, as a reset does.
+fn moved(field: usize, now: u64, before: u64) -> u64 {
+    if WRAPPING.contains(&field) {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the kernel prints these as 32 bits, so their low 32 are all there is"
+        )]
+        let (now, before) = (now as u32, before as u32);
+        u64::from(now.wrapping_sub(before))
+    } else {
+        now.saturating_sub(before)
+    }
+}
+
+/// A disk's sensors' labels and limits, which are read once a sensor is
+/// first seen and kept until the hwmon listing changes: on an NVMe disk
+/// each limit read is a command to the drive, waking it, while the limits
+/// never move (Y2YBTS's review of #2276).
+#[derive(Default)]
+pub struct Kept {
+    hwmons: Vec<String>,
+    sensors: BTreeMap<String, Value>,
+}
 
 /// The disks whose figures are a disk's: not loops, RAM, compressed RAM,
 /// mapped or software RAID devices, optical drives, floppies or network
@@ -165,11 +193,16 @@ fn file_systems(root: &Root, name: &str) -> Value {
 
 /// A disk's sensors, as its hwmon says them: each by its label, with the
 /// most it's meant to reach, where it's critical, and the least.
-fn temperatures(root: &Root, device: Option<&str>) -> Value {
+fn temperatures(root: &Root, device: Option<&str>, kept: &mut Kept) -> Value {
     let Some(device) = device else {
         return Value::Array(vec![]);
     };
-    for hwmon in root.names("/sys/class/hwmon") {
+    let hwmons = root.names("/sys/class/hwmon");
+    if hwmons != kept.hwmons {
+        kept.sensors.clear();
+        kept.hwmons.clone_from(&hwmons);
+    }
+    for hwmon in hwmons {
         let folder = format!("/sys/class/hwmon/{hwmon}");
         if root.resolved(&format!("{folder}/device")).as_deref() != Some(device) {
             continue;
@@ -189,13 +222,20 @@ fn temperatures(root: &Root, device: Option<&str>) -> Value {
                         .and_then(|milli| i32::try_from(milli).ok())
                         .map(|milli| rounded(f64::from(milli) / 1000.0, 1))
                 };
-                json!({
-                    "label": root.said(&format!("{folder}/{sensor}_label")).unwrap_or_else(|| sensor.to_owned()),
-                    "temperature_c": degrees("input"),
-                    "high_c": degrees("max"),
-                    "critical_c": degrees("crit"),
-                    "low_c": degrees("min"),
-                })
+                let limits = kept
+                    .sensors
+                    .entry(format!("{folder}/{sensor}"))
+                    .or_insert_with(|| {
+                        json!({
+                            "label": root.said(&format!("{folder}/{sensor}_label")).unwrap_or_else(|| sensor.to_owned()),
+                            "high_c": degrees("max"),
+                            "critical_c": degrees("crit"),
+                            "low_c": degrees("min"),
+                        })
+                    });
+                let mut said = limits.clone();
+                said["temperature_c"] = degrees("input").into();
+                said
             })
             .collect();
         return Value::Array(sensors);
@@ -229,6 +269,7 @@ pub fn record(
     now: &Counters,
     before: Option<&Counters>,
     health: &Value,
+    kept: &mut Kept,
 ) -> Value {
     let folder = format!("/sys/block/{name}");
     let at = |file: &str| root.said(&format!("{folder}/{file}"));
@@ -236,20 +277,27 @@ pub fn record(
     let controller = root.resolved(&format!("{folder}/device"));
     let fields = now.disks.get(name).cloned().unwrap_or_default();
     let then = before.and_then(|b| b.disks.get(name));
-    // A first read's rates are since the machine started.
+    // A first read's rates are since the machine started. A disk new since
+    // the read before, as one plugged in, has counted only since it came,
+    // so it has no rate until its second read.
+    let new = before.is_some() && then.is_none();
     let over_ms = before.map(|b| now.at_ms.saturating_sub(b.at_ms));
-    let span = over_ms.or(Some(now.up_ms));
+    let span = if new {
+        None
+    } else {
+        over_ms.or(Some(now.up_ms))
+    };
     let value = |i: usize| fields.get(i).copied();
-    let base = |i: usize| Some(then.and_then(|t| t.get(i).copied()).unwrap_or(0));
-    let change = |i: usize| value(i).unwrap_or(0).saturating_sub(base(i).unwrap_or(0));
+    let base = |i: usize| then.and_then(|t| t.get(i).copied()).unwrap_or(0);
+    let change = |i: usize| moved(i, value(i).unwrap_or(0), base(i));
     let rate = |i: usize, scale: u64| {
         value(i)
-            .and_then(|v| per_second(v, base(i), span))
+            .and_then(|v| per_second(v, Some(base(i)), span))
             .map(|r| rounded(r * float(scale), 1))
     };
     let latency = |done: usize, ms: usize| {
         let requests = change(done);
-        (requests > 0).then(|| rounded(float(change(ms)) / float(requests), 3))
+        (span.is_some() && requests > 0).then(|| rounded(float(change(ms)) / float(requests), 3))
     };
     let span_ms = span.unwrap_or(0);
     let busy = (span_ms > 0 && value(IO_MS).is_some())
@@ -302,10 +350,72 @@ pub fn record(
         "written_b": value(SECTORS_WRITTEN).map(|s| s * SECTOR),
         "discarded_b": value(SECTORS_DISCARDED).map(|s| s * SECTOR),
         "pressure": crate::pressure::parse(root.read("/proc/pressure/io").as_deref()),
-        "temperatures": temperatures(root, controller.as_deref()),
+        "temperatures": temperatures(root, controller.as_deref(), kept),
         "health": health,
         "file_systems": file_systems(root, name),
         "over_ms": span,
         "since": since(over_ms),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read(at_ms: u64, disks: &[(&str, Vec<u64>)]) -> Counters {
+        Counters {
+            at_ms,
+            disks: disks
+                .iter()
+                .map(|(name, fields)| ((*name).to_owned(), fields.clone()))
+                .collect(),
+            up_ms: 1_000_000,
+        }
+    }
+
+    #[test]
+    fn a_millisecond_field_moves_across_its_wrap() {
+        let before = u64::from(u32::MAX) - 99;
+        assert_eq!(
+            moved(WEIGHTED_MS, 400, before),
+            500,
+            "100 before the wrap, 400 after"
+        );
+        assert_eq!(
+            moved(READS, 400, before),
+            0,
+            "a 64-bit count going back is none"
+        );
+    }
+
+    #[test]
+    fn a_disk_new_since_the_last_read_has_no_rate_until_its_next() {
+        let root = Root::new("/nonexistent");
+        let mut kept = Kept::default();
+        let fields = |reads| {
+            vec![
+                reads, 0, 0, reads, 0, 0, 0, 0, 0, 500, 900, 0, 0, 0, 0, 0, 0,
+            ]
+        };
+        let first = read(1000, &[("nvme0n1", fields(10))]);
+        let plugged = read(2000, &[("nvme0n1", fields(20)), ("sda", fields(5_000))]);
+        let new = record(
+            &root,
+            "sda",
+            &plugged,
+            Some(&first),
+            &Value::Null,
+            &mut kept,
+        );
+        assert_eq!(
+            new["reads_per_s"],
+            Value::Null,
+            "its lifetime isn't a second's"
+        );
+        assert_eq!(new["busy_ratio"], Value::Null);
+        assert_eq!(new["read_latency_ms"], Value::Null);
+        let next = read(3000, &[("nvme0n1", fields(30)), ("sda", fields(5_010))]);
+        let known = record(&root, "sda", &next, Some(&plugged), &Value::Null, &mut kept);
+        assert_eq!(known["reads_per_s"], json!(10.0));
+    }
 }

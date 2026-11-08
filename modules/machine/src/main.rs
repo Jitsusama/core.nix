@@ -29,7 +29,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
-use machine::{Root, boot, disk, memory, now_ms, processor, using};
+use machine::{Root, boot, clock_ms, disk, memory, now_ms, processor, using};
 use serde_json::{Value, json};
 
 /// How often what's watched is read.
@@ -38,6 +38,9 @@ const EVERY: Duration = Duration::from_secs(1);
 const SOON: Duration = Duration::from_millis(200);
 /// How often each disk's health is asked while disks are watched.
 const HEALTH_EVERY: Duration = Duration::from_secs(60);
+/// The longest a call to a bus service may take, so one that hangs can't
+/// hold its thread.
+const BUS_WAIT: Duration = Duration::from_secs(10);
 /// What a get answers from what's held, rather than reading again.
 const FRESH: Duration = Duration::from_millis(1500);
 /// How near its time a kind is read with others due now.
@@ -71,13 +74,14 @@ struct Reader {
     processor: Option<processor::Counters>,
     memory: Option<memory::Counters>,
     disks: Option<disk::Counters>,
+    disk_sensors: disk::Kept,
     programs: Option<using::Counters>,
 }
 
 impl Reader {
     /// Reads these kinds, as rates from their last read.
     fn read(&mut self, kinds: &HashSet<String>, health: &BTreeMap<String, Value>) -> Vec<Value> {
-        let at = now_ms();
+        let at = clock_ms();
         let mut records = Vec::new();
         let wants = |kind: &str| kinds.contains(kind);
         if wants("processor") {
@@ -111,6 +115,7 @@ impl Reader {
                     &now,
                     self.disks.as_ref(),
                     &said,
+                    &mut self.disk_sensors,
                 ));
             }
             self.disks = Some(now);
@@ -181,6 +186,7 @@ fn main() {
             processor: None,
             memory: None,
             disks: None,
+            disk_sensors: disk::Kept::default(),
             programs: None,
         }),
         woken: Condvar::new(),
@@ -367,7 +373,8 @@ fn watch_loop(shared: &Shared) {
 }
 
 /// Asks `UDisks` for each disk's health once a minute while disks are
-/// watched, and at once when they start to be.
+/// watched, and when they start to be if it last asked a minute or more
+/// ago, so a launcher opened and closed doesn't ask each time.
 fn health_loop(shared: &Shared) {
     let mut bus: Option<zbus::blocking::Connection> = None;
     let mut last: Option<Instant> = None;
@@ -376,9 +383,6 @@ fn health_loop(shared: &Shared) {
             let mut daemon = lock(&shared.daemon);
             loop {
                 let watching = watched(&daemon).contains("disk");
-                if !watching {
-                    last = None;
-                }
                 let due = last.is_none_or(|at| at.elapsed() >= HEALTH_EVERY);
                 if watching && due {
                     break;
@@ -398,7 +402,9 @@ fn health_loop(shared: &Shared) {
         last = Some(Instant::now());
         let names = disk::disks(&lock(&shared.reader).root);
         if bus.is_none() {
-            match zbus::blocking::Connection::system() {
+            match zbus::blocking::connection::Builder::system()
+                .and_then(|builder| builder.method_timeout(BUS_WAIT).build())
+            {
                 Ok(connection) => bus = Some(connection),
                 Err(why) => {
                     lock(&shared.daemon).udisks = json!({"state": "refused", "reason": format!("the system bus isn't there: {why}")});
@@ -416,8 +422,13 @@ fn health_loop(shared: &Shared) {
                 Ok(health) => {
                     said.insert(name, health);
                 }
-                Err(why) => refused = Some(why),
+                Err(why) => refused = Some(why.to_string()),
             }
+        }
+        // Asked again next time on a new connection, so a bus or a
+        // `UDisks` that restarted is reached again.
+        if refused.is_some() {
+            bus = None;
         }
         let mut daemon = lock(&shared.daemon);
         daemon.health = said;
@@ -429,20 +440,47 @@ fn health_loop(shared: &Shared) {
     }
 }
 
+/// Whether a bus error says only that what was asked isn't there, as a
+/// disk that isn't NVMe has no controller's figures, rather than that
+/// `UDisks` is missing, refused or broken.
+fn absent(why: &zbus::Error) -> bool {
+    const ABSENT: [&str; 5] = [
+        "org.freedesktop.DBus.Error.UnknownInterface",
+        "org.freedesktop.DBus.Error.UnknownMethod",
+        "org.freedesktop.DBus.Error.UnknownObject",
+        "org.freedesktop.DBus.Error.UnknownProperty",
+        "org.freedesktop.DBus.Error.InvalidArgs",
+    ];
+    match why {
+        zbus::Error::MethodError(name, _, _) => ABSENT.contains(&name.as_str()),
+        zbus::Error::FDO(fdo) => matches!(
+            **fdo,
+            zbus::fdo::Error::UnknownInterface(_)
+                | zbus::fdo::Error::UnknownMethod(_)
+                | zbus::fdo::Error::UnknownObject(_)
+                | zbus::fdo::Error::UnknownProperty(_)
+                | zbus::fdo::Error::InvalidArgs(_)
+        ),
+        _ => false,
+    }
+}
+
 /// A disk's health as its controller tells `UDisks`, with no prompt: every
 /// attribute of its SMART log, and its controller's own figures, or null
-/// for a disk `UDisks` keeps none for, as one that isn't NVMe.
-fn smart(connection: &zbus::blocking::Connection, name: &str) -> Result<Value, String> {
+/// for a disk `UDisks` keeps none for, as one that isn't NVMe. Any other
+/// error, `UDisks` missing or a refusal, is said as one.
+fn smart(connection: &zbus::blocking::Connection, name: &str) -> zbus::Result<Value> {
     let udisks = "org.freedesktop.UDisks2";
     let block = zbus::blocking::Proxy::new(
         connection,
         udisks,
         format!("/org/freedesktop/UDisks2/block_devices/{name}"),
         "org.freedesktop.UDisks2.Block",
-    )
-    .map_err(|why| why.to_string())?;
-    let Ok(drive) = block.get_property::<zbus::zvariant::OwnedObjectPath>("Drive") else {
-        return Ok(Value::Null);
+    )?;
+    let drive = match block.get_property::<zbus::zvariant::OwnedObjectPath>("Drive") {
+        Ok(drive) => drive,
+        Err(why) if absent(&why) => return Ok(Value::Null),
+        Err(why) => return Err(why),
     };
     if drive.as_str() == "/" {
         return Ok(Value::Null);
@@ -452,18 +490,19 @@ fn smart(connection: &zbus::blocking::Connection, name: &str) -> Result<Value, S
         udisks,
         drive.as_str().to_owned(),
         "org.freedesktop.UDisks2.NVMe.Controller",
-    )
-    .map_err(|why| why.to_string())?;
+    )?;
     let mut options: HashMap<&str, zbus::zvariant::Value> = HashMap::new();
     options.insert(
         "auth.no_user_interaction",
         zbus::zvariant::Value::from(true),
     );
-    let Ok(attributes) = controller.call::<_, _, HashMap<String, zbus::zvariant::OwnedValue>>(
+    let attributes = match controller.call::<_, _, HashMap<String, zbus::zvariant::OwnedValue>>(
         "SmartGetAttributes",
         &(options,),
-    ) else {
-        return Ok(Value::Null);
+    ) {
+        Ok(attributes) => attributes,
+        Err(why) if absent(&why) => return Ok(Value::Null),
+        Err(why) => return Err(why),
     };
     let mut health: serde_json::Map<String, Value> = attributes
         .iter()

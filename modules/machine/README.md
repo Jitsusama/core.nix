@@ -14,7 +14,13 @@ and once more a fifth of a second after a read whose rates aren't of now.
 On a sixteen-core laptop under load, a read of the processor, memory,
 disks and boot took 4 to 7 ms, and of every process 25 to 30 ms (7
 November 2026), which is why the programs are
-watched only while a part saying them is shown.
+watched only while a part saying them is shown. The shell watches the
+processor, memory and boot only while one of Machine's answers is
+shown, and the disks only while a Disk answer or row is, since on an
+NVMe disk each temperature read is a command to the drive; a disk's
+limits are read once and kept. Rates are timed on the clock that counts
+since boot, which the wall clock's steps don't move, and UDisks is asked
+once a minute while disks are watched, its refusals said as such.
 
 ## Every Figure, and Where It Shows
 
