@@ -50,7 +50,7 @@ onLinux {
       client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
     in
     pkgs.runCommandLocal "spotify-backs-out-on-escape" { } ''
-      ${lib.getExe pkgs.nodejs} --no-warnings ${../../tests/spotify-backs-out-on-escape.mjs} \
+      ${lib.getExe pkgs.nodejs} --no-warnings ${./tests/spotify-backs-out-on-escape.mjs} \
         ${./backs-out.js}
       cmp ${./backs-out.js} ${client}/extensions/backs-out.js
       grep -q -F "extensions/backs-out.js" ${client}/index.html
