@@ -207,7 +207,7 @@ let
     "Waiting.js"
     "SpendWatch.qml"
     "Jobs.qml"
-    "Caffeinate.qml"
+    "KeepAwake.qml"
     "Recorder.qml"
     "Picker.qml"
     "Picking.js"
@@ -282,7 +282,7 @@ let
         ExecStart = lib.escapeShellArgs [
           (lib.getExe' pkgs.systemd "systemd-inhibit")
           "--what=${what}"
-          "--who=Caffeinate"
+          "--who=Keep Awake"
           "--why=Kept awake from the launcher"
           "--mode=block"
           (lib.getExe' pkgs.coreutils "sleep")
@@ -2095,32 +2095,32 @@ in
       };
     };
 
-    # Keeping awake, from the launcher (Caffeinate.qml): one service holds
+    # Keep Awake, from the launcher (KeepAwake.qml): one service holds
     # logind's lock against going idle and the other its lock against the
     # lid, which the shell takes only while there's power. Neither holds the
     # lock against sleep, which would refuse a suspend Joel asks for himself
     # with the power key or the launcher, and the lid's suspend on battery.
     # Each leaves a file in the runtime directory while it runs, for the
     # shell to watch.
-    systemd.user.services.caffeinate = holding {
+    systemd.user.services.keep-awake = holding {
       what = "idle";
-      flag = "caffeinated";
+      flag = "kept-awake";
       Description = "Keeps the machine from sleeping while work runs";
       PartOf = [ "graphical-session.target" ];
     };
     # Only where a shut lid on the charger suspends: elsewhere it never does,
     # and holding the lid would change nothing.
-    systemd.user.services.caffeinate-lid = lib.mkIf lidSleepsOnPower (holding {
+    systemd.user.services.keep-awake-lid = lib.mkIf lidSleepsOnPower (holding {
       what = "handle-lid-switch";
-      flag = "caffeinated-lid";
+      flag = "kept-awake-lid";
       Description = "Keeps the machine running with its lid shut, while there's power";
-      PartOf = [ "caffeinate.service" ];
+      PartOf = [ "keep-awake.service" ];
       # Bound to the mains supply, which systemd holds ready only while it's
       # online (nixos.nix), so it stops the moment the power goes, whatever
       # the shell heard; it never starts without it.
       BindsTo = [ "sys-subsystem-power_supply-mains.device" ];
       After = [
-        "caffeinate.service"
+        "keep-awake.service"
         "sys-subsystem-power_supply-mains.device"
       ];
       ConditionACPower = true;

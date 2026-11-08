@@ -29,36 +29,36 @@ Singleton {
     readonly property bool lidShutToo: root.lidHolds ? root.lid : root.plugged
 
     function keep() {
-        Niri.spawn(["systemctl", "--user", "start", "caffeinate.service"]
-            .concat(root.plugged && root.lidHolds ? ["caffeinate-lid.service"] : []));
+        Niri.spawn(["systemctl", "--user", "start", "keep-awake.service"]
+            .concat(root.plugged && root.lidHolds ? ["keep-awake-lid.service"] : []));
     }
 
     // Keeps it awake, but lets shutting the lid sleep it.
     function open() {
-        Niri.spawn(["systemctl", "--user", "stop", "caffeinate-lid.service"]);
+        Niri.spawn(["systemctl", "--user", "stop", "keep-awake-lid.service"]);
     }
 
     // Keeps it awake from asleep or awake alike, only while the lid is open,
     // as :set awake=open does.
     function keepOpen() {
-        Niri.spawn(["systemctl", "--user", "start", "caffeinate.service"]);
+        Niri.spawn(["systemctl", "--user", "start", "keep-awake.service"]);
         open();
     }
 
     function release() {
-        Niri.spawn(["systemctl", "--user", "stop", "caffeinate.service"]);
+        Niri.spawn(["systemctl", "--user", "stop", "keep-awake.service"]);
     }
 
     onPluggedChanged: {
         if (root.on && root.lidHolds)
             Niri.spawn(["systemctl", "--user", plugged ? "start" : "stop",
-                "caffeinate-lid.service"]);
+                "keep-awake-lid.service"]);
     }
 
     FileView {
         id: awake
         property bool present: false
-        path: `${root.runtime}/caffeinated`
+        path: `${root.runtime}/kept-awake`
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
@@ -69,7 +69,7 @@ Singleton {
     FileView {
         id: shut
         property bool present: false
-        path: `${root.runtime}/caffeinated-lid`
+        path: `${root.runtime}/kept-awake-lid`
         watchChanges: true
         printErrors: false
         onFileChanged: reload()

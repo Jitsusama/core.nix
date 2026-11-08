@@ -990,7 +990,7 @@ runs, unless the shell runs inside the editor, and then only one of them says
 it. Owners go by layer:
 
 - **The desktop's facts** (the time and date, battery and power, the network,
-  Bluetooth, audio, brightness, do not disturb, caffeinate, notifications
+  Bluetooth, audio, brightness, do not disturb, Keep Awake, notifications
   waiting) belong to the desktop alone. No terminal program, editor, prompt or
   app repeats them. The lock screen and the greeter show the time because
   they're never on screen with the rest.
@@ -1008,7 +1008,7 @@ it. Owners go by layer:
 | Battery, power                                                         | the margin mark, only when low; the launcher's foot | "battery", "charger"; Now |
 | Network, Bluetooth, audio devices                                      | the network in the launcher's foot, in the warning colour when something's wrong | Wi-Fi, Bluetooth and Sound |
 | Volume, brightness                                                     | an overlay while it changes; the volume in the launcher's foot | Sound                |
-| Do Not Disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
+| Do Not Disturb, Keep Awake, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
 | An agent wanting Joel, and for what                                   | the margin mark while one waits, a notice once     | Agents ("pi" finds them); Now |
@@ -1736,7 +1736,7 @@ works the same way everywhere.
   Nothing keeps its detail somewhere else.
 - **Hints in place.** Wherever there are actions, their keys sit beside them in
   muted type, part of the design rather than a cheat sheet bolted on.
-- **No hidden modes.** Do Not Disturb, caffeinate, recording, a resize, an
+- **No hidden modes.** Do Not Disturb, Keep Awake, recording, a resize, an
   editor's modes, a waiting gate: each shows that it's on, and Escape leaves.
 - **One gesture per meaning.** A surface that needs a gesture of its own is a
   design problem to solve, not a feature.

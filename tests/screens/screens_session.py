@@ -317,7 +317,7 @@ class Screens:
     def awake(self) -> bool:
         """Say whether Keep Awake is on."""
         status, _ = self.machine.execute(
-            self.in_niri("systemctl --user is-active --quiet caffeinate.service")
+            self.in_niri("systemctl --user is-active --quiet keep-awake.service")
         )
         return status == 0
 
@@ -503,7 +503,7 @@ def noticed(booted: Screens) -> Screens:
 def marked(noticed: Screens) -> Screens:
     """Give the machine with Keep Awake's mark in the margin and dictation listening."""
     # Keep Awake is a mark the margin keeps for as long as it's on.
-    noticed.machine.succeed(noticed.in_niri("systemctl --user start caffeinate.service"))
+    noticed.machine.succeed(noticed.in_niri("systemctl --user start keep-awake.service"))
     # The stand-in listens from the first press until the next.
     noticed.machine.succeed(noticed.in_niri("dictation toggle"))
     return noticed
@@ -550,7 +550,7 @@ def slept(switched: Screens) -> Screens:
 @pytest.fixture(scope="module")
 def apart(slept: Screens) -> Apart:
     """Give the two screens with Keep Awake on and dictation listening, its bar on one."""
-    slept.machine.succeed(slept.in_niri("systemctl --user start caffeinate.service"))
+    slept.machine.succeed(slept.in_niri("systemctl --user start keep-awake.service"))
     if not slept.listening():
         slept.machine.succeed(slept.in_niri("dictation toggle"))
     slept.machine.wait_until_succeeds(

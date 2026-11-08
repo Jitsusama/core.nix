@@ -685,7 +685,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     """The launcher's catalogue opens places, does actions and offers what ends something."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
     def listed() -> list[Json]:

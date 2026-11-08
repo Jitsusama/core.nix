@@ -111,7 +111,7 @@ def test_after_the_wake_keep_awake_let_go_takes_its_mark_away(slept: Screens) ->
     """After the wake, Keep Awake let go takes its mark away."""
     # With nothing else on, the margin goes with its last mark.
     slept.quiet()
-    slept.machine.succeed(slept.in_niri("systemctl --user stop caffeinate.service"))
+    slept.machine.succeed(slept.in_niri("systemctl --user stop keep-awake.service"))
     slept.wait_for_no_surface("margin")
 
 

@@ -440,7 +440,7 @@ def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
     # Standup's call, in the window Chrome would open it in, as above.
     call = "chrome-meet.google.com__abc-defg-hij-Default"
     desktop.as_account(f"niri msg action spawn -- kitty --class {call} --title Meet")
-    desktop.as_account("systemctl --user start caffeinate.service")
+    desktop.as_account("systemctl --user start keep-awake.service")
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
         f" {shlex.quote(desktop.values['track'])}"
@@ -467,7 +467,7 @@ def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
         # open go at its end until it's made again (Steady.js).
         retry(lambda _: listed() == groups, timeout=dt.timedelta(seconds=60))
     finally:
-        desktop.as_account(f"systemctl --user stop player caffeinate.service; rm -f {asked}")
+        desktop.as_account(f"systemctl --user stop player keep-awake.service; rm -f {asked}")
         desktop.close(desktop.window_titled("Meet"))
 
 

@@ -63,7 +63,7 @@
 #
 # The mains supply is a device systemd tracks, ready only while it's
 # online, so keeping the machine running with its lid shut (home.nix's
-# caffeinate-lid) ends the moment the power goes, by systemd's own doing.
+# keep-awake-lid) ends the moment the power goes, by systemd's own doing.
 # The shell lets the lid go too, but a shell that missed the power going
 # while the machine slept kept it held, and a laptop left running in a bag
 # ran flat (2026-10-28). systemd hears every change the kernel says,

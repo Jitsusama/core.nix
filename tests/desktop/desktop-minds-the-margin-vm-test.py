@@ -84,7 +84,7 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
 ) -> None:
     """The launcher keeps the machine awake, lid shut too, then lets it sleep."""
     machine = desktop.machine
-    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -127,12 +127,12 @@ def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
 ) -> None:
     """The lid is let go when the power goes, though the shell never hears it."""
     machine = desktop.machine
-    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
     # The supplies were told of the rules once udev had settled, so the
     # mains is a device systemd tracks, as it is after a switch.
     machine.succeed("systemctl is-active power-supplies-seen.service")
     machine.succeed("systemctl is-active sys-subsystem-power_supply-mains.device")
-    desktop.as_account("systemctl --user start caffeinate.service caffeinate-lid.service")
+    desktop.as_account("systemctl --user start keep-awake.service keep-awake-lid.service")
     machine.wait_until_succeeds(
         f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
     )
@@ -151,7 +151,7 @@ def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
         machine.succeed(f"{held} | grep -qw idle")
     finally:
         desktop.power("on")
-        desktop.as_account("systemctl --user stop caffeinate.service")
+        desktop.as_account("systemctl --user stop keep-awake.service")
         desktop.as_account("systemctl --user thaw quickshell.service")
         machine.wait_until_succeeds(
             desktop.in_session("qs ipc call launcher list > /dev/null"),
@@ -293,7 +293,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     # Keep Awake was just let go, and the margin leaves as it fades.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     # Its own, so it runs alone: whether something holds the machine awake.
-    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
     # A camera's card from before is gone first, so what changes along the
     # top is the glyph alone.
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
@@ -302,7 +302,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     empty = desktop.screen_now()
     since = desktop.mark()
     with desktop.told("drawn margin"):
-        desktop.as_account("systemctl --user start caffeinate.service")
+        desktop.as_account("systemctl --user start keep-awake.service")
     desktop.reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
     # Super+O opens What's on, on Needs You, since a mode left on is
     # never what it opens on; on its row, the mark its keys are on wears
