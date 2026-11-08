@@ -129,6 +129,13 @@ QtObject {
             ? { leave: true } : null).every(fact => fact.label !== "Level"), "it wasn't");
         check("a run leaves out what's empty", Plate.runs(["a", "", null, "b"]) === "a \u00b7 b",
             Plate.runs(["a", "", null, "b"]));
+        const named = Plate.identified([{ label: "Serial", value: "0x1234" },
+            { label: "Mode", value: "preferred" }, { label: "Serial", value: "CN41" },
+            { label: "Size", value: "300 \u00d7 190 mm" }], ["Serial"]);
+        check("what identifies it ends the drawer, marked, and said once",
+            said(named) === "Mode=preferred; Size=300 \u00d7 190 mm; Serial=0x1234"
+            && named.map(fact => fact.identifies === true).join() === "false,false,true",
+            said(named));
 
         check("a rate keeps every digit niri has", [120001, 60000, 59940, 143999]
             .map(Screens.hertz).join(", ") === "120.001 Hz, 60 Hz, 59.94 Hz, 143.999 Hz",

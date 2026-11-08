@@ -90,6 +90,18 @@ function facts(parts, how) {
     return out;
 }
 
+// A drawer's facts with those naming what identifies its thing, the
+// labels given, moved to its end and marked `identifies`, so they're set
+// in the Name face, as identifiers end every drawer (VKCF3Z, 2026-11-08).
+// Two sources saying one, as niri and the EDID both say a screen's
+// serial, are said once, the first.
+function identified(facts, labels) {
+    const known = facts.filter(fact => labels.includes(fact.label))
+        .filter((fact, at, all) => all.findIndex(each => each.label === fact.label) === at)
+        .map(fact => Object.assign({}, fact, { identifies: true }));
+    return facts.filter(fact => !labels.includes(fact.label)).concat(known);
+}
+
 // Each value of a list, a run apart, the empty ones left out.
 function runs(values) {
     return values.map(value => String(value ?? "")).filter(value => value !== "").join(APART);

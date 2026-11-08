@@ -580,11 +580,13 @@ Provider {
                 : "screen")]),
             eyebrowNames: true,
             title: named(output),
-            facts: facts.concat(Screens.facts(output, {
+            // Its serial, from niri or the EDID, identifies it, so ends it.
+            facts: Plate.identified(facts.concat(Screens.facts(output, {
                 named: id => provider.partName(id),
                 said: (id, key) => provider.partSaid(id, key),
                 turned: transform => provider.turnedSaid(transform)
-            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }])
+            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }]),
+                [partName("serial")])
         };
     }
 
