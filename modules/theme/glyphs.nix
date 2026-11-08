@@ -1544,6 +1544,16 @@ in
     glyph = nerd "f0020";
     console = "T";
     means = "a timer, counting down to when it rings";
+    # The alarm clock the Timers place wears, filled as its neighbours in
+    # the margin are, since an outline read lighter and busier beside them:
+    # its two bells clear of the face, and the hands, at three o'clock, cut
+    # out of it.
+    drawn = drawing [
+      "M0 2.6A2.6 2.6 0 0 1 2.6 0V2.6Z"
+      "M9.4 0A2.6 2.6 0 0 1 12 2.6H9.4Z"
+      "M1 7A5 5 0 1 0 11 7A5 5 0 1 0 1 7Z"
+      "M5.4 4H6.6V6.4H8.5V7.6H5.4Z"
+    ];
   };
   # The filled stopwatch, since duration's outline is only how long
   # something takes, where this one counts up while Joel watches.
