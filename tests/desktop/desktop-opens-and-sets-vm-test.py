@@ -554,10 +554,6 @@ def test_the_media_place_lists_each_player_and_its_acts_reach_it(desktop: Deskto
     try:
         named = "busctl --user list --acquired | grep -c '^org\\.mpris\\.MediaPlayer2\\.mpv'"
         machine.wait_until_succeeds(desktop.in_session(f"test $({named}) -ge 2"), timeout=WAIT)
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        desktop.type_in("media", selecting="Media")
-        desktop.step_in("ret")
 
         def stands(shown: Json) -> bool:
             sides = [thing["reads"] for thing in shown["things"]]
@@ -565,13 +561,21 @@ def test_the_media_place_lists_each_player_and_its_acts_reach_it(desktop: Deskto
                 re.search(r"\d:\d\d of \d:\d\d", side) and "paused" not in side for side in sides
             )
 
-        desktop.launcher_until(stands)
-        desktop.shoot("launcher-media")
-        # Tab into a player holds its acts, the first named for what it will do.
-        desktop.into_program()
-        desktop.launcher_until(lambda shown: shown["rows"][:1] in (["Pause"], ["Play"]))
-        desktop.shoot("launcher-media-player")
-        desktop.close_launcher()
+        # Shot at each of Joel's scales, then back at 1 for what follows.
+        for scale in ("1.5", "2", "1"):
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            at = "" if scale == "1" else f"-at-{scale.replace('.', '-')}"
+            desktop.as_account("qs ipc call launcher toggle")
+            desktop.launcher_ready()
+            desktop.type_in("media", selecting="Media")
+            desktop.step_in("ret")
+            desktop.launcher_until(stands)
+            desktop.shoot(f"launcher-media{at}")
+            # Tab into a player holds its acts, the first named for what it will do.
+            desktop.into_program()
+            desktop.launcher_until(lambda shown: shown["rows"][:1] in (["Pause"], ["Play"]))
+            desktop.shoot(f"launcher-media-player{at}")
+            desktop.close_launcher()
         playing = "busctl --user --json=short get-property {bus} /org/mpris/MediaPlayer2"
         buses = desktop.as_account(
             "busctl --user list --acquired | grep -o '^org\\.mpris\\.MediaPlayer2\\.mpv\\S*'"
