@@ -5009,6 +5009,75 @@
       "glyph": "copy"
     },
     {
+      "id": "stopwatch",
+      "in": "timers",
+      "name": "Stopwatch",
+      "term": "Desktop/stopwatch",
+      "glyph": "stopwatch",
+      "said": {
+        "running": "running",
+        "stopped": "stopped",
+        "unstarted": "not started",
+        "lapsOne": "{state} \u00b7 1 lap",
+        "laps": "{state} \u00b7 {count} laps",
+        "at": "at {count}"
+      }
+    },
+    {
+      "id": "lap",
+      "in": "stopwatch",
+      "name": "Lap",
+      "term": "Desktop/lap",
+      "glyph": "stopwatch",
+      "states": {
+        "numbered": {
+          "name": "Lap {number}"
+        }
+      }
+    },
+    {
+      "id": "verb:stopwatch:run",
+      "command": "resume",
+      "in": "stopwatch",
+      "name": "Start",
+      "verb": "start",
+      "glyph": "resume",
+      "states": {
+        "running": {
+          "command": "pause",
+          "name": "Stop",
+          "verb": "stop",
+          "glyph": "pause"
+        }
+      }
+    },
+    {
+      "id": "verb:stopwatch:lap",
+      "command": "lap",
+      "in": "stopwatch",
+      "name": "Lap",
+      "verb": "lap",
+      "glyph": "stopwatch"
+    },
+    {
+      "id": "verb:stopwatch:reset",
+      "command": "delete",
+      "in": "stopwatch",
+      "name": "Reset",
+      "verb": "reset",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "reset"
+    },
+    {
+      "id": "verb:stopwatch:copy",
+      "command": "yank",
+      "in": "stopwatch",
+      "name": "Copy the Time",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
       "id": "notices",
       "once": ["Notifications"],
       "name": "Notices",
@@ -8067,6 +8136,14 @@
         "shortcuts:pi:scrollback"
       ],
       "why": "The terminal and pi each scroll back through what they showed, and each group says what holds it beside it."
+    },
+    {
+      "word": "lap",
+      "things": [
+        "lap",
+        "verb:stopwatch:lap"
+      ],
+      "why": "Inside the stopwatch, Lap marks one and each lap it marked is named by its number, so lap finds the act and the laps together."
     }
   ]
 }

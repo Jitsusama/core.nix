@@ -14,8 +14,15 @@
 // does inside, and u sets it going again with what it had left. Inside
 // are Pause or Resume, Start Again, Add a Minute, End and Copy the Time
 // Left (Y2YBTS and VKCF3Z, 2026-11-07).
+//
+// The one stopwatch is listed last, counting up to the tenth while its row
+// is shown, with how it stands and its laps below. Return starts or stops
+// it. Inside are Start or Stop, Lap while it runs, its laps newest first,
+// each copied by Return, Reset, which d carries and Return never runs, and
+// Copy the Time.
 pragma ComponentBehavior: Bound
 import qs
+import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Timing.js" as Timing
@@ -41,7 +48,9 @@ Provider {
     // Every timer's row as it reads now, made afresh each time, since
     // what each says counts on.
     function rows() {
-        return HeldTimers.timers.map(record => provider.made(record));
+        const watch = HeldTimers.stopwatch;
+        return HeldTimers.timers.map(record => provider.made(record))
+            .concat(watch === null ? [] : [provider.watchRow(watch)]);
     }
 
     // A clock's time of day, as the launcher says one: "20:42".
@@ -211,6 +220,119 @@ Provider {
         return [end, copyOperand("verb:timer:copy", provider.side(record, Date.now()))];
     }
 
+    // What the stopwatch's rows say, in the vocabulary's words.
+    readonly property var watchSaid: Words.of("stopwatch").said ?? {}
+
+    // The stopwatch's count now, as it shows it.
+    function watchCount(watch) {
+        return Timing.tenths(Timing.counted(watch, Date.now()));
+    }
+
+    // How it stands, and how many laps it holds once it has one.
+    function watchNote(watch) {
+        const state = watchSaid[watch.state] ?? "";
+        const count = (watch.laps ?? []).length;
+        if (count === 0)
+            return state;
+        return ((count === 1 ? watchSaid.lapsOne : watchSaid.laps) ?? "")
+            .replace("{state}", state).replace("{count}", String(count));
+    }
+
+    // Asks the daemon to change the stopwatch, saying in the foot why when
+    // it won't.
+    function watchAsk(act) {
+        const then = answer => {
+            if (answer?.error !== undefined)
+                provider.refused("stopwatch", answer.error);
+        };
+        switch (act) {
+        case "run":
+            HeldTimers.run(then);
+            break;
+        case "stop":
+            HeldTimers.stop(then);
+            break;
+        case "lap":
+            HeldTimers.lap(then);
+            break;
+        default:
+            HeldTimers.reset(then);
+        }
+    }
+
+    // The stopwatch's row: its count at its right, how it stands below,
+    // and Return starting or stopping it, the launcher staying.
+    function watchRow(watch) {
+        const running = watch.state === "running";
+        const row = member({
+            thing: true,
+            key: "stopwatch",
+            name: Words.name("stopwatch"),
+            glyph: Words.glyph("stopwatch"),
+            // Time's hue while it counts, muted while it doesn't, as a
+            // paused timer is.
+            hue: running ? "action" : "muted",
+            side: watchCount(watch),
+            note: watchNote(watch),
+            record: watch,
+            verb: Words.verb("verb:stopwatch:run", running ? "running" : ""),
+            stays: true,
+            run: () => provider.watchAsk(running ? "stop" : "run")
+        });
+        row.verbs = () => provider.watchActs(watch);
+        row.operands = () => provider.watchOperands(watch);
+        return row;
+    }
+
+    // Inside the stopwatch: Start or Stop, Lap while it runs, its laps
+    // newest first, Reset once it has counted, then Copy the Time.
+    function watchActs(watch) {
+        const running = watch.state === "running";
+        const rows = [act("verb:stopwatch:run", running ? "running" : "",
+            { run: () => provider.watchAsk(running ? "stop" : "run") })];
+        if (running)
+            rows.push(act("verb:stopwatch:lap", "", { run: () => provider.watchAsk("lap") }));
+        for (const lap of Timing.laps(watch))
+            rows.push(copyRow({
+                key: `lap:${lap.number}`,
+                name: Words.name("lap", "numbered", { number: lap.number }),
+                side: Timing.tenths(lap.lap),
+                note: (watchSaid.at ?? "").replace("{count}", Timing.tenths(lap.at)),
+                copy: Timing.tenths(lap.lap)
+            }));
+        if (watch.state !== "unstarted")
+            rows.push(act("verb:stopwatch:reset", "", {
+                stays: false,
+                run: () => provider.watchAsk("reset")
+            }));
+        rows.push(copyRow({
+            key: "verb:stopwatch:copy",
+            name: Words.name("verb:stopwatch:copy"),
+            glyph: Words.glyph("verb:stopwatch:copy"),
+            figure: false,
+            hue: "action",
+            copy: provider.watchCount(watch),
+            // The count as it is when Return copies it, since it runs on
+            // while the row is shown.
+            copies: () => provider.watchCount(HeldTimers.stopwatch ?? watch),
+            run: () => {
+                Quickshell.clipboardText = provider.watchCount(HeldTimers.stopwatch ?? watch);
+            }
+        }));
+        return rows;
+    }
+
+    // What d and y take of the stopwatch: Reset, which nothing takes back,
+    // and Copy the Time.
+    function watchOperands(watch) {
+        const reset = Object.assign({ key: "verb:stopwatch:reset",
+            verb: Words.verb("verb:stopwatch:reset") }, Words.ending("verb:stopwatch:reset"), {
+            run: () => provider.watchAsk("reset"),
+            undo: null
+        });
+        return [reset, copyOperand("verb:stopwatch:copy", provider.watchCount(watch))];
+    }
+
     function search(typed) {
         const words = Fuzzy.words(typed);
         const found = [];
@@ -311,10 +433,29 @@ Provider {
     readonly property bool counts: launcher !== null && launcher.open
         && HeldTimers.timers.some(record => record.state === "running")
 
+    // While the stopwatch runs and its row is shown, in Timers or held
+    // open, its rows are made again each tenth of a second, so its count
+    // runs on; never while it's out of sight.
+    readonly property bool watched: launcher !== null && launcher.open
+        && HeldTimers.stopwatch?.state === "running"
+        && [...launcher.held.map(step => step.row), ...launcher.matches]
+            .some(row => row?.key === "stopwatch")
+
+    Timer {
+        interval: 100
+        repeat: true
+        running: provider.watched
+        onTriggered: {
+            provider.changedTo(provider.rows());
+            if (provider.launcher?.answer?.live === provider)
+                provider.answered();
+        }
+    }
+
     Timer {
         interval: 1000
         repeat: true
-        running: provider.counts
+        running: provider.counts && !provider.watched
         onTriggered: {
             provider.changedTo(provider.rows());
             if (provider.launcher?.answer?.live === provider)

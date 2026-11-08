@@ -1151,6 +1151,14 @@ short = "ext"
 kinds = ["list"]
 changes = true
 
+# The stopwatch's count now marked as a lap. :la is Vim's :last, so its
+# short form is the whole word.
+[acts.lap]
+command = "lap"
+short = "lap"
+kinds = ["list"]
+changes = true
+
 # The next track, or with ! the one before: Next Track, Next, Previous
 # Track and Previous, since :next and :previous are Vim's.
 [acts.skip]
