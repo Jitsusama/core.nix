@@ -538,12 +538,55 @@ QtObject {
         expect("a profile held off", Home.profileRow(model, held).side, "paused");
         const plate = Drawers.profile(model, held);
         expect("a profile's plate", [plate.eyebrow, plate.title], ["profile", "profile 2"]);
+        const flat = { shape: "spark", values: new Array(20).fill(0), warn: false };
         expect("a profile's facts", plate.facts, [
+            { id: "blocks", value: "nothing" },
+            { id: "schedule", value: "none" },
+            { id: "default", value: "no" },
+            { id: "traffic", value: "0 B down \u00b7 0 B up", figure: flat },
             { id: "devices", value: "2 listed \u00b7 1 on now" },
             { heading: "listed" },
             { label: "generic 2", value: "on Den" },
             { label: "02:00:00:00:00:35", value: "not on now" }
         ]);
+
+        // What a profile blocks is one fact, each filter that's on named
+        // and one that's off saying nothing; what it holds search to, the
+        // sites it lets through, its schedules and its traffic are each
+        // one more.
+        const filtered = byId(Drawers.profile(model, Object.assign({}, model.profiles[0], {
+            default: true,
+            schedules: 2,
+            filters: Object.assign({}, model.profiles[0].filters, {
+                gaming: true, social: true, ad_block_network: true,
+                blocked_sites: ["example.com"], blocked_apps: ["tiktok"],
+                safe_search: true, youtube_restricted: true,
+                allowed_sites: ["example.org", "example.net"]
+            }),
+            usage: {
+                download: { total_bytes: 2400000, hours: [{ bytes: 400000 }, { bytes: 2000000 }] },
+                upload: { total_bytes: 53741, hours: [{ bytes: 53741 }, { bytes: 0 }] }
+            }
+        })));
+        expect("what a profile blocks", filtered.blocks.value,
+            "gaming \u00b7 social \u00b7 ads network-wide \u00b7 example.com \u00b7 tiktok");
+        expect("its own ad blocking said plainly", byId(Drawers.profile(model,
+            Object.assign({}, model.profiles[0], { filters: { gaming: false, ad_block: true,
+                ad_block_network: true } }))).blocks.value, "ads");
+        expect("what a profile holds search to", filtered.enforces.value,
+            "safe search \u00b7 YouTube restricted mode");
+        expect("the sites a profile lets through", filtered.allows.value,
+            "example.org \u00b7 example.net");
+        expect("a profile's schedules counted", filtered.schedule.value, "2 schedules");
+        expect("the default profile", filtered.default.value, "yes");
+        expect("a profile's traffic", filtered.traffic.value, "2.40 MB down \u00b7 53.7 kB up");
+        expect("a profile's traffic sparked by the hour", filtered.traffic.figure.values,
+            [(400000 + 53741) / 2000000, 1]);
+        const unsaid = byId(Drawers.profile(model, { id: "3009", name: "profile 9",
+            devices: [] }));
+        expect("a profile eero said none of its figures of",
+            ["blocks", "enforces", "allows", "schedule", "default", "traffic"]
+                .filter(id => unsaid[id] !== undefined), []);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

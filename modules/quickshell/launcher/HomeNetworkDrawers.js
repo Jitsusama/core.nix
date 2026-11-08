@@ -1,6 +1,6 @@
 // What the Home Network place's drawers say: every figure the eero
-// contract places in the internet's, a node's and a device's drawer
-// (modules/eero/contract/README.md, Where Each Figure Shows), each as a
+// contract places in the internet's, a node's, a device's and a profile's
+// drawer (modules/eero/contract/README.md, Where Each Figure Shows), as a
 // fact keyed by its part's id, which HomeNetwork.qml names through the
 // launcher's vocabulary, so a name is said once, in words.json. A fact is
 // { id, value, fill, figure }, a heading { heading }, and one named by
@@ -143,19 +143,49 @@ function happened(events, now) {
     })));
 }
 
-// A profile's drawer: how many devices it lists, and each of them, saying
-// which node it's on now or that it isn't on. How it stands is its row's
-// side, so the drawer doesn't say it again.
-function profile(model, one) {
+// A question eero answers, as words; nothing where it didn't say.
+const YES_NO = { true: "yes", false: "no" };
+// Each kind of content eero filters, as the record keys it and as it's said.
+const KINDS = ["gaming", "illegal", "messaging", "pornographic", "social", "shopping",
+    "streaming", "violent"];
+
+// What a profile blocks, as one fact: each kind of content, ads, and each
+// site and app it names, a filter that's off saying nothing; "nothing"
+// where none is on, and no fact where eero said none of its filters.
+function blocks(filters) {
+    if (!KINDS.some((kind) => known(filters[kind]))) {
+        return "";
+    }
+    const network = filters.ad_block_network ? "ads network-wide" : "";
+    return joined(KINDS.filter((kind) => filters[kind] === true).concat(
+        [filters.ad_block ? "ads" : network], filters.blocked_sites ?? [],
+        filters.blocked_apps ?? [])) || "nothing";
+}
+
+// A profile's drawer: what it blocks and holds search to, its schedules
+// and its traffic over the last day, sparked by the hour, then how many
+// devices it lists, and each of them, saying which node it's on now or
+// that it isn't on. How it stands is its row's side, so the drawer
+// doesn't say it again.
+function profile(model, one, settings) {
     const devices = model?.devices ?? [];
     const listed = one.devices ?? [];
     const nodes = model?.nodes ?? [];
     const onNow = listed.filter((mac) => devices.some((each) => each.mac === mac)).length;
+    const filters = one.filters ?? {};
+    const schedules = one.schedules === 0 ? "none" : Home.counted(one.schedules, "schedule");
     return {
         eyebrow: "profile",
         names: true,
         title: one.name ?? one.id,
         facts: kept([
+            fact("blocks", blocks(filters)),
+            fact("enforces", joined([filters.safe_search ? "safe search" : "",
+                filters.youtube_restricted ? "YouTube restricted mode" : ""])),
+            fact("allows", (filters.allowed_sites ?? []).join(DOT)),
+            fact("schedule", known(one.schedules) ? schedules : null),
+            fact("default", YES_NO[one.default]),
+            trafficFact(one.usage, settings),
             fact("devices", joined([`${listed.length} listed`,
                 onNow > 0 ? `${onNow} on now` : ""])),
         ]).concat(listed.length > 0 ? [{ heading: "listed" }] : [], listed.map((mac) => {
