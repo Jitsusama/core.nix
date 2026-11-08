@@ -184,7 +184,7 @@ function endsSomething(row, command = {}, off = false) {
 }
 
 // A step's rows with a quiet one first, where the first would change
-// something: the first row inside a thing never changes state (See It,
+// something: the first row inside a thing never changes state (Show in Calendar,
 // Copy, a part), so a Return that steps in and a second Return after it
 // only ever show. Where every row changes something, they keep their order.
 // `naming` gives each row's command as changesState takes it (named).
@@ -233,7 +233,7 @@ function saysAct(one, said) {
 // act and the right arrow does more; agreed with 15J7N3 for every row).
 // A row that only steps in, asks first or asks for words has no act of
 // its own to add, nor does one holding nothing. One giving both its verbs
-// and its targets holds rows, as a holder, a talk or a meeting's See It
+// and its targets holds rows, as a holder, a talk or a meeting's Show in Calendar
 // does, so its Return is the step itself. One already inside, by its
 // verb or its name, is moved first rather than said twice. A copy of its
 // own wears `copyMark`, the theme's copy glyph. A row naming the act its

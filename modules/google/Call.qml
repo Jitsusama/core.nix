@@ -26,7 +26,7 @@ Piece {
     context: meeting ? Calendar.span(meeting) : "on Meet"
     actions: !call ? [] : [{
         glyph: Theme.glyph.windows,
-        name: "Show the Call",
+        name: "Go To the Call",
         run: () => Niri.act({ FocusWindow: { id: piece.call.window.id } })
     }, {
         glyph: Theme.glyph.link,

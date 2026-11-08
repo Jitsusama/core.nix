@@ -336,7 +336,7 @@ Provider {
         return all;
     }
 
-    // What d and y take of a window: its Close and its Copy Title, as plain
+    // What d and y take of a window: its Close and its Copy the Title, as plain
     // fields rather than rows made searchable, since d or y over a place
     // of hundreds asks every row (Launcher.qml's actionsOf).
     function operands(window, title) {

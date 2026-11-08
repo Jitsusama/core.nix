@@ -2126,28 +2126,28 @@
       "id": "waits:work",
       "in": "waits",
       "name": "Heavy Work",
-      "verb": "see",
+      "verb": "show",
       "glyph": "timed"
     },
     {
       "id": "waits:see:cpu",
       "in": "waits",
-      "name": "See What's Using the Processor",
-      "verb": "see",
+      "name": "Show What's Using the Processor",
+      "verb": "show",
       "glyph": "processor"
     },
     {
       "id": "waits:see:memory",
       "in": "waits",
-      "name": "See What's Using Memory",
-      "verb": "see",
+      "name": "Show What's Using Memory",
+      "verb": "show",
       "glyph": "memory"
     },
     {
       "id": "waits:see:disk",
       "in": "waits",
-      "name": "See What's Filling the Disk",
-      "verb": "see",
+      "name": "Show What's Filling the Disk",
+      "verb": "show",
       "glyph": "disk"
     },
     {
@@ -5671,7 +5671,7 @@
     {
       "id": "shortcuts:gimp:view",
       "in": "shortcuts",
-      "name": "Seeing the Picture"
+      "name": "Zooming"
     },
     {
       "id": "shortcuts:gimp:selection",
@@ -5691,7 +5691,7 @@
     {
       "id": "shortcuts:inkscape:view",
       "in": "shortcuts",
-      "name": "Seeing the Drawing"
+      "name": "Zooming"
     },
     {
       "id": "shortcuts:inkscape:objects",
@@ -6042,8 +6042,8 @@
       "id": "verb:on:playing:show",
       "command": "buffer",
       "in": "on",
-      "name": "Show {player}",
-      "verb": "show"
+      "name": "Go To {player}",
+      "verb": "go to"
     },
     {
       "id": "verb:on:playing:pauseOther",
@@ -6346,7 +6346,7 @@
       "argument": "Notices",
       "in": "notices",
       "name": "All the Notices",
-      "verb": "see",
+      "verb": "show",
       "glyph": "notifications"
     },
     {
@@ -8423,8 +8423,8 @@
       "id": "verb:calendar:see",
       "command": "edit",
       "in": "calendar:meeting",
-      "name": "See It",
-      "verb": "see",
+      "name": "Show in Calendar",
+      "verb": "show",
       "glyph": "meetingDetails"
     },
     {
@@ -9781,7 +9781,7 @@
       "id": "verb:title",
       "command": "yank",
       "in": "windows",
-      "name": "Copy Title",
+      "name": "Copy the Title",
       "verb": "copy",
       "glyph": "copy"
     },
@@ -9974,14 +9974,14 @@
     },
     {
       "id": "tuple:ringing",
-      "name": "Show the Call From {who}",
-      "verb": "show",
+      "name": "Go To the Call From {who}",
+      "verb": "go to",
       "by": "tuple"
     },
     {
       "id": "tuple:show",
-      "name": "Show the Call",
-      "verb": "show",
+      "name": "Go To the Call",
+      "verb": "go to",
       "by": "tuple"
     },
     {
