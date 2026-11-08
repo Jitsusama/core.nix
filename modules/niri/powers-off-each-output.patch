@@ -314,21 +314,21 @@ index c1da3f6..3099efa 100644
      .join(" ");
  
 diff --git a/src/niri.rs b/src/niri.rs
-index b8f1919..6de05d7 100644
+index b8f1919..bcb610e 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
-@@ -533,6 +533,11 @@ pub struct OutputState {
-     pub lock_color_buffer: SolidColorBuffer,
-     /// Whether a frame has been drawn on this output yet.
-     pub first_frame_shown: bool,
+@@ -499,6 +499,11 @@ pub struct OutputState {
+     pub frame_clock: FrameClock,
+     pub redraw_state: RedrawState,
+     pub on_demand_vrr_enabled: bool,
 +    /// Whether power-off-monitor powered this output off by name.
 +    ///
 +    /// It isn't drawn while set, with its CRTC inactive, but stays connected and in the layout.
 +    /// A new output state starts without it, so a reconnect powers it on.
 +    pub off_by_name: bool,
-     screen_transition: Option<ScreenTransition>,
-     /// Damage tracker used for the debug damage visualization.
-     pub debug_damage_tracker: OutputDamageTracker,
+     // After the last redraw, some ongoing animations still remain.
+     pub unfinished_animations_remain: bool,
+     /// Last sequence received in a vblank event.
 @@ -858,6 +863,21 @@ impl State {
          self.backend.on_output_config_changed(&mut self.niri);
      }
@@ -369,14 +369,14 @@ index b8f1919..6de05d7 100644
          }
  
          #[cfg(feature = "dbus")]
-@@ -2997,6 +3017,7 @@ impl Niri {
-             lock_color_buffer: SolidColorBuffer::new(size, CLEAR_COLOR_LOCKED),
-             // A screen that comes once the hold is over isn't held.
-             first_frame_shown: !self.holding_first_frames,
+@@ -2985,6 +3005,7 @@ impl Niri {
+             global,
+             redraw_state: RedrawState::Idle,
+             on_demand_vrr_enabled: false,
 +            off_by_name: false,
-             screen_transition: None,
-             debug_damage_tracker: OutputDamageTracker::from_output(&output),
-         };
+             unfinished_animations_remain: false,
+             frame_clock: FrameClock::new(refresh_interval, vrr),
+             last_drm_sequence: None,
 @@ -3165,6 +3186,76 @@ impl Niri {
          self.queue_redraw_all();
      }
@@ -454,17 +454,20 @@ index b8f1919..6de05d7 100644
      pub fn output_under(&self, pos: Point<f64, Logical>) -> Option<(&Output, Point<f64, Logical>)> {
          let output = self.global_space.output_under(pos).next()?;
          let pos_within_output = pos
-@@ -4762,7 +4853,8 @@ impl Niri {
-         self.update_render_elements(Some(output));
+@@ -4785,8 +4876,10 @@ impl Niri {
+                     .any(|mapped| mapped.are_animations_ongoing());
+             }
  
-         let mut res = RenderResult::Skipped;
--        if self.monitors_active && !self.first_frame_held(backend, output) {
-+        let off_by_name = self.output_state[output].off_by_name;
-+        if self.monitors_active && !off_by_name && !self.first_frame_held(backend, output) {
-             let state = self.output_state.get_mut(output).unwrap();
-             state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
-             state.unfinished_animations_remain |=
-@@ -4829,7 +4921,9 @@ impl Niri {
+-            // Render.
+-            res = backend.render(self, output, target_presentation_time);
++            // Render, unless the output is off by name.
++            if !self.output_state[output].off_by_name {
++                res = backend.render(self, output, target_presentation_time);
++            }
+         }
+ 
+         let is_locked = self.is_locked();
+@@ -4829,7 +4922,9 @@ impl Niri {
          // Update the lock render state on successful render, or if monitors are inactive. When
          // monitors are inactive on a TTY, they have no framebuffer attached, so no sensitive data
          // from a last render will be visible.
