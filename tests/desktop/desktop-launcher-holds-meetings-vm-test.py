@@ -414,8 +414,9 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
     other = desktop.opened("Beside the call")
     now_rows(desktop)
     desktop.down_to("In a call")
+    # Return goes to the call, as its first act, Go To the Call, says.
     desktop.launcher_until(
-        lambda shown: shown["selected"]["side"] == "Standup" and shown["selected"]["verb"] == "show"
+        lambda shown: shown["selected"]["side"] == "Standup" and shown["selected"]["verb"] == "go"
     )
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

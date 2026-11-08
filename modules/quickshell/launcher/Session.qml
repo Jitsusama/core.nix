@@ -254,14 +254,21 @@ Provider {
     }
 
     Timer {
+        id: profileReading
+
         interval: 1000
         repeat: true
         running: provider.profileAsked && (provider.launcher?.open ?? false)
+        // Forgotten once running has settled, since running reads profileAsked
+        // and clearing it while running changes is a binding loop.
         onRunningChanged: {
-            if (!running) {
-                provider.profileRead = null;
-                provider.profileAsked = false;
-            }
+            if (!running)
+                Qt.callLater(() => {
+                    if (profileReading.running)
+                        return;
+                    provider.profileRead = null;
+                    provider.profileAsked = false;
+                });
         }
         onTriggered: provider.readProfile()
     }
