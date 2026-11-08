@@ -411,6 +411,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         "mac80211_hwsim"
         # For a stand-in touchscreen.
         "uinput"
+        # For a stand-in desk light, a HID device as a Litra is.
+        "uhid"
       ];
       # The access points' radios move to a namespace of their own before
       # anything joins, so wlan1 is the machine's only card and each join
@@ -1028,6 +1030,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           choose_a_file = chooseAFile;
           copilot_key = copilotKey;
           ergodox_layout = ergodoxLayout;
+          # A stand-in Litra, plugged in for as long as it runs
+          # (desk-light-stand-in.py).
+          desk_light = "${pkgs.python3}/bin/python3 ${./desk-light-stand-in.py}";
           tuple_window = tupleWindow;
           inherit (pkgs)
             coreutils
