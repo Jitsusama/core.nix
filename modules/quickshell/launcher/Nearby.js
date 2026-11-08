@@ -70,11 +70,10 @@ function isHeard(device) {
 
 // The devices Nearby lists: every one heard since discovery began,
 // strongest first, then A to Z, those alike in both in the order BlueZ
-// gave them. The launcher keeps a list shown in the
-// order it was shown as they move (Steady.js), so this orders only its
-// first look and where a new one would go. A device that never said its
-// name is left out, as nothing could find it and Joel couldn't tell it
-// from the next.
+// gave them. The launcher keeps a list shown in the order it was shown
+// as they move (Steady.js), so this orders only its first look and where
+// a new one would go. A device that never said its name is left out, as
+// nothing could find it and Joel couldn't tell it from the next.
 function heard(devices) {
     return Order.sorted(devices.filter(device => isHeard(device) && isNamed(device)), strongest);
 }
@@ -89,7 +88,6 @@ function nameless(devices) {
 function isNamed(device) {
     return (device.deviceName ?? "") !== "";
 }
-
 
 // A device's signal as words say it, in dBm with a real minus.
 function dbm(device) {
