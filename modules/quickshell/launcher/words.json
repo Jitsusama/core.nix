@@ -7029,6 +7029,15 @@
       "name": "Field of View"
     },
     {
+      "id": "cameras:drawer",
+      "in": "cameras",
+      "said": {
+        "builtIn": "built in \u00b7 camera",
+        "plugged": "on USB \u00b7 camera",
+        "powered": "{state} \u00b7 {lasted} since start"
+      }
+    },
+    {
       "id": "emoji",
       "name": "Emoji",
       "noun": "emoji",

@@ -65,7 +65,9 @@ Provider {
             glyph: Theme.glyph.camera,
             hue: "machine",
             plain: false,
-            side: programs.length > 0 ? `in use by ${programs.join(", ")}` : ""
+            side: programs.length > 0 ? `in use by ${programs.join(", ")}` : "",
+            // Everything its parts say, under the row (Cameras.js's drawer).
+            drawer: () => provider.drawerOf(name, known)
         };
         if (name !== viewfound)
             return thingRow(fields, () => provider.partRows(name));
@@ -110,6 +112,7 @@ Provider {
                 key: `camera:${name}:modes`,
                 name: partName("modes"),
                 side: split.modes.map(fact => fact.name).join(", "),
+                listed: split.modes.map(fact => fact.name),
                 glyph: Theme.glyph.camera,
                 note: "each format's largest mode, and its fastest"
             }, () => split.modes.map(fact => leafOf({
@@ -212,7 +215,8 @@ Provider {
                 key: `camera:${name}:powered`,
                 name: partName("powered"),
                 side: status === "active" ? "on" : status === "suspended" ? "off" : status,
-                note: `on for ${Cameras.lasted(active)} since the machine started`
+                note: `on for ${Cameras.lasted(active)} since the machine started`,
+                active: active
             }));
         }
         return rows;
@@ -342,6 +346,53 @@ Provider {
         running: provider.heldCamera !== ""
         onRunningChanged: provider.lastRead = ""
         onTriggered: provider.readAgain()
+    }
+
+    // What each camera's drawer read of its parts, by its name: read just
+    // after the drawer asks, since reading moves the reader its binding
+    // would follow, and again each second while the launcher is open, so
+    // a light coming on or the sensor waking shows in it without a key.
+    property var readings: ({})
+    property string drawing: ""
+
+    // A camera's drawer, or null until its parts are read.
+    function drawerOf(name, builtIn) {
+        const parts = readings[name];
+        if (parts === undefined) {
+            Qt.callLater(() => provider.readFor(name));
+            return null;
+        }
+        return Cameras.drawer(parts, {
+            name: called(name),
+            builtIn: builtIn,
+            said: Words.of("cameras:drawer").said
+        });
+    }
+
+    function readFor(name) {
+        const parts = partRows(name).map(row => ({
+            key: row.key,
+            name: row.name,
+            side: row.side,
+            active: row.active,
+            listed: row.listed
+        }));
+        drawing = name;
+        if (JSON.stringify(parts) !== JSON.stringify(readings[name]))
+            readings = Object.assign({}, readings, { [name]: parts });
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: provider.drawing !== "" && (provider.launcher?.open ?? false)
+        onRunningChanged: {
+            if (!running) {
+                provider.readings = ({});
+                provider.drawing = "";
+            }
+        }
+        onTriggered: provider.readFor(provider.drawing)
     }
 
     // What a file in /sys says, or "" when it says nothing.
