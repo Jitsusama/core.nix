@@ -133,8 +133,9 @@ function fraction(text) {
 // own short name.
 function sample(name) {
     const found = SAMPLE.exec(String(name ?? ""));
-    if (!found)
+    if (!found) {
         return String(name ?? "");
+    }
     return [`${found[2]} ${BITS}`].concat(found[1] === "F" ? [FLOATING] : []).join(" ");
 }
 
@@ -142,10 +143,11 @@ function sample(name) {
 // Format says it: "48 kHz · 32 bit float", its rate to three significant
 // digits; "" while it has none. Its channels are its Channels' to say.
 function graphFormat(format) {
-    if (!format || !(format.rate > 0))
+    if (!format || !(format.rate > 0)) {
         return "";
-    const rate = Number((format.rate / HERTZ_PER_KILOHERTZ).toPrecision(SIGNIFICANT));
-    return [`${rate} ${KILOHERTZ}`].concat(format.sample ? [sample(format.sample)] : [])
+    }
+    const measured = Number((format.rate / HERTZ_PER_KILOHERTZ).toPrecision(SIGNIFICANT));
+    return [`${measured} ${KILOHERTZ}`].concat(format.sample ? [sample(format.sample)] : [])
         .join(APART);
 }
 

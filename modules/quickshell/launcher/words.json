@@ -4543,6 +4543,21 @@
       "name": "Priority"
     },
     {
+      "id": "sound:state",
+      "in": "sound",
+      "name": "State"
+    },
+    {
+      "id": "sound:format",
+      "in": "sound",
+      "name": "Format"
+    },
+    {
+      "id": "sound:graph-format",
+      "in": "sound",
+      "name": "Graph Format"
+    },
+    {
       "id": "verb:sound-louder",
       "command": "setlocal",
       "argument": "volume+=5",
