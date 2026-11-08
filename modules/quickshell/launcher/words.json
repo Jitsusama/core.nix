@@ -133,6 +133,8 @@
         "paused": "paused",
         "parked": "parked",
         "closed": "closed",
+        "closedAt": "closed {time}",
+        "closedOn": "closed {day} {time}",
         "allOf": "{spent} in all",
         "since": "since {at}",
         "under": "under {address}",
@@ -226,6 +228,18 @@
       "term": "Agents/Landed",
       "verb": "more",
       "glyph": "done"
+    },
+    {
+      "id": "agents:recent",
+      "in": "agents",
+      "name": "Recent",
+      "term": "Desktop/Recent",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none"
+      }
     },
     {
       "id": "verb:agents:landed:change",

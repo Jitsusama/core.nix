@@ -296,13 +296,16 @@ Provider {
     // What the right arrow lists: every way to reach them, their next
     // meeting, what of theirs is unread, what Joel had with them lately
     // (Recent), whether they're a favourite,
-    // then each address to copy, last as every Copy is.
+    // then each address to copy, last as every Copy is. An address wears
+    // its mark, though it's a figure, so the page's column of marks never
+    // breaks on its last row (VKCF3Z, 2026-11-08).
     function inside(person) {
         const addresses = person.emails.map((email, at) => copyRow({
             key: `fact:person:email:${at}`,
             name: email,
             side: person.emails.length === 1 ? "their email" : "one of their emails",
-            glyph: Theme.glyph.email
+            glyph: Theme.glyph.email,
+            marked: true
         }));
         return acts(person).concat(pages(person), next(person), unread(person),
             recent(person), favourite(person), addresses);

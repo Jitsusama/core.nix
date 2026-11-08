@@ -25,7 +25,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN
+
+# pytest finds a fixture by its name in the test's module, so the stand-in Google's is
+# brought here.
+from desktop_session import LAUNCHER_OPEN, google  # noqa: F401
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -1287,6 +1290,30 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
         desktop.close_launcher()
 
 
+@pytest.mark.usefixtures("google")
+def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A person's Unread and Recent say their names after theirs, how many at their right.
+
+    Ada wrote the stand-in Google's Lunch on Friday, so her page holds it in Unread, shot at
+    both of Joel's scales for a person to judge.
+    """
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.answer("ada lovelace")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
+        )
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Unread" in shown["rows"])
+        desktop.down_to("Unread")
+        unread = desktop.showing()["selected"]
+        assert (unread["count"], unread["side"]) == ("Lunch on Friday", "1"), unread
+        desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+
+
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -2179,9 +2206,11 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
 
 
 def after_the_sessions(desktop: Desktop, shot: str) -> None:
-    """Shoot what Agents holds after its sessions: the closed, Landed, and Start a Session."""
+    """Shoot what Agents holds after its sessions: the closed, Landed, Recent and Start."""
     closed_stand_last(desktop, shot)
     landed_lists_what_sessions_landed(desktop, shot)
+    desktop.down_to("Recent")
+    desktop.shoot(f"launcher-agents-recent-at-{shot}")
     a_quest_offers_to_orchestrate(desktop, shot)
 
 
