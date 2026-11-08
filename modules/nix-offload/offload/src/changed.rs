@@ -11,9 +11,10 @@
 //! and runs that commit's own changed-checks, so what it names is what the
 //! tree's dev shell would have named.
 //!
-//! Where: the lent builder while one stands, which evaluates and builds
-//! in one place, or the second lent builder when the first doesn't take
-//! it, and while a lender runs, a builder waited for once neither answers.
+//! Where: a lent builder while one stands, which evaluates and builds in
+//! one place, every other run trying the second first and asking for it
+//! while it lives, and while a lender runs, a builder waited for once
+//! neither answers.
 //! With no lender running, the first evaluator that answers and takes the
 //! repository's owner, named in `nix-offload/evaluators` under XDG's
 //! config folder, which only
@@ -206,6 +207,19 @@ pub fn to_build(printed: &str, vm: bool) -> Vec<String> {
         .collect()
 }
 
+/// The two lent builders in the order run `run` tries them: every other
+/// run tries the second first. Each evaluation waits on its builder for a
+/// turn, and on 8 November 33 runs waited on the first for its 4 while the
+/// second stood idle, so the first's queue was hours long.
+pub fn in_turn<T>(lenders: [T; 2], run: u32) -> [T; 2] {
+    let [first, second] = lenders;
+    if run.is_multiple_of(2) {
+        [first, second]
+    } else {
+        [second, first]
+    }
+}
+
 /// Runs `command` on `host` by ssh, sending `bundle` on its standard
 /// input, and gives its status and what it printed, which comes here as
 /// it goes. Its log goes to this one's standard error.
@@ -266,6 +280,12 @@ mod tests {
 
     fn words(line: &str) -> Vec<String> {
         line.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn runs_take_the_two_lent_builders_in_turn() {
+        assert_eq!(in_turn(["first", "second"], 4), ["first", "second"]);
+        assert_eq!(in_turn(["first", "second"], 7), ["second", "first"]);
     }
 
     #[test]

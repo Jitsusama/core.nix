@@ -1206,8 +1206,14 @@ impl Sent<'_> {
         let on_builder = |store: Option<String>| self.lent_to(arguments, vm_apart, store);
         // The second lent builder stands in for the first, so one whose
         // tunnel died never leaves the run to an evaluator or this machine
-        // while the other stands.
-        for lender in [dir, more] {
+        // while the other stands. Runs take the two in turn, and each asks
+        // the second's lender for its builder while it lives, so a run's
+        // evaluation never waits on the first for a turn while the second
+        // could have given it one.
+        if there::lends(more) {
+            there::want(more);
+        }
+        for lender in changed::in_turn([dir, more], std::process::id()) {
             if let Some(finished) = on_builder(standing(lender)) {
                 return Some(finished);
             }
