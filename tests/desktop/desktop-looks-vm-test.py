@@ -3057,7 +3057,7 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
             desktop.down_to(HEARD)
             selected = desktop.showing()["selected"]
             assert selected["side"] == HEARD_AT, selected
-            desktop.photograph(f"launcher-nearby-at-{named}")
+            desktop.shoot(f"launcher-nearby-at-{named}")
             desktop.step_out()
             # Out of Nearby, the radio stops looking, and Bluetooth lists only what's paired.
             machine.wait_until_succeeds(
@@ -3065,7 +3065,7 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
                 timeout=timedelta(seconds=30),
             )
             assert HEARD not in desktop.showing()["rows"]
-            desktop.photograph(f"launcher-bluetooth-at-{named}")
+            desktop.shoot(f"launcher-bluetooth-at-{named}")
             desktop.close_launcher()
     finally:
         machine.succeed("systemctl stop bluetooth.service btvirt || true")
