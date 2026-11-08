@@ -18,18 +18,28 @@
 // A device the devices piece says is running low (the check's Facts.qml)
 // says so at its side, and one that isn't says it's connected.
 // How the links are doing is answered too; with no such file, neither the
-// links nor the answer say a thing. It exits 0 once every case holds, and
-// otherwise 1, saying which case didn't.
+// links nor the answer say a thing.
+//
+// Nearby: Bluetooth lists only the devices paired, then Nearby, then the
+// Adapter; the radio looks only while Nearby is held open, which lists the
+// named devices heard, strongest first, each with its signal as a bar and
+// in dBm and whether it's paired, and says how many it heard. A pairing or
+// connecting that fails says what BlueZ answered, in words.json's words
+// (launcher/Nearby.js). It exits 0 once every case holds, and otherwise 1,
+// saying which case didn't.
 import qs.launcher
 import Quickshell
 import QtQuick
+import "launcher/Nearby.js" as Nearby
 
 ShellRoot {
     id: root
 
     component Device: QtObject {
         property string name: "Buds"
+        property string deviceName: name
         property string address: ""
+        property int rssi: 0
         property bool paired: false
         property bool connected: false
         property bool pairing: false
@@ -40,6 +50,8 @@ ShellRoot {
         property string icon: ""
         property int state: 0
         property int asked: 0
+
+        signal failed(string name, string message)
 
         function pair() {
             pairing = true;
@@ -84,6 +96,122 @@ ShellRoot {
         property bool discoverable: false
         property bool pairable: true
         property int discoverableTimeout: 180
+    }
+
+    // What the radio hears for Nearby: a speaker beside the machine, some
+    // headphones paired before across the room, a beacon that gives no
+    // name, and a keyboard it heard before but not since it last looked.
+    Device {
+        id: speaker
+        name: "Speaker"
+        address: "AA:00:00:00:00:01"
+        icon: "audio-card"
+        rssi: -48
+    }
+    Device {
+        id: across
+        name: "Studio Buds"
+        address: "AA:00:00:00:00:02"
+        icon: "audio-headphones"
+        paired: true
+        trusted: true
+        rssi: -81
+    }
+    Device { id: beacon; name: ""; address: "AA:00:00:00:00:03"; rssi: -40 }
+    Device { id: unheard; name: "Keys"; address: "AA:00:00:00:00:04"; icon: "input-keyboard" }
+
+    QtObject {
+        id: air
+        property bool enabled: true
+        property bool discovering: false
+        readonly property var devices: ({ values: [speaker, across, beacon, unheard] })
+    }
+
+    // The launcher, as far as Nearby asks it: open, and what's held.
+    QtObject {
+        id: launcher
+        property bool open: true
+        property var held: []
+    }
+
+    Accessories {
+        id: finding
+        adapter: air
+        launcher: launcher
+    }
+
+    function nearbyHolds() {
+        expect("not looking until Nearby opens", !air.discovering && finding.heard.length === 0,
+            `discovering ${air.discovering}`);
+        expect("Bluetooth lists the paired, then Nearby, then the Adapter",
+            finding.all.map(row => row.key).join(",") === [`bluetooth:${across.address}`,
+                "bluetooth:nearby", "bluetooth:adapter"].join(","),
+            finding.all.map(row => row.key).join(","));
+        const place = finding.nearbyPlace;
+        expect("Nearby says it looks while open", place.side === ""
+            && place.note === "looks while open" && place.verb === "more"
+            && place.empty === "Looking for devices\u2026", `${place.side}; ${place.note}`);
+        launcher.held = [{ row: { key: "bluetooth:nearby" } }];
+        expect("looking while Nearby is open", air.discovering, "the radio isn't looking");
+        const rows = finding.nearbyPlace.verbs();
+        expect("the named heard, strongest first", said(rows)
+            === "Speaker=,Studio Buds=paired", said(rows));
+        expect("how many it heard", finding.nearbyPlace.side === "2 heard",
+            finding.nearbyPlace.side);
+        expect("a stranger is paired", rows[0].verb === "pair" && rows[1].verb === "connect",
+            `${rows[0].verb}, ${rows[1].verb}`);
+        expect("each heard in dBm", rows[0].note === "-48 dBm, strong"
+            && rows[1].note === "-81 dBm, weak", `${rows[0].note}; ${rows[1].note}`);
+        expect("each its signal as a bar", rows[0].graph.shape === "bar"
+            && Math.abs(rows[0].graph.values[0] - 52 / 70) < 0.001 && !rows[0].graph.warn,
+            JSON.stringify(rows[0].graph));
+        expect("each its kind's glyph, and the same thing as Bluetooth's",
+            rows[1].glyph === finding.made(across).glyph
+            && rows[1].key === finding.made(across).key, rows[1].glyph);
+        speaker.rssi = -70;
+        expect("heard again, said again", finding.nearbyPlace.verbs()[0].note
+            === "-70 dBm, fair", finding.nearbyPlace.verbs()[0].note);
+        launcher.held = [];
+        expect("done looking once Nearby closes", !air.discovering, "the radio's still looking");
+
+        expect("none heard, none listed", Nearby.heard([unheard]).length === 0, "one listed");
+        expect("no signal unheard", Nearby.strength(unheard) === null, "a signal unheard");
+        const failures = [
+            ["org.bluez.Error.AuthenticationFailed", "Authentication Failed", "passkey"],
+            ["org.bluez.Error.AuthenticationRejected", "Authentication Rejected", "refused"],
+            ["org.bluez.Error.AuthenticationCanceled", "Authentication Canceled", "stopped"],
+            ["org.bluez.Error.AuthenticationTimeout", "Authentication Timeout", "unreached"],
+            ["org.bluez.Error.ConnectionAttemptFailed", "Page Timeout", "unreached"],
+            ["org.bluez.Error.Failed", "br-connection-page-timeout", "unreached"],
+            ["org.bluez.Error.Failed", "br-connection-refused", "refused"],
+            ["org.bluez.Error.Failed", "br-connection-profile-unavailable", "nothing"],
+            ["org.bluez.Error.InProgress", "In Progress", "busy"],
+            ["org.bluez.Error.NotReady", "Resource Not Ready", "unready"],
+            ["org.bluez.Error.AlreadyExists", "Already Exists", ""],
+            ["org.bluez.Error.Failed", "Input/output error", "other"]
+        ];
+        for (const [name, message, want] of failures)
+            expect(`${name} ${message}`, Nearby.failure(name, message) === want,
+                Nearby.failure(name, message));
+
+        finding.join(speaker);
+        speaker.failed("org.bluez.Error.AuthenticationFailed", "Authentication Failed");
+        speaker.pairing = false;
+        expect("what BlueZ answered said", finding.said(speaker, "")
+            === "Speaker didn't pair: it wants a passkey", finding.said(speaker, ""));
+        expect("a failed pairing untrusted", !speaker.trusted, "it's still trusted");
+        finding.join(across);
+        expect("connecting said", finding.said(across, "") === "connecting Studio Buds\u2026",
+            finding.said(across, ""));
+        across.failed("org.bluez.Error.Failed", "Input/output error");
+        expect("anything else in BlueZ's own words", finding.said(across, "")
+            === "Studio Buds: input/output error", finding.said(across, ""));
+        finding.join(speaker);
+        expect("pairing said", finding.said(speaker, "") === "pairing with Speaker\u2026",
+            finding.said(speaker, ""));
+        speaker.pairing = false;
+        expect("no answer, unpaired said", finding.said(speaker, "") === "Speaker didn't pair",
+            finding.said(speaker, ""));
     }
 
     function expect(what, holds, said) {
@@ -305,6 +433,7 @@ ShellRoot {
                 root.linksHold();
                 root.adapterHolds();
                 root.lowHolds();
+                root.nearbyHolds();
                 Qt.callLater(() => Qt.exit(0));
             } catch (error) {
                 facts.stop();

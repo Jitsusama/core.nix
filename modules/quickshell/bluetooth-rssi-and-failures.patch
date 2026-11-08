@@ -1,0 +1,137 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] bluetooth: say a device's signal, and why pairing failed
+
+BlueZ says a device's RSSI while discovery hears it, which is how strong
+it is and so how near, but BluetoothDevice never read it, so a shell
+listing what's nearby couldn't say which is the one in the room. And a
+Pair or Connect that BlueZ refused, wanting a passkey or finding the
+device out of reach, was only written to the log, so the shell could do
+no more than guess why.
+
+A device now holds `rssi`, in dBm, taken from what BlueZ says of it and
+put back to 0 when BlueZ invalidates it as discovery stops; a property
+group would ask for an invalidated property again and keep its last
+value. A failed Pair or Connect says `failed` with BlueZ's error name and
+message, beside the warning it already wrote.
+
+---
+diff --git a/src/bluetooth/device.cpp b/src/bluetooth/device.cpp
+index b140aa0..43a6f8f 100644
+--- a/src/bluetooth/device.cpp
++++ b/src/bluetooth/device.cpp
+@@ -45,6 +45,17 @@ BluetoothDevice::BluetoothDevice(const QString& path, QObject* parent): QObject(
+ 	}
+ 
+ 	this->properties.setInterface(this->mInterface);
++
++	// BlueZ says RSSI only while it hears the device, and takes it back by invalidating it once
++	// discovery stops, which a property group would ask for again and keep the last value of.
++	QDBusConnection::systemBus().connect(
++	    "org.bluez",
++	    path,
++	    "org.freedesktop.DBus.Properties",
++	    "PropertiesChanged",
++	    this,
++	    SLOT(onPropertiesChanged(QString, QVariantMap, QStringList))
++	);
+ }
+ 
+ BluetoothAdapter* BluetoothDevice::adapter() const {
+@@ -112,6 +123,7 @@ void BluetoothDevice::connect() {
+ 		    if (reply.isError()) {
+ 			    qCWarning(logDevice).nospace()
+ 			        << "Failed to connect to device " << this << ": " << reply.error().message();
++			    emit this->failed(reply.error().name(), reply.error().message());
+ 
+ 			    this->bState = this->bConnected ? BluetoothDeviceState::Connected
+ 			                                    : BluetoothDeviceState::Disconnected;
+@@ -189,6 +201,7 @@ void BluetoothDevice::pair() {
+ 		    if (reply.isError()) {
+ 			    qCWarning(logDevice).nospace()
+ 			        << "Failed to pair with device " << this << ": " << reply.error().message();
++			    emit this->failed(reply.error().name(), reply.error().message());
+ 		    } else {
+ 			    qCDebug(logDevice) << "Successfully initiated pairing with device" << this;
+ 		    }
+@@ -247,6 +260,7 @@ void BluetoothDevice::forget() {
+ void BluetoothDevice::addInterface(const QString& interface, const QVariantMap& properties) {
+ 	if (interface == "org.bluez.Device1") {
+ 		this->properties.updatePropertySet(properties, false);
++		this->takeRssi(properties);
+ 		qCDebug(logDevice) << "Updated Device properties for" << this;
+ 	} else if (interface == "org.bluez.Battery1") {
+ 		if (!this->mBatteryInterface) {
+@@ -286,6 +300,21 @@ void BluetoothDevice::removeInterface(const QString& interface) {
+ 	}
+ }
+ 
++void BluetoothDevice::takeRssi(const QVariantMap& properties) {
++	auto rssi = properties.find(QStringLiteral("RSSI"));
++	if (rssi != properties.end()) this->bRssi = rssi->toInt();
++}
++
++void BluetoothDevice::onPropertiesChanged(
++    const QString& interface,
++    const QVariantMap& changed,
++    const QStringList& invalidated
++) {
++	if (interface != QStringLiteral("org.bluez.Device1")) return;
++	if (invalidated.contains(QStringLiteral("RSSI"))) this->bRssi = 0;
++	this->takeRssi(changed);
++}
++
+ void BluetoothDevice::onConnectedChanged() {
+ 	this->bState =
+ 	    this->bConnected ? BluetoothDeviceState::Connected : BluetoothDeviceState::Disconnected;
+diff --git a/src/bluetooth/device.hpp b/src/bluetooth/device.hpp
+index 23f230f..5dcc692 100644
+--- a/src/bluetooth/device.hpp
++++ b/src/bluetooth/device.hpp
+@@ -99,6 +99,9 @@ class BluetoothDevice: public QObject {
+ 	Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY batteryAvailableChanged);
+ 	/// Battery level of the connected device, from `0.0` to `1.0`. Only valid if @@batteryAvailable is true.
+ 	Q_PROPERTY(qreal battery READ default NOTIFY batteryChanged BINDABLE bindableBattery);
++	/// The strength the device was last heard at while the adapter was discovering, in dBm, or `0`
++	/// when it hasn't been heard since discovery last stopped.
++	Q_PROPERTY(qint32 rssi READ default NOTIFY rssiChanged BINDABLE bindableRssi);
+ 	/// The Bluetooth adapter this device belongs to.
+ 	Q_PROPERTY(BluetoothAdapter* adapter READ adapter NOTIFY adapterChanged);
+ 	/// DBus path of the device under the `org.bluez` system service.
+@@ -159,6 +162,7 @@ public:
+ 	[[nodiscard]] QBindable<QString> bindableIcon() { return &this->bIcon; }
+ 	[[nodiscard]] QBindable<qreal> bindableBattery() { return &this->bBattery; }
+ 	[[nodiscard]] QBindable<BluetoothDeviceState::Enum> bindableState() { return &this->bState; }
++	[[nodiscard]] QBindable<qint32> bindableRssi() { return &this->bRssi; }
+ 
+ 	void addInterface(const QString& interface, const QVariantMap& properties);
+ 	void removeInterface(const QString& interface);
+@@ -179,9 +183,21 @@ signals:
+ 	void batteryAvailableChanged();
+ 	void batteryChanged();
+ 	void adapterChanged();
++	void rssiChanged();
++	/// A call to @@pair() or @@connect() failed, with the error BlueZ answered, such as
++	/// `org.bluez.Error.AuthenticationFailed`, and its message.
++	void failed(const QString& name, const QString& message);
++
++private slots:
++	void onPropertiesChanged(
++	    const QString& interface,
++	    const QVariantMap& changed,
++	    const QStringList& invalidated
++	);
+ 
+ private:
+ 	void onConnectedChanged();
++	void takeRssi(const QVariantMap& properties);
+ 
+ 	DBusBluezDeviceInterface* mInterface = nullptr;
+ 	QDBusInterface* mBatteryInterface = nullptr;
+@@ -201,6 +217,7 @@ private:
+ 	Q_OBJECT_BINDABLE_PROPERTY(BluetoothDevice, qreal, bBattery, &BluetoothDevice::batteryChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(BluetoothDevice, BluetoothDeviceState::Enum, bState, &BluetoothDevice::stateChanged);
+ 	Q_OBJECT_BINDABLE_PROPERTY(BluetoothDevice, bool, bPairing, &BluetoothDevice::pairingChanged);
++	Q_OBJECT_BINDABLE_PROPERTY(BluetoothDevice, qint32, bRssi, &BluetoothDevice::rssiChanged);
+ 
+ 	QS_DBUS_BINDABLE_PROPERTY_GROUP(BluetoothDevice, properties);
+ 	QS_DBUS_PROPERTY_BINDING(BluetoothDevice, pAddress, bAddress, properties, "Address");

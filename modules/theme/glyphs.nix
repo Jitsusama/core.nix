@@ -747,6 +747,12 @@ in
       "9.3Z"
     ];
   };
+  # Bluetooth's rune sounding out, as the radio does while it looks.
+  nearby = {
+    glyph = nerd "f00b0";
+    console = "?";
+    means = "the Bluetooth devices the radio hears nearby, to find one to pair";
+  };
   bluetoothOff = {
     glyph = nerd "f00b2";
     console = "b";

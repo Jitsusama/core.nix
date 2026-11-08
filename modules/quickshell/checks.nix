@@ -3195,7 +3195,9 @@ onLinux {
   # and version, as bluetooth-links would write it: the headphones'
   # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
   # A stand-in Facts says the headphones are running low, as the devices
-  # piece would.
+  # piece would. A stand-in adapter and launcher hold Nearby to looking
+  # only while it's open, with devices heard as the shell's patch to
+  # Quickshell says them (bluetooth-rssi-and-failures.patch).
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -3234,6 +3236,7 @@ onLinux {
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
         cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Links.js} launcher/Links.js
+        cp ${./launcher/Nearby.js} launcher/Nearby.js
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
