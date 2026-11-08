@@ -13,7 +13,6 @@
 // if it tried.
 .pragma library
 .import "Ago.js" as Ago
-.import "Moment.js" as Moment
 
 // Each kind's mark, by the kind's word as the managers say it: Passwords'
 // own word where every password manager has the kind, else 1Password's
@@ -24,7 +23,7 @@ const MARKS = {
     "password": "storedPassword",
     "card": "paymentCard",
     "note": "secureNote",
-    "identity": "identity",
+    "identity": "identityCard",
     "key": "sshKey",
     "credential": "apiCredential",
     "database": "database",
@@ -59,12 +58,15 @@ const PASSWORDED = ["login", "password"];
 // place opens on what Joel reaches for rather than on hundreds.
 const RECENT = 20;
 
-// A week in milliseconds, past which a time is said as its day rather
-// than how long ago, as a row says a day past the week around it
-// (Moment.dayOf), and a second, which the foot counts in.
-const DAY = 86_400_000;
-const WEEK = 7 * DAY;
+// A second, which the foot counts in.
 const SECOND = 1000;
+
+// 1Password's ratings of a password too weak to trust, which its health
+// says in the warning's role; its others are good, very good, excellent
+// and fantastic.
+const WEAK = ["terrible", "weak", "fair"];
+// A website's address sent in the clear, which its health says too.
+const UNSECURED = /^http:\/\//i;
 
 // How many managers it takes before rows name theirs.
 const SEVERAL = 2;
@@ -210,11 +212,14 @@ function shows(record, pattern) {
 }
 
 // The acts inside it, by name, in the one order the design gives them
-// (VKCF3Z, 22949064): Copy the Password, Copy the One-Time Code, Copy the
-// Username, Open the Website, Show in its manager, then Copy the Link,
-// each only where it has what the act needs. Copying the password leads,
-// though Copy is last everywhere else, since it's what an entry is for
-// rather than a copy of what the row says.
+// (VKCF3Z's ruling on the Passwords place): Copy the Password, Copy the
+// One-Time Code, Copy the Username, Open the Website, Show in its
+// manager, then Copy the Link, each only where it has what the act needs.
+// Copying the password leads, though Copy is last everywhere else, since
+// it's what an entry is for rather than a copy of what the row says
+// (docs/design.md, One word each). The link is the entry's own in its
+// manager, the one Show opens, so it goes only where Show does; the
+// website's address is Open the Website's.
 function acts(record, link) {
     const has = {
         password: passworded(record),
@@ -222,15 +227,27 @@ function acts(record, link) {
         username: username(record) !== "",
         website: website(record) !== "",
         show: (link ?? "") !== "",
-        link: website(record) !== ""
+        link: (link ?? "") !== ""
     };
     return ["password", "code", "username", "website", "show", "link"].filter(act => has[act]);
 }
 
-// When something was, as a fact says it: how long ago within the week,
-// else its day, as a row says a day past the week around it.
+// When something was, as the launcher says it wherever it does: how long
+// ago (Ago.js).
 function when(at, now) {
-    return now - at < WEEK ? Ago.ago(at, now) : Moment.dayOf(at, now);
+    return Ago.ago(at, now);
+}
+
+// What's wrong with it, in the words `said` gives each, or "": a password
+// 1Password rates too weak to trust, and a website sent in the clear.
+// Known only once it's read in full, since a summary carries no strength;
+// with nothing wrong it says nothing, since its Strength already does.
+function health(record, said) {
+    const rated = strength(password(record)?.strength ?? "");
+    return [
+        WEAK.includes(rated) ? said.weak : "",
+        websites(record).some(address => UNSECURED.test(address)) ? said.unsecured : ""
+    ].filter(word => (word ?? "") !== "").join(" \u00b7 ");
 }
 
 // A password's strength in words, as 1Password rates it: "very good" of
@@ -276,20 +293,27 @@ function detailFacts(given, hidden) {
 // manager gives but the secret. `wording` is { name, said, now, manager }:
 // `name(id, state)` names each fact as the vocabulary does
 // (passwords:<id>), `said` is the place's own words, and `manager` its
-// manager's name where rows name them, else "". Username, Websites,
-// Vault, the password manager, Kind, Tags, whether it's a favourite,
-// Created, Last Changed and its version come from the list; Strength,
-// whether it has a one-time code, and each other detail only once it's
-// read in full, since a summary can't say them. A hidden detail reads
-// "hidden", never dots and never a count of them. Its notes are its
-// words. Left out: the account's id, which only makes its link, and who
-// last changed it, which op gives only as a person's id.
+// manager's name where rows name them, else "". First what the design
+// gives it, in its order (VKCF3Z's ruling): Username, Website, Vault,
+// Last Changed, Strength, One-Time Code, saying only whether it has one,
+// and its health in the warning's role (`warns`). Then the password
+// manager, where rows name it, its Tags, when it was Created, how many
+// Files it holds, and each other detail, a hidden one reading "hidden",
+// never dots and never a count of them. Strength, the code, its health and
+// the other details come only once it's read in full, since a summary
+// can't say them. Its notes are its words. Left out: its kind, which its
+// mark and the eyebrow say; whether it's a favourite, which its row's
+// place says; the account's id, which only makes its link; who last
+// changed it, which op gives only as a person's id; its version, a count
+// Joel never acts on; and 1Password's summary of it, which says the
+// username again, or a card's number in part.
 function details(record, wording) {
     const { name, said, now, manager } = wording;
     const facts = [];
-    const fact = (id, value, state) => {
+    const fact = (id, value, state, warns) => {
         if (value !== "" && value !== null && value !== undefined) {
-            facts.push({ label: name(id, state ?? ""), value: String(value) });
+            const one = { label: name(id, state ?? ""), value: String(value) };
+            facts.push(warns === true ? Object.assign(one, { warns: true }) : one);
         }
     };
     const addresses = websites(record);
@@ -298,26 +322,23 @@ function details(record, wording) {
     fact("username", username(record));
     fact("websites", addresses.join(", "), addresses.length > 1 ? "several" : "");
     fact("collection", record.collection?.name ?? "");
-    fact("manager", manager ?? "");
-    fact("kind", record.category ?? "");
-    fact("tags", (record.tags ?? []).join(", "));
-    fact("favourite", record.favourite === true ? said.yes : "");
-    fact("created", Number.isFinite(record.created) ? when(record.created, now) : "");
     fact("changed", Number.isFinite(record.changed) ? when(record.changed, now) : "");
-    fact("version", Number.isFinite(record.version) ? String(record.version) : "");
     if (read) {
         const rated = password(record)?.strength
             ?? record.details.find(one => (one.strength ?? "") !== "")?.strength ?? "";
         fact("strength", strength(rated));
         fact("code", code(record) === null ? said.none : said.set);
+        fact("health", health(record, said), "", true);
     }
-    // 1Password's summary of it, unless it only says the username again.
-    const summary = String(own.summary ?? "");
-    fact("summary", summary === username(record) ? "" : summary);
+    fact("manager", manager ?? "");
+    fact("tags", (record.tags ?? []).join(", "));
+    fact("created", Number.isFinite(record.created) ? when(record.created, now) : "");
     fact("files", Number.isFinite(own.files) && own.files > 0 ? String(own.files) : "");
     const notes = read ? record.details.find(one => one.purpose === "notes") : null;
     return {
         title: String(record.title ?? ""),
+        // The other details last, since their sections' headings would
+        // otherwise seem to hold the facts after them.
         facts: facts.concat(read ? detailFacts(record.details, said.hidden) : []),
         body: notes && notes.hidden !== true ? String(notes.value ?? "") : ""
     };

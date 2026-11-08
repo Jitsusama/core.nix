@@ -310,8 +310,8 @@ onLinux {
   # manager a stand-in for 1Password's that never runs op: nothing until
   # Joel steps in, letting the launcher in from its first row, an entry's
   # Return copying its password through wl-copy with the foot counting to
-  # its clearing, and stepping into one reading it in full
-  # (tests/passwords-on-niri-test.py). A VM adds only the units, which
+  # its clearing, resting on one reading it in full, and stepping into one
+  # holding its acts in order (tests/passwords-on-niri-test.py). A VM adds only the units, which
   # passwords-runs-each-password-manager reads.
   the-passwords-place-copies-through-its-daemon-on-niri = launcherOnNiri {
     name = "the-passwords-place-copies-through-its-daemon-on-niri";

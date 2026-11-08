@@ -114,9 +114,9 @@ onLinux {
   # Each kind's mark, who's listed with nothing typed and in what order,
   # what a row says, an entry's acts and their order, its link in its
   # manager's program, its drawer saying every figure and never a secret,
-  # and the foot counting a copy down are Passwords.js's, run in Qt's own
-  # engine (tests/passwords.qml), beside the launcher's own wording of a
-  # time.
+  # its health warning, and the foot counting a copy down are
+  # Passwords.js's, run in Qt's own engine (tests/passwords.qml), beside
+  # the launcher's own wording of how long ago (Ago.js).
   the-passwords-show-every-figure-but-the-secret =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -125,7 +125,6 @@ onLinux {
       cp ${../../tests/passwords.qml} passwords.qml
       cp ${./Passwords.js} Passwords.js
       cp ${../quickshell/launcher/Ago.js} Ago.js
-      cp ${../quickshell/launcher/Moment.js} Moment.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

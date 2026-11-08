@@ -19,7 +19,9 @@
 // first time and again once its leave lapses, so the daemon asks a manager
 // anything only for what Joel pressed: this asks for the list (`asked`)
 // only as he steps into the place or types in it, and for an entry in
-// full only as he steps into it, never as the shell starts or on a timer.
+// full as he steps into it, or as his selection rests on it, which asks
+// only a manager that has let the launcher in already, never as the shell
+// starts or on a timer of its own.
 // The daemon's watch keeps what's held current after. While a manager
 // can't read, the place's first row lets the launcher in, as Let the
 // Launcher In leads Programs › 1Password, which, once it's let in, holds
@@ -175,10 +177,11 @@ Provider {
 
     // One act inside an entry, by its id in Passwords.js's acts. A
     // password or a one-time code is asked of the daemon to copy, and
-    // stays, the foot saying how the copy stands; the username and the
-    // website's address are no secret, and copy as any row's value does,
-    // while the launcher holds the keys; the website and the entry in its
-    // manager's program open through niri as the launcher goes.
+    // stays, the foot saying how the copy stands, since its manager may
+    // refuse or wait on Joel; the username and the entry's link are no
+    // secret, and copy as any row's value does, while the launcher holds
+    // the keys; the website and the entry in its manager's program open
+    // through niri as the launcher goes.
     function act(key, id, shown) {
         const record = recordOf(key);
         if (record === null)
@@ -220,7 +223,7 @@ Provider {
                 fill: { manager: manager?.name ?? "" },
                 glyph: provider.programGlyph(manager?.program ?? "")
             }),
-            link: () => plain(address)
+            link: () => plain(shown ?? "")
         };
         return thing(Object.assign(base, made[id]()));
     }
@@ -266,9 +269,15 @@ Provider {
         onTriggered: provider.now = Date.now()
     }
 
-    // The row leading the place while a manager can't read: Return asks it
+    // The row leading the place while a manager can't read, "1Password Is
+    // Locked", Return unlocking it (VKCF3Z's ruling): it asks the manager
     // to let the launcher in, as Programs' Let the Launcher In does, and
-    // the launcher goes, so its own window can ask Joel.
+    // the launcher goes, so its own window can ask Joel. It's the one row
+    // whether 1Password is locked or was never let in, since the manager
+    // can't tell them apart (op refuses both alike, and every manager
+    // starts unlet after a boot, while 1Password is locked), and Return
+    // does the same for both. Its note says nothing more: the name says
+    // how it stands, and the foot what Return does.
     function unlock(manager) {
         const words = "verb:passwords:unlock";
         return thing({
@@ -277,7 +286,6 @@ Provider {
             verb: Words.verb(words),
             glyph: Words.glyph(words),
             hue: "action",
-            note: String(daemon.sources[manager.name]?.reason ?? ""),
             run: () => provider.letIn(manager)
         });
     }
@@ -300,15 +308,39 @@ Provider {
         daemon.ask({ ask: "list", asked: true, fresh: true }, null);
     }
 
-    // The entries asked in full this opening, so stepping into one again
-    // asks nothing more.
+    // The entries asked in full this opening, so reading one again asks
+    // nothing more: `asked` for one Joel stepped into, his own ask, and
+    // `rested` for one he rested on, which the manager answers only once
+    // it has let the launcher in, so resting never has 1Password ask him.
     property var gotThisTime: ({})
 
-    function getAsked(key) {
-        if (gotThisTime[key] === true)
+    function getAsked(key, asked) {
+        const had = gotThisTime[key];
+        if (had === "asked" || (!asked && had === "rested"))
             return;
-        gotThisTime[key] = true;
-        daemon.ask({ ask: "get", keys: [key], asked: true }, null);
+        // Read in full already, from resting on it, so stepping in needs
+        // nothing more.
+        if (asked && Array.isArray(recordOf(key)?.details))
+            return;
+        gotThisTime[key] = asked ? "asked" : "rested";
+        daemon.ask({ ask: "get", keys: [key], asked: asked }, null);
+    }
+
+    // An entry the selection rests on is read in full, once the drawer has
+    // come out for it, so its drawer says its Strength, its One-Time Code
+    // and its health, and stepping in finds every act in place: one read
+    // only once stepped into arrived after the rest of its step, and went
+    // below them, out of the design's order, since a row arriving late
+    // never moves those above it.
+    Timer {
+        id: resting
+
+        interval: Theme.motion.medium
+        onTriggered: {
+            const row = provider.launcher?.selected ?? null;
+            if (provider.launcher?.open && row && provider.recordOf(row.key ?? "") !== null)
+                provider.getAsked(row.key, false);
+        }
     }
 
     function opened() {
@@ -325,7 +357,11 @@ Provider {
             const steps = provider.launcher.held ?? [];
             const last = steps.length > 0 ? steps[steps.length - 1].row : null;
             if (provider.launcher.open && last && provider.recordOf(last.key ?? "") !== null)
-                provider.getAsked(last.key);
+                provider.getAsked(last.key, true);
+        }
+
+        function onSelectedChanged() {
+            resting.restart();
         }
 
         function onOpenChanged() {

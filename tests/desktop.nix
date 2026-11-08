@@ -200,6 +200,14 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-slack.py);
 
+  # The area that walks Passwords, whose 1Password's manager asks a
+  # stand-in for 1Password's command, op, since no 1Password account signs
+  # in here (desktop/op-stand-in.sh).
+  walksPasswords = area == "launcher-goes-places";
+  standInOp = pkgs.writeShellScript "op" ''
+    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/op-stand-in.sh} "$@"
+  '';
+
   # Stands in for the screen-text daemon, which would read screenshots with
   # its models, on its socket, saying what the runtime folder's
   # screen-text-texts.json says each says (desktop/stand-in-screen-text.py).
@@ -834,6 +842,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # build sandbox (modules/meaning/checks.nix).
         systemd.user.services.meaning.Service.ExecStart =
           lib.mkForce "${standInMeaning} %t/daemons/meaning.sock %t/meaning-means.json";
+        # Passwords walked with 1Password's own manager, in the passwords
+        # daemon's own unit, asking the stand-in for op in place of the
+        # one 1Password's app would answer.
+        jitsusama.passwords.managers."1password".command = lib.mkIf walksPasswords (
+          lib.mkForce [
+            (lib.getExe (pkgs.callPackage ../modules/onepassword/manager/package.nix { }))
+            "--op"
+            "${standInOp}"
+          ]
+        );
         # The collector where the launcher's traces are tested, started by
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {

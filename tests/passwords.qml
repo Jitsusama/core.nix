@@ -5,8 +5,8 @@
 // says a secret, and what the foot says of a copy as its time runs out,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-passwords-show-every-figure-but-the-secret` check copies
-// Passwords.js, and the launcher's Ago.js and Moment.js it reads, beside
-// this file and runs `qml -platform offscreen passwords.qml`.
+// Passwords.js, and the launcher's Ago.js it reads, beside this file and
+// runs `qml -platform offscreen passwords.qml`.
 import QtQuick
 import "Passwords.js" as Passwords
 
@@ -39,6 +39,9 @@ QtObject {
         // The kinds' marks, a kind no mark names wearing any entry's.
         check("a login's mark", Passwords.mark("login"), "login");
         check("a licence's mark", Passwords.mark("driver's licence"), "driversLicence");
+        // Identity is the glossary's word for who Joel is on a machine, so
+        // the kind's mark is named for what it is.
+        check("an identity's mark", Passwords.mark("identity"), "identityCard");
         check("a kind no mark names", Passwords.mark("tax return"), "entry");
         check("no kind at all", Passwords.mark(undefined), "entry");
 
@@ -96,7 +99,8 @@ QtObject {
         check("one manager isn't named", Passwords.named([{ name: "1password" }]), false);
         check("two are", Passwords.named([{ name: "1password" }, { name: "bitwarden" }]), true);
         check("its note, its username", Passwords.note(gitHub, ""), "ada");
-        check("its manager leading it", Passwords.note(gitHub, "1Password"), "1Password \u00b7 ada");
+        check("its manager leading it", Passwords.note(gitHub, "1Password"),
+            "1Password \u00b7 ada");
         check("a website's host where it has no username",
             Passwords.note({ websites: [{ address: "https://bank.example/in" }] }, ""),
             "bank.example");
@@ -116,8 +120,9 @@ QtObject {
         check("no link where its manager has none", Passwords.shows(gitHub, ""), "");
         check("every act, in order", Passwords.acts(gitHub, link),
             ["password", "code", "username", "website", "show", "link"]);
+        // The link copied is the one Show opens, so neither goes without it.
         check("before it's read, no one-time code yet", Passwords.acts(listedGitHub, ""),
-            ["password", "username", "website", "link"]);
+            ["password", "username", "website"]);
         check("a card has no password to copy", Passwords.acts(bank, ""), []);
         check("a login's password before it's read", Passwords.passworded(listedGitHub), true);
         check("a card read in full, by its details",
@@ -127,9 +132,9 @@ QtObject {
         // Its drawer: every figure but the secret, in the design's order.
         const names = {
             username: "Username", websites: "Website", collection: "Vault",
-            manager: "Password Manager", kind: "Kind", tags: "Tags", favourite: "Favourite",
-            created: "Created", changed: "Last Changed", version: "Version",
-            strength: "Strength", code: "One-Time Code", summary: "Summary", files: "Files"
+            manager: "Password Manager", tags: "Tags", created: "Created",
+            changed: "Last Changed", strength: "Strength", code: "One-Time Code",
+            health: "Health", files: "Files"
         };
         const name = (id, state) => (id === "websites" && state === "several" ? "Websites"
             : names[id]);
@@ -139,25 +144,25 @@ QtObject {
             coded: "copied {title}'s {detail} \u00b7 {left} s left of {period}",
             lapsed: "copied {title}'s {detail} \u00b7 lapsed",
             cleared: "{title}'s {detail} is cleared from the clipboard",
-            unfinished: "couldn't copy {title}'s {detail}: {why}",
-            hidden: "hidden", set: "set up", none: "none", yes: "yes"
+            unfinished: "{title}'s {detail} not copied \u00b7 {why}",
+            hidden: "hidden", set: "set up", none: "none", weak: "weak password",
+            unsecured: "unsecured website"
         };
         const wording = manager => ({ name: name, said: said, now: now, manager: manager });
         const drawer = Passwords.details(gitHub, wording(""));
         const lines = drawer.facts.map(fact => fact.heading !== undefined ? `## ${fact.heading}`
             : `${fact.label}: ${fact.value}`);
+        // The design's own first, in its order, then the rest; a healthy
+        // one says no health, its Strength saying it already.
         check("every figure, the secret hidden", lines, [
             "Username: ada",
             "Websites: https://github.com, https://github.com/login",
             "Vault: Private",
-            "Kind: login",
-            "Tags: work, code",
-            "Favourite: yes",
-            "Created: 29 Feb 2024",
             "Last Changed: 3 d ago",
-            "Version: 4",
             "Strength: very good",
             "One-Time Code: set up",
+            "Tags: work, code",
+            "Created: 982 d ago",
             "Files: 1",
             "Password: hidden",
             "## Security",
@@ -167,9 +172,19 @@ QtObject {
         ]);
         check("its notes are its words", drawer.body, "Two keys, one in the drawer.");
         check("no secret is said", JSON.stringify(drawer).includes(secret), false);
-        check("its manager named where rows name them",
-            Passwords.details(gitHub, wording("1Password")).facts[3],
+        check("no fact warns of a healthy one", drawer.facts.some(fact => fact.warns), false);
+        check("its manager named where rows name them, after its health",
+            Passwords.details(gitHub, wording("1Password")).facts[6],
             { label: "Password Manager", value: "1Password" });
+        // A weak password, on a website sent in the clear, warns of both.
+        const weak = Object.assign({}, gitHub, {
+            websites: [{ address: "http://router.example", primary: true }],
+            details: [{ id: "password", label: "password", type: "hidden", hidden: true,
+                purpose: "password", empty: false, strength: "weak" }]
+        });
+        check("its health warns", Passwords.details(weak, wording("")).facts
+            .filter(fact => fact.warns === true),
+        [{ label: "Health", value: "weak password \u00b7 unsecured website", warns: true }]);
         const summary = Passwords.details(listedGitHub, wording("")).facts
             .map(fact => fact.label);
         check("a summary can't say what's read in full", summary.includes("Strength")
@@ -180,7 +195,8 @@ QtObject {
 
         // The foot, as a copy's time runs out.
         const asking = { title: "GitHub", detail: "password", clears: 0, lapses: 0 };
-        check("while it's asked", Passwords.told(asking, now, said), "copying GitHub's password\u2026");
+        check("while it's asked", Passwords.told(asking, now, said),
+            "copying GitHub's password\u2026");
         const copied = Passwords.answered(asking, { copied: true, clears: now + 90_000 }, now,
             "away");
         check("once it's copied", Passwords.told(copied, now, said),
@@ -198,10 +214,10 @@ QtObject {
         check("one refused says why", Passwords.told(Passwords.answered(asking,
             { error: { code: "signed-out", message: "1Password asks you to let the launcher in" } },
             now, "away"), now, said),
-        "couldn't copy GitHub's password: 1Password asks you to let the launcher in");
+        "GitHub's password not copied \u00b7 1Password asks you to let the launcher in");
         check("with nobody to ask", Passwords.told(Passwords.answered(asking, null, now,
             "the passwords daemon isn't answering"), now, said),
-        "couldn't copy GitHub's password: the passwords daemon isn't answering");
+        "GitHub's password not copied \u00b7 the passwords daemon isn't answering");
         check("nothing copied says nothing", Passwords.told(null, now, said), "");
 
         // By vault, as Programs › 1Password holds them, each by title.

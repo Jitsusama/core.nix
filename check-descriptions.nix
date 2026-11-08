@@ -2071,16 +2071,19 @@
     on a nested niri, the Passwords place asks the passwords daemon nothing until Joel steps in,
     then lists once as his, leads with the row that lets a signed-out manager in, whose Return
     asks it, copies an entry's password on Return through the daemon to the clipboard, the foot
-    counting to its clearing and nothing on screen saying it, and reads an entry in full as it's
-    stepped into, holding its acts in the design's order, with a stand-in for 1Password's manager
+    counting to its clearing and nothing on screen saying it, reads an entry in full as the
+    selection rests on it, never as Joel's own ask, its drawer saying its secret is hidden, and
+    holds its acts in the design's order once it's stepped into, with a stand-in for 1Password's
+    manager
   '';
   the-passwords-show-every-figure-but-the-secret = ''
     each kind of entry wears its own mark, the favourites are listed first, then what changed
     lately, newest first, twenty at most, a row names its password manager only while two are on
     the machine, an entry's acts come in the design's order, each only where it has what it needs,
     its manager's link is filled only where the entry says every part, its drawer says every
-    figure, a hidden detail as hidden and never its value, and the foot counts a copy down to its
-    clearing, or a one-time code to its lapsing
+    figure, the design's first in its order, a hidden detail as hidden and never its value, and a
+    weak password or a website sent in the clear as its health in the warning's role, and the foot
+    counts a copy down to its clearing, or a one-time code to its lapsing
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two

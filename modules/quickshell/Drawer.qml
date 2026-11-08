@@ -2058,7 +2058,11 @@ Floating {
                                 plain: fact.known ? drawer.itemsKept(fact.modelData.value,
                                     drawer.faceOf(fact.modelData), fact.valueWide) : "\u2026"
                                 leading: drawer.pitch
-                                ink: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
+                                // A fact that warns, as an entry's weak
+                                // password does, says so in the warning's
+                                // role, as a stroke past its limit does.
+                                ink: !fact.known || drawer.listsKeys ? Theme.muted
+                                    : fact.modelData.warns === true ? Theme.warning : Theme.text
                                 font: drawer.faceOf(fact.modelData).font
                                 // A right-to-left script's words start at the
                                 // column too, as every other value's do,

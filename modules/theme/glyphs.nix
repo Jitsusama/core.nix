@@ -1023,10 +1023,13 @@ in
   # What Joel's password managers keep, each entry by its kind, as
   # 1Password sorts its items, so a card never reads as a login. Each is a
   # kind every password manager has, or one of 1Password's own categories;
-  # a kind no mark here names wears `entry`.
+  # a kind no mark here names wears `entry`. Each one's console stand-in is
+  # its own among them, so a list of entries on the console still tells
+  # the kinds apart; an identity's mark is `identityCard`, since identity
+  # is the glossary's word for who Joel is on a machine.
   passwords = {
     glyph = nerd "f1574";
-    console = "k";
+    console = "J";
     means = "what Joel's password managers keep, and the place holding it";
   };
   login = {
@@ -1049,9 +1052,9 @@ in
     console = "n";
     means = "a note a password manager keeps";
   };
-  identity = {
+  identityCard = {
     glyph = nerd "f0dab";
-    console = "i";
+    console = "I";
     means = "who Joel is, as a password manager keeps it: his name, address and numbers";
   };
   sshKey = {
@@ -1101,7 +1104,7 @@ in
   };
   softwareLicence = {
     glyph = nerd "f0fc3";
-    console = "s";
+    console = "Y";
     means = "a program's licence a password manager keeps";
   };
   membership = {
@@ -1136,12 +1139,12 @@ in
   };
   keptFile = {
     glyph = nerd "f0221";
-    console = "f";
+    console = "Z";
     means = "a file a password manager keeps as an entry of its own";
   };
   entry = {
     glyph = nerd "f0b8d";
-    console = "e";
+    console = "E";
     means = "an entry a password manager keeps of a kind no other mark names";
   };
   # What's inside an entry and holds them: its one-time code, a clock's

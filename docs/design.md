@@ -1347,9 +1347,10 @@ works the same way everywhere.
   did, not each time what they're made from moves.
 - **Home is a few places.** With nothing typed, the launcher shows Now,
   then after a gap the places, each a context with its own words: Agents,
-  Programs and People, what Joel works with; then Desktop, Machine,
-  Network and Keyboards, what he works on; always in that order, eight
-  rows, so home's shape never changes. Disk is a
+  Programs, People and Passwords, what Joel works with; then Desktop,
+  Machine, Network and Keyboards, what he works on; always in that order,
+  nine rows, so home's shape never changes, and Passwords only on a
+  machine with a password manager, beside People (VKCF3Z). Disk is a
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
   fast shows in Now. Now's top never changes: Needs You first, always,

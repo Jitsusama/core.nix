@@ -1134,12 +1134,11 @@ Scope {
     }
 
     // Whether a row is an act of copying, as a step's Copy is, rather than
-    // a value that copies what it says, or a copy that's what its thing is
-    // for (`use`), as an entry's Copy the Password leads Passwords' step
-    // (VKCF3Z, 22949064: "that's its use, not a copy of its description").
+    // a value that copies what it says. One marked `use` is what its thing
+    // is for, so it leads, as an entry's Copy the Password does (design.md).
     function copying(row) {
-        return !!row && row.figure !== true && !row.answered && row.use !== true
-            && verbOf(row) === "copy" && /^copy\b/i.test(row.name ?? "");
+        return !!row && row.figure !== true && !row.answered && verbOf(row) === "copy"
+            && /^copy\b/i.test(row.name ?? "") && row.use !== true;
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a

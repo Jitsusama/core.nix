@@ -976,6 +976,96 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
             and [row for row in shown["rows"] if row != "This Window"][:2] == ["Windows", "Screens"]
         )
     )
+    # And Return on Passwords steps into it, which is walked as far as a machine shows it.
+    # It's walked here, not in a subtest of its own, since this area holds twenty, as many as
+    # one may (docs/testing.md, Earning a Check).
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
+    desktop.previous_row()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "collection:passwords"
+    )
+    desktop.step_in("ret")
+    walk_passwords(desktop)
+
+
+def walk_passwords(desktop: Desktop) -> None:
+    """Walk Passwords, stepped into: 1Password read through its unit, and a password copied.
+
+    The passwords daemon's own unit runs 1Password's own manager, which asks a stand-in for op
+    (desktop/op-stand-in.sh), and copies through the unit's wl-copy to the session's clipboard.
+    One path through that wiring is all this walks: what the place lists, says and copies, case
+    by case, is the-passwords-show-every-figure-but-the-secret's and
+    the-passwords-place-copies-through-its-daemon-on-niri's.
+    """
+    favourite = "Lighthouse Console"
+    # Stepping in is Joel's key, so the list is asked of 1Password, through op. Until it's
+    # answered the place leads with 1Password locked, so it's opened again once it has, to
+    # stand as Joel finds it then.
+    desktop.launcher_until(lambda shown: favourite in shown["rows"])
+    desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection passwords")
+    desktop.launcher_ready()
+    # The favourite leads, then what changed lately, newest first, its drawer out.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:3] == [favourite, "GitHub", "Bank Card"]
+            and (shown["selected"] or {}).get("name") == favourite
+            and shown["drawer"]["shown"]
+            and "Vault" in shown["drawer"]["drawnFacts"]
+        )
+    )
+    desktop.shoot("launcher-passwords-place")
+    # Stepping into it reads it in full, so its one-time code is there among its acts.
+    desktop.follow()
+    acts = [
+        "Copy the Password",
+        "Copy the One-Time Code",
+        "Copy the Username",
+        "Open the Website",
+        "Show in 1Password",
+        "Copy the Link",
+    ]
+    desktop.launcher_until(lambda shown: shown["rows"] == acts)
+    desktop.shoot("launcher-passwords-acts")
+    # Back on its row, its drawer says what reading it in full told: its weak password and
+    # its website sent in the clear as its health, and its secret only as hidden.
+    desktop.step_out()
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == favourite
+            and shown["drawer"]["shown"]
+            and "Health" in shown["drawer"]["drawnFacts"]
+        )
+    )
+    drawer = desktop.showing()["drawer"]
+    facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
+    assert facts["Health"] == "weak password \u00b7 unsecured website", facts
+    assert facts.get("Password") == "hidden", facts
+    # Its drawer is taller than the card, so the keys go into it and to its last line, for
+    # the shot to hold its health and its hidden password, and come back.
+    machine = desktop.machine
+    machine.send_key("ctrl-w")
+    machine.send_key("l")
+    desktop.launcher_until(lambda shown: shown["drawer"]["keys"])
+    top = desktop.showing()["drawer"]["cursor"]
+    machine.send_key("shift-g")
+    desktop.launcher_until(lambda shown: shown["drawer"]["cursor"] != top)
+    desktop.shoot("launcher-passwords-entry")
+    machine.send_key("ctrl-w")
+    machine.send_key("h")
+    desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
+    # Its Return copies its password, and the launcher stays to say when it clears.
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and str(shown["footer"]).startswith(f"copied {favourite}'s password \u00b7 clears in ")
+        )
+    )
+    pasted = desktop.as_account("wl-paste --no-newline")
+    assert pasted == "stand-in-password", pasted
+    assert "stand-in-password" not in json.dumps(desktop.showing())
     desktop.close_launcher()
 
 

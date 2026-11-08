@@ -7,8 +7,8 @@ one password manager: a stand-in for 1Password's, named as 1Password's is
 anything until Joel steps into Passwords, which asks it once, and while it's signed out the
 place leads with its row saying so, whose Return lets the launcher in. Once in, GitHub leads
 as a favourite, its Return copies its password through the daemon to the clipboard, the foot
-saying when it clears, its drawer saying it's hidden and never what it is, and stepping into it
-reads it in full, holding its acts in the design's order.
+saying when it clears, resting on it reads it in full, its drawer saying its password is hidden
+and never what it is, and stepped into, it holds its acts in the design's order.
 """
 
 from __future__ import annotations
@@ -144,6 +144,10 @@ def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
     assert row["name"] == "GitHub", row
     assert row["note"] == "ada", row
     assert row["verb"] == "copy", row
+    # Rested on, it's read in full first, so the copy has nothing more to read.
+    shell.launcher_until(
+        lambda shown: "One-Time Code" in str((shown["selected"] or {}).get("drawer") or {})
+    )
     shell.send_key("ret")
     shell.launcher_until(
         lambda shown: (
@@ -156,15 +160,31 @@ def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
     assert STAND_IN not in json.dumps(shell.showing())
 
 
-def test_stepping_into_an_entry_reads_it_in_full_and_holds_its_acts_in_order(
+def test_resting_on_an_entry_reads_it_in_full_and_it_holds_its_acts_in_order(
     shell: Shell,
 ) -> None:
-    """Stepping into an entry reads it in full, holding its acts in the design's order."""
+    """Resting on an entry reads it in full, and stepped into, it holds its acts in order."""
     let_in(shell)
     opened(shell)
     shell.launcher_until(lambda shown: shown["rows"][:1] == ["GitHub"])
-    shell.step_in("ctrl-bracketright")
+    # Rested on, it's read in full, not as Joel's own ask, since the manager has let the
+    # launcher in, so 1Password would ask him nothing; its drawer says what that told.
     shell.launcher_until(lambda _: "get" in asks())
+    gets = [one for one in asked() if one["ask"] == "get"]
+    assert all(one.get("asked") is not True for one in gets), gets
+    shell.launcher_until(
+        lambda shown: "One-Time Code" in str((shown["selected"] or {}).get("drawer") or {})
+    )
+    shown = shell.showing()
+    drawer = cast("Json", (shown["selected"] or {}).get("drawer") or {})
+    facts = {fact.get("label"): fact.get("value") for fact in drawer.get("facts", [])}
+    assert facts.get("Password") == "hidden", drawer
+    assert facts.get("One-Time Code") == "set up", drawer
+    assert facts.get("Strength") == "fantastic", drawer
+    assert STAND_IN not in json.dumps(shown)
+    # Read already, stepping in holds every act in the design's order, its one-time code's
+    # among them.
+    shell.step_in("ctrl-bracketright")
     acts = [
         "Copy the Password",
         "Copy the One-Time Code",
@@ -175,14 +195,3 @@ def test_stepping_into_an_entry_reads_it_in_full_and_holds_its_acts_in_order(
     ]
     shell.launcher_until(lambda shown: shown["rows"] == acts)
     shell.launcher_until(lambda shown: shown["held"] == ["passwords", "GitHub"])
-    # Read in full, its drawer says every figure, its password only as hidden.
-    shell.close_launcher()
-    opened(shell)
-    shell.launcher_until(lambda shown: shown["rows"][:1] == ["GitHub"])
-    shown = shell.showing()
-    drawer = cast("Json", (shown["selected"] or {}).get("drawer") or {})
-    facts = {fact.get("label"): fact.get("value") for fact in drawer.get("facts", [])}
-    assert facts.get("Password") == "hidden", drawer
-    assert facts.get("One-Time Code") == "set up", drawer
-    assert facts.get("Strength") == "fantastic", drawer
-    assert STAND_IN not in json.dumps(shown)
