@@ -51,7 +51,7 @@ Provider {
         id: clock
         precision: SystemClock.Seconds
         enabled: provider.launcher?.open ?? false
-        onDateChanged: if (Playing.players.some(player => player.isPlaying)) provider.tick++
+        onDateChanged: if (Playing.players.some(player => player?.isPlaying)) provider.tick++
     }
     // Counted each second something plays, so the rows say where it's got.
     property int tick: 0
@@ -93,7 +93,7 @@ Provider {
 
     // Where a player is in its track, in seconds, read again whenever asked,
     // since MPRIS never says it moved.
-    function at(player) {
+    function secondsIn(player) {
         return Number(player?.position) || 0;
     }
 
@@ -111,15 +111,19 @@ Provider {
     }
 
     // Its note, said apart from any other player's that would read alike.
+    // The player is found again by its D-Bus name: a list read back from a
+    // property is a fresh copy, whose players needn't be the same objects,
+    // and one leaving may stand in it as null for a moment.
     function noteOf(player) {
-        const players = Playing.players;
-        const notes = Players.notes(players.map(about), said("workspace"));
-        return notes[players.indexOf(player)] ?? player.trackArtist;
+        const players = Playing.players.filter(other => other);
+        const notes = Players.notes(players.map(other => about(other)), said("workspace"));
+        const index = players.findIndex(other => other.dbusName === player.dbusName);
+        return notes[index] ?? player.trackArtist;
     }
 
     function playerRow(player) {
         const loaded = player.trackTitle !== "";
-        const position = at(player);
+        const position = secondsIn(player);
         return thing({
             thing: true,
             key: `player:${player.dbusName}`,
@@ -207,7 +211,7 @@ Provider {
     }
 
     function positionPart(player) {
-        const position = at(player);
+        const position = secondsIn(player);
         const known = player.lengthSupported && player.length > 0;
         return setting({
             key: `player:${player.dbusName}:position`,
@@ -334,7 +338,7 @@ Provider {
             // Seconds, or a clock, as 1:30 (SetWords.js).
             clock: true,
             now: () => Music.player?.positionSupported
-                ? Math.round(provider.at(Music.player)) : null,
+                ? Math.round(provider.secondsIn(Music.player)) : null,
             set: to => Music.seekTo(Music.player, to)
         }
     })
@@ -343,7 +347,7 @@ Provider {
     // through, as Sound's devices are.
     readonly property var all: {
         void tick;
-        return Playing.players.map(player => playerRow(player));
+        return Playing.players.filter(player => player).map(player => playerRow(player));
     }
     onAllChanged: changed()
 
