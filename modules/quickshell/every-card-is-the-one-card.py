@@ -11,24 +11,17 @@ naming each line, on:
 
 - a frame of its own: a border, the whole thing's radius or a shadow, which
   only Floating.qml draws, beneath Card.qml;
-- a frame taken straight from Floating rather than through Card, outside the
-  files listed as not yet on the card;
-- a read of the inset rung, which the card stands its content at, outside
-  the files listed as not yet on the card. The card's own `inset`, which a
-  ground reaching past the content to the frame reads, is the one read
-  meant to pass;
+- a frame taken straight from Floating rather than through Card;
+- a read of the inset rung, which the card stands its content at. The
+  card's own `inset`, which a ground reaching past the content to the frame
+  reads, is the one read meant to pass;
 - a mark, name or number placed across by hand, an x or a side's margin set
-  from a rung or a pitch, outside the files listed as not yet on the card,
-  since every column comes from Columns.js;
-- a row's ground drawn of its own, read from the selection's tint, outside
-  the files listed as not yet on the card, since every row's ground is
-  Ground.qml's, which fills its band edge to edge (Joel, 2026-11-06:
-  rows tile like Vim's cursorline);
-- a listed file that neither takes Floating, reads the inset, places
-  anything by hand nor draws a ground any more, or that isn't a card
-  surface, so the list only ever shrinks.
+  from a rung or a pitch, since every column comes from Columns.js;
+- a row's ground drawn of its own, read from the selection's tint, since
+  every row's ground is Ground.qml's, which fills its band edge to edge
+  (Joel, 2026-11-06: rows tile like Vim's cursorline).
 
-Usage: every-card-is-the-one-card.py FOLDER UNMOVED SURFACE...
+Usage: every-card-is-the-one-card.py FOLDER SURFACE...
 """
 
 import re
@@ -65,41 +58,20 @@ def found(path: Path, name: str, pattern: re.Pattern[str]) -> list[str]:
     ]
 
 
-def listed(unmoved: Path) -> set[str]:
-    """Read the files the list names, by their path under the folder."""
-    names = (line.split("#")[0].strip() for line in unmoved.read_text().splitlines())
-    return {name for name in names if name}
-
-
-def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
+def main(folder: Path, surfaces: list[str]) -> int:
     """Check every surface, printing what strays, and answer 1 if any does."""
-    allowed = listed(unmoved)
     framed: list[str] = []
     floated: list[str] = []
     inset: list[str] = []
     placed: list[str] = []
     grounded: list[str] = []
-    stale: list[str] = []
     for name in surfaces:
         path = folder / name
         framed.extend(found(path, name, FRAME))
-        floats = found(path, name, FLOATING)
-        insets = found(path, name, INSET)
-        hands = found(path, name, HAND_SET)
-        grounds = found(path, name, GROUND)
-        if name not in allowed:
-            floated.extend(floats)
-            inset.extend(insets)
-            placed.extend(hands)
-            grounded.extend(grounds)
-        elif not floats and not insets and not hands and not grounds:
-            stale.append(
-                f"{name} is listed as not yet on the card but is on it; take it off {unmoved.name}."
-            )
-    stale.extend(
-        f"{name} is listed in {unmoved.name} but isn't a card surface."
-        for name in sorted(allowed - set(surfaces))
-    )
+        floated.extend(found(path, name, FLOATING))
+        inset.extend(found(path, name, INSET))
+        placed.extend(found(path, name, HAND_SET))
+        grounded.extend(found(path, name, GROUND))
     said = [
         (framed, "The lines above draw a frame of their own; a card's frame is Card.qml's."),
         (floated, "The lines above take Floating for a card; take Card, whose frame it is."),
@@ -112,10 +84,8 @@ def main(folder: Path, unmoved: Path, surfaces: list[str]) -> int:
             print(line)
         if lines:
             print(why)
-    for line in stale:
-        print(line)
-    return 1 if framed or floated or inset or placed or grounded or stale else 0
+    return 1 if framed or floated or inset or placed or grounded else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3:]))
+    sys.exit(main(Path(sys.argv[1]), sys.argv[2:]))

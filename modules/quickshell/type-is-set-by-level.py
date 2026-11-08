@@ -5,9 +5,7 @@ naming each, on:
 
 - a font's size, weight, axes, letter spacing or case set other than from a
   level (Theme.level.name.pointSize, or a property holding a level, such as
-  row.level.pointSize), outside the files listed as not yet moved;
-- a listed file that no longer sets any of them other than from a level, or
-  that isn't there, so the list only ever shrinks;
+  row.level.pointSize);
 - in each Typst template given after them, as the reader's page holds its
   own in Rust, a text's size, weight, tracking, strong's delta or a weight
   or optical size axis said as a number, or a size named with one, where
@@ -16,7 +14,7 @@ naming each, on:
 A setting mixing a level with a step, a font constant, a number or an object
 of its own is set by neither, and fails as well.
 
-Usage: type-is-set-by-level.py MODULES UNMOVED [TEMPLATE...]
+Usage: type-is-set-by-level.py MODULES [TEMPLATE...]
 """
 
 import re
@@ -111,35 +109,14 @@ def raw_in_template(template: Path) -> list[str]:
     return found
 
 
-def listed(unmoved: Path) -> set[str]:
-    """Read the files the list names, by their path under the modules folder."""
-    names = (line.split("#")[0].strip() for line in unmoved.read_text().splitlines())
-    return {name for name in names if name}
-
-
-def main(modules: Path, unmoved: Path, templates: list[Path]) -> int:
+def main(modules: Path, templates: list[Path]) -> int:
     """Check every file, printing what strays, and answer 1 if any does."""
-    allowed = listed(unmoved)
     raw: list[str] = []
-    stale: list[str] = []
     for path in sorted(modules.rglob("*.qml")):
         relative = path.relative_to(modules)
         if "tests" in relative.parts:
             continue
-        name = relative.as_posix()
-        found = raw_settings(modules, name)
-        if name not in allowed:
-            raw.extend(found)
-        elif not found:
-            stale.append(
-                f"{name} is listed as not yet moved but sets its type "
-                f"by level; take it off {unmoved.name}."
-            )
-    stale.extend(
-        f"{name} is listed in {unmoved.name} but isn't there."
-        for name in sorted(allowed)
-        if not (modules / name).is_file()
-    )
+        raw.extend(raw_settings(modules, relative.as_posix()))
     for line in raw:
         print(line)
     if raw:
@@ -147,8 +124,6 @@ def main(modules: Path, unmoved: Path, templates: list[Path]) -> int:
             "The lines above set type other than by a level; name one, as "
             "Theme.level.name.pointSize (docs/design.md, Type)."
         )
-    for line in stale:
-        print(line)
     typst = [line for template in templates for line in raw_in_template(template)]
     for line in typst:
         print(line)
@@ -157,8 +132,8 @@ def main(modules: Path, unmoved: Path, templates: list[Path]) -> int:
             "The lines above set the reader's type by number; name a level, as "
             "..level.words.text (modules/reader/home.nix)."
         )
-    return 1 if raw or stale or typst else 0
+    return 1 if raw or typst else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2]), [Path(p) for p in sys.argv[3:]]))
+    sys.exit(main(Path(sys.argv[1]), [Path(p) for p in sys.argv[2:]]))

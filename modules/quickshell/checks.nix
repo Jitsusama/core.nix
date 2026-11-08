@@ -487,12 +487,10 @@ onLinux {
     '';
 
   # Every run of text the shell sets names its type's level, never a step, a
-  # weight or a spacing of its own, but in the files not-yet-by-level.txt
-  # lists, and a file listed there that no longer needs to be fails, so the
-  # list only shrinks (type-is-set-by-level.py). So the check can't pass by
-  # seeing nothing, each way of straying is shown to fail first: a step, a
-  # level mixed with a step, a line carried on, a script's assignment, and a
-  # listed file that's moved or gone. The reader's page and its foot, Typst
+  # weight or a spacing of its own (type-is-set-by-level.py). So the check
+  # can't pass by seeing nothing, each way of straying is shown to fail
+  # first: a step, a level mixed with a step, a line carried on and a
+  # script's assignment. The reader's page and its foot, Typst
   # held in Rust, name a level too, and a size, a weight, a tracking, a
   # strong's delta or an axis said by number fails, as a size named with one
   # does, while a comment saying one doesn't.
@@ -509,14 +507,12 @@ onLinux {
       ];
     in
     pkgs.runCommandLocal "type-is-set-by-level" { } ''
-      # A file that sets its type as given, what the check must say of it,
-      # and the files listed as not yet moved.
+      # A file that sets its type as given, and what the check must say of it.
       strays() {
         rm -rf modules
         mkdir -p modules/shell
         printf '%s\n' "$1" > modules/shell/Surface.qml
-        printf '%s\n' "''${@:3}" > unmoved.txt
-        if ${check} modules unmoved.txt > said; then
+        if ${check} modules > said; then
           echo "The type check passed on: $1"
           exit 1
         fi
@@ -530,9 +526,8 @@ onLinux {
       sets() {
         rm -rf modules
         mkdir -p modules
-        : > unmoved.txt
         printf '%s\n' "$1" > page.rs
-        if ${check} modules unmoved.txt page.rs > said; then
+        if ${check} modules page.rs > said; then
           echo "The type check passed on the page: $1"
           exit 1
         fi
@@ -548,8 +543,6 @@ onLinux {
       strays $'font.weight: row.selected\n    ? Font.Medium : Theme.level.name.weight' \
         'font.weight is row.selected ? Font.Medium'
       strays 'label.font.letterSpacing = 2' 'font.letterSpacing is 2'
-      strays 'font.pointSize: Theme.level.note.pointSize' 'take it off' shell/Surface.qml
-      strays 'font.pointSize: Theme.level.note.pointSize' "isn't there" shell/Gone.qml
       sets '#set text(..level.words.text, size: 0.93 * body-size)' 'page.rs:1: size is 0.93'
       sets '#show heading: set text(weight: 540, tracking: -0.02em)' 'weight is 540'
       sets '#show heading: set text(weight: 540, tracking: -0.02em)' 'tracking is -0.02em'
@@ -567,19 +560,16 @@ onLinux {
       printf '%s\n' '#set text(..level.note.text, fill: ink.on_accent)' \
         '/// The words at 13.69 pt, weight: 380.' '// size: 12pt, as a note says' \
         '#[cfg(test)]' 'mod tests {' 'size: 11.5pt' > page.rs
-      : > unmoved.txt
-      ${check} modules unmoved.txt page.rs
-      ${check} ${shells} ${./not-yet-by-level.txt} ${lib.concatStringsSep " " pages}
+      ${check} modules page.rs
+      ${check} ${shells} ${lib.concatStringsSep " " pages}
       touch $out
     '';
 
   # Every space the shell sets names the rung of the ladder it sits between,
-  # the beat or a level's pitch, never a step of the size scale, but in the
-  # files not-yet-by-rung.txt lists, and a file listed there that no longer
-  # needs to be fails, so the list only shrinks (space-is-set-by-rung.py).
-  # So it can't pass by seeing nothing, a step, a step summed with a rung,
-  # and a listed file that's moved or gone are each shown to fail first,
-  # while a rung, the beat, a pitch and a comment naming a step pass.
+  # the beat or a level's pitch, never a step of the size scale
+  # (space-is-set-by-rung.py). So it can't pass by seeing nothing, a step and
+  # a step summed with a rung are each shown to fail first, while a rung, the
+  # beat, a pitch and a comment naming a step pass.
   space-is-set-by-rung =
     let
       check = "${lib.getExe pkgs.python3} ${./space-is-set-by-rung.py}";
@@ -589,14 +579,12 @@ onLinux {
       };
     in
     pkgs.runCommandLocal "space-is-set-by-rung" { } ''
-      # A file that sets its space as given, what the check must say of it,
-      # and the files listed as not yet moved.
+      # A file that sets its space as given, and what the check must say of it.
       strays() {
         rm -rf modules
         mkdir -p modules/shell
         printf '%s\n' "$1" > modules/shell/Surface.qml
-        printf '%s\n' "''${@:3}" > unmoved.txt
-        if ${check} modules unmoved.txt > said; then
+        if ${check} modules > said; then
           echo "The space check passed on: $1"
           exit 1
         fi
@@ -608,17 +596,14 @@ onLinux {
       }
       strays 'leftPadding: Theme.space.l' 'Surface.qml:1: leftPadding: Theme.space.l'
       strays 'spacing: Theme.space.rung.items + Theme.space.xs' 'Theme.space.xs'
-      strays 'spacing: Theme.space.rung.items' 'take it off' shell/Surface.qml
-      strays 'spacing: Theme.space.rung.items' "isn't there" shell/Gone.qml
       # A rung, the beat and a pitch pass, as a comment naming a step does.
       rm -rf modules
       mkdir -p modules/shell
       printf '%s\n' 'spacing: Theme.space.rung.items' 'height: Theme.space.beat * 2' \
         'lineHeight: Theme.level.note.pitch' '// once Theme.space.l, now a rung' \
         > modules/shell/Surface.qml
-      : > unmoved.txt
-      ${check} modules unmoved.txt
-      ${check} ${shells} ${./not-yet-by-rung.txt}
+      ${check} modules
+      ${check} ${shells}
       touch $out
     '';
 
@@ -626,13 +611,11 @@ onLinux {
   # its frame from Card.qml and stands its ink on the card's content, the
   # inset from its edge, and on its columns (Columns.js), never drawing a
   # frame, reading the inset, placing ink across by hand or tinting a row's
-  # ground itself, but in the files not-yet-on-the-card.txt lists, which
-  # only shrinks (every-card-is-the-one-card.py). So it can't pass by seeing
-  # nothing, a border, the whole thing's radius, a shadow, a frame from
-  # Floating, a read of the inset, an x or a margin from a rung or a pitch,
-  # a ground's tint, and a listed file that's moved or isn't a card are each
-  # shown to fail first, while a card,
-  # a part's radius, a column, the card's own inset and a comment pass.
+  # ground itself (every-card-is-the-one-card.py). So it can't pass by
+  # seeing nothing, a border, the whole thing's radius, a shadow, a frame
+  # from Floating, a read of the inset, an x or a margin from a rung or a
+  # pitch, and a ground's tint are each shown to fail first, while a card, a
+  # part's radius, a column, the card's own inset and a comment pass.
   every-card-is-the-one-card =
     let
       check = "${lib.getExe pkgs.python3} ${./every-card-is-the-one-card.py}";
@@ -648,14 +631,12 @@ onLinux {
       };
     in
     pkgs.runCommandLocal "every-card-is-the-one-card" { } ''
-      # A card surface drawn as given, what the check must say of it, and
-      # the files listed as not yet on the card.
+      # A card surface drawn as given, and what the check must say of it.
       strays() {
         rm -rf shell
         mkdir shell
         printf '%s\n' "$1" > shell/Surface.qml
-        printf '%s\n' "''${@:3}" > unmoved.txt
-        if ${check} shell unmoved.txt Surface.qml > said; then
+        if ${check} shell Surface.qml > said; then
           echo "The card check passed on: $1"
           exit 1
         fi
@@ -675,21 +656,14 @@ onLinux {
       strays 'anchors.leftMargin: Theme.space.rung.apart' 'by hand'
       strays 'rightPadding: Theme.space.rung.items' 'by hand'
       strays 'color: Qt.alpha(Theme.selection, Theme.floating.selection)' "a row's ground"
-      strays $'Floating {\nborder.width: 1' 'a frame of their own' Surface.qml
-      strays 'Card {' 'take it off' Surface.qml
-      strays 'Card {' "isn't a card surface" Gone.qml
-      # A card, a part's radius, a column, the card's own inset, the inset
-      # said in a comment, and files listed while they still take Floating
-      # or place by hand pass.
+      # A card, a part's radius, a column, the card's own inset and the inset
+      # said in a comment pass.
       rm -rf shell
       mkdir shell
       printf '%s\n' 'Card {' 'radius: Theme.inner' 'x: row.columns.text' 'x: -card.inset' \
         '// once at Theme.space.rung.inset' > shell/Surface.qml
-      printf '%s\n' 'Floating {' 'x: Theme.space.rung.inset' > shell/Unmoved.qml
-      printf '%s\n' 'Card {' 'x: Theme.space.rung.mark' > shell/Placed.qml
-      printf '%s\n' Unmoved.qml Placed.qml > unmoved.txt
-      ${check} shell unmoved.txt Surface.qml Unmoved.qml Placed.qml
-      ${check} ${surfaces} ${./not-yet-on-the-card.txt} ${lib.concatStringsSep " " cards}
+      ${check} shell Surface.qml
+      ${check} ${surfaces} ${lib.concatStringsSep " " cards}
       touch $out
     '';
 

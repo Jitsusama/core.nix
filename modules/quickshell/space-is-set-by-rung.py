@@ -1,19 +1,15 @@
 """Hold the shell's space to the theme's rungs (space-is-set-by-rung).
 
 Reads every QML file under the modules folder given, tests aside, and fails,
-naming each, on:
-
-- a space named by its step on the size scale (Theme.space.l), where a rung
-  says the level of structure it sits between (Theme.space.rung.items), the
-  beat (Theme.space.beat) or a level's pitch (Theme.level.note.pitch) belongs,
-  outside the files listed as not yet moved;
-- a listed file that no longer names a step, or that isn't there, so the list
-  only ever shrinks.
+naming each, on a space named by its step on the size scale (Theme.space.l),
+where a rung says the level of structure it sits between
+(Theme.space.rung.items), the beat (Theme.space.beat) or a level's pitch
+(Theme.level.note.pitch) belongs.
 
 A step says how big a space is, and a rung why it's there, so two levels of
 structure can't end up sharing one step (docs/design.md, Space).
 
-Usage: space-is-set-by-rung.py MODULES UNMOVED
+Usage: space-is-set-by-rung.py MODULES
 """
 
 import re
@@ -39,34 +35,14 @@ def steps(path: Path, name: str) -> list[str]:
     ]
 
 
-def listed(unmoved: Path) -> set[str]:
-    """Read the files the list names, by their path under the modules folder."""
-    names = (line.split("#")[0].strip() for line in unmoved.read_text().splitlines())
-    return {name for name in names if name}
-
-
-def main(modules: Path, unmoved: Path) -> int:
+def main(modules: Path) -> int:
     """Check every file, printing what strays, and answer 1 if any does."""
-    allowed = listed(unmoved)
     stray: list[str] = []
-    stale: list[str] = []
     for path in sorted(modules.rglob("*.qml")):
         relative = path.relative_to(modules)
         if "tests" in relative.parts:
             continue
-        name = relative.as_posix()
-        found = steps(path, name)
-        if name not in allowed:
-            stray.extend(found)
-        elif not found:
-            stale.append(
-                f"{name} is listed as not yet moved but names no step; take it off {unmoved.name}."
-            )
-    stale.extend(
-        f"{name} is listed in {unmoved.name} but isn't there."
-        for name in sorted(allowed)
-        if not (modules / name).is_file()
-    )
+        stray.extend(steps(path, relative.as_posix()))
     for line in stray:
         print(line)
     if stray:
@@ -74,10 +50,8 @@ def main(modules: Path, unmoved: Path) -> int:
             "The lines above name a space by its step; name the rung it sits between, as "
             "Theme.space.rung.items, the beat or a level's pitch (docs/design.md, Space)."
         )
-    for line in stale:
-        print(line)
-    return 1 if stray or stale else 0
+    return 1 if stray else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2])))
+    sys.exit(main(Path(sys.argv[1])))
