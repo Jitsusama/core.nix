@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# Sets the power profile for the charger and the battery: performance on mains
-# power where the daemon offers it, balanced on battery, and power saver once
+# Sets the power profile for the charger and the battery: performance on the
+# charger where the daemon offers it, balanced on battery, and power saver once
 # the battery falls below UPower's low mark. On battery it stays in power saver
 # even if the reading climbs back over the mark, so a battery hovering there
 # can't flick the profile back and forth, until the charger is back. It acts
@@ -45,7 +45,7 @@ active() {
 }
 
 wanted() {
-  if [ "$1" = mains ]; then
+  if [ "$1" = charger ]; then
     # Without the firmware's or the CPU's support, the daemon offers no
     # performance profile, and asking for one fails.
     if busctl --system get-property "${daemon[@]}" Profiles |
@@ -69,7 +69,7 @@ refused() {
 }
 
 follow() {
-  local supply=mains now error
+  local supply=charger now error
   on_battery && supply=battery
   now=$(wanted "$supply")
   [ "$now" = "$last" ] && return
@@ -86,7 +86,7 @@ follow() {
   if [ "$supply" = battery ]; then
     echo "power profile: $now, the battery at $(percentage)%"
   else
-    echo "power profile: $now, on mains power"
+    echo "power profile: $now, on the charger"
   fi
   last=$now
   refusing=

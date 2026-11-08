@@ -2,7 +2,7 @@
 // machine didn't choose is a mode he set and might forget, so Now lists it
 // among the modes that are on and the margin wears its glyph. The machine
 // chooses for itself as the charger and the battery change, performance on
-// mains and balanced or power saver on battery, and says what it chose in
+// the charger and balanced or power saver on battery, and says what it chose in
 // /run/power-profile/wanted (modules/power-profiles-daemon/follow.sh), so
 // its own choice says nothing however it reads (Joel, 2026-10-28: "why is
 // power profile in now?"). Without that file, as where nothing follows the

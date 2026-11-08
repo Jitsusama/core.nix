@@ -1,6 +1,6 @@
 # power-profiles-daemon, which sets how hard the CPU and the firmware run:
 # performance, balanced or power saver. The profile follows the charger:
-# performance on mains power where the machine has that profile, and balanced on
+# performance on the charger where the machine has that profile, and balanced on
 # battery, which the daemon itself leans towards battery life. Below UPower's
 # low mark, 20%, it goes to power saver until the charger is back (follow.sh
 # says how). A profile picked by hand
@@ -68,7 +68,7 @@ in
     systemd.services.${service} = {
       description = "Set the power profile for the charger and the battery";
       # UPower says whether the machine is on battery; asked before it's up,
-      # the answer would read as mains power.
+      # the answer would read as the charger.
       after = [
         "power-profiles-daemon.service"
         "upower.service"

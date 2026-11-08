@@ -1,7 +1,7 @@
 # Battery Stand-Ins
 
 Stand-ins for the programs a service that follows the battery talks to,
-so a check proves which calls it makes on battery and on mains without a
+so a check proves which calls it makes on battery and on the charger without a
 battery or a desktop. The panel's refresh rate and the power profile are
 checked this way, from their modules' checks.
 
