@@ -454,12 +454,13 @@ pub struct Words {
 }
 
 impl Words {
-    /// What a rung timer's notice says: its name, then what it was.
+    /// What a rung timer's notice says: its name, starting with a capital
+    /// as the launcher's row names it, then what it was.
     pub fn notice(&self, timer: &Timer) -> (String, String) {
-        let name = if timer.name.is_empty() {
-            self.unnamed.clone()
-        } else {
-            timer.name.clone()
+        let mut letters = timer.name.chars();
+        let name = match letters.next() {
+            Some(first) => first.to_uppercase().chain(letters).collect(),
+            None => self.unnamed.clone(),
         };
         let late = matches!(timer.standing, Standing::Rung { late: true, .. });
         let said = if late { &self.late } else { &self.rang };
@@ -680,7 +681,7 @@ mod tests {
         held.due(10 * MINUTE);
         assert_eq!(
             words.notice(&held.timers[1]),
-            ("tea".to_owned(), "10 min timer".to_owned())
+            ("Tea".to_owned(), "10 min timer".to_owned())
         );
         held.due(100 * MINUTE);
         assert_eq!(

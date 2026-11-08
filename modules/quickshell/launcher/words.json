@@ -4823,8 +4823,8 @@
         "rung": "rang {clock}",
         "late": "rang late, {clock}",
         "done": "done",
-        "start": "start {name}, {span}",
-        "startUnnamed": "start a timer, {span}",
+        "start": "Start {name}, a {span} Timer",
+        "startUnnamed": "Start a {span} Timer",
         "unfit": "A timer counts more than nothing and a week at most.",
         "away": "The timers aren't answering.",
         "hours": "h",
@@ -4854,7 +4854,7 @@
     {
       "id": "verb:timer:again",
       "in": "timer",
-      "name": "Again",
+      "name": "Start Again",
       "verb": "start",
       "glyph": "timer"
     },
@@ -4869,7 +4869,7 @@
       "id": "verb:timer:end",
       "command": "delete",
       "in": "timer",
-      "name": "End It",
+      "name": "End",
       "verb": "end",
       "glyph": "close",
       "act": "ending",

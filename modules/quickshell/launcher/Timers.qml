@@ -1,6 +1,6 @@
 // Joel's timers, a collection in Desktop beside the clipboard, and the
-// typed command that starts one: "timer 10m tea" answers "start tea, 10
-// min", and Return starts it, the launcher staying while the answer turns
+// typed command that starts one: "timer 10m tea" answers "Start Tea, a 10
+// min Timer", its name first as its row reads, and Return starts it, the launcher staying while the answer turns
 // into that timer counting down. The timers daemon keeps them and rings
 // each as a notice itself (timers/src/main.rs), so a timer rings with the
 // launcher closed and through a restart of the shell; HeldTimers.qml holds
@@ -10,13 +10,12 @@
 // second while the launcher shows it, and how it stands below: what it
 // counts and when it ends, paused, or when it rang. Return pauses a
 // running one and resumes a paused one, the launcher staying, and sets a
-// rung one going again, since that ends nothing; d ends it, as End It
+// rung one going again, since that ends nothing; d ends it, as End
 // does inside, and u sets it going again with what it had left. Inside
-// are Pause or Resume, Again, Add a Minute, End It and Copy the Time Left
-// (Y2YBTS, 2026-11-07, for VKCF3Z).
+// are Pause or Resume, Start Again, Add a Minute, End and Copy the Time
+// Left (Y2YBTS and VKCF3Z, 2026-11-07).
 pragma ComponentBehavior: Bound
 import qs
-import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Timing.js" as Timing
@@ -50,9 +49,15 @@ Provider {
         return Qt.formatTime(new Date(at), "HH:mm");
     }
 
-    // A timer's name, its own or the vocabulary's for one with none.
+    // A timer's name, its own or the vocabulary's for one with none. Its
+    // own starts with a capital, as a row's name does, however it was
+    // typed (VKCF3Z, 2026-11-07: "Start Tea").
     function named(record) {
-        return record.name !== "" ? record.name : Words.name("timer");
+        return record.name !== "" ? capitalised(record.name) : Words.name("timer");
+    }
+
+    function capitalised(name) {
+        return name.charAt(0).toUpperCase() + name.slice(1);
     }
 
     // What it says beside its name, now.
@@ -171,7 +176,7 @@ Provider {
         return rows;
     }
 
-    // What d and y take of a timer, as plain fields: End It, which u takes
+    // What d and y take of a timer, as plain fields: End, which u takes
     // back by setting it going again with what it had left, and Copy the
     // Time Left.
     function operands(record) {
@@ -215,7 +220,7 @@ Provider {
     }
 
     // What's typed after "timer", read, or null for anything else.
-    function asked(typed) {
+    function typedTimer(typed) {
         const text = String(typed ?? "");
         if (!text.toLowerCase().startsWith(start))
             return null;
@@ -228,7 +233,7 @@ Provider {
     property var started: ({ typed: "", key: "" })
 
     function answer(typed) {
-        const asking = asked(typed);
+        const asking = typedTimer(typed);
         if (asking === null)
             return null;
         const kept = started.typed === typed ? HeldTimers.timer(started.key) : null;
@@ -239,7 +244,7 @@ Provider {
         const span = Timing.said(asking.span, units);
         return {
             headline: (asking.name !== "" ? said.start ?? "" : said.startUnnamed ?? "")
-                .replace("{name}", asking.name).replace("{span}", span),
+                .replace("{name}", capitalised(asking.name)).replace("{span}", span),
             verb: Words.command("command:timer").verb,
             stays: true,
             copy: "",

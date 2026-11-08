@@ -295,7 +295,7 @@ fn a_timer_started_is_watched_and_rings_as_a_notice_that_stays() {
     waits_for(|| !server.shown.lock().unwrap().is_empty());
     let shown = server.shown.lock().unwrap()[0].clone();
     assert_eq!(shown.app, "Timers");
-    assert_eq!(shown.summary, "tea");
+    assert_eq!(shown.summary, "Tea");
     assert_eq!(shown.body, "1 s timer");
     assert_eq!(shown.actions, vec!["again", "Again"]);
     assert_eq!(shown.urgency, Some(2));
@@ -398,7 +398,10 @@ fn what_is_kept_outlasts_the_daemon_and_one_ended_meanwhile_rings_late() {
     assert_eq!(records[2]["late"], true);
     waits_for(|| server.shown.lock().unwrap().len() == 1);
     assert_eq!(server.shown.lock().unwrap()[0].body, "6 s timer, rang late");
-    // Said once, so a daemon started again after it rang says it no more.
+    // Said once, so a daemon started again after it rang says it no more,
+    // once it has kept that it said it: one stopped between the two says
+    // it again, as a notice once too often beats one never said.
+    waits_for(|| std::fs::read_to_string(&kept).is_ok_and(|text| text.contains(r#""told":true"#)));
     running.stop();
     let running = Running::start(&folder, &bus);
     let mut client = running.client();

@@ -1,7 +1,7 @@
 """The desktop test's opens and sets area.
 
 Here the launcher opens and sets what the machine has: sound and its outputs' parts, the
-power profile, displays, Wi-Fi and the addresses.
+power profile, displays, Wi-Fi, the addresses and Joel's timers.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -1600,6 +1600,82 @@ def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
     )
     assert reads(desktop.showing())[:2] == ["In \u00b7 none", "Out \u00b7 none"]
     desktop.close_launcher()
+
+
+# Where the timers daemon keeps its timers, in the account's state.
+TIMERS_KEPT = "~/.local/state/timers/held.json"
+# The timers the gallery shows: one left running, one paused, one rung.
+TIMERS_SHOWN = ("timer 25m bread", "timer 10m tea", "timer 1s eggs")
+
+
+def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
+    desktop: Desktop,
+) -> None:
+    """A timer typed in the launcher rings as a notice with it closed, and putting it away ends it.
+
+    The timers daemon keeps it, so it rings without the launcher, and the notice is its own over
+    D-Bus; the notice put away tells the daemon, which lets the timer go. Its gallery holds
+    Timers with one running, one paused and one rung, at both of Joel's scales.
+    """
+    machine = desktop.machine
+    desktop.answer("timer 3s tea")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Start Tea, a 3 s Timer"
+    )
+    desktop.photograph("launcher-timer-typed")
+    # Return from the find lands on it, since it starts something, and a second does it, the
+    # answer becoming the timer it started, counting.
+    desktop.land()
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("name")).startswith("Tea \u00b7 ")
+    )
+    desktop.close_launcher()
+    rang = 'qs ipc call notices front | grep -qF \'"signed":"Timers"\''
+    machine.wait_until_succeeds(desktop.in_session(rang), timeout=timedelta(seconds=30))
+    kept = desktop.as_account(f"cat {TIMERS_KEPT}")
+    assert '"state":"rung"' in kept, kept
+    desktop.as_account("qs ipc call notices putAway")
+    gone = f"! grep -q timer: {TIMERS_KEPT}"
+    machine.wait_until_succeeds(desktop.in_session(gone), timeout=timedelta(seconds=15))
+    desktop.as_account("qs ipc call notices seen")
+    # Only the gallery sets more going, for its pictures.
+    if desktop.values["photographs"]:
+        timers_photographed(desktop)
+
+
+def timers_photographed(desktop: Desktop) -> None:
+    """Photograph Timers holding one running, one paused and one rung, at Joel's two scales."""
+    machine = desktop.machine
+    for typed in TIMERS_SHOWN:
+        desktop.answer(typed)
+        desktop.land()
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: " \u00b7 " in str((shown["selected"] or {}).get("name"))
+        )
+        desktop.close_launcher()
+    desktop.as_account("qs ipc call notices putAway || true")
+    desktop.as_account("qs ipc call launcher collection timers")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
+    desktop.type_in("tea", selecting="Tea")
+    desktop.normal()
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: "paused" in str((shown["selected"] or {}).get("note")))
+    desktop.close_launcher()
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.as_account("qs ipc call launcher collection timers")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
+        desktop.photograph(f"launcher-timers-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
+    desktop.as_account("systemctl --user stop timers.service")
+    desktop.as_account(f"rm -f {TIMERS_KEPT}")
+    desktop.as_account("qs ipc call notices putAway || true")
+    desktop.as_account("qs ipc call notices seen")
 
 
 # A binding that throws or assigns the wrong type only warns, and
