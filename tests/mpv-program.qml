@@ -6,18 +6,20 @@
 // hand, and mpv-stopped by a script printing what it would. First, in
 // Qt's own engine, Mpv.js's cases: which copies are one address mpv plays,
 // a video site's page or a media file, and which aren't, how far into a
-// file is said, which files were watched whole, and the lines mpv-stopped
-// prints, read.
+// file is said, which files were watched whole, the lines mpv-stopped
+// prints, read, and what mpv kept of a file, ordered and said.
 //
 // Then mpv's Recent: what an mpv plays now listed above it and not in it,
 // then each file mpv left merged by when it left it, newest first, with
 // the list programs share, which gives no times, after them, each file
 // listed once, the shared list's own row giving way to mpv's. One stopped
-// part way says "12:04 of 41:10" as its note and Return resumes it, with
-// Resume, saying from where, Play From the Start and Copy the Path inside;
-// one watched whole says its length and Return plays it from its start.
-// Each one's drawer says when mpv left it and how far. mpv-stopped is run
-// once mpv is stepped into, never before, once each opening.
+// part way says "12:04 of 41:10 · 12 min ago" beside it and Return
+// resumes it, with Resume, saying from where, Play From the Start and Copy
+// the Path inside; one watched whole says its length and when, and Return
+// plays it from its start. Each one's drawer says where it is and its
+// kind, then how much is still to play, what mpv kept, its size and its
+// path, in the Name face. mpv-stopped is run once mpv is stepped into,
+// never before, once each opening.
 //
 // And Play the Copied Link: there only while what was copied is one address
 // mpv plays, after New Window Below, saying its site, found from the top
@@ -224,12 +226,43 @@ ShellRoot {
         for (const [seconds, said] of clocks)
             same(`${seconds} seconds in`, Mpv.clock(seconds), said);
 
-        const read = Mpv.stopped(["/a.mkv\t724.5\t2470.2\t1700000000", "relative.mkv\t1\t2\t3",
-            "/b.mkv\t\t60\t1700000000", "/c.mkv\t5\tN/A\t1700000000", "/d.mkv\t5\t60"]);
-        same("only whole lines are read", JSON.stringify(read),
-            JSON.stringify([{ path: "/a.mkv", start: 724.5, length: 2470.2, at: 1700000000000 }]));
-        same("where it stopped", Mpv.where(read[0], "{at} of {length}"), "12:04 of 41:10");
+        const read = Mpv.stopped([
+            "/a.mkv\t724.5\t2470.2\t1700000000\t1234567890\tvideo\tspeed=1.500000\tvf=%9%lavfi=[x]",
+            "relative.mkv\t1\t2\t3\t4\tvideo", "/b.mkv\t\t60\t1700000000\t4\tvideo",
+            "/c.mkv\t5\tN/A\t1700000000\t4\tvideo", "/d.mkv\t5\t60\t1700000000",
+            "/e.mkv\t5\t60\t1700000000\t4\tpicture", "/f.mkv\t5\t60\t1700000000\t\taudio"]);
+        same("only whole lines are read, with what mpv kept", JSON.stringify(read),
+            JSON.stringify([{ path: "/a.mkv", start: 724.5, length: 2470.2, at: 1700000000000,
+                size: 1234567890, kind: "video", kept: [{ option: "speed", value: "1.500000" },
+                    { option: "vf", value: "%9%lavfi=[x]" }] }]));
         same("still to play", Mpv.clock(Mpv.toGo(read[0])), "29:05");
+
+        // [when it was left, before now, in seconds, as its side says it]
+        const words = mpv.words;
+        const sides = [[30, "12:04 of 41:10 \u00b7 just now"],
+            [720, "12:04 of 41:10 \u00b7 12\u00a0min ago"]];
+        for (const [before, said] of sides)
+            same(`its side, left ${before} s ago`,
+                Mpv.side(Object.assign({}, read[0], { at: root.now - before * 1000 }), root.now,
+                    words), said);
+        same("one watched whole says its length and when",
+            Mpv.side({ start: 60, length: 60, at: root.now }, root.now, words),
+            "1:00 \u00b7 just now");
+
+        // What mpv kept, out of its order, as the drawer orders it.
+        const kept = ["sub-delay", "sid", "speed", "aid", "volume"]
+            .map(option => ({ option, value: "1" }));
+        same("speed, volume and the tracks first, then the rest",
+            Mpv.kept({ kept }).map(each => each.option).join(" "),
+            "speed volume aid sid sub-delay");
+        // [its option, as mpv wrote it, as the drawer says it]
+        const values = [["speed", "1.500000", "1.5\u00d7"], ["speed", "2.000000", "2\u00d7"],
+            ["volume", "80.000000", "80%"], ["volume", "33.333333", "33.333%"],
+            ["aid", "no", "off"], ["sid", "2", "2"], ["sid", "auto", "auto"],
+            ["sub-delay", "-0.500000", "-0.5"], ["mute", "yes", "yes"],
+            ["vf", "%9%lavfi=[x]", "lavfi=[x]"]];
+        for (const [option, value, said] of values)
+            same(`${option}=${value} as said`, Mpv.keptValue({ option, value }, words.said), said);
         // [where it stopped, its length, whether that's watched whole]
         const ends = [[724.5, 2470.2, false], [2469.1, 2470.2, false], [2469.7, 2470.2, true],
             [60, 60, true]];
@@ -264,15 +297,24 @@ ShellRoot {
             same("so does mpv's row", program("mpv").note, "1 open \u00b7 4 recent");
 
             const [long, talk, song, clip] = files;
-            same("where it stopped, as its note", talk.note, "12:04 of 41:10");
-            same("its folder beside it", talk.side, "~/Videos");
-            same("past an hour", long.note, "1:02:03 of 1:40:00");
+            same("where it stopped, its length and when, beside it", talk.side,
+                "12:04 of 41:10 \u00b7 12\u00a0min ago");
+            same("and nothing again under it", talk.note ?? "", "");
+            same("past an hour", long.side, "1:02:03 of 1:40:00 \u00b7 10\u00a0min ago");
             same("Return resumes it", talk.verb, "resume");
-            expect("when it was left, to be ordered by", Math.abs(talk.at - (root.now - 7200000))
+            expect("when it was left, to be ordered by", Math.abs(talk.at - (root.now - 720000))
                 < 1, talk.at);
-            same("its drawer says when", talk.drawer.eyebrow, "stopped 2 h ago");
-            same("and how far", facts(talk),
-                "Stopped At 12:04, Still to Play 29:05, Length 41:10");
+            same("its drawer says where it is and its kind", talk.drawer.eyebrow,
+                "in ~/Videos \u00b7 video");
+            same("as written, since its folder is a name", talk.drawer.eyebrowNames, true);
+            same("then what's still to play, what mpv kept, its size and its path", facts(talk),
+                "Still to Play 29:05, Speed 1.5\u00d7, Volume 80%, Audio 2, Subtitles off, "
+                + "sub-delay 0.5, Size 1.2\u00a0GB, Path ~/Videos/talk.mkv");
+            same("its path marked an identifier", JSON.stringify(talk.drawer.facts.map(fact =>
+                fact.identifies === true)), JSON.stringify([false, false, false, false, false, false,
+                false, true]));
+            same("one mpv kept nothing more of", facts(long),
+                "Still to Play 37:57, Size 5.0\u00a0MB, Path ~/Videos/long.mkv");
             talk.run();
             same("Return resumes", JSON.stringify(Niri.spawned),
                 JSON.stringify(Mpv.play(`${root.videos}/talk.mkv`, false)));
@@ -286,9 +328,12 @@ ShellRoot {
                 JSON.stringify(Mpv.play(`${root.videos}/talk.mkv`, true)));
 
             same("one watched whole says play", song.verb, "play");
-            same("and its length", song.note, "41:10");
-            same("its drawer says when it was watched", song.drawer.eyebrow, "watched 2 d ago");
-            same("and how long it is", facts(song), "Length 41:10");
+            same("and its length and when", song.side,
+                `41:10 \u00b7 ${Qt.formatDate(new Date(root.now - 172800000), "dddd")}`);
+            same("its drawer the same shape, audio alone", song.drawer.eyebrow,
+                "in ~/Videos \u00b7 audio");
+            same("with nothing still to play", facts(song),
+                "Volume 50%, Size 940\u00a0kB, Path ~/Videos/song.mkv");
             same("inside, only from the start", names(song.verbs()),
                 "Play From the Start, Copy the Path");
             song.run();

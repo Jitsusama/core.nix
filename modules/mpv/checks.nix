@@ -28,10 +28,13 @@ onLinux {
   # clipboard over a wl-paste that says nothing, and mpv-stopped by a
   # script that counts its runs: its Recent merges each file mpv left by
   # when, newest first, with the shared list's, each once, none open now;
-  # one stopped part way says "12:04 of 41:10" and Return resumes it, one
-  # watched whole says play; each listed once mpv is stepped into, once an
-  # opening; and Play the Copied Link only while the copy is one address
-  # mpv plays, whose cases Mpv.js's own are, run first in Qt's engine.
+  # one stopped part way says "12:04 of 41:10 · 12 min ago" beside it and
+  # Return resumes it, one watched whole says its length and when and
+  # play; each drawer says where it is and its kind, what's still to play,
+  # what mpv kept, its size and its path; each listed once mpv is stepped
+  # into, once an opening; and Play the Copied Link only while the copy is
+  # one address mpv plays, whose cases Mpv.js's own are, run first in Qt's
+  # engine.
   the-launcher-plays-on-where-mpv-stopped =
     let
       home = account graphical;
@@ -89,6 +92,8 @@ onLinux {
       cp ${../quickshell/Fuzzy.js} Fuzzy.js
       cp ${../quickshell/Words.qml} Words.qml
       cp ${../quickshell/Files.qml} Files.qml
+      cp ${../quickshell/FileFacts.js} FileFacts.js
+      cp ${../quickshell/When.js} When.js
       ${lib.concatMapStrings (file: ''
         cp ${launcher + "/${file}"} launcher/${file}
       '') launched}
@@ -116,16 +121,20 @@ onLinux {
         printf '5151\t%s\n' "$HOME/Videos/now.mkv"
       ''}
       # What mpv-stopped prints, newest first: what plays now, two files
-      # stopped part way, one watched whole two days ago, and a line it
-      # never would, counting each run.
+      # stopped part way, the second kept played faster, louder, on its
+      # second sound and without its words, one of sound alone watched
+      # whole two days ago, and a line it never would, counting each run.
       export STOPPED_LIST=${pkgs.writeShellScript "stopped-list" ''
         echo $(( $(cat "$HOME/listed" 2> /dev/null || echo 0) + 1 )) > "$HOME/listed"
-        printf '%s\t%s\t%s\t%s\n' \
-          "$HOME/Videos/now.mkv" 30 600 $((NOW - 60)) \
-          "$HOME/Videos/long.mkv" 3723 6000 $((NOW - 600)) \
-          "$HOME/Videos/talk.mkv" 724.5 2470.2 $((NOW - 7200)) \
-          "$HOME/Videos/song.mkv" 2469.7 2470.2 $((NOW - 172800)) \
-          "Videos/half.mkv" 1 2 3
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+          "$HOME/Videos/now.mkv" 30 600 $((NOW - 60)) 4000 video \
+          "$HOME/Videos/long.mkv" 3723 6000 $((NOW - 600)) 5000000 video
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+          "$HOME/Videos/talk.mkv" 724.5 2470.2 $((NOW - 720)) 1234567890 video \
+          speed=1.500000 volume=80.000000 aid=2 sid=no sub-delay=0.500000
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+          "$HOME/Videos/song.mkv" 2469.7 2470.2 $((NOW - 172800)) 940000 audio volume=50.000000
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "Videos/half.mkv" 1 2 3 4 video
       ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -278,9 +287,11 @@ onLinux {
   # provider runs it, reads what the account's mpv kept of clips it quit
   # part way through or at their end, as ZZ quits (stopped-test.sh): each
   # file it played on and the one held on its last frame, newest first, by
-  # its whole path, where it stopped, its length and when it was left,
-  # only the last read as watched whole, but no folder's redirect entry, no
-  # stream and no file deleted since, nine at most; and a
+  # its whole path, where it stopped, its length, when it was left, its
+  # size, whether it's a video or audio, and what mpv kept of it besides,
+  # its speed, volume and tracks among them, only the last read as watched
+  # whole, but no folder's redirect entry, no stream and no file deleted
+  # since, nine at most; and a
   # file started as Resume starts it plays on from where it stopped, and
   # as Play From the Start does, from its start. mpv and the lister are
   # given one folder.

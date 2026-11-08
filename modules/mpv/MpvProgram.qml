@@ -4,13 +4,15 @@
 // (Files.qml), keyed by its path as Applications keys a file, so the
 // same file from the list programs share is listed once, and dated by
 // when mpv left it (`at`), so Recent orders it among the rest, newest
-// first (Recent.js). One stopped part way says where as its note, as
-// "12:04 of 41:10", and Return resumes it, as mpv does by itself, with
-// Play From the Start inside; one watched whole says its length, and
-// Return plays it from its start, since resuming would land on its last
-// frame. Its drawer says when mpv left it and each figure of how far.
-// mpv-stopped (stopped.sh) lists them as mpv is stepped into, once each
-// time the launcher opens, never on a timer.
+// first (Recent.js). One stopped part way says beside it where, its
+// length and when, as "12:04 of 41:10 · just now", and Return resumes
+// it, as mpv does by itself, with Play From the Start inside; one watched
+// whole says its length and when, and Return plays it from its start,
+// since resuming would land on its last frame. Its drawer (Mpv.js's
+// plate) says where it is and its kind, how much is still to play, what
+// mpv kept for it, its size and its path. mpv-stopped (stopped.sh) lists
+// them as mpv is stepped into, once each time the launcher opens, never
+// on a timer.
 //
 // Its act Play the Copied Link is there only while what was copied last
 // is one address mpv plays (Copied.qml's `link`, narrowed by Mpv.js's
@@ -20,7 +22,6 @@
 import qs
 import Quickshell.Io
 import QtQuick
-import "Ago.js" as Ago
 import "Mpv.js" as Mpv
 
 Provider {
@@ -37,8 +38,14 @@ Provider {
     foundActs: link === "" ? [] : [{ program: provider.program, key: "verb:mpv:link" }]
 
     // The files mpv left, as mpv-stopped last listed them, each { path,
-    // start, length, at }.
+    // start, length, at, size, kind, kept }.
     property var stopped: []
+
+    // What its rows and drawers say, the launcher's words, and days and
+    // months as the locale names them, as the launcher says when
+    // everywhere (Y2YBTS, 2026-11-03).
+    readonly property var words: Mpv.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
 
     // Whether mpv's own step is held, from Programs or from the top, and
     // whether its files were read since the launcher opened.
@@ -112,9 +119,11 @@ Provider {
     }
 
     // One file mpv left, as its Recent's row: resumed where it stopped
-    // part way, or played from its start once watched whole.
+    // part way, or played from its start once watched whole. What the
+    // shared list's row says of it, its folder, its drawer's eyebrow says
+    // instead, so its side has room for where and when.
     function leftRow(one) {
-        const said = Words.of("verb:mpv:on").said ?? {};
+        const said = words.said;
         const whole = Mpv.whole(one);
         const again = act("verb:mpv:start", one, {
             run: () => Niri.spawn(Mpv.play(one.path, true))
@@ -124,18 +133,15 @@ Provider {
             run: () => Niri.spawn(Mpv.play(one.path, false))
         });
         const row = Files.file(one.path, thing, whole ? [again] : [on, again]);
-        const ago = Ago.ago(one.at, Date.now());
-        const figure = (id, seconds) => ({ label: Words.name(id), value: Mpv.clock(seconds) });
+        const shown = {
+            name: row.name,
+            folder: Files.within(one.path),
+            path: Files.shown(one.path)
+        };
         return Object.assign(row, {
-            note: Mpv.where(one, whole ? said.whole : said.stopped),
+            side: Mpv.side(one, Date.now(), words),
             at: one.at,
-            drawer: {
-                eyebrow: ((whole ? said.watched : said.left) ?? "").replace("{ago}", ago),
-                title: row.name,
-                facts: (whole ? [] : [figure("mpv:stopped:at", one.start),
-                    figure("mpv:stopped:to-go", Mpv.toGo(one))])
-                    .concat([figure("mpv:stopped:length", one.length)])
-            }
+            drawer: Mpv.plate(one, shown, words)
         });
     }
 }

@@ -7240,17 +7240,19 @@
       "verb": "resume",
       "glyph": "resume",
       "said": {
-        "stopped": "{at} of {length}",
-        "whole": "{length}",
+        "stopped": "{at} of {length} \u00b7 {when}",
+        "whole": "{length} \u00b7 {when}",
         "from": "from {at}",
-        "left": "stopped {ago}",
-        "watched": "watched {ago}"
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "video": "video",
+        "audio": "audio",
+        "speed": "{figure}\u00d7",
+        "volume": "{figure}%",
+        "off": "off",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday"
       }
-    },
-    {
-      "id": "mpv:stopped:at",
-      "in": "verb:mpv:on",
-      "name": "Stopped At"
     },
     {
       "id": "mpv:stopped:to-go",
@@ -7258,9 +7260,34 @@
       "name": "Still to Play"
     },
     {
-      "id": "mpv:stopped:length",
+      "id": "mpv:stopped:speed",
       "in": "verb:mpv:on",
-      "name": "Length"
+      "name": "Speed"
+    },
+    {
+      "id": "mpv:stopped:volume",
+      "in": "verb:mpv:on",
+      "name": "Volume"
+    },
+    {
+      "id": "mpv:stopped:audio",
+      "in": "verb:mpv:on",
+      "name": "Audio"
+    },
+    {
+      "id": "mpv:stopped:subtitles",
+      "in": "verb:mpv:on",
+      "name": "Subtitles"
+    },
+    {
+      "id": "mpv:stopped:size",
+      "in": "verb:mpv:on",
+      "name": "Size"
+    },
+    {
+      "id": "mpv:stopped:path",
+      "in": "verb:mpv:on",
+      "name": "Path"
     },
     {
       "id": "verb:mpv:start",

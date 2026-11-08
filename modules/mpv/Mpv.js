@@ -2,8 +2,12 @@
 // from Quickshell's types so tests/mpv-program.qml runs it in Qt's own
 // engine: whether what was copied is one address mpv plays, how far into a
 // file mpv stopped, said in words, the files mpv-stopped lists (stopped.sh),
-// which of them were watched whole, and the commands that play each.
+// which of them were watched whole, what each one's row says beside it and
+// its drawer's plate, and the commands that play each. A file's size and
+// when it was left are said as the launcher says them of any file
+// (FileFacts.js), so a file reads alike in mpv's Recent and the chooser.
 .pragma library
+.import "../FileFacts.js" as FileFacts
 
 // The sites whose pages are something to watch or hear, by host, each with
 // the paths that are one, its query after it, so a site's front page and
@@ -49,6 +53,18 @@ const MILLISECONDS = 1000;
 // watched by the same second.
 const END = 1;
 
+// What mpv kept that the drawer says first, in this order, as Joel looks
+// for them: how fast and how loud it played, and its audio and subtitle
+// tracks. Any other option mpv kept follows them, in mpv's own order.
+const FIRST = ["speed", "volume", "aid", "sid"];
+
+// A figure as mpv writes an option's, "1.500000", and the length mpv may
+// put before a value it quotes, "%3%no,".
+const FIGURE = /^-?\d+(?:\.\d+)?$/;
+const QUOTED = /^%\d+%/;
+// The most decimals a figure mpv kept is said with.
+const DECIMALS = 3;
+
 // An address's host, as its site is known by.
 function siteOf(host) {
     return host.toLowerCase().replace(LEADING, "");
@@ -90,24 +106,43 @@ function clock(seconds) {
     return `${said}:${rest}`;
 }
 
+// What mpv kept of a file besides where it stopped, each `option=value`
+// as mpv wrote it: { option, value } each, an option split from its value
+// at the first =, since a filter's value may hold one of its own.
+function options(parts) {
+    const read = [];
+    for (const part of parts) {
+        const at = part.indexOf("=");
+        if (at > 0) {
+            read.push({ option: part.slice(0, at), value: part.slice(at + 1) });
+        }
+    }
+    return read;
+}
+
 // The files mpv-stopped printed, a line each: the file's whole path, where
-// it stopped and how long it is, both in seconds, and when mpv left it, in
-// seconds since 1970, a tab between each. Each is { path, start, length,
-// at }, `at` in milliseconds, as the shell keeps a moment; a line that
-// doesn't read so is passed over.
+// it stopped and how long it is, both in seconds, when mpv left it, in
+// seconds since 1970, its size in bytes, whether it's a video or audio,
+// and each option mpv kept for it, a tab between each. Each is { path,
+// start, length, at, size, kind, kept }, `at` in milliseconds, as the
+// shell keeps a moment, and `kept` its options; a line that doesn't read
+// so is passed over.
 function stopped(lines) {
     const read = [];
     for (const line of lines) {
-        const [path, start, length, at] = line.split("\t");
+        const [path, start, length, at, size, kind, ...rest] = line.split("\t");
         const one = {
             path,
             start: Number(start),
             length: Number(length),
-            at: Number(at) * MILLISECONDS
+            at: Number(at) * MILLISECONDS,
+            size: Number(size),
+            kind,
+            kept: options(rest)
         };
-        const figures = [start, length, at].every(part => (part ?? "") !== "")
-            && [one.start, one.length, one.at].every(Number.isFinite);
-        if (path.startsWith("/") && figures) {
+        const figures = [start, length, at, size].every(part => (part ?? "") !== "")
+            && [one.start, one.length, one.at, one.size].every(Number.isFinite);
+        if (path.startsWith("/") && figures && (kind === "video" || kind === "audio")) {
             read.push(one);
         }
     }
@@ -125,13 +160,98 @@ function toGo(one) {
     return Math.max(0, one.length - one.start);
 }
 
-// Where a file stopped, or for one watched whole its length, as its row's
-// note says it, by the launcher's words for each (`said`, words.json's
-// "{at} of {length}" and "{length}"): "12:04 of 41:10".
-function where(one, said) {
+// The words mpv's rows and drawers say, each thing's as `of` gives it, as
+// Words.of does, and a day's as `date(date, format)` says it, as
+// Qt.formatDate names days and months in the locale's words: what Resume's
+// entry says (`said`), the labels of a plate's facts, and the words a
+// moment is said in, as FileFacts.when takes them.
+function wordsOf(of, date) {
+    const said = of("verb:mpv:on").said ?? {};
+    const name = id => of(id).name ?? "";
+    return {
+        said,
+        toGo: name("mpv:stopped:to-go"),
+        labels: {
+            speed: name("mpv:stopped:speed"),
+            volume: name("mpv:stopped:volume"),
+            aid: name("mpv:stopped:audio"),
+            sid: name("mpv:stopped:subtitles")
+        },
+        size: name("mpv:stopped:size"),
+        path: name("mpv:stopped:path"),
+        when: {
+            ago: { now: said.now, minutes: said.minutes },
+            days: { yesterday: said.yesterday, date }
+        }
+    };
+}
+
+// What a file's row says beside its name: where it stopped, its length
+// and when mpv left it, "12:04 of 41:10 · just now", or for one
+// watched whole its length and when, "41:10 · Friday", by the
+// launcher's words for each (words.json's "stopped" and "whole"); `now`
+// in milliseconds. Its folder is the drawer's eyebrow's instead.
+function side(one, now, words) {
+    const said = whole(one) ? words.said.whole : words.said.stopped;
     return String(said ?? "")
         .replace("{at}", clock(one.start))
-        .replace("{length}", clock(one.length));
+        .replace("{length}", clock(one.length))
+        .replace("{when}", FileFacts.when(one.at, now, words.when));
+}
+
+// What mpv kept of a file, the drawer's FIRST ones before the rest, each
+// group in the order mpv wrote it.
+function kept(one) {
+    const first = (one.kept ?? []).filter(each => FIRST.includes(each.option))
+        .sort((mine, theirs) => FIRST.indexOf(mine.option) - FIRST.indexOf(theirs.option));
+    return first.concat((one.kept ?? []).filter(each => !FIRST.includes(each.option)));
+}
+
+// A kept option's value as the drawer says it: a figure without mpv's
+// trailing zeros, a speed as so many times ("1.5×") and a volume as
+// a share ("80%"), by the words' "speed" and "volume", a track turned
+// off as "off", and anything else as mpv wrote it, less any length mpv
+// quoted it by.
+function keptValue(each, said) {
+    const plain = String(each.value ?? "").replace(QUOTED, "");
+    const figure = FIGURE.test(plain) ? String(Number(Number(plain).toFixed(DECIMALS))) : null;
+    if (figure !== null && (each.option === "speed" || each.option === "volume")) {
+        return String(said[each.option] ?? "{figure}").replace("{figure}", figure);
+    }
+    if ((each.option === "aid" || each.option === "sid") && plain === "no") {
+        return said.off ?? plain;
+    }
+    return figure ?? plain;
+}
+
+// A file's drawer, `shown` its name, its folder and its path as the
+// launcher shows them (Files.qml): its eyebrow where it is and then its
+// kind, "in ~/Videos · video", as written, since a folder is the
+// world's name, never its state or when, which its row's side says; its
+// name; then how much is still to play, for one stopped part way, since
+// that moves most; what mpv kept, each under mpv's own name where the
+// words give it none; its size; and its path last, an identifier, in the
+// Name face (VKCF3Z, 2026-11-08). Where it stopped and its length are
+// its side's, so they aren't said again here.
+function plate(one, shown, words) {
+    const said = words.said;
+    const left = whole(one) ? [] : [{ label: words.toGo, value: clock(toGo(one)) }];
+    const asKept = kept(one).map(each => ({
+        label: words.labels[each.option] ?? each.option,
+        value: keptValue(each, said)
+    }));
+    return {
+        eyebrow: String(said.eyebrow ?? "").replace("{folder}", shown.folder)
+            .replace("{kind}", said[one.kind] ?? one.kind),
+        eyebrowNames: true,
+        title: shown.name,
+        facts: left.concat(asKept, [
+            { label: words.size, value: FileFacts.weighed(one.size) },
+            // An identifier, drawn in the Name face once the drawer sets one
+            // there (`identifies`, as Drive's id), in Figure until then.
+            { label: words.path, value: shown.path, identifies: true }
+        ])
+    };
 }
 
 // What plays a file or an address in a window of its own, as mpv's desktop
