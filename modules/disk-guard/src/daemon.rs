@@ -885,7 +885,9 @@ impl Guard {
             .iter()
             .filter(|(_, watched)| {
                 watched.band == Band::CriticallyFull
-                    && watched.rest.is_some_and(|rest| rest.band == Band::CriticallyFull)
+                    && watched
+                        .rest
+                        .is_some_and(|rest| rest.band == Band::CriticallyFull)
             })
             .find(|(device, _)| writes_on(&self.processes, writer.pid, **device))
             .map(|(_, watched)| (watched.path.clone(), watched.band))

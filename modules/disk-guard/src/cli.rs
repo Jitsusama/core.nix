@@ -179,9 +179,8 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             band: options
                 .text("--band")?
                 .map(|band| {
-                    serde_json::from_value(Value::String(band.clone())).map_err(|_| {
-                        format!("{band:?} is not a band: {BANDS}")
-                    })
+                    serde_json::from_value(Value::String(band.clone()))
+                        .map_err(|_| format!("{band:?} is not a band: {BANDS}"))
                 })
                 .transpose()?,
             pretend_free: options

@@ -296,7 +296,12 @@ fn a_pass_that_stalled_or_failed_says_so_plainly() {
     );
     let failed = status(
         &[("/", Band::NearlyFull, 60)],
-        Some(pass(1.0, Band::NearlyFull, "failed: reading space: gone", 0)),
+        Some(pass(
+            1.0,
+            Band::NearlyFull,
+            "failed: reading space: gone",
+            0,
+        )),
     );
     assert_eq!(
         shown(change(&before, &failed)).body,
