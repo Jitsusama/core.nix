@@ -1,22 +1,22 @@
 home · 15 speed tests · read 1 min 7 s ago
 
-                         lowest           mean        highest
-down  ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿  369.79 Mbit/s  369.87 Mbit/s  369.94 Mbit/s
-up    ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿   11.49 Mbit/s   12.00 Mbit/s   12.55 Mbit/s
+                      lowest        mean     highest
+down  ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿  370 Mb/s    370 Mb/s    370 Mb/s
+up    ⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿   11.5 Mb/s   12.0 Mb/s   12.6 Mb/s
 
-tested                                    down            up
-2026-11-05 05:52  2 d 12 h ago   369.86 Mbit/s  11.93 Mbit/s
-2026-11-03 10:51  4 d 7 h ago    369.79 Mbit/s  11.73 Mbit/s
-2026-11-01 05:52  6 d 12 h ago   369.91 Mbit/s  12.20 Mbit/s
-2026-10-28 04:52  10 d 13 h ago  369.88 Mbit/s  12.55 Mbit/s
-2026-10-26 04:53  12 d 13 h ago  369.91 Mbit/s  11.70 Mbit/s
-2026-10-24 04:52  14 d 13 h ago  369.88 Mbit/s  11.49 Mbit/s
-2026-10-23 04:53  15 d 13 h ago  369.92 Mbit/s  11.80 Mbit/s
-2026-10-18 04:52  20 d 13 h ago  369.83 Mbit/s  12.33 Mbit/s
-2026-10-14 04:52  24 d 13 h ago  369.85 Mbit/s  12.28 Mbit/s
-2026-10-11 04:52  27 d 13 h ago  369.94 Mbit/s  12.31 Mbit/s
-2026-10-06 04:52  32 d 13 h ago  369.90 Mbit/s  11.86 Mbit/s
-2026-10-03 04:52  35 d 13 h ago  369.85 Mbit/s  12.29 Mbit/s
-2026-09-30 04:52  38 d 13 h ago  369.80 Mbit/s  11.96 Mbit/s
-2026-09-28 04:53  40 d 13 h ago  369.84 Mbit/s  11.89 Mbit/s
-2026-09-24 04:53  44 d 13 h ago  369.90 Mbit/s  11.75 Mbit/s
+tested                               down         up
+2026-11-05 05:52  2 d 12 h ago   370 Mb/s  11.9 Mb/s
+2026-11-03 10:51  4 d 7 h ago    370 Mb/s  11.7 Mb/s
+2026-11-01 05:52  6 d 12 h ago   370 Mb/s  12.2 Mb/s
+2026-10-28 04:52  10 d 13 h ago  370 Mb/s  12.6 Mb/s
+2026-10-26 04:53  12 d 13 h ago  370 Mb/s  11.7 Mb/s
+2026-10-24 04:52  14 d 13 h ago  370 Mb/s  11.5 Mb/s
+2026-10-23 04:53  15 d 13 h ago  370 Mb/s  11.8 Mb/s
+2026-10-18 04:52  20 d 13 h ago  370 Mb/s  12.3 Mb/s
+2026-10-14 04:52  24 d 13 h ago  370 Mb/s  12.3 Mb/s
+2026-10-11 04:52  27 d 13 h ago  370 Mb/s  12.3 Mb/s
+2026-10-06 04:52  32 d 13 h ago  370 Mb/s  11.9 Mb/s
+2026-10-03 04:52  35 d 13 h ago  370 Mb/s  12.3 Mb/s
+2026-09-30 04:52  38 d 13 h ago  370 Mb/s  12.0 Mb/s
+2026-09-28 04:53  40 d 13 h ago  370 Mb/s  11.9 Mb/s
+2026-09-24 04:53  44 d 13 h ago  370 Mb/s  11.8 Mb/s

@@ -5,7 +5,7 @@
 use serde::Serialize;
 
 use super::clock::{self, Clock};
-use super::figures::{figure, said, switch, unknown};
+use super::figures::{rate, said, switch, unknown};
 use super::json::slice;
 use super::marks::marks;
 use super::text::{Line, Page, Role, plain, run};
@@ -78,8 +78,10 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
                 facts(vec![
                     state(internet.state.as_deref(), "connected"),
                     match internet.isp_up {
-                        Some(true) => vec![plain("ISP up")],
-                        Some(false) => vec![run(&marks().failed, Role::Alert), plain(" ISP down")],
+                        Some(true) => vec![plain("provider up")],
+                        Some(false) => {
+                            vec![run(&marks().failed, Role::Alert), plain(" provider down")]
+                        }
                         None => unknown(),
                     },
                     said(internet.isp.as_deref()),
@@ -104,7 +106,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
                     vec![plain(format!("{} on now", model.devices.len()))],
                     internet
                         .devices
-                        .map_or_else(unknown, |count| vec![plain(format!("eero counts {count}"))]),
+                        .map_or_else(unknown, |count| vec![plain(format!("{count} known"))]),
                 ]),
             ),
             ("speed test", speed_test(test, clock)),
@@ -147,9 +149,11 @@ fn state(said: Option<&str>, well: &str) -> Line {
 }
 
 /// A count of nodes in a state, marked in the state's role when there are
-/// any.
+/// any. A state only a trouble is in gives way when no node is in it, as
+/// docs/design.md has a count's part that's none do.
 fn counted(count: Option<u32>, state: &str, role: Role) -> Line {
     match count {
+        Some(0) if role != Role::Text => Vec::new(),
         Some(count) if count > 0 && role != Role::Text => {
             let mark = if role == Role::Alert {
                 &marks().failed
@@ -167,7 +171,7 @@ fn counted(count: Option<u32>, state: &str, role: Role) -> Line {
 pub fn speed_test(test: &SpeedTest, clock: &Clock) -> Line {
     let mbit = |value: Option<f64>, way: &str| match value {
         Some(mbps) => {
-            let mut line = figure(format!("{mbps:.2}"), "Mbit/s");
+            let mut line = rate(mbps);
             line.push(plain(format!(" {way}")));
             line
         }
