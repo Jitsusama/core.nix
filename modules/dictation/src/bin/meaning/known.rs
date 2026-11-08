@@ -72,6 +72,9 @@ pub struct Query {
     pub limit: usize,
     pub among: Among,
     pub told: Sender<String>,
+    /// The connection that asked, so a newer search from it, or its
+    /// closing, lets this one go.
+    pub connection: u64,
 }
 
 /// A picture in a folder looked through: where, when it was written, and
@@ -259,6 +262,22 @@ impl Known {
         found
     }
 
+    /// Lets go of the searches `connection` still waits on among the same,
+    /// as a newer one from it comes, since it typed on: each is answered
+    /// with nothing and as not whole, so the shell asks it again a moment
+    /// later should it be typed back.
+    fn passed_over(&mut self, connection: u64, among: Among) {
+        let (over, kept): (VecDeque<Query>, VecDeque<Query>) = self
+            .queries
+            .drain(..)
+            .partition(|query| query.connection == connection && query.among == among);
+        self.queries = kept;
+        for query in over {
+            let line = json!({"id": query.id, "records": [], "whole": false});
+            let _ = query.told.send(line.to_string());
+        }
+    }
+
     /// Answers a query with what it means.
     pub fn answer_query(&self, query: &Query, meaning: &[f32]) {
         let (found, kind, whole) = match query.among {
@@ -315,7 +334,7 @@ fn things(said: &Value) -> Vec<Thing> {
 }
 
 impl Answers for Known {
-    fn answer(&mut self, line: &str, _connection: u64, told: &Sender<String>) -> Value {
+    fn answer(&mut self, line: &str, connection: u64, told: &Sender<String>) -> Value {
         let Ok(said) = serde_json::from_str::<Value>(line) else {
             return error(&Value::Null, "unknown-ask", "not a JSON line");
         };
@@ -352,12 +371,14 @@ impl Answers for Known {
                     .as_u64()
                     .and_then(|limit| usize::try_from(limit).ok())
                     .unwrap_or(SEARCHED);
+                self.passed_over(connection, among);
                 self.queries.push_back(Query {
                     id,
                     words: words.to_owned(),
                     limit,
                     among,
                     told: told.clone(),
+                    connection,
                 });
                 let _ = self.wake.send(());
                 // Answered by the worker once the words are embedded.
@@ -380,7 +401,11 @@ impl Answers for Known {
         }
     }
 
-    fn gone(&mut self, _connection: u64) {}
+    // A closed connection's searches go unanswered, since nothing would
+    // hear them.
+    fn gone(&mut self, connection: u64) {
+        self.queries.retain(|query| query.connection != connection);
+    }
 }
 
 #[cfg(test)]
@@ -494,8 +519,39 @@ mod tests {
     }
 
     fn ask(known: &mut Known, said: &Value) -> (Value, mpsc::Receiver<String>) {
+        ask_on(known, said, 1)
+    }
+
+    fn ask_on(known: &mut Known, said: &Value, connection: u64) -> (Value, mpsc::Receiver<String>) {
         let (told, heard) = mpsc::channel();
-        (known.answer(&said.to_string(), 1, &told), heard)
+        (known.answer(&said.to_string(), connection, &told), heard)
+    }
+
+    fn searched(words: &str) -> Value {
+        json!({"id": words, "ask": "search", "words": words})
+    }
+
+    #[test]
+    fn a_newer_search_lets_its_connections_older_one_go_answered_as_not_whole() {
+        let (mut known, _woken, _folder) = known();
+        let (_, older) = ask_on(&mut known, &searched("too"), 1);
+        let (_, beside) = ask_on(&mut known, &searched("dim"), 2);
+        ask_on(&mut known, &searched("too bright"), 1);
+        let line: Value = serde_json::from_str(&older.recv().unwrap()).unwrap();
+        assert_eq!(line, json!({"id": "too", "records": [], "whole": false}));
+        let waiting: Vec<String> = known.queries.iter().map(|q| q.words.clone()).collect();
+        assert_eq!(waiting, ["dim", "too bright"]);
+        assert!(beside.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_closed_connections_searches_go_unanswered() {
+        let (mut known, _woken, _folder) = known();
+        ask_on(&mut known, &searched("too"), 1);
+        ask_on(&mut known, &searched("dim"), 2);
+        known.gone(1);
+        let waiting: Vec<String> = known.queries.iter().map(|q| q.words.clone()).collect();
+        assert_eq!(waiting, ["dim"]);
     }
 
     #[test]
