@@ -3663,6 +3663,24 @@ onLinux {
       touch $out
     '';
 
+  # For You's Lately holds what's unread from each source until that source
+  # says it's done, and History says how, as tests/lately.qml holds
+  # Lately.js.
+  lately-follows-each-source =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "lately-follows-each-source" { } ''
+      cp ${../../tests/lately.qml} lately.qml
+      cp ${./launcher/Lately.js} Lately.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml lately.qml
+      touch $out
+    '';
+
   # What comes true by itself is said once as a notice, and again only as
   # it tells something new, its earlier notice taken back first, and in new
   # words in place, by its id, as tests/arrivals.qml holds Arrivals.qml to
