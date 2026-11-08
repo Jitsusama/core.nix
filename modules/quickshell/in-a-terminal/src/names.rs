@@ -14,14 +14,14 @@ pub fn typed(name: &str) -> String {
         .join("-")
 }
 
-/// The rows the shell showed, a line each as zsh's `_describe` reads it:
-/// the step, its colons escaped, and what the row says after a colon.
+/// The rows the shell showed, then a thing's own acts, which a step names
+/// as it names a row, a line each as zsh's `_describe` reads it: the step,
+/// its colons escaped, and what the row says after a colon.
 pub fn for_zsh(shown: &Value) -> String {
     let mut out = String::new();
-    for row in shown
-        .get("rows")
-        .and_then(Value::as_array)
+    for row in ["rows", "acts"]
         .into_iter()
+        .filter_map(|key| shown.get(key).and_then(Value::as_array))
         .flatten()
     {
         let said = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or_default();
@@ -51,6 +51,15 @@ mod tests {
     fn a_name_is_typed_in_lower_case_a_hyphen_for_a_space() {
         assert_eq!(typed("Sessions to Reopen"), "sessions-to-reopen");
         assert_eq!(typed("Disk"), "disk");
+    }
+
+    #[test]
+    fn a_things_acts_are_offered_after_its_rows() {
+        let shown = serde_json::json!({
+            "rows": [{"name": "Space", "side": "412 GB free"}],
+            "acts": [{"name": "Copy"}]
+        });
+        assert_eq!(for_zsh(&shown), "space:412 GB free\ncopy\n");
     }
 
     #[test]
