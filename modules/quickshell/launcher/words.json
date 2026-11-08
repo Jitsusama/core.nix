@@ -6041,14 +6041,14 @@
     {
       "id": "spotify:context",
       "of": "program:spotify",
-      "name": "Playlist, Album, Artist or Show",
+      "name": "Playlist, Album, Artist or Podcast",
       "glyph": "playing",
       "verb": "play",
       "said": {
         "playlist": "playlist",
         "album": "album",
         "artist": "artist",
-        "show": "show",
+        "show": "podcast",
         "collection": "liked songs",
         "playing": "playing",
         "paused": "paused",
@@ -6093,7 +6093,8 @@
     {
       "id": "spotify:shows",
       "of": "program:spotify",
-      "name": "Shows",
+      "term": "Programs/podcast",
+      "name": "Podcasts",
       "verb": "more",
       "glyph": "show"
     },
