@@ -14,6 +14,15 @@
 //! drawers` over its IPC, since it builds them only then) and sets them
 //! after the rows, and `--json` prints the shell's answer as it came.
 //!
+//!     launcher do step ... [--yes] [-- words]
+//!
+//! `do` does what a row's Return does, or any act a place offers among
+//! its rows, as the launcher's `:` offers it (Launcher.qml's
+//! doneFromTerminal). One the launcher would ask about first, or that
+//! ends something, asks its question on the terminal, y doing it; with
+//! no terminal to answer on, it's done only with `--yes`. An act that asks
+//! for words takes them after `--`. It prints nothing once it's done.
+//!
 //! For the shell: `launcher completion zsh` writes zsh's completion, and
 //! `launcher names [step ...]` the rows a place holds as it offers them.
 //!
@@ -21,8 +30,10 @@
 //! its words: `LAUNCHER_QS`, Quickshell's `qs`; `LAUNCHER_LOOK`, the
 //! theme's roles as escapes and its marks' stand-ins; `LAUNCHER_WORDS`, the
 //! launcher's words.json, whose `terminal` section holds what it says of
-//! its own. A step that names nothing exits 1, and a shell that doesn't
-//! answer exits 2, each said on stderr.
+//! its own. A step that names nothing, or an act not done since the
+//! answer was no, exits 1; a shell that doesn't answer exits 2; an act
+//! with no terminal to ask on and no `--yes` exits 3; each said on stderr
+//! but the no, which the terminal already shows.
 
 mod asking;
 mod layout;
@@ -31,7 +42,7 @@ mod names;
 mod words;
 
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::ExitCode;
 
 use serde_json::Value;
@@ -51,6 +62,13 @@ enum Asked {
         steps: Vec<String>,
         json: bool,
         drawers: bool,
+    },
+    /// What a row does, or an act a place offers, by its steps, with the
+    /// words it asks for and whether it's done unasked.
+    Do {
+        steps: Vec<String>,
+        words: String,
+        yes: bool,
     },
     /// The rows a place holds, as zsh's completion offers them.
     Names { steps: Vec<String> },
@@ -95,6 +113,27 @@ fn asked(arguments: &[String]) -> Asked {
                 drawers: flagged.iter().any(|one| one == "--drawers"),
             }
         }
+        Some("do") => {
+            let (before, after) = match rest.iter().position(|one| one == "--") {
+                Some(at) => (&rest[..at], &rest[at + 1..]),
+                None => (rest, &rest[rest.len()..]),
+            };
+            if let Some(flag) = before
+                .iter()
+                .find(|one| one.starts_with('-') && *one != "--yes")
+            {
+                return Asked::Unknown(flag.clone());
+            }
+            Asked::Do {
+                steps: before
+                    .iter()
+                    .filter(|one| *one != "--yes")
+                    .cloned()
+                    .collect(),
+                words: after.join(" "),
+                yes: before.iter().any(|one| one == "--yes"),
+            }
+        }
         Some("names") => Asked::Names {
             steps: rest.to_vec(),
         },
@@ -106,6 +145,7 @@ fn asked(arguments: &[String]) -> Asked {
 /// How the program exits, by what went wrong.
 const NOTHING_CALLED: u8 = 1;
 const SHELL_SILENT: u8 = 2;
+const NOT_SURE: u8 = 3;
 const MISUSED: u8 = 64;
 
 fn main() -> ExitCode {
@@ -124,6 +164,18 @@ fn main() -> ExitCode {
         Asked::Completion => {
             print!("{}", names::completion(&words));
             ExitCode::SUCCESS
+        }
+        Asked::Do {
+            steps,
+            words: said,
+            yes,
+        } => {
+            if steps.is_empty() {
+                fail(&errors(), &words.nothing_to_do());
+                eprint!("{}", words.usage());
+                return ExitCode::from(MISUSED);
+            }
+            done(&steps, &said, yes, &words)
         }
         Asked::Names { steps } => match ask(&steps, false, &words) {
             Ok(shown) => {
@@ -157,6 +209,67 @@ fn main() -> ExitCode {
     }
 }
 
+/// Does what the steps name: asked once unsure, and where the shell asks
+/// first, its question put on the terminal, y asking again, sure; with
+/// nothing to answer on, refused but for `--yes`, which was sure from the
+/// start.
+fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
+    let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
+    let mut sure = yes;
+    loop {
+        let answer = match heard(asking::doing(&qs, steps, said, sure), words) {
+            Ok(answer) => answer,
+            Err(code) => return code,
+        };
+        let text = |key: &str| answer.get(key).and_then(Value::as_str).map(str::to_string);
+        if let Some(question) = text("asks") {
+            if sure {
+                // The shell asking again once told it's sure is its own
+                // failure, never a second ask.
+                fail(&errors(), &question);
+                return ExitCode::from(SHELL_SILENT);
+            }
+            if !(io::stdin().is_terminal() && io::stderr().is_terminal()) {
+                fail(&errors(), &words.unsure(&question));
+                return ExitCode::from(NOT_SURE);
+            }
+            if !answered_yes(&question) {
+                return ExitCode::from(NOTHING_CALLED);
+            }
+            sure = true;
+            continue;
+        }
+        if let Some(ask) = text("takes") {
+            let names = asking::strings(answer.get("in"));
+            let name = names.last().map_or("", String::as_str);
+            fail(&errors(), &words.takes(name, &ask));
+            return ExitCode::from(MISUSED);
+        }
+        if let Some(why) = text("error") {
+            fail(&errors(), &why);
+            return ExitCode::from(SHELL_SILENT);
+        }
+        return ExitCode::SUCCESS;
+    }
+}
+
+/// Puts the launcher's question on the terminal, as its line does, and
+/// whether the answer was y.
+fn answered_yes(question: &str) -> bool {
+    eprint!("{question} ");
+    let _ = io::stderr().flush();
+    let mut line = String::new();
+    if io::stdin().lock().read_line(&mut line).is_err() {
+        return false;
+    }
+    is_yes(&line)
+}
+
+/// Whether a line typed back says yes: y, as the launcher takes it.
+fn is_yes(line: &str) -> bool {
+    line.trim().eq_ignore_ascii_case("y")
+}
+
 /// How what goes to stderr is inked.
 fn errors() -> Look {
     Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stderr())
@@ -166,7 +279,13 @@ fn errors() -> Look {
 /// where a step names nothing or the shell doesn't answer.
 fn ask(steps: &[String], drawers: bool, words: &Words) -> Result<Value, ExitCode> {
     let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
-    match asking::show(&qs, steps, drawers) {
+    heard(asking::show(&qs, steps, drawers), words)
+}
+
+/// What the shell answered, or how to exit, said on stderr, where a step
+/// names nothing or the shell doesn't answer.
+fn heard(answer: Result<Answer, String>, words: &Words) -> Result<Value, ExitCode> {
+    match answer {
         Ok(Answer::Shown(shown)) => Ok(shown),
         Ok(Answer::Missing { step, near, within }) => {
             fail(&errors(), &words.missing(&step, &within, &near));
@@ -277,5 +396,38 @@ mod tests {
             asked(&words(&["show", "--jsno"])),
             Asked::Unknown("--jsno".to_string())
         );
+    }
+
+    #[test]
+    fn do_takes_its_steps_its_yes_and_words_after_the_dashes() {
+        assert_eq!(
+            asked(&words(&["do", "machine", "--yes", "power", "reboot"])),
+            Asked::Do {
+                steps: words(&["machine", "power", "reboot"]),
+                words: String::new(),
+                yes: true,
+            }
+        );
+        assert_eq!(
+            asked(&words(&["do", "people", "joel", "--", "on", "--my", "way"])),
+            Asked::Do {
+                steps: words(&["people", "joel"]),
+                words: "on --my way".to_string(),
+                yes: false,
+            }
+        );
+        assert_eq!(
+            asked(&words(&["do", "machine", "-y"])),
+            Asked::Unknown("-y".to_string())
+        );
+    }
+
+    #[test]
+    fn only_y_is_yes() {
+        assert!(is_yes("y\n"));
+        assert!(is_yes(" Y "));
+        assert!(!is_yes("yes please\n"));
+        assert!(!is_yes("n\n"));
+        assert!(!is_yes(""));
     }
 }

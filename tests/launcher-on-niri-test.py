@@ -1052,6 +1052,32 @@ def test_a_meaning_lands_on_a_part_inside_a_place(shell: Shell) -> None:
         means.unlink(missing_ok=True)
 
 
+def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell) -> None:
+    """`launcher do` is asked the launcher's question before an act that ends something.
+
+    The shell walks the steps as `show` does (Launcher.qml's doneFromTerminal), and an act the
+    line would ask about, or that ends something, isn't done until the terminal says it's sure:
+    its answer is the launcher's own question, naming what the act is of. A place opens in the
+    launcher, as the catalogue's run opens one.
+    """
+
+    def done(*steps: str) -> Json:
+        asked = shlex.quote(json.dumps({"steps": steps, "words": "", "sure": False}))
+        said = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
+        return cast("Json", json.loads(said))
+
+    reboot = done("machine", "power", "reboot")
+    assert reboot["in"] == ["Machine", "Power", "Reboot"], reboot
+    assert reboot["asks"].startswith("Reboot"), reboot
+    assert reboot["asks"].endswith("(y/n)"), reboot
+    assert not shell.showing()["open"]
+    assert done("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
+    machine = done("machine")
+    assert machine == {"done": True, "opened": True, "in": ["Machine"]}, machine
+    assert shell.showing()["open"]
+    shell.close_launcher()
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

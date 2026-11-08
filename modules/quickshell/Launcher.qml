@@ -1261,21 +1261,10 @@ Scope {
 
     function shownWalked(path, everyDrawer) {
         freshen();
-        const steps = String(path ?? "").split(catalogueStep).filter(said => said.trim() !== "");
-        let rows = home();
-        let things = true;
-        let among = true;
-        const trail = [];
-        for (const said of steps) {
-            const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
-                one => steadyId(one));
-            if (!found.row)
-                return { missing: said, near: found.near, in: trail.map(one => one.name) };
-            trail.push(found.row);
-            among = things;
-            rows = catalogueHolds(found.row, things);
-            things = collects({ row: found.row });
-        }
+        const walked = walkedByName(String(path ?? "").split(catalogueStep));
+        if (walked.missing !== undefined)
+            return walked;
+        const { trail, rows, among } = walked;
         const ids = trail.map(one => steadyId(one));
         // Only the row the path names says its drawer, since a listed row's
         // would be built for every row a long place holds, for one show;
@@ -1305,6 +1294,105 @@ Scope {
             rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, everyDrawer)),
             acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids, false))
         };
+    }
+
+    // The rows steps name from home, each by its steady id or its name as
+    // Showing.step finds it, with what the last holds (`trail`, `rows`);
+    // or, where a step names nothing, that step, the names it might have
+    // meant and where it was looked for. An empty step is no step. `among`
+    // says whether the last was found among things, as asThing reads it.
+    function walkedByName(steps) {
+        let rows = home();
+        let things = true;
+        let among = true;
+        const trail = [];
+        for (const said of steps.filter(one => String(one).trim() !== "")) {
+            const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
+                one => steadyId(one));
+            if (!found.row)
+                return { missing: said, near: found.near, in: trail.map(one => one.name) };
+            trail.push(found.row);
+            among = things;
+            rows = catalogueHolds(found.row, things);
+            things = collects({ row: found.row });
+        }
+        return { trail, rows, among };
+    }
+
+    // Does what a terminal names (launcher do), asked as JSON, { steps,
+    // words, sure }, since qs takes no empty argument: its steps walked
+    // by name as show walks them, so it offers what : offers, each act of
+    // what it's in. One the line would ask about first, or that ends
+    // something, isn't done until the terminal says it's sure: it answers
+    // with the launcher's own question (`asks`), asked as the line asks
+    // it, naming what it's an act of. A place opens in the launcher, as
+    // the catalogue's run opens one.
+    function doneFromTerminal(asked) {
+        cataloguing = true;
+        try {
+            const said = JSON.parse(asked);
+            return doneWalked(said.steps ?? [], said.words ?? "", said.sure === true);
+        } catch (error) {
+            return { error: String(error) };
+        } finally {
+            cataloguing = false;
+        }
+    }
+
+    function doneWalked(steps, words, sure) {
+        freshen();
+        const walked = walkedByName(steps);
+        if (walked.missing !== undefined)
+            return walked;
+        const trail = walked.trail;
+        if (trail.length === 0)
+            return { error: "nothing named" };
+        const target = trail[trail.length - 1];
+        const holder = trail.length > 1 ? trail[trail.length - 2] : null;
+        const names = trail.map(one => one.name);
+        const ids = trail.map(one => steadyId(one));
+        console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
+            + ` ${names.join(" \u203a ")}`);
+        if (Catalogue.kindOf(target) === "place") {
+            open = true;
+            goTo({ trail: ids, spot: "" });
+            return { done: true, opened: true, in: names };
+        }
+        const act = returnOf(target);
+        const asking = CommandBinding.asking({ command: commandNamed(act).command }, [act],
+            { all: 1, bang: false }, Options.commands ?? {});
+        if (!sure && (asking.ask !== "" || Catalogue.disruptive(target) || actEnds(target))) {
+            const of = holder ?? target;
+            return {
+                asks: Confirm.question([{ ends: act.ends || verbOf(act),
+                    name: act.askedAs || of.name, kind: kindOf(of), leaves: act.leaves ?? "" }],
+                    Words.field.operators ?? {}),
+                in: names
+            };
+        }
+        if (act.given) {
+            if (words === "")
+                return { takes: act.ask ?? "", in: names };
+            act.given(words);
+            return { done: true, in: names };
+        }
+        // As the catalogue's run does it, as Return would.
+        trials.picked(target, "", trail.length - 1);
+        if (act.stays) {
+            act.run();
+            return { done: true, in: names };
+        }
+        if (act.now)
+            act.run();
+        const shown = open;
+        open = false;
+        if (act.now)
+            return { done: true, in: names };
+        if (act.later)
+            runOnceGone(act, shown);
+        else
+            act.run();
+        return { done: true, in: names };
     }
 
     // Whether a row holds more to show a step into, by what it is rather
@@ -2081,8 +2169,12 @@ Scope {
     // whose off ends what it holds (its `ends`, Provider.qml), as Wi-Fi
     // Off's :set nowifi drops the network, where :set nomic ends nothing.
     function endsSomething(choice) {
-        if (!choice || !prompt.modal)
-            return false;
+        return !!choice && prompt.modal && actEnds(choice);
+    }
+
+    // Whether a row's act ends something, wherever it's asked from: a
+    // terminal's `launcher do` asks it with no line in normal mode.
+    function actEnds(choice) {
         const act = returnOf(choice);
         const named = commandNamed(act);
         const set = named.command === "set"
@@ -5927,6 +6019,11 @@ Scope {
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
         // none for home.
+        // Does what a terminal names, as launcher do asks it.
+        function doing(asked: string): string {
+            return JSON.stringify(root.doneFromTerminal(asked));
+        }
+
         function show(path: string): string {
             return JSON.stringify(root.shownToTerminal(path, false));
         }
