@@ -9,7 +9,7 @@
 // the row's side says; the track as the title; its art under that; then
 // the facts, what moves most first (where in the track, the volume, shuffle,
 // loop and rate), then what describes it (artist, album, album artist,
-// track and disc, genre, rating), and what identifies it last (its address
+// track and disc, genre, rating), and what identifies it last (its link
 // and the player's bus name); the track's words, its lyrics, when it gives
 // them. A fact the player doesn't support or doesn't say is left out, never
 // shown as unknown, and what it can do isn't listed, since its acts say it.
@@ -124,7 +124,7 @@ function facts(player, said) {
         { id: "track", value: track(metadata, said) },
         { id: "genre", value: listed(metadata["xesam:genre"]) },
         { id: "rating", value: Number.isFinite(rating) ? percent(rating) : "" },
-        { id: "address", value: String(metadata["xesam:url"] ?? "").trim() },
+        { id: "link", value: String(metadata["xesam:url"] ?? "").trim() },
         { id: "bus-name", value: String(player.dbusName ?? "") }
     ];
     return parts.filter(part => part.value !== "");

@@ -99,7 +99,7 @@ QtObject {
             { label: "[track]", value: "3 \u00b7 disc 1" },
             { label: "[genre]", value: "Symphonic metal, Power metal" },
             { label: "[rating]", value: "80%" },
-            { label: "[address]", value: "https://open.spotify.com/track/2xyz" },
+            { label: "[link]", value: "https://open.spotify.com/track/2xyz" },
             { label: "[bus-name]", value: "org.mpris.MediaPlayer2.spotify" }
         ]);
 

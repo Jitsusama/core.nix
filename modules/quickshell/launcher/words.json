@@ -2447,7 +2447,7 @@
     {
       "id": "keyboards:usb-id",
       "in": "keyboards",
-      "name": "USB Id"
+      "name": "USB ID"
     },
     {
       "id": "keyboards:serial",
@@ -6893,9 +6893,9 @@
       "name": "Rating"
     },
     {
-      "id": "program:media:address",
+      "id": "program:media:link",
       "in": "program:media",
-      "name": "Address"
+      "name": "Link"
     },
     {
       "id": "program:media:bus-name",
