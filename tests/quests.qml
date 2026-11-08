@@ -42,7 +42,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
         // The orchestrators the harness lists, as the launcher's sources
@@ -51,15 +51,15 @@ ShellRoot {
     }
 
     Launcher.Quests {
-        id: quests
+        id: theQuests
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "quests" })
         // Each after the change is done, since a case changes them again.
         onAllChanged: {
-            if (root.waiting === "the first reading" && quests.all.length === 4)
+            if (root.waiting === "the first reading" && theQuests.all.length === 4)
                 Qt.callLater(root.first);
-            else if (root.waiting === "the quest made since" && quests.all.length > 4)
+            else if (root.waiting === "the quest made since" && theQuests.all.length > 4)
                 Qt.callLater(root.since);
         }
     }
@@ -140,7 +140,7 @@ ShellRoot {
             return;
         root.waiting = "the first cases";
         try {
-            const open = quests.everything();
+            const open = theQuests.everything();
             expect("the open quests, driving first",
                 names(open) === "Bootstrap the laptop, Retune the prompt, Wait on the stick", names(open));
             const [laptop, prompt, stick] = open;
@@ -150,18 +150,18 @@ ShellRoot {
             expect("an active one wears its own", laptop.glyph === Theme.glyph.active, laptop.glyph);
             expect("one reads its summary's first paragraph",
                 laptop.reads === "What Bootstrap the laptop is about.", laptop.reads);
-            expect("the foot's count", quests.counted() === "3 open, 1 driving", quests.counted());
+            expect("the foot's count", theQuests.counted() === "3 open, 1 driving", theQuests.counted());
 
-            const banner = quests.search("banner").rows;
+            const banner = theQuests.search("banner").rows;
             expect("a finished one, found by typing",
                 names(banner) === "Tune the banner" && banner[0].glyph === Theme.glyph.done
                     && banner[0].side === "5 Jan 2025", `${names(banner)} ${banner[0]?.side}`);
             // Each matches "the" as well, and the finished one is the
             // shortest, yet the open ones come first.
-            const the = quests.search("the").rows;
+            const the = theQuests.search("the").rows;
             expect("the open ones before the finished one",
                 the.length === 4 && names(the).endsWith(", Tune the banner"), names(the));
-            const byId = quests.search("20261003").rows;
+            const byId = theQuests.search("20261003").rows;
             expect("found by its id", names(byId) === "Retune the prompt", names(byId));
 
             laptop.run();
@@ -195,11 +195,11 @@ ShellRoot {
                 JSON.stringify(Sessions.started));
             // One the harness lists as orchestrating already reopens on its
             // own row in Agents, so it isn't offered again.
-            launcher.sources = [{ settings: { name: "orchestrators" },
+            theLauncher.sources = [{ settings: { name: "orchestrators" },
                 listed: [{ quest: "QEST-20261003-PROMPT", address: "PROMPT" }] }];
             expect("no Orchestrate where it orchestrates already",
                 !names(prompt.verbs()).includes("Orchestrate"), names(prompt.verbs()));
-            launcher.sources = [];
+            theLauncher.sources = [];
             const sides = facts.slice(2).map(row => row.side).join(", ");
             expect("what each says", sides
                 === `QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
@@ -251,7 +251,7 @@ ShellRoot {
                 window: { id: 7 },
                 presence: { owns: ["QEST-20261003-PROMPT"] }
             }];
-            const held = quests.everything()[1];
+            const held = theQuests.everything()[1];
             expect("a loaded one names its session",
                 held.side === "subquest \u00b7 queued \u00b7 WCJQSG" && held.verb === "go to", held.side);
             held.run();
@@ -260,8 +260,8 @@ ShellRoot {
             expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go to",
                 held.verbs()[0].name);
 
-            root.made = quests.looksThrough();
-            root.counted = quests.tally.rows;
+            root.made = theQuests.looksThrough();
+            root.counted = theQuests.tally.rows;
             root.waiting = "the quest made since";
             // The node tells every quest again as the harness writes its
             // list, heard anew, and the new one whole.
@@ -279,17 +279,17 @@ ShellRoot {
             return;
         root.waiting = "the end";
         try {
-            const found = quests.search("newly").rows;
+            const found = theQuests.search("newly").rows;
             expect("a quest made since", names(found) === "Newly made", names(found));
             // Every quest is told again as a list is written, and every
             // quest's row was made again: about 824 at each change on Joel's
             // shell (2026-11-03). Each row is kept while its quest and its
             // session read the same, so only the new one is made.
-            const now = quests.looksThrough();
+            const now = theQuests.looksThrough();
             const remade = root.made.filter(row => !now.includes(row));
             expect("every other quest's row kept", remade.length === 0, names(remade));
-            expect("one row made, for the new quest", quests.tally.rows - root.counted === 1,
-                `${quests.tally.rows - root.counted} rows`);
+            expect("one row made, for the new quest", theQuests.tally.rows - root.counted === 1,
+                `${theQuests.tally.rows - root.counted} rows`);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);

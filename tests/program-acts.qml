@@ -101,7 +101,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: true
         property var held: []
@@ -114,7 +114,7 @@ ShellRoot {
     Launcher.NeovimProgram {
         id: neovim
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ folder: root.src })
         onChanged: root.heard += 1
     }
@@ -122,7 +122,7 @@ ShellRoot {
     Launcher.ChromeProgram {
         id: chrome
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ folder: root.src, command: ["chrome", "--new-window"] })
         onChanged: root.heard += 1
     }
@@ -130,14 +130,14 @@ ShellRoot {
     Launcher.ReaderProgram {
         id: reader
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ reader: "reader" })
     }
 
     Launcher.CopiedPicture {
         id: gimp
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ gimp: "gimp", paste: "wl-paste" })
     }
 
@@ -348,14 +348,14 @@ ShellRoot {
                 pages[1].run();
                 expect("its page opened", spawned() === JSON.stringify(["chrome", "--new-window",
                     "https://github.com/NixOS/gamma"]), spawned());
-                launcher.open = false;
+                theLauncher.open = false;
                 const kept = Object.keys(Launcher.Repositories.files);
                 expect("a repository's files forgotten as the launcher closes", kept.length === 0,
                     kept);
                 expect("the repositories kept", Launcher.Repositories.listed.length === 3, "");
                 // As if every repository went, so the next read finds none.
                 Launcher.Repositories.folder = `${root.home}/nowhere`;
-                launcher.open = true;
+                theLauncher.open = true;
             }
         }, {
             what: "the repositories read again as the launcher opens",

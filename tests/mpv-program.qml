@@ -80,7 +80,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
         property string typed: ""
@@ -95,14 +95,14 @@ ShellRoot {
     Launcher.MpvProgram {
         id: mpv
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "mpv", stopped: [Quickshell.env("STOPPED_LIST")] })
     }
 
     Launcher.Applications {
         id: applications
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({
             name: "applications",
             recents: [{
@@ -163,12 +163,12 @@ ShellRoot {
         try {
             sums();
             Niri.revision += 1;
-            launcher.open = true;
+            theLauncher.open = true;
             program("mpv").verbs();
             counted.reload();
             counted.waitForJob();
             same("nothing is listed before mpv is stepped into", listings(), 0);
-            launcher.held = [{ row: program("mpv"), rows: [] }];
+            theLauncher.held = [{ row: program("mpv"), rows: [] }];
         } catch (error) {
             fail(error.message);
         }
@@ -364,15 +364,15 @@ ShellRoot {
 
             // Stepped out and in again, nothing's listed again until the
             // launcher opens afresh.
-            launcher.held = [];
-            launcher.held = [{ row: program("mpv"), rows: [] }];
+            theLauncher.held = [];
+            theLauncher.held = [{ row: program("mpv"), rows: [] }];
             counted.reload();
             counted.waitForJob();
             same("once an opening", listings(), 1);
             root.waiting = "listed again";
-            launcher.held = [];
-            launcher.open = false;
-            launcher.open = true;
+            theLauncher.held = [];
+            theLauncher.open = false;
+            theLauncher.open = true;
             again.start();
         } catch (error) {
             fail(error.message);
@@ -390,8 +390,8 @@ ShellRoot {
                 counted.waitForJob();
                 root.same("nothing is listed on opening while mpv isn't held",
                     root.listings(), 1);
-                launcher.held = [];
-                launcher.held = [{ row: root.program("mpv"), rows: [] }];
+                theLauncher.held = [];
+                theLauncher.held = [{ row: root.program("mpv"), rows: [] }];
                 listedAgain.start();
             } catch (error) {
                 root.fail(error.message);

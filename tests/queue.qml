@@ -51,7 +51,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: true
         readonly property var sources: [quests]
@@ -60,7 +60,7 @@ ShellRoot {
     Launcher.Queue {
         id: queue
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "jobs" })
         cgroups: Quickshell.env("CGROUPS")
     }

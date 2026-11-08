@@ -114,7 +114,7 @@ ShellRoot {
     readonly property string ivy: "person:ivy@example.com"
 
     Process {
-        id: running
+        id: peopleRunning
 
         command: [Quickshell.env("PEOPLE"), `${root.runtime}/daemons/people.sock`,
             Quickshell.env("SOURCES")]
@@ -153,7 +153,7 @@ ShellRoot {
         {
             what: "a daemon starting is connected to and says hello, naming its source",
             run: () => {
-                running.running = true;
+                peopleRunning.running = true;
             },
             holds: () => people.state === "answering" && "slack" in people.sources
         },
@@ -205,7 +205,7 @@ ShellRoot {
             what: "the daemon stopping is said, and what was held stays unless let go",
             run: () => {
                 root.heardBefore = people.held[root.ada].heard;
-                running.running = false;
+                peopleRunning.running = false;
             },
             holds: () => people.state === "not answering" && root.heldWay(root.ada) === "ahead"
                 && forgetting.state === "not answering"
@@ -214,7 +214,7 @@ ShellRoot {
         {
             what: "the daemon starting again is connected to, and asked ahead again",
             run: () => {
-                running.running = true;
+                peopleRunning.running = true;
             },
             holds: () => people.state === "answering"
                 && people.held[root.ada].heard > root.heardBefore
@@ -271,7 +271,7 @@ ShellRoot {
                 stop();
                 root.step += 1;
                 if (root.step === root.steps.length) {
-                    running.running = false;
+                    peopleRunning.running = false;
                     kindsRunning.running = false;
                     Qt.callLater(() => Qt.exit(0));
                 } else {

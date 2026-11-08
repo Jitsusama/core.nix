@@ -82,7 +82,7 @@ ShellRoot {
     // parts a step in. Each row it gives is marked, so the test knows Now
     // showed the launcher's row and not one of its own.
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
         readonly property var sources: [weather, calendar, cameras]
@@ -116,7 +116,7 @@ ShellRoot {
     Launcher.Now {
         id: now
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "on" })
     }
 
@@ -211,7 +211,7 @@ ShellRoot {
                 && now.borrowed({ place: "cameras", key: "camera:rear" }) === null
                 && now.borrowed({ place: "sound", key: "sound:mic" }) === null, "it was drawn");
         expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
-        launcher.open = true;
+        theLauncher.open = true;
         expect("and turns while it's open", now.drawing, "it rested");
         expect("opening reads the weather, before the meeting",
             JSON.stringify(names())

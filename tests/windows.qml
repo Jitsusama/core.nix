@@ -29,7 +29,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
     }
@@ -37,14 +37,14 @@ ShellRoot {
     Launcher.Windows {
         id: windows
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "windows" })
     }
 
     Launcher.Capture {
         id: capture
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "capture", camera: false })
     }
 
