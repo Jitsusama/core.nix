@@ -508,7 +508,7 @@ fn history(
             all = true;
             break;
         }
-        cursor = next.to_owned();
+        next.clone_into(&mut cursor);
     }
     found.sort_by_key(|one| instant(&one.ts));
     Ok((found, all))
