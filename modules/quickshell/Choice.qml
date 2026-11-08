@@ -272,7 +272,7 @@ Rectangle {
         id: nameBox
         x: Theme.space.rung.inset + row.glyphColumn + row.indent
         width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.rung.groups
-            - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
+            - (!row.detailed ? 0 : Math.min(row.detailWide, row.width * 0.3)
                 + Theme.space.rung.apart)))
         // On the mono's line, so the voice sits where the mono's name
         // would, the faces' line boxes differing.
