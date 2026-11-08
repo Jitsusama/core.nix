@@ -153,7 +153,10 @@ pub const CALL_THREADS: [&str; 8] = [
 /// `WebRTC_Network`, `WebRTC_Worker`), the sound devices a page plays and
 /// records through (`AudioOutputDevice`, `AudioInputDevice`), the audio
 /// service's `AudioThread`, and a page's audio worklet. Chromium's
-/// `ThreadPoolAudio` is left out: every process keeps one, idle.
+/// `ThreadPoolAudio` is left out: every process keeps one, idle. They
+/// count only while a page records the microphone (`CHROME_IN_A_CALL`):
+/// WebRTC's own run in any tab holding a peer connection, and the sound
+/// devices in any page playing sound, neither of which is a call.
 pub const CHROME_CALL_THREADS: [&str; 6] = [
     "WebRTC_",
     "AudioOutputDevi",
@@ -162,6 +165,11 @@ pub const CHROME_CALL_THREADS: [&str; 6] = [
     "AudioWorkletThr",
     "RealtimeAudioWo",
 ];
+
+/// The thread a Chrome page records the microphone through, which is
+/// Chrome in a call. Chromium runs WebRTC's own per-call work on its
+/// thread pool, unnamed, so this is the one name a call alone gives.
+const CHROME_IN_A_CALL: &str = "AudioInputDevic";
 
 /// A process's threads, by name and schedstat path.
 fn tasks(process: &Path) -> Vec<(String, PathBuf)> {
@@ -200,7 +208,8 @@ fn tuple(proc: &Path, unit: &Path) -> Vec<Thread> {
 
 /// A call's threads whose program no longer carries it are let go: once
 /// its last call thread can't be read, the call is over, and Tuple's idle
-/// threads would only say how an idle daemon waits.
+/// threads would only say how an idle daemon waits, Chrome's how a tab
+/// playing sound does.
 pub fn while_in_a_call<V>(read: &mut std::collections::BTreeMap<Thread, V>) {
     let calling: Vec<&'static str> = read.keys().filter(|t| t.call).map(|t| t.label).collect();
     read.retain(|t, _| !CALLERS.contains(&t.label) || calling.contains(&t.label));
@@ -218,6 +227,7 @@ pub const CALLERS: [&str; 2] = ["tuple", "chrome"];
 /// would be read as the desktop waiting.
 pub fn threads(proc: &Path, compositor: Option<u32>, tuple_unit: &Path) -> Vec<Thread> {
     let mut found = tuple(proc, tuple_unit);
+    let mut chrome = Vec::new();
     let Ok(entries) = fs::read_dir(proc) else {
         return found;
     };
@@ -228,15 +238,15 @@ pub fn threads(proc: &Path, compositor: Option<u32>, tuple_unit: &Path) -> Vec<T
         }
         let comm = text(&entry.path().join("comm"));
         if comm.trim() == "chrome" {
-            found.extend(
+            chrome.extend(
                 tasks(&entry.path())
                     .into_iter()
                     .filter(|(name, _)| CHROME_CALL_THREADS.iter().any(|c| name.starts_with(c)))
                     .map(|(name, schedstat)| Thread {
                         label: "chrome",
+                        call: name.starts_with(CHROME_IN_A_CALL),
                         name,
                         schedstat,
-                        call: true,
                     }),
             );
             continue;
@@ -266,6 +276,9 @@ pub fn threads(proc: &Path, compositor: Option<u32>, tuple_unit: &Path) -> Vec<T
                 });
             }
         }
+    }
+    if chrome.iter().any(|t| t.call) {
+        found.extend(chrome);
     }
     found.sort();
     found
@@ -385,11 +398,24 @@ mod tests {
         write(&proc.join("30/task/33/comm"), "AudioOutputDevi\n");
         write(&proc.join("30/task/34/comm"), "Compositor\n");
         let task = |pid: &str, tid: &str| proc.join(format!("{pid}/task/{tid}/schedstat"));
+        // A tab with a peer connection playing sound is no call of
+        // Chrome's until a page records the microphone, in any of its
+        // processes.
+        let chrome = |proc: &Path| -> Vec<Thread> {
+            threads(proc, None, &root.join("tuple.service"))
+                .into_iter()
+                .filter(|t| t.label == "chrome")
+                .collect()
+        };
+        assert_eq!(chrome(&proc), []);
+        write(&proc.join("40/comm"), "chrome\n");
+        write(&proc.join("40/task/41/comm"), "AudioInputDevic\n");
         assert_eq!(
             threads(&proc, None, &root.join("tuple.service")),
             [
-                found("chrome", "AudioOutputDevi", task("30", "33"), true),
-                found("chrome", "WebRTC_Network", task("30", "31"), true),
+                found("chrome", "AudioInputDevic", task("40", "41"), true),
+                found("chrome", "AudioOutputDevi", task("30", "33"), false),
+                found("chrome", "WebRTC_Network", task("30", "31"), false),
                 found("tuple", ".tuple-wrapped", task("60", "60"), false),
                 found("tuple", "AudioEncoder", task("60", "62"), true),
                 found("tuple", "Signaling", task("60", "61"), false),
@@ -397,8 +423,7 @@ mod tests {
         );
         // Out of a call, neither has a thread worth reading.
         fs::remove_file(proc.join("60/task/62/comm")).unwrap();
-        fs::remove_file(proc.join("30/task/31/comm")).unwrap();
-        fs::remove_file(proc.join("30/task/33/comm")).unwrap();
+        fs::remove_file(proc.join("40/task/41/comm")).unwrap();
         assert_eq!(threads(&proc, None, &root.join("tuple.service")), []);
         // Nor without Tuple at all.
         assert_eq!(threads(&proc, None, &root.join("gone.service")), []);
