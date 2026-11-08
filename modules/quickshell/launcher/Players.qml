@@ -28,6 +28,7 @@ import qs
 import Quickshell
 import Quickshell.Services.Mpris
 import QtQuick
+import "../Fuzzy.js" as Fuzzy
 import "../Music.js" as Players
 import "Media.js" as Media
 
@@ -301,9 +302,33 @@ Provider {
         }
     })
 
-    things: {
+    // A collection's rows are what it lists and what its search looks
+    // through, as Sound's devices are.
+    readonly property var all: {
         void tick;
         return Playing.players.map(player => playerRow(player));
     }
-    onThingsChanged: changed()
+    onAllChanged: changed()
+
+    function search(typed) {
+        const words = Fuzzy.words(typed);
+        const need = Fuzzy.letters(words);
+        const found = [];
+        for (const row of all) {
+            if ((row.prepared.mask & need) !== need)
+                continue;
+            const m = Fuzzy.match(row.prepared, words, false);
+            if (m.score >= 0)
+                found.push({ score: m.score, grade: m.grade, row: row });
+        }
+        let finest = 3;
+        for (const f of found)
+            finest = Math.min(finest, f.grade);
+        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        return { rows: kept.map(f => f.row), grade: finest };
+    }
+
+    function everything() {
+        return all.slice();
+    }
 }
