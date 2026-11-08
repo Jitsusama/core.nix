@@ -490,7 +490,7 @@ index b8f1919..bcb610e 100644
                  LockRenderState::Locked
              } else {
 diff --git a/src/tests/mod.rs b/src/tests/mod.rs
-index 2654dfe..2971f63 100644
+index e89cde1..a3d3ab8 100644
 --- a/src/tests/mod.rs
 +++ b/src/tests/mod.rs
 @@ -10,6 +10,7 @@ mod floating;
@@ -498,9 +498,9 @@ index 2654dfe..2971f63 100644
  mod layer_shell;
  mod lid;
 +mod power;
+ mod refresh_pacing;
  mod remove_output;
  mod transactions;
- mod window_opening;
 diff --git a/src/tests/power.rs b/src/tests/power.rs
 new file mode 100644
 index 0000000..1facdf3
