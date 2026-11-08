@@ -3033,7 +3033,10 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
             named = scale.replace(".", "-")
             at_scale(desktop, scale)
             desktop.answer("bluetooth")
-            desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Bluetooth")
+            # The find answers a moment after the letters, with nothing selected until then.
+            desktop.launcher_until(
+                lambda shown: (shown["selected"] or {}).get("name") == "Bluetooth"
+            )
             desktop.step_in()
             desktop.launcher_until(lambda shown: "Nearby" in shown["rows"])
             # Not looking yet: only Nearby looks.
