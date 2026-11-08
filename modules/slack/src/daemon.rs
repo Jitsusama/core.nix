@@ -4,10 +4,13 @@
 //! `unwatch` of what it holds, `search` for Joel's words, and `get` of
 //! what it holds or of a message a search found, with the few around it.
 //!
-//! It holds three kinds of record, made from what slack-unreads last
+//! It holds five kinds of record, made from what slack-unreads last
 //! heard from Slack (`Daemon::say`): each conversation unread, a
-//! `slack-unread:<id>`; each he read last, a `slack-recent:<id>`; and how
-//! asking Slack stands, the one `slack-account:slack`. A record carries
+//! `slack-unread:<id>`; each he read last, a `slack-recent:<id>`; each
+//! message wanting him, a `slack-message:<channel>:<ts>`, done once he's
+//! read it in Slack, and Slack's read mark for its conversation, a
+//! `slack-read:<channel>` (lib's `messages`); and how asking Slack
+//! stands, the one `slack-account:slack`. A record carries
 //! its thing under a field named for its kind, as Google's daemon's do,
 //! since a conversation has a `kind` of its own; and the timestamp it's
 //! ordered by rather than its place, so a new message changes its own
@@ -37,19 +40,22 @@ use crate::{Account, Slack};
 /// The interface's version.
 pub const VERSION: u64 = 1;
 
-/// The kinds this daemon answers for. A `slack-message` is asked of
-/// Slack each time and never held, so a watch of it holds no records
-/// and hears only how Slack stands, which is what Search Slack's watch
-/// is for (SlackSearch.qml).
-const KINDS: [&str; 4] = [
+/// The kinds this daemon answers for. A `slack-message` a search finds
+/// is asked of Slack each time and never held; those held are the
+/// messages wanting Joel, which Search Slack's watch, kept for how Slack
+/// stands (SlackSearch.qml), passes over.
+const KINDS: [&str; 5] = [
     "slack-unread",
     "slack-recent",
     "slack-account",
     "slack-message",
+    "slack-read",
 ];
 
 /// Every record what Slack last said makes, in its order: what's unread,
-/// those wanting Joel first, then what he read last, then the account.
+/// those wanting Joel first, then what he read last, then each message
+/// wanting him, newest first, then their conversations' read marks, then
+/// the account.
 /// Only while Slack answered are any conversations said, so an old count
 /// is never held as a current one; with no sign-in, `said` is none and
 /// the account says so. Each is without its `heard`, which the daemon
@@ -87,6 +93,13 @@ pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
             let mut thing = shown(one);
             thing["read"] = json!(one.at);
             made.push(record("slack-recent", &one.id, thing));
+        }
+        for one in &said.messages {
+            let id = one.key.strip_prefix("slack-message:").unwrap_or(&one.key);
+            made.push(record("slack-message", id, json!(one)));
+        }
+        for mark in &said.marks {
+            made.push(record("slack-read", &mark.channel, json!(mark)));
         }
     }
     made.push(record(
@@ -452,7 +465,8 @@ impl Daemon {
     }
 
     /// Each key asked for, in the order asked: one held as it's held, and
-    /// a message a search found with the few around it, asked of Slack.
+    /// a message, found by a search or held, with the few around it, asked
+    /// of Slack.
     fn get(&self, id: &Value, said: &Value) -> Value {
         let keys = strings(said, "keys").unwrap_or_default();
         let messages = keys.iter().any(|key| search::named(key).is_some());
@@ -463,8 +477,9 @@ impl Daemon {
         let slack = Slack::new(self.asking.origin.clone());
         let mut records = Vec::new();
         for key in &keys {
-            if let Some(record) = self.lock().records.get(key) {
-                records.push(record.clone());
+            let held = self.lock().records.get(key).cloned();
+            if let (Some(record), None) = (held, search::named(key)) {
+                records.push(record);
                 continue;
             }
             let (Some((channel, ts)), Some(account)) = (search::named(key), account.as_ref())
@@ -542,8 +557,8 @@ fn unknown(id: &Value, kind: &str) -> Value {
         id,
         "unknown-kind",
         &format!(
-            "this daemon keeps slack-unread, slack-recent, slack-account and slack-message, \
-             not {kind}"
+            "this daemon keeps slack-unread, slack-recent, slack-account, slack-message and \
+             slack-read, not {kind}"
         ),
     )
 }
@@ -555,6 +570,7 @@ fn error(id: &Value, code: &str, message: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messages::{Done, Mark, Raised};
     use crate::unreads::Kind;
 
     /// The one account's key.
@@ -576,7 +592,72 @@ mod tests {
             state: State::Ok,
             conversations,
             recent,
+            messages: Vec::new(),
+            marks: Vec::new(),
         }
+    }
+
+    fn message(channel: &str, ts: &str, done: Option<Done>) -> Raised {
+        Raised {
+            key: search::key(channel, ts),
+            channel: channel.to_owned(),
+            ts: ts.to_owned(),
+            place: "Ada".to_owned(),
+            who: "Ada".to_owned(),
+            first: "hi".to_owned(),
+            text: "hi".to_owned(),
+            at: 1_730_300_001_000,
+            link: "slack://channel?team=T1&id=D1".to_owned(),
+            team: "T1".to_owned(),
+            done,
+        }
+    }
+
+    #[test]
+    fn a_message_wanting_joel_is_a_record_and_its_being_read_a_change_to_it() {
+        let daemon = Daemon::new(PathBuf::new(), String::new());
+        let (told, heard) = mpsc::channel();
+        let asked = json!({"id": "m", "ask": "watch", "kind": ["slack-message", "slack-read"]});
+        daemon.answer(&asked.to_string(), 1, &told);
+        let mut said = ok(vec![one("D1", Kind::Dm, 1, "1730300001.000100")], vec![]);
+        said.messages = vec![message("D1", "1730300001.000100", None)];
+        said.marks = vec![Mark {
+            channel: "D1".to_owned(),
+            read: "1730300000.000100".to_owned(),
+            at: "2024-10-30T14:53:20Z".to_owned(),
+        }];
+        daemon.say(Some(&said), 10);
+        let done = Done {
+            how: "read in Slack",
+            at: "2024-10-31T18:40:00Z".to_owned(),
+            millis: 1_730_400_000_000,
+        };
+        said.conversations.clear();
+        said.messages = vec![message("D1", "1730300001.000100", Some(done))];
+        said.marks[0].read = "1730300001.000100".to_owned();
+        daemon.say(Some(&said), 20);
+        let lines: Vec<Value> = heard
+            .try_iter()
+            .map(|line: String| serde_json::from_str(&line).unwrap())
+            .collect();
+        let keys = |line: &Value| -> Vec<String> {
+            line["changed"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|record| record["key"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        let message = "slack-message:D1:1730300001.000100";
+        assert_eq!(keys(&lines[1]), [message, "slack-read:D1"]);
+        assert_eq!(lines[1]["changed"][0]["slack-message"]["done"], Value::Null);
+        // Read in Slack, the message and its mark change, and nothing goes.
+        assert_eq!(keys(&lines[3]), [message, "slack-read:D1"]);
+        assert_eq!(
+            lines[3]["changed"][0]["slack-message"]["done"],
+            json!({"how": "read in Slack", "at": "2024-10-31T18:40:00Z"})
+        );
+        assert_eq!(lines[3]["gone"], json!([]));
     }
 
     #[test]

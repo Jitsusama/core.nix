@@ -15,7 +15,8 @@
 //! slack-unreads program (src/bin/slack-unreads.rs) serves for the shell
 //! to watch, and searching Slack when Joel asks is
 //! [`search`]'s, which that program answers over the socket it holds as
-//! Slack's daemon ([`daemon`]).
+//! Slack's daemon ([`daemon`]), beside each message wanting Joel, held
+//! until he's read it in Slack ([`messages`]).
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -26,6 +27,7 @@ use serde_json::Value;
 use ureq::Agent;
 
 pub mod daemon;
+pub mod messages;
 pub mod search;
 pub mod unreads;
 

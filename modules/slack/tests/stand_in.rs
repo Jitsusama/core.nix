@@ -928,7 +928,8 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
         recent["records"][0]["slack-recent"]["read"],
         "1730200000.000100"
     );
-    // Messages are asked of Slack and never held, so a watch of them,
+    // Messages wanting Joel are held only once their conversation's
+    // history says them, which this Slack never does, so a watch of them,
     // as Search Slack's is, holds nothing; a kind it doesn't know is said
     // so.
     let message = shell.answer(&serde_json::json!({
@@ -950,6 +951,156 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
     );
     program.kill().unwrap();
     program.wait().unwrap();
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    forget(&path);
+}
+
+/// Whether Joel has read Ada's direct message in Slack, for `raising`.
+static ADA_READ: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Slack with two messages from Ada in her direct message, one he's read
+/// before them, and in #launcher one from Grace mentioning him beside one
+/// that doesn't; then, once `ADA_READ`, Ada's read in Slack.
+fn raising(line: &str) -> String {
+    let ada = ADA_READ.load(std::sync::atomic::Ordering::SeqCst);
+    let said = if line.contains("client.counts") {
+        let (unread, count, read) = if ada {
+            (false, 0, "1730100002.000100")
+        } else {
+            (true, 2, "1730100000.000100")
+        };
+        return format!(
+            concat!(
+                r#"{{"ok": true, "ims": [{{"id": "D1", "has_unreads": {}, "mention_count": {},"#,
+                r#""latest": "1730100002.000100", "last_read": "{}"}}], "mpims": [],"#,
+                r#""channels": [{{"id": "C2", "has_unreads": true, "mention_count": 1,"#,
+                r#""latest": "1730100003.000100", "last_read": "1730100000.000100"}}]}}"#
+            ),
+            unread, count, read
+        );
+    } else if line.contains("conversations.history?channel=D1") {
+        concat!(
+            r#"{"ok": true, "messages": ["#,
+            r#"{"ts": "1730100002.000100", "user": "U7", "text": "are you there?"},"#,
+            r#"{"ts": "1730100001.000100", "user": "U7", "text": "hi <@U0>"}]}"#
+        )
+    } else if line.contains("conversations.history?channel=C2") {
+        concat!(
+            r#"{"ok": true, "messages": ["#,
+            r#"{"ts": "1730100003.000100", "user": "U8", "text": "<@U0> can you look"},"#,
+            r#"{"ts": "1730100002.000100", "user": "U8", "text": "lunch?"}]}"#
+        )
+    } else if line.contains("users.info?user=U8") {
+        r#"{"ok": true, "user": {"id": "U8", "profile": {"real_name": "Grace Hopper"}}}"#
+    } else {
+        return wanting(line);
+    };
+    said.into()
+}
+
+#[test]
+fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
+    let stand_in = StandIn::new(raising);
+    let path = credentials("unreads-raising");
+    let run = path.with_extension("raising");
+    let mut program = unreads(&stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
+    until("no message was held", || {
+        listed(&run, "slack-message").len() == 3
+    });
+    // Newest first: Grace's mention, not her other message, then Ada's
+    // two, each with Search Slack's fields and none done.
+    let held = listed(&run, "slack-message");
+    assert_eq!(
+        held[0],
+        serde_json::json!({"channel": "C2", "ts": "1730100003.000100", "place": "#launcher",
+            "who": "Grace Hopper", "first": "@someone can you look",
+            "text": "@someone can you look", "at": 1_730_100_003_000_u64,
+            "link": "slack://channel?team=T1&id=C2", "team": "T1"})
+    );
+    let said: Vec<(&str, &str)> = held[1..]
+        .iter()
+        .map(|one| (one["who"].as_str().unwrap(), one["text"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            ("Ada Lovelace", "are you there?"),
+            ("Ada Lovelace", "hi @someone")
+        ]
+    );
+    assert_eq!(
+        listed(&run, "slack-read")
+            .iter()
+            .map(|mark| (
+                mark["channel"].as_str().unwrap(),
+                mark["read"].as_str().unwrap()
+            ))
+            .collect::<Vec<_>>(),
+        [("C2", "1730100000.000100"), ("D1", "1730100000.000100")]
+    );
+    let mut shell = Connection::to(&run);
+    let watch = serde_json::json!({
+        "id": "read", "ask": "watch", "kind": ["slack-message", "slack-read"],
+    });
+    shell.answer(&watch);
+    // Joel reads Ada's messages in Slack: both are said done, read in
+    // Slack, with her conversation's mark, and nothing goes.
+    ADA_READ.store(true, std::sync::atomic::Ordering::SeqCst);
+    let changed = shell.heard(|said| said["id"] == "read" && said.get("changed").is_some());
+    assert_eq!(
+        (keys(&changed["changed"]), &changed["gone"]),
+        (
+            vec![
+                "slack-message:D1:1730100002.000100",
+                "slack-message:D1:1730100001.000100",
+                "slack-read:D1"
+            ],
+            &serde_json::json!([])
+        )
+    );
+    let done = &changed["changed"][0]["slack-message"]["done"];
+    assert_eq!(done["how"], "read in Slack");
+    let at = done["at"].as_str().unwrap();
+    assert!(
+        at.len() == 20 && at.ends_with('Z') && at.as_bytes()[10] == b'T',
+        "{at}"
+    );
+    assert_eq!(
+        changed["changed"][2]["slack-read"]["read"],
+        "1730100002.000100"
+    );
+    // Each conversation's history was read once, as its unreads came,
+    // however often Slack was asked how they stood.
+    let asked = |what: &str| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains(what))
+            .count()
+    };
+    let rounds = asked("client.counts");
+    until("Slack wasn't asked again", || {
+        asked("client.counts") >= rounds + 3
+    });
+    program.kill().unwrap();
+    program.wait().unwrap();
+    assert_eq!(
+        (
+            asked("conversations.history?channel=D1"),
+            asked("conversations.history?channel=C2"),
+            asked("users.info?user=U8")
+        ),
+        (1, 1, 1)
+    );
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .all(|heard| heard.line.starts_with("GET /api/")),
+        "{:?}",
+        stand_in.heard()
+    );
     let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }

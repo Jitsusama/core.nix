@@ -27,9 +27,10 @@ onLinux {
   # a file, whole, each conversation named once, signed out kept as such,
   # with no sign-in no file, and over its socket what's unread, what Joel
   # read last and how Slack stands are listed and watched, each record
-  # said only as it changes and gone once read, and a search says each
-  # message found and what's around one, Slack too busy told apart. A
-  # stand-in on the machine answers for Slack.
+  # said only as it changes and gone once read, each message wanting Joel
+  # held until it's said done, read in Slack, its history read once, and a
+  # search says each message found and what's around one, Slack too busy
+  # told apart. A stand-in on the machine answers for Slack.
   slack-finds-who-it-knows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
