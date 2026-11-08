@@ -6,7 +6,12 @@
 // collector as it closes, as one line on its socket; with no collector, it's
 // kept here alone. A list settled with space above its first row is said
 // in the journal with its trace's id, so the void Joel saw can be found in
-// the trace that holds it.
+// the trace that holds it. Work already done when it's heard of, as a
+// refresh of what a source changed is, is a span kept ended at once.
+//
+// The held notices are traced by one of their own (HeldNotices.qml), as
+// the service "notices": each hold the root, from the keys taken to their
+// letting go, and each key's act a span under it (Y2YBTS, 2026-11-07).
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -17,6 +22,10 @@ Scope {
 
     // How many spans to keep: an opening makes a few dozen.
     property int remember: 2000
+    // Who it traces, as the collector names a service, and what its root
+    // span is called.
+    property string service: "launcher"
+    property string rootName: "open"
     // The collector's socket (5FWIUS's, 2026-10-31), which answers nothing.
     property string collector: `${Quickshell.env("XDG_RUNTIME_DIR")}/collector/lines.sock`
 
@@ -27,8 +36,16 @@ Scope {
     property var spans: []
 
     function opened(about) {
-        opening = Traces.begun("open", Date.now(), null, about);
+        opening = Traces.begun(root.rootName, Date.now(), null, about);
         waiting = [];
+    }
+
+    // Work in the opening already done, from `start` until now, kept ended
+    // at once: a refresh, or a key's act on the held notices.
+    function did(name, start, about) {
+        if (opening === null)
+            return;
+        keep(Traces.ended(Traces.begun(name, start, opening, about), Date.now(), {}));
     }
 
     // A span begun in the opening, ended as its list settles.
@@ -83,7 +100,7 @@ Scope {
     // Connected once made, since one refused while it's still being made
     // couldn't be let go (FileChooser.qml).
     function send(each) {
-        unsent = unsent.concat([`${JSON.stringify(Traces.request(each))}\n`]);
+        unsent = unsent.concat([`${JSON.stringify(Traces.request(each, root.service))}\n`]);
         // Not preloaded, a reload only marks the file stale: asking for its
         // text is what starts the look, off the main thread, answered by
         // loaded or loadFailed. One already under way answers for this too.

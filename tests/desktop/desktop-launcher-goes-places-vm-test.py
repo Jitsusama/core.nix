@@ -27,6 +27,7 @@ from desktop_session import (
     google,  # noqa: F401
     lighthouse_listed,
     repeating,
+    retry,
 )
 
 if TYPE_CHECKING:
@@ -474,8 +475,59 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
             " | grep -a -F quickshell.io.socket | grep -a -F Socket_QML_; true"
         )
         assert warned.strip() == "", f"a send warned:\n{warned}"
+        refresh_and_hold_are_traced(desktop, heard)
     finally:
-        desktop.as_account("systemctl --user stop stand-in-collector")
+        desktop.as_account("systemctl --user stop keep-awake.service stand-in-collector")
+
+
+def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
+    """See a source's refresh traced in its opening, and a hold of the notices sent as its own.
+
+    Keep Awake starting changes the session's rows while the launcher is open, and the refresh
+    is a span saying which source, how long it took and how many rows were listed. Super+N
+    holding the notices is a trace of the service "notices": the hold its root, ended as the
+    keys are let go, and j's act a span under it (Y2YBTS, 2026-11-07).
+    """
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.as_account("systemctl --user start keep-awake.service")
+
+    def refreshed(_: object) -> bool:
+        spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+        return any(
+            span["name"] == "refresh" and span["about"]["source"] == "session" for span in spans
+        )
+
+    retry(refreshed, timeout=dt.timedelta(seconds=10))
+    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+    opening = [span for span in spans if span["name"] == "open"][-1]
+    refresh = next(
+        span for span in spans if span["name"] == "refresh" and span["about"]["source"] == "session"
+    )
+    assert refresh["parent"] == opening["span"], refresh
+    assert refresh["about"]["rows"] >= 0, refresh
+    assert refresh["about"]["tookMs"] >= 0, refresh
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    with desktop.told("shows card Traced"):
+        desktop.as_account("notify-send --expire-time=60000 'Traced' 'held and let go'")
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    machine.send_key("j")
+    with desktop.told("lets notices go"):
+        machine.send_key("meta_l-n")
+    line = machine.wait_until_succeeds(
+        desktop.in_session(f'grep -a \'"stringValue":"notices"\' {heard} | tail -1 | grep .'),
+        timeout=dt.timedelta(seconds=10),
+    )
+    sent = json.loads(line)["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    hold = next(span for span in sent if span["name"] == "hold")
+    acts = [span for span in sent if span["name"] == "act"]
+    assert acts, sent
+    assert all(span["parentSpanId"] == hold["spanId"] for span in acts), sent
+    said = {each["key"]: each["value"] for each in acts[0]["attributes"]}
+    assert said["act"] == {"stringValue": "down"}, said
 
 
 @pytest.mark.usefixtures("google")

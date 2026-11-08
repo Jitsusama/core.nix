@@ -233,6 +233,7 @@ Card {
     // Taken on the card it was on when let go, the cursor's card changes
     // nothing, so what it offers is said once the cursor has settled.
     function take(front) {
+        traces.opened({ cards: live.length });
         reset();
         gutterDigits = 1;
         noteDigits();
@@ -351,6 +352,7 @@ Card {
     }
 
     function letGo() {
+        traces.closed({ done: awayIds.length, left: live.length - awayIds.length });
         stack.dismiss(awayIds);
         changes = Changes.changes();
         reset();
@@ -976,8 +978,23 @@ Card {
             scrollsKeys(read);
             return;
         }
+        const startedAt = Date.now();
+        const from = mode;
         act(read);
+        traces.did("act", startedAt, { act: read.act, count: read.count ?? 1, mode: from,
+            cards: listed.length });
         standing = NoticeKeys.settled(standing, Date.now());
+    }
+
+    // Each hold a trace (Traces.qml) of the service "notices": the keys
+    // taken its root, ended as they're let go with how many cards were
+    // done and how many left, and each act a key does in normal a span
+    // under it, saying what it did, how many times and to how many cards
+    // (Y2YBTS, 2026-11-07).
+    Traces {
+        id: traces
+        service: "notices"
+        rootName: "hold"
     }
 
     // Keys while the key list shows: the moves scroll it, and Escape, q

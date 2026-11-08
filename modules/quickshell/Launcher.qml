@@ -4151,8 +4151,16 @@ Scope {
             for (const source of due)
                 Report.say(`refresh of ${source.settings.name} began ${refreshedAt}`);
         refreshing = [];
-        for (const source of due)
+        // Each a span of the opening (Traces.qml), saying which source
+        // changed, how long its refresh took by the shell's clock, and how
+        // many rows the list held after (Y2YBTS, 2026-11-07).
+        for (const source of due) {
+            const startedAt = Date.now();
+            const started = KeyTimes.now();
             refreshNow(source);
+            traces.did("refresh", startedAt, { source: source.settings.name,
+                tookMs: KeyTimes.now() - started, rows: matches.length, depth: held.length });
+        }
         actsRefreshed(due, begun);
         heldAgreed(due);
     }
