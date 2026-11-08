@@ -27,6 +27,8 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Forward.js" as Forward
+import "NoticeBody.js" as NoticeBody
+import "ProgramGlyphs.js" as ProgramGlyphs
 
 Singleton {
     id: root
@@ -37,7 +39,13 @@ Singleton {
     readonly property real readFor: 7 * day
     readonly property real unreadFor: 30 * day
 
-    // { id, at, app, summary, body, glyph, hue, urgent, held, missed, read }
+    // { id, at, app, entry, summary, body, styled, links, picture, glyph,
+    // hue, urgency, category, low, urgent, held, missed, read, waits, left,
+    // leftAt }: `body` is its words plain and `styled` with the markup a
+    // card draws, `links` each { text, href }, `urgency` what its sender
+    // asked (low, normal or critical) and `urgent` whether it stays, and
+    // `left` how it left the screen once it has (expired, dismissed or
+    // withdrawn), and when.
     property var history: []
     readonly property int missed: history.filter(notice => notice.missed).length
     readonly property int unread: history.filter(notice => !notice.read).length
@@ -54,16 +62,19 @@ Singleton {
     // Whether the launcher's collection of them is open.
     property bool gathered: false
 
-    // A sender's glyph where Nerd Fonts has one, the hue of what it
-    // brings, a person's message wearing the person's, and the name Joel
-    // knows it by, which a card signs it with, never its program's. One
-    // that only answers what Joel just did, as the recorder's saying where
-    // a file went, is never missed.
+    // A sender's glyph, the hue of what it brings, a person's message
+    // wearing the person's, and the name Joel knows it by, which a card
+    // signs it with, never its program's. A program's notice wears its
+    // program's own mark, the one its row in the launcher does
+    // (ProgramGlyphs.js), named by its desktop entry's id as `program`;
+    // the rest are the desktop's own, each its theme mark. One that only
+    // answers what Joel just did, as the recorder's saying where a file
+    // went, is never missed.
     readonly property var senders: ({
-        "slack": { glyph: 0xf198, hue: "person", name: "Slack" },
+        "slack": { program: "slack", hue: "person", name: "Slack" },
         "tuple": { glyph: Theme.glyph.call.codePointAt(0), hue: "person", name: "Tuple" },
-        "google chrome": { glyph: 0xf268, hue: "program", name: "Google Chrome" },
-        "chromium": { glyph: 0xf268, hue: "program", name: "Chromium" },
+        "google chrome": { program: "google-chrome", hue: "program", name: "Google Chrome" },
+        "chromium": { program: "chromium", hue: "program", name: "Chromium" },
         // The compositor, saying a screenshot was taken or its settings
         // didn't load.
         "niri": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
@@ -130,18 +141,55 @@ Singleton {
         // What became of a save into Google Drive (modules/google's
         // Saves.qml): one that failed is missed until seen, since the file
         // waits on Joel, and one that went up answers what he did.
-        "google drive": { glyph: 0xf02b6, hue: "program", name: "Google Drive" }
+        "google drive": { program: "google-drive", hue: "program", name: "Google Drive" }
     })
 
-    // One unknown is signed by its program's own name for itself, where it
-    // has one, as its launcher row is, or else as it named itself.
-    function sender(name) {
+    // The bell, worn only by a sender no program's mark is known for.
+    readonly property int bell: 0xf0f3
+    // A machine's own program marks, as the launcher's Programs are given
+    // them (jitsusama.quickshell.launcher.providers.applications.glyphs).
+    readonly property var ownGlyphs: Providers.providers
+        .find(listed => listed.name === "applications")?.glyphs ?? {}
+
+    // Who sent a notice, by the name it gave and the desktop entry it names,
+    // if any: one the desktop knows by name as it's listed; any other is
+    // signed by its program's own name for itself, as its launcher row is,
+    // or else as it named itself, and wears its program's mark, the bell
+    // only where no program's is known.
+    function sender(name, entry) {
         const known = senders[name.toLowerCase()];
-        return known ?? {
-            glyph: 0xf0f3,
-            hue: "program",
-            name: DesktopEntries.heuristicLookup(name)?.name ?? name
+        if (known && known.glyph !== undefined)
+            return known;
+        const program = known?.program
+            ?? ((entry ?? "") !== "" ? DesktopEntries.byId(entry) : null)
+            ?? DesktopEntries.heuristicLookup(name);
+        const id = typeof program === "string" ? program : program?.id ?? name;
+        const mark = ProgramGlyphs.glyph(id, ownGlyphs, Theme.glyph);
+        return {
+            glyph: mark === "" ? bell : mark.codePointAt(0),
+            hue: known?.hue ?? "program",
+            name: known?.name ?? (typeof program === "string" ? null : program?.name) ?? name
         };
+    }
+
+    // A notice's own picture, as an avatar or a thumbnail: the image it was
+    // sent with, never its program's icon, which its mark says. One given as
+    // an icon's name, or the same as its program's icon, is an icon, so its
+    // mark stays (VKCF3Z, 2026-11-07). Quickshell serves one sent as data
+    // only while the notice is open, so the history keeps a picture only
+    // when it's a file.
+    function picture(notification) {
+        const image = notification?.image ?? "";
+        if (image === "" || image === notification.appIcon || image.startsWith("image://icon/"))
+            return "";
+        return image.startsWith("/") ? `file://${image}` : image;
+    }
+
+    // A notice's picture as the history has it: its own while it's open,
+    // else the file it was kept as, if any.
+    function pictureOf(notice) {
+        const still = live[notice.id] ?? null;
+        return still ? picture(still) : notice.picture ?? "";
     }
 
     // Those still young enough to keep, at most `keep` of them.
@@ -152,25 +200,39 @@ Singleton {
     }
 
     // Keeps a notification as it arrives, missed until it's seen unless
-    // it's never counted, and held when it's never shown.
-    function arrived(notification, urgent, held, counted) {
-        const from = sender(notification.appName);
+    // it's never counted, and held when it's never shown. One sent at low
+    // urgency is never missed, since its sender says it can pass unseen.
+    function arrived(notification, urgent, held, counted, urgency) {
+        const low = urgency === "low";
+        const from = sender(notification.appName, notification.desktopEntry);
+        const said = NoticeBody.read(notification.body);
+        const pictured = picture(notification);
         const notice = {
             id: notification.id,
             at: Date.now(),
             app: notification.appName,
+            entry: notification.desktopEntry ?? "",
             summary: notification.summary,
-            // Its markup taken out, since the launcher's rows are plain.
-            body: notification.body.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<")
-                .replace(/&gt;/g, ">").replace(/&amp;/g, "&"),
+            // Its words plain for the launcher's rows, the find and a copy,
+            // and styled for a card and a drawer, with its links.
+            body: said.plain,
+            styled: said.styled,
+            links: said.links,
+            picture: pictured.startsWith("file://") ? pictured : "",
             glyph: from.glyph,
             hue: from.hue,
+            urgency: urgency,
+            // What kind of notice its sender says it is, in the spec's
+            // words, as im.received.
+            category: String(notification.hints?.category ?? ""),
+            low: low,
             urgent: urgent,
             held: held,
             // A sender whose every notice is missed can still send one that
             // only answers what Joel just did, saying so with the x-answers
             // hint, as a save Drive took does.
-            missed: counted && !from.answers && notification.hints?.["x-answers"] === undefined,
+            missed: counted && !low && !from.answers
+                && notification.hints?.["x-answers"] === undefined,
             read: false,
             // The Needs You item it says, if it's one (WaitingOnYou.qml), so
             // it's settled with the item even once gone from the screen.
@@ -194,8 +256,11 @@ Singleton {
     // minutes (Arrivals.qml), keeps its place and whether it's read, with
     // its new words.
     function reword(id, summary, body) {
+        const said = NoticeBody.read(body);
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { summary: summary, body: body }));
+            : Object.assign({}, notice, {
+                summary: summary, body: said.plain, styled: said.styled, links: said.links
+            }));
     }
 
     // The last one said again in place that tells something new, so the
@@ -229,11 +294,13 @@ Singleton {
     // How one left, as "expired", "dismissed" or "withdrawn": only one that
     // went by itself was missed, and one its program withdrew was read there.
     // It's no longer missed before it leaves the screen, for the same reason.
+    // How and when each left is kept, for its drawer.
     function left(id, how) {
-        if (how !== "expired")
-            history = history.map(notice => notice.id !== id ? notice
-                : Object.assign({}, notice, { missed: false },
-                    how === "withdrawn" ? { read: true } : {}));
+        const at = Date.now();
+        history = history.map(notice => notice.id !== id ? notice
+            : Object.assign({}, notice, { left: how, leftAt: at },
+                how === "expired" ? {} : { missed: false },
+                how === "withdrawn" ? { read: true } : {}));
         const still = Object.assign({}, live);
         delete still[id];
         live = still;

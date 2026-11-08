@@ -20,6 +20,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../NoticeBody.js" as NoticeBody
 import "Notice.js" as Notice
 import "Ago.js" as Ago
 
@@ -78,12 +79,20 @@ Provider {
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03). Its sender is a name from the world,
             // so the eyebrow is set as it's written (VKCF3Z, 2026-11-07).
+            // Its words styled as its card draws them, links and all, where
+            // the history kept them so (one kept before it did has them
+            // plain); its own picture while it has one; and how it was sent
+            // and how it left, as facts.
             drawer: { eyebrow: provider.whoAndWhen(notice), eyebrowNames: true,
-                title: notice.summary, body: notice.body, prose: true },
+                title: notice.summary,
+                body: notice.styled ?? notice.body, styled: notice.styled !== undefined,
+                prose: true, picture: Notices.pictureOf(notice),
+                facts: provider.facts(notice) },
             // Its sender's, which the history keeps as a code point
-            // (Notices.qml).
+            // (Notices.qml), muted for one sent at low urgency, as its card
+            // draws it.
             glyph: String.fromCodePoint(notice.glyph),
-            hue: notice.hue,
+            hue: notice.low ? "muted" : notice.hue,
             note: notice.app,
             // Who sent it, which ends a paragraph of rows (Launcher.qml's
             // runOf), so dip takes away what one sender sent.
@@ -127,6 +136,29 @@ Provider {
         return row;
     }
 
+    // What its drawer says of a notice beyond its words: how it left the
+    // screen and when, or that it's still open; the urgency its sender
+    // asked; and what kind of notice it says it is, where it says. What the
+    // spec gives besides is left out: a sound, which the desktop never
+    // plays for a sender; the icons of its actions, since its acts wear the
+    // desktop's marks; and how long it asked to stay, which its leaving
+    // already tells.
+    function facts(notice) {
+        const out = [];
+        const at = notice.leftAt ? Qt.formatDateTime(new Date(notice.leftAt), "HH:mm") : "";
+        const how = notice.left ?? (notice.id in Notices.resting ? "resting"
+            : notice.id in Notices.live ? "shown" : "");
+        if (how !== "")
+            out.push({ label: Words.name("notices:left"),
+                value: (Words.of("notices:left", how).said ?? "").replace("{at}", at) });
+        if (notice.urgency)
+            out.push({ label: Words.name("notices:urgency"),
+                value: Words.name("notices:urgency", notice.urgency) });
+        if (notice.category)
+            out.push({ label: Words.name("notices:category"), value: notice.category });
+        return out;
+    }
+
     // Who sent a notice and when, as its drawer's eyebrow says it: the
     // sender by the name its card signs it with (Notices.qml), so the two
     // never differ (VKCF3Z, 2026-11-03), and the time alone today, and its
@@ -152,7 +184,8 @@ Provider {
         const acts = Notice.acts({
             live: live !== null,
             opens: live ? Notice.opens(live.actions) : false,
-            offers: live ? Notice.offers(live.actions) : []
+            offers: live ? Notice.offers(live.actions) : [],
+            links: notice.links ?? []
         }, { window: from.window !== null, stack: false });
         return acts.map(act => provider.act(notice, said, from, act));
     }
@@ -200,6 +233,19 @@ Provider {
                         provider.go(notice.app);
                 }
             });
+        case "link":
+            // A link in what it said, opened in the program the desktop
+            // opens it with, its host at its side so two read apart.
+            return thing(Object.assign(named("verb:notice:link"), {
+                key: `verb:notice:link:${act.href}`,
+                verb: Words.verb("verb:notice:link"),
+                side: NoticeBody.host(act.href),
+                later: true,
+                run: () => {
+                    Notices.mark(notice.id, true);
+                    Niri.spawn(["xdg-open", act.href]);
+                }
+            }));
         case "goTo":
             // Going to its program while a window of it is open. Opening a
             // program that isn't open would be named Open, which the

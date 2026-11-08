@@ -119,6 +119,9 @@ Floating {
         text: reader && styled ? plain.replace(/ color="[^"]*"/g, "") : plain
         textFormat: styled ? Text.StyledText : Text.PlainText
         color: reader ? "transparent" : ink
+        // A link is underlined in the words' own colour, never Qt's blue,
+        // since colour goes on glyphs and never on text.
+        linkColor: color
         // Broken only at spaces, as a page is: a drawer too narrow for a
         // word lets it run past the edge rather than split it (VKCF3Z).
         wrapMode: elides || !wraps ? Text.NoWrap : Text.WordWrap

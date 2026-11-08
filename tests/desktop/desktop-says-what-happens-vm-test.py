@@ -1082,16 +1082,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     kept = shown / detail(desktop.screen_now().crop(under))
     print(f"UNDER THE CARD at {under}, {kept:.2f} of the detail was left")
     assert kept > UNBLURRED, f"under the card, at {under}, only {kept:.2f} of the detail was left"
-    for summary, body in [
-        ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
-        ("Backup Finished", ""),
-        ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used."),
-    ]:
-        with desktop.told(f"shows card {summary}"):
-            desktop.as_account(
-                f"notify-send --expire-time=60000 {shlex.quote(summary)} {shlex.quote(body)}"
-            )
-    desktop.shoot(f"notices-stacked-at-{named}")
+    pictured_linked_and_quiet_at(desktop, named)
     # Collected once it ends, since a stopped player exits failed and would
     # keep the unit's name from the next scale's.
     with desktop.told("drawn notifications"):
@@ -1109,6 +1100,48 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     )
     desktop.shoot(f"playing-at-{named}")
     desktop.as_account("systemctl --user stop player")
+
+
+def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
+    """Stack three notices, the front with a picture and a link, the next sent at low urgency.
+
+    The server says it draws markup, links and pictures, so each reaches the front card; held,
+    the low one is quieter than the rest; and the front one's drawer in the launcher draws the
+    same, its acts opening the link (VKCF3Z, 2026-11-07).
+    """
+    machine = desktop.machine
+    link = "https://docs.google.com/d/notes"
+    for summary, body, more in [
+        (
+            "Standup in Ten Minutes",
+            f'The usual room, with <a href="{link}">the notes</a> from Tuesday.',
+            f"--hint=string:image-path:{desktop.values['wide']}",
+        ),
+        ("Backup Finished", "", "--urgency=low"),
+        ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used.", ""),
+    ]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(
+                f"notify-send --expire-time=60000 {more} {shlex.quote(summary)} {shlex.quote(body)}"
+            )
+    front = json.loads(desktop.as_account("qs ipc call notices front"))
+    assert front.get("pictured"), f"the standup's picture isn't on its card: {front}"
+    assert front.get("links") == [link], front
+    desktop.shoot(f"notices-stacked-at-{named}")
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    desktop.shoot(f"notices-held-quiet-at-{named}")
+    with desktop.told("lets notices go"):
+        machine.send_chars(":q\n")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("standup ten", selecting="Standup in Ten Minutes")
+    desktop.launcher_until(lambda shown: shown["drawer"]["out"])
+    desktop.shoot(f"notice-drawer-at-{named}")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Open the Link" in shown["rows"])
+    desktop.shoot(f"notice-acts-at-{named}")
+    desktop.close_launcher()
 
 
 def under_the_card(desktop: Desktop) -> tuple[tuple[int, int, int, int], float]:
