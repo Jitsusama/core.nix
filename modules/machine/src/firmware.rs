@@ -154,7 +154,9 @@ pub fn history(entries: &[Value]) -> BTreeMap<String, Value> {
                     .and_then(|s| UPDATE_STATES.get(usize::try_from(s).ok()?))
                     .copied(),
                 "at_s": entry["Modified"].as_u64().or(entry["Created"].as_u64()),
-                "version": entry["Releases"][0]["Version"].as_str(),
+                // On the bus an entry's releases are `Release`, where
+                // fwupdmgr's JSON says `Releases`.
+                "version": entry["Release"][0]["Version"].as_str(),
                 "error": entry["UpdateError"].as_str(),
                 "updated_at_s": updated.get(&id),
             });
@@ -256,9 +258,9 @@ mod tests {
         ]);
         let kept = history(&[
             json!({"DeviceId": "a1", "UpdateState": 2, "Modified": 100,
-                "Releases": [{"Version": "1.1.0"}]}),
+                "Release": [{"Version": "1.1.0"}]}),
             json!({"DeviceId": "a1", "UpdateState": 4, "Modified": 200,
-                "Releases": [{"Version": "1.2.0"}]}),
+                "Release": [{"Version": "1.2.0"}]}),
         ]);
         let found = records(&devices, &offered, &kept);
         assert_eq!(
