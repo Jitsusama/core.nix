@@ -20,6 +20,7 @@ mod internet;
 mod json;
 mod marks;
 mod mesh;
+pub mod names;
 mod nodes;
 mod profiles;
 mod radio;

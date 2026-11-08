@@ -11,12 +11,21 @@
 # shell listens and every five minutes when nothing does (src/schedule.rs
 # says each pace). It's background work, a few small requests over the
 # internet, so it runs in background.slice, behind everything Joel uses.
+#
+# The views (`eero status`, `eero nodes`, `eero devices` and the rest) read
+# that record, and `eero watch <view>` draws one again as the daemon tells
+# its socket of each change. eero completes in zsh with the completion it
+# writes itself (completion.nix), which asks eero for the views, and for
+# the nodes, devices and profiles the record holds now.
 { lib, pkgs, ... }:
 let
   eero = pkgs.callPackage ./package.nix { };
 in
 {
-  home.packages = [ eero ];
+  home.packages = [
+    eero
+    (pkgs.callPackage ./completion.nix { })
+  ];
 
   systemd.user.services.eero-daemon = {
     Unit = {

@@ -402,6 +402,10 @@
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
     program and Joel's key by default, and signing alone, with no hardware, signs nothing
   '';
+  eero-completes-in-zsh = ''
+    eero completes in zsh with its views and commands, each node, each device by its name or, where
+    another shares it, its address, each profile, and --json after a view
+  '';
   eero-passes-clippy = ''
     clippy finds nothing in eero or its tests
   '';
@@ -412,7 +416,9 @@
     anyone listens and every 5 minutes otherwise and the rest at their own paces, keeps the last
     figures when eero can't be reached, saying since when and why, and writes each listener the
     model on joining and on every change; and it sends the conferencing setting as a bare boolean,
-    counted taken only once eero reads it back
+    counted taken only once eero reads it back; every view's page matches its golden one, saying
+    when eero isn't answering or the reading is old, colouring only on a terminal, each view's JSON
+    is the record's own slice, and a watch draws its view again from each model the socket writes
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux

@@ -17,8 +17,37 @@ onLinux {
   # and why, a listener on the socket is written the model on joining and on
   # every change, the status line says what eero said and nothing it didn't,
   # and the conferencing setting is sent as eero takes it and counted only
-  # once read back.
+  # once read back. Every view's page is held to a golden one drawn from
+  # home-network.json (src/views/golden/), its figures lined up by their
+  # point with their units beside them, a missing one as a dash; a cloud
+  # that isn't answering, a session signed out and a reading grown old are
+  # said in the head with what to do; a name two devices share is refused
+  # with each one's address; colour comes only on a terminal and changes no
+  # character; each view's JSON is the record's own slice of it; and a
+  # watch draws its view again from each model the socket writes.
   eero-reads-what-eero-says = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in eero, its tests included.
   eero-passes-clippy = passesClippy "eero-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # eero completes in zsh, typed in a real line editor with the real eero
+  # over home-network.json and the completion home.nix installs: its views
+  # and commands, each node by its location, each device by its name or,
+  # where another shares it, its address, each profile, and --json after a
+  # view (tests/eero-completion.zsh).
+  eero-completes-in-zsh =
+    pkgs.runCommandLocal "eero-completes-in-zsh"
+      {
+        nativeBuildInputs = [
+          (pkgs.callPackage ./package.nix { })
+          pkgs.zsh
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
+        mkdir -m 700 run
+        mkdir run/eero
+        cp ${./home-network.json} run/eero/home-network.json
+        zsh -f ${./tests/eero-completion.zsh} \
+          ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_eero
+        touch $out
+      '';
 }

@@ -20,6 +20,9 @@
 //! The views: status, nodes, node <location|id>, mesh, devices,
 //! device <name|mac>, internet, speeds, firmware, radio, traffic, profiles,
 //! profile <name|id> and events.
+//!
+//! For the shell: `eero completion zsh` writes zsh's completion, and
+//! `eero names views|nodes|devices|profiles` what it offers of each.
 
 mod api;
 mod cloud;
@@ -78,6 +81,10 @@ fn main() -> ExitCode {
             };
             watch::watch(&how, &mut io::stdout().lock())
         }),
+        ["completion", "zsh"] => io::stdout()
+            .write_all(include_str!("completion.zsh").as_bytes())
+            .map_err(|e| e.to_string()),
+        ["names", kind] => names(kind),
         ["sign-in", login] => sign_in(login),
         ["speedtest"] => speedtest(),
         ["sqm", "on"] => conferencing(true),
@@ -92,6 +99,23 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What completion offers of a kind, as zsh reads it. The views need no
+/// record; the rest are what the record holds now.
+fn names(kind: &str) -> Result<(), String> {
+    use views::names;
+    let record = || live::read(&live::file()?);
+    let named = match kind {
+        "views" => names::views(),
+        "nodes" => names::nodes(&record()?),
+        "devices" => names::devices(&record()?),
+        "profiles" => names::profiles(&record()?),
+        _ => return Err("usage: eero names views|nodes|devices|profiles".into()),
+    };
+    io::stdout()
+        .write_all(names::for_zsh(&named).as_bytes())
+        .map_err(|e| e.to_string())
 }
 
 fn sign_in(login: &str) -> Result<(), String> {
