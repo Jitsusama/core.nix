@@ -4,7 +4,10 @@
 // then its public addresses. A step into a connection holds its parts:
 // its Address, Gateway, DNS (on the way out, as the machine asks names
 // there), Hardware address, MTU, State and the Device name the kernel
-// knows it by, which finds it too. "gateway" and "dns" ask those parts
+// knows it by, which finds it too. An Ethernet card's holds its link as
+// well, after the names: the Speed and Duplex it agreed with the other
+// end, how often its Link was Lost, and its Errors, each kind a step in,
+// read again each second while they're shown. "gateway" and "dns" ask those parts
 // alone. An IPv4 or IPv6 address or network, written with its prefix or
 // its mask, says its size, range, mask and the rest of a subnet's parts
 // (Subnets.js works them out), or which network holds the address typed,
@@ -19,7 +22,9 @@
 // What each connection is comes from one `ip -json -details address`,
 // spawned as the launcher opens and when it's asked after five seconds,
 // never for a key; the routes and name servers are read from the kernel's
-// files and resolv.conf when asked, so nothing blocks.
+// files and resolv.conf when asked, so nothing blocks. A cable's link is
+// read from its folder in /sys/class/net, and read again each second
+// spawns nothing: ip is asked only when the answer is.
 import qs
 import Quickshell.Io
 import QtQuick
@@ -118,9 +123,10 @@ Provider {
     }
 
     // The connections as they stand, asking ip again when what it said is
-    // old: { links, routes, routes6, out }, or null before ip first answers.
+    // old, but for a cable's link read again while it's shown: { links,
+    // routes, routes6, out }, or null before ip first answers.
     function standing() {
-        if (links === null || Date.now() - linksAt > stands)
+        if (links === null || (!ticking && Date.now() - linksAt > stands))
             look();
         if (links === null) {
             waiting = true;
@@ -223,6 +229,31 @@ Provider {
         };
     }
 
+    // The rows the cards on a cable are kept under, so their link is read
+    // again each second while one is shown, and whether one is: stepped
+    // into, or into one of its parts.
+    readonly property var cables: (links ?? []).filter(link => link.kind === "wired")
+        .map(link => `networks:${link.name}`)
+    readonly property bool watching: launcher !== null && launcher.open
+        && (launcher.held ?? []).some(step => cables.includes(step.row?.key ?? ""))
+    // Whether the answer is asked again for the link alone, which asks ip
+    // nothing.
+    property bool ticking: false
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: provider.watching
+        onTriggered: {
+            provider.ticking = true;
+            try {
+                provider.answered();
+            } finally {
+                provider.ticking = false;
+            }
+        }
+    }
+
     function publicRow(url, id) {
         const said = ask(url, minutes);
         const key = `networks:${id}`;
@@ -276,13 +307,101 @@ Provider {
                 rows.push(part(key("dns"), "dns", servers.join(", "),
                     "what this machine asks names of"));
         }
+        const cable = link.kind === "wired" ? Interfaces.cable(file => sys(name, file)) : null;
+        if (cable !== null)
+            rows.push(...cableParts(name, cable));
         if (link.mac !== "")
             rows.push(part(key("hardware"), "hardware", link.mac,
                 link.own !== "" ? `its own is ${link.own}` : assignedSaid[link.assigned] ?? ""));
         if (link.mtu > 0)
             rows.push(part(key("mtu"), "mtu", `${grouped(link.mtu)} bytes`,
                 "the largest packet it sends whole", String(link.mtu)));
-        rows.push(part(key("state"), "state", stateSaid[link.state], "", ""));
+        // A cable's carrier is read as its link is, so it's said as it is
+        // now rather than as ip last said.
+        rows.push(part(key("state"), "state", stateSaid[cable?.state ?? link.state], "", ""));
+        return rows;
+    }
+
+    // How many, in words: "none", or the count grouped.
+    function howMany(value) {
+        return value === 0 ? "none" : grouped(value);
+    }
+
+    // What a cable's duplex means.
+    readonly property var duplexSaid: ({
+        full: "sends and hears at once",
+        half: "sends and hears in turn, as when the two ends didn't agree on full"
+    })
+
+    // A cable's link, as its card reads it now: the Speed and Duplex it
+    // agreed with the other end, each left out where the driver can't say,
+    // as while nothing's at the other end; how often its Link was Lost;
+    // and its Errors, each way, every kind a step in.
+    function cableParts(name, cable) {
+        const key = id => `networks:${name}:${id}`;
+        const rows = [];
+        if (cable.speed !== null)
+            rows.push(part(key("speed"), "speed", Interfaces.linkRate(cable.speed,
+                (value, places) => Numbers.format(value, places, settings.group, settings.point)),
+                "what the two ends agreed on"));
+        if (cable.duplex !== null)
+            rows.push(part(key("duplex"), "duplex", cable.duplex, duplexSaid[cable.duplex]));
+        if (cable.lost !== null)
+            rows.push(part(key("lost"), "lost", cable.lost === 0 ? "never"
+                : cable.lost === 1 ? "once" : `${grouped(cable.lost)} times`,
+                "since the card started", String(cable.lost)));
+        const errors = cable.errors;
+        if (errors.in !== null && errors.out !== null)
+            rows.push(holderRow({
+                key: key("errors"),
+                name: named("errors"),
+                side: errors.in + errors.out === 0 ? "none"
+                    : `${grouped(errors.in)} in \u00b7 ${grouped(errors.out)} out`,
+                note: "since the card started",
+                glyph: Theme.glyph.wired
+            }, () => provider.errorParts(name)));
+        return rows;
+    }
+
+    // What each kind of error a cable counts means.
+    readonly property var errorSaid: ({
+        "errors-in": "frames that came in broken, of every kind",
+        damaged: "failed their checksum, most often a poor cable or port",
+        misaligned: "didn't end on a whole byte",
+        "wrong-length": "shorter or longer than they said",
+        overrun: "came faster than the card could take them",
+        missed: "the card had no room to keep",
+        "queue-in": "overflowed the card's own queue",
+        "errors-out": "frames that couldn't be sent, of every kind",
+        aborted: "given up on, most often after too many collisions",
+        "no-link": "sent as the link dropped",
+        "queue-out": "the card's own queue ran dry mid-frame",
+        heartbeat: "the other end's heartbeat went missing",
+        late: "collided late, a sign the two ends disagree on duplex",
+        collisions: "met another sender on the wire, as only half duplex can",
+        "dropped-in": "set aside, not broken: for a protocol nothing here speaks, or no room",
+        "dropped-out": "set aside before sending, not broken"
+    })
+
+    // A cable's errors a step in, as its card reads them now: what came in
+    // broken, then each kind it had, what couldn't go out, then each kind
+    // of that, and what was set aside each way, which isn't an error.
+    function errorParts(name) {
+        const errors = Interfaces.cable(file => sys(name, file)).errors;
+        const key = id => `networks:${name}:errors:${id}`;
+        const said = (id, value) => part(key(id), id, howMany(value), errorSaid[id] ?? "",
+            String(value));
+        const kinds = way => errors.kinds.filter(kind => kind.way === way)
+            .map(kind => said(kind.id, kind.count));
+        const rows = [];
+        if (errors.in !== null)
+            rows.push(said("errors-in", errors.in), ...kinds("in"));
+        if (errors.out !== null)
+            rows.push(said("errors-out", errors.out), ...kinds("out"));
+        if (errors.droppedIn !== null)
+            rows.push(said("dropped-in", errors.droppedIn));
+        if (errors.droppedOut !== null)
+            rows.push(said("dropped-out", errors.droppedOut));
         return rows;
     }
 

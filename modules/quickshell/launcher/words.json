@@ -1932,6 +1932,106 @@
       "name": "State"
     },
     {
+      "id": "networks:speed",
+      "in": "networks",
+      "name": "Speed"
+    },
+    {
+      "id": "networks:duplex",
+      "in": "networks",
+      "name": "Duplex"
+    },
+    {
+      "id": "networks:lost",
+      "in": "networks",
+      "name": "Link Lost"
+    },
+    {
+      "id": "networks:errors",
+      "in": "networks",
+      "name": "Errors"
+    },
+    {
+      "id": "networks:errors-in",
+      "in": "networks:errors",
+      "name": "In"
+    },
+    {
+      "id": "networks:damaged",
+      "in": "networks:errors",
+      "name": "Damaged"
+    },
+    {
+      "id": "networks:misaligned",
+      "in": "networks:errors",
+      "name": "Misaligned"
+    },
+    {
+      "id": "networks:wrong-length",
+      "in": "networks:errors",
+      "name": "Wrong Length"
+    },
+    {
+      "id": "networks:overrun",
+      "in": "networks:errors",
+      "name": "Overrun"
+    },
+    {
+      "id": "networks:missed",
+      "in": "networks:errors",
+      "name": "Missed"
+    },
+    {
+      "id": "networks:queue-in",
+      "in": "networks:errors",
+      "name": "Queue In"
+    },
+    {
+      "id": "networks:errors-out",
+      "in": "networks:errors",
+      "name": "Out"
+    },
+    {
+      "id": "networks:aborted",
+      "in": "networks:errors",
+      "name": "Aborted"
+    },
+    {
+      "id": "networks:no-link",
+      "in": "networks:errors",
+      "name": "No Link"
+    },
+    {
+      "id": "networks:queue-out",
+      "in": "networks:errors",
+      "name": "Queue Out"
+    },
+    {
+      "id": "networks:heartbeat",
+      "in": "networks:errors",
+      "name": "Heartbeat"
+    },
+    {
+      "id": "networks:late",
+      "in": "networks:errors",
+      "name": "Late Collisions"
+    },
+    {
+      "id": "networks:collisions",
+      "in": "networks:errors",
+      "name": "Collisions"
+    },
+    {
+      "id": "networks:dropped-in",
+      "in": "networks:errors",
+      "name": "Dropped In"
+    },
+    {
+      "id": "networks:dropped-out",
+      "in": "networks:errors",
+      "name": "Dropped Out"
+    },
+    {
       "id": "networks:public",
       "in": "networks",
       "name": "Public Address"
