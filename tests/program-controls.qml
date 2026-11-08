@@ -563,6 +563,18 @@ ShellRoot {
                 "on The Tester \u00b7 track: Song of the test");
             same("where it is leading", `${drawn.facts[0].label} ${drawn.facts[0].value}`,
                 "Position 1:38 of 6:43");
+
+            // A program's drawer, its desktop file read once it's asked
+            // (Program.js), where its windows are leading.
+            applications.readDesktop("tester");
+            const told = program("tester").drawer();
+            same("a program's drawer says where and what it is", `${told.eyebrow}: ${told.title}`,
+                "on 1 and 2 \u00b7 logbook: Tester");
+            same("what it plays, then opens, then how it starts",
+                told.facts.map(fact => fact.label).join(", "),
+                "Playing, Opens, Handles, Categories, Command, Desktop ID");
+            same("what it opens, from its desktop file", told.facts[1].value, "1 kind \u00b7 HTML");
+            same("its categories, as words", told.facts[3].value, "Office, Text Editor");
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");

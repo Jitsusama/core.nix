@@ -49,6 +49,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Media.js" as Media
 import "Order.js" as Order
+import "Program.js" as Program
 import "Recent.js" as Recent
 
 Provider {
@@ -419,6 +420,75 @@ Provider {
         enabled: !!provider.launcher && provider.launcher.open
             && Playing.players.some(player => player.isPlaying)
         precision: SystemClock.Seconds
+    }
+
+    // A program's drawer (Program.js): the workspaces its windows are on
+    // and what it is, what it plays, what other providers say of it
+    // (their programFacts), the kinds of file and links it opens, its
+    // categories, and its command and id last; its comment is its words.
+    // The kinds of file are its desktop file's, which Quickshell's entry
+    // doesn't hold, read once just after the drawer first asks, so they
+    // follow a frame later rather than the reader moving under a binding.
+    function programDrawer(entry) {
+        if (entry.id === undefined || entry.name === undefined)
+            return null;
+        const types = desktopTypes[entry.id];
+        if (types === undefined && !desktopAsked[entry.id]) {
+            desktopAsked[entry.id] = true;
+            Qt.callLater(() => provider.readDesktop(entry.id));
+        }
+        const looked = {};
+        const player = playerOf(given => provider.names(entry, given, looked));
+        return Program.drawer({
+            name: entry.name,
+            kind: entry.genericName.toLowerCase(),
+            places: (running[entry.id] ?? [])
+                .map(window => Niri.workspaces[window.workspace_id]?.idx)
+                .filter(place => place !== undefined),
+            playing: player && player.trackTitle !== "" ? nowPlaying(player) : "",
+            given: hooked("programFacts", entry.id),
+            types: types ?? [],
+            endings: mimeEndings,
+            categories: entry.categories,
+            command: entry.command,
+            id: entry.id,
+            comment: entry.comment
+        }, id => Words.name(`applications:${id}`), Words.of("applications").said);
+    }
+
+    // The kinds each program's desktop file says it opens, by its id, and
+    // what each kind's files end in, from shared-mime-info's globs, read
+    // the first time any drawer asks. The first desktop file and globs
+    // found along the data folders are the ones the desktop reads.
+    property var desktopTypes: ({})
+    property var desktopAsked: ({})
+    property var mimeEndings: ({})
+    readonly property var dataFolders: [Quickshell.env("XDG_DATA_HOME")
+        || `${Quickshell.env("HOME")}/.local/share`]
+        .concat((Quickshell.env("XDG_DATA_DIRS") || "/usr/local/share:/usr/share").split(":"))
+        .filter(folder => folder !== "")
+
+    function firstRead(file) {
+        for (const folder of dataFolders) {
+            desktopProbe.path = `${folder}/${file}`;
+            const text = read(desktopProbe);
+            if (text !== "")
+                return text;
+        }
+        return "";
+    }
+
+    function readDesktop(id) {
+        if (Object.keys(mimeEndings).length === 0)
+            mimeEndings = Program.endings(firstRead("mime/globs2"));
+        desktopTypes = Object.assign({}, desktopTypes,
+            { [id]: Program.mimeTypes(firstRead(`applications/${id}.desktop`)) });
+    }
+
+    FileView {
+        id: desktopProbe
+        blockLoading: true
+        printErrors: false
     }
 
     // Its streams open to play sound through, by the name each gives, as
@@ -1321,6 +1391,8 @@ Provider {
                 // Then the action's words are what it's called, and count as
                 // its name, as a collection's do (Launcher.qml).
                 named: binds.length > 0,
+                // Everything it is and does, under the row (Program.js).
+                drawer: () => provider.programDrawer(entry),
                 below: below,
                 verbs: () => provider.controls(entry, start, below),
                 under: () => provider.under(entry),

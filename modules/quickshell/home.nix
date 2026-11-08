@@ -288,6 +288,7 @@ let
     "launcher/KeyCounts.js"
     "launcher/Media.js"
     "launcher/NowGroups.js"
+    "launcher/Program.js"
     "launcher/Notice.js"
   ];
 

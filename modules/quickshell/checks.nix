@@ -2222,6 +2222,8 @@ onLinux {
         Name=Tester
         GenericName=Logbook
         Exec=tester %U
+        MimeType=text/html;x-scheme-handler/https;
+        Categories=Office;TextEditor;
         Actions=private;new;logbook;
 
         [Desktop Action private]
@@ -2267,7 +2269,9 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
-      mkdir -p launcher share/applications
+      mkdir -p launcher share/applications share/mime
+      # The kinds of file the tester opens end as shared-mime-info says.
+      printf '50:text/html:*.html\n' > share/mime/globs2
       cp ${tester} share/applications/tester.desktop
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
@@ -2283,6 +2287,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Media.js} launcher/Media.js
+      cp ${./launcher/Program.js} launcher/Program.js
       cp ${./Music.js} Music.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
@@ -3310,6 +3315,25 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml media.qml
+      touch $out
+    '';
+
+  # A program's drawer says what it is, where its windows are, what it
+  # opens and how it starts, in the order every drawer keeps, as
+  # tests/program-drawer.qml holds launcher/Program.js to a desktop file
+  # and shared-mime-info's globs made up there.
+  a-program-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-program-says-all-it-knows" { } ''
+      mkdir launcher
+      cp ${../../tests/program-drawer.qml} program-drawer.qml
+      cp ${./launcher/Program.js} launcher/Program.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml program-drawer.qml
       touch $out
     '';
 

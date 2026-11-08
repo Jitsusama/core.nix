@@ -7597,7 +7597,13 @@
       "name": "Programs",
       "term": "Programs/program",
       "noun": "programs",
-      "glyph": "program"
+      "glyph": "program",
+      "said": {
+        "on": "on {places}",
+        "and": "and",
+        "kind": "1 kind",
+        "kinds": "{count} kinds"
+      }
     },
     {
       "id": "windows",
@@ -9053,6 +9059,51 @@
       "id": "program:media:bus-name",
       "in": "program:media",
       "name": "Bus Name"
+    },
+    {
+      "id": "applications:processor",
+      "in": "applications",
+      "name": "Processor"
+    },
+    {
+      "id": "applications:memory",
+      "in": "applications",
+      "name": "Memory"
+    },
+    {
+      "id": "applications:processes",
+      "in": "applications",
+      "name": "Processes"
+    },
+    {
+      "id": "applications:playing",
+      "in": "applications",
+      "name": "Playing"
+    },
+    {
+      "id": "applications:opens",
+      "in": "applications",
+      "name": "Opens"
+    },
+    {
+      "id": "applications:handles",
+      "in": "applications",
+      "name": "Handles"
+    },
+    {
+      "id": "applications:categories",
+      "in": "applications",
+      "name": "Categories"
+    },
+    {
+      "id": "applications:command",
+      "in": "applications",
+      "name": "Command"
+    },
+    {
+      "id": "applications:desktop-id",
+      "in": "applications",
+      "name": "Desktop ID"
     },
     {
       "id": "verb:program:play",

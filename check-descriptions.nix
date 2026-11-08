@@ -73,6 +73,11 @@
     a media player's drawer says everything its player tells MPRIS, what moves first and what
     identifies it last, leaving out what it can't say, and its art only from where it may be drawn
   '';
+  a-program-says-all-it-knows = ''
+    a program's drawer says where its windows are and what it is, then what it plays and what
+    others say of it, the kinds of file and links it opens and its categories, and its command
+    and desktop id last, leaving out what it can't say
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds
