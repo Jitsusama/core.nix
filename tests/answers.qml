@@ -2335,7 +2335,7 @@ QtObject {
             policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
         machine("WARP's service not answering", Warp.failed({ error: "not-answering",
             said: "No such file or directory (os error 2)" }, warpSaid), { headline: "not answering",
-            warns: true, note: "not answering \u00b7 No such file or directory (os error 2)" });
+            warns: true, note: "No such file or directory (os error 2)" });
         machine("warp-cli saying what warp can't read", Warp.failed({ error: "unreadable",
             said: "warp-cli status said InvalidAccountType: Invalid account type." }, warpSaid),
         { headline: "unreadable", warns: true,

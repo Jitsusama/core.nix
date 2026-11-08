@@ -23,12 +23,11 @@ const PLACEHOLDER = /\{(\w+)\}/g;
 // The unit a figure's key ends in, as warp-cli names them.
 const UNIT = /^(.*)_(percent|ms)$/;
 // What warp says when it couldn't read WARP, by its error, as the words
-// its row says it in, and whether its note says them before why; a
-// machine with no warp-cli has no WARP, so says nothing. An unreadable
-// answer's note is what warp said of it.
+// its row says it in; a machine with no warp-cli has no WARP, so says
+// nothing.
 const FAILED = {
-    "not-answering": { headline: "notAnswering", leads: true },
-    unreadable: { headline: "unreadable", leads: false },
+    "not-answering": "notAnswering",
+    unreadable: "unreadable",
 };
 
 // A word of warp's in the vocabulary, its {placeholders} filled.
@@ -358,18 +357,17 @@ function told(record, settings, said) {
 
 // What warp said when it couldn't read WARP ({ error, said }), as the row
 // says it in warp's words (`said`): { headline, warns, note }, or null
-// where there's no warp-cli, so no WARP to show. A service not answering
-// says so before why, as a run: "not answering \u00b7 <why>".
+// where there's no warp-cli, so no WARP to show. Its note is why, in
+// warp's words, so the row reads as one run, "not answering \u00b7 <why>",
+// rather than saying it isn't answering twice.
 function failed(printed, said) {
-    const words = FAILED[printed?.error];
-    if (!words) {
+    const word = FAILED[printed?.error];
+    if (!word) {
         return null;
     }
-    const headline = worded(said, words.headline);
-    const why = String(printed.said ?? "");
     return {
-        headline,
+        headline: worded(said, word),
         warns: true,
-        note: words.leads ? joined([headline, why]) : why,
+        note: String(printed.said ?? ""),
     };
 }

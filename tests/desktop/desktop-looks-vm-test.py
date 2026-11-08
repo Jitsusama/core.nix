@@ -1642,6 +1642,8 @@ def test_warp_stands_in_network_and_says_when_degraded_or_not_answering_at_each_
             desktop.launcher_until(
                 lambda shown: reading(shown, "Health ").startswith("Health \u00b7 degraded")
             )
+            # Selected, so its row says what WARP measured.
+            desktop.down_to("Health")
             desktop.shoot(f"launcher-warp-degraded-at-{at}")
             desktop.step_out()
             desktop.launcher_until(
