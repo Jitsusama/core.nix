@@ -4530,7 +4530,8 @@
     {
       "id": "sound:graph-id",
       "in": "sound",
-      "name": "Graph ID"
+      "name": "Graph ID",
+      "term": "Machine/graph"
     },
     {
       "id": "sound:alsa-device",
@@ -4555,7 +4556,8 @@
     {
       "id": "sound:graph-format",
       "in": "sound",
-      "name": "Graph Format"
+      "name": "Graph Format",
+      "term": "Machine/graph"
     },
     {
       "id": "verb:sound-louder",
