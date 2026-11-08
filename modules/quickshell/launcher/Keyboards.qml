@@ -368,7 +368,9 @@ Provider {
     function layerPart(device, key) {
         if (!Keyboards.zsa(device) || !KeyboardLayer.present)
             return null;
-        const side = KeyboardLayer.locked ? `${KeyboardLayer.name}, locked` : KeyboardLayer.name;
+        const side = KeyboardLayer.locked
+            ? `${KeyboardLayer.name} \u00b7 locked`
+            : KeyboardLayer.name;
         if (!KeyboardLayout.boarded)
             return figure(key("layer"), "layer", side);
         return holderRow({
