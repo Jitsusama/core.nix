@@ -48,14 +48,23 @@ function reached(record) {
 // node says one ("MacBook Air"), else a Linux machine's maker and product,
 // which are words already, else the system's own kind ("Mac"), never an
 // identifier such as Mac14,2, which goes last in the drawer.
-function kindOf(record, said) {
+function kindOf(record, named) {
     if ((record.model_name ?? "") !== "") {
         return record.model_name;
     }
     if (record.system === "linux" && (record.model ?? "") !== "") {
         return record.model;
     }
-    return filled(said, record.system ?? "machine");
+    return systemOf(record, named);
+}
+
+// The systems a machine is named by, each a name of its own.
+const SYSTEMS = ["macos", "linux"];
+
+// The system's own kind, "Mac" or "Linux", or "Machine" where the node
+// names none it knows.
+function systemOf(record, named) {
+    return named(`kind:${SYSTEMS.includes(record.system) ? record.system : "machine"}`);
 }
 
 // A moment as the clock says it today, "14:20", or the day before then,
@@ -70,7 +79,7 @@ function moment(at, now) {
 // The row's note: what it is and what it runs, "MacBook Air \u00b7 macOS
 // 26.6.2", and its realm only while two or more are linked.
 function note(record, place) {
-    const parts = [kindOf(record, place.said), record.os ?? ""];
+    const parts = [kindOf(record, place.named), record.os ?? ""];
     if (place.realms > 1) {
         parts.push(record.realm ?? "");
     }
@@ -193,8 +202,8 @@ function takes(room, said) {
 }
 
 // Its update: the commit its machine runs, shortened, and core's beside
-// this machine's where both say one, then the step, then what it said
-// needs a restart.
+// this machine's where both say one, then the step, then why it said it
+// needs a reboot.
 function update(updated, place) {
     if (!updated) {
         return [];
@@ -208,7 +217,7 @@ function update(updated, place) {
         fact(named("commit"), String(updated.commit ?? "").slice(0, SHORT_COMMIT)),
         fact(named("core"), coreSaid),
         fact(named("step"), updated.step ?? ""),
-        fact(named("restart"), updated.restart ?? "")
+        fact(named("reboot"), updated.restart ?? "")
     ];
 }
 
@@ -222,8 +231,8 @@ function reach(record, place) {
 // How an update a machine was asked for ended, as the report says it,
 // from what `mycelium update` printed: its node's answer,
 // `{"Ok": {"Updated": ending}}` with the ending its updater said, or
-// `{"Err": why}`. "penelope updated to c0ffee1", "penelope was on main
-// already", "penelope didn't update" or "penelope refused the update";
+// `{"Err": why}`. "skiff updated to c0ffee1", "skiff was on main
+// already", "skiff didn't update" or "skiff refused the update";
 // anything else, an answer that never came included, is why it couldn't
 // be asked, as the node said it.
 function updateEnded(name, text, said) {
@@ -279,7 +288,7 @@ function drawer(record, place) {
     ]);
     return {
         eyebrow: filled(said, "on", { realm: record.realm ?? "",
-            kind: filled(said, record.system ?? "machine") }),
+            kind: systemOf(record, named) }),
         title: record.name,
         facts: facts.filter(one => one !== null)
     };

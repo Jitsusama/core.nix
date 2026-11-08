@@ -184,7 +184,7 @@ Provider {
 
     // Updates it to its configuration's main, which restarts what it
     // runs, so it asks first, as every act that restarts things does:
-    // "Update penelope Now", noted that its sessions restart. While it
+    // "Update skiff Now", noted that its sessions restart. While it
     // goes, its foot says so.
     function updateIt(record) {
         const id = "verb:machines:update";
