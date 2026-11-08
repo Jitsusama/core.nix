@@ -1,17 +1,31 @@
 # The Apple MacBook Air 13-inch (M2, 2022; model A2681, Mac14,2, board
 # J413): Apple's M2 (T8112), four performance and four efficiency cores and
 # its own GPU, a 2560x1664 Liquid Retina panel, Broadcom's BCM4387 Wi-Fi 6
-# and Bluetooth, two USB-C ports and MagSafe. Asahi Linux drives it: its
-# kernel, m1n1 and U-Boot through nixos-apple-silicon, with the firmware for
+# and Bluetooth, two USB-C ports and MagSafe. Asahi Linux drives it: core's
+# own build of its kernel (kernel/), with a screen on the front-left port,
+# and its m1n1 and U-Boot through nixos-apple-silicon, with the firmware for
 # Wi-Fi, Bluetooth and the camera taken from macOS by Asahi's installer.
 # It has no TPM and no Secure Boot a Linux system can use. docs/hardware.md
 # says what works and what's left.
-{ nixos-apple-silicon }:
+{ nixos-apple-silicon, hibernate }:
 { ... }:
 {
   imports = [
     nixos-apple-silicon.nixosModules.apple-silicon-support
     ../../modules/firmware-settings/nixos.nix
+    ./kernel/nixos.nix
+  ];
+
+  disabledModules = [
+    # core builds the kernel itself, so nixos-apple-silicon's kernel module,
+    # which would set its own, is left out.
+    "${nixos-apple-silicon}/apple-silicon-support/modules/kernel"
+    # The laptop role hibernates, which here can't come back: systemd keeps
+    # where the image went in an EFI variable, and U-Boot keeps none, so
+    # the next start would begin afresh and the session would be lost. No
+    # one has yet resumed from disk on Apple silicon. The kernel is built
+    # without hibernation too, so nothing offers it.
+    hibernate
   ];
 
   nixpkgs.hostPlatform = "aarch64-linux";

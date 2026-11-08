@@ -702,6 +702,9 @@
   kernel-settings-hold = ''
     the kernel's patches apply and every setting holds
   '';
+  kernel-settings-hold-apple-macbook-air-m2-a2681 = ''
+    the MacBook Air M2's own Asahi kernel applies its screen patches and holds every setting
+  '';
   kernel-settings-hold-dell-xps-14-da14260 = ''
     the XPS 14's own kernel applies its patches and holds every setting
   '';
