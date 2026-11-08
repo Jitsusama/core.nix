@@ -189,7 +189,11 @@ Provider {
     // the launcher has only just opened, its place held with the fixed
     // placeholder, so nothing moves when the record comes a moment later;
     // and while the daemon isn't answering, dimmed, saying so (VKCF3Z's
-    // rules for a daemon that's down).
+    // rules for a daemon that's down). It says it has parts, as it will
+    // once its record comes, so a place lists it from the start and says
+    // it again in place as the record comes (Launcher.qml's relive): a
+    // place is made once, and an answer that came later would never join
+    // it.
     function unheld(kind) {
         const down = daemon.state === "not answering";
         return {
@@ -203,6 +207,7 @@ Provider {
             note: down ? says("cpu", "down") : "",
             asking: !down,
             gone: down,
+            parted: true,
             live: provider
         };
     }

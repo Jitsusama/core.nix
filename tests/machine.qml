@@ -1,7 +1,8 @@
 // Drives the launcher's Machine (modules/quickshell/launcher/Machine.qml)
 // through Quickshell itself, with the machine daemon (modules/machine)
-// running over the sandbox's own /proc: once a Machine answer is shown,
-// the processors', memory's and uptime's headlines are the daemon's, and
+// running over the sandbox's own /proc: Machine's place holds the
+// processors' place before the daemon answers, and asks it; then the
+// processors', memory's and uptime's headlines are the daemon's, and
 // make none of their parts; the programs using the machine aren't asked
 // for until the processor's parts are stepped into, and then are. It exits 0
 // once every case holds, and otherwise 1, saying which case didn't.
@@ -34,12 +35,25 @@ ShellRoot {
         launcher: launcher
     }
 
-    // The Processor answer shown, as the launcher shows it once typed,
-    // before the daemon has said anything, since Machine asks it only
-    // while one of its answers is shown.
+    // Machine's place stepped into, before the daemon has said anything,
+    // since Machine asks it only while one of its answers is shown, and a
+    // place is made once: Processor holds its place there with the parts
+    // to come, and holding it asks the daemon. Power's Kept From Resting
+    // is the telemetry's, so a place holding it alone asks nothing.
     Component.onCompleted: {
-        launcher.answer = machine.answer("processor");
-        waiting.start();
+        try {
+            launcher.placed = ["energy", "machine:cpu:kept-from-resting"];
+            expect("Power's place asks the daemon nothing", !machine.shown, "it did");
+            const before = machine.answer("processor");
+            expect("before the daemon says, Processor waits with its parts to come",
+                before.parted === true && before.asking === true,
+                `${before.parted} ${before.asking}`);
+            launcher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
+            expect("Machine's place asks the daemon", machine.shown, "it didn't");
+            waiting.start();
+        } catch (error) {
+            fail(error);
+        }
     }
 
     function fail(error) {
