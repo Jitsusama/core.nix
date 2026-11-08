@@ -219,12 +219,7 @@ mod tests {
             "main hasn't moved"
         );
         assert!(
-            !stale(
-                &at("a"),
-                &at("b"),
-                Some(&building),
-                Duration::from_mins(29)
-            ),
+            !stale(&at("a"), &at("b"), Some(&building), Duration::from_mins(29)),
             "a short build finishes rather than start again at each merge"
         );
         let switching = Line::Switching {
