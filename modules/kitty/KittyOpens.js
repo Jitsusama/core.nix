@@ -1,14 +1,28 @@
 // What a new kitty window opens from Programs › kitty in the launcher
-// (Kitty.qml): one of the repositories fd finds under ~/src, or ssh to one
-// of the machines ~/.ssh/config names, each list most recent first, with
-// the words each row says and the command that opens it. Kept apart from
-// the QML so Qt's own engine runs it (tests/kitty-tabs.qml); Kitty.js
-// reads kitty's own state.
+// (Kitty.qml): one of the repositories fd finds under ~/src, most recent
+// first, or ssh to one of the machines ~/.ssh/config and
+// ~/.ssh/known_hosts name, most used first, with the words each row says
+// and the command that opens it. Kept apart from the QML so Qt's own
+// engine runs it (tests/kitty-tabs.qml); Kitty.js reads kitty's own state.
 //
-// A machine shows every setting its own Host block gives it, and when it
-// was last reached; a `Host *` block's settings, which are every
-// machine's, aren't said on each. A repository is its path, as every
-// folder is; zoxide's score for it isn't shown, since its order says it.
+// A machine shows which file named it, how many times zsh's history ran
+// ssh to it and when last, every setting its own Host block gives it, and
+// the kinds of key known_hosts holds for it, and the other names a
+// known_hosts line gives it. Left out: a `Host *` block's settings, which
+// are every machine's, so say nothing of one; the keys themselves, whose
+// base64 nobody reads and whose fingerprint would need ssh-keygen run for
+// each; a known_hosts line's comment, which ssh writes none of; a hashed
+// line (HashKnownHosts), which hides its name by design, and an
+// @cert-authority or @revoked line, which names a signer or a key
+// refused rather than a machine reached; and a Host block's own
+// UserKnownHostsFile, whose keys aren't said, since each block may name
+// another. A repository is its path, as every folder is. zoxide keeps
+// when each folder was last visited and a score, but `query` prints only
+// the score, and the order is by the visit, so neither is said: a score
+// of its own frecency has no unit Joel could read.
+//
+// Each figure of a machine is from a file read once as kitty is stepped
+// into, so nothing here asks the network or ssh-agent anything.
 .pragma library
 .import "Ago.js" as Ago
 .import "Kitty.js" as Kitty
@@ -24,6 +38,10 @@ const PATTERN = /[*?!]/;
 // A line of zsh's extended history: when it started, how long it took,
 // and the command.
 const HISTORY = /^: (\d+):\d+;(.*)$/;
+// A known_hosts name with its port, as ssh writes one off port 22.
+const BRACKETED = /^\[([^\]]+)\]:(\d+)$/;
+// The port ssh reaches when nothing names one.
+const SSH_PORT = "22";
 // The .git a repository's found by, as fd prints it.
 const GIT = /\/?\.git\/?$/;
 
@@ -66,7 +84,7 @@ function settingOf(raw) {
 // them, with its own block's settings: a pattern with a wildcard or a
 // negation names no one machine, so it's passed over, and a Match block's
 // settings are no Host's. An Include isn't followed.
-function machines(text) {
+function configured(text) {
     const found = [];
     let block = null;
     const settings = String(text ?? "").split("\n").map(settingOf).filter(one => one !== null);
@@ -86,29 +104,116 @@ function machines(text) {
     return found.map(one => ({ name: one.name, options: one.block.options }));
 }
 
-// When each machine was last reached, in milliseconds since the epoch, as
-// zsh's extended history keeps each command with when it started
-// (`: <start>:<elapsed>;<command>`), by the name ssh was given.
+// A known_hosts name as { name, port }, without the brackets ssh puts
+// round one off port 22.
+function knownName(word) {
+    const bracketed = BRACKETED.exec(word);
+    return bracketed ? { name: bracketed[1], port: bracketed[2] } : { name: word, port: SSH_PORT };
+}
+
+// Each machine ~/.ssh/known_hosts names, in the order it first names it,
+// as { name, port, also, keys }: the first name of a line, the other names
+// it gives the same machine (ssh adds its address beside its name with
+// CheckHostIP), and each kind of key held for it, one a line. A hashed
+// line, a marked one and a pattern are passed over, as the header says.
+function known(text) {
+    const found = [];
+    for (const raw of String(text ?? "").split("\n")) {
+        const [names, kind] = raw.trim().split(SPACES);
+        const passed = (names ?? "") === "" || (kind ?? "") === "" || PATTERN.test(names)
+            || ["#", "|", "@"].includes(names[0]);
+        if (!passed) {
+            const [first, ...others] = names.split(",").map(knownName);
+            let one = found.find(each => each.name === first.name && each.port === first.port);
+            if (!one) {
+                one = { name: first.name, port: first.port, also: [], keys: [] };
+                found.push(one);
+            }
+            one.also = Array.from(new Set(one.also.concat(others.map(other => other.name))));
+            one.keys = Array.from(new Set(one.keys.concat([kind])));
+        }
+    }
+    return found;
+}
+
+// Where ssh reaches a machine ~/.ssh/config names: its HostName, else its
+// name, on its Port, else 22.
+function reachedAt(one) {
+    return { name: option(one, "hostname") || one.name, port: option(one, "port") || SSH_PORT };
+}
+
+// Every machine to ssh to, as { name, options, port, also, keys, from }:
+// those ~/.ssh/config names, as written, each with the keys known_hosts
+// holds where ssh reaches it; then each other machine known_hosts names,
+// where ssh has been without its config naming it. `from` says which file
+// named it, by its words' id; a known_hosts machine off port 22 keeps the
+// port, which ssh is told.
+function machines(config, hosts) {
+    const all = known(hosts);
+    const own = configured(config).map(one => {
+        const at = reachedAt(one);
+        const key = all.find(each => each.port === at.port
+            && (each.name === at.name || each.also.includes(at.name)));
+        const keys = key ? key.keys : [];
+        return Object.assign(one, { port: "", also: [], keys, from: "config" });
+    });
+    const named = own.reduce((names, one) => names.concat([one.name, reachedAt(one).name]), []);
+    const others = all.filter(each => !(named.includes(each.name)
+        || each.also.some(name => named.includes(name))))
+        .map(each => ({
+            name: each.name,
+            options: [],
+            port: each.port === SSH_PORT ? "" : each.port,
+            also: each.also,
+            keys: each.keys,
+            from: "known"
+        }));
+    return own.concat(others);
+}
+
+// The command that opens ssh to a machine, through kitty's ssh kitten, by
+// the name it's listed by, and its port where known_hosts gave one.
+function sshing(kitten, one) {
+    const port = one.port === "" ? [] : ["-p", one.port];
+    return [kitten, "ssh"].concat(port, [one.name]);
+}
+
+// How many times zsh's history ran ssh to each machine, and when it last
+// did, in milliseconds since the epoch, as zsh's extended history keeps
+// each command with when it started (`: <start>:<elapsed>;<command>`), by
+// the name ssh was given: { <name>: { times, last } }.
 function connected(history) {
-    const last = {};
+    const reached = {};
     for (const line of String(history ?? "").split("\n")) {
         const entry = HISTORY.exec(line);
         const args = entry ? Kitty.sshArgs(Kitty.unwrapped(entry[2].trim().split(SPACES))) : null;
         const name = args ? Kitty.destination(args) : "";
         if (name !== "") {
-            last[name] = Math.max(last[name] ?? 0, Number(entry[1]) * MILLISECONDS_A_SECOND);
+            const was = reached[name] ?? { times: 0, last: 0 };
+            reached[name] = {
+                times: was.times + 1,
+                last: Math.max(was.last, Number(entry[1]) * MILLISECONDS_A_SECOND)
+            };
         }
     }
-    return last;
+    return reached;
 }
 
-// The machines, most recent first: one an ssh session is open to now,
-// then each by when it was last reached, then the rest as written.
-function machinesInOrder(all, last, now) {
-    const at = one => now.includes(one.name) ? Number.POSITIVE_INFINITY : last[one.name] ?? -1;
-    return all.map((one, written) => ({ one, written }))
-        .sort((a, b) => at(b.one) - at(a.one) || a.written - b.written)
-        .map(each => each.one);
+// What the history says of one machine, by every name it has: how many
+// times it was reached, and when last.
+function reachedBy(one, reached) {
+    return [one.name].concat(one.also).reduce((all, name) => {
+        const by = reached[name] ?? { times: 0, last: 0 };
+        return { times: all.times + by.times, last: Math.max(all.last, by.last) };
+    }, { times: 0, last: 0 });
+}
+
+// The machines, most used first: by how many times the history reached
+// each, then by when it last did, then as written.
+function machinesInOrder(all, reached) {
+    const by = all.map((one, written) => ({ one, written, use: reachedBy(one, reached) }));
+    return by.sort((a, b) => b.use.times - a.use.times || b.use.last - a.use.last
+        || a.written - b.written).map(each => each.one);
 }
 
 // One of a machine's settings, by ssh's keyword in any case, or "".
@@ -131,32 +236,55 @@ function whereTo(one) {
     return `${at}${address === "" ? one.name : address}${on}`;
 }
 
+// Where a machine's settings take ssh, or the port known_hosts gave it.
+function goesTo(one) {
+    return one.port === "" ? whereTo(one) : `${one.name}:${one.port}`;
+}
+
 // When a machine was reached, in its row's words: connected now while an
-// ssh session to it is open (`known.open`), or how long ago it was last.
-function reached(one, known, said) {
-    if (known.open.includes(one.name)) {
+// ssh session to it is open (`state.open`), or how long ago it was last.
+function lastReached(one, state, said) {
+    if ([one.name].concat(one.also).some(name => state.open.includes(name))) {
         return said.now;
     }
-    const last = known.last[one.name];
-    return last ? Ago.ago(last, known.time) : "";
+    const { last } = reachedBy(one, state.reached);
+    return last ? Ago.ago(last, state.time) : "";
 }
 
-// What's said beside a machine: when it was reached, then where it goes,
-// so a side cut short keeps when.
-function machineSide(one, known, said) {
-    return [reached(one, known, said), whereTo(one)].filter(part => part !== "")
-        .join(" \u00b7 ");
+// How many times it was reached, in its row's words, or "" for never.
+function timesOf(one, state, said) {
+    const { times } = reachedBy(one, state.reached);
+    if (times === 0) {
+        return "";
+    }
+    return times === 1 ? said.once : Kitty.fill(said.times, { count: times });
 }
 
-// A machine's drawer: when it was last reached, then every setting its own
-// block gives it, by ssh's own keyword, as written.
-function machineDrawer(one, known, words) {
-    const when = reached(one, known, words.said);
-    return {
-        title: one.name,
-        facts: (when === "" ? [] : [{ label: words.named("connected"), value: when }])
-            .concat(one.options.map(each => ({ label: each.keyword, value: each.value })))
-    };
+// What's said beside a machine: when it was reached, how many times, then
+// where it goes, so a side cut short keeps when.
+function machineSide(one, state, said) {
+    return [lastReached(one, state, said), timesOf(one, state, said), goesTo(one)]
+        .filter(part => part !== "").join(" \u00b7 ");
+}
+
+// A machine's drawer: when it was last reached and how many times, which
+// file named it, then every setting its own block gives it, by ssh's own
+// keyword, as written, then its known_hosts port, other names and kinds
+// of key.
+function machineDrawer(one, state, words) {
+    const { said } = words;
+    const facts = [
+        ["connected", lastReached(one, state, said)],
+        ["times", timesOf(one, state, said)],
+        ["from", said[one.from] ?? ""]
+    ].map(fact => ({ label: words.named(fact[0]), value: fact[1] }))
+        .concat(one.options.map(each => ({ label: each.keyword, value: each.value })))
+        .concat([
+            ["port", one.port],
+            ["also", one.also.join(" \u00b7 ")],
+            ["keys", one.keys.join(" \u00b7 ")]
+        ].map(fact => ({ label: words.named(fact[0]), value: fact[1] })));
+    return { title: one.name, facts: facts.filter(fact => fact.value !== "") };
 }
 
 // The repositories fd finds under ~/src, each by the folder holding its

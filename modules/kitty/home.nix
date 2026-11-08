@@ -13,7 +13,7 @@
 # In the launcher, Programs › kitty holds kitty's own as well (Kitty.qml):
 # every tab open in it, each pane's folder and what runs there, a new window
 # in one of the repositories under ~/src, and one running ssh to a machine
-# ~/.ssh/config names.
+# ~/.ssh/config or ~/.ssh/known_hosts names.
 { quickshell }:
 {
   config,
@@ -178,10 +178,11 @@ in
 
   # kitty's own in Programs › kitty (Kitty.qml): its tabs and panes as its
   # remote control lists them, which open-now asks every kitty for at once,
-  # a new window in a repository fd finds under ~/src, in zoxide's order
-  # where it knows one, and one running ssh to a machine ~/.ssh/config
-  # names, by when zsh's history last ran ssh to it. Each is read as kitty
-  # is stepped into, once each time the launcher opens.
+  # a new window in a repository fd finds under ~/src, most recently
+  # visited first where zoxide knows one, and one running ssh to a machine
+  # ~/.ssh/config or ~/.ssh/known_hosts names, by how many times zsh's
+  # history ran ssh to it. Each is read as kitty is stepped into, once each
+  # time the launcher opens.
   config.jitsusama.quickshell.launcher.providers.kitty = {
     order = 52;
     source = ./Kitty.qml;
@@ -193,6 +194,7 @@ in
     grep = lib.getExe pkgs.gnugrep;
     history = lib.optionalString config.programs.zsh.enable config.programs.zsh.history.path;
     sshConfig = "${config.home.homeDirectory}/.ssh/config";
+    knownHosts = "${config.home.homeDirectory}/.ssh/known_hosts";
     src = "${config.home.homeDirectory}/src";
     kitten = lib.getExe' package "kitten";
     kitty = lib.getExe package;

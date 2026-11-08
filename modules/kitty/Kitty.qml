@@ -5,10 +5,12 @@
 // - New Window in a Repository, while ~/src holds any: a list of them,
 //   those zoxide knows first in its order, each opening a kitty window
 //   there on Return, as a folder in kitty's Recent does.
-// - SSH to a Machine, while ~/.ssh/config names any: a list of them, one
-//   connected now first, then each by when zsh's history last ran ssh to
-//   it, then as written, each opening a kitty window running kitty's ssh
-//   kitten on Return.
+// - SSH to a Machine, while ~/.ssh/config or ~/.ssh/known_hosts names
+//   any: a list of them, most used first, by how many times zsh's history
+//   ran ssh to each, then by when it last did, then as written, each
+//   opening a kitty window running kitty's ssh kitten on Return. The
+//   glossary's word is machine, never host, so typing host finds it as a
+//   name it once had.
 // - Tabs, while a kitty window is open: every tab of every kitty OS window
 //   niri shows, the window used last first and its tabs as they were used,
 //   each saying how it stands, what runs in it and where. Return goes to
@@ -22,7 +24,8 @@
 // as kitty is stepped into, once each time the launcher opens, and never
 // otherwise (VKCF3Z): kitty's own state through open-now, which asks every
 // kitty at once, fd for the repositories, zoxide for their order, grep for
-// the ssh lines of the history, and ~/.ssh/config itself. What kitty says
+// the ssh lines of the history, and ~/.ssh/config and ~/.ssh/known_hosts
+// themselves. What kitty says
 // is read in Kitty.js, and the rest in KittyOpens.js.
 pragma ComponentBehavior: Bound
 
@@ -46,6 +49,7 @@ Provider {
     property string visited: ""
     property string history: ""
     property string config: ""
+    property string hosts: ""
     // The tabs and panes closed since the launcher opened, by key.
     property var closed: []
 
@@ -70,7 +74,8 @@ Provider {
         if (looked)
             return;
         looked = true;
-        // ~/.ssh/config is read as its path is given, below.
+        // ~/.ssh/config and ~/.ssh/known_hosts are read as their paths are
+        // given, below.
         for (const reader of [listing, finding, ranking, searching]) {
             if ((reader.command[0] ?? "") !== "" && !reader.running)
                 reader.running = true;
@@ -167,6 +172,23 @@ Provider {
         }
     }
 
+    FileView {
+        id: knownHosts
+
+        path: provider.looked ? provider.settings.knownHosts ?? "" : ""
+        printErrors: false
+        onLoaded: {
+            provider.hosts = knownHosts.text();
+            provider.heard();
+        }
+        onLoadFailed: {
+            if (knownHosts.path === "")
+                return;
+            provider.hosts = "";
+            provider.heard();
+        }
+    }
+
     function niri() {
         return Object.values(Niri.windows);
     }
@@ -208,10 +230,12 @@ Provider {
     }
 
     function repositoryAct() {
-        if (provider.repositoriesNow().length === 0)
+        const count = provider.repositoriesNow().length;
+        if (count === 0)
             return [];
         const id = "verb:kitty:repository";
         return [provider.said(id, id, {
+            side: String(count),
             ask: Words.of(id).ask ?? "",
             nested: true,
             targets: () => provider.repositoriesNow().map(path => provider.repositoryRow(path))
@@ -226,39 +250,48 @@ Provider {
         })]);
     }
 
-    // What's known of when each machine was reached, for its row.
-    function known() {
+    // What's known of when and how often each machine was reached, and
+    // which an ssh session is open to now, for its row.
+    function reaching() {
         const open = provider.tabsNow().reduce((all, tab) => all.concat(tab.panes), [])
             .map(pane => pane.runs.machine).filter(name => name !== "");
-        return { open: open, last: Opens.connected(provider.history), time: Date.now() };
+        return { open: open, reached: Opens.connected(provider.history), time: Date.now() };
     }
 
-    function machinesNow(known) {
-        return Opens.machinesInOrder(Opens.machines(provider.config), known.last, known.open);
+    function everyMachine() {
+        return Opens.machines(provider.config, provider.hosts);
+    }
+
+    function machinesNow(state) {
+        return Opens.machinesInOrder(provider.everyMachine(), state.reached);
     }
 
     function sshAct() {
-        if (Opens.machines(provider.config).length === 0)
+        const count = provider.everyMachine().length;
+        if (count === 0)
             return [];
         const id = "verb:kitty:ssh";
         return [provider.said(id, id, {
+            side: String(count),
             ask: Words.of(id).ask ?? "",
             nested: true,
             targets: () => {
-                const now = provider.known();
+                const now = provider.reaching();
                 return provider.machinesNow(now).map(one => provider.machineRow(one, now));
             }
         })];
     }
 
     // A machine: Return opens a window running kitty's ssh kitten to it, by
-    // the name ~/.ssh/config gives it; inside, that and Copy the Name.
-    function machineRow(one, known) {
-        const ssh = provider.said("verb:kitty:machine:ssh", `verb:kitty:machine:ssh:${one.name}`, {
-            run: () => provider.open({ command: [provider.tools.kitten, "ssh", one.name] })
+    // the name its file gives it; inside, that and Copy the Name. One
+    // known_hosts names on two ports is two machines, keyed by each.
+    function machineRow(one, state) {
+        const at = one.port === "" ? one.name : `${one.name}:${one.port}`;
+        const ssh = provider.said("verb:kitty:machine:ssh", `verb:kitty:machine:ssh:${at}`, {
+            run: () => provider.open({ command: Opens.sshing(provider.tools.kitten, one) })
         });
         const copying = "verb:kitty:machine:copy";
-        const copy = provider.said(copying, `${copying}:${one.name}`, {
+        const copy = provider.said(copying, `${copying}:${at}`, {
             copy: one.name,
             copies: one.name,
             run: () => Quickshell.clipboardText = one.name
@@ -266,16 +299,16 @@ Provider {
         const said = provider.words("kitty:machine");
         return thing({
             thing: true,
-            key: `kitty:machine:${one.name}`,
+            key: `kitty:machine:${at}`,
             what: "machine",
             name: one.name,
-            side: Opens.machineSide(one, known, said),
+            side: Opens.machineSide(one, state, said),
             glyph: Words.glyph("kitty:machine"),
             hue: "program",
             verb: ssh.verb,
             run: ssh.run,
             verbs: () => [ssh, copy],
-            drawer: () => Opens.machineDrawer(one, known, {
+            drawer: () => Opens.machineDrawer(one, state, {
                 said: said,
                 named: id => Words.name(`kitty:machine:${id}`)
             })

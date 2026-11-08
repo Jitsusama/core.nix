@@ -4,11 +4,12 @@
 // niri's window, the tabs in the order they were used, what runs in each
 // pane through what only starts it, an ssh session's machine, each row's
 // words and drawer, and the commands that go to one, close one and open a
-// new window (Kitty.js); and the machines ~/.ssh/config names, when each
-// was last reached, their order, and the repositories under ~/src in
-// zoxide's order (KittyOpens.js). The `kitty-lists-its-tabs` check copies
-// both, with the launcher's Ago.js, beside this file and runs
-// `qml -platform offscreen kitty-tabs.qml`.
+// new window (Kitty.js); and the machines ~/.ssh/config and
+// ~/.ssh/known_hosts name, how often and when each was reached, their
+// order, their rows and drawers, the ssh that opens one, and the
+// repositories under ~/src in zoxide's order (KittyOpens.js). The
+// `kitty-lists-its-tabs` check copies both, with the launcher's Ago.js,
+// beside this file and runs `qml -platform offscreen kitty-tabs.qml`.
 import QtQuick
 import "Kitty.js" as Kitty
 import "KittyOpens.js" as Opens
@@ -129,7 +130,7 @@ QtObject {
                         last_cmd_exit_status: 2 })]),
                 tab(3, false, [pane(3, home, [[53, ["-zsh"]]]),
                     pane(4, "/tmp", [[54, ["kitten", "ssh", "devbox"]]],
-                        { is_active: true, needs_attention: true })],
+                        { is_active: true, needs_attention: true, title: "joel@devbox: ~" })],
                     { title: "Deploys", title_overridden: true, active_window_history: [3, 4] })
             ] },
             { id: 2, active_tab_history: [], tabs: [
@@ -177,6 +178,8 @@ QtObject {
             ["\ud83d\udcdd modules/kitty/home.nix", "nvim \u00b7 ~/src/core.nix"]);
         check("a tab Joel named", row(all[3]),
             ["Deploys", "rang \u00b7 2 panes \u00b7 ssh devbox"]);
+        // An ssh session is named by its machine, whatever the far shell
+        // titles it.
         check("a pane over ssh", row(all[3].panes[0]), ["ssh devbox", "active \u00b7 rang"]);
         check("its other pane", row(all[3].panes[1]), ["zsh", "~"]);
         check("new output", row(all[4]), ["zsh", "active \u00b7 new output \u00b7 ~"]);
@@ -184,7 +187,7 @@ QtObject {
         check("closed over ssh", Kitty.closedSide(all[3].panes[0], said, home), "closed");
         check("where a tab is", Kitty.placeOf(all[2], said), "tab 1 of 3");
         check("what finds a tab", Kitty.keywordsOf(all[3], said),
-            "Deploys zsh ssh devbox /tmp /home/joel");
+            "Deploys joel@devbox: ~ ssh devbox /tmp zsh /home/joel");
 
         // A pane's drawer: every figure kitty gives, labelled, and none it
         // hasn't, never its environment.
@@ -262,45 +265,112 @@ QtObject {
             "  User twice",
             "host lower"
         ].join("\n");
-        const machines = Opens.machines(config);
-        check("the machines", machines.map(one => one.name),
-            ["devbox", "build", "quoted", "lower"]);
+        // And the machines ~/.ssh/known_hosts names: a machine the config
+        // names takes the keys held where it reaches, its HostName on its
+        // Port; the rest are machines of their own, the other names on a
+        // line its own, one name on two ports two; a comment, a hashed
+        // line, a marked one, a pattern and a line with no key name none.
+        const hosts = [
+            "# a comment",
+            "10.0.0.5 ssh-ed25519 AAAA",
+            "[10.0.0.5]:2222 ssh-ed25519 AAAA",
+            "[10.0.0.5]:2222 ssh-rsa AAAA",
+            "quoted ecdsa-sha2-nistp256 AAAA",
+            "nas,192.168.1.9 ssh-ed25519 AAAA",
+            "nas,192.168.1.9 ssh-rsa AAAA",
+            "[nas]:2200 ssh-ed25519 AAAA",
+            "|1|c2FsdA==|aGFzaA== ssh-ed25519 AAAA",
+            "@cert-authority *.example ssh-ed25519 AAAA",
+            "*.corp ssh-rsa AAAA",
+            "lower ssh-ed25519 AAAA",
+            "alone"
+        ].join("\n");
+        const machines = Opens.machines(config, hosts);
+        check("the machines", machines.map(one => [one.name, one.port, one.from]),
+            [["devbox", "", "config"], ["build", "", "config"], ["quoted", "", "config"],
+                ["lower", "", "config"], ["nas", "", "known"], ["nas", "2200", "known"]]);
         check("their settings",
             machines.map(one => one.options.map(each => `${each.keyword}=${each.value}`)),
             [["HostName=10.0.0.5", "User=joel", "Port=2222"],
-                ["HostName=10.0.0.5", "User=joel", "Port=2222"], ["ProxyJump=devbox"], []]);
-        check("none named", Opens.machines(""), []);
+                ["HostName=10.0.0.5", "User=joel", "Port=2222"], ["ProxyJump=devbox"], [], [],
+                []]);
+        check("their keys and other names", machines.map(one => [one.keys, one.also]),
+            [[["ssh-ed25519", "ssh-rsa"], []], [["ssh-ed25519", "ssh-rsa"], []],
+                [["ecdsa-sha2-nistp256"], []], [["ssh-ed25519"], []],
+                [["ssh-ed25519", "ssh-rsa"], ["192.168.1.9"]], [["ssh-ed25519"], []]]);
+        check("none named", Opens.machines("", ""), []);
+        check("known_hosts alone", Opens.machines("", "[::1]:22 ssh-ed25519 AAAA")
+            .map(one => [one.name, one.port]), [["::1", ""]]);
 
-        // When each was last reached, by zsh's extended history.
+        // ssh is told the port known_hosts gave, and a config's machine by
+        // its name alone, its block saying the rest.
+        check("ssh to a machine", Opens.sshing("kitten", machines[0]),
+            ["kitten", "ssh", "devbox"]);
+        check("ssh on a port", Opens.sshing("kitten", machines[5]),
+            ["kitten", "ssh", "-p", "2200", "nas"]);
+
+        // How many times each was reached and when last, by zsh's extended
+        // history: not sshfs, and not a line without its time.
         const history = [
             ": 1700000000:0;ssh devbox",
             ": 1700000500:3;kitten ssh -p 22 joel@build",
             ": 1700000100:0;ssh devbox uptime",
             "ssh lower",
             ": 1700000900:0;sshfs quoted:/ /mnt",
-            ": 1700000800:0;kitty +kitten ssh quoted"
+            ": 1700000800:0;kitty +kitten ssh quoted",
+            ": 1700000700:0;ssh 192.168.1.9",
+            ": 1700000600:0;ssh nas"
         ].join("\n");
-        const last = Opens.connected(history);
-        check("when each was reached", last,
-            { devbox: 1700000100000, build: 1700000500000, quoted: 1700000800000 });
+        const reached = Opens.connected(history);
+        check("when and how often each was reached", reached, {
+            devbox: { times: 2, last: 1700000100000 },
+            build: { times: 1, last: 1700000500000 },
+            quoted: { times: 1, last: 1700000800000 },
+            "192.168.1.9": { times: 1, last: 1700000700000 },
+            nas: { times: 1, last: 1700000600000 }
+        });
 
-        // Most recent first: one open now, then by when, then as written.
-        check("in order", Opens.machinesInOrder(machines, last, ["lower"]).map(one => one.name),
-            ["lower", "quoted", "build", "devbox"]);
-        check("as written, knowing nothing", Opens.machinesInOrder(machines, {}, [])
-            .map(one => one.name), ["devbox", "build", "quoted", "lower"]);
-        const known = { open: ["build"], last: last, time: 1700000100000 + 3 * 86400000 };
-        const now = { now: "connected now" };
-        check("a machine reached", Opens.machineSide(machines[0], known, now),
-            "3 d ago \u00b7 joel@10.0.0.5:2222");
-        check("one connected now", Opens.machineSide(machines[1], known, now),
-            "connected now \u00b7 joel@10.0.0.5:2222");
+        // Most used first, by every name a machine has, then by when, then
+        // as written. The history names no port, so one name on two ports
+        // counts for both.
+        check("in order", Opens.machinesInOrder(machines, reached)
+            .map(one => `${one.name}${one.port}`),
+            ["nas", "devbox", "quoted", "nas2200", "build", "lower"]);
+        check("as written, knowing nothing", Opens.machinesInOrder(machines, {})
+            .map(one => `${one.name}${one.port}`),
+            ["devbox", "build", "quoted", "lower", "nas", "nas2200"]);
+        const state = { open: ["build"], reached: reached, time: 1700000100000 + 3 * 86400000 };
+        const now = {
+            now: "connected now", once: "once", times: "{count} times",
+            config: "~/.ssh/config", known: "~/.ssh/known_hosts"
+        };
+        check("a machine reached", Opens.machineSide(machines[0], state, now),
+            "3 d ago \u00b7 2 times \u00b7 joel@10.0.0.5:2222");
+        check("one connected now", Opens.machineSide(machines[1], state, now),
+            "connected now \u00b7 once \u00b7 joel@10.0.0.5:2222");
         check("one never reached, with nothing to say",
-            Opens.machineSide(machines[3], known, now), "");
-        check("a machine's drawer", Opens.machineDrawer(machines[2], known,
-            { said: now, named: id => `<${id}>` }), { title: "quoted", facts: [
+            Opens.machineSide(machines[3], state, now), "");
+        check("one known by two names", Opens.machineSide(machines[4], state, now),
+            "2 d ago \u00b7 2 times");
+        check("one on a port", Opens.machineSide(machines[5], state, now),
+            "2 d ago \u00b7 once \u00b7 nas:2200");
+        const named = { said: now, named: id => `<${id}>` };
+        check("a machine's drawer", Opens.machineDrawer(machines[2], state, named), {
+            title: "quoted", facts: [
                 { label: "<connected>", value: "2 d ago" },
-                { label: "ProxyJump", value: "devbox" }] });
+                { label: "<times>", value: "once" },
+                { label: "<from>", value: "~/.ssh/config" },
+                { label: "ProxyJump", value: "devbox" },
+                { label: "<keys>", value: "ecdsa-sha2-nistp256" }] });
+        check("a known machine's drawer", Opens.machineDrawer(machines[5], state, named), {
+            title: "nas", facts: [
+                { label: "<connected>", value: "2 d ago" },
+                { label: "<times>", value: "once" },
+                { label: "<from>", value: "~/.ssh/known_hosts" },
+                { label: "<port>", value: "2200" },
+                { label: "<keys>", value: "ssh-ed25519" }] });
+        check("its other names", Opens.machineDrawer(machines[4], state, named).facts
+            .filter(fact => fact.label === "<also>"), [{ label: "<also>", value: "192.168.1.9" }]);
 
         // The repositories under ~/src: those zoxide knows first, a visit
         // inside one counting, then the rest by path.

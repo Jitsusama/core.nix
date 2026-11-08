@@ -8960,6 +8960,7 @@
       "command": "new",
       "argument": "ssh",
       "in": "applications",
+      "once": ["Host"],
       "name": "SSH to a Machine",
       "verb": "ssh",
       "glyph": "elsewhere",
@@ -8972,13 +8973,42 @@
       "verb": "ssh",
       "glyph": "elsewhere",
       "said": {
-        "now": "connected now"
+        "now": "connected now",
+        "once": "once",
+        "times": "{count} times",
+        "config": "~/.ssh/config",
+        "known": "~/.ssh/known_hosts"
       }
     },
     {
       "id": "kitty:machine:connected",
       "in": "kitty:machine",
       "name": "Last Connected"
+    },
+    {
+      "id": "kitty:machine:times",
+      "in": "kitty:machine",
+      "name": "Times Connected"
+    },
+    {
+      "id": "kitty:machine:from",
+      "in": "kitty:machine",
+      "name": "Named In"
+    },
+    {
+      "id": "kitty:machine:port",
+      "in": "kitty:machine",
+      "name": "Port"
+    },
+    {
+      "id": "kitty:machine:also",
+      "in": "kitty:machine",
+      "name": "Also Named"
+    },
+    {
+      "id": "kitty:machine:keys",
+      "in": "kitty:machine",
+      "name": "Known Keys"
     },
     {
       "id": "verb:kitty:machine:ssh",

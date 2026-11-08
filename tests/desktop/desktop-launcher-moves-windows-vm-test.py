@@ -196,7 +196,7 @@ def test_the_launcher_goes_to_a_kitty_tab_inside_its_window(desktop: Desktop) ->
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Second Tab" in shown["rows"])
     desktop.down_to("Second Tab")
-    desktop.photograph("launcher-kitty-tabs")
+    desktop.shoot("launcher-kitty-tabs")
     machine.send_key("ret")
     machine.wait_until_succeeds(desktop.in_session(focused), timeout=dt.timedelta(seconds=10))
     # kitty's match takes a space as "and", so the tab is matched by its first word.

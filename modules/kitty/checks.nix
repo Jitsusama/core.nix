@@ -46,8 +46,9 @@ in
 onLinux {
   # What Programs › kitty lists of kitty's own and what it opens is
   # Kitty.js's and KittyOpens.js's, run in Qt's own engine over kitty's
-  # `ls` as open-now gives it, niri's windows, a ~/.ssh/config, zsh's
-  # history and fd's and zoxide's lists (tests/kitty-tabs.qml).
+  # `ls` as open-now gives it, niri's windows, a ~/.ssh/config, a
+  # ~/.ssh/known_hosts, zsh's history and fd's and zoxide's lists
+  # (tests/kitty-tabs.qml).
   kitty-lists-its-tabs =
     let
       qt = pkgs.qt6.qtdeclarative;

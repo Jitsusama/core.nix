@@ -12,18 +12,21 @@
 // `last_cmd_exit_status`, `at_prompt`, `in_alternate_screen`, `lines`,
 // `columns`, `created_at`, `session_name`, `user_vars` and the leader's
 // `pid` are its drawer's; `needs_attention` and
-// `has_activity_since_last_focus` are said beside it; `last_focused_at`,
-// with each tab's `active_window_history` and each OS window's
-// `active_tab_history`, orders them, as kitty's own clock it means nothing
-// as a time of day. Left out: `env`, the whole environment, secrets and
-// all; `is_focused`, since the launcher holds the keys while it's open;
+// `has_activity_since_last_focus` are said beside it; each tab's
+// `is_active`, `title` and `title_overridden` name it and mark it, and
+// its `active_window_history` and each OS window's `active_tab_history`
+// order them. Left out: `env`, the whole environment, secrets and all;
+// `is_focused` on each, since the launcher holds the keys while it's
+// open; `last_focused_at`, kitty's own monotonic clock, which means
+// nothing as a time of day and orders no more than the histories do;
 // `is_self`, since the launcher runs in no kitty; `neighbors`, the
 // layout's, and each tab's `layout`, `layout_state`, `layout_opts`,
 // `enabled_layouts` and `groups`, since kitty.conf allows only the stack,
-// where nothing sits beside anything; `title_overridden` on a window; and
-// each OS window's `platform_window_id`, null on Wayland,
-// `background_opacity`, the theme's, and `wm_class` and `wm_name`, which
-// niri's window says already.
+// where nothing sits beside anything; `title_overridden` on a window,
+// whose title is said either way; and each OS window's `is_active` and
+// `last_focused`, which niri's focus times say across every kitty at
+// once, `platform_window_id`, null on Wayland, `background_opacity`, the
+// theme's, and `wm_class` and `wm_name`, which niri's window says already.
 .pragma library
 .import "Ago.js" as Ago
 
@@ -347,14 +350,16 @@ function titled(pane) {
     return !names.includes(pane.title.trim());
 }
 
-// A tab's or a pane's name: the title Joel gave a tab, else the one its
-// program gave it, else what runs there.
+// A tab's or a pane's name: the title Joel gave a tab, else the machine an
+// ssh session is on, whatever the far shell titles it, else the title its
+// program gave it, else what runs there. The far title stays in the
+// drawer.
 function nameOf(one, said) {
     const pane = one.panes ? one.panes[0] : one;
     if (one.named) {
         return one.title;
     }
-    return titled(pane) ? pane.title : runsOf(pane, said);
+    return pane.runs.machine === "" && titled(pane) ? pane.title : runsOf(pane, said);
 }
 
 // What's said at a row's right: how it stands first, then how many panes a
