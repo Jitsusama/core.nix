@@ -1630,7 +1630,7 @@ def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
 
 
 def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
-    """Shoot WARP in Network and a step in, then degraded and not answering, at this scale.
+    """Shoot WARP in Network, a step in with a drawer open, held, down, degraded and silent.
 
     The shell runs the real warp against the stand-in warp-cli, answering with the contract's
     made-up files (modules/warp/contract), which warp's own tests read too. What each part says
@@ -1663,6 +1663,27 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
             )
         )
         desktop.shoot(f"launcher-warp-round-trip-at-{at}")
+        # Held by the organisation, its switch says who holds it.
+        desktop.as_account(
+            'sed -i \'s/"switch_locked": false/"switch_locked": true/\' ~/warp-cli/settings.json'
+        )
+        desktop.launcher_until(
+            lambda shown: "holds the switch" in reading(shown, "Disconnect WARP")
+        )
+        desktop.down_to("Disconnect WARP")
+        desktop.shoot(f"launcher-warp-switch-held-at-{at}")
+        # Taken down, as the stand-in says it after a disconnect, its switch brings
+        # it up, and the tunnel it no longer has says nothing.
+        warp_answers(desktop, ("settings.json", "settings.json"))
+        desktop.as_account(
+            'rm -f ~/warp-cli/tunnel-stats.json && echo \'{"status": "Disconnected",'
+            ' "reason": "ManualDisconnection"}\' > ~/warp-cli/.next'
+            " && mv -f ~/warp-cli/.next ~/warp-cli/status.json"
+        )
+        desktop.launcher_until(lambda shown: "Connect WARP" in shown["rows"])
+        desktop.down_to("Connect WARP")
+        desktop.shoot(f"launcher-warp-disconnected-at-{at}")
+        warp_answers(desktop, *connected)
         # WARP finds the network degraded, which its Health says a step in, and its
         # row in Network, in the warning colour.
         warp_answers(desktop, ("status.degraded.json", "status.json"))
