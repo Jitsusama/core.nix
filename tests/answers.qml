@@ -1315,11 +1315,13 @@ QtObject {
         const networkIw = "@@ link\nConnected to 02:00:00:00:02:00 (on wlp0s20f3)\n"
             + "\tSSID: Lantern\n\tfreq: 5745.0\n\tsignal: -43 dBm\n"
             + "@@ station\nStation 02:00:00:00:02:00 (on wlp0s20f3)\n"
+            + "\tpreamble:\tlong\n\tWMM/WME:\tyes\n"
             + "\tMFP:\t\tno\n\ttx retries:\t12\n\ttx failed:\t1\n\tbeacon loss:\t0\n"
             + "\trx drop misc:\t5451\n\tsignal:  \t-43 [-52, -43] dBm\n\tsignal avg:\t-40 dBm\n"
             + "\tbeacon signal avg:\t-35 dBm\n"
             + "\ttx bitrate:\t1134.2 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 1 HE-DCM 0\n"
             + "\trx bitrate:\t1200.9 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 0 HE-DCM 0\n"
+            + "\tDTIM period:\t2\n\tbeacon interval:100\n\tshort slot time:yes\n"
             + "\tconnected time:\t11744 seconds\n"
             + "@@ info\nInterface wlp0s20f3\n\tifindex 2\n"
             + "\tchannel 149 (5745 MHz), width: 80 MHz, center1: 5775 MHz\n\ttxpower 22.00 dBm\n";
@@ -1333,15 +1335,28 @@ QtObject {
             networkRadio.failed, networkRadio.missed, networkRadio.dropped], [12, 1, 0, 5451]);
         machine("how long it's been on", networkRadio.connected, 11744);
         machine("its management frames unprotected", networkRadio.protected, false);
+        machine("how often the beacons come, and which say what's held",
+            [networkRadio.interval, networkRadio.dtim], [100, 2]);
+        machine("its preamble, slot time and traffic sorted by kind",
+            [networkRadio.preamble, networkRadio.shortSlot, networkRadio.wmm], ["long", true, true]);
+        machine("an access point that says none of its timing",
+            [Interfaces.radio("@@ station\n\tsignal: -43 dBm\n").dtim,
+                Interfaces.radio("@@ station\n\tsignal: -43 dBm\n").wmm], [null, null]);
         machine("its channel and frequency", [networkRadio.channel, networkRadio.frequency],
             [149, 5745]);
         machine("a Wi-Fi 6 rate", networkRadio.receive,
-            { mbps: 1200.9, width: 80, generation: 6, mcs: 11, streams: 2 });
+            { mbps: 1200.9, width: 80, generation: 6, mcs: 11, streams: 2, guard: 0.8,
+                dcm: false });
+        machine("a Wi-Fi 6 rate's longer guard", networkRadio.send.guard, 1.6);
         machine("a Wi-Fi 7 rate", Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")
             .generation, 7);
         machine("a Wi-Fi 4 rate's streams", Interfaces.rate("144.4 MBit/s MCS 15 short GI"),
-            { mbps: 144.4, width: null, generation: 4, mcs: 7, streams: 2 });
-        machine("an older rate", Interfaces.rate("54.0 MBit/s").generation, null);
+            { mbps: 144.4, width: null, generation: 4, mcs: 7, streams: 2, guard: 0.4,
+                dcm: null });
+        machine("a Wi-Fi 5 rate's usual guard",
+            Interfaces.rate("866.7 MBit/s 80MHz VHT-MCS 9 VHT-NSS 2").guard, 0.8);
+        machine("an older rate", Interfaces.rate("54.0 MBit/s"), { mbps: 54, width: null,
+            generation: null, mcs: null, streams: null, guard: null, dcm: null });
         machine("a card on no network", Interfaces.radio("@@ link\nNot connected.\n@@ station\n"),
             null);
         machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
@@ -1352,16 +1367,16 @@ QtObject {
         machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
         // One way of a link, as wifid says it, iw filling in what it doesn't.
         const wifidWay = { mbps: 1081, generation: 6, mcs: 10, streams: 2, guard: 0.8,
-            bytes: 23661070224, packets: 27210952 };
+            dcm: null, bytes: 23661070224, packets: 27210952 };
         machine("a way of a link, as wifid says it, with iw's width",
             Interfaces.way(wifidWay, networkRadio.receive), { mbps: 1081, width: 80,
-                generation: 6, mcs: 10, streams: 2, guard: 0.8, bytes: 23661070224,
-                packets: 27210952 });
+                generation: 6, mcs: 10, streams: 2, guard: 0.8, dcm: false,
+                bytes: 23661070224, packets: 27210952 });
         machine("a Wi-Fi 7 way, its coding as iw says it", Interfaces.way(
             { mbps: 2882, generation: null, mcs: null, streams: null, guard: null },
             Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")), { mbps: 2882,
-                width: 160, generation: 7, mcs: 13, streams: 2, guard: null, bytes: null,
-                packets: null });
+                width: 160, generation: 7, mcs: 13, streams: 2, guard: null, dcm: null,
+                bytes: null, packets: null });
         machine("a way neither says", Interfaces.way(null, null).mcs, null);
         const mcs = value => `MCS ${value}`;
         machine("a figure the same each way, said once", Interfaces.eachWay(10, 10, mcs),

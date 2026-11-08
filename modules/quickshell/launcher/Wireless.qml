@@ -10,9 +10,11 @@
 // server proving it's that domain's before it's told. Stepping into a
 // network gives, after what can be done to it, the network in detail, each
 // a part named first: the card's Signal (a spark of it while shown, each
-// antenna, the transmit power a step in), its Speed (each way, what the
-// link is expected to carry, the Wi-Fi generation, and the coding, streams,
-// guard interval and width each way, the channel and Retries a step in),
+// antenna, the beacons' timing and the transmit power a step in), its Speed
+// (each way, what the link is expected to carry, the Wi-Fi generation, and
+// the coding, streams, guard interval, dual carrier and width each way, the
+// channel, how its frames are framed and wait for the air, and Retries a
+// step in),
 // what it's Carried each way since it connected (the packets, and how long
 // since a frame, a step in), its Protection, said for what it means, its
 // Access points, each a step into its own parts, with the one wifid would
@@ -22,7 +24,7 @@
 // socket (Wifi.qml), and the cards look for networks only while the
 // launcher is open. What wifid doesn't say of a link (each antenna,
 // transmit power, retries, how long it's been on, each way's width, Wi-Fi
-// 7's coding) iw reads, every few seconds while the network joined is
+// 7's coding, the beacons' timing, the preamble, slot time and WMM) iw reads, every few seconds while the network joined is
 // shown, by one spawn of the `iw` setting's script, and never for a key.
 // What the card carries a second is Traffic's, so it isn't said here too.
 import qs
@@ -41,6 +43,10 @@ Provider {
     // A machine without wifid, or without a card, has no Wi-Fi to show.
     readonly property bool present: Wifi.described && Wifi.cards.length > 0
     readonly property bool on: present && Wifi.radio
+
+    // An access point's time unit, in which it says how often its beacons
+    // come: 1024 microseconds, in milliseconds.
+    readonly property real timeUnit: 1.024
 
     // :set wifi, nowifi and wifi! turn the radio as Wi-Fi Off and On do,
     // and :set wifi=Home-5G joins a network saved, as Return on it does;
@@ -683,6 +689,24 @@ Provider {
                 graph: level(read.beacons),
                 note: "how loud the access point says it is, on average"
             }));
+        // How often the beacons come, in the access point's time units of
+        // 1.024 ms each, and one in how many says what it holds for a card
+        // asleep, which is as long as the card may sleep.
+        const beacon = read?.interval ?? null;
+        const tenths = value => Numbers.format(value, 1, settings.group, settings.point);
+        if (beacon !== null)
+            rows.push(fact(key("interval"), "interval", `${tenths(beacon * timeUnit)} ms`, {
+                copy: `${beacon} TU`,
+                note: `${beacon} time units of 1.024 ms`
+            }));
+        if (read && read.dtim !== null)
+            rows.push(fact(key("dtim"), "dtim", read.dtim === 1 ? "every beacon"
+                : `one beacon in ${read.dtim}`, {
+                copy: String(read.dtim),
+                note: beacon !== null
+                    ? `says what's held for a card asleep, every ${tenths(beacon * timeUnit
+                        * read.dtim)} ms` : "says what's held for a card asleep"
+            }));
         if (link.margin !== null)
             rows.push(fact(key("margin"), "margin", `${link.margin} dB`, {
                 note: link.noise !== null ? `the noise at ${link.noise} dBm` : ""
@@ -734,6 +758,8 @@ Provider {
         each("guard", "guard",
             value => `${Numbers.format(value, 1, settings.group, settings.point)} \u00b5s`,
             "the pause between symbols; shorter is faster, longer rides out echoes");
+        each("dcm", "dcm", on => on ? "on" : "off",
+            "each symbol sent twice, apart, at half the rate, to ride out a weak signal");
         if (ways.in.width !== null || ways.out.width !== null)
             each("width", "width", value => `${value} MHz`, "");
         else if (link.width)
@@ -744,6 +770,21 @@ Provider {
             rows.push(fact(key("channel"), "channel", [channel !== null ? `${channel}` : "",
                 frequency !== null ? bandOf(frequency) : ""].filter(part => part !== "")
                 .join(", "), { note: frequency !== null ? `${number(frequency)} MHz` : "" }));
+        // How frames are framed and wait for the air: the preamble each
+        // opens with, the slot time between tries, and whether traffic is
+        // sorted by kind (WMM).
+        if (read && read.preamble !== null)
+            rows.push(fact(key("preamble"), "preamble", read.preamble, {
+                note: "the header each frame opens with at the oldest rates; short is quicker"
+            }));
+        if (read && read.shortSlot !== null)
+            rows.push(fact(key("slot"), "slot", read.shortSlot ? "short" : "long", {
+                note: "how long a card waits between tries for the air; short is quicker"
+            }));
+        if (read && read.wmm !== null)
+            rows.push(fact(key("wmm"), "wmm", read.wmm ? "on" : "off", {
+                note: "calls and video sent ahead of downloads and backups"
+            }));
         if (read && read.retries !== null)
             rows.push(retriesRow(name, card, read));
         return rows;

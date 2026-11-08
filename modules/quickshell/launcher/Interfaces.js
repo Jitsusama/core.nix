@@ -56,6 +56,11 @@ const GENERATIONS = [
     { tag: "HE", generation: WIFI_6 },
     { tag: "VHT", generation: WIFI_5 },
 ];
+// The guard intervals Wi-Fi 6 and 7 name by index (HE-GI 0 to 2), and the
+// two Wi-Fi 4 and 5 choose between, "short GI" or not, in microseconds.
+const NEWER_GUARDS = [0.8, 1.6, 3.2];
+const SHORT_GUARD = 0.4;
+const LONG_GUARD = 0.8;
 
 // The kinds of link the kernel makes for a tunnel.
 const TUNNELS = [
@@ -353,9 +358,11 @@ function figure(text) {
     return found ? Number(found[0]) : null;
 }
 
-// A rate as iw says it, "1200.9 MBit/s 80MHz HE-MCS 11 HE-NSS 2", as
-// { mbps, width, generation, mcs, streams }: HE is Wi-Fi 6, EHT 7, VHT 5 and
-// HT 4, whose index says the streams too; anything older has no generation.
+// A rate as iw says it, "1200.9 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 0
+// HE-DCM 0", as { mbps, width, generation, mcs, streams, guard, dcm }: HE is
+// Wi-Fi 6, EHT 7, VHT 5 and HT 4, whose index says the streams too; anything
+// older has no generation, and no guard interval said. Only HE says its
+// dual carrier.
 function rate(text) {
     const said = String(text ?? "");
     const field = (key) => {
@@ -365,15 +372,22 @@ function rate(text) {
     const mbps = RATE.exec(said);
     const width = WIDTH.exec(said);
     const known = GENERATIONS.find((each) => field(`${each.tag}-MCS`) !== null);
-    const coded = { generation: null, mcs: null, streams: null };
+    const coded = { generation: null, mcs: null, streams: null, guard: null, dcm: null };
+    const chosen = said.includes("short GI") ? SHORT_GUARD : LONG_GUARD;
     if (known) {
         coded.generation = known.generation;
         coded.mcs = field(`${known.tag}-MCS`);
         coded.streams = field(`${known.tag}-NSS`);
+        const guard = field(`${known.tag}-GI`);
+        coded.guard = known.generation >= WIFI_6
+            ? (guard !== null ? (NEWER_GUARDS[guard] ?? null) : null) : chosen;
+        const dcm = field(`${known.tag}-DCM`);
+        coded.dcm = dcm !== null ? dcm === 1 : null;
     } else if (field("MCS") !== null) {
         coded.generation = WIFI_4;
         coded.mcs = field("MCS") % HT_PER_STREAM;
         coded.streams = Math.floor(field("MCS") / HT_PER_STREAM) + 1;
+        coded.guard = chosen;
     }
     return Object.assign(
         {
@@ -410,7 +424,11 @@ function sections(text) {
 // average and of the access point's beacons, in dBm; what it transmits at;
 // how many frames it sent again, couldn't send and dropped, and beacons it
 // missed; how long it's been on, in seconds; whether its management frames
-// are protected; and its rates each way. Null when it's on no network.
+// are protected; how often the access point's beacons come, in its time
+// units, and one in how many says what it holds for a card asleep (DTIM);
+// the preamble its frames open with, whether it waits the short slot time
+// and sorts traffic by kind (WMM); and its rates each way. Null when it's
+// on no network.
 function radio(text) {
     const said = sections(text);
     const { station } = said;
@@ -432,12 +450,22 @@ function radio(text) {
         missed: figure(station["beacon loss"]),
         dropped: figure(station["rx drop misc"]),
         connected: figure(station["connected time"]),
-        protected: station.MFP === undefined ? null : station.MFP === "yes",
+        protected: yes(station.MFP),
+        interval: figure(station["beacon interval"]),
+        dtim: figure(station["DTIM period"]),
+        preamble: station.preamble ?? null,
+        shortSlot: yes(station["short slot time"]),
+        wmm: yes(station["WMM/WME"]),
         channel: channel ? Number(channel[1]) : null,
         frequency: figure(said.link.freq),
         receive: rate(station["rx bitrate"]),
         send: rate(station["tx bitrate"]),
     };
+}
+
+// Whether iw said yes of something, or null when it said nothing of it.
+function yes(text) {
+    return text === undefined ? null : text === "yes";
 }
 
 // How long something's lasted, in days, hours and minutes, the largest two,
@@ -467,7 +495,17 @@ function level(dbm) {
 // read: { mbps, width, generation, mcs, streams, guard, bytes, packets },
 // each null where neither says.
 function way(wifid, iw) {
-    const keys = ["mbps", "width", "generation", "mcs", "streams", "guard", "bytes", "packets"];
+    const keys = [
+        "mbps",
+        "width",
+        "generation",
+        "mcs",
+        "streams",
+        "guard",
+        "dcm",
+        "bytes",
+        "packets",
+    ];
     const said = {};
     for (const key of keys) {
         said[key] = wifid?.[key] ?? iw?.[key] ?? null;
