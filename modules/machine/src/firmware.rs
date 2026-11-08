@@ -202,7 +202,7 @@ pub fn records(
 
 /// The machine's own, as fwupd rates it: its security level (HSI), the
 /// product and fwupd's version.
-pub fn host(security: Option<String>, product: Option<String>, version: Option<String>) -> Value {
+pub fn host(security: Option<&str>, product: Option<&str>, version: Option<&str>) -> Value {
     json!({
         "key": "firmware:host",
         "kind": "firmware",

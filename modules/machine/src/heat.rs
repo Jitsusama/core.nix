@@ -188,8 +188,14 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
                 out.insert("n".into(), json!(n));
                 out.insert("label".into(), json!(label_of(kind, n)));
                 out.insert(unit.into(), value(format!("{kind}{n}_input")).into());
-                out.insert(format!("min_{unit}"), value(format!("{kind}{n}_min")).into());
-                out.insert(format!("max_{unit}"), value(format!("{kind}{n}_max")).into());
+                out.insert(
+                    format!("min_{unit}"),
+                    value(format!("{kind}{n}_min")).into(),
+                );
+                out.insert(
+                    format!("max_{unit}"),
+                    value(format!("{kind}{n}_max")).into(),
+                );
                 Value::Object(out)
             })
             .collect()

@@ -710,9 +710,9 @@ fn fwupd(connection: &zbus::blocking::Connection) -> Vec<Value> {
     };
     let text = |property: &str| proxy.get_property::<String>(property).ok();
     let mut records = vec![firmware::host(
-        text("HostSecurityId"),
-        text("HostProduct"),
-        text("DaemonVersion"),
+        text("HostSecurityId").as_deref(),
+        text("HostProduct").as_deref(),
+        text("DaemonVersion").as_deref(),
     )];
     let as_json = |dict: &HashMap<String, zbus::zvariant::OwnedValue>| {
         Value::Object(dict.iter().map(|(k, v)| (k.clone(), plain(v))).collect())

@@ -1,6 +1,6 @@
 //! How the machine sleeps (`sleep:main`): the ways it can, the one it
 //! takes, how each sleep since it started went as the kernel counts them
-//! in /sys/power/suspend_stats, and what logind says, as main.rs last
+//! in `/sys/power/suspend_stats`, and what logind says, as main.rs last
 //! asked it: whether the session is idle and since when, what holds sleep
 //! or idling off, and when the last sleep began and ended.
 

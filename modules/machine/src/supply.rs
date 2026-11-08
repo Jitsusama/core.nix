@@ -1,7 +1,7 @@
 //! Each power supply the kernel knows (`supply:<name>`): the battery, the
 //! charger and each USB-C port, with every figure its folder in
-//! /sys/class/power_supply has, a USB-C port's roles from its folder in
-//! /sys/class/typec, and what `UPower` works out of the battery, its time
+//! `/sys/class/power_supply` has, a USB-C port's roles from its folder in
+//! `/sys/class/typec`, and what `UPower` works out of the battery, its time
 //! to empty or full, as main.rs last asked it.
 
 use serde_json::{Value, json};
