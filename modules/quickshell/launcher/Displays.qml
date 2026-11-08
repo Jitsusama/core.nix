@@ -42,6 +42,7 @@ import Quickshell.Io
 import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Backlight.js" as Backlight
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
@@ -245,6 +246,39 @@ Provider {
         onFileChanged: reload()
         onLoaded: provider.warmth = provider.warmed(text())
         onLoadFailed: provider.warmth = null
+    }
+
+    // The level the backlight daemon last settled, the room it heard, what
+    // its curve asks for that room and whether it follows it, as it writes
+    // them each time a step ends or a pick is heard (Backlight.js), or null
+    // where no daemon says: no file, or an empty one, as it leaves when it
+    // stops. sysfs's brightness can't be watched, so this is what moves the
+    // drawer with each step the daemon takes.
+    property var settled: null
+    onSettledChanged: changed()
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-now`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.settled = Backlight.now(text())
+        onLoadFailed: provider.settled = null
+    }
+
+    // The points the daemon's curve has learned from Joel's picks, dimmest
+    // first, where it keeps them.
+    property var learned: []
+    onLearnedChanged: changed()
+
+    FileView {
+        path: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}`
+            + "/backlight/learned"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.learned = Backlight.learned(text())
+        onLoadFailed: provider.learned = []
     }
 
     // The Warmth, a switch: Return turns its following the room off or
@@ -515,8 +549,21 @@ Provider {
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
-            if (inTheRoom(output) && room !== null)
-                facts.push({ label: partName("room"), value: lux(room) });
+            // The room as the daemon heard it when it settled the level,
+            // or as the sensor says it where no daemon does.
+            const heard = settled?.lux ?? (askRoom() ? room : null);
+            if (inTheRoom(output) && heard !== null)
+                facts.push({ label: partName("room"), value: lux(heard) });
+            // What sets the level, then what the curve has learned, which
+            // moves only with a pick (VKCF3Z, 2026-11-08).
+            const fill = (key, values) => Object.keys(values).reduce((words, name) =>
+                words.replace(`{${name}}`, values[name]), partSaid("", key));
+            const follows = inTheRoom(output) ? Backlight.follows(settled, fill) : "";
+            if (follows !== "")
+                facts.push({ label: partName("follows"), value: follows });
+            if (inTheRoom(output) && learned.length > 0)
+                facts.push({ label: partName("learned"),
+                    value: Backlight.learnedSaid(learned, fill, each => lux(each)) });
             if (inTheRoom(output) && warmth !== null)
                 facts.push({
                     label: partName("warmth"),

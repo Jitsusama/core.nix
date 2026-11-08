@@ -259,6 +259,7 @@ let
     "launcher/Sounds.js"
     "launcher/Plate.js"
     "launcher/Screens.js"
+    "launcher/Backlight.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Subnets.js"

@@ -1133,9 +1133,10 @@ onLinux {
 
   # A thing's drawer says each of its parts as a fact, leaving out its
   # acts and opening a holder of figures in place, and a screen's says
-  # what niri says it runs, where it sits and what it offers, as
-  # tests/plate.qml holds launcher/Plate.js and Screens.js to it in Qt's
-  # own engine.
+  # what niri says it runs, where it sits and what it offers, and what the
+  # backlight daemon says sets its level and has learned, as
+  # tests/plate.qml holds launcher/Plate.js, Screens.js and Backlight.js to
+  # it in Qt's own engine.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1144,6 +1145,7 @@ onLinux {
       cp ${../../tests/plate.qml} plate.qml
       cp ${./launcher/Plate.js} Plate.js
       cp ${./launcher/Screens.js} Screens.js
+      cp ${./launcher/Backlight.js} Backlight.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

@@ -6691,7 +6691,11 @@
         "screen": "screen",
         "following": "following the room",
         "own-white": "the screen's own white",
-        "steps": "{now} of {most} steps"
+        "steps": "{now} of {most} steps",
+        "the-room": "the room",
+        "your-pick": "your pick",
+        "asks": "the room asks {share}",
+        "at": "{share} at {lux}"
       }
     },
     {
@@ -6838,6 +6842,16 @@
       "id": "displays:size",
       "in": "displays",
       "name": "Size"
+    },
+    {
+      "id": "displays:follows",
+      "in": "displays",
+      "name": "Follows"
+    },
+    {
+      "id": "displays:learned",
+      "in": "displays",
+      "name": "Learned"
     },
     {
       "id": "displays:input",

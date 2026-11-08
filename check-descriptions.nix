@@ -137,7 +137,9 @@
     a thing's drawer says each part as a fact, its acts left out, a holder of figures opened in
     place and a level's bar a stroke; a screen's says whether its mode is preferred or custom, its
     refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
-    where it sits, its modes and its density to three figures, an off one only what it offers
+    where it sits, its modes and its density to three figures, an off one only what it offers;
+    and the backlight daemon's files say whether the room or a pick sets the level, what the room
+    asks, and each learned point, dimmest first
   '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
