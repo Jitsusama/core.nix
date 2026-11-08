@@ -81,6 +81,14 @@ function protocol(usbType) {
     return PROTOCOLS[now] ?? "USB";
 }
 
+// Every protocol a USB-C port's power supply names, in use or not, once
+// each as a person calls them: "C [PD] PD_PPS" is "USB-C \u00b7 USB PD
+// \u00b7 USB PD PPS".
+function protocols(usbType) {
+    const each = chosen(usbType).all.map(one => PROTOCOLS[one] ?? "USB");
+    return each.filter((one, at) => each.indexOf(one) === at).join(" \u00b7 ");
+}
+
 // The figures a value is said to: three, "45.0", "3.00", "100".
 const SIGNIFICANT = 3;
 
@@ -139,10 +147,11 @@ function offers(capabilities, number) {
 // A USB-C port's drawer, from what the kernel's USB-C class says of it:
 // which way its power and data go, how it negotiates, what's plugged in
 // and what that offers, then the power delivery revisions that identify
-// them. `known` holds the port's number (`n`), its `power` and `data`
-// roles as the kernel lists them, its `mode`, the partner's `accessory`
-// mode, `capabilities` (offers' input), and the `revision` and
-// `partnerRevision`.
+// them, and its power supply's name, in the Name face, last. `known`
+// holds the port's number (`n`), its `power` and `data` roles as the
+// kernel lists them, its `mode`, the partner's `accessory` mode,
+// `capabilities` (offers' input), its supply's `usbType` and `supply`
+// name, and the `revision` and `partnerRevision`.
 function portDrawer(known, number, named, said) {
     const fact = (id, value) => ({ label: named(`power:port:${id}`), value });
     const accessory = known.accessory ?? "";
@@ -154,10 +163,12 @@ function portDrawer(known, number, named, said) {
             fact("data-role", chosen(known.data).now),
             fact("mode", known.mode ? said[`mode:${known.mode}`] ?? known.mode : ""),
             fact("offers", offers(known.capabilities ?? [], number)),
+            fact("protocols", protocols(known.usbType ?? "")),
             fact("partner", accessory === "" || accessory === "none" ? ""
                 : filled(said.accessory, { mode: accessory })),
             fact("revision", known.revision ?? ""),
-            fact("partner-revision", partnerRevision === "0.0" ? "" : partnerRevision)
+            fact("partner-revision", partnerRevision === "0.0" ? "" : partnerRevision),
+            Object.assign(fact("supply", known.supply ?? ""), { identifies: true })
         ].filter(each => (each.value ?? "") !== "")
     };
 }

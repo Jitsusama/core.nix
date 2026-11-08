@@ -2009,12 +2009,17 @@ QtObject {
             n: 1, power: "source [sink]", data: "[host] device", mode: "usb_power_delivery",
             accessory: "none", revision: "3.0", partnerRevision: "0.0",
             capabilities: [{ volts: 5, amps: 3 }, { volts: 9, amps: 3 }, { volts: 15, amps: 3 },
-                { volts: 20, amps: 3 }]
+                { volts: 20, amps: 3 }],
+            usbType: "C [PD] PD_PPS PD_DRP", supply: "ucsi-source-psy-USBC000:001"
         }, number, portNamed, portWords);
         machine("a port's drawer", [portDrawn.eyebrow].concat(portDrawn.facts
             .map(fact => `${fact.label} ${fact.value}`)), ["on port 1 \u00b7 charger",
             "[power-role] sink", "[data-role] host", "[mode] USB Power Delivery",
-            "[offers] 5 V \u00b7 9 V \u00b7 15 V \u00b7 20 V at 3.00 A", "[revision] 3.0"]);
+            "[offers] 5 V \u00b7 9 V \u00b7 15 V \u00b7 20 V at 3.00 A",
+            "[protocols] USB-C \u00b7 USB PD \u00b7 USB PD PPS", "[revision] 3.0",
+            "[supply] ucsi-source-psy-USBC000:001"]);
+        machine("a port's supply in the Name face",
+            portDrawn.facts[portDrawn.facts.length - 1].identifies, true);
         machine("a charger's offers at their own currents, a programmable one too",
             Power.offers([{ volts: 5, amps: 3 }, { volts: 20, amps: 4.5 },
                 { volts: 3.3, to: 21, amps: 5 }], number),

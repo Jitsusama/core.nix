@@ -254,8 +254,11 @@ Provider {
 
     function readPort(n) {
         const typec = `/sys/class/typec/port${n - 1}`;
+        const supply = ports().find(port => port.n === n)?.path ?? "";
         const read = {
             n: n,
+            usbType: supply === "" ? "" : supplied(supply, "usb_type"),
+            supply: supply,
             power: said(`${typec}/power_role`),
             data: said(`${typec}/data_role`),
             mode: said(`${typec}/power_operation_mode`),

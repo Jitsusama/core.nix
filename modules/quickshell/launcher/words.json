@@ -1880,6 +1880,11 @@
       "name": "Offers"
     },
     {
+      "id": "power:port:protocols",
+      "in": "power:port",
+      "name": "Protocols"
+    },
+    {
       "id": "power:port:partner",
       "in": "power:port",
       "name": "Partner"
@@ -1893,6 +1898,11 @@
       "id": "power:port:partner-revision",
       "in": "power:port",
       "name": "Partner's PD Revision"
+    },
+    {
+      "id": "power:port:supply",
+      "in": "power:port",
+      "name": "Supply"
     },
     {
       "id": "power:charge",
