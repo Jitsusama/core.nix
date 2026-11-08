@@ -5239,7 +5239,12 @@
       "term": "Desktop/notice",
       "noun": "notices",
       "glyph": "notifications",
-      "ask": "which notice?"
+      "ask": "which notice?",
+      "said": {
+        "no-link": "no link here",
+        "one-link": "only 1 link here",
+        "links": "only {count} links here"
+      }
     },
     {
       "id": "verb:notice:open",
@@ -5269,11 +5274,12 @@
       "id": "verb:notice:read",
       "command": "delete",
       "in": "notices",
-      "name": "Read",
+      "name": "Mark It Read",
       "verb": "mark",
       "glyph": "read",
       "states": {
         "read": {
+          "name": "Mark It Unread",
           "glyph": "unread"
         }
       }

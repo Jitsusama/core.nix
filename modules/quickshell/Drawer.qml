@@ -179,8 +179,10 @@ Floating {
                     + (words.leading > 0
                         ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
                     // A match in a styled text lands the cursor but isn't
-                    // washed, since washing inside markup isn't done.
-                    + `">${words.styled ? said
+                    // washed, since washing inside markup isn't done. Its
+                    // links take its ink, as the Text's do, never rich
+                    // text's blue.
+                    + `">${words.styled ? said.replace(/<a /g, `<a style="color:${words.ink}" `)
                         : words.sought !== "" ? Search.washed(said, words.sought, words.wash)
                             : Search.escaped(said)}</div>`
 

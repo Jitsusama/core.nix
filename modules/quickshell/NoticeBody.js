@@ -194,11 +194,15 @@ function read(body) {
 }
 
 // Where a link goes, said short: its host, without a leading www, or the
-// address of a mail.
+// address of a mail, as it was written where its escapes don't read.
 function host(href) {
     const mail = MAIL.exec(href);
     if (mail) {
-        return decodeURIComponent(mail[1]);
+        try {
+            return decodeURIComponent(mail[1]);
+        } catch (malformed) {
+            return mail[1];
+        }
     }
     const found = HOST.exec(href);
     return found ? found[1].replace(WWW, "").toLowerCase() : href;

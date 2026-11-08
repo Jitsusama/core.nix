@@ -69,6 +69,10 @@ QtObject {
         expect("a host", NoticeBody.host("https://www.GitHub.com/x?y=1"), "github.com");
         expect("a mail", NoticeBody.host("mailto:joel%40example.com?subject=hi"),
             "joel@example.com");
+        // A stray % that's no escape, which decodeURIComponent throws on,
+        // keeps the address as written rather than breaking the notice.
+        expect("a malformed mail", NoticeBody.host("mailto:100%off@example.com"),
+            "100%off@example.com");
 
         if (failures.length > 0) {
             for (const failure of failures)

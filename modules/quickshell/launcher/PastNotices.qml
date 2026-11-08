@@ -70,6 +70,9 @@ Provider {
             verb: nowhere ? "more" : opened || !from.window ? "open" : "go to",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
+            // Stepped into, the head says its title alone, its words being
+            // the drawer's (VKCF3Z, 2026-11-08).
+            title: notice.summary,
             // The whole of what it said, each part once: the summary as
             // the drawer's title, then the body, rather than the row's
             // name, which already holds both, over both again (VKCF3Z,
@@ -87,7 +90,9 @@ Provider {
                 title: notice.summary,
                 body: provider.marked(notice) ? notice.styled : notice.body,
                 styled: provider.marked(notice),
-                prose: true, picture: Notices.pictureOf(notice),
+                // The drawer takes a file's path, as a file's plate gives it.
+                prose: true, picture: Notices.pictureOf(notice).startsWith("file://")
+                    ? Notices.pictureOf(notice).slice("file://".length) : "",
                 facts: provider.facts(notice) },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml), muted for one sent at low urgency, as its card
@@ -268,13 +273,14 @@ Provider {
                 }
             }));
         case "read":
-            // One switch, its name the same either way and what it is at
-            // its side, as every setting's is. It changes the notice rather
+            // Named for what it will do, Mark It Read or Mark It Unread,
+            // with nothing at its side, since a state there would read as
+            // the act's (VKCF3Z, 2026-11-08). It changes the notice rather
             // than taking Joel anywhere, so the launcher stays and shows it
             // changed.
             return thing(Object.assign(named("verb:notice:read"), {
+                name: Words.name("verb:notice:read", notice.read ? "read" : ""),
                 glyph: Words.glyph("verb:notice:read", notice.read ? "read" : ""),
-                side: notice.read ? "yes" : "no",
                 stays: true,
                 run: () => Notices.mark(notice.id, !notice.read)
             }));

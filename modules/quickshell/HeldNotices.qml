@@ -522,7 +522,10 @@ Card {
         const links = one ? NoticeBody.read(one.body).links : [];
         const link = links[Math.max(count, 1) - 1] ?? null;
         if (!link) {
-            said = links.length === 0 ? "no link here" : `only ${links.length} links here`;
+            const words = Words.of("notices").said ?? {};
+            said = links.length === 0 ? words["no-link"]
+                : links.length === 1 ? words["one-link"]
+                : String(words.links).replace("{count}", links.length);
             return;
         }
         Notices.mark(one.id, true);
