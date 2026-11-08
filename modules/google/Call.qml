@@ -10,9 +10,10 @@
 // by whole names, and its note when its meeting runs. Return steps in to
 // the Microphone, a switch that keeps its name as it flips; People, each
 // since when they're in or when they left, as Meet says it to the google
-// program (src/meet.rs); then bringing the call's window forward, copying
-// its link, and leaving it, which closes the window as Meet's own Leave
-// does. Its plate says the rest (Meet.js's details).
+// program (src/meet.rs) while the launcher is open; then going to the
+// call's window, and leaving it, which closes the window as Meet's own Leave
+// does, and copying its link last. Its plate says the rest (Meet.js's
+// details).
 //
 // The microphone is the machine's default source, as the Microphone
 // piece's is: Meet's own mute, in its page, the shell can't see, so it's
@@ -39,6 +40,8 @@ Piece {
     // conference Meet hasn't said the start of.
     property double opened: 0
     onCodeChanged: opened = code === "" ? 0 : Date.now()
+    // A piece made while a call is already up hears no change of code.
+    Component.onCompleted: opened = code === "" ? 0 : Date.now()
     readonly property double since: Said.began(heard, opened)
 
     readonly property PwNode node: Pipewire.defaultAudioSource
@@ -51,7 +54,7 @@ Piece {
     kind: "onAir"
     hue: "person"
     title: named
-    value: call ? Said.side(muted, since, clock.date.getTime(), said) : ""
+    value: call && since > 0 ? Said.side(muted, since, clock.date.getTime(), said) : ""
     parts: Said.inIt(heard)
     hint: `In ${named} on Meet` + (more > 0 ? `, and ${more} more` : "")
     context: meeting ? Calendar.span(meeting) : ""
@@ -94,7 +97,7 @@ Piece {
             glyph: Theme.glyph.person,
             hue: "person",
             plain: true,
-            gone: person.left != null
+            gone: Said.gone(person)
         }))
     })]
     actions: !call ? [] : [{
@@ -103,15 +106,16 @@ Piece {
         verb: Words.verb("meet:call:show"),
         run: () => Niri.act({ FocusWindow: { id: piece.call.window.id } })
     }, {
-        glyph: Theme.glyph.link,
-        name: Words.name("meet:call:link"),
-        verb: Words.verb("meet:call:link"),
-        run: () => Niri.spawn(["wl-copy", piece.link])
-    }, {
         glyph: Theme.glyph.hangUp,
         name: Words.name("meet:call:leave"),
         verb: Words.verb("meet:call:leave"),
         run: () => Niri.act({ CloseWindow: { id: piece.call.window.id } })
+    }, {
+        // Copy is last, as it always is (docs/design.md).
+        glyph: Theme.glyph.link,
+        name: Words.name("meet:call:link"),
+        verb: Words.verb("meet:call:link"),
+        run: () => Niri.spawn(["wl-copy", piece.link])
     }]
 
     // Pipewire reports a node's mute only once something binds it.

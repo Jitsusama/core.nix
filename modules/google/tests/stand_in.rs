@@ -490,7 +490,7 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
             .filter(|heard| heard.line.starts_with("GET /v2/conferenceRecords"))
             .count()
     };
-    assert!(!watch.following());
+    assert!(!watch.following(&now()));
     let state = watch.follow(vec!["abc-defg-hij".into()], &now()).clone();
     assert_eq!(
         asked(&stand_in),
@@ -498,7 +498,7 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
         "Meet was asked without the scope to read it"
     );
     assert_eq!(state.calls.len(), 1);
-    assert!(!state.calls[0].granted && state.calls[0].people.is_empty());
+    assert!(!state.calls[0].granted && !state.calls[0].known);
     // Joel signs in again from pi, granting the scope that reads calls.
     let file = fs::read_to_string(&path).unwrap().replace(
         r#""scope": "calendar""#,
@@ -507,7 +507,7 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
     fs::write(&path, file).unwrap();
     let state = watch.calls(&now()).clone();
     let call = &state.calls[0];
-    assert!(call.granted, "{call:?}");
+    assert!(call.granted && call.known, "{call:?}");
     assert_eq!(call.started, Some(1_793_041_200_000));
     let names: Vec<&str> = call
         .people
@@ -519,11 +519,16 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
     // Meet failing keeps what it said last.
     failing.store(true, Ordering::SeqCst);
     assert_eq!(watch.calls(&now()).calls[0].people.len(), 2);
-    // The call's window closed: nothing followed, nothing asked.
+    // A follow the shell doesn't say again lapses, as when it went away.
     failing.store(false, Ordering::SeqCst);
+    assert!(watch.following(&now()));
+    let later = now().checked_add(jiff::Span::new().minutes(2)).unwrap();
+    assert!(!watch.following(&later), "a follow nobody said again held");
+    // The call's window closed: nothing followed, nothing asked.
+    watch.follow(vec!["abc-defg-hij".into()], &now());
     let before = asked(&stand_in);
     assert!(watch.follow(Vec::new(), &now()).calls.is_empty());
-    assert!(!watch.following());
+    assert!(!watch.following(&now()));
     assert_eq!(asked(&stand_in), before);
 }
 

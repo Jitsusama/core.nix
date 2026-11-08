@@ -612,9 +612,21 @@ Singleton {
             .map(call => Object.assign(call, { meeting: Calls.calledBy(meetings, call.code) }));
     }
     // Their codes, which the google program follows, asking Meet who's in
-    // each while its window is open (Google.qml's follow).
-    readonly property string followed: calls.map(call => call.code).join(" ")
+    // each, only while the launcher is open to say it (Meetings.qml's
+    // callsWatched), and asked again within each minute it is, since the
+    // program lets a follow go a little after that, so a shell that went
+    // away leaves none behind (Google.qml's follow).
+    property int watchingCalls: 0
+    readonly property string followed: watchingCalls > 0
+        ? calls.map(call => call.code).join(" ") : ""
     onFollowedChanged: Google.follow(followed === "" ? [] : followed.split(" "))
+
+    Timer {
+        interval: 60_000
+        repeat: true
+        running: root.followed !== ""
+        onTriggered: Google.follow(root.followed.split(" "))
+    }
 
     // The meeting's own page in Google Calendar.
     function open(meeting) {

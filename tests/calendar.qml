@@ -454,11 +454,12 @@ QtObject {
             eyebrow: "on Meet \u00b7 call", muted: "muted", live: "live",
             under: "under a minute", minutes: "{minutes} min", hours: "{hours} h",
             hoursMinutes: "{hours} h {minutes} min", inCall: "{count} in the call",
-            signIn: "needs Google sign-in", since: "since {time}", left: "left {time}",
+            signIn: "needs Google sign-in", unknown: "not known to Meet yet",
+            since: "since {time}", left: "left {time}",
             people: "People", started: "Started", meeting: "Meeting", code: "Code"
         };
         const inCall = {
-            code: "abc-defg-hij", granted: true, started: at(26, 15, 0), people: [
+            code: "abc-defg-hij", granted: true, known: true, started: at(26, 15, 0), people: [
                 { name: "Ada Lovelace", joined: at(26, 15, 0), left: at(26, 15, 15) },
                 { name: "Grace Hopper", joined: at(26, 15, 2), left: null },
                 { name: "Joel", joined: at(26, 15, 3), left: null }
@@ -482,6 +483,10 @@ QtObject {
         check("who's in it waits on a sign-in",
             Meet.counted({ code: "abc-defg-hij", granted: false, people: [] }, said),
             "needs Google sign-in");
+        check("who's in it before Meet says, or where it keeps no record",
+            [Meet.counted(null, said), Meet.counted({ code: "abc-defg-hij", granted: true,
+                known: false, people: [] }, said)],
+            ["not known to Meet yet", "not known to Meet yet"]);
         check("someone in it, since when", Meet.personSide(inCall.people[1], said),
             "since 15:02");
         check("someone who left, when", Meet.personSide(inCall.people[0], said), "left 15:15");

@@ -10444,6 +10444,7 @@
         "hoursMinutes": "{hours} h {minutes} min",
         "inCall": "{count} in the call",
         "signIn": "needs Google sign-in",
+        "unknown": "not known to Meet yet",
         "since": "since {time}",
         "left": "left {time}"
       }
@@ -10476,8 +10477,8 @@
     {
       "id": "meet:call:show",
       "in": "meet:call",
-      "name": "Show the Call",
-      "verb": "show"
+      "name": "Go To the Call",
+      "verb": "go to"
     },
     {
       "id": "meet:call:link",

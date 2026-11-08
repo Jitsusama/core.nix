@@ -105,11 +105,16 @@ function inIt(call) {
     return people(call).filter(person => !gone(person)).map(person => person.name);
 }
 
-// What People says beside it: how many are in the call, or that reading
-// who is waits on Joel signing in to Google again.
+// What People says beside it: how many are in the call, that reading who
+// is waits on Joel signing in to Google again, or, before Meet has said
+// or where it gives no record of the call, as it may not to a guest, that
+// it isn't known: never none in a call Joel is in.
 function counted(call, said) {
     if (call && call.granted === false) {
         return said.signIn;
+    }
+    if (call?.known !== true) {
+        return said.unknown;
     }
     return filled(said.inCall, { count: inIt(call).length });
 }

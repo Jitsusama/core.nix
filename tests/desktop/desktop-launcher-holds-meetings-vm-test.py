@@ -423,9 +423,9 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         lambda shown: shown["selected"]["side"].startswith(("live \u00b7 ", "muted \u00b7 "))
     )
     desktop.step_in()
-    inside = ["Microphone", "People", "Show the Call", "Copy the Link", "Leave It"]
+    inside = ["Microphone", "People", "Go To the Call", "Leave It", "Copy the Link"]
     desktop.launcher_until(lambda shown: shown["rows"] == inside)
-    desktop.down_to("Show the Call")
+    desktop.down_to("Go To the Call")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     machine.wait_until_succeeds(

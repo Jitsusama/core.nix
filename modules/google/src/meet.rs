@@ -17,6 +17,10 @@ pub struct Call {
     pub code: String,
     /// Whether Joel's sign-in lets this program read who's in calls.
     pub granted: bool,
+    /// Whether Meet gave a record of it under way: before it answers, or
+    /// where it keeps none Joel may read, as it may not for a guest, who's
+    /// in it isn't known, which is never the same as nobody.
+    pub known: bool,
     /// When its conference began, in milliseconds since 1970, or none
     /// until Meet says, or while there's no conference under way.
     pub started: Option<i64>,

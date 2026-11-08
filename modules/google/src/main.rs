@@ -128,12 +128,14 @@ fn main() -> ExitCode {
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
             tell(state);
         }
+        // Asked less often while Meet can't be, as the calendar is.
+        let calls_wait = CALLS_EVERY * 2u32.saturating_pow(watch.calls_failed().min(4));
         let calls_due = called.is_none_or(|called| {
             SystemTime::now()
                 .duration_since(called)
-                .map_or(true, |since| since >= CALLS_EVERY)
+                .map_or(true, |since| since >= calls_wait)
         });
-        if watch.following() && calls_due {
+        if watch.following(&Zoned::now()) && calls_due {
             called = Some(SystemTime::now());
             tell(watch.calls(&Zoned::now()));
         }

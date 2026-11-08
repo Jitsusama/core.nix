@@ -49,9 +49,18 @@ pub struct Watch {
     /// How each series of meetings repeats, by its id, as its rule's lines
     /// were last heard, and when.
     rules: HashMap<String, (Vec<String>, i64)>,
-    /// The meeting codes of the Meet calls the shell follows.
+    /// The meeting codes of the Meet calls the shell follows, and when it
+    /// last said so, in milliseconds since the epoch.
     followed: Vec<String>,
+    followed_at: i64,
+    /// How many times running Meet couldn't be asked about a call.
+    calls_failed: u32,
 }
+
+/// How long a follow lasts unless the shell says it again: a little over
+/// the minute it says it in while the launcher is open, so a shell that
+/// went away, or restarted, leaves no call asked about all call long.
+const FOLLOW_LASTS: i64 = 90_000;
 
 /// How long the documents are kept before Drive is asked again: what Joel
 /// looked at lately moves when he opens one, seldom within minutes, and
@@ -89,6 +98,8 @@ impl Watch {
             recalled: None,
             rules: HashMap::new(),
             followed: Vec::new(),
+            followed_at: 0,
+            calls_failed: 0,
         }
     }
 
@@ -96,13 +107,25 @@ impl Watch {
     /// open in windows of their own, and says who's in each now.
     pub fn follow(&mut self, codes: Vec<String>, now: &Zoned) -> &State {
         self.followed = codes;
+        self.followed_at = now.timestamp().as_millisecond();
         self.calls(now)
     }
 
-    /// Whether any call is followed, which wants Meet asked more often
-    /// than the calendar is, since people come and go by the minute.
-    pub fn following(&self) -> bool {
+    /// Whether any call is followed at `now`, which wants Meet asked more
+    /// often than the calendar is, since people come and go by the minute;
+    /// a follow the shell hasn't said again lately is let go.
+    pub fn following(&mut self, now: &Zoned) -> bool {
+        if now.timestamp().as_millisecond() - self.followed_at > FOLLOW_LASTS {
+            self.followed.clear();
+            self.state.calls.clear();
+        }
         !self.followed.is_empty()
+    }
+
+    /// How many times running Meet couldn't be asked, so it's asked less
+    /// often until it answers, as the calendar is.
+    pub fn calls_failed(&self) -> u32 {
+        self.calls_failed
     }
 
     /// Who's in each call followed, as Meet says now. A sign-in without
@@ -117,9 +140,16 @@ impl Watch {
             let was = held.iter().find(|call| call.code == code).cloned();
             let call = if granted {
                 match self.asking(now, |google, token| in_call(google, token, &code)) {
-                    Ok(call) => call,
+                    Ok(call) => {
+                        self.calls_failed = 0;
+                        call
+                    }
                     Err(Looked::Refused(Refused::Unreachable(why))) => {
-                        eprintln!("<4>{why}");
+                        // Said the first time only, not every half minute.
+                        if self.calls_failed == 0 {
+                            eprintln!("<4>{why}");
+                        }
+                        self.calls_failed = self.calls_failed.saturating_add(1);
                         was.unwrap_or(Call {
                             code: code.clone(),
                             granted,
@@ -880,6 +910,7 @@ fn in_call(google: &Google, token: &str, code: &str) -> Result<Call, Refused> {
         ..Call::default()
     };
     if let Some((record, started)) = meet::under_way(&google.conferences(token, code)?) {
+        call.known = true;
         call.started = started;
         call.people = meet::people(&google.participants(token, &record)?);
     }
