@@ -1938,6 +1938,11 @@
     action and copy, the (y/n) ask once before what can't be put back, and yG or dG over 400 rows
     within half a key's 4 ms
   '';
+  the-sandboxes-door-trusts-no-one = ''
+    the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and
+    takes its caller as untrusted, so a sandbox passed it rather than the daemon's socket can't
+    make itself root
+  '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
     saver, so a shutdown with the lid shut loses nothing set since
