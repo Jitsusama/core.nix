@@ -1688,6 +1688,43 @@ fn a_piece_the_builders_dont_take_waits_rather_than_build_here_under_load() {
 }
 
 #[test]
+fn a_machine_long_behind_main_builds_what_is_left_here_under_load() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "50.00");
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    // An earlier update began building a main the machine still doesn't run.
+    fs::create_dir_all(&world.config.state).unwrap();
+    let behind = world.config.behind_file();
+    fs::File::create(&behind)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(21 * 60))
+        .unwrap();
+    assert_eq!(world.update().1, done(&head));
+    let here = world.read("here");
+    assert!(here.contains("--max-jobs 1 --cores 4"), "{here}");
+    // The machine runs main now, so the next one starts its own wait.
+    assert!(!behind.exists());
+}
+
+#[test]
+fn a_machine_just_behind_main_still_waits_under_load() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "50.00");
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Failed { why, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    assert!(why.contains("so they wait"), "{why}");
+    // Its wait is marked from this build.
+    assert!(world.config.behind_file().exists());
+    assert_eq!(world.read("here"), "");
+}
+
+#[test]
 fn a_kept_piece_its_builders_dont_build_is_built_here_small() {
     let mut world = World::new();
     kept_with_here(&mut world, "14.99");

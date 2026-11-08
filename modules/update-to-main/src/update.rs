@@ -48,7 +48,19 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     }
     let ending = run(config, granted, tell);
     take_grant(config);
+    if matches!(ending, Line::Done { .. } | Line::Unchanged { .. }) {
+        let _ = fs::remove_file(config.behind_file());
+    }
     ending
+}
+
+/// Marks the machine behind main from the first build of a main it
+/// doesn't run, keeping the mark from an earlier one that didn't get it on.
+fn mark_behind(config: &Config) {
+    let behind = config.behind_file();
+    if !behind.exists() {
+        let _ = fs::write(behind, "");
+    }
 }
 
 /// Takes away the grant for held changes, saying whether there was one.
@@ -122,6 +134,7 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     tell(&Line::Building {
         commit: head.clone(),
     });
+    mark_behind(config);
     let flake = match &config.hosted {
         Some(hosted) => hosted::prepare(config, hosted, &head),
         None => Ok(git::flake(config, &head)),
