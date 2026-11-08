@@ -1593,7 +1593,8 @@ QtObject {
         // PwNodeAudio says it: its rate to three significant digits and its
         // sample's bits, a float said so; none while it's suspended. It's
         // the card's own said again where the card's running stream opens
-        // with the same rate and bits.
+        // with the same rate and bits, a float graph over an integer card
+        // not.
         machine("the graph's format, said", [
             Sounds.graphFormat({ rate: 48000, channels: 2, sample: "F32LE" }),
             Sounds.graphFormat({ rate: 44100, channels: 2, sample: "S16LE" }),
@@ -1603,11 +1604,13 @@ QtObject {
             "48 kHz \u00b7 32 bit float", "44.1 kHz \u00b7 16 bit",
             "176 kHz \u00b7 24 bit", "48 kHz \u00b7 ALAW", ""]);
         machine("the card says it already, or not", [
+            Sounds.sameFormat("48 kHz \u00b7 32 bit",
+                "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)"),
             Sounds.sameFormat("48 kHz \u00b7 32 bit float",
                 "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)"),
             Sounds.sameFormat("48 kHz \u00b7 16 bit", "48 kHz \u00b7 16 bit"),
             Sounds.sameFormat("48 kHz \u00b7 16 bit", "44.1 kHz \u00b7 16 bit \u00b7 period 1024"),
-            Sounds.sameFormat("48 kHz \u00b7 16 bit", "")], [true, true, false, false]);
+            Sounds.sameFormat("48 kHz \u00b7 16 bit", "")], [true, false, true, false, false]);
 
         // The firmware fwupd knows, as its three commands' --json say it: a
         // device it hides, one with no version and one with no name are

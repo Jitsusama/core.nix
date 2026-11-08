@@ -130,7 +130,10 @@ function fraction(text) {
 
 // A sample format's bits, as desk-facts says a card's, a floating one said
 // so: S32LE is "32 bit", F32LE "32 bit float", one it can't read its
-// own short name.
+// own short name. S24_32LE is "24 bit": the bits it holds are its
+// resolution, while its 32-bit container and its byte order are how
+// the graph lays them in memory, which no figure Joel reads turns on,
+// so they're left out, as desk-facts leaves a card's out.
 function sample(name) {
     const found = SAMPLE.exec(String(name ?? ""));
     if (!found) {
@@ -153,10 +156,11 @@ function graphFormat(format) {
 
 // Whether the card already says the format the graph moves: its running
 // stream's figures, "48 kHz · 32 bit · period 21.3 ms (1024)", open with
-// the same rate and bits, a float said by the card as its bits alone.
+// the same rate and bits. They're compared whole, since a graph in float
+// over a card in integer is the difference Graph Format is there to show,
+// and desk-facts names a float card's format by ALSA's name, FLOAT_LE.
 function sameFormat(graph, card) {
-    const plain = graph.replace(` ${FLOATING}`, "");
-    return card === plain || String(card ?? "").startsWith(`${plain}${APART}`);
+    return card === graph || String(card ?? "").startsWith(`${graph}${APART}`);
 }
 
 // A stream's rate, from its "1/44100".

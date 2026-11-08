@@ -125,15 +125,16 @@ ShellRoot {
     // A device's drawer says where it is and which way it goes, then what
     // pipewire says it's doing, each of its parts the step holds, what the
     // kernel says, the format the graph moves where the card doesn't say
-    // the same, and what the sound server knows it by last; never whether it's muted, its row's, nor
-    // its Level, which reading would open a stream on it.
+    // the same, and what the sound server knows it by last; never whether
+    // it's muted, its row's, nor its Level, which reading would open a
+    // stream on it.
     function drawers() {
         const card = device("alsa_output.pci.speakers", true, { "alsa.id": "PCH",
             "alsa.device": "1", "device.bus": "pci", "api.alsa.path": "hw:PCH,1",
             "priority.session": "1000", "alsa.resolution_bits": "24" });
         card.id = 52;
         card.state = "running";
-        card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
+        card.audio.format = { rate: 48000, channels: 2, sample: "S32LE" };
         sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
         const plate = sound.drawerOf(card);
         const volume = plate.facts.find(fact => fact.label === "Volume");
@@ -165,8 +166,12 @@ ShellRoot {
         const formats = node => sound.drawerOf(node).facts
             .filter(fact => fact.label.endsWith("Format") || fact.label === "Playing")
             .map(fact => `${fact.label}=${fact.value}`).join("; ");
+        card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
+        expect("a float graph over an integer card is the Graph Format beside it",
+            formats(card) === "Playing=48 kHz \u00b7 32 bit; "
+            + "Graph Format=48 kHz \u00b7 32 bit float", formats(card));
         sound.facts = { "PCH,1:out": [{ name: "playing", value: "44.1 kHz \u00b7 16 bit" }] };
-        expect("a graph's format the card's differs from is the Graph Format beside it",
+        expect("as is one at another rate",
             formats(card) === "Playing=44.1 kHz \u00b7 16 bit; "
             + "Graph Format=48 kHz \u00b7 32 bit float", formats(card));
         sound.facts = {};

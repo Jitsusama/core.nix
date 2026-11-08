@@ -26,8 +26,8 @@
 # node said neither what pipewire says it's doing nor the format it moves
 # audio in, which a device's drawer shows, so
 # pipewire-node-state-and-format.patch reads both from the node's info and
-# its Format param, which opens no stream. All six are laid over the machine's packages, so the shell, the greeter and the
-# lock all run them.
+# its Format param, which opens no stream. All six are laid over the
+# machine's packages, so the shell, the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
 # compositor's linux-dmabuf at version 4 whatever it offered, a protocol
