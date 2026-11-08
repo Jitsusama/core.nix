@@ -2542,7 +2542,7 @@ def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale
             assert not set(meanings) & set(typed), f"a meaning repeats a typed row: {meanings}"
             desktop.down_to(desktop.showing()["rows"][len(typed)])
             note = desktop.showing()["selected"]["note"]
-            assert note == "Found by its meaning.", f"a meant row says {note!r}"
+            assert note == "found by its meaning", f"a meant row says {note!r}"
             desktop.photograph(f"launcher-found-by-meaning-at-{scale.replace('.', '-')}")
             desktop.close_launcher()
     finally:

@@ -4,7 +4,7 @@
 // name and the words it's known by, and is told them as the launcher
 // opens (Meaning.js says which); typed into, the launcher asks `meant`,
 // and the nearest few things not already found are added below
-// everything typing found, each saying "Found by its meaning." in the
+// everything typing found, each noting "found by its meaning" in the
 // foot. It lists no row of its own and never ranks a guess over what was
 // typed.
 //

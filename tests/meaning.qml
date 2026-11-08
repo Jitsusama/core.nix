@@ -71,7 +71,7 @@ QtObject {
         };
         const records = keys => keys.map((key, at) => ({ key: key, kind: "thing",
             near: 0.9 - at / 100 }));
-        const note = "Found by its meaning.";
+        const note = "found by its meaning";
         const how = { most: 3, note: note };
         const rows = Meaning.rows(records(["action:brightness", "program:kitty"]), keyed,
             new Set(), how);
