@@ -2,10 +2,10 @@
 # own tree has no disk, USB or GPU for this chip yet. The commit is the one
 # Aurora's NixOS flake (nixos-aurora, MIT) pins, so its source tarball and
 # hash are the ones that flake already checks. It is built like the M2 Air's
-# kernel (../../apple-macbook-air-m2-a2681/kernel/package.nix): the ARM64
-# defconfig, nixpkgs' common settings, and then Aurora's shared Apple
-# fragment, asahi.config, taken in whole as structured settings so core's
-# settings check holds every one of them. A NixOS machine's
+# kernel (../../apple-macbook-air-m2-a2681/kernel/package.nix), on the ARM64
+# defconfig with Aurora's shared Apple fragment, asahi.config, merged over
+# it, then nixpkgs' common settings and the fragment again, taken in whole
+# as structured settings so core's settings check holds every one of them. A NixOS machine's
 # boot.kernelPatches reach it through buildLinux's own kernelPatches.
 {
   lib,
@@ -46,8 +46,8 @@ let
     else
       [ ];
 
-  # Aurora's arch/arm64/configs/asahi.config at the commit below, as it says
-  # to use it: over the ARM64 defconfig, then resolved. Its settings outrank
+  # Aurora's arch/arm64/configs/asahi.config at the commit below, copied
+  # unchanged, since the build merges the source's own copy. Its settings outrank
   # nixpkgs' common ones, which are written for any machine, and give way to
   # a machine's own lib.mkForce.
   aurora = lib.mapAttrs (_option: lib.mkOverride 90) (
@@ -61,6 +61,12 @@ buildLinux (
     version = "7.3.0";
     modDirVersion = version;
     extraMeta.branch = "7.3";
+
+    # Aurora's fragment merged over the ARM64 defconfig, as it says to use
+    # it, before nixpkgs' answers. Answered only one setting at a time, the
+    # defconfig's modular DART leaves the PCIe controller, which the
+    # fragment builds in, no way to be built in.
+    defconfig = "defconfig asahi.config";
 
     # integration/aurora at d4d267839caa (2026-11-08), as nixos-aurora's
     # sources.json pins it. It carries the J614s's board file and its

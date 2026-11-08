@@ -31,7 +31,7 @@ onLinux {
   # rest of the kernel is never built, so it takes seconds and no aarch64
   # builder.
   m4-pro-kernel-describes-both-external-screens =
-    pkgs.runCommand "m4-pro-kernel-describes-both-external-screens"
+    pkgs.runCommandCC "m4-pro-kernel-describes-both-external-screens"
       {
         nativeBuildInputs = [
           pkgs.dtc

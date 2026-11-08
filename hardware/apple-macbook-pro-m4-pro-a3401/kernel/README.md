@@ -33,9 +33,11 @@ board. A J614s has shown a picture over HDMI at 1920x1080 this way
 
 `asahi.config` is Aurora's arch/arm64/configs/asahi.config at the same
 commit, unchanged. It says to merge it over the ARM64 defconfig and
-check its settings survive, which is what `package.nix` does: each line
-becomes a structured setting, above nixpkgs' common ones, so
+check its settings survive, which is what `package.nix` does: the build
+merges the source's own copy over the defconfig, and each line of this
+copy becomes a structured setting, above nixpkgs' common ones, so
 `kernel-settings-hold-apple-macbook-pro-m4-pro-a3401` holds every one.
+When the commit moves, this copy is taken again from it.
 The kernel is built with nixpkgs' GCC, as Fedora's and Arch Linux
 ARM's builds of Aurora's kernel are, rather than nixos-aurora's Clang.
 
