@@ -1512,6 +1512,10 @@
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
     and nothing once ZZ closes it, clearing what a killed one left
   '';
+  the-apple-silicon-stick-evaluates = ''
+    the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
+    evaluates
+  '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
     s after the shell goes unless it comes back

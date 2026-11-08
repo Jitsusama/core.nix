@@ -46,7 +46,10 @@ in
     mkfsOptions.erofs = [ "-b4096" ];
     verityStore = {
       enable = true;
-      ukiPath = "/EFI/BOOT/BOOTX64.EFI";
+      # Where firmware looks for a removable disk's boot program on this
+      # architecture: BOOTX64.EFI on a PC, BOOTAA64.EFI under an Apple
+      # silicon Mac's U-Boot.
+      ukiPath = "/EFI/BOOT/BOOT${lib.toUpper pkgs.stdenv.hostPlatform.efiArch}.EFI";
     };
     partitions."00-esp".repartConfig = {
       Type = "esp";
@@ -76,23 +79,31 @@ in
   boot = {
     loader.grub.enable = false;
     initrd.systemd.enable = true;
-    kernelPackages = pkgs.linuxPackages_latest;
+    # A Mac's stick runs Asahi's kernel instead (stick-apple-silicon.nix).
+    kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
     # The stick's own disk, and the keyboards that reach the system through
-    # a controller of their own, such as the Surface Laptop 4's.
-    initrd.availableKernelModules = [
-      "xhci_pci"
-      "usb_storage"
-      "uas"
-      "sd_mod"
-      "nvme"
-      # pinctrl_amd, which the Surface's keyboard also needs, is built in.
-      "8250_dw"
-      "surface_aggregator"
-      "surface_aggregator_registry"
-      "surface_aggregator_hub"
-      "surface_hid_core"
-      "surface_hid"
-    ];
+    # a controller of their own, such as the Surface Laptop 4's. On a Mac,
+    # nixos-apple-silicon names the controllers and usb_storage, and NixOS's
+    # own defaults sd_mod, so only UAS, which a USB SSD speaks, is added:
+    # Asahi's kernel has none of the Surface's modules.
+    initrd.availableKernelModules =
+      if pkgs.stdenv.hostPlatform.isx86_64 then
+        [
+          "xhci_pci"
+          "usb_storage"
+          "uas"
+          "sd_mod"
+          "nvme"
+          # pinctrl_amd, which the Surface's keyboard also needs, is built in.
+          "8250_dw"
+          "surface_aggregator"
+          "surface_aggregator_registry"
+          "surface_aggregator_hub"
+          "surface_hid_core"
+          "surface_hid"
+        ]
+      else
+        [ "uas" ];
   };
 
   hardware.enableRedistributableFirmware = true;

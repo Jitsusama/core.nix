@@ -880,6 +880,10 @@ gather (
           inherit nix-darwin;
         }
       );
+      # Only an aarch64 builder makes its image, so here it's evaluated.
+      the-apple-silicon-stick-evaluates = pkgs.writeText "the-apple-silicon-stick-evaluates" (
+        builtins.unsafeDiscardStringContext self.packages.aarch64-linux.stick.drvPath
+      );
 
       # Every folder says what goes in it, so a reader reaches any file from the
       # map by names alone: in a README, the opening comment of its entry file

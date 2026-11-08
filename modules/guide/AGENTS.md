@@ -64,7 +64,9 @@ driven on; the installed machine's steps come later.
   Mac's raw disks need. Reading back forgets the system's cached copy first,
   then compares both tables, hashes each partition again and opens the
   vault.
-- **Signing.** A stick for one machine has its boot program,
+- **Signing.** An Apple silicon Mac's stick (`stick-apple-silicon.nix`)
+  boots `EFI/BOOT/BOOTAA64.EFI` under U-Boot, which has no Secure Boot, so
+  it's never signed. A stick for one machine has its boot program,
   `EFI/BOOT/BOOTX64.EFI` and nothing else on its boot partition, signed with that
   machine's db key, so it boots there with Secure Boot enforced. The
   signature is byte for byte what sbsign makes from the same key at the same
@@ -463,6 +465,7 @@ driven on; the installed machine's steps come later.
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a stick carries for one machine            |
 | `stick.nix`           | the stick's own system                                    |
+| `stick-apple-silicon.nix` | the same on an Apple silicon Mac, on Asahi's kernel   |
 | `theme.nix`           | the theme as the guide and the stick's console draw it    |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
 | `tests/journey.rs`    | the journey's promises, with toy steps                    |
