@@ -1071,7 +1071,12 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("shaper-replay-{}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         let mut before = vec![pool(NOV3 - 120_000, "home")];
-        before.extend(connection(NOV3 - 120_000, 120, constant(8_000, 40_000), quiet));
+        before.extend(connection(
+            NOV3 - 120_000,
+            120,
+            constant(8_000, 40_000),
+            quiet,
+        ));
         let after = connection(NOV3, 120, constant(8_000, 40_000), quiet);
         let (first, second) = (
             folder.join("2026-11-02.jsonl"),
@@ -1104,7 +1109,12 @@ mod tests {
         let mut lines = vec![pool(NOV3, "home")];
         lines.extend(connection(NOV3, 60, constant(8_000, 40_000), quiet));
         lines.push(repool(NOV3 + 60_000));
-        lines.extend(connection(NOV3 + 60_000, 60, constant(8_000, 40_000), quiet));
+        lines.extend(connection(
+            NOV3 + 60_000,
+            60,
+            constant(8_000, 40_000),
+            quiet,
+        ));
         lines.push(pool(NOV3 + 120_000, "cafe"));
         // The new network's link counts from nothing.
         let counters = |at: u64| constant(800, 4_000)(at - (NOV3 + 120_000) + COUNTED_FROM);
@@ -1149,7 +1159,12 @@ mod tests {
     #[test]
     fn a_machine_asleep_leaves_no_seconds() {
         let mut lines = connection(NOV3, 60, constant(8_000, 40_000), quiet);
-        lines.extend(connection(NOV3 + 7_200_000, 60, constant(8_000, 40_000), quiet));
+        lines.extend(connection(
+            NOV3 + 7_200_000,
+            60,
+            constant(8_000, 40_000),
+            quiet,
+        ));
         let seconds = &read_lines(&lines)[0].seconds;
         assert_eq!(seconds.len(), 120);
         assert!(near(seconds[60].t_s, 7_200.0));
