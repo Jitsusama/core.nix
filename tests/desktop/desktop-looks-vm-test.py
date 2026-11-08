@@ -1319,7 +1319,7 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         )
         assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
         assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
-        desktop.photograph(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
 
