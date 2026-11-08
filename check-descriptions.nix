@@ -1740,6 +1740,16 @@
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
   '';
+  the-launcher-acts-only-on-what-it-can = ''
+    a program's act on a copy shows only while the clipboard holds what it takes, a picture, one
+    web address, or an existing file's path, markdown for the reader, with its line and column,
+    found from the top only while it shows, and opens it: Neovim in the kitty used last or a new
+    one, at the line and column, Chrome's page in a new window, the reader's file, and GIMP's
+    picture from the clipboard's history or a file wl-paste writes; and Open a File by Name and
+    Open a Repository on GitHub list the repositories under ~/src as they're stepped into, the
+    one whose git last wrote first, a repository's files the one changed last first, its hidden
+    ones but not what git ignores, and only those with a remote on GitHub, origin's first
+  '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
     or "when will it rain" answer when it next rains, here or in a place; here is the location, by

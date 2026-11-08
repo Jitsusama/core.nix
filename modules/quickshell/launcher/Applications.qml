@@ -1272,12 +1272,13 @@ Provider {
         });
         row.weight = provider.weight / 2;
         row.sinks = true;
-        // One that asks, as Join by Code does, goes to its ask inside the
-        // program on Return and the right arrow alike, since what it asks
-        // for is typed there. Going there changes nothing yet, so Return
-        // from the find goes at once rather than landing, though its verb,
-        // as join, may be one Catalogue.js guesses at.
-        if (act.given)
+        // One that asks, as Join by Code does for words and Neovim's Open
+        // a File by Name for a choice, goes to its ask inside the program
+        // on Return and the right arrow alike, since what it asks for is
+        // typed or chosen there. Going there changes nothing yet, so
+        // Return from the find goes at once rather than landing, though
+        // its verb, as join, may be one Catalogue.js guesses at.
+        if (act.given || act.targets)
             return Object.assign(row, {
                 trail: trail.concat([act.key]),
                 spot: "",

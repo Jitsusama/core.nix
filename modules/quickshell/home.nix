@@ -235,6 +235,8 @@ let
     "launcher/Provider.qml"
     "launcher/Playing.qml"
     "launcher/Recents.qml"
+    "launcher/Repositories.qml"
+    "launcher/Repositories.js"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
@@ -903,6 +905,8 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ./recents.nix
+    # So a program's module that brings no shell can still add a provider.
+    ./providers.nix
     ./command-lines.nix
     ../camera/home.nix
     # The brightness bar shows the picks the backlight daemon tells it of.

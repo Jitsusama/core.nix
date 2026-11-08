@@ -241,7 +241,7 @@ Provider {
     // The layers of programs that run inside the terminal, by their desktop
     // entries' ids, since their windows are the terminal's and say which
     // they are only by their titles.
-    readonly property var terminalPrograms: ({ nvim: "neovim" })
+    readonly property var terminalPrograms: ({ nvim: "neovim", btop: "btop" })
 
     // The layer a program's own keys are, by its desktop entry's id: one
     // run inside the terminal by its entry, any other by its windows, and

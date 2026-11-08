@@ -7292,6 +7292,73 @@
       "verb": "edit"
     },
     {
+      "id": "verb:gimp:picture",
+      "command": "new",
+      "argument": "picture",
+      "in": "applications",
+      "name": "New Image From the Copied Picture",
+      "verb": "start",
+      "glyph": "picture"
+    },
+    {
+      "id": "verb:nvim:find",
+      "command": "edit",
+      "in": "applications",
+      "name": "Open a File by Name",
+      "verb": "open",
+      "glyph": "folder",
+      "ask": "which repository?",
+      "empty": "No repositories under {folder}.",
+      "states": {
+        "looking": {
+          "empty": "Looking for repositories under {folder}."
+        }
+      }
+    },
+    {
+      "id": "verb:nvim:copied",
+      "command": "open",
+      "argument": "path",
+      "in": "applications",
+      "name": "Open the Copied Path",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "verb:chrome:repository",
+      "command": "open",
+      "argument": "github",
+      "in": "applications",
+      "name": "Open a Repository on GitHub",
+      "verb": "open",
+      "glyph": "branch",
+      "ask": "which repository?",
+      "empty": "No repository under {folder} has a remote on GitHub.",
+      "states": {
+        "looking": {
+          "empty": "Looking for repositories under {folder}."
+        }
+      }
+    },
+    {
+      "id": "verb:chrome:link",
+      "command": "open",
+      "argument": "link",
+      "in": "applications",
+      "name": "Open the Copied Link",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
+      "id": "verb:reader:markdown",
+      "command": "open",
+      "argument": "markdown",
+      "in": "applications",
+      "name": "Read the Copied Markdown",
+      "verb": "read",
+      "glyph": "book"
+    },
+    {
       "id": "swayimg",
       "in": "applications",
       "name": "Screenshots"

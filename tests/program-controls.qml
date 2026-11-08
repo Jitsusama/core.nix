@@ -43,7 +43,8 @@
 // one in a window named by niri's id, as Neovim's in kitty's, goes there
 // through its source's command too, with no Close It. A program whose
 // entry hides itself is listed only when another provider gives it acts,
-// and then steps in on Return rather than starting. Typing on
+// and then steps in on Return rather than starting. An act found from the
+// top that asks for a choice goes to its list inside its program. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -80,9 +81,14 @@ ShellRoot {
         property var belowChord: []
         property var sources: [notices, keys, giver]
         property var entered: null
+        property var went: null
 
         function enter(row) {
             entered = row;
+        }
+
+        function goTo(spot) {
+            went = spot;
         }
     }
 
@@ -716,6 +722,15 @@ ShellRoot {
             // programs are searched, not the acts found from the top.
             same("a program's acts are found from the top, not inside Programs",
                 applications.things.length > applications.programs.length, true);
+            // One found from the top that asks for a choice, as Neovim's Open
+            // a File by Name does, goes to its list inside its program on
+            // Return, as one asking for words does.
+            const choosing = applications.foundAct({ id: "tester", name: "Tester" },
+                { key: "tester:pick", name: "Pick a Log", verb: "open", targets: () => [] });
+            choosing.run();
+            same("a found act asking for a choice goes to its list inside its program",
+                `${JSON.stringify(choosing.trail)} ${launcher.went === choosing}`,
+                '["collection:applications","program:tester","tester:pick"] true');
             const found = typed => names(applications.search(typed).rows);
             const whole = typed => {
                 applications.matchedIn(null, "", []);
