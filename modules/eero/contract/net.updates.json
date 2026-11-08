@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:04.495Z"
+  },
+  "data": {
+    "preferred_update_hour": 2,
+    "min_required_firmware": "v1.1.2",
+    "target_firmware": "v7.17.4-5",
+    "update_to_firmware": "v7.17.4-5",
+    "update_required": false,
+    "can_update_now": false,
+    "has_update": false,
+    "update_status": null,
+    "scheduled_update_time": null,
+    "last_update_started": "2026-11-07T07:19:15.119446Z",
+    "last_user_update": {
+      "last_update_started": "2026-11-07T07:19:15.119446Z",
+      "unresponsive_eeros": [],
+      "incomplete_eeros": []
+    },
+    "manifest_resource": "https://eeroassets.com/eeroOS-release-notes/b9f51ecc-8dc6-4b20-9cbf-5f2c2815f3ba/v7.17.4_en-CA.json"
+  }
+}

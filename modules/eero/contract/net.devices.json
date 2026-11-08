@@ -1,0 +1,2767 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:20.317Z"
+  },
+  "data": [
+    {
+      "url": "/2.2/networks/1001/devices/020000000001",
+      "mac": "02:00:00:00:00:01",
+      "eui64": "02000000fffe0001",
+      "manufacturer": null,
+      "ip": "10.0.0.29",
+      "ips": [
+        "10.0.0.29",
+        "fe80::1"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::1",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "tablet 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T22:42:35.077Z",
+      "first_seen": "2026-02-09T20:08:06.564127Z",
+      "connectivity": {
+        "rx_bitrate": "48.0 MBit/s",
+        "signal": "-59 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5260,
+        "bssid": "02:00:00:00:00:02",
+        "snr": 0,
+        "inactive_time_ms": 0,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 30,
+          "rx_packets": 6,
+          "tx_packets": 6,
+          "total_packets": 12,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 1.2238973,
+        "up_mbps": 0.0239604
+      },
+      "profile": null,
+      "device_type": "tablet",
+      "inferred_make": "Apple",
+      "inferred_model": "iPad",
+      "blacklisted": false,
+      "dropped": false,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 52,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.29",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "tablet 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000003",
+      "mac": "02:00:00:00:00:03",
+      "eui64": "02000000fffe0003",
+      "manufacturer": null,
+      "ip": "10.0.0.40",
+      "ips": [
+        "10.0.0.40",
+        "fe80::2"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::2",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "phone 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T22:31:41.994Z",
+      "first_seen": "2026-08-19T18:54:14.874Z",
+      "connectivity": {
+        "rx_bitrate": "48.0 MBit/s",
+        "signal": "-69 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5260,
+        "bssid": "02:00:00:00:00:04",
+        "snr": 0,
+        "inactive_time_ms": 0,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 15,
+          "rx_packets": 4,
+          "tx_packets": 5,
+          "total_packets": 9,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "phone",
+      "inferred_make": "Apple",
+      "inferred_model": "iPhone",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 52,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.40",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "phone 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000005",
+      "mac": "02:00:00:00:00:05",
+      "eui64": "02000000fffe0005",
+      "manufacturer": null,
+      "ip": "10.0.0.23",
+      "ips": [
+        "10.0.0.23",
+        "fe80::3"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::3",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "phone 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Hall",
+        "is_gateway": true,
+        "model": "eero Pro 6",
+        "display_name": "Hall eero",
+        "serial_number": "SERIAL0003",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2003"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T20:07:51.956Z",
+      "first_seen": "2026-08-19T14:08:04.420Z",
+      "connectivity": {
+        "rx_bitrate": "313.4 MBit/s",
+        "signal": "-52 dBm",
+        "signal_avg": null,
+        "score": 0.778,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:06",
+        "snr": 55,
+        "inactive_time_ms": 10280,
+        "rx_rate_info": {
+          "rate_bps": 313400000,
+          "mcs": 6,
+          "nss": 1,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 720600000,
+          "mcs": 7,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 60,
+          "rx_packets": 63489,
+          "tx_packets": 424093,
+          "total_packets": 487582,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 1870,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "phone",
+      "inferred_make": "Apple",
+      "inferred_model": "iPhone",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.23",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "phone 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000007",
+      "mac": "02:00:00:00:00:07",
+      "eui64": "02000000fffe0007",
+      "manufacturer": null,
+      "ip": "10.0.0.28",
+      "ips": [
+        "10.0.0.28",
+        "fe80::4"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::4",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "generic 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T18:22:10.992Z",
+      "first_seen": "2026-08-19T01:07:25.492Z",
+      "connectivity": {
+        "rx_bitrate": "360.3 MBit/s",
+        "signal": "-68 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 1,
+        "frequency": 5260,
+        "bssid": "02:00:00:00:00:04",
+        "snr": 40,
+        "inactive_time_ms": 80250,
+        "rx_rate_info": {
+          "rate_bps": 360300000,
+          "mcs": 7,
+          "nss": 1,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 75,
+          "rx_packets": 12665,
+          "tx_packets": 11780,
+          "total_packets": 24445,
+          "tx_retransmit_ppm": 10548,
+          "tx_fail_ppm": 2127,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 52,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.28",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "generic 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000008",
+      "mac": "02:00:00:00:00:08",
+      "eui64": "02000000fffe0008",
+      "manufacturer": "Intel Corporate",
+      "ip": "10.0.0.20",
+      "ips": [
+        "10.0.0.20",
+        "fe80::5"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::5",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "unknown computer 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T15:31:31.505Z",
+      "first_seen": "2026-10-06T23:09:32.183Z",
+      "connectivity": {
+        "rx_bitrate": "1200.9 MBit/s",
+        "signal": "-57 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:09",
+        "snr": 51,
+        "inactive_time_ms": 0,
+        "rx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 3315,
+          "rx_packets": 31747180,
+          "tx_packets": 52879944,
+          "total_packets": 84627124,
+          "tx_retransmit_ppm": 32,
+          "tx_fail_ppm": 2967,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 11.452299,
+        "up_mbps": 9.8644349
+      },
+      "profile": null,
+      "device_type": "unknown_computer",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.20",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "unknown computer 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000000a",
+      "mac": "02:00:00:00:00:0a",
+      "eui64": "02000000fffe000a",
+      "manufacturer": null,
+      "ip": "10.0.0.45",
+      "ips": [
+        "10.0.0.45",
+        "fe80::6"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::6",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "generic 2",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T12:43:06.426Z",
+      "first_seen": "2026-10-22T16:54:41.749Z",
+      "connectivity": {
+        "rx_bitrate": "1200.9 MBit/s",
+        "signal": "-37 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5260,
+        "bssid": "02:00:00:00:00:02",
+        "snr": 71,
+        "inactive_time_ms": 540,
+        "rx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 1080600000,
+          "mcs": 10,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 735,
+          "rx_packets": 52846,
+          "tx_packets": 94913,
+          "total_packets": 147759,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 5494,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 52,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.45",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "generic 2",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000000b",
+      "mac": "02:00:00:00:00:0b",
+      "eui64": "02000000fffe000b",
+      "manufacturer": "Espressif Inc.",
+      "ip": "10.0.0.99",
+      "ips": [
+        "10.0.0.99"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::7",
+          "scope": "link",
+          "interface": "br_lan"
+        },
+        {
+          "address": "fe80::8",
+          "scope": "link",
+          "interface": "br_wan"
+        }
+      ],
+      "nickname": null,
+      "hostname": "generic 3",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Hall",
+        "is_gateway": true,
+        "model": "eero Pro 6",
+        "display_name": "Hall eero",
+        "serial_number": "SERIAL0003",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2003"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:49:40.023Z",
+      "first_seen": "2026-08-12T21:11:29.916Z",
+      "connectivity": {
+        "rx_bitrate": "72.2 MBit/s",
+        "signal": "-48 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:0c",
+        "snr": 59,
+        "inactive_time_ms": 700,
+        "rx_rate_info": {
+          "rate_bps": 72200000,
+          "mcs": 7,
+          "nss": 1,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_20MHz",
+          "phy_type": "HT"
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 0,
+          "rx_packets": 24117,
+          "tx_packets": 13005,
+          "total_packets": 37122,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 4950,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 9.82e-05,
+        "up_mbps": 0.0001537
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.99",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "generic 3",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000000d",
+      "mac": "02:00:00:00:00:0d",
+      "eui64": "02000000fffe000d",
+      "manufacturer": "ecobee inc",
+      "ip": "10.0.0.30",
+      "ips": [
+        "10.0.0.30",
+        "fe80::9"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::9",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "thermostat 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:32:16.968Z",
+      "first_seen": "2026-08-19T18:01:02.648Z",
+      "connectivity": {
+        "rx_bitrate": "390.0 MBit/s",
+        "signal": "-65 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:09",
+        "snr": 43,
+        "inactive_time_ms": 3400,
+        "rx_rate_info": {
+          "rate_bps": 390000000,
+          "mcs": 9,
+          "nss": 1,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "tx_rate_info": {
+          "rate_bps": 433300000,
+          "mcs": 9,
+          "nss": 1,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 60,
+          "rx_packets": 42405,
+          "tx_packets": 12372,
+          "total_packets": 54777,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0.0001323,
+        "up_mbps": 0.0001064
+      },
+      "profile": null,
+      "device_type": "thermostat",
+      "inferred_make": "ecobee",
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.30",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "thermostat 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000000e",
+      "mac": "02:00:00:00:00:0e",
+      "eui64": "02000000fffe000e",
+      "manufacturer": null,
+      "ip": "10.0.0.26",
+      "ips": [
+        "10.0.0.26",
+        "fe80::a"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::a",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "laptop computer 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:32:16.968Z",
+      "first_seen": "2026-11-05T02:07:45.318Z",
+      "connectivity": {
+        "rx_bitrate": "432.3 MBit/s",
+        "signal": "-75 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5260,
+        "bssid": "02:00:00:00:00:04",
+        "snr": 33,
+        "inactive_time_ms": 90,
+        "rx_rate_info": {
+          "rate_bps": 432300000,
+          "mcs": 4,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 960700000,
+          "mcs": 9,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 75,
+          "rx_packets": 171741,
+          "tx_packets": 217496,
+          "total_packets": 389237,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0.1296713,
+        "up_mbps": 0.0145117
+      },
+      "profile": null,
+      "device_type": "laptop_computer",
+      "inferred_make": "Apple",
+      "inferred_model": "MacBook Air",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 52,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.26",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "laptop computer 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000000f",
+      "mac": "02:00:00:00:00:0f",
+      "eui64": "02000000fffe000f",
+      "manufacturer": "Nintendo Co.,Ltd",
+      "ip": "10.0.0.47",
+      "ips": [
+        "10.0.0.47"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::b",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": "game console 1",
+      "hostname": null,
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:30:10.186Z",
+      "first_seen": "2021-04-17T14:38:08.105832Z",
+      "connectivity": {
+        "rx_bitrate": "72.2 MBit/s",
+        "signal": "-66 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:10",
+        "snr": 41,
+        "inactive_time_ms": 11530,
+        "rx_rate_info": {
+          "rate_bps": 72200000,
+          "mcs": 7,
+          "nss": 1,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_20MHz",
+          "phy_type": "HT"
+        },
+        "tx_rate_info": {
+          "rate_bps": 65000000,
+          "mcs": 7,
+          "nss": 1,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_20MHz",
+          "phy_type": "HT"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 60,
+          "rx_packets": 5557,
+          "tx_packets": 6378,
+          "total_packets": 11935,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 6557,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "game_console",
+      "inferred_make": "Nintendo",
+      "inferred_model": "Switch",
+      "blacklisted": false,
+      "dropped": false,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.47",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "game console 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000011",
+      "mac": "02:00:00:00:00:11",
+      "eui64": "02000000fffe0011",
+      "manufacturer": null,
+      "ip": "10.0.0.24",
+      "ips": [
+        "10.0.0.24",
+        "fe80::c"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::c",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "laptop computer 2",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:26:58.587Z",
+      "first_seen": "2026-08-19T12:24:08.685Z",
+      "connectivity": {
+        "rx_bitrate": "1200.9 MBit/s",
+        "signal": "-38 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:12",
+        "snr": 70,
+        "inactive_time_ms": 40,
+        "rx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 45,
+          "rx_packets": 2505633,
+          "tx_packets": 3567012,
+          "total_packets": 6072645,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0.1453838,
+        "up_mbps": 0.0976319
+      },
+      "profile": null,
+      "device_type": "laptop_computer",
+      "inferred_make": "Apple",
+      "inferred_model": "Mac",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.24",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "laptop computer 2",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000013",
+      "mac": "02:00:00:00:00:13",
+      "eui64": "02000000fffe0013",
+      "manufacturer": "Hewlett Packard",
+      "ip": "10.0.0.31",
+      "ips": [
+        "10.0.0.31"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::d",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": "printer 1",
+      "hostname": "printer 2",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:26:58.587Z",
+      "first_seen": "2020-11-13T22:18:36.699159Z",
+      "connectivity": {
+        "rx_bitrate": "72.2 MBit/s",
+        "signal": "-49 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:14",
+        "snr": 56,
+        "inactive_time_ms": 37710,
+        "rx_rate_info": {
+          "rate_bps": 72200000,
+          "mcs": 7,
+          "nss": 1,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_20MHz",
+          "phy_type": "HT"
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 90,
+          "rx_packets": 2853,
+          "tx_packets": 2343,
+          "total_packets": 5196,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "printer",
+      "inferred_make": "HP",
+      "inferred_model": null,
+      "blacklisted": false,
+      "dropped": false,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.31",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "printer 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000015",
+      "mac": "02:00:00:00:00:15",
+      "eui64": "02000000fffe0015",
+      "manufacturer": "Samsung Electronics Co.,Ltd",
+      "ip": "10.0.0.25",
+      "ips": [
+        "10.0.0.25",
+        "fe80::e"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::e",
+          "scope": "link"
+        }
+      ],
+      "nickname": null,
+      "hostname": "generic 4",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:23:23.953Z",
+      "first_seen": "2026-07-27T01:43:45.488Z",
+      "connectivity": {
+        "rx_bitrate": "433.3 MBit/s",
+        "signal": "-20 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:09",
+        "snr": 88,
+        "inactive_time_ms": 84840,
+        "rx_rate_info": {
+          "rate_bps": 433300000,
+          "mcs": 9,
+          "nss": 1,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "tx_rate_info": {
+          "rate_bps": 866700000,
+          "mcs": 9,
+          "nss": 2,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 1,
+          "tx_retries": 15,
+          "rx_packets": 30835,
+          "tx_packets": 19791,
+          "total_packets": 50626,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0.0022339,
+        "up_mbps": 0.0033066
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": "Samsung",
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.25",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "generic 4",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000016",
+      "mac": "02:00:00:00:00:16",
+      "eui64": "02000000fffe0016",
+      "manufacturer": "Apple, Inc.",
+      "ip": "10.0.0.33",
+      "ips": [
+        "10.0.0.33",
+        "fe80::f"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::f",
+          "scope": "link"
+        }
+      ],
+      "nickname": "media streamer 1",
+      "hostname": "thermostat 1",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:21:10.327Z",
+      "first_seen": "2020-11-13T23:56:50.651891Z",
+      "connectivity": {
+        "rx_bitrate": "325.0 MBit/s",
+        "signal": "-43 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:09",
+        "snr": 65,
+        "inactive_time_ms": 13120,
+        "rx_rate_info": {
+          "rate_bps": 325000000,
+          "mcs": 7,
+          "nss": 1,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 105,
+          "rx_packets": 28350,
+          "tx_packets": 28207,
+          "total_packets": 56557,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "media_streamer",
+      "inferred_make": "Apple",
+      "inferred_model": null,
+      "blacklisted": false,
+      "dropped": false,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.33",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "media streamer 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000017",
+      "mac": "02:00:00:00:00:17",
+      "eui64": "02000000fffe0017",
+      "manufacturer": "Sony Corporation",
+      "ip": "10.0.0.112",
+      "ips": [
+        "10.0.0.112"
+      ],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::b",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": "audio 1",
+      "hostname": "audio 2",
+      "connected": true,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T22:49:40.090Z",
+      "first_active": "2026-11-07T07:21:10.220Z",
+      "first_seen": "2020-11-13T22:01:43.629724Z",
+      "connectivity": {
+        "rx_bitrate": "48.0 MBit/s",
+        "signal": "-29 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:10",
+        "snr": 78,
+        "inactive_time_ms": 5580,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 15,
+          "rx_packets": 8590,
+          "tx_packets": 3187,
+          "total_packets": 11777,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "audio",
+      "inferred_make": "Sony",
+      "inferred_model": null,
+      "blacklisted": false,
+      "dropped": false,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": "10.0.0.112",
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "audio 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000018",
+      "mac": "02:00:00:00:00:18",
+      "eui64": "02000000fffe0018",
+      "manufacturer": "AzureWave Technology Inc.",
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::b",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": "game console 2",
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T21:38:27.775Z",
+      "first_active": "2026-11-07T20:55:07.069Z",
+      "first_seen": "2026-11-04T01:15:35.789Z",
+      "connectivity": {
+        "rx_bitrate": "351.0 MBit/s",
+        "signal": "-52 dBm",
+        "signal_avg": null,
+        "score": 0.889,
+        "score_bars": 5,
+        "tx_retry_pct": 7,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:09",
+        "snr": 56,
+        "inactive_time_ms": 470,
+        "rx_rate_info": {
+          "rate_bps": 351000000,
+          "mcs": 4,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "tx_rate_info": {
+          "rate_bps": 780000000,
+          "mcs": 8,
+          "nss": 2,
+          "guard_interval": "GI_400NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "VHT"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 105,
+          "rx_packets": 109155,
+          "tx_packets": 238517,
+          "total_packets": 347672,
+          "tx_retransmit_ppm": 71174,
+          "tx_fail_ppm": 6345,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "game_console",
+      "inferred_make": "Valve",
+      "inferred_model": "Steam Deck",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "game console 2",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000019",
+      "mac": "02:00:00:00:00:19",
+      "eui64": "02000000fffe0019",
+      "manufacturer": null,
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::d",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": "phone 1",
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T19:57:18.896Z",
+      "first_active": "2026-11-07T19:36:56.315Z",
+      "first_seen": "2026-08-19T17:17:36.938Z",
+      "connectivity": {
+        "rx_bitrate": "216.1 MBit/s",
+        "signal": "-90 dBm",
+        "signal_avg": null,
+        "score": 0.178,
+        "score_bars": 2,
+        "tx_retry_pct": 4,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:12",
+        "snr": 18,
+        "inactive_time_ms": 221960,
+        "rx_rate_info": {
+          "rate_bps": 216100000,
+          "mcs": 2,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 432300000,
+          "mcs": 4,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 75,
+          "rx_packets": 876,
+          "tx_packets": 1005,
+          "total_packets": 1881,
+          "tx_retransmit_ppm": 43103,
+          "tx_fail_ppm": 13820,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "phone",
+      "inferred_make": "Apple",
+      "inferred_model": "iPhone",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "phone 1",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000001a",
+      "mac": "02:00:00:00:00:1a",
+      "eui64": "02000000fffe001a",
+      "manufacturer": "Dell Inc.",
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::7",
+          "scope": "link",
+          "interface": "br_lan"
+        },
+        {
+          "address": "fe80::8",
+          "scope": "link",
+          "interface": "br_wan"
+        }
+      ],
+      "nickname": null,
+      "hostname": "generic 5",
+      "connected": false,
+      "wireless": false,
+      "connection_type": "wired",
+      "source": {
+        "location": "Hall",
+        "is_gateway": true,
+        "model": "eero Pro 6",
+        "display_name": "Hall eero",
+        "serial_number": "SERIAL0003",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2003"
+      },
+      "last_active": "2026-11-07T13:15:25.315Z",
+      "first_active": "2026-11-06T19:51:17.899Z",
+      "first_seen": "2026-10-26T17:54:13.326Z",
+      "connectivity": {
+        "rx_bitrate": "",
+        "signal": "0 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 0,
+        "bssid": "",
+        "snr": 0,
+        "inactive_time_ms": 0,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": {
+          "has_carrier": true,
+          "interface_number": 1,
+          "speed": "P1000",
+          "is_wan_port": false,
+          "is_lte": false,
+          "port_name": "2"
+        },
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 0,
+          "rx_packets": 0,
+          "tx_packets": 0,
+          "total_packets": 0,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": null,
+        "frequency_unit": null
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": "Dell",
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": null,
+      "auth": null,
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": null,
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "generic 5",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000001b",
+      "mac": "02:00:00:00:00:1b",
+      "eui64": "02000000fffe001b",
+      "manufacturer": null,
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::d",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": null,
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T13:13:01.460Z",
+      "first_active": "2026-11-07T07:26:58.587Z",
+      "first_seen": "2026-10-26T03:22:32.204Z",
+      "connectivity": {
+        "rx_bitrate": "1200.9 MBit/s",
+        "signal": "-61 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 5,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:12",
+        "snr": 46,
+        "inactive_time_ms": 2480,
+        "rx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "tx_rate_info": {
+          "rate_bps": 1200900000,
+          "mcs": 11,
+          "nss": 2,
+          "guard_interval": "GI_800NS",
+          "channel_width": "WIDTH_80MHz",
+          "phy_type": "HE"
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 990,
+          "rx_packets": 790053,
+          "tx_packets": 812634,
+          "total_packets": 1602687,
+          "tx_retransmit_ppm": 48979,
+          "tx_fail_ppm": 8510,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": null,
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000001c",
+      "mac": "02:00:00:00:00:1c",
+      "eui64": "02000000fffe001c",
+      "manufacturer": null,
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::d",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": null,
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-07T12:34:07.565Z",
+      "first_active": "2026-11-07T12:34:07.565Z",
+      "first_seen": "2026-08-18T00:32:38.268Z",
+      "connectivity": {
+        "rx_bitrate": "11.0 MBit/s",
+        "signal": "-80 dBm",
+        "signal_avg": null,
+        "score": 0.05,
+        "score_bars": 1,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:14",
+        "snr": 0,
+        "inactive_time_ms": 10,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 30,
+          "rx_packets": 4,
+          "tx_packets": 5,
+          "total_packets": 9,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": null,
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000001d",
+      "mac": "02:00:00:00:00:1d",
+      "eui64": "02000000fffe001d",
+      "manufacturer": "Intel Corporate",
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::b",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": null,
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-07T10:04:12.711Z",
+      "first_active": "2026-11-07T10:04:12.711Z",
+      "first_seen": "2026-09-16T23:50:46.721Z",
+      "connectivity": {
+        "rx_bitrate": "48.0 MBit/s",
+        "signal": "-60 dBm",
+        "signal_avg": null,
+        "score": 1,
+        "score_bars": 5,
+        "tx_retry_pct": 0,
+        "frequency": 5260,
+        "bssid": "02:00:00:00:00:04",
+        "snr": 0,
+        "inactive_time_ms": 0,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 4,
+          "tx_retries": 30,
+          "rx_packets": 6,
+          "tx_packets": 5,
+          "total_packets": 11,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "unknown_computer",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 52,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": false,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "unknown computer 2",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000001e",
+      "mac": "02:00:00:00:00:1e",
+      "eui64": "02000000fffe001e",
+      "manufacturer": null,
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::d",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": "phone 2",
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-06T23:58:58.114Z",
+      "first_active": "2026-11-06T23:54:43.015Z",
+      "first_seen": "2026-10-20T23:09:37.856Z",
+      "connectivity": {
+        "rx_bitrate": "11.0 MBit/s",
+        "signal": "-82 dBm",
+        "signal_avg": null,
+        "score": 0.05,
+        "score_bars": 1,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:14",
+        "snr": 0,
+        "inactive_time_ms": 0,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 30,
+          "rx_packets": 4,
+          "tx_packets": 5,
+          "total_packets": 9,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "phone",
+      "inferred_make": "Google",
+      "inferred_model": "Pixel 9",
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": "phone 2",
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/02000000001f",
+      "mac": "02:00:00:00:00:1f",
+      "eui64": "02000000fffe001f",
+      "manufacturer": null,
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::d",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": null,
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Den",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Den eero",
+        "serial_number": "SERIAL0001",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2001"
+      },
+      "last_active": "2026-11-05T22:25:53.800Z",
+      "first_active": "2026-11-05T22:25:53.800Z",
+      "first_seen": "2026-10-31T00:39:05.699Z",
+      "connectivity": {
+        "rx_bitrate": "48.0 MBit/s",
+        "signal": "-89 dBm",
+        "signal_avg": null,
+        "score": 0.05,
+        "score_bars": 1,
+        "tx_retry_pct": 0,
+        "frequency": 5745,
+        "bssid": "02:00:00:00:00:12",
+        "snr": 0,
+        "inactive_time_ms": 10,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 15,
+          "rx_packets": 4,
+          "tx_packets": 5,
+          "total_packets": 9,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "5",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 149,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": null,
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    },
+    {
+      "url": "/2.2/networks/1001/devices/020000000020",
+      "mac": "02:00:00:00:00:20",
+      "eui64": "02000000fffe0020",
+      "manufacturer": null,
+      "ip": null,
+      "ips": [],
+      "ipv6_addresses": [
+        {
+          "address": "fe80::b",
+          "scope": "link",
+          "interface": "br_lan"
+        }
+      ],
+      "nickname": null,
+      "hostname": null,
+      "connected": false,
+      "wireless": true,
+      "connection_type": "wireless",
+      "source": {
+        "location": "Study",
+        "is_gateway": false,
+        "model": "eero Pro 6",
+        "display_name": "Study eero",
+        "serial_number": "SERIAL0002",
+        "is_proxied_node": false,
+        "url": "/2.2/eeros/2002"
+      },
+      "last_active": "2026-11-03T22:14:01.676Z",
+      "first_active": "2026-11-03T22:14:01.676Z",
+      "first_seen": "2026-11-03T22:14:01.676Z",
+      "connectivity": {
+        "rx_bitrate": "11.0 MBit/s",
+        "signal": "-83 dBm",
+        "signal_avg": null,
+        "score": 0.05,
+        "score_bars": 1,
+        "tx_retry_pct": 0,
+        "frequency": 2437,
+        "bssid": "02:00:00:00:00:10",
+        "snr": 0,
+        "inactive_time_ms": 10,
+        "rx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "tx_rate_info": {
+          "rate_bps": null,
+          "mcs": null,
+          "nss": null,
+          "guard_interval": null,
+          "channel_width": null,
+          "phy_type": null
+        },
+        "ethernet_status": null,
+        "packet_stats": {
+          "rx_drops": 0,
+          "tx_retries": 30,
+          "rx_packets": 4,
+          "tx_packets": 5,
+          "total_packets": 9,
+          "tx_retransmit_ppm": 0,
+          "tx_fail_ppm": 0,
+          "rx_drop_ppm": 0
+        }
+      },
+      "interface": {
+        "frequency": "2.4",
+        "frequency_unit": "GHz"
+      },
+      "usage": {
+        "down_mbps": 0,
+        "up_mbps": 0
+      },
+      "profile": null,
+      "device_type": "generic",
+      "inferred_make": null,
+      "inferred_model": null,
+      "blacklisted": null,
+      "dropped": null,
+      "homekit": {
+        "registered": false,
+        "protection_mode": "UNKNOWN"
+      },
+      "is_guest": false,
+      "paused": false,
+      "channel": 6,
+      "auth": "wpa2",
+      "multi_link_interfaces": null,
+      "is_private": true,
+      "secondary_wan_deny_access": false,
+      "ring_lte": {
+        "is_not_pausable": false,
+        "ring_managed": false,
+        "lte_enabled": false
+      },
+      "ipv4": null,
+      "is_proxied_node": false,
+      "manufacturer_device_type_id": null,
+      "amazon_devices_detail": null,
+      "ssid": "home",
+      "subnet_kind": "main",
+      "vlan_id": null,
+      "vlan_name": "",
+      "display_name": null,
+      "model_name": null,
+      "upstream_device": null,
+      "device_group": null
+    }
+  ]
+}

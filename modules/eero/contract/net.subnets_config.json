@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:10.597Z"
+  },
+  "data": [
+    {
+      "subnet_id": 4001,
+      "network_id": 4001,
+      "subnet_type": "MAIN",
+      "subnet_kind": "main",
+      "subnet_label": "subnet label 54",
+      "name": "home",
+      "enabled": true,
+      "wan_access": true,
+      "lan_access": false,
+      "nat_port_randomization": false,
+      "dedicated_subnet": {
+        "subnet_ip": "10.0.0.0",
+        "subnet_mask": "255.255.252.0",
+        "start_ip": "10.0.0.20",
+        "end_ip": "10.0.0.254"
+      },
+      "open_network": false
+    },
+    {
+      "subnet_id": 4002,
+      "network_id": 4001,
+      "subnet_type": "GUEST",
+      "subnet_kind": "guest",
+      "subnet_label": "subnet label 55",
+      "name": "name 49",
+      "enabled": false,
+      "wan_access": true,
+      "lan_access": false,
+      "nat_port_randomization": false,
+      "dedicated_subnet": {
+        "subnet_ip": "10.0.0.0",
+        "subnet_mask": "255.255.248.0",
+        "start_ip": "10.0.0.20",
+        "end_ip": "10.0.0.254"
+      },
+      "open_network": false
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:24.677Z"
+  },
+  "data": {
+    "events": [
+      {
+        "hash": "a0fb40b7020472fc477af2465ec9016f",
+        "timestamp_ms": 1794091355077,
+        "description": "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52.",
+        "category": "Device"
+      },
+      {
+        "hash": "6076684136d5454a9586d2a581839faa",
+        "timestamp_ms": 1794091355054,
+        "description": "tablet 1 disconnected from Study eero Pro 6.",
+        "category": "Device"
+      },
+      {
+        "hash": "ed4907d5f8e96a1b6915a7b09ef075c4",
+        "timestamp_ms": 1794090701994,
+        "description": "phone 1 connected to Den eero Pro 6 on 5.8GHz channel 149.",
+        "category": "Device"
+      },
+      {
+        "hash": "1a318dd38a38a847ad114baf0722bec6",
+        "timestamp_ms": 1794090701981,
+        "description": "phone 1 disconnected from Study eero Pro 6.",
+        "category": "Device"
+      },
+      {
+        "hash": "5d4f7364ef62484705c016a9222521cf",
+        "timestamp_ms": 1794088931765,
+        "description": "phone 1 connected to Hall eero Pro 6 on 5.8GHz channel 149.",
+        "category": "Device"
+      }
+    ]
+  }
+}

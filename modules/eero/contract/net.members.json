@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:18.390Z"
+  },
+  "data": {
+    "members": [
+      {
+        "user_id": 4001,
+        "user_role": "owner",
+        "user_name": "owner 48"
+      }
+    ]
+  }
+}

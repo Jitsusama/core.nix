@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:54.665Z"
+  },
+  "data": {
+    "provide_device_power": null,
+    "node_actions": [],
+    "ports": {
+      "layout": {
+        "position_rank_order": [
+          0,
+          1
+        ],
+        "layout_type": "TWO_PORT_A"
+      },
+      "interfaces": [
+        {
+          "interface_number": 0,
+          "name": "1",
+          "actions": [],
+          "network_type": "UNKNOWN",
+          "supported_speed": "P1000",
+          "negotiated_speed": "P1000",
+          "providing_power": null,
+          "port_status": "WAN",
+          "ethernet_address": "02:00:00:00:00:21",
+          "capable_protocols": [
+            "DATA"
+          ],
+          "disabled_protocols": [],
+          "connection_status": {
+            "type": "WAN_SOURCE",
+            "metadata": {
+              "advanced_attributes": {
+                "connection_type": "WIRED"
+              }
+            }
+          },
+          "is_upstream": true,
+          "port_security": {
+            "capable": false,
+            "enabled": false,
+            "status": "DISABLED",
+            "display_status": "NOT_CAPABLE"
+          },
+          "port_flap_info": null,
+          "is_sfp": false,
+          "sfp": null
+        },
+        {
+          "interface_number": 1,
+          "name": "2",
+          "actions": [
+            {
+              "type": "DISABLE_PORT",
+              "position": 0
+            }
+          ],
+          "network_type": "UNKNOWN",
+          "supported_speed": "P1000",
+          "negotiated_speed": "P1000",
+          "providing_power": null,
+          "port_status": "DATA_CONNECTED",
+          "ethernet_address": "02:00:00:00:00:22",
+          "capable_protocols": [
+            "DATA"
+          ],
+          "disabled_protocols": [],
+          "connection_status": {
+            "type": "NOT_CONNECTED",
+            "metadata": {
+              "advanced_attributes": {
+                "connection_type": "UNKNOWN"
+              }
+            }
+          },
+          "is_upstream": false,
+          "port_security": {
+            "capable": false,
+            "enabled": false,
+            "status": "DISABLED",
+            "display_status": "NOT_CAPABLE"
+          },
+          "port_flap_info": null,
+          "is_sfp": false,
+          "sfp": null
+        }
+      ]
+    },
+    "wireless_devices": [
+      {
+        "type": "CLIENT_DEVICE",
+        "metadata": {
+          "display_name": "generic 3",
+          "device_type": "generic",
+          "url": "/2.2/networks/1001/devices/02000000000b"
+        }
+      }
+    ]
+  }
+}

@@ -11,23 +11,29 @@
 //!   eero devices                    what's connected now
 //!   eero speedtest                  start the eero's own speed test
 //!   eero sqm on|off                 optimize for conferencing and gaming, or not
-//!   eero watch [SECONDS]            keep the shell's status file, every 300 s
+//!   eero daemon                     keep the home network for the shell
 
 mod api;
 mod cloud;
+mod daemon;
+#[cfg(test)]
+mod golden;
+mod listeners;
+mod model;
+mod read;
+mod schedule;
 mod session;
 mod status;
+mod time;
 
-use std::fs;
 use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cloud::Cloud;
 
 const USAGE: &str = "usage: eero sign-in <email or phone> | status [--json] | devices | speedtest | \
-                     sqm on|off | watch [SECONDS]";
+                     sqm on|off | daemon";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -40,11 +46,7 @@ fn main() -> ExitCode {
         ["speedtest"] => speedtest(),
         ["sqm", "on"] => conferencing(true),
         ["sqm", "off"] => conferencing(false),
-        ["watch"] => watch(Duration::from_secs(300)),
-        ["watch", secs] => match secs.parse() {
-            Ok(secs) => watch(Duration::from_secs(secs)),
-            Err(_) => Err(USAGE.into()),
-        },
+        ["daemon"] => daemon::run(),
         _ => Err(USAGE.into()),
     };
     match done {
@@ -138,38 +140,6 @@ fn conferencing(on: bool) -> Result<(), String> {
         println!("{}", status::line(&now, None));
     }
     Ok(())
-}
-
-/// Keeps the shell's status file current, every `every`. A read that fails
-/// is written as the file's error rather than ending the watch, since the
-/// line being down is what the file is for.
-fn watch(every: Duration) -> Result<(), String> {
-    let file = runtime()?.join("eero/status.json");
-    let mut cloud = Cloud::signed_in()?;
-    loop {
-        let at = now();
-        let contents = match read(&mut cloud) {
-            Ok(networks) => status::file(at, &networks),
-            Err(reason) => status::failed(at, &reason),
-        };
-        write(&file, &contents.to_string()).map_err(|e| e.to_string())?;
-        std::thread::sleep(every);
-    }
-}
-
-fn runtime() -> Result<PathBuf, String> {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .ok_or_else(|| "XDG_RUNTIME_DIR isn't set".into())
-}
-
-/// Writes a file whole, so the shell never reads half of one.
-fn write(file: &std::path::Path, contents: &str) -> io::Result<()> {
-    let folder = file.parent().ok_or_else(|| io::Error::other("no folder"))?;
-    fs::create_dir_all(folder)?;
-    let fresh = file.with_extension("json.new");
-    fs::write(&fresh, contents)?;
-    fs::rename(fresh, file)
 }
 
 fn now() -> u64 {

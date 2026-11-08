@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:09.858Z"
+  },
+  "data": {
+    "url": "/2.2/networks/1001/thread",
+    "enabled": false,
+    "enable_credential_syncing": true,
+    "name": "name 56",
+    "channel": 25,
+    "border_agent": {
+      "ip": "10.0.0.88",
+      "port": 49191
+    }
+  }
+}

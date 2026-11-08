@@ -1,5 +1,5 @@
-//! What the status says: a line a network for a person, and a file for the
-//! shell, the way the shaper and the disk guard keep theirs.
+//! What the status says: a line a network for a person, and the same as
+//! JSON for `eero status --json`.
 
 use serde_json::{Value, json};
 
@@ -60,11 +60,6 @@ pub fn file(at: u64, networks: &[(Network, Option<usize>)]) -> Value {
     json!({"version": 1, "at": at, "networks": networks})
 }
 
-/// The status file's contents when eero couldn't be read.
-pub fn failed(at: u64, reason: &str) -> Value {
-    json!({"version": 1, "at": at, "networks": [], "error": reason})
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,12 +108,5 @@ mod tests {
         assert_eq!(file["networks"][0]["sqm"], false);
         assert_eq!(file["networks"][0]["devices"], 14);
         assert!(file.get("error").is_none());
-    }
-
-    #[test]
-    fn a_failed_read_says_why_and_lists_nothing() {
-        let file = failed(5, "not signed in");
-        assert_eq!(file["error"], "not signed in");
-        assert_eq!(file["networks"], json!([]));
     }
 }

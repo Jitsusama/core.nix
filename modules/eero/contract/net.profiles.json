@@ -1,0 +1,919 @@
+{
+  "meta": {
+    "code": 200,
+    "server_time": "2026-11-07T22:54:21.888Z"
+  },
+  "data": [
+    {
+      "url": "/2.2/networks/1001/profiles/3001",
+      "resources": {
+        "schedules": "/2.2/networks/1001/profiles/3001/schedules"
+      },
+      "name": "profile 1",
+      "paused": false,
+      "devices": [
+        {
+          "url": "/2.2/networks/1001/devices/02000000002b",
+          "mac": "02:00:00:00:00:2b",
+          "manufacturer": null,
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "phone 3",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-13T22:00:19.514841Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "phone",
+          "inferred_make": "Apple",
+          "inferred_model": "iPhone",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": true,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "phone 3",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002c",
+          "mac": "02:00:00:00:00:2c",
+          "manufacturer": null,
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "tablet 2",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-13T21:58:51.888768Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "tablet",
+          "inferred_make": "Apple",
+          "inferred_model": "iPad",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": true,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "tablet 2",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002d",
+          "mac": "02:00:00:00:00:2d",
+          "manufacturer": "Samsung Electronics Co.,Ltd",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "phone 4",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-13T22:00:47.638264Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "phone",
+          "inferred_make": "Samsung",
+          "inferred_model": null,
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "phone 4",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002e",
+          "mac": "02:00:00:00:00:2e",
+          "manufacturer": "Apple, Inc.",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "tablet 2",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-14T02:48:24.405194Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "tablet",
+          "inferred_make": "Apple",
+          "inferred_model": "iPad",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "tablet 2",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/02000000002f",
+          "mac": "02:00:00:00:00:2f",
+          "manufacturer": "Apple, Inc.",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "laptop computer 3",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-14T02:30:09.251369Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "laptop_computer",
+          "inferred_make": "Apple",
+          "inferred_model": "MacBook",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "laptop computer 3",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000030",
+          "mac": "02:00:00:00:00:30",
+          "manufacturer": "Apple, Inc.",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "laptop computer 4",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-22T13:00:37.006025Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "laptop_computer",
+          "inferred_make": "Apple",
+          "inferred_model": "MacBook",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "laptop computer 4",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000031",
+          "mac": "02:00:00:00:00:31",
+          "manufacturer": "HP Inc.",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "laptop computer 5",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2021-11-03T23:55:19.414598Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "laptop_computer",
+          "inferred_make": "HP",
+          "inferred_model": null,
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "laptop computer 5",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000032",
+          "mac": "02:00:00:00:00:32",
+          "manufacturer": null,
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "phone 5",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2021-11-11T21:48:20.596810Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "phone",
+          "inferred_make": "Apple",
+          "inferred_model": "iPhone",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": true,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "phone 5",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000033",
+          "mac": "02:00:00:00:00:33",
+          "manufacturer": null,
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "tablet 2",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2021-11-15T01:16:20.372559Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "tablet",
+          "inferred_make": "Apple",
+          "inferred_model": "iPad",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": true,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "tablet 2",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000034",
+          "mac": "02:00:00:00:00:34",
+          "manufacturer": "Apple, Inc.",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "laptop computer 6",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2022-10-21T16:46:15.325740Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "laptop_computer",
+          "inferred_make": "Apple",
+          "inferred_model": null,
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "laptop computer 6",
+          "model_name": null
+        }
+      ],
+      "schedule": [],
+      "state": {
+        "value": "Active",
+        "schedule": null
+      },
+      "premium_dns": {
+        "zscaler_location_enabled": false,
+        "dns_provider": null,
+        "dns_policies": {
+          "block_pornographic_content": false,
+          "block_illegal_content": false,
+          "block_violent_content": false,
+          "safe_search_enabled": false
+        },
+        "advanced_content_filters": {
+          "blocked_list": [],
+          "allowed_list": []
+        },
+        "ad_block_settings": {
+          "enabled": false,
+          "enabled_for_network": false
+        },
+        "blocked_applications": []
+      },
+      "unified_content_filters": {
+        "is_content_filters_set": false,
+        "dns_policies": {
+          "block_gaming_content": false,
+          "block_illegal_content": false,
+          "block_messaging_content": false,
+          "block_pornographic_content": false,
+          "block_social_content": false,
+          "block_shopping_content": false,
+          "block_streaming_content": false,
+          "block_violent_content": false,
+          "safe_search_enabled": false,
+          "youtube_restricted": false
+        }
+      },
+      "proxied_nodes": [],
+      "default": false
+    },
+    {
+      "url": "/2.2/networks/1001/profiles/3002",
+      "resources": {
+        "schedules": "/2.2/networks/1001/profiles/3002/schedules"
+      },
+      "name": "profile 2",
+      "paused": false,
+      "devices": [
+        {
+          "url": "/2.2/networks/1001/devices/020000000035",
+          "mac": "02:00:00:00:00:35",
+          "manufacturer": null,
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "tablet 3",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-13T21:59:48.529251Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "tablet",
+          "inferred_make": "Apple",
+          "inferred_model": "iPad",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": true,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "tablet 3",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000036",
+          "mac": "02:00:00:00:00:36",
+          "manufacturer": null,
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "tablet 4",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-13T22:49:51.766588Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "tablet",
+          "inferred_make": "Apple",
+          "inferred_model": "iPad",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": true,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "tablet 4",
+          "model_name": null
+        },
+        {
+          "url": "/2.2/networks/1001/devices/020000000037",
+          "mac": "02:00:00:00:00:37",
+          "manufacturer": "Apple, Inc.",
+          "manufacturer_device_type_id": null,
+          "ip": null,
+          "ips": [],
+          "nickname": "tablet 4",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2020-11-22T13:01:29.013856Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "tablet",
+          "inferred_make": "Apple",
+          "inferred_model": "iPad",
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "tablet 4",
+          "model_name": null
+        }
+      ],
+      "schedule": [],
+      "state": {
+        "value": "Active",
+        "schedule": null
+      },
+      "premium_dns": {
+        "zscaler_location_enabled": false,
+        "dns_provider": null,
+        "dns_policies": {
+          "block_pornographic_content": false,
+          "block_illegal_content": false,
+          "block_violent_content": false,
+          "safe_search_enabled": false
+        },
+        "advanced_content_filters": {
+          "blocked_list": [],
+          "allowed_list": []
+        },
+        "ad_block_settings": {
+          "enabled": false,
+          "enabled_for_network": false
+        },
+        "blocked_applications": []
+      },
+      "unified_content_filters": {
+        "is_content_filters_set": false,
+        "dns_policies": {
+          "block_gaming_content": false,
+          "block_illegal_content": false,
+          "block_messaging_content": false,
+          "block_pornographic_content": false,
+          "block_social_content": false,
+          "block_shopping_content": false,
+          "block_streaming_content": false,
+          "block_violent_content": false,
+          "safe_search_enabled": false,
+          "youtube_restricted": false
+        }
+      },
+      "proxied_nodes": [],
+      "default": false
+    },
+    {
+      "url": "/2.2/networks/1001/profiles/3003",
+      "resources": {
+        "schedules": "/2.2/networks/1001/profiles/3003/schedules"
+      },
+      "name": "profile 3",
+      "paused": false,
+      "devices": [
+        {
+          "url": "/2.2/networks/1001/devices/020000000038",
+          "mac": "02:00:00:00:00:38",
+          "manufacturer": "unknown computer 2",
+          "manufacturer_device_type_id": null,
+          "ip": "10.0.0.208",
+          "ips": [
+            "10.0.0.208"
+          ],
+          "nickname": "network equipment 1",
+          "hostname": null,
+          "connected": false,
+          "wireless": false,
+          "connection_type": null,
+          "source": {
+            "location": null,
+            "serial_number": null,
+            "is_gateway": false,
+            "url": null
+          },
+          "last_active": null,
+          "first_active": null,
+          "first_seen": "2023-06-25T23:06:23.821445Z",
+          "connectivity": {
+            "rx_bitrate": null,
+            "signal": null,
+            "signal_avg": null,
+            "score": null,
+            "score_bars": null,
+            "tx_retry_pct": null,
+            "frequency": null,
+            "rx_rate_info": null,
+            "tx_rate_info": null
+          },
+          "interface": {
+            "frequency": null,
+            "frequency_unit": null
+          },
+          "usage": {
+            "down_mbps": 0,
+            "up_mbps": 0
+          },
+          "homekit": null,
+          "device_type": "network_equipment",
+          "inferred_make": null,
+          "inferred_model": null,
+          "auth": null,
+          "multi_link_interfaces": null,
+          "is_private": false,
+          "is_guest": false,
+          "blocked": false,
+          "secondary_wan_deny_access": false,
+          "paused": false,
+          "display_name": "network equipment 1",
+          "model_name": null
+        }
+      ],
+      "schedule": [],
+      "state": {
+        "value": "Active",
+        "schedule": null
+      },
+      "premium_dns": {
+        "zscaler_location_enabled": false,
+        "dns_provider": null,
+        "dns_policies": {
+          "block_pornographic_content": false,
+          "block_illegal_content": false,
+          "block_violent_content": false,
+          "safe_search_enabled": false
+        },
+        "advanced_content_filters": {
+          "blocked_list": [],
+          "allowed_list": []
+        },
+        "ad_block_settings": {
+          "enabled": false,
+          "enabled_for_network": false
+        },
+        "blocked_applications": []
+      },
+      "unified_content_filters": {
+        "is_content_filters_set": false,
+        "dns_policies": {
+          "block_gaming_content": false,
+          "block_illegal_content": false,
+          "block_messaging_content": false,
+          "block_pornographic_content": false,
+          "block_social_content": false,
+          "block_shopping_content": false,
+          "block_streaming_content": false,
+          "block_violent_content": false,
+          "safe_search_enabled": false,
+          "youtube_restricted": false
+        }
+      },
+      "proxied_nodes": [],
+      "default": false
+    }
+  ]
+}
