@@ -108,6 +108,9 @@ fn release(said: &Value) -> Value {
 /// none, as fwupd said it.
 pub type Offered = Result<Option<Value>, String>;
 
+/// The state of an update that went in, as `UPDATE_STATES` numbers it.
+const SUCCESS: u64 = 2;
+
 /// How an update fwupd kept in its history ended, by `FwupdUpdateState`'s
 /// number, as its own `ToString` names it (libfwupd/fwupd-enums.rs).
 const UPDATE_STATES: [&str; 6] = [
@@ -121,17 +124,25 @@ const UPDATE_STATES: [&str; 6] = [
 
 /// The newest update fwupd's history keeps for each device, by its id:
 /// how it ended, when, to which version, and fwupd's words for why it
-/// failed. Firmware says from it when a device was last updated, and
-/// which version waits for the restart.
+/// failed, with when an update last went in, which a later one failing
+/// doesn't change. Firmware says from it when a device was last updated,
+/// and which version waits for the restart.
 pub fn history(entries: &[Value]) -> BTreeMap<String, Value> {
+    let when = |each: &Value| each["Modified"].as_u64().or(each["Created"].as_u64());
     let mut newest: BTreeMap<String, &Value> = BTreeMap::new();
+    let mut updated: BTreeMap<String, u64> = BTreeMap::new();
     for entry in entries {
         let Some(id) = entry["DeviceId"].as_str() else {
             continue;
         };
-        let when = |each: &Value| each["Modified"].as_u64().or(each["Created"].as_u64());
         if newest.get(id).is_none_or(|kept| when(entry) >= when(kept)) {
             newest.insert(id.to_owned(), entry);
+        }
+        if entry["UpdateState"].as_u64() == Some(SUCCESS)
+            && let Some(at) = when(entry)
+        {
+            let kept = updated.entry(id.to_owned()).or_insert(at);
+            *kept = (*kept).max(at);
         }
     }
     newest
@@ -145,6 +156,7 @@ pub fn history(entries: &[Value]) -> BTreeMap<String, Value> {
                 "at_s": entry["Modified"].as_u64().or(entry["Created"].as_u64()),
                 "version": entry["Releases"][0]["Version"].as_str(),
                 "error": entry["UpdateError"].as_str(),
+                "updated_at_s": updated.get(&id),
             });
             (id, said)
         })
@@ -254,6 +266,10 @@ mod tests {
             "the newest kept"
         );
         assert_eq!(found[0]["last_update"]["version"], "1.2.0");
+        assert_eq!(
+            found[0]["last_update"]["updated_at_s"], 100,
+            "the last that went in, a newer one still to finish"
+        );
         assert_eq!(found[1]["last_update"], Value::Null);
         assert_eq!(found.len(), 2, "a device with no name is left out");
         assert_eq!(found[0]["update"]["version"], "1.3.0");

@@ -32,7 +32,9 @@ counts all its time, and a pid given again counts from its new start.
 Each bus is asked on a thread of its own, only while a kind it gives is
 watched: UDisks once a minute, UPower every 5 seconds, logind every 2,
 and fwupd once a minute and at once each time it says something
-changed. A chip's labels and limits are read once, until the chips
+changed, a device's problems among them. A watch starting sooner than
+that after the last ask doesn't ask again, and each call gives up after
+ten seconds. A chip's labels and limits are read once, until the chips
 listed change, since some answer every read through slow firmware.
 
 ## Every Figure, and Where It Shows
@@ -109,7 +111,7 @@ units, or named here as left out with the reason.
 |                 | every inhibitor, the last sleep's start, end | Keep Awake's Held By, Last Slept          |
 | `firmware:<id>` | name, vendor, versions, flags, problems      | Firmware, each device                     |
 |                 | the update offered, or fwupd's words for none | Firmware's row, its note                 |
-|                 | the last update's state, time, version       | Firmware's Last Updated, at the restart   |
+|                 | the last update's state, time, version, and when one last went in | Firmware's Last Updated, at the restart   |
 | `firmware:host` | security level, product, fwupd's version     | Firmware's drawer                         |
 
 ## Left Out, and Why

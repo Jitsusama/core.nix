@@ -515,17 +515,16 @@ fn watch_loop(shared: &Shared) {
     }
 }
 
-/// Waits until a kind is watched and `every` has passed since `last`, at
-/// once when it starts to be watched or its source says it changed, and
-/// says when that was.
+/// Waits until a kind is watched and `every` has passed since `last`, or
+/// its source says it changed, and says when that was. A watch starting
+/// within `every` of the last ask doesn't ask again, so a launcher opened
+/// and closed doesn't ask each time; what was said then is still held.
+/// A change said while nothing watches is kept for the next watch.
 fn due(shared: &Shared, kind: &str, every: Duration, last: &mut Option<Instant>) {
     let mut daemon = lock(&shared.daemon);
     loop {
         let watching = watched(&daemon).contains(kind);
-        if !watching {
-            *last = None;
-        }
-        let hurried = daemon.hurried.remove(kind);
+        let hurried = watching && daemon.hurried.remove(kind);
         if watching && (hurried || last.is_none_or(|at| at.elapsed() >= every)) {
             break;
         }
@@ -543,6 +542,13 @@ fn due(shared: &Shared, kind: &str, every: Duration, last: &mut Option<Instant>)
     *last = Some(Instant::now());
 }
 
+/// A connection to the system bus whose calls give up after `BUS_WAIT`,
+/// so a service that hangs can't hold its loop.
+fn system_bus() -> zbus::Result<zbus::blocking::Connection> {
+    zbus::blocking::connection::Builder::system()
+        .and_then(|builder| builder.method_timeout(BUS_WAIT).build())
+}
+
 /// Asks `UPower` what it works out of each supply every few seconds while
 /// supplies are watched: its state, and the battery's time to empty or
 /// full and the rate it's changing at, by the supply's name.
@@ -552,7 +558,7 @@ fn upower_loop(shared: &Shared) {
     loop {
         due(shared, "supply", UPOWER_EVERY, &mut last);
         if bus.is_none() {
-            bus = zbus::blocking::Connection::system().ok();
+            bus = system_bus().ok();
         }
         let said = bus.as_ref().map(upower).unwrap_or_default();
         let mut daemon = lock(&shared.daemon);
@@ -569,7 +575,7 @@ fn logind_loop(shared: &Shared) {
     loop {
         due(shared, "sleep", LOGIND_EVERY, &mut last);
         if bus.is_none() {
-            bus = zbus::blocking::Connection::system().ok();
+            bus = system_bus().ok();
             if let Some(connection) = bus.clone() {
                 let shared_slept = Arc::clone(&lock(&shared.daemon).slept);
                 std::thread::spawn(move || sleeps(&connection, &shared_slept));
@@ -667,7 +673,7 @@ fn firmware_loop(shared: &Arc<Shared>) {
     loop {
         due(shared, "firmware", FIRMWARE_EVERY, &mut last);
         if bus.is_none() {
-            bus = zbus::blocking::Connection::system().ok();
+            bus = system_bus().ok();
             if let Some(connection) = bus.clone() {
                 let shared = Arc::clone(shared);
                 std::thread::spawn(move || changes(&connection, &shared));
@@ -687,13 +693,16 @@ fn fwupd_proxy(connection: &zbus::blocking::Connection) -> zbus::Result<zbus::bl
     )
 }
 
-/// Says firmware changed each time fwupd does, as a device comes, goes
-/// or takes an update, waiting on the bus alone.
+/// Says firmware changed each time fwupd says anything, waiting on the
+/// bus alone: `Changed` as its metadata does, and `DeviceAdded`,
+/// `DeviceRemoved` and `DeviceChanged` as a device comes, goes, takes an
+/// update or gains a problem, as one needing the charger does when it's
+/// unplugged.
 fn changes(connection: &zbus::blocking::Connection, shared: &Arc<Shared>) {
     let Ok(proxy) = fwupd_proxy(connection) else {
         return;
     };
-    let Ok(signals) = proxy.receive_signal("Changed") else {
+    let Ok(signals) = proxy.receive_all_signals() else {
         return;
     };
     for _ in signals {
@@ -827,9 +836,7 @@ fn health_loop(shared: &Shared) {
         due(shared, "disk", HEALTH_EVERY, &mut last);
         let names = disk::disks(&lock(&shared.reader).root);
         if bus.is_none() {
-            match zbus::blocking::connection::Builder::system()
-                .and_then(|builder| builder.method_timeout(BUS_WAIT).build())
-            {
+            match system_bus() {
                 Ok(connection) => bus = Some(connection),
                 Err(why) => {
                     lock(&shared.daemon).udisks = json!({"state": "refused", "reason": format!("the system bus isn't there: {why}")});
