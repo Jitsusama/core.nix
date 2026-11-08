@@ -3009,33 +3009,61 @@ def looking(desktop: Desktop) -> bool:
     )
 
 
+def radios_up(desktop: Desktop) -> None:
+    """Power both of btvirt's adapters once BlueZ lists them."""
+    for adapter in ADAPTERS:
+        # An adapter BlueZ lists may still be setting up, and refuses power until it's done.
+        desktop.machine.wait_until_succeeds(
+            f"busctl set-property org.bluez {adapter} org.bluez.Adapter1 Powered b true",
+            timeout=timedelta(seconds=30),
+        )
+
+
+def radios_seen(desktop: Desktop, seen: bool) -> None:
+    """Make both adapters visible as Buds, for good, or hide them; BlueZ keeps which."""
+    for adapter in ADAPTERS:
+        bluez_set(desktop, adapter, "Alias", "s", HEARD)
+        bluez_set(desktop, adapter, "DiscoverableTimeout", "u", "0")
+        bluez_set(desktop, adapter, "Discoverable", "b", "true" if seen else "false")
+
+
+def looks_soon(desktop: Desktop) -> None:
+    """Wait for the launcher's adapter, whichever it is, to look for devices."""
+    desktop.machine.wait_until_succeeds(
+        " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS),
+        timeout=timedelta(seconds=30),
+    )
+
+
+def buds(shown: dict[str, Any]) -> list[bool]:
+    """Say, for each row of Buds the launcher lists, whether it's gone."""
+    return [thing["gone"] for thing in shown["things"] if thing["reads"].startswith(HEARD)]
+
+
 # Nearby lists the devices the radio hears only while it's open (VKCF3Z, 2026-11-07): two
 # controllers of btvirt's, each made visible as Buds, so the launcher's radio, whichever it is,
 # looks once Nearby is stepped into, and the other is listed with its signal as Quickshell's
 # patch says it (modules/quickshell/bluetooth-rssi-and-failures.patch), never paired. BlueZ
 # starts here after the shell, as a restarted bluetoothd does, which the shell takes up
-# (bluetooth-finds-bluez-late.patch). Last of the area's tests, since BlueZ starting moves what
-# the launcher holds.
+# (bluetooth-finds-bluez-late.patch). bluetoothd stopping, as a switch stops it, says nothing of
+# its devices, and comes back knowing none it hadn't paired, so the shell forgets them as it goes
+# and keeps only what BlueZ has on return: with both radios hidden across the restart, Buds stays
+# in Nearby, still open, gone, as Steady keeps a row, rather than heard on with its last signal,
+# while Nearby looks again; shown once more, Buds is heard afresh. Last of the area's tests,
+# since BlueZ starting moves what the launcher holds.
 
 
 def test_nearby_lists_a_device_it_hears_at_each_scale(
     desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]
 ) -> None:
-    """Nearby looks once it's open and lists Buds, heard, with its signal, at each scale."""
+    """Nearby looks once open and lists Buds with its signal, kept no longer than BlueZ is."""
     machine = desktop.machine
     machine.succeed("modprobe bluetooth && modprobe hci_vhci")
     machine.succeed(f"systemd-run --unit=btvirt {values['btvirt']} -l2")
     machine.succeed("systemctl start bluetooth.service")
     try:
-        # An adapter BlueZ lists may still be setting up, and refuses power until it's done.
-        for adapter in ADAPTERS:
-            machine.wait_until_succeeds(
-                f"busctl set-property org.bluez {adapter} org.bluez.Adapter1 Powered b true",
-                timeout=timedelta(seconds=30),
-            )
-            bluez_set(desktop, adapter, "Alias", "s", HEARD)
-            bluez_set(desktop, adapter, "DiscoverableTimeout", "u", "0")
-            bluez_set(desktop, adapter, "Discoverable", "b", "true")
+        radios_up(desktop)
+        radios_seen(desktop, seen=True)
         for scale in at_each_scale:
             named = scale.replace(".", "-")
             at_scale(desktop, scale)
@@ -3067,5 +3095,21 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
             assert HEARD not in desktop.showing()["rows"]
             desktop.shoot(f"launcher-bluetooth-at-{named}")
             desktop.close_launcher()
+        desktop.answer("bluetooth")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Bluetooth")
+        desktop.step_in()
+        desktop.down_to("Nearby")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: buds(shown) == [False], timeout=timedelta(seconds=60))
+        # Hidden at once, then stopped well before BlueZ would forget Buds for going unheard.
+        radios_seen(desktop, seen=False)
+        machine.succeed("systemctl stop bluetooth.service")
+        machine.succeed("systemctl start bluetooth.service")
+        radios_up(desktop)
+        desktop.launcher_until(lambda shown: buds(shown) == [True], timeout=timedelta(seconds=30))
+        looks_soon(desktop)
+        radios_seen(desktop, seen=True)
+        desktop.launcher_until(lambda shown: buds(shown) == [False], timeout=timedelta(seconds=60))
+        desktop.close_launcher()
     finally:
         machine.succeed("systemctl stop bluetooth.service btvirt || true")
