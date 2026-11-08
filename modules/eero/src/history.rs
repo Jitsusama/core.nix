@@ -14,15 +14,24 @@
 //! sample, a time is seconds since 1970, and a link rate is whole kbit/s,
 //! since eero gives rates in steps of 100 kbit/s. A speed is kept as eero
 //! gives it, to the bit per second.
+//!
+//! Each model the daemon writes has the history drawn into it: the last
+//! hour's samples as series, the last day's roams and comings and goings,
+//! and 30 days of speed tests and outages.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Params, Row, Transaction, params};
+use serde_json::Value;
 
-use crate::model::HomeNetwork;
+use crate::model::{
+    DeviceHistory, HomeNetwork, JoinOrLeave, JoinOrLeaveKind, NodeHistory, Outage, OutageSeenBy,
+    RadioHistory, Roam, SpeedTest,
+};
+use crate::time;
 
 /// The shape of the tables, as `PRAGMA user_version` holds it. Bumped
 /// whenever a table's shape or meaning changes.
@@ -45,6 +54,15 @@ pub const WATCHED_GAP_S: i64 = 10 * 60;
 
 /// How often what's past `KEPT_S` is dropped.
 const PRUNE_EVERY_S: i64 = 60 * 60;
+
+/// How far back a series in the model reaches.
+pub const SERIES_S: i64 = 60 * 60;
+
+/// How far back the model's roams and comings and goings reach, and the
+/// most it shows of each, so a device flapping can't swell it.
+const MOVES_S: i64 = DAY_S;
+const ROAMS_SHOWN: usize = 20;
+const JOINS_AND_LEAVES_SHOWN: i64 = 50;
 
 const TABLES: &str = "
 CREATE TABLE devices (id INTEGER PRIMARY KEY, mac TEXT NOT NULL UNIQUE, name TEXT);
@@ -149,6 +167,217 @@ impl History {
         }
         tx.commit().map_err(sql)?;
         self.prune(at)
+    }
+
+    /// Draws what the history holds into the model, as it stands at `now`,
+    /// replacing what an earlier drawing put there.
+    pub fn draw(&self, model: &mut HomeNetwork, now: i64) -> Result<(), String> {
+        let mut devices = self.device_series(now - SERIES_S)?;
+        let mut roams = self.roams(now - MOVES_S)?;
+        for device in &mut model.devices {
+            device.history = devices.remove(&device.mac).unwrap_or_default();
+            device.roams = roams.remove(&device.mac).unwrap_or_default();
+        }
+        let mut nodes = self.node_series(now - SERIES_S)?;
+        let mut radios = self.radio_series(now - SERIES_S)?;
+        for node in &mut model.nodes {
+            node.history = nodes.remove(&node.id).unwrap_or_default();
+            for radio in &mut node.radios {
+                let key = (node.id.clone(), radio.band.clone());
+                radio.history = radios.remove(&key).unwrap_or_default();
+            }
+        }
+        model.joins_and_leaves = self.joins_and_leaves(now - MOVES_S)?;
+        let internet = &mut model.internet;
+        internet.speed_tests = self.speed_tests(&internet.speed_tests, now - KEPT_S)?;
+        internet.history.outages = self.outages(now - KEPT_S)?;
+        Ok(())
+    }
+
+    fn device_series(&self, since: i64) -> Result<BTreeMap<String, DeviceHistory>, String> {
+        let mut series: BTreeMap<String, DeviceHistory> = BTreeMap::new();
+        let rows = self.rows(
+            "SELECT mac, at, signal_dbm, snr_db, rx_kbps, tx_kbps, down_mbps, up_mbps
+             FROM device_samples JOIN devices ON devices.id = device
+             WHERE at > ?1 ORDER BY at",
+            [since],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )?;
+        for (mac, at, signal, snr, rx, tx, down, up) in rows {
+            let device = series.entry(mac).or_default();
+            device.at.push(time::from_unix(at));
+            device.signal_dbm.push(signal);
+            device.snr_db.push(snr);
+            device.rx_mbps.push(mbps(rx));
+            device.tx_mbps.push(mbps(tx));
+            device.down_mbps.push(down);
+            device.up_mbps.push(up);
+        }
+        Ok(series)
+    }
+
+    fn node_series(&self, since: i64) -> Result<BTreeMap<String, NodeHistory>, String> {
+        let mut series: BTreeMap<String, NodeHistory> = BTreeMap::new();
+        let rows = self.rows(
+            "SELECT node, at, bars FROM node_samples WHERE at > ?1 ORDER BY at",
+            [since],
+            |row| Ok((row.get::<_, String>(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        for (node, at, bars) in rows {
+            let node = series.entry(node).or_default();
+            node.at.push(time::from_unix(at));
+            node.bars.push(bars);
+        }
+        Ok(series)
+    }
+
+    /// Each radio's series, by its node's id and its band.
+    fn radio_series(&self, since: i64) -> Result<BTreeMap<(String, String), RadioHistory>, String> {
+        let mut series: BTreeMap<(String, String), RadioHistory> = BTreeMap::new();
+        let rows = self.rows(
+            "SELECT node, band, at, channel, busy_pct, power_dbm
+             FROM radio_samples JOIN radios ON radios.id = radio
+             WHERE at > ?1 ORDER BY at",
+            [since],
+            |row| {
+                Ok((
+                    (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )?;
+        for (radio, at, channel, busy, power) in rows {
+            let radio = series.entry(radio).or_default();
+            radio.at.push(time::from_unix(at));
+            radio.channel.push(channel);
+            radio.busy_pct.push(busy);
+            radio.power_dbm.push(power);
+        }
+        Ok(series)
+    }
+
+    /// Each device's roams since `since`, by its hardware address, newest
+    /// first.
+    fn roams(&self, since: i64) -> Result<BTreeMap<String, Vec<Roam>>, String> {
+        let mut roams: BTreeMap<String, Vec<Roam>> = BTreeMap::new();
+        let rows = self.rows(
+            "SELECT mac, at, from_node, node, from_band, band
+             FROM moves JOIN devices ON devices.id = device
+             WHERE kind = 'roamed' AND at > ?1 ORDER BY at DESC",
+            [since],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    Roam {
+                        at: time::from_unix(row.get(1)?),
+                        from_node: row.get(2)?,
+                        node: row.get(3)?,
+                        from_band: row.get(4)?,
+                        band: row.get(5)?,
+                    },
+                ))
+            },
+        )?;
+        for (mac, roam) in rows {
+            let device = roams.entry(mac).or_default();
+            if device.len() < ROAMS_SHOWN {
+                device.push(roam);
+            }
+        }
+        Ok(roams)
+    }
+
+    fn joins_and_leaves(&self, since: i64) -> Result<Vec<JoinOrLeave>, String> {
+        self.rows(
+            "SELECT at, kind, mac, name, node, band
+             FROM moves JOIN devices ON devices.id = device
+             WHERE kind IN ('joined', 'left') AND at > ?1
+             ORDER BY at DESC, mac LIMIT ?2",
+            [since, JOINS_AND_LEAVES_SHOWN],
+            |row| {
+                Ok(JoinOrLeave {
+                    at: time::from_unix(row.get(0)?),
+                    kind: if row.get::<_, String>(1)? == "joined" {
+                        JoinOrLeaveKind::Joined
+                    } else {
+                        JoinOrLeaveKind::Left
+                    },
+                    mac: row.get(2)?,
+                    name: row.get(3)?,
+                    node: row.get(4)?,
+                    band: row.get(5)?,
+                })
+            },
+        )
+    }
+
+    /// eero's speed tests and those kept since `since` that eero no longer
+    /// gives, newest first.
+    fn speed_tests(&self, eeros: &[SpeedTest], since: i64) -> Result<Vec<SpeedTest>, String> {
+        let at = |test: &SpeedTest| test.at.as_deref().and_then(time::to_unix);
+        let given: Vec<i64> = eeros.iter().filter_map(at).collect();
+        let kept = self.rows(
+            "SELECT at, down_mbps, up_mbps FROM speed_tests WHERE at > ?1",
+            [since],
+            |row| Ok((row.get::<_, i64>(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        let mut tests = eeros.to_vec();
+        tests.extend(
+            kept.into_iter()
+                .filter(|(at, _, _)| !given.contains(at))
+                .map(|(at, down_mbps, up_mbps)| SpeedTest {
+                    at: Some(time::from_unix(at)),
+                    down_mbps,
+                    up_mbps,
+                }),
+        );
+        tests.sort_by_key(|test| std::cmp::Reverse(at(test)));
+        Ok(tests)
+    }
+
+    /// The outages since `since`, newest first.
+    fn outages(&self, since: i64) -> Result<Vec<Outage>, String> {
+        self.rows(
+            "SELECT record FROM eero_outages WHERE seen > ?1 ORDER BY seen DESC",
+            [since],
+            |row| {
+                let record: String = row.get(0)?;
+                Ok(Outage {
+                    seen_by: OutageSeenBy::Eero,
+                    start: None,
+                    end: None,
+                    eero: serde_json::from_str::<Value>(&record).ok(),
+                })
+            },
+        )
+    }
+
+    fn rows<T>(
+        &self,
+        query: &str,
+        params: impl Params,
+        each: impl FnMut(&Row) -> rusqlite::Result<T>,
+    ) -> Result<Vec<T>, String> {
+        let mut statement = self.db.prepare_cached(query).map_err(sql)?;
+        statement
+            .query_map(params, each)
+            .map_err(sql)?
+            .collect::<Result<_, _>>()
+            .map_err(sql)
     }
 
     /// Drops what's older than `KEPT_S` before `now`, at most once an
@@ -347,6 +576,15 @@ fn meta(tx: &Transaction, key: &str) -> Result<Option<i64>, String> {
     .map_err(sql)
 }
 
+/// A link rate kept in whole kbit/s, in Mbit/s.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a link rate in kbit/s is far under 2^52, so it's exact as a float"
+)]
+fn mbps(kbps: Option<i64>) -> Option<f64> {
+    kbps.map(|kbps| kbps as f64 / 1000.0)
+}
+
 /// A link rate in whole kbit/s.
 #[expect(
     clippy::cast_possible_truncation,
@@ -368,6 +606,7 @@ fn sql(error: rusqlite::Error) -> String {
 mod tests {
     use super::*;
     use crate::golden::MODEL;
+    use crate::model::Device;
 
     const AT: i64 = 1_794_091_483;
 
@@ -533,6 +772,118 @@ mod tests {
             .query_row("SELECT seen FROM eero_outages", [], |row| row.get(0))
             .unwrap();
         assert_eq!(seen, AT);
+    }
+
+    #[test]
+    fn the_model_carries_the_last_hours_samples_oldest_first() {
+        let mut history = History::in_memory();
+        let mut model = model();
+        for (minutes, signal) in [(90, -80), (50, -70), (20, -60)] {
+            model.devices[0].signal_dbm = Some(signal);
+            history.record(&model, AT - minutes * 60, true).unwrap();
+        }
+
+        history.draw(&mut model, AT).unwrap();
+
+        let series = &model.devices[0].history;
+        assert_eq!(series.signal_dbm, [Some(-70), Some(-60)]);
+        assert_eq!(
+            series.at,
+            [time::from_unix(AT - 3000), time::from_unix(AT - 1200)]
+        );
+        assert_eq!(series.rx_mbps, [Some(1200.9), Some(1200.9)]);
+        assert_eq!(model.nodes[0].history.bars.len(), 2);
+        assert_eq!(model.nodes[0].radios[2].history.busy_pct.len(), 2);
+    }
+
+    #[test]
+    fn a_device_with_no_samples_has_an_empty_series() {
+        let history = History::in_memory();
+        let mut model = model();
+
+        history.draw(&mut model, AT).unwrap();
+
+        assert_eq!(model.devices[0].history, DeviceHistory::default());
+        assert!(model.devices[0].roams.is_empty());
+        assert!(model.joins_and_leaves.is_empty());
+    }
+
+    #[test]
+    fn a_device_shows_its_last_days_roams_newest_first_and_at_most_20() {
+        let mut history = History::in_memory();
+        let mut model = model();
+        let start = AT - DAY_S - 30 * 60;
+        for read in 0..60 {
+            let band = if read % 2 == 0 { "5 GHz" } else { "2.4 GHz" };
+            model.devices[0].band = Some(band.into());
+            history.record(&model, start + read * 60, true).unwrap();
+        }
+        let now = start + 59 * 60;
+
+        history.draw(&mut model, now).unwrap();
+
+        let roams = &model.devices[0].roams;
+        assert_eq!(roams.len(), ROAMS_SHOWN);
+        assert_eq!(roams[0].at, time::from_unix(now));
+        assert_eq!(roams[0].band.as_deref(), Some("2.4 GHz"));
+        assert_eq!(roams[0].from_band.as_deref(), Some("5 GHz"));
+        assert_eq!(roams[0].from_node, roams[0].node);
+    }
+
+    #[test]
+    fn a_speed_test_eero_has_dropped_is_still_shown_in_its_place() {
+        let mut history = History::in_memory();
+        let mut model = model();
+        history.record(&model, AT, false).unwrap();
+        let dropped = model.internet.speed_tests.remove(1);
+
+        history.draw(&mut model, AT).unwrap();
+
+        assert_eq!(model.internet.speed_tests.len(), 15);
+        assert_eq!(model.internet.speed_tests[1], dropped);
+    }
+
+    #[test]
+    fn an_outage_eero_recorded_is_drawn_as_eero_wrote_it() {
+        let mut history = History::in_memory();
+        let mut model = model();
+        model.internet.outages = vec![serde_json::json!({"kind": "isp"})];
+        history.record(&model, AT, false).unwrap();
+        model.internet.outages.clear();
+
+        history.draw(&mut model, AT + 60).unwrap();
+
+        let outage = &model.internet.history.outages[0];
+        assert_eq!(outage.seen_by, OutageSeenBy::Eero);
+        assert_eq!((&outage.start, &outage.end), (&None, &None));
+        assert_eq!(outage.eero, Some(serde_json::json!({"kind": "isp"})));
+    }
+
+    /// The model of a busy network after an hour read at the fast pace: 32
+    /// devices, each with every figure, and the golden model's three nodes.
+    /// It comes to about 336 kB, a third of it the series' times: written
+    /// every 30 seconds that's about 11 kB/s into the runtime folder, which
+    /// is memory, and a few milliseconds of the shell's parsing.
+    #[test]
+    fn a_busy_hour_keeps_the_model_small_enough_to_write_every_30_seconds() {
+        let mut history = History::in_memory();
+        let mut model = model();
+        let pattern = model.devices[4].clone();
+        model.devices = (0..32)
+            .map(|n| Device {
+                mac: format!("02:00:00:00:01:{n:02x}"),
+                ..pattern.clone()
+            })
+            .collect();
+        for read in 0..120 {
+            history.record(&model, AT + read * 30, true).unwrap();
+        }
+
+        history.draw(&mut model, AT + 119 * 30).unwrap();
+
+        let bytes = serde_json::to_string(&model).unwrap().len();
+        assert_eq!(model.devices[0].history.at.len(), 120);
+        assert!(bytes < 350_000, "the model takes {bytes} bytes");
     }
 
     #[test]

@@ -172,7 +172,7 @@ impl Daemon {
         }
         let heard = heard?;
         let at = now_unix();
-        let next = next_model(
+        let mut next = next_model(
             self.model.as_ref(),
             &self.answers,
             &heard,
@@ -183,6 +183,9 @@ impl Daemon {
             if let Err(reason) = self.history.record(&next, at, network_read) {
                 eprintln!("eero: {reason}");
             }
+        }
+        if let Err(reason) = self.history.draw(&mut next, at) {
+            eprintln!("eero: {reason}");
         }
         if self.model.as_ref() == Some(&next) {
             return None;

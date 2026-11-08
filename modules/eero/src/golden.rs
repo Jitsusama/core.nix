@@ -1,10 +1,130 @@
 //! Comparing a record with its golden answer, for the tests that hold the
-//! model and the reader to `home-network.json`.
+//! model and the reader to `home-network.json`, and the contract's answers
+//! and the history it's drawn from.
+
+use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-/// The model's golden answer, drawn from the contract's files.
+use crate::history::History;
+use crate::model::{Cloud, CloudState, HomeNetwork};
+use crate::read::{self, Answers};
+use crate::time;
+
+/// The model's golden answer, drawn from the contract's files and the
+/// history `history` keeps.
 pub const MODEL: &str = include_str!("../home-network.json");
+
+/// When the golden model was read, the contract's own time.
+pub const READ: &str = "2026-11-07T22:54:43Z";
+
+/// The `data` of a contract file.
+pub fn contract(file: &str) -> Value {
+    let path = format!("{}/contract/{file}", env!("CARGO_MANIFEST_DIR"));
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let answer: Value = serde_json::from_str(&text).unwrap();
+    answer["data"].clone()
+}
+
+fn by_node(file: impl Fn(&str) -> String) -> BTreeMap<String, Value> {
+    ["2001", "2002", "2003"]
+        .into_iter()
+        .map(|id| (id.to_owned(), contract(&file(id))))
+        .collect()
+}
+
+/// Every answer the contract holds, as the daemon keeps them.
+pub fn contract_answers() -> Answers {
+    Answers {
+        network: contract("network.json"),
+        devices: contract("net.devices.json"),
+        connections: by_node(|id| format!("eero.{id}.connections.json")),
+        speed_tests: contract("net.speedtest.json"),
+        thread: contract("net.thread.json"),
+        outages: contract("net.cellular_backup_events.json"),
+        usage: contract("usage.json"),
+        node_usage: by_node(|id| format!("usage.eero.{id}.json")),
+        profiles: contract("net.profiles.json"),
+        events: contract("net.app_events.json"),
+    }
+}
+
+pub fn answering() -> Cloud {
+    Cloud {
+        state: CloudState::Answering,
+        since: READ.into(),
+        reason: None,
+    }
+}
+
+/// The tablet that roams, the laptop that joins and the phone that leaves.
+const ROAMER: &str = "02:00:00:00:00:01";
+const JOINER: &str = "02:00:00:00:00:0e";
+const LEAVER: &str = "02:00:00:00:00:19";
+
+/// How each read before the last moves the figures: each device's signal
+/// in dB, its receive rate and its speed as a share, each radio's busy
+/// points. The last read is the contract's as it stands.
+const SIGNAL_DB: [i16; 6] = [-3, -1, -4, -2, 1, 0];
+const RX_SHARE: [f64; 6] = [1.0, 0.9, 0.75, 1.0, 1.0, 1.0];
+const SPEED_SHARE: [f64; 6] = [0.6, 1.8, 0.3, 1.2, 0.9, 1.0];
+const BUSY_PCT: [i16; 6] = [4, -3, 9, 2, -2, 0];
+
+/// The history behind the golden model: six reads five minutes apart, as
+/// the daemon reads with nobody listening, the last at the model's read,
+/// each the contract with its figures moved a little. The tablet roams to
+/// the Den's 5 GHz from the Study's 2.4 GHz, the laptop joins and a phone
+/// on the edge of the Den's reach leaves, and the Study's backhaul drops
+/// a bar for a read.
+pub fn history() -> History {
+    let last = time::to_unix(READ).unwrap();
+    let mut history = History::in_memory();
+    for step in 0..6 {
+        let at = last - 300 * (5 - i64::try_from(step).unwrap());
+        history.record(&moved(step, at), at, true).unwrap();
+    }
+    history
+}
+
+/// The contract as read at `at`, the `step`th of the history's reads.
+fn moved(step: usize, at: i64) -> HomeNetwork {
+    let mut answers = contract_answers();
+    if step < 4 {
+        let devices = answers.devices.as_array_mut().unwrap();
+        let leaver = devices.iter_mut().find(|d| d["mac"] == LEAVER).unwrap();
+        leaver["connected"] = Value::Bool(true);
+    }
+    let mut model = read::home_network(&answers, &time::from_unix(at), answering()).unwrap();
+    if step < 2 {
+        model.devices.retain(|d| d.mac != JOINER);
+    }
+    for device in &mut model.devices {
+        if step < 3 && device.mac == ROAMER {
+            device.node = Some("2002".into());
+            device.band = Some("2.4 GHz".into());
+        }
+        device.signal_dbm = device.signal_dbm.map(|s| s + SIGNAL_DB[step]);
+        if let Some(rx) = &mut device.rx {
+            rx.mbps = rx
+                .mbps
+                .map(|mbps| (mbps * RX_SHARE[step] * 10.0).round() / 10.0);
+        }
+        let share = |mbps: f64| (mbps * SPEED_SHARE[step] * 1e7).round() / 1e7;
+        device.speed.down_mbps = device.speed.down_mbps.map(share);
+        device.speed.up_mbps = device.speed.up_mbps.map(share);
+    }
+    for node in &mut model.nodes {
+        if step == 1 && node.id == "2002" {
+            node.backhaul.bars = Some(4);
+        }
+        for radio in &mut node.radios {
+            radio.busy_pct = radio
+                .busy_pct
+                .map(|busy| u8::try_from((i16::from(busy) + BUSY_PCT[step]).max(0)).unwrap());
+        }
+    }
+    model
+}
 
 /// The paths where two values differ, so a failure names the figure rather
 /// than printing the whole network. Numbers count as equal by value, since
