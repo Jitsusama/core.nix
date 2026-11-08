@@ -19,7 +19,7 @@
     pkgs.runCommandLocal "the-firmware-takes-what-is-declared"
       { nativeBuildInputs = [ (pkgs.callPackage ./package.nix { }) ]; }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/the-firmware-takes-what-is-declared.sh}
+        ${lib.getExe pkgs.bash} ${./tests/the-firmware-takes-what-is-declared.sh}
         touch $out
       '';
 }

@@ -170,15 +170,27 @@ fn away(
     if let Some(builders) = builders {
         away.args(["--builders", builders]);
     }
-    told(away, what, pieces)
+    told(config, away, what, pieces)
 }
 
 /// Builds pieces with `build`, saying in the journal how long it took and
 /// where each piece was built, since what Nix says of a build that works is
 /// otherwise dropped, and a slow switch then can't say what it waited on.
-fn told(build: std::process::Command, what: &str, pieces: &[String]) -> Result<(), Failure> {
+/// The build is stopped once it has said nothing for the config's
+/// `silent_for`, so an update waiting on a builder that doesn't answer
+/// goes on to build here or fails saying why within five minutes, rather
+/// than wait as one did for 20 minutes on 8 November.
+fn told(
+    config: &Config,
+    mut build: std::process::Command,
+    what: &str,
+    pieces: &[String],
+) -> Result<(), Failure> {
     let started = Instant::now();
-    let ran = run::said(build, what, outputs(pieces));
+    // Each piece's log as it builds is what shows the build is moving.
+    build.arg("-L");
+    let silent = Duration::from_secs(config.silent_for);
+    let ran = run::built(build, what, outputs(pieces), silent);
     let took = started.elapsed();
     match &ran {
         Ok(said) => eprintln!("{}", account(what, pieces.len(), took, said)),
@@ -292,7 +304,7 @@ fn here(
     }
     local.args(["--max-jobs", &here.max_jobs.to_string()]);
     local.args(["--cores", &here.cores.to_string()]);
-    told(local, what, pieces)
+    told(config, local, what, pieces)
 }
 
 /// The share of the last minute that some runnable task waited for a CPU,

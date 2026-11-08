@@ -5,9 +5,10 @@ pragma ComponentBehavior: Bound
 // one record, held over the daemon interface (Daemon.qml, call/): how it
 // stands and since when, who's in it by name, and for Joel and each of
 // them, whether they're muted, sharing their screen or showing their
-// camera; who's calling while a ring lasts, the calls missed, and Joel's
-// room's link. Joining, leaving, muting, sharing and opening the room are
-// asks of the daemon, which does each through Tuple's own command.
+// camera; who's calling while a ring lasts, the calls missed, Joel's
+// room's link, and Recent, the calls ended and missed lately. Joining,
+// leaving, muting, sharing and opening the room are asks of the daemon,
+// which does each through Tuple's own command.
 //
 // Tuple on Linux doesn't yet tell Joel when someone joins or leaves, or
 // that everyone else has left, so the shell does, as notices of Tuple's,
@@ -42,7 +43,8 @@ Singleton {
         people: [],
         ringing: null,
         missed: [],
-        room: null
+        room: null,
+        recent: []
     })
 
     // The call as tuple-call last said it.
@@ -84,6 +86,12 @@ Singleton {
     }
     // Joel's room's link, once Tuple's said it.
     readonly property string room: call.room ?? ""
+    // The calls that ended and were missed lately, newest first, as
+    // tuple-call keeps them across restarts, each { people: [{ id, name,
+    // email }], since, ended, missed }: when it connected or began to
+    // ring, and when it or the ring ended. The launcher lists them as
+    // Tuple's Recent (Calls.qml).
+    readonly property var recent: Log.newestFirst(call.recent)
     // The call link last copied, until something else is. A copy with no
     // text, such as a screenshot, or one marked as a secret, has none, so
     // a link copied before it isn't offered after it's gone. Its lines are
@@ -274,7 +282,7 @@ Singleton {
             && (before.ringing === null || before.ringing.who !== ring.who
                 || before.ringing.since !== ring.since))
             notify(`${ring.name || "Someone"} is calling`, "Answer in Tuple's window", [
-                ["show", "Show the Call"]
+                ["show", "Go To the Call"]
             ], true);
         const told = before.missed.map(missed => `${missed.who}@${missed.at}`);
         for (const missed of now.missed)

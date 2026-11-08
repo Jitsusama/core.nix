@@ -281,7 +281,7 @@ ShellRoot {
             const parts = keyboards.parts(board, null);
             const layer = parts.find(part => part.name === "Layer");
             expect("the board's Layer, a setting", layer !== undefined
-                && layer.side === "Numb, locked" && layer.verb === "more",
+                && layer.side === "Numb \u00b7 locked" && layer.verb === "more",
                 parts.map(part => `${part.name} ${part.side}`).join(", "));
             expect("the Layer's choices run ergodox", runs(layer.verbs())
                 === "Let Numb Go: ergodox layer 0; Lock Punk On: ergodox layer 1",

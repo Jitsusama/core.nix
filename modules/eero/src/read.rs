@@ -14,9 +14,9 @@ use serde_json::Value;
 
 use crate::model::{
     Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DevicePort, Dns, Event, Filters,
-    Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Node, NodeCounts,
-    NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate, Series, Speed,
-    SpeedTest, Thread, Usage,
+    Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Member, Node,
+    NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate,
+    Series, Speed, SpeedTest, Thread, Usage,
 };
 use crate::time;
 
@@ -557,6 +557,15 @@ fn profiles(answer: &Value, usages: &BTreeMap<String, Value>) -> Vec<Profile> {
                 paused: flag(profile, "/paused"),
                 devices: list(profile, "/devices")
                     .filter_map(|d| text(d, "/mac"))
+                    .collect(),
+                members: list(profile, "/devices")
+                    .filter_map(|d| {
+                        Some(Member {
+                            mac: text(d, "/mac")?,
+                            name: text(d, "/display_name"),
+                            kind: text(d, "/device_type"),
+                        })
+                    })
                     .collect(),
                 default: flag(profile, "/default"),
                 schedules: profile

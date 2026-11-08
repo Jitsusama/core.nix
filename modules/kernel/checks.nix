@@ -5,6 +5,7 @@
   holds,
   kernelSettingsHold,
   lib,
+  nixpkgs,
   onLinux,
   self,
   ...
@@ -57,6 +58,15 @@
       (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages.kernel;
     kernel-settings-hold-microsoft-surface-laptop-4-1958 =
       (bareNixos [ self.nixosModules.microsoft-surface-laptop-4-1958 ]).config.boot.kernelPackages.kernel;
+    # The Air's is cross-compiled from here, so no aarch64 builder is needed:
+    # its configuration is the same either way, and only that is built.
+    kernel-settings-hold-apple-macbook-air-m2-a2681 =
+      (nixpkgs.lib.nixosSystem {
+        modules = [
+          self.nixosModules.apple-macbook-air-m2-a2681
+          { hardware.asahi.pkgsSystem = "x86_64-linux"; }
+        ];
+      }).config.boot.kernelPackages.kernel;
 
     # And with an account's theme, whose panic colours the kernel has to take.
     kernel-settings-hold-with-a-theme =

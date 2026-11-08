@@ -67,6 +67,19 @@ in
         command = [ (lib.getExe (pkgs.callPackage ../calls/package.nix { })) ];
         why = "a call is on";
       }
+      # A switch cut off by shutdown leaves the machine between two systems:
+      # on 8 November an ask was still running when Joel restarted, three
+      # minutes after a switch.
+      {
+        command = [
+          "${pkgs.writeShellScript "update-to-main-shutting-down" ''
+            ${lib.getExe' config.systemd.package "systemctl"} list-jobs --no-legend \
+              | ${lib.getExe pkgs.gnugrep} -qE \
+                ' (shutdown|reboot|poweroff|halt|kexec|soft-reboot)\.target '
+          ''}"
+        ];
+        why = "the machine is shutting down";
+      }
     ];
 
     users.groups.update-ask.members = cfg.askers;

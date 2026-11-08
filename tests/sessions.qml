@@ -468,7 +468,6 @@ ShellRoot {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/harbour.sock`
         handler: Socket {
             id: asked
-            Component.onCompleted: root.answering = asked
             parser: SplitParser {
                 onRead: line => {
                     const ask = JSON.parse(line);
@@ -477,8 +476,13 @@ ShellRoot {
                         answer = { id: ask.id, version: 1, domain: "node", state: "running" };
                     } else if (ask.ask === "watch" && ask.kind === "session"
                         && ask.keys === undefined) {
+                        // The connection watching sessions, which pi's
+                        // source makes beside its watches of runs and talks.
+                        root.answering = asked;
                         root.watchId = ask.id;
                         answer = { id: ask.id, records: root.sessions() };
+                    } else if (ask.ask === "watch" && (ask.kind === "run" || ask.kind === "talk")) {
+                        answer = { id: ask.id, records: [] };
                     } else if (ask.ask === "steer") {
                         root.steers = root.steers.concat([
                             { ask: ask, wokenBefore: root.wokenSinceTalk() }]);

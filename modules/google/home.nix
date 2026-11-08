@@ -67,6 +67,7 @@ in
   imports = [
     people
     quickshell
+    ../keys/home.nix
   ];
 
   options.jitsusama.google.window = lib.mkOption {
@@ -89,6 +90,9 @@ in
 
   config = {
     home.packages = [ opens ];
+
+    # Each program's own keys, for the launcher's Shortcuts over its page.
+    jitsusama.keys = import ./keys.nix;
 
     # Everyone Joel's meetings and mail name, as people (GoogleSource.qml),
     # consulted after a source that calls, so calling comes before mail.

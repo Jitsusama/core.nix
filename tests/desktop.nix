@@ -14,7 +14,8 @@
 # copied, a meeting on the calendar is found by its name and Return joins
 # its call, the clipboard takes and gives text, a picture opens floating in
 # swayimg and a key takes it to GIMP, a document opens in zathura beside
-# the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
+# the rest, a VM virsh lists is in Programs and starts from its acts,
+# and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # shots show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
 # start without a single QML error.
@@ -56,6 +57,9 @@ let
   # and its two lists read from files the test writes, in chrome-recent-sites'
   # form, since no browser runs here.
   bringsChrome = area == "opens-files";
+  # The area whose launcher lists VMs, as a workstation's does
+  # (modules/libvirt/home.nix): what the machine has to open and set.
+  listsMachines = area == "opens-and-sets";
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
   # from the node alone. It links nothing, so it needs no key.
@@ -183,11 +187,26 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-google.py);
 
+  # Stands in for virsh, which would ask libvirt, giving the launcher one
+  # session machine to list and start (desktop/stand-in-virsh.sh), since
+  # the VM runs no libvirt.
+  standInVirsh = pkgs.writeShellScriptBin "virsh" ''
+    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/stand-in-virsh.sh} "$@"
+  '';
+
   # Stands in for Slack's daemon, which would ask Slack, on its socket
   # (desktop/stand-in-slack.py).
   standInSlack = pkgs.writers.writePython3 "stand-in-slack" {
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-slack.py);
+
+  # The area that walks Passwords, whose 1Password's manager asks a
+  # stand-in for 1Password's command, op, since no 1Password account signs
+  # in here (desktop/op-stand-in.sh).
+  walksPasswords = area == "launcher-goes-places";
+  standInOp = pkgs.writeShellScript "op" ''
+    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/op-stand-in.sh} "$@"
+  '';
 
   # Stands in for the screen-text daemon, which would read screenshots with
   # its models, on its socket, saying what the runtime folder's
@@ -715,6 +734,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # an area reads it.
         imports =
           lib.optional bringsSlack self.homeModules.slack
+          ++ lib.optional listsMachines self.homeModules.libvirt
           ++ lib.optionals runsTheNode [
             self.homeModules.mycelium
             { jitsusama.mycelium.realm = "harbour"; }
@@ -737,6 +757,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
               exec = "true %U";
             };
           };
+        # The launcher's VMs read the stand-in, the virsh on the account's
+        # path, in the daemon's place.
+        jitsusama.quickshell.launcher.providers.vms = lib.mkIf listsMachines {
+          virsh = lib.mkForce (lib.getExe' standInVirsh "virsh");
+        };
+        home.packages = lib.optional listsMachines standInVirsh;
         jitsusama.quickshell.launcher.recents = lib.optionals bringsChrome [
           {
             app = "google-chrome";
@@ -816,6 +842,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # build sandbox (modules/meaning/checks.nix).
         systemd.user.services.meaning.Service.ExecStart =
           lib.mkForce "${standInMeaning} %t/daemons/meaning.sock %t/meaning-means.json";
+        # Passwords walked with 1Password's own manager, in the passwords
+        # daemon's own unit, asking the stand-in for op in place of the
+        # one 1Password's app would answer.
+        jitsusama.passwords.managers."1password".command = lib.mkIf walksPasswords (
+          lib.mkForce [
+            (lib.getExe (pkgs.callPackage ../modules/onepassword/manager/package.nix { }))
+            "--op"
+            "${standInOp}"
+          ]
+        );
         # The collector where the launcher's traces are tested, started by
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {

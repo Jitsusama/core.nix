@@ -1661,7 +1661,11 @@ fn captured_on(
 /// ssh to the lent builder with its key and host key, as every command
 /// sent there goes, and the two files it writes in `scratch`, the host
 /// key and ssh's log, to remove once it's run.
-fn reach(lent: &Builder, scratch: &Path, ssh: &str) -> Result<(Command, PathBuf, PathBuf), String> {
+pub fn reach(
+    lent: &Builder,
+    scratch: &Path,
+    ssh: &str,
+) -> Result<(Command, PathBuf, PathBuf), String> {
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
     let known = mine(scratch, "known");
     let said = mine(scratch, "ssh.log");

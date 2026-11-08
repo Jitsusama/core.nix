@@ -27,7 +27,8 @@ Singleton {
 
     // The folders read, each named by what shows it.
     property var folders: []
-    // Every file in them, newest first: { path, folder, at }, at in
+    // Every file in them, newest first: { path, folder, at, size }, size in
+    // bytes, for Capture's drawer, and at in
     // milliseconds since the epoch.
     property var files: []
     // Asked to read while reading, so the last ask always counts.
@@ -58,15 +59,18 @@ Singleton {
         return root.files.filter(file => file.folder === folder && named.test(file.path)).length;
     }
 
-    // find's lines, a file's time in seconds and its path each.
+    // find's lines, a file's time in seconds, its size and its path each.
     function heard(lines) {
         root.files = lines.split("\n").filter(line => line.includes("\t"))
             .map(line => {
-                const path = line.slice(line.indexOf("\t") + 1);
+                const first = line.indexOf("\t");
+                const second = line.indexOf("\t", first + 1);
+                const path = line.slice(second + 1);
                 return {
                     path: path,
                     folder: path.slice(0, path.lastIndexOf("/")),
-                    at: Number(line.slice(0, line.indexOf("\t"))) * 1000
+                    at: Number(line.slice(0, first)) * 1000,
+                    size: Number(line.slice(first + 1, second))
                 };
             })
             .sort((a, b) => b.at - a.at);
@@ -247,7 +251,7 @@ Singleton {
         id: finding
 
         command: ["find"].concat(root.folders, ["-maxdepth", "1", "-type", "f", "-not", "-name",
-            ".*", "-printf", "%T@\\t%p\\n"])
+            ".*", "-printf", "%T@\\t%s\\t%p\\n"])
         onExited: {
             if (root.again) {
                 root.again = false;

@@ -165,8 +165,14 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     out
 }
 
+/// How long a switch under way keeps a waiting merge quiet. A switch past
+/// it is stalled or slow enough to say: on 8 November one waited 20
+/// minutes on a builder that didn't answer, and nothing said so.
+pub const GOING_QUIET_MIN: i64 = 15;
+
 /// The oldest merge that should be on the machine by now and isn't, unless
-/// a switch that began after it is under way or one waits out a call.
+/// a switch that began after it is under way, for less than
+/// `GOING_QUIET_MIN`, or one waits out a call.
 fn not_on(s: &Snapshot) -> Option<Breach> {
     if s.follower.meeting {
         return None;
@@ -179,16 +185,19 @@ fn not_on(s: &Snapshot) -> Option<Breach> {
         .collect();
     waiting.sort_by_key(|l| l.merge.at);
     let oldest = waiting.first()?;
-    if s.follower
-        .going
-        .is_some_and(|began| began >= oldest.merge.at)
-    {
+    let going = s.follower.going.filter(|began| *began >= oldest.merge.at);
+    if going.is_some_and(|began| s.now - began < GOING_QUIET_MIN * 60) {
         return None;
     }
     let held = if s.net_hold.is_some() {
-        " (the net holds switches)"
+        " (the net holds switches)".to_owned()
+    } else if let Some(began) = going {
+        format!(
+            ", though a switch has been under way {} min",
+            (s.now - began) / 60
+        )
     } else {
-        ""
+        String::new()
     };
     Some(Breach {
         key: format!(
@@ -413,6 +422,25 @@ mod tests {
         s.follower.going = None;
         s.follower.meeting = true;
         assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
+    }
+
+    #[test]
+    fn a_switch_under_way_too_long_is_said() {
+        let mut s = calm(100_000);
+        s.landings = vec![Landing {
+            merge: merge("abc", 100_000 - 40 * 60),
+            on: None,
+        }];
+        s.follower.going = Some(100_000 - GOING_QUIET_MIN * 60);
+        let said = breaches(&s);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0]
+                .text
+                .ends_with("though a switch has been under way 15 min"),
+            "{}",
+            said[0].text
+        );
     }
 
     #[test]

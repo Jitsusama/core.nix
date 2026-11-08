@@ -28,6 +28,7 @@ import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "KeyGroups.js" as KeyGroups
+import "KeyLayers.js" as KeyLayers
 
 Provider {
     id: provider
@@ -40,14 +41,30 @@ Provider {
         desktop: "on the desktop",
         terminal: "in the terminal",
         neovim: "in Neovim",
-        pi: "in pi"
+        pi: "in pi",
+        // Google's programs, each a page in Chrome, whose own keys are
+        // found beside Chrome's, so a chord found says whose it is.
+        "google-mail": "in Mail",
+        "google-calendar": "in Calendar",
+        "google-meet": "in Meet",
+        "google-docs": "in Docs",
+        "google-sheets": "in Sheets",
+        "google-slides": "in Slides",
+        "google-drive": "in Drive"
     })
 
     // The words that find a layer's shortcuts besides their names.
     readonly property var also: ({
         terminal: "terminal kitty",
         neovim: "neovim vim nvim editor",
-        pi: "pi agent"
+        pi: "pi agent",
+        "google-mail": "gmail email",
+        "google-calendar": "google calendar",
+        "google-meet": "google meet call",
+        "google-docs": "google docs document",
+        "google-sheets": "google sheets spreadsheet",
+        "google-slides": "google slides presentation",
+        "google-drive": "google drive files"
     })
 
     // How many letters of a level's first groups its row names, whole
@@ -127,6 +144,9 @@ Provider {
         const rows = groups.map(group => group.row).concat(arranged.loose.map(at => chords[at]));
         const held = places.map(at => chords[at]);
         const entry = Words.of(id);
+        // What it takes to work, where something must be switched on first
+        // (Mail's), said on its row wherever it stands, and on its page.
+        const condition = entry.said?.note ?? "";
         const last = id.split(":").pop();
         const name = Words.things[id] ? entry.name : last.charAt(0).toUpperCase() + last.slice(1);
         // Found inside this level, a group of its own says its first
@@ -156,6 +176,8 @@ Provider {
             // how many keys at its right, where a row's figure stands
             // (VKCF3Z, 2026-11-05: one place for each kind of fact).
             count: first,
+            note: condition,
+            standing: () => condition,
             side: held.length > 0 ? String(held.length) : "",
             chip: name.toLowerCase(),
             ask: provider.collection?.ask ?? "which shortcut?",
@@ -192,7 +214,7 @@ Provider {
     // kind of window again rebuilds none of them.
     function opened() {
         const under = provider.launcher?.cameFrom() ?? null;
-        const now = KeyGroups.over(under?.app_id ?? "", under?.title ?? "");
+        const now = KeyLayers.over(under?.app_id ?? "", under?.title ?? "");
         if (now.length !== leads.length || now.some((name, at) => name !== leads[at]))
             leads = now;
     }
@@ -205,8 +227,11 @@ Provider {
         const rest = layers.filter(layer => !leads.includes(layer.name));
         if (own.length === 0 || own[0].name === "desktop")
             return own.concat(rest);
+        // What it needs to work says more than that it leads, which its
+        // place already says (VKCF3Z, 2026-11-07).
+        const note = own[0].row.note || "the keys of the window you were in";
         const first = Object.assign({}, own[0], {
-            row: Object.assign({}, own[0].row, { note: "the keys of the window you were in" })
+            row: Object.assign({}, own[0].row, { note: note })
         });
         return [first].concat(own.slice(1), rest);
     }
@@ -216,13 +241,13 @@ Provider {
     // The layers of programs that run inside the terminal, by their desktop
     // entries' ids, since their windows are the terminal's and say which
     // they are only by their titles.
-    readonly property var terminalPrograms: ({ nvim: "neovim" })
+    readonly property var terminalPrograms: ({ nvim: "neovim", btop: "btop" })
 
     // The layer a program's own keys are, by its desktop entry's id: one
     // run inside the terminal by its entry, any other by its windows, and
     // "desktop" for one with none of its own.
     function ofProgram(app) {
-        return terminalPrograms[app] ?? KeyGroups.over(app, "")[0];
+        return terminalPrograms[app] ?? KeyLayers.over(app, "")[0];
     }
 
     // A program's own keys, by its desktop entry's id, as the layer it has

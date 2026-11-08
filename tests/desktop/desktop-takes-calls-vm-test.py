@@ -1,7 +1,8 @@
 """The desktop test's takes calls area.
 
 Here Tuple's calls are taken: its daemon starts first, a call shows in the margin, people
-coming and going are said, a ringing call wants Joel, and its windows find their places.
+coming and going are said, a call that ended is in Tuple's Recent, a ringing call wants Joel,
+and its windows find their places.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -142,6 +143,69 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     )
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))
     machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))
+
+
+def test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again(desktop: Desktop) -> None:
+    """A Tuple call that ended is in Tuple's Recent, to call again."""
+    machine = desktop.machine
+    desktop.tuple_follows()
+    # Named by Tuple's call alone, so her row is told apart from the
+    # other calls this run's tests had, whose guests Tuple never names.
+    ada = A_GUEST | {"id": 7, "full_name": "Ada Brightwater", "email": "ada@example.com"}
+    call = in_a_tuple_call(desktop, 9 * 60) | {"participants": [ada]}
+    # Ada rings and Joel answers, so tuple-call keeps the call as hers to
+    # have rung, which its drawer says first. Her ring's notice going says
+    # both were heard, and leaves the margin to the call. It's answered
+    # once its card is up, as the shell withdraws a notice by the id it's
+    # given only then.
+    offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action=show'"
+    with desktop.told("shows card Someone is calling"):
+        desktop.tuple_said("received incoming call: 7")
+    desktop.tuple_said("accepting call")
+    machine.wait_until_fails(offered, timeout=timedelta(seconds=10))
+    with desktop.told("drawn margin"):
+        desktop.tuple_streams(call)
+    desktop.tuple_streams(None)
+    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    kept = f"grep -q '\"since\":{call['started_at']}' ~/.local/state/tuple-call/recent.jsonl"
+    machine.wait_until_succeeds(desktop.in_session(kept), timeout=timedelta(seconds=10))
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("tuple", selecting="Tuple")
+    desktop.into_program()
+    desktop.launcher_until(lambda shown: "Recent" in shown["rows"])
+    desktop.down_to("Recent")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"][-1:] == ["Recent"] and "Ada Brightwater" in shown["rows"]
+    )
+    desktop.down_to("Ada Brightwater")
+    # The drawer fades in once the selection rests, so the shot waits until
+    # it's out and drawing her call, who rang first, over where it was,
+    # Tuple named as its desktop entry names it.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["shown"] is True
+            and shown["drawer"]["drawn"] == "Ada Brightwater"
+            and shown["drawer"]["eyebrow"] == "on Tuple \u00b7 call"
+            and shown["drawer"]["drawnFacts"][:1] == ["Who Rang"]
+        )
+    )
+    desktop.shoot("launcher-tuple-recent")
+    row = desktop.showing()["selected"]
+    assert row["note"].startswith("9 min \u00b7 "), row
+    facts = row["drawer"]["facts"]
+    assert facts[0] == {"label": "Who Rang", "value": "Ada Brightwater called"}, row
+    # Said once: her name alone is With, and the note says how long and when.
+    assert facts[1:] == [{"label": "Email", "value": "ada@example.com"}], row
+    # A call rings a person, so Return steps in, calling again first inside.
+    assert row["verb"] != "call", row
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Call Ada Brightwater Again"])
+    assert desktop.showing()["selected"]["verb"] == "call"
+    desktop.shoot("launcher-tuple-call-again")
+    desktop.close_launcher()
 
 
 def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(

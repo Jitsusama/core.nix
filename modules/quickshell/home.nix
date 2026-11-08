@@ -207,6 +207,9 @@ let
     "Notices.qml"
     "Forward.js"
     "Daemon.qml"
+    "AgentSources.qml"
+    "PiSource.qml"
+    "PiSource.js"
     "Sessions.qml"
     "Places.js"
     "Location.qml"
@@ -230,11 +233,14 @@ let
     "Reported.qml"
     "Frames.qml"
     "Counted.qml"
+    "pieces/Drawers.js"
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
     "launcher/Playing.qml"
     "launcher/Recents.qml"
+    "launcher/Repositories.qml"
+    "launcher/Repositories.js"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
@@ -267,6 +273,7 @@ let
     "launcher/Asking.js"
     "launcher/Catalogue.js"
     "launcher/Rank.js"
+    "launcher/Showing.js"
     "launcher/Pacing.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
@@ -276,14 +283,18 @@ let
     "launcher/Recents.js"
     "launcher/SessionRow.js"
     "launcher/SessionDrawer.js"
+    "launcher/SpendDrawer.js"
     "launcher/Trials.js"
     "launcher/Traces.js"
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
+    "launcher/KeyLayers.js"
     "launcher/Keyboards.js"
     "launcher/KeyCounts.js"
     "launcher/Media.js"
     "launcher/NowGroups.js"
+    "launcher/Program.js"
+    "launcher/Captured.js"
     "launcher/Notice.js"
   ];
 
@@ -414,6 +425,13 @@ let
       "zathura"
       "mpv"
       "chrome"
+      "google-mail"
+      "google-calendar"
+      "google-meet"
+      "google-docs"
+      "google-sheets"
+      "google-slides"
+      "google-drive"
       "slack"
       "onepassword"
       "gimp"
@@ -601,6 +619,15 @@ let
     mpv = nerd "f0381";
     # The theme's web, as the browser goes about it.
     chrome = nerd "f059f";
+    # Google's programs wear what they wear in Programs
+    # (launcher/Provider.qml's programGlyphs): one thing, one mark.
+    google-mail = nerd "f02ab";
+    google-calendar = mark "calendar";
+    google-meet = nerd "f0567";
+    google-docs = nerd "f0dc8";
+    google-sheets = nerd "f09f7";
+    google-slides = nerd "f0428";
+    google-drive = nerd "f02b6";
     # The theme's chat, as Slack is where people talk.
     slack = nerd "f0b79";
     # The theme's password, as 1Password keeps them.
@@ -839,6 +866,79 @@ let
     '';
   };
 
+  # How `launcher` (in-a-terminal/) inks a terminal: each role it draws in
+  # as a 24-bit escape, and as the terminal colour holding the role's
+  # pigment or near it (../theme/nearest.nix), or the terminal's own
+  # foreground where none is; each mark with its console stand-in; and the
+  # mark a failure wears.
+  terminalLook =
+    let
+      inherit (config.jitsusama.theme) terminal;
+      eight = [
+        "black"
+        "red"
+        "green"
+        "yellow"
+        "blue"
+        "magenta"
+        "cyan"
+        "white"
+      ];
+      sixteen = eight ++ map (name: "bright_${name}") eight;
+      slot =
+        role:
+        let
+          at = import ../theme/nearest.nix { inherit lib; } colours.${role} (
+            map (name: terminal.${name}) (sixteen ++ [ "foreground" ])
+          );
+        in
+        if at == null || at == 16 then "39" else toString (if at < 8 then 30 + at else 82 + at);
+      roles = [
+        "text"
+        "strong"
+        "muted"
+        "alert"
+        "warning"
+        "success"
+        "action"
+        "program"
+        "machine"
+        "person"
+        "voice"
+      ];
+    in
+    pkgs.writeText "launcher-look.json" (
+      builtins.toJSON {
+        roles = lib.genAttrs roles (role: {
+          truecolour = import ../theme/sgr.nix { inherit lib; } "38" colours.${role};
+          sixteen = slot role;
+        });
+        marks = lib.mapAttrsToList (_: mark: { inherit (mark) glyph console; }) marks;
+        failed = {
+          inherit (marks.failed) glyph console;
+        };
+      }
+    );
+
+  # `launcher`, the launcher in a terminal (in-a-terminal/): what it asks
+  # the shell through, how it inks and the words it says, from the
+  # launcher's own vocabulary.
+  launcherInATerminal =
+    let
+      program = lib.getExe (pkgs.callPackage ./in-a-terminal/package.nix { });
+    in
+    pkgs.runCommand "launcher"
+      {
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        meta.mainProgram = "launcher";
+      }
+      ''
+        makeWrapper ${program} $out/bin/launcher \
+          --set LAUNCHER_QS ${lib.getExe' pkgs.quickshell "qs"} \
+          --set LAUNCHER_LOOK ${terminalLook} \
+          --set LAUNCHER_WORDS ${pkgs.writeText "words.json" (builtins.toJSON launcher.words)}
+      '';
+
   # A pi session that has come to want Joel, said as a notice from pi
   # (Sessions.qml starts it once a want): its quest and what it wants, and
   # Return or a click on it goes to the session as the launcher's Go To
@@ -886,6 +986,8 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ./recents.nix
+    # So a program's module that brings no shell can still add a provider.
+    ./providers.nix
     ./command-lines.nix
     ../camera/home.nix
     # The brightness bar shows the picks the backlight daemon tells it of.
@@ -895,6 +997,12 @@ in
     (lib.mkRenamedOptionModule
       [ "jitsusama" "quickshell" "overview" "pieces" ]
       [ "jitsusama" "quickshell" "margin" "pieces" ]
+    )
+    # The option's first name said quiet, a word the glossary replaces with
+    # Do not disturb; a machine setting it still reaches the new one.
+    (lib.mkRenamedOptionModule
+      [ "jitsusama" "quickshell" "quiet" "whileSharing" ]
+      [ "jitsusama" "quickshell" "doNotDisturb" "whileSharing" ]
     )
     # Machine's answers are what the machine daemon holds.
     ../machine/home.nix
@@ -995,7 +1103,7 @@ in
     '';
   };
 
-  options.jitsusama.quickshell.quiet.whileSharing = lib.mkOption {
+  options.jitsusama.quickshell.doNotDisturb.whileSharing = lib.mkOption {
     type = lib.types.bool;
     default = true;
     description = ''
@@ -1693,6 +1801,7 @@ in
     # (launcher/Copies.qml).
     home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
+      launcherInATerminal
       launcherSay
       piWants
       pkgs.quickshell
@@ -1805,7 +1914,7 @@ in
 
           // The shell's own choices, from jitsusama.quickshell.
           Singleton {
-              readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
+              readonly property var doNotDisturb: ${object config.jitsusama.quickshell.doNotDisturb}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
               // How the launcher's caret blinks, in milliseconds.
               readonly property var caret: ${object config.jitsusama.quickshell.caret}

@@ -43,6 +43,9 @@ const BUSY_EVERY: Duration = Duration::from_millis(100);
 /// after the work it was held for went on.
 pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     let granted = take_grant(config);
+    if granted {
+        run::granted();
+    }
     let ending = run(config, granted, tell);
     take_grant(config);
     ending
@@ -60,6 +63,13 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     let last = last(config);
     if let Some(why) = too_low(config).or_else(|| busy(config)) {
         return Line::Refused { commit: last, why };
+    }
+    // The ask that brings the grant a built switch waited for switches to
+    // that one, rather than fetch main again and build what merged since:
+    // on 8 November the morning switch started over three times for newer
+    // heads while Joel waited.
+    if granted && let Some(waiting) = waited(config) {
+        return switch_waiting(config, waiting, last, tell);
     }
     tell(&Line::Fetching);
     let main = Repo::main(config);
@@ -122,7 +132,11 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
         Err(failure) => return failed(last, failure),
     };
     // What was built stays in the store, so the next ask switches at once.
-    if let Some(why) = busy(config).or_else(|| held(config, &built, granted)) {
+    if let Some(why) = busy(config) {
+        return Line::Refused { commit: last, why };
+    }
+    if let Some(why) = held(config, &built, granted) {
+        keep_waiting(config, &head, &followed, &built);
         return Line::Refused { commit: last, why };
     }
     // Heads that moved without moving the system, such as a merge of
@@ -151,6 +165,74 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     switch(config, &built, last, head, followed)
 }
 
+/// A built system whose switch waits for a hold to be given.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Waiting {
+    commit: String,
+    followed: follows::Followed,
+    system: std::path::PathBuf,
+}
+
+fn waiting_file(config: &Config) -> std::path::PathBuf {
+    config.state.join("waiting.json")
+}
+
+/// Keeps the system built at `head` whose switch waits for a hold, for the
+/// ask with the grant. Not keeping it costs only a fetch and a build.
+fn keep_waiting(
+    config: &Config,
+    head: &str,
+    followed: &follows::Followed,
+    built: &std::path::Path,
+) {
+    let waiting = Waiting {
+        commit: head.to_owned(),
+        followed: followed.clone(),
+        system: built.to_path_buf(),
+    };
+    if let Ok(text) = serde_json::to_string(&waiting) {
+        let _ = fs::write(waiting_file(config), text);
+    }
+}
+
+/// Switches to the system that waited for the hold now granted.
+fn switch_waiting(
+    config: &Config,
+    waiting: Waiting,
+    last: Option<String>,
+    tell: &mut dyn FnMut(&Line),
+) -> Line {
+    let _ = fs::remove_file(waiting_file(config));
+    tell(&Line::Building {
+        commit: waiting.commit.clone(),
+    });
+    if let Some(why) = busy(config) {
+        return Line::Refused { commit: last, why };
+    }
+    tell(&Line::Switching {
+        commit: waiting.commit.clone(),
+    });
+    if run::stopping() {
+        return failed(last, Failure::new("the update was stopped"));
+    }
+    switch(
+        config,
+        &waiting.system,
+        last,
+        waiting.commit,
+        waiting.followed,
+    )
+}
+
+/// The system waiting for a hold, while it's still in the store and isn't
+/// what the machine runs.
+fn waited(config: &Config) -> Option<Waiting> {
+    let text = fs::read_to_string(waiting_file(config)).ok()?;
+    let waiting: Waiting = serde_json::from_str(&text).ok()?;
+    let system = fs::canonicalize(&waiting.system).ok()?;
+    (system::current(config) != Some(system)).then_some(waiting)
+}
+
 /// Switches to `built`, main's `head` with its inputs at `followed`, and
 /// goes back to what the machine ran if the switch or the health checks
 /// fail.
@@ -162,6 +244,8 @@ fn switch(
     followed: follows::Followed,
 ) -> Line {
     let previous = system::current(config);
+    // Whatever waited for a hold is older than what switches now.
+    let _ = fs::remove_file(waiting_file(config));
     let switched = system::switch(config, built)
         .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {

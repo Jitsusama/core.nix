@@ -165,8 +165,8 @@ function blocks(filters) {
 // A profile's drawer: what it blocks and holds search to, its schedules
 // and its traffic over the last day, sparked by the hour, then how many
 // devices it lists, and each of them, saying which node it's on now or
-// that it isn't on. How it stands is its row's side, so the drawer
-// doesn't say it again.
+// that it isn't on, one not on named as the profile names it. How it
+// stands is its row's side, so the drawer doesn't say it again.
 function profile(model, one, settings) {
     const devices = model?.devices ?? [];
     const listed = one.devices ?? [];
@@ -191,8 +191,9 @@ function profile(model, one, settings) {
         ]).concat(listed.length > 0 ? [{ heading: "listed" }] : [], listed.map((mac) => {
             const on = devices.find((each) => each.mac === mac) ?? null;
             const where = on ? nodes.find((each) => each.id === on.node) ?? null : null;
+            const member = (one.members ?? []).find((each) => each.mac === mac);
             return {
-                label: on ? Home.nameOf(on) : mac,
+                label: on ? Home.nameOf(on) : member?.name ?? mac,
                 value: where ? `on ${Home.nodeName(where)}` : "not on now",
             };
         })),
@@ -345,7 +346,7 @@ function devicesCount(devices) {
 // is and how strongly it sends, each beside its last hour; then each
 // radio's hardware address.
 function radios(one) {
-    const list = (one.radios ?? []).slice().sort(Order.byName(radio => radio.band));
+    const list = Order.sorted(one.radios, Order.byName(radio => radio.band));
     if (list.length === 0) {
         return [];
     }

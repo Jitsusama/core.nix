@@ -68,9 +68,13 @@ QtObject {
             sorted([{ name: "done", at: 9 }, { name: "running", at: 1, live: true },
                 { name: "older", at: 3 }], Order.stream(row => row.at, row => row.live)),
             "running done older");
-        const alike = [{ name: "first", at: 2 }, { name: "second", at: 2 }];
+        const alike = [{ name: "first", at: 2 }, { name: "second", at: 2 },
+            { name: "older", at: 1 }, { name: "third", at: 2 }, { name: "fourth", at: 2 }];
         check(failures, "a stream: those alike in time keep the order they came",
-            names(alike.slice().sort(Order.stream(row => row.at))), "first second");
+            names(Order.sorted(alike, Order.stream(row => row.at))),
+            "first second third fourth older");
+        check(failures, "sorted: rows alike keep the order they came, as Qt's sort doesn't",
+            Order.sorted([4, 1, 3, 2], () => 0).join(" "), "4 1 3 2");
 
         const states = ["connected", "paired", "seen"];
         const devices = Order.live({ stands: row => states.indexOf(row.state),

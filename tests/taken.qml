@@ -190,7 +190,8 @@ ShellRoot {
     readonly property var wombatsMeant: [`${root.shots}/wombat plan.png`,
         `${root.shots}/wombat plan 2.png`]
 
-    // Three thousand files as find says them, two named for the wombat
+    // Three thousand files as find says them, a time, a size and a path
+    // each, two named for the wombat
     // plan, the rest as screenshots and recordings are named, then every
     // key of a few searches typed, each judged by its best of five rounds,
     // after one round that makes each name ready to match, as the first
@@ -200,10 +201,11 @@ ShellRoot {
         for (let i = 0; i < 3000; i++) {
             const day = String(1 + i % 28).padStart(2, "0");
             const kind = i % 3 === 0 ? "Recording" : "Screenshot";
-            lines.push(`${1760000000 + i}\t${root.shots}/${kind} from 2026-10-${day} ${i}.png`);
+            const path = `${root.shots}/${kind} from 2026-10-${day} ${i}.png`;
+            lines.push(`${1760000000 + i}\t3610000\t${path}`);
         }
-        lines.push(`1700000000\t${root.shots}/wombat plan.png`);
-        lines.push(`1690000000\t${root.shots}/wombat plan 2.png`);
+        lines.push(`1700000000\t3610000\t${root.shots}/wombat plan.png`);
+        lines.push(`1690000000\t3610000\t${root.shots}/wombat plan 2.png`);
         Taken.heard(lines.join("\n"));
         const typed = ["screenshot 2026-10-1", "wombat plan", "recording", "zz top"]
             .reduce((all, text) => all.concat(Array.from(text, (_, at) => text.slice(0, at + 1))),

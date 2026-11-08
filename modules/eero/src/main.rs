@@ -42,6 +42,7 @@ mod session;
 mod status;
 mod time;
 mod views;
+mod waiting;
 mod watch;
 
 use std::io::{self, BufRead, IsTerminal, Write};

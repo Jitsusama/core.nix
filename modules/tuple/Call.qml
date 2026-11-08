@@ -52,7 +52,7 @@ Piece {
         : Log.company(Tuple.others.map(who => first(who)))
     actions: rings ? [{
         glyph: Theme.glyph.call,
-        name: "Show the Call",
+        name: "Go To the Call",
         run: () => Tuple.show()
     }] : [{
         glyph: Theme.glyph.hangUp,

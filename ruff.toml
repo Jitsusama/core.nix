@@ -30,9 +30,7 @@ ignore = [
 # (driver_names.pyi), since the driver gives them to it as globals. The
 # driver's retry hands each try whether it's the last as a plain positional
 # bool, so what a script gives retry has to take one.
-# A script the driver runs top to bottom asserts through the driver's `t`, a
-# unittest TestCase, until it moves to pytest.
-"*-vm-test.py" = ["TC004", "FBT001", "PT009", "PT027"]
+"*-vm-test.py" = ["TC004", "FBT001"]
 # The desktop its areas drive asserts what a test needs, as pytest reports what each side
 # held, and hands the driver's retry a test taking a positional bool, as the driver calls it.
 "tests/desktop/desktop_session.py" = ["FBT001", "S101"]

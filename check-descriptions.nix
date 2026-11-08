@@ -54,6 +54,9 @@
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
+  a-mac-sshd-takes-only-keys = ''
+    every Mac's sshd refuses passwords, typed or asked for, and never signs root in
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -69,9 +72,23 @@
     a notice's body keeps its links, bare addresses included, and only the spec's bold, italics,
     underline and links as markup, everything else escaped as its sender's words
   '';
+  a-capture-says-what-it-took = ''
+    a screenshot's or a recording's drawer says where it is and what kind, when it was taken to
+    the second, its size, and a picture's dimensions or a recording's length once they're known
+  '';
+  a-piece-says-all-it-knows = ''
+    the drawers of Now's own pieces, the disk, the notices waiting, lag, a screen share, a
+    recording and do not disturb, say where and what they are, then what moves first, and their
+    identifiers last, leaving out what they can't say and what the row's side already says
+  '';
   a-player-says-all-it-knows = ''
     a media player's drawer says everything its player tells MPRIS, what moves first and what
     identifies it last, leaving out what it can't say, and its art only from where it may be drawn
+  '';
+  a-program-says-all-it-knows = ''
+    a program's drawer says where its windows are and what it is, then what it plays and what
+    others say of it, the kinds of file and links it opens and its categories, and its command
+    and desktop id last, leaving out what it can't say
   '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
@@ -432,7 +449,8 @@
   each-list-keeps-its-kinds-order = ''
     each kind of list the launcher shows keeps one order with nothing typed, A to Z only its last
     tie and numbers read by their value, a choice never moving when chosen, and each place that
-    lists things sorts by its kind's order with no A to Z made by hand
+    lists things sorts by its kind's order with no A to Z made by hand, through Order.sorted, which
+    keeps rows alike in the order they came where Qt's own sort shuffles them
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
@@ -474,7 +492,7 @@
   every-card-is-the-one-card = ''
     the launcher, the held notices and a notice take their frame from the one card and stand their
     ink on its content, never drawing a frame, reading the inset or tinting a row's ground
-    themselves, but those listed as not yet on it, and none is listed that no longer needs to be
+    themselves
   '';
   every-check-says-what-it-proves = ''
     every check says here what it proves, and every description here names a check
@@ -494,6 +512,10 @@
   '';
   every-program-wears-its-own-mark = ''
     every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
+  '';
+  every-pattern-names-a-file = ''
+    every path pattern merge-net's must-run.txt and ruff.toml's per-file ignores give matches a
+    file the repository holds
   '';
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count
@@ -681,6 +703,9 @@
   kernel-settings-hold = ''
     the kernel's patches apply and every setting holds
   '';
+  kernel-settings-hold-apple-macbook-air-m2-a2681 = ''
+    the MacBook Air M2's own Asahi kernel applies its screen patches and holds every setting
+  '';
   kernel-settings-hold-dell-xps-14-da14260 = ''
     the XPS 14's own kernel applies its patches and holds every setting
   '';
@@ -730,6 +755,17 @@
     kitty draws !=, >= and -> as the mono face's ligatures with the account's fontconfig features,
     and |> and 1..=2 plain
   '';
+  kitty-lists-its-tabs = ''
+    Programs › kitty matches each kitty OS window to niri's window by order or a title only one
+    has, lists every tab niri shows, the window used last first and its tabs and panes as kitty
+    used them, says what runs in each by its group's leader through env and a session's mycelium,
+    an ssh session's machine, each row's name, state, folder and drawer, goes to and closes one
+    through its own kitty and opens a new window through the kitty used last or a new one; and
+    reads ~/.ssh/config's machines but patterns and Match blocks and ~/.ssh/known_hosts' but
+    hashed, marked and pattern lines, with each one's keys, other names and port, how many times
+    and when zsh's history last reached each, orders them most used first, says each one's row,
+    drawer and ssh, and orders fd's repositories by zoxide's last visit
+  '';
   lag-watch-passes-clippy = ''
     clippy finds nothing in lag-watch or its tests
   '';
@@ -743,6 +779,15 @@
     the worst-waiting thread of Tuple's daemon and of Chrome apart, Chrome's only while a page
     records the microphone, and in an idle window nothing,
     reads a stand-in's named thread from the kernel, and sums each generation by its load
+  '';
+  launcher-fits-what-it-shows-to-the-terminal = ''
+    `launcher` lays what the shell shows out to the terminal's width, a count and then a side giving
+    way by whole items and a name cut only at a word, inks it only where the terminal takes colour,
+    in its sixteen unless it says it takes 24-bit, and says a miss and the nearest names in the
+    launcher's words
+  '';
+  launcher-passes-clippy = ''
+    clippy finds nothing in launcher, the launcher in a terminal, or its tests
   '';
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
@@ -771,9 +816,9 @@
     one passes, one past any margin fails saying its figures, and one missing a signal or a figure
     fails; a run fits in five minutes, climbs to twenty builds, reads free memory as the kernel's
     MemAvailable, builds its own source only from the vendored crates, copies that source whole
-    and writable, reads the line as the default route's link and what it carried in megabits a
-    second, and passes only when every step did and nothing stopped it; and a command given more
-    than it takes, `run --help` among them, is refused before anything starts
+    and writable, reads the connection as the default route's link and what it carried in
+    megabits a second, and passes only when every step did and nothing stopped it; and a command
+    given more than it takes, `run --help` among them, is refused before anything starts
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
@@ -1044,7 +1089,14 @@
     as themselves in a file of their own that's empty while none answers; the one lent is also
     named alone with nothing mandatory, still offering nothing a VM test needs, in a file for
     builds that may send any piece away, never with a builder beside or standing, and emptied
-    while none is lent; a day's journal sums to its hours and cost, each at its price; and
+    while none is lent, unless the second lent builder, else the warm VM builders, passed their
+    last proofs and stand in, until the one lent passes again; a proof builds a derivation no
+    store holds, over ssh with the store's key, host key and a 10 s connect timeout, or through
+    the daemon in slots of its own for a builder beside, runs one at a time a minute apart, and
+    fails at its time limit, ending what it started; a lent builder failing two in a row is named
+    nowhere, its relay ended and given back as lost, a builder beside failing two is left out
+    until one passes, and each folder's health.json says how they stand; a day's journal sums
+    to its hours and cost, each at its price; and
     `there` sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, waiting afresh for each loss after the build sent again ran a
     while and for a lender restarting, saying how long, or, when none stands or none answers,
@@ -1124,8 +1176,9 @@
   '';
   onepassword-manager-passes-no-secret-on = ''
     1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
-    value and no password's history, reads a secret only for the one detail asked, and says
-    1Password's categories and kinds in Passwords' own words
+    value and no password's history, reads a secret only for the one detail asked, says
+    1Password's categories and kinds in Passwords' own words, and names each entry's account from
+    op's own, for 1Password's link to it
   '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
@@ -1153,8 +1206,8 @@
     the passwords daemon holds every entry each password manager lists without a secret, even one
     given with its secrets on, answers a held list or get without asking a manager, gives a secret
     only to the client that asked to see it or to the clipboard marked sensitive and cleared when
-    its time is up, says a one-time code's period, says a manager signed out and gives no secret
-    from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    its time is up, says a one-time code's period, gives a one-time code's detail as its code and
+    never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     and the passwords command sets each answer in columns under a header for a person and
     tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
     finds an entry by its title and a detail by its label, and exits as its usage says
@@ -1535,8 +1588,7 @@
   '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the
-    rung of the space ladder it sits between, the beat or a level's pitch, but those listed as
-    not yet moved, and none is listed that no longer needs to be
+    rung of the space ladder it sits between, the beat or a level's pitch
   '';
   speaker-amps-have-every-dai-named = ''
     the XPS 14's SoundWire machine driver names only DAIs its amplifiers register
@@ -1579,6 +1631,9 @@
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
+  '';
+  sshd-takes-only-keys = ''
+    every NixOS machine's sshd refuses passwords, typed or asked for, and never signs root in
   '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
@@ -1741,6 +1796,18 @@
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
   '';
+  the-launcher-acts-only-on-what-it-can = ''
+    a program's act on a copy shows only while the clipboard holds what it takes, a picture, one
+    web address, or an existing file's path, markdown for the reader, with its line and column,
+    found from the top only while it shows, and opens it: Neovim in the kitty used last or a new
+    one, at the line and column, Chrome's page in a new window, the reader's file, and GIMP's
+    picture in a file of its own, copied from the clipboard's history or written by wl-paste;
+    and Open a File by Name and Open a Repository on GitHub show only while the repositories
+    under ~/src, read once for both as the shell starts and as the launcher opens, hold one they
+    can open, listing the one whose git last wrote first, a repository's files the one changed
+    last first, each beside its folder there, its hidden ones but not what git ignores, and only
+    those with a remote on GitHub, origin's first
+  '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
     or "when will it rain" answer when it next rains, here or in a place; here is the location, by
@@ -1890,6 +1957,10 @@
     session orchestrating it, a step in and at most two, an orchestration standing where its most
     urgent row would
   '';
+  pi-tells-of-its-sessions-as-an-agent-source = ''
+    pi, as an agent source, sorts the node's sessions into those running, parked and closed this
+    boot, and says each as the agent source contract's record, leaving out what pi didn't say
+  '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
     miss only where letters were typed and nothing picked
@@ -1942,6 +2013,11 @@
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from
     the top, says how fast the desktop answers in plain words, and says nothing's slowing the
     desktop when nothing is
+  '';
+  the-launcher-shows-a-terminal-what-it-holds = ''
+    a step of `launcher show` names its row by its name in any case, a hyphen for a space, or the
+    one name it starts, a miss offers the nearest names, and a row and its drawer reach the
+    terminal as the words the launcher draws, a getter's and an empty fact left out
   '';
   the-launcher-shows-no-replaced-word = ''
     nothing the launcher's vocabulary shows of a thing, a place or a command says a name
@@ -2067,6 +2143,26 @@
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
   '';
+  the-passwords-place-copies-through-its-daemon-on-niri = ''
+    on a nested niri, the Passwords place asks the passwords daemon nothing until Joel steps in,
+    then lists once as his, leads with the locked manager's row, whose Return unlocks it, copies
+    an entry's password on Return through the daemon to the clipboard as the launcher goes, the
+    margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
+    nothing on screen saying it, reads an entry in full as the selection rests on it, never as
+    Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
+    once it's stepped into, with a stand-in for 1Password's manager
+  '';
+  the-passwords-show-every-figure-but-the-secret = ''
+    each kind of entry wears its own mark, the favourites are listed first, then what changed
+    lately, newest first, twenty at most, a row says its username at its side and names its
+    password manager only while two are on the machine, an entry's acts come in the design's
+    order, each only where it has what it needs, its manager's link is filled only where the entry
+    says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
+    its username and its password, the design's first in its order, a hidden detail as hidden and
+    never its value, a website sent in the clear as its health and a weak password as its strength,
+    each in the warning's role, and the foot counts a copy down to its clearing, or a one-time code
+    to its lapsing
+  '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
     addresses for someone joining them, each standing as the first source that says, favourites
@@ -2157,8 +2253,9 @@
     socket nothing listens on once, never looping
   '';
   the-shell-follows-tuple-calls = ''
-    the shell says who a Tuple call is with and how long it's gone on, and finds a call's link in
-    what was copied
+    the shell says who a Tuple call is with and how long it's gone on, finds a call's link in what
+    was copied, and lists Tuple's Recent newest first, each call by who, how long or missed, and
+    when
   '';
   the-shell-finds-screenshots-by-their-words = ''
     what was taken lately finds screenshots by their words from the screen-text daemon, on one
@@ -2181,8 +2278,9 @@
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
-    into each figure's parts, hide amounts while sharing, and answer reports by their words; the
-    tokens piece is there only while the watch's tokens warn, with its acts for a running session
+    into each figure's parts, hide amounts while sharing, and answer reports by their words; a
+    budget's row, a window's and a cap's open a drawer of every fact budgets.json holds of it,
+    and a period's its days and what its cuts went to most; the tokens piece is there only while the watch's tokens warn, with its acts for a running session
   '';
   the-shell-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
@@ -2345,9 +2443,10 @@
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
     it started, and tells a watch of a call, a sign-in gone and a stream ended as they happen, of a
-    ring and a missed call from the log, a new log read from its start, runs each of the call's
-    acts as Tuple's command, keeps the room's link, answers on systemd's socket, and refuses an
-    ask or a kind it doesn't know
+    ring and a missed call from the log, a new log read from its start, keeps a call that ended in
+    Recent's file and reads it back after a restart, runs each of the call's acts as Tuple's
+    command, keeps the room's link, answers on systemd's socket, and refuses an ask or a kind it
+    doesn't know
   '';
   tuple-call-passes-clippy = ''
     clippy finds nothing in tuple-call or its tests
@@ -2382,9 +2481,8 @@
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
-    from a level of the theme's type, but those listed as not yet moved, and none is listed that
-    no longer needs to be; nor does the reader's page or its foot say a size, a weight, a
-    tracking or an axis of their own in the Typst they set
+    from a level of the theme's type; nor does the reader's page or its foot say a size, a
+    weight, a tracking or an axis of their own in the Typst they set
   '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
@@ -2656,8 +2754,9 @@
   '';
   vm-desktop-takes-calls = ''
     Tuple's daemon starts before the other apps, a call shows in the margin while it lasts, people
-    coming and going are said, a ringing call wants Joel and is kept as missed, a copied link
-    joins, and the call's windows find their places
+    coming and going are said, a call that ended is in Tuple's Recent in Programs to call again,
+    a ringing call wants Joel and is kept as missed, a copied link joins, and the call's windows
+    find their places
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of
@@ -2907,6 +3006,18 @@
     the shell has wifid sign in, join with a password or an account, leave, save and switch the
     radios; a stuck look is nudged, a silent access point passed, and the card dozes only on
     battery
+  '';
+  vms-reach-the-launcher = ''
+    a workstation with a desktop gives its launcher the VMs, read through the daemon's own virsh,
+    under a hidden program the launcher lists only while one exists, and one without the shell
+    gets none of it
+  '';
+  vms-read-as-virsh-says = ''
+    virsh's lists and every figure dominfo gives are read, every name asked of dominfo in one
+    batch and read back whole however it's spelled, each figure it left out named with why, memory
+    said in decimal units from its bytes and in use only while it's on, each state is said in the
+    launcher's own words rather than libvirt's, each state offers its own acts and tells virsh its
+    own command, and the VMs are ordered and counted as Programs shows them
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

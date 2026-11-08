@@ -75,6 +75,16 @@ let
       cp ${../slack/SlackUnreads.js} qs/SlackUnreads.js
       cp ${../slack/NewSlack.qml} qs/pieces/slack.qml
       cp ${../slack/SlackProgram.qml} qs/launcher/slack-program.qml
+      # The VMs come with a workstation's libvirt, which the account here
+      # isn't, so its provider and what it imports are read as if it were.
+      cp ${../libvirt/Machines.qml} qs/launcher/vms.qml
+      cp ${../libvirt/Machines.js} qs/launcher/Machines.js
+      # Neovim's and Chrome's acts are installed only where a machine brings
+      # Neovim or Chrome, as the graphical example doesn't, so they're read
+      # here as if one had.
+      cp ${../neovim/NeovimProgram.qml} qs/launcher/neovim.qml
+      cp ${../neovim/NeovimOpening.js} qs/launcher/NeovimOpening.js
+      cp ${../chrome/ChromeProgram.qml} qs/launcher/chrome.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
@@ -302,6 +312,23 @@ onLinux {
     given = [ "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}" ];
   };
 
+  # The Passwords place asks the passwords daemon over its socket, its one
+  # manager a stand-in for 1Password's that never runs op: nothing until
+  # Joel steps in, unlocking it from its first row, an entry's Return
+  # copying its password through wl-copy as the launcher goes, the margin
+  # wearing the clipboard's mark and the foot, opened again, counting to
+  # its clearing, resting on one reading it in full, and stepping into one
+  # holding its acts in order (tests/passwords-on-niri-test.py). A VM adds only the units, which
+  # passwords-runs-each-password-manager reads.
+  the-passwords-place-copies-through-its-daemon-on-niri = launcherOnNiri {
+    name = "the-passwords-place-copies-through-its-daemon-on-niri";
+    tests = ../../tests/passwords-on-niri-test.py;
+    given = [
+      "PASSWORDS=${lib.getExe (pkgs.callPackage ../passwords/package.nix { })}"
+      "PASSWORDS_STAND_IN=${../../tests/passwords-stand-in.sh}"
+    ];
+  };
+
   # The launcher, the held notices and a window share the keys by one rule:
   # the newest Joel opened takes them, a notice arriving never does, and a
   # click on a window gives it them (tests/focus-on-niri-test.py).
@@ -385,6 +412,7 @@ onLinux {
           "wide"
           "mail"
           "profile"
+          "clearing"
           "microphone"
           "capslock"
           "layer"
@@ -505,12 +533,10 @@ onLinux {
     '';
 
   # Every run of text the shell sets names its type's level, never a step, a
-  # weight or a spacing of its own, but in the files not-yet-by-level.txt
-  # lists, and a file listed there that no longer needs to be fails, so the
-  # list only shrinks (type-is-set-by-level.py). So the check can't pass by
-  # seeing nothing, each way of straying is shown to fail first: a step, a
-  # level mixed with a step, a line carried on, a script's assignment, and a
-  # listed file that's moved or gone. The reader's page and its foot, Typst
+  # weight or a spacing of its own (type-is-set-by-level.py). So the check
+  # can't pass by seeing nothing, each way of straying is shown to fail
+  # first: a step, a level mixed with a step, a line carried on and a
+  # script's assignment. The reader's page and its foot, Typst
   # held in Rust, name a level too, and a size, a weight, a tracking, a
   # strong's delta or an axis said by number fails, as a size named with one
   # does, while a comment saying one doesn't.
@@ -527,14 +553,12 @@ onLinux {
       ];
     in
     pkgs.runCommandLocal "type-is-set-by-level" { } ''
-      # A file that sets its type as given, what the check must say of it,
-      # and the files listed as not yet moved.
+      # A file that sets its type as given, and what the check must say of it.
       strays() {
         rm -rf modules
         mkdir -p modules/shell
         printf '%s\n' "$1" > modules/shell/Surface.qml
-        printf '%s\n' "''${@:3}" > unmoved.txt
-        if ${check} modules unmoved.txt > said; then
+        if ${check} modules > said; then
           echo "The type check passed on: $1"
           exit 1
         fi
@@ -548,9 +572,8 @@ onLinux {
       sets() {
         rm -rf modules
         mkdir -p modules
-        : > unmoved.txt
         printf '%s\n' "$1" > page.rs
-        if ${check} modules unmoved.txt page.rs > said; then
+        if ${check} modules page.rs > said; then
           echo "The type check passed on the page: $1"
           exit 1
         fi
@@ -566,8 +589,6 @@ onLinux {
       strays $'font.weight: row.selected\n    ? Font.Medium : Theme.level.name.weight' \
         'font.weight is row.selected ? Font.Medium'
       strays 'label.font.letterSpacing = 2' 'font.letterSpacing is 2'
-      strays 'font.pointSize: Theme.level.note.pointSize' 'take it off' shell/Surface.qml
-      strays 'font.pointSize: Theme.level.note.pointSize' "isn't there" shell/Gone.qml
       sets '#set text(..level.words.text, size: 0.93 * body-size)' 'page.rs:1: size is 0.93'
       sets '#show heading: set text(weight: 540, tracking: -0.02em)' 'weight is 540'
       sets '#show heading: set text(weight: 540, tracking: -0.02em)' 'tracking is -0.02em'
@@ -585,19 +606,16 @@ onLinux {
       printf '%s\n' '#set text(..level.note.text, fill: ink.on_accent)' \
         '/// The words at 13.69 pt, weight: 380.' '// size: 12pt, as a note says' \
         '#[cfg(test)]' 'mod tests {' 'size: 11.5pt' > page.rs
-      : > unmoved.txt
-      ${check} modules unmoved.txt page.rs
-      ${check} ${shells} ${./not-yet-by-level.txt} ${lib.concatStringsSep " " pages}
+      ${check} modules page.rs
+      ${check} ${shells} ${lib.concatStringsSep " " pages}
       touch $out
     '';
 
   # Every space the shell sets names the rung of the ladder it sits between,
-  # the beat or a level's pitch, never a step of the size scale, but in the
-  # files not-yet-by-rung.txt lists, and a file listed there that no longer
-  # needs to be fails, so the list only shrinks (space-is-set-by-rung.py).
-  # So it can't pass by seeing nothing, a step, a step summed with a rung,
-  # and a listed file that's moved or gone are each shown to fail first,
-  # while a rung, the beat, a pitch and a comment naming a step pass.
+  # the beat or a level's pitch, never a step of the size scale
+  # (space-is-set-by-rung.py). So it can't pass by seeing nothing, a step and
+  # a step summed with a rung are each shown to fail first, while a rung, the
+  # beat, a pitch and a comment naming a step pass.
   space-is-set-by-rung =
     let
       check = "${lib.getExe pkgs.python3} ${./space-is-set-by-rung.py}";
@@ -607,14 +625,12 @@ onLinux {
       };
     in
     pkgs.runCommandLocal "space-is-set-by-rung" { } ''
-      # A file that sets its space as given, what the check must say of it,
-      # and the files listed as not yet moved.
+      # A file that sets its space as given, and what the check must say of it.
       strays() {
         rm -rf modules
         mkdir -p modules/shell
         printf '%s\n' "$1" > modules/shell/Surface.qml
-        printf '%s\n' "''${@:3}" > unmoved.txt
-        if ${check} modules unmoved.txt > said; then
+        if ${check} modules > said; then
           echo "The space check passed on: $1"
           exit 1
         fi
@@ -626,17 +642,14 @@ onLinux {
       }
       strays 'leftPadding: Theme.space.l' 'Surface.qml:1: leftPadding: Theme.space.l'
       strays 'spacing: Theme.space.rung.items + Theme.space.xs' 'Theme.space.xs'
-      strays 'spacing: Theme.space.rung.items' 'take it off' shell/Surface.qml
-      strays 'spacing: Theme.space.rung.items' "isn't there" shell/Gone.qml
       # A rung, the beat and a pitch pass, as a comment naming a step does.
       rm -rf modules
       mkdir -p modules/shell
       printf '%s\n' 'spacing: Theme.space.rung.items' 'height: Theme.space.beat * 2' \
         'lineHeight: Theme.level.note.pitch' '// once Theme.space.l, now a rung' \
         > modules/shell/Surface.qml
-      : > unmoved.txt
-      ${check} modules unmoved.txt
-      ${check} ${shells} ${./not-yet-by-rung.txt}
+      ${check} modules
+      ${check} ${shells}
       touch $out
     '';
 
@@ -644,13 +657,11 @@ onLinux {
   # its frame from Card.qml and stands its ink on the card's content, the
   # inset from its edge, and on its columns (Columns.js), never drawing a
   # frame, reading the inset, placing ink across by hand or tinting a row's
-  # ground itself, but in the files not-yet-on-the-card.txt lists, which
-  # only shrinks (every-card-is-the-one-card.py). So it can't pass by seeing
-  # nothing, a border, the whole thing's radius, a shadow, a frame from
-  # Floating, a read of the inset, an x or a margin from a rung or a pitch,
-  # a ground's tint, and a listed file that's moved or isn't a card are each
-  # shown to fail first, while a card,
-  # a part's radius, a column, the card's own inset and a comment pass.
+  # ground itself (every-card-is-the-one-card.py). So it can't pass by
+  # seeing nothing, a border, the whole thing's radius, a shadow, a frame
+  # from Floating, a read of the inset, an x or a margin from a rung or a
+  # pitch, and a ground's tint are each shown to fail first, while a card, a
+  # part's radius, a column, the card's own inset and a comment pass.
   every-card-is-the-one-card =
     let
       check = "${lib.getExe pkgs.python3} ${./every-card-is-the-one-card.py}";
@@ -666,14 +677,12 @@ onLinux {
       };
     in
     pkgs.runCommandLocal "every-card-is-the-one-card" { } ''
-      # A card surface drawn as given, what the check must say of it, and
-      # the files listed as not yet on the card.
+      # A card surface drawn as given, and what the check must say of it.
       strays() {
         rm -rf shell
         mkdir shell
         printf '%s\n' "$1" > shell/Surface.qml
-        printf '%s\n' "''${@:3}" > unmoved.txt
-        if ${check} shell unmoved.txt Surface.qml > said; then
+        if ${check} shell Surface.qml > said; then
           echo "The card check passed on: $1"
           exit 1
         fi
@@ -693,21 +702,14 @@ onLinux {
       strays 'anchors.leftMargin: Theme.space.rung.apart' 'by hand'
       strays 'rightPadding: Theme.space.rung.items' 'by hand'
       strays 'color: Qt.alpha(Theme.selection, Theme.floating.selection)' "a row's ground"
-      strays $'Floating {\nborder.width: 1' 'a frame of their own' Surface.qml
-      strays 'Card {' 'take it off' Surface.qml
-      strays 'Card {' "isn't a card surface" Gone.qml
-      # A card, a part's radius, a column, the card's own inset, the inset
-      # said in a comment, and files listed while they still take Floating
-      # or place by hand pass.
+      # A card, a part's radius, a column, the card's own inset and the inset
+      # said in a comment pass.
       rm -rf shell
       mkdir shell
       printf '%s\n' 'Card {' 'radius: Theme.inner' 'x: row.columns.text' 'x: -card.inset' \
         '// once at Theme.space.rung.inset' > shell/Surface.qml
-      printf '%s\n' 'Floating {' 'x: Theme.space.rung.inset' > shell/Unmoved.qml
-      printf '%s\n' 'Card {' 'x: Theme.space.rung.mark' > shell/Placed.qml
-      printf '%s\n' Unmoved.qml Placed.qml > unmoved.txt
-      ${check} shell unmoved.txt Surface.qml Unmoved.qml Placed.qml
-      ${check} ${surfaces} ${./not-yet-on-the-card.txt} ${lib.concatStringsSep " " cards}
+      ${check} shell Surface.qml
+      ${check} ${surfaces} ${lib.concatStringsSep " " cards}
       touch $out
     '';
 
@@ -838,6 +840,7 @@ onLinux {
       cd $TMPDIR/groups
       cp ${../../tests/key-groups.qml} key-groups.qml
       cp ${./launcher/KeyGroups.js} KeyGroups.js
+      cp ${./launcher/KeyLayers.js} KeyLayers.js
       cp ${layers} layers.json
       cp ${words} words.json
       ${shellFolderLint}
@@ -852,6 +855,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/KeyMap.qml} launcher/KeyMap.qml
       cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
+      cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${files."quickshell/Theme.qml".source} Theme.qml
       cp ${files."quickshell/Shortcuts.qml".source} Shortcuts.qml
       cp ${./Words.qml} Words.qml
@@ -918,6 +922,25 @@ onLinux {
       touch $out
     '';
 
+  # What `launcher show` prints in a terminal is what the launcher holds:
+  # a step names its row, a miss the names nearest it, and a row and its
+  # drawer come as the words drawn, as tests/showing.qml holds
+  # launcher/Showing.js to it in Qt's own engine.
+  the-launcher-shows-a-terminal-what-it-holds =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-shows-a-terminal-what-it-holds" { } ''
+      cp ${../../tests/showing.qml} showing.qml
+      cp ${./launcher/Showing.js} Showing.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml showing.qml
+      touch $out
+    '';
+
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
   # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
@@ -966,6 +989,7 @@ onLinux {
       cp ${../../tests/recent.qml} recent.qml
       cp ${./launcher/Recent.js} Recent.js
       cp ${./launcher/Recents.js} Recents.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -976,14 +1000,36 @@ onLinux {
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
   # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
   # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
-  # place that lists things, its sort its kind's order and no A to Z by hand.
+  # place that lists things: its sort its kind's order, no A to Z by hand, and
+  # no order of Order.js's sorted by Qt's Array.sort, which shuffles rows alike,
+  # as a stand-in sorting three ways it refuses shows.
   each-list-keeps-its-kinds-order =
     let
       qt = pkgs.qt6.qtdeclarative;
+      unstable = pkgs.writeText "Unstable.js" ''
+        const byName = Order.byName(one => one.name);
+        const named = rows => rows.sort(byName);
+        const live = rows => rows.sort(
+            Order.live({ stands: one => one.state, name: one => one.name }));
+        const wrapped = rows => rows.sort((a, b) => Order.byName(one => one.name)(a, b));
+      '';
     in
     pkgs.runCommandLocal "each-list-keeps-its-kinds-order" { } ''
-      ${lib.getExe pkgs.python3} ${../../tests/every-list-keeps-its-kinds-order.py} \
-        ${./launcher} ${../people}
+      lint="${lib.getExe pkgs.python3} ${../../tests/every-list-keeps-its-kinds-order.py}"
+      $lint ${./launcher} ${../people}
+      mkdir unstable
+      cp ${unstable} unstable/Unstable.js
+      if $lint unstable 2> said; then
+        echo "a sort by Order.js through Array.sort passed" >&2
+        exit 1
+      fi
+      for line in 2 3 5; do
+        if ! grep -qF "Unstable.js:$line sorts by Order.js with Qt's Array.sort" said; then
+          echo "Unstable.js:$line's sort by Order.js through Array.sort wasn't refused:" >&2
+          cat said >&2
+          exit 1
+        fi
+      done
       cp ${../../tests/order.qml} order.qml
       cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -1042,6 +1088,24 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml timing.qml
+      touch $out
+    '';
+
+  # pi, as an agent source, sorts the node's sessions into those running,
+  # parked and closed this boot, and says each as the agent source
+  # contract's record, leaving out what pi didn't say, as
+  # tests/pi-source.qml holds PiSource.js to it in Qt's own engine.
+  pi-tells-of-its-sessions-as-an-agent-source =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "pi-tells-of-its-sessions-as-an-agent-source" { } ''
+      cp ${../../tests/pi-source.qml} pi-source.qml
+      cp ${./PiSource.js} PiSource.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml pi-source.qml
       touch $out
     '';
 
@@ -1351,7 +1415,8 @@ onLinux {
   # for.
   do-not-disturb-holds-while-sharing =
     let
-      options = singleton "Options.qml" "readonly property var quiet: ({ whileSharing: true })";
+      chosen = "readonly property var doNotDisturb: ({ whileSharing: true })";
+      options = singleton "Options.qml" chosen;
     in
     pkgs.runCommandLocal "do-not-disturb-holds-while-sharing" { } ''
       mkdir runtime && chmod 700 runtime
@@ -1383,12 +1448,20 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
-      mkdir runtime launcher && chmod 700 runtime
-      cp ${./pieces/Piece.qml} Piece.qml
-      cp ${./pieces/Disk.qml} Disk.qml
+      # The piece says sizes and folders as a file does, from the shell's
+      # folder above its own, so it's laid in pieces/ as the shell has it,
+      # where the lint reads the whole shell.
+      mkdir -p runtime shell/launcher shell/pieces && chmod 700 runtime
+      cd shell
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      cp ${./Files.qml} Files.qml
+      cp ${./pieces/Piece.qml} pieces/Piece.qml
+      cp ${./pieces/Disk.qml} pieces/Disk.qml
+      cp ${./pieces/Drawers.js} pieces/Drawers.js
+      cp ${./pieces/StatusFile.qml} pieces/StatusFile.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
-      cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
@@ -1433,8 +1506,8 @@ onLinux {
     touch $out
   '';
 
-  # The AI spend piece, the tokens piece and the launcher's collection read
-  # what spend-watch writes, from a day of a session's turns on two models,
+  # The AI spend piece, the tokens piece, the launcher's collection and its
+  # budgets' drawers read what spend-watch writes, from a day of a session's turns on two models,
   # and the states tests/spend.qml writes by hand, through Quickshell
   # itself, with niri, do not disturb, the shortcuts and the sessions stood
   # in for.
@@ -1469,6 +1542,7 @@ onLinux {
       ${lib.getExe watch} --config config.json import
       ${lib.getExe watch} --config config.json show > runtime/written/status.json
       ${lib.getExe watch} --config config.json show collection > runtime/written/collection.json
+      ${lib.getExe watch} --config config.json budgets --json > runtime/written/budgets.json
       cp ${./pieces/Piece.qml} Piece.qml
       cp ${./pieces/Spend.qml} Spend.qml
       cp ${./pieces/Tokens.qml} Tokens.qml
@@ -1480,6 +1554,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Spend.qml} launcher/Spend.qml
+      cp ${./launcher/SpendDrawer.js} launcher/SpendDrawer.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -1661,12 +1736,17 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./AgentSources.qml} AgentSources.qml
+      cp ${./PiSource.qml} PiSource.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${jobs} Jobs.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      # pi's source finds the node by the realm the node keeps.
+      mkdir -p $HOME/.local/state/mycelium && echo harbour > $HOME/.local/state/mycelium/realm
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -1925,6 +2005,7 @@ onLinux {
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml
+        cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Sensors.qml} launcher/Sensors.qml
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
@@ -2214,6 +2295,8 @@ onLinux {
         Name=Tester
         GenericName=Logbook
         Exec=tester %U
+        MimeType=text/html;x-scheme-handler/https;
+        Categories=Office;TextEditor;
         Actions=private;new;logbook;
 
         [Desktop Action private]
@@ -2259,7 +2342,9 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
-      mkdir -p launcher share/applications
+      mkdir -p launcher share/applications share/mime
+      # The kinds of file the tester opens end as shared-mime-info says.
+      printf '50:text/html:*.html\n' > share/mime/globs2
       cp ${tester} share/applications/tester.desktop
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
@@ -2275,6 +2360,10 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Media.js} launcher/Media.js
+      cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Music.js} Music.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
@@ -2504,6 +2593,7 @@ onLinux {
       cp ${../../tests/runs.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
+      cp ${singleton "AgentSources.qml" "readonly property var runs: []"} AgentSources.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
@@ -2572,10 +2662,12 @@ onLinux {
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
+      cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
@@ -2692,6 +2784,8 @@ onLinux {
       ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./PiSource.qml} PiSource.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
@@ -2756,6 +2850,8 @@ onLinux {
       ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./PiSource.qml} PiSource.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
@@ -3304,6 +3400,71 @@ onLinux {
       touch $out
     '';
 
+  # A program's drawer says what it is, where its windows are, what it
+  # opens and how it starts, in the order every drawer keeps, as
+  # tests/program-drawer.qml holds launcher/Program.js to a desktop file
+  # and shared-mime-info's globs made up there.
+  a-program-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-program-says-all-it-knows" { } ''
+      mkdir launcher
+      cp ${../../tests/program-drawer.qml} program-drawer.qml
+      cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml program-drawer.qml
+      touch $out
+    '';
+
+  # Now's own pieces say in their drawers all their source holds, in the
+  # order every drawer keeps, as tests/piece-drawers.qml holds
+  # pieces/Drawers.js to what the disk guards, Notices, lag-watch, niri,
+  # the recorder and Quiet say.
+  a-piece-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-piece-says-all-it-knows" { } ''
+      mkdir pieces
+      cp ${../../tests/piece-drawers.qml} piece-drawers.qml
+      cp ${./pieces/Drawers.js} pieces/Drawers.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml piece-drawers.qml
+      touch $out
+    '';
+
+  # What Capture took says where it is and what kind, when it was taken,
+  # its size and a picture's dimensions or a recording's length, as
+  # tests/captured.qml holds launcher/Captured.js to what Taken.qml reads
+  # and file-preview says.
+  a-capture-says-what-it-took =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-capture-says-what-it-took" { } ''
+      mkdir launcher
+      cp ${../../tests/captured.qml} captured.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
+      cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml captured.qml
+      touch $out
+    '';
+
   # Once a notice is opened, its sender's window comes forward when it
   # doesn't by itself, as tests/notice-comes-forward.qml holds Forward.js
   # to niri's windows.
@@ -3600,6 +3761,8 @@ onLinux {
     pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
       cp ${../../tests/notice-list.qml} notice-list.qml
       cp ${./NoticeList.js} NoticeList.js
+      mkdir launcher
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Changes.js} Changes.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -3634,6 +3797,7 @@ onLinux {
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
       cp ${./Search.js} Search.js
+      cp ${./Reading.js} Reading.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./launcher/words.json} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -3710,8 +3874,9 @@ onLinux {
       touch $out
     '';
 
-  # How the shell says a Tuple call, who's in it and for how long, and a
-  # call's link in what was copied (tests/tuple.qml, over Tuple.js).
+  # How the shell says a Tuple call, who's in it and for how long, a
+  # call's link in what was copied, and Tuple's Recent, its order and each
+  # call's words (tests/tuple.qml, over Tuple.js and the When.js it reads).
   the-shell-follows-tuple-calls =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3719,10 +3884,109 @@ onLinux {
     pkgs.runCommandLocal "the-shell-follows-tuple-calls" { } ''
       cp ${../../tests/tuple.qml} tuple.qml
       cp ${../tuple/Tuple.js} Tuple.js
+      cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml tuple.qml
+      touch $out
+    '';
+
+  # A program's act on a copy or on the repositories under ~/src shows only
+  # while it can act, and opens what it says: what decides it, in Qt's own
+  # engine (tests/quick-acts.qml, over Copied.js, launcher/Repositories.js
+  # and Neovim's NeovimOpening.js), then each program's provider with the
+  # shell's one watcher of the clipboard, through Quickshell itself, over
+  # repositories made here and read once for both programs by the real fd,
+  # stat and grep (launcher/Repositories.qml), with niri and the
+  # clipboard's history stood in (tests/program-acts.qml).
+  the-launcher-acts-only-on-what-it-can =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      # A kitty used last, whose remote control Neovim opens through.
+      niri = singleton "Niri.qml" ''
+        property var windows: ({
+          "4": { id: 4, app_id: "kitty", pid: 40, focus_timestamp: { secs: 10, nanos: 0 } },
+          "5": { id: 5, app_id: "kitty", pid: 41, focus_timestamp: { secs: 20, nanos: 0 } }
+        })
+        property var spawned: []
+        function spawn(command) { spawned = command; }
+      '';
+      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
+      # Three repositories a folder deep, alpha's git written last, alpha's
+      # origin and gamma's upstream on GitHub and beta's on GitLab, and one
+      # four folders deep, past where they're looked for.
+      repositories = ''
+        repository() {
+          mkdir -p "$HOME/src/$1/.git"
+          printf '[core]\n\tbare = false\n[remote "%s"]\n\turl = %s\n' "$2" "$3" \
+            > "$HOME/src/$1/.git/config"
+          touch -d "@$4" "$HOME/src/$1/.git"
+        }
+        mkdir -p $HOME/src/alpha/docs $HOME/src/beta
+        printf 'fn main() {}\n' > $HOME/src/alpha/main.rs
+        printf 'KEY=1\n' > $HOME/src/alpha/.env
+        printf '# Notes\n' > $HOME/src/alpha/docs/notes.md
+        printf 'ignored.txt\n' > $HOME/src/alpha/.gitignore
+        printf 'not listed\n' > $HOME/src/alpha/ignored.txt
+        touch -d @1700000400 $HOME/src/alpha/main.rs
+        touch -d @1700000300 $HOME/src/alpha/.env
+        touch -d @1700000200 $HOME/src/alpha/docs/notes.md
+        touch -d @1700000100 $HOME/src/alpha/.gitignore
+        printf '# Beta\n' > $HOME/src/beta/README.md
+        repository alpha origin git@github.com:Jitsusama/alpha.git 1700000900
+        repository beta origin https://gitlab.com/someone/beta 1700000800
+        repository gamma upstream https://github.com/NixOS/gamma.git 1700000700
+        repository far/away/too origin git@github.com:someone/too.git 1700000950
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-acts-only-on-what-it-can" { } ''
+      mkdir cases shell
+      cd $TMPDIR/cases
+      cp ${../../tests/quick-acts.qml} quick-acts.qml
+      cp ${./Copied.js} Copied.js
+      cp ${./launcher/Repositories.js} Repositories.js
+      cp ${../neovim/NeovimOpening.js} NeovimOpening.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml quick-acts.qml
+      cd $TMPDIR/shell
+      mkdir -p launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${./Words.qml} Words.qml
+      cp ${./Files.qml} Files.qml
+      cp ${./Copied.qml} Copied.qml
+      cp ${./Copied.js} Copied.js
+      cp ${niri} Niri.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
+      cp ${./launcher/Repositories.qml} launcher/Repositories.qml
+      cp ${./launcher/Repositories.js} launcher/Repositories.js
+      cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
+      cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
+      cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
+      cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
+      cp ${../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
+      cp ${../../tests/program-acts.qml} shell.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime
+      export PATH=${
+        lib.makeBinPath [
+          paste
+          pkgs.fd
+          pkgs.coreutils
+          pkgs.gnugrep
+        ]
+      }:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      ${repositories}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -3805,6 +4069,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../tuple/Tuple.js} Tuple.js
+      cp ${./When.js} When.js
       cp ${../../tests/tuple-call.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
@@ -3969,6 +4234,18 @@ onLinux {
   # clippy finds nothing in clock-follows, its tests included.
   clock-follows-passes-clippy = passesClippy "clock-follows-passes-clippy" (
     pkgs.callPackage ./clock-follows/package.nix { }
+  );
+
+  # launcher's tests run as it builds: what the shell shows is laid out to
+  # the terminal's width, a count and then a side giving way by whole
+  # items and a name cut only at a word, inked only where the terminal
+  # takes colour, and a miss said in the launcher's words.
+  launcher-fits-what-it-shows-to-the-terminal = pkgs.callPackage ./in-a-terminal/package.nix { };
+
+  # clippy finds nothing in launcher, the launcher in a terminal, its tests
+  # included.
+  launcher-passes-clippy = passesClippy "launcher-passes-clippy" (
+    pkgs.callPackage ./in-a-terminal/package.nix { }
   );
 
   # clippy finds nothing in timekeeping, its tests included.

@@ -6,7 +6,7 @@ pragma Singleton
 // should never hold unseen.
 //
 // It's on by itself while another program sees the screen, as a call shares
-// it, and off again once nothing does (jitsusama.quickshell.quiet.whileSharing).
+// it, and off again once nothing does (jitsusama.quickshell.doNotDisturb.whileSharing).
 // Ending it then lets notices show until the sharing stops.
 //
 // What Joel turned on lasts through a restart of the shell, as a switch does,
@@ -26,7 +26,7 @@ Singleton {
     property real since: 0
     property real until: 0
     // A window being recorded streams as a share would, but nobody sees it.
-    readonly property bool sharing: Options.quiet.whileSharing && Object.values(Niri.casts)
+    readonly property bool sharing: Options.doNotDisturb.whileSharing && Object.values(Niri.casts)
         .some(cast => cast.kind === "PipeWire" && cast.is_active
             && cast.session_id !== Recorder.windowSession)
     // Ended while sharing, so notices show until the sharing stops.

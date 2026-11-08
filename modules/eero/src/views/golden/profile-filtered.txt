@@ -10,7 +10,7 @@ default   yes
 traffic   0 B down  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀   0 B up  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
 devices   3 · 0 on now
 
-hardware           device      node  address
-02:00:00:00:00:35  not on now
-02:00:00:00:00:36  not on now
-02:00:00:00:00:37  not on now
+hardware           device    node        address
+02:00:00:00:00:35  tablet 3  not on now
+02:00:00:00:00:36  tablet 4  not on now
+02:00:00:00:00:37  tablet 4  not on now

@@ -43,7 +43,8 @@
 // one in a window named by niri's id, as Neovim's in kitty's, goes there
 // through its source's command too, with no Close It. A program whose
 // entry hides itself is listed only when another provider gives it acts,
-// and then steps in on Return rather than starting. Typing on
+// and then steps in on Return rather than starting. An act found from the
+// top that asks for a choice goes to its list inside its program. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -80,9 +81,14 @@ ShellRoot {
         property var belowChord: []
         property var sources: [notices, keys, giver]
         property var entered: null
+        property var went: null
 
         function enter(row) {
             entered = row;
+        }
+
+        function goTo(spot) {
+            went = spot;
         }
     }
 
@@ -557,13 +563,27 @@ ShellRoot {
                 "on The Tester \u00b7 track: Song of the test");
             same("where it is leading", `${drawn.facts[0].label} ${drawn.facts[0].value}`,
                 "Position 1:38 of 6:43");
+
+            // A program's drawer, its desktop file read once it's asked
+            // (Program.js), where its windows are leading.
+            applications.readDesktop("tester");
+            const described = program("tester").drawer();
+            same("a program's drawer says where and what it is",
+                `${described.eyebrow}: ${described.title}`, "on 1 and 2 \u00b7 program: Tester");
+            same("what it plays, then opens, then how it starts",
+                described.facts.map(fact => fact.label).join(", "),
+                "Playing, Opens, Handles, Categories, Command, Desktop ID");
+            same("what it opens, from its desktop file", described.facts[1].value,
+                "1 kind \u00b7 HTML");
+            same("its categories, as words", described.facts[3].value, "Office, Text Editor");
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");
             same("what's playing says by whom", played[3].side, "The Testers");
             same("as a figure", played[3].figure, true);
             same("Next keeps the launcher", played[1].stays, true);
-            same("saying what's on", played[1].state(), "Song of the test, The Testers");
+            same("saying what's on", played[1].state(),
+                "Song of the test \u00b7 The Testers");
             played[1].run();
             played[2].run();
             same("Next and Previous reach its player", `${player.nexts} ${player.previouses}`,
@@ -716,6 +736,15 @@ ShellRoot {
             // programs are searched, not the acts found from the top.
             same("a program's acts are found from the top, not inside Programs",
                 applications.things.length > applications.programs.length, true);
+            // One found from the top that asks for a choice, as Neovim's Open
+            // a File by Name does, goes to its list inside its program on
+            // Return, as one asking for words does.
+            const choosing = applications.foundAct({ id: "tester", name: "Tester" },
+                { key: "tester:pick", name: "Pick a Log", verb: "open", targets: () => [] });
+            choosing.run();
+            same("a found act asking for a choice goes to its list inside its program",
+                `${JSON.stringify(choosing.trail)} ${launcher.went === choosing}`,
+                '["collection:applications","program:tester","tester:pick"] true');
             const found = typed => names(applications.search(typed).rows);
             const whole = typed => {
                 applications.matchedIn(null, "", []);

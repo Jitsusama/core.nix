@@ -158,6 +158,9 @@ in
           ];
           program = "com.onepassword.OnePassword";
           called = "1Password";
+          # 1Password's own link to an item, which its desktop entry takes
+          # as the onepassword scheme's handler, opening the item there.
+          shows = "onepassword://view-item?a={account}&v={collection}&i={id}";
         };
       };
 

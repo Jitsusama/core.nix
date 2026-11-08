@@ -44,11 +44,13 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
+import Quickshell.Io
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Media.js" as Media
 import "Order.js" as Order
+import "Program.js" as Program
 import "Recent.js" as Recent
 
 Provider {
@@ -63,7 +65,7 @@ Provider {
     // (collection-order.md).
     function everything() {
         const open = row => (running[row.key.slice("program:".length)] ?? []).length > 0;
-        return programs.slice().sort(Order.returned({ first: open, name: row => row.name }));
+        return Order.sorted(programs, Order.returned({ first: open, name: row => row.name }));
     }
 
     // Inside Programs, by its name or what it is, the best grade first.
@@ -352,9 +354,11 @@ Provider {
         return players.find(player => player.isPlaying) ?? players[0] ?? null;
     }
 
+    // A track and who plays it, a dot between them, as every part of a
+    // value is (VKCF3Z, 2026-11-08).
     function nowPlaying(player) {
         return player.trackArtist === "" ? player.trackTitle
-            : `${player.trackTitle}, ${player.trackArtist}`;
+            : `${player.trackTitle} \u00b7 ${player.trackArtist}`;
     }
 
     // Media: playing or pausing, one row by how it stands, then the next
@@ -419,6 +423,78 @@ Provider {
         enabled: !!provider.launcher && provider.launcher.open
             && Playing.players.some(player => player.isPlaying)
         precision: SystemClock.Seconds
+    }
+
+    // A program's drawer (Program.js): the workspaces its windows are on
+    // and what it is, what it plays, what other providers say of it
+    // (their programFacts), the kinds of file and links it opens, its
+    // categories, and its command and id last; its comment is its words.
+    // The kinds of file are its desktop file's, which Quickshell's entry
+    // doesn't hold, read once just after the drawer first asks, so they
+    // follow a frame later rather than the reader moving under a binding.
+    function programDrawer(entry) {
+        if (entry.id === undefined || entry.name === undefined)
+            return null;
+        const types = desktopTypes[entry.id];
+        if (types === undefined && !desktopAsked[entry.id]) {
+            desktopAsked[entry.id] = true;
+            Qt.callLater(() => provider.readDesktop(entry.id));
+        }
+        const looked = {};
+        const player = playerOf(given => provider.names(entry, given, looked));
+        // Each process once, as two windows are often one process's.
+        const pids = Array.from(new Set((running[entry.id] ?? []).map(window => window.pid)
+            .filter(pid => Number.isInteger(pid) && pid > 0))).sort((a, b) => a - b);
+        return Program.drawer({
+            name: entry.name,
+            usage: Program.usage(treesOf(pids)),
+            places: (running[entry.id] ?? [])
+                .map(window => Niri.workspaces[window.workspace_id]?.idx)
+                .filter(place => place !== undefined),
+            playing: player && player.trackTitle !== "" ? nowPlaying(player) : "",
+            given: hooked("programFacts", entry.id),
+            types: types ?? [],
+            endings: mimeEndings,
+            categories: entry.categories,
+            command: entry.command,
+            id: entry.id,
+            comment: entry.comment
+        }, id => Words.name(`applications:${id}`), Words.of("applications").said);
+    }
+
+    // The kinds each program's desktop file says it opens, by its id, and
+    // what each kind's files end in, from shared-mime-info's globs, read
+    // the first time any drawer asks. The first desktop file and globs
+    // found along the data folders are the ones the desktop reads.
+    property var desktopTypes: ({})
+    property var desktopAsked: ({})
+    property var mimeEndings: ({})
+    readonly property var dataFolders: [Quickshell.env("XDG_DATA_HOME")
+        || `${Quickshell.env("HOME")}/.local/share`]
+        .concat((Quickshell.env("XDG_DATA_DIRS") || "/usr/local/share:/usr/share").split(":"))
+        .filter(folder => folder !== "")
+
+    function firstRead(file) {
+        for (const folder of dataFolders) {
+            desktopProbe.path = `${folder}/${file}`;
+            const text = read(desktopProbe);
+            if (text !== "")
+                return text;
+        }
+        return "";
+    }
+
+    function readDesktop(id) {
+        if (Object.keys(mimeEndings).length === 0)
+            mimeEndings = Program.endings(firstRead("mime/globs2"));
+        desktopTypes = Object.assign({}, desktopTypes,
+            { [id]: Program.mimeTypes(firstRead(`applications/${id}.desktop`)) });
+    }
+
+    FileView {
+        id: desktopProbe
+        blockLoading: true
+        printErrors: false
     }
 
     // Its streams open to play sound through, by the name each gives, as
@@ -680,8 +756,44 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.recents.forget();
+                provider.treesWanted = [];
+            }
+        }
+    }
+
+    // What a program's processes use is the machine daemon's (modules/
+    // machine), a `tree:<pid>` for each of its windows' processes, with
+    // all each started counted in. The daemon reads a tree only while it's
+    // watched, so the drawer names its pids just after it first asks, and
+    // they're watched over a connection of their own only while the
+    // launcher is open; closing it closes the connection, which ends the
+    // watch. Moving to another program's drawer watches its pids instead.
+    property var treesWanted: []
+
+    function treesOf(pids) {
+        if (JSON.stringify(pids) !== JSON.stringify(treesWanted))
+            Qt.callLater(() => {
+                provider.treesWanted = pids;
+            });
+        const watch = trees.item;
+        return watch && watch.revision >= 0
+            ? pids.map(pid => watch.held[`tree:${pid}`] ?? null) : [];
+    }
+
+    LazyLoader {
+        id: trees
+
+        active: provider.treesWanted.length > 0 && (provider.launcher?.open ?? false)
+
+        Daemon {
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+            kind: "tree"
+            live: false
+            ahead: provider.treesWanted.map(pid => `tree:${pid}`)
+            keptThroughGap: false
+            answersWhole: true
         }
     }
 
@@ -731,6 +843,10 @@ Provider {
             ask: "which?",
             nested: true,
             empty: waiting ? "\u2026" : words.empty,
+            // Its verbs are the same rows as its targets, as People's
+            // Recent's are, so it steps in inside a program whose step
+            // lists a thing's verbs, as Tuple's does, holding only acts.
+            verbs: () => provider.kept(entry).map(one => provider.made(entry, one)),
             targets: () => provider.kept(entry).map(one => provider.made(entry, one))
         })];
     }
@@ -1268,12 +1384,13 @@ Provider {
         });
         row.weight = provider.weight / 2;
         row.sinks = true;
-        // One that asks, as Join by Code does, goes to its ask inside the
-        // program on Return and the right arrow alike, since what it asks
-        // for is typed there. Going there changes nothing yet, so Return
-        // from the find goes at once rather than landing, though its verb,
-        // as join, may be one Catalogue.js guesses at.
-        if (act.given)
+        // One that asks, as Join by Code does for words and Neovim's Open
+        // a File by Name for a choice, goes to its ask inside the program
+        // on Return and the right arrow alike, since what it asks for is
+        // typed or chosen there. Going there changes nothing yet, so
+        // Return from the find goes at once rather than landing, though
+        // its verb, as join, may be one Catalogue.js guesses at.
+        if (act.given || act.targets)
             return Object.assign(row, {
                 trail: trail.concat([act.key]),
                 spot: "",
@@ -1316,6 +1433,8 @@ Provider {
                 // Then the action's words are what it's called, and count as
                 // its name, as a collection's do (Launcher.qml).
                 named: binds.length > 0,
+                // Everything it is and does, under the row (Program.js).
+                drawer: () => provider.programDrawer(entry),
                 below: below,
                 verbs: () => provider.controls(entry, start, below),
                 under: () => provider.under(entry),

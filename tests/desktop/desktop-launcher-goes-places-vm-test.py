@@ -891,8 +891,11 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
     # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26),
-    # and People after Programs (RSCH-20261028-2NK1E5).
-    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
+    # People after Programs (RSCH-20261028-2NK1E5), and Passwords, a place
+    # of its own as People is, after it, on a machine with a password
+    # manager, as this one has 1Password (VKCF3Z, 22949064).
+    home = ["Now", "Agents", "Programs", "People", "Passwords", "Desktop", "Machine", "Network",
+            "Keyboard"]  # fmt: skip
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -961,8 +964,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Ctrl+Y moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    # Past Programs and People.
-    for _step in range(3):
+    # Past Programs, People and Passwords.
+    for _step in range(4):
         desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
@@ -973,7 +976,100 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
             and [row for row in shown["rows"] if row != "This Window"][:2] == ["Windows", "Screens"]
         )
     )
+    # And Return on Passwords steps into it, which is walked as far as a machine shows it.
+    # It's walked here, not in a subtest of its own, since this area holds twenty, as many as
+    # one may (docs/testing.md, Earning a Check).
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
+    desktop.previous_row()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "collection:passwords"
+    )
+    desktop.step_in("ret")
+    walk_passwords(desktop)
+
+
+def walk_passwords(desktop: Desktop) -> None:
+    """Walk Passwords, stepped into: 1Password read through its unit, and a password copied.
+
+    The passwords daemon's own unit runs 1Password's own manager, which asks a stand-in for op
+    (desktop/op-stand-in.sh), and copies through the unit's wl-copy to the session's clipboard.
+    One path through that wiring is all this walks: what the place lists, says and copies, case
+    by case, is the-passwords-show-every-figure-but-the-secret's and
+    the-passwords-place-copies-through-its-daemon-on-niri's.
+    """
+    favourite = "Lighthouse Console"
+    # Stepping in is Joel's key, so the list is asked of 1Password, through op. Until it's
+    # answered the place leads with 1Password locked, so it's opened again once it has, to
+    # stand as Joel finds it then.
+    desktop.launcher_until(lambda shown: favourite in shown["rows"])
     desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection passwords")
+    desktop.launcher_ready()
+    # The favourite leads, then what changed lately, newest first, its username at its side and
+    # its drawer out, saying its vault and its kind above its title.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:3] == [favourite, "GitHub", "Bank Card"]
+            and (shown["selected"] or {}).get("name") == favourite
+            and shown["drawer"]["shown"]
+            and shown["drawer"]["eyebrow"] == "in Keeping \u00b7 login"
+        )
+    )
+    assert desktop.showing()["selected"]["side"] == "keeper", desktop.showing()["selected"]
+    desktop.shoot("launcher-passwords-place")
+    # Stepping into it reads it in full, so its one-time code is there among its acts.
+    desktop.follow()
+    acts = [
+        "Copy the Password",
+        "Copy the One-Time Code",
+        "Copy the Username",
+        "Open the Website",
+        "Show in 1Password",
+        "Copy the Link",
+    ]
+    desktop.launcher_until(lambda shown: shown["rows"] == acts)
+    desktop.shoot("launcher-passwords-acts")
+    # Back on its row, its drawer says what reading it in full told, first: its website sent
+    # in the clear as its health, its weak password as its strength, and never its secret.
+    desktop.step_out()
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == favourite
+            and shown["drawer"]["shown"]
+            and "Health" in shown["drawer"]["drawnFacts"]
+        )
+    )
+    drawer = desktop.showing()["drawer"]
+    facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
+    assert list(facts)[:3] == ["Health", "Strength", "One-Time Code"], facts
+    assert (facts["Health"], facts["Strength"]) == ("unsecured website", "weak"), facts
+    assert "Password" not in facts, facts
+    # Its drawer may be taller than the card, so the keys go into it and to its last line,
+    # for the shot to hold all of it, and come back.
+    machine = desktop.machine
+    machine.send_key("ctrl-w")
+    machine.send_key("l")
+    desktop.launcher_until(lambda shown: shown["drawer"]["keys"])
+    top = desktop.showing()["drawer"]["cursor"]
+    machine.send_key("shift-g")
+    desktop.launcher_until(lambda shown: shown["drawer"]["cursor"] != top)
+    desktop.shoot("launcher-passwords-entry")
+    machine.send_key("ctrl-w")
+    machine.send_key("h")
+    desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
+    # Its Return copies its password and the launcher goes, as every copy does, so it pastes
+    # at once, the margin wearing the clipboard's mark till it clears.
+    since = desktop.mark()
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.reported("holds margin ", lambda marks: "clipboard" in marks.split(), since)
+    desktop.shoot("margin-password-copied")
+    machine.wait_until_succeeds(
+        desktop.in_session("wl-paste --no-newline | grep -qx stand-in-password"),
+        timeout=dt.timedelta(seconds=30),
+    )
+    assert "stand-in-password" not in json.dumps(desktop.showing())
 
 
 # The programs using the processors and the memory are read as the

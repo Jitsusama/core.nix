@@ -552,6 +552,16 @@ Provider {
         return place?.all.find(row => row.key === fact.entry.mark) ?? null;
     }
 
+    // The drawer of a place's row a piece names as its own (Piece.qml's
+    // drawnBy), as that place draws it, or none while it doesn't list it:
+    // a place keeps its rows in `all` where it works them out, as Sound
+    // does, else in a provider's `things`, as Cameras does.
+    function borrowed(drawnBy) {
+        const place = source(drawnBy.place);
+        const row = (place?.all ?? place?.things ?? []).find(each => each.key === drawnBy.key);
+        return row?.drawer?.() ?? null;
+    }
+
     function made(fact) {
         const piece = fact.piece;
         // Every act a piece has, where it keeps more than its notice can
@@ -584,6 +594,9 @@ Provider {
                 void drawnClock.date;
                 return piece.drawer({ lookups: settings.lookups !== false });
             }
+        } : piece.drawnBy ? {
+            thing: true,
+            drawer: () => provider.borrowed(piece.drawnBy)
         } : {};
         return member(Object.assign({
             key: `on:${fact.entry.mark}`,
@@ -594,6 +607,7 @@ Provider {
                 : piece.actions[0].verb ?? piece.actions[0].name.toLowerCase(),
             name: piece.title,
             side: piece.value,
+            sideItems: piece.valueItems ?? [],
             counts: piece.counts ?? undefined,
             // What it holds, after its name, as a place's row says what
             // it holds, while its side says only how it stands (VKCF3Z,

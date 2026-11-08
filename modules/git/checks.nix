@@ -33,7 +33,7 @@ onLinux {
       ]);
     in
     pkgs.runCommandLocal "git-settings-stay-writable" { nativeBuildInputs = [ pkgs.git ]; } ''
-      ${lib.getExe pkgs.bash} ${../../tests/git-settings-stay-writable.sh} \
+      ${lib.getExe pkgs.bash} ${./tests/git-settings-stay-writable.sh} \
         ${home.home-files} ${home.home.activationPackage}/activate \
         ${lib.escapeShellArgs [
           home.home.homeDirectory

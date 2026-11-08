@@ -89,6 +89,56 @@ pub fn kitty_socket(pid: u32, cmdline: &[String]) -> String {
     given.unwrap_or_else(|| format!("unix:@kitty-{pid}"))
 }
 
+/// The process group a process is in, from its `stat` line in /proc, or
+/// None once it's gone. Its name is in brackets and may hold anything, so
+/// the fields are read after the last bracket: its state, its parent, then
+/// its group.
+#[must_use]
+pub fn group_of(stat: &str) -> Option<u64> {
+    let (_, rest) = stat.rsplit_once(')')?;
+    rest.split_whitespace().nth(2)?.parse().ok()
+}
+
+/// A kitty's `ls` with each process in front in each of its windows given
+/// its group (`pgrp`, by `group`), so what Joel ran, the group's leader,
+/// is told from what it started, which kitty can't: process ids wrap, so
+/// the lowest isn't always the first.
+pub fn with_groups(listed: &mut Value, group: impl Fn(u64) -> Option<u64>) {
+    let windows = listed
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+        .filter_map(|os| os["tabs"].as_array_mut())
+        .flatten()
+        .filter_map(|tab| tab["windows"].as_array_mut())
+        .flatten();
+    for window in windows {
+        for process in window["foreground_processes"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+        {
+            if let Some(pgrp) = process["pid"].as_u64().and_then(&group) {
+                process["pgrp"] = json!(pgrp);
+            }
+        }
+    }
+}
+
+/// Each kitty process niri has a window of, once, lowest first: niri lists
+/// a kitty once a window, and one kitty holds many.
+#[must_use]
+pub fn kitty_pids(niri: &[Value]) -> Vec<u32> {
+    let mut pids: Vec<u32> = niri
+        .iter()
+        .filter(|window| window["app_id"] == "kitty")
+        .filter_map(|window| window["pid"].as_u64()?.try_into().ok())
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
 /// Every file a Neovim has open in a kitty window, from niri's windows and
 /// each kitty's `ls`, by its process. A kitty window is niri's by its
 /// process and the title of its active tab, which kitty titles the window
@@ -231,6 +281,40 @@ mod tests {
             "user_vars": vars,
             "foreground_processes": [{ "cmdline": [program, "--flag"] }]
         })
+    }
+
+    #[test]
+    fn a_process_group_is_read_past_its_name() {
+        assert_eq!(group_of("42 (pi) S 1 42 42 0 -1"), Some(42));
+        assert_eq!(group_of("43 (a (b) c) R 42 40 40 0"), Some(40));
+        assert_eq!(group_of("44 (gone"), None);
+        assert_eq!(group_of(""), None);
+    }
+
+    #[test]
+    fn each_process_in_front_is_given_its_group() {
+        let mut listed = json!([{ "tabs": [{ "windows": [{ "foreground_processes": [
+            { "pid": 7, "cmdline": ["pi"] },
+            { "pid": 3, "cmdline": ["git-engine"] },
+            { "pid": 9, "cmdline": ["gone"] }
+        ] }] }] }]);
+        with_groups(&mut listed, |pid| (pid != 9).then_some(7));
+        let processes = &listed[0]["tabs"][0]["windows"][0]["foreground_processes"];
+        assert_eq!(processes[0]["pgrp"], 7);
+        assert_eq!(processes[1]["pgrp"], 7);
+        assert!(processes[2].get("pgrp").is_none());
+    }
+
+    #[test]
+    fn each_kitty_is_asked_once_however_many_windows_it_has() {
+        let niri = [
+            json!({ "id": 31, "pid": 11, "app_id": "kitty" }),
+            json!({ "id": 32, "pid": 10, "app_id": "kitty" }),
+            json!({ "id": 33, "pid": 11, "app_id": "kitty" }),
+            json!({ "id": 34, "pid": 12, "app_id": "google-chrome" }),
+            json!({ "id": 35, "app_id": "kitty" }),
+        ];
+        assert_eq!(kitty_pids(&niri), [10, 11]);
     }
 
     #[test]

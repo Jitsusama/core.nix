@@ -529,6 +529,14 @@ pub struct Speed {
     pub up_mbps: Option<f64>,
 }
 
+/// A device a profile lists, as eero's profile names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Member {
+    pub mac: String,
+    pub name: Option<String>,
+    pub kind: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Profile {
     pub id: String,
@@ -537,6 +545,11 @@ pub struct Profile {
     pub paused: Option<bool>,
     /// Its devices, by hardware address, on now or not.
     pub devices: Vec<String>,
+    /// Its devices as the profile names them, in the same order, so one
+    /// that isn't on now, which `devices` of the model doesn't hold, is
+    /// still named.
+    #[serde(default)]
+    pub members: Vec<Member>,
     /// Whether it's eero's default profile.
     #[serde(default)]
     pub default: Option<bool>,

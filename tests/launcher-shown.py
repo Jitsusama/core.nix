@@ -43,17 +43,11 @@ OTHER_SENSE = {
     "drive:place:drives": "Google Drive's shared drives, as Google names them, not disks",
     "verb:drive:open": "opening in Google Drive, as Google names its file store",
     "power:limit": "a battery's charge limit, not an allowance",
+    "shortcuts:google-drive": "Google Drive's keys, as Google names its file store, not a disk",
 }
 
 # Things waiting on a rename, each with the quest that owns it.
-WAITING: dict[str, str] = {
-    "verb:calendar:see": "Show in Calendar, QEST-20261023-Y9XISP",
-    "verb:notices:all": "its verb show, QEST-20261023-Y9XISP",
-    "waits:see:cpu": "Show What's Using the Processor, QEST-20261023-Y9XISP",
-    "waits:see:disk": "Show What's Filling the Disk, QEST-20261023-Y9XISP",
-    "waits:see:memory": "Show What's Using Memory, QEST-20261023-Y9XISP",
-    "waits:work": "its verb show, QEST-20261023-Y9XISP",
-}
+WAITING: dict[str, str] = {}
 
 
 def shown(entry: dict[str, object]) -> Iterator[str]:

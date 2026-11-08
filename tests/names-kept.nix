@@ -13,6 +13,7 @@
     "jitsusama.backlight" = "the backlight program's options, for a screen's brightness";
     "jitsusama.kernel.cpu" = "the CPU Clang's -march and -mtune name, in Clang's word";
     "jitsusama.kernel.packageOverlays" = "an overlay is Nix's, not a meter";
+    "jitsusama.keys.google-drive" = "Google Drive's keys, as Google names its file store, not a disk";
     "jitsusama.theme.icons" = "the icon theme is GTK's, named as it names it";
     "jitsusama.theme.palette" = "a theme's palette is its colours, not the launcher";
     "jitsusama.theme.syntax.operator" = "an operator is a code token, such as =, not a person";
@@ -26,6 +27,5 @@
 
   # Names waiting on a rename, each with the quest that owns it.
   waiting = {
-    "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
   };
 }

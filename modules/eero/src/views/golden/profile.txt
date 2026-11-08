@@ -8,14 +8,14 @@ default   no
 traffic   0 B down  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀   0 B up  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
 devices   10 · 0 on now
 
-hardware           device      node  address
-02:00:00:00:00:2b  not on now
-02:00:00:00:00:2c  not on now
-02:00:00:00:00:2d  not on now
-02:00:00:00:00:2e  not on now
-02:00:00:00:00:2f  not on now
-02:00:00:00:00:30  not on now
-02:00:00:00:00:31  not on now
-02:00:00:00:00:32  not on now
-02:00:00:00:00:33  not on now
-02:00:00:00:00:34  not on now
+hardware           device             node        address
+02:00:00:00:00:2b  phone 3            not on now
+02:00:00:00:00:2c  tablet 2           not on now
+02:00:00:00:00:2d  phone 4            not on now
+02:00:00:00:00:2e  tablet 2           not on now
+02:00:00:00:00:2f  laptop computer 3  not on now
+02:00:00:00:00:30  laptop computer 4  not on now
+02:00:00:00:00:31  laptop computer 5  not on now
+02:00:00:00:00:32  phone 5            not on now
+02:00:00:00:00:33  tablet 2           not on now
+02:00:00:00:00:34  laptop computer 6  not on now

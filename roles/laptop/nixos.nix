@@ -5,13 +5,15 @@
 # once it's left idle on battery, and a cable plugged back in that wakes it.
 # It hibernates with a fast compressor for its image. A paired Bluetooth
 # keyboard types at its disk prompt. Each account can read the home
-# network's eero, at home or away.
+# network's eero, at home or away. Any of his laptops can revive or
+# restore an Apple silicon Mac that won't start, over a USB-C cable.
 { nixosModules, homeModules }:
 {
   imports = [
     nixosModules.base
     nixosModules.bluetooth-disk-prompt
     nixosModules.hibernate
+    nixosModules.idevicerestore
     nixosModules.idle-sleep
     nixosModules.keyd
     nixosModules.lid

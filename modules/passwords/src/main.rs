@@ -484,12 +484,14 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             json!({"id": id, "records": lock(shared).held.search(&words, limit)})
         }
         Ask::Reveal { id, key, detail } => match secret(shared, &key, detail.as_deref()) {
-            Ok((value, label)) => json!({"id": id, "value": value, "detail": label}),
+            Ok(secret) => secret.lasting(json!({"id": id, "value": secret.value,
+                                                "detail": secret.label})),
             Err((code, message)) => error(&id, code, &message),
         },
         Ask::Copy { id, key, detail } => match secret(shared, &key, detail.as_deref()) {
-            Ok((value, label)) => match copy(shared, &value) {
-                Ok(clears) => json!({"id": id, "copied": true, "detail": label, "clears": clears}),
+            Ok(secret) => match copy(shared, &secret.value) {
+                Ok(clears) => secret.lasting(json!({"id": id, "copied": true,
+                                                    "detail": secret.label, "clears": clears})),
                 Err(why) => error(&id, "refused", &why),
             },
             Err((code, message)) => error(&id, code, &message),
@@ -605,13 +607,37 @@ fn held_records(shared: &Shared, id: &Value, keys: &[String]) -> Value {
     json!({"id": id, "records": records, "sources": daemon.held.standings()})
 }
 
+/// A detail's value as its manager revealed it, its label, and, for a
+/// one-time code, its period and the seconds left in it. Not `Secret`,
+/// which names which way the command sends one.
+struct Revealed {
+    value: String,
+    label: String,
+    lasts: Option<(Value, Value)>,
+}
+
+impl Revealed {
+    /// An answer with how long a one-time code lasts beside it, so a
+    /// client can say when the code it was given lapses.
+    fn lasting(&self, mut answer: Value) -> Value {
+        if let Some((period, left)) = &self.lasts {
+            answer["period"] = period.clone();
+            answer["left"] = left.clone();
+        }
+        answer
+    }
+}
+
 /// One detail's value and its label, its secret included, asked of its
-/// manager; the password when none is named. Never kept.
+/// manager; the password when none is named. A one-time code's detail
+/// gives the code it makes now, asked as `code` is, never its seed: the
+/// seed makes every code after, so it's a secret above the password's,
+/// and nothing Joel does with a code needs it. Never kept.
 fn secret(
     shared: &Shared,
     key: &str,
     wanted: Option<&str>,
-) -> Result<(String, String), (&'static str, String)> {
+) -> Result<Revealed, (&'static str, String)> {
     let Some((manager, entry)) = named(key) else {
         return Err(("refused", format!("{key} isn't an entry's key")));
     };
@@ -622,7 +648,7 @@ fn secret(
     {
         let _ = get(shared, &Value::Null, &[key.to_owned()], true, PATIENCE);
     }
-    let (detail, label) = {
+    let (detail, label, coded) = {
         let daemon = lock(shared);
         let Some(held) = daemon.held.get(key) else {
             return Err(("refused", format!("{key} isn't held")));
@@ -641,8 +667,26 @@ fn secret(
             .and_then(Value::as_str)
             .unwrap_or(&id)
             .to_owned();
-        (id, label)
+        let coded = detail.get("type").and_then(Value::as_str) == Some("code");
+        (id, label, coded)
     };
+    if coded {
+        let answer = ask_of(
+            shared,
+            manager,
+            asking("code", &[("entry", json!(entry))]),
+            PATIENCE * 6,
+        )?;
+        let Some(code) = answer.get("code").and_then(Value::as_str) else {
+            return Err(("refused", "its manager gave no code".to_owned()));
+        };
+        let lasts = |name: &str| answer.get(name).cloned().unwrap_or(Value::Null);
+        return Ok(Revealed {
+            value: code.to_owned(),
+            label,
+            lasts: Some((lasts("period"), lasts("left"))),
+        });
+    }
     let answer = ask_of(
         shared,
         manager,
@@ -653,7 +697,11 @@ fn secret(
         PATIENCE * 6,
     )?;
     match answer.get("value").and_then(Value::as_str) {
-        Some(value) => Ok((value.to_owned(), label)),
+        Some(value) => Ok(Revealed {
+            value: value.to_owned(),
+            label,
+            lasts: None,
+        }),
         None => Err(("refused", "its manager gave no value".to_owned())),
     }
 }

@@ -65,7 +65,9 @@
 # Each file it's started with is said to the desktop's list of files opened
 # lately (../open-with/says-what-it-opens.nix), and each reader keeps the
 # file it shows under the state home's reader/showing, so its Recent in the
-# launcher is led by the files open now.
+# launcher is led by the files open now. While the clipboard holds a
+# markdown file's path, Read the Copied Markdown opens it from the
+# launcher (ReaderProgram.qml).
 {
   config,
   lib,
@@ -405,6 +407,7 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/providers.nix
     ../quickshell/recents.nix
     ../theme/home.nix
   ];
@@ -437,5 +440,14 @@ in
     # and the reader is a page, as the key language has it.
     jitsusama.keys.reader = keys;
     jitsusama.surfaces.reader = [ "page" ];
+
+    # The reader's own act in the launcher, reading the markdown file whose
+    # path was copied, after every other provider, as it adds no rows of
+    # its own.
+    jitsusama.quickshell.launcher.providers.reader = {
+      order = 52;
+      source = ./ReaderProgram.qml;
+      reader = "${reader}/bin/reader";
+    };
   };
 }

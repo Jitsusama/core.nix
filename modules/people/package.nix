@@ -13,7 +13,9 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      ./tests
+      # The crate's own tests, and not the QML case beside them, which the
+      # shell's engine runs (checks.nix).
+      ./tests/daemon.rs
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;

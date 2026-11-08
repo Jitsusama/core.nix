@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, Search.js, LineEditing.js, Operators.js,
-// Finding.js and Confirm.js beside this file and runs
+// ListedKeys.js, DrawerPage.js, Search.js, Reading.js, LineEditing.js,
+// Operators.js, Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
@@ -165,7 +165,7 @@ QtObject {
             { from: 0, to: -1 });
 
         // Rows and what can be done to them, as the launcher's providers
-        // make them: a window, whose Close ends it and whose Copy Title
+        // make them: a window, whose Close ends it and whose Copy the Title
         // copies; an answer's row, which is a copy itself; an act that
         // ends, as a step into a window lists it; and one with neither.
         const run = () => {};
@@ -197,7 +197,7 @@ QtObject {
         holds("and a Close as it runs", Operators.doing(close), run);
         holds("an ending action with nothing to do ends nothing",
             Operators.endingOf({ key: "verb:close", act: "ending" }, []), null);
-        holds("a window's copy is its Copy Title",
+        holds("a window's copy is its Copy the Title",
             Operators.copyOf(window, actions(window), copies), title);
         holds("an answer's row is its own copy", Operators.copyOf(answer, [], copies), answer);
         holds("a row with no copy has none", Operators.copyOf(bare, [], copies), null);
@@ -997,6 +997,54 @@ QtObject {
         ];
         for (const [what, fact, script, want] of cases)
             holds(`a drawer sets ${what} in its face`, Page.faceOf(fact, script), want);
+    }
+
+    // A value given as items laid on lines no wider than the drawer's
+    // measure, each letter ten wide here: wrapped between items, never
+    // inside one, the dot ending the line it leaves; a path too wide for a
+    // line of its own giving way from its middle; any other item running on
+    // (VKCF3Z, 2026-11-08: nothing draws past its frame).
+    function drawerValueLines(holds) {
+        const width = text => text.length * 10;
+        const disk = [
+            { said: "/nix +9.66 GB", path: "/nix" },
+            { said: "/var +537 MB", path: "/var" }
+        ];
+        const firefox = "/run/current-system/sw/bin/firefox";
+        const command = [{ said: firefox, path: firefox }, { said: "--private-window" }];
+        const store = "/nix/store/abc/def";
+        const cases = [
+            ["items that fit share a line", disk, " \u00b7 ", 400,
+                ["/nix +9.66 GB \u00b7 /var +537 MB"]],
+            ["items too wide together wrap between them, the dot ending the first", disk,
+                " \u00b7 ", 150, ["/nix +9.66 GB \u00b7", "/var +537 MB"]],
+            ["a command's arguments wrap at the space between them, a path from its middle",
+                command, " ", 200, ["/\u2026/firefox", "--private-window"]],
+            ["a path inside an item gives way and leaves the rest whole",
+                [{ said: `${store} +9.66 GB`, path: store }], " \u00b7 ", 150,
+                ["/\u2026/def +9.66 GB"]],
+            ["an item naming no path runs on by its words",
+                [{ said: "--a-very-long-argument" }], " ", 100, ["--a-very-long-argument"]],
+            ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]]
+        ];
+        for (const [what, items, between, wide, want] of cases)
+            holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
+    }
+
+    // How tall a drawer's preview stands, on a pitch of 24: a picture its
+    // own height, so the facts start the groups' gap below it rather than
+    // below a band rounded up to the pitch (VKCF3Z, 2026-11-08); lines
+    // whole lines of the pitch.
+    function drawerPreviewHeights(holds) {
+        // [what, the picture's height, lines of words, what it stands]
+        const previews = [
+            ["a picture shorter than a pitch line stands its own height", 12, 0, 12],
+            ["a picture stands its own height, never rounded up to the pitch", 100.2, 0, 101],
+            ["lines stand whole lines of the pitch", 0, 3, 72],
+            ["nothing yet stands nothing", 0, 0, 0]
+        ];
+        for (const [what, picture, lines, want] of previews)
+            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, 24), want);
     }
 
     function drawerRefusals(holds) {
@@ -1884,6 +1932,8 @@ QtObject {
         drawerVisual(holds);
         drawerRefusals(holds);
         drawerFaces(holds);
+        drawerValueLines(holds);
+        drawerPreviewHeights(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

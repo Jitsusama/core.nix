@@ -9,8 +9,10 @@
 // groups, Code's each a dozen or fewer; and the window the launcher opened
 // over, as the launcher says it as Shortcuts opens, puts its program's
 // layers first, its own chord opening on the first of them, until the
-// launcher closes; and a key that sends its own modifiers, as the Copilot
-// key does, is said as the one key. It exits 0 once every case holds, and otherwise 1, saying which
+// launcher closes; a program's desktop entry holds its own layer, one run
+// in the terminal, as Neovim or btop is, by its entry rather than its
+// window; and a key that sends its own modifiers, as the Copilot key
+// does, is said as the one key. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -66,7 +68,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
+                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -190,7 +192,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
+                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -198,11 +200,11 @@ ShellRoot {
                 lead ? `${lead.name} ${lead.note}` : "nothing");
             expect("its chords searched first", String(map.all[0].key)
                 .startsWith("shortcut:neovim:"), map.all[0].key);
-            // A program's own layer, by its desktop entry: Neovim's, though
-            // its windows are the terminal's, a window's own by its app id,
-            // and the desktop's for one with none; Neovim's layer row says
-            // whose it is.
-            for (const entry of [["nvim", "neovim"], ["kitty", "terminal"],
+            // A program's own layer, by its desktop entry: Neovim's and
+            // btop's, though their windows are the terminal's, a window's own
+            // by its app id, and the desktop's for one with none; Neovim's
+            // and btop's layer rows say whose they are.
+            for (const entry of [["nvim", "neovim"], ["btop", "btop"], ["kitty", "terminal"],
                 ["swayimg", "swayimg"], ["google-chrome", "chrome"], ["slack", "slack"],
                 ["virt-manager", "desktop"]])
                 expect(`${entry[0]}'s own layer`, map.ofProgram(entry[0]) === entry[1],
@@ -210,6 +212,9 @@ ShellRoot {
             const neovimKeys = map.layerOf("nvim");
             expect("nvim holds Neovim's keys", neovimKeys !== null && neovimKeys.layer === "neovim",
                 neovimKeys ? neovimKeys.layer : "nothing");
+            const btopKeys = map.layerOf("btop");
+            expect("btop holds its own keys", btopKeys !== null && btopKeys.layer === "btop",
+                btopKeys ? btopKeys.layer : "nothing");
             over("kitty", "\u03C0 - core.nix");
             expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
                 === "Agents, Terminal, Desktop", names(map.everything()).join(", "));
@@ -246,9 +251,29 @@ ShellRoot {
             expect("over the browser, its own", map.leading()?.name === "Browser"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("kitty", "~");
+            // One of Google's programs leads with its own keys, then the
+            // browser's, in a window of its own or in a tab.
             over("chrome-calendar.google.com__calendar_r-Default", "Calendar");
-            expect("over a site's window, the browser's", map.leading()?.name === "Browser"
-                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            expect("over Calendar's window, its own, then the browser's",
+                names(map.everything()).slice(0, 3).join(", ") === "Calendar, Browser, Desktop",
+                names(map.everything()).join(", "));
+            over("google-chrome", "Notes - Google Docs - Google Chrome");
+            expect("over a Docs tab, its own, then the browser's",
+                names(map.everything()).slice(0, 3).join(", ") === "Docs, Browser, Desktop",
+                names(map.everything()).join(", "));
+            // Mail says what it needs to work, leading or not, and on its page.
+            over("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail");
+            const mail = map.everything()[0];
+            const needs = "works once Gmail's keyboard shortcuts are on";
+            expect("leading, Mail says what it needs", mail.name === "Mail" && mail.note === needs,
+                `${mail.name}: ${mail.note}`);
+            expect("and on its page", mail.standing() === needs, mail.standing());
+            over("kitty", "~");
+            const placed = map.everything().find(row => row.name === "Mail");
+            expect("not leading, still", placed.note === needs, placed.note);
+            const mailKeys = map.layerOf("google-mail");
+            expect("Mail holds its keys", mailKeys !== null && mailKeys.layer === "google-mail",
+                mailKeys ? mailKeys.layer : "nothing");
             over("slack", "general (Channel) - Slack");
             expect("over Slack, its own", map.leading()?.name === "Slack"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));

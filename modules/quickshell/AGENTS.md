@@ -29,7 +29,9 @@ machine, one path through each connection.
 - **Events, never polling.** `Niri.qml` is the shell's one connection to
   niri, which every surface shares: a socket for asking and one hearing
   niri's events. The rest listen on D-Bus, PipeWire or a native helper's
-  socket, and nothing spawns a process to ask.
+  socket, and nothing spawns a process to ask. What the clipboard holds
+  now is heard once, through one `wl-paste --watch` (`Copied.qml`), which
+  everything acting on a copy reads rather than watching again.
 - **Built once, then shown.** A surface is made at start and shown or hidden,
   so it's on screen the frame after its chord.
 - **Programs through niri.** The shell asks niri to start a program, never
@@ -44,6 +46,12 @@ machine, one path through each connection.
   shell reopening them by itself after a reboot was undone on 2026-11-07
   ("no, i never wanted them automatic"). A session that dies while the
   machine is up is cadence's to start again, not the shell's.
+- **Agents come from sources.** Each kind of agent the machine runs is a
+  source behind one shape (`AgentSources`), so Agents is one place whatever
+  runs its sessions. pi, read from the realm's mycelium node, is the first,
+  in `PiSource`; another agent is a source beside it, named in
+  `AgentSources.sources`. `Sessions` keeps what the shell does with pi's
+  sessions here: their windows, reopening and notices.
 
 ## Layout
 
@@ -75,6 +83,11 @@ machine, one path through each connection.
   its catalogue, `qs ipc call launcher list`, `run` and `runWith`, which
   walks the same rows Return takes by `launcher/Catalogue.js`'s rules, so
   pi-ask acts by what the launcher holds and gains whatever it gains.
+  What it shows is asked the same way, by `show`, walked by
+  `launcher/Showing.js`'s rules.
+- [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
+  place, row or drawer the launcher holds, as text or as JSON, from the
+  shell's `show`, so every integration has a command line at once.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.
@@ -151,6 +164,7 @@ another.
 [home]: home.nix
 [record]: record-window/
 [whereabouts]: whereabouts/
+[terminal]: in-a-terminal/
 [launcher]: launcher/
 [maths]: maths/
 [pieces]: pieces/

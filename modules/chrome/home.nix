@@ -1,14 +1,20 @@
 # Chrome's keys, for the launcher to list over its windows: the browser's
 # own, and those of a window it opens for one site, such as Calendar or
-# Mail, whose app id names the site (launcher/KeyGroups.js). Chrome comes
+# Mail, whose app id names the site (launcher/KeyLayers.js). Chrome comes
 # from wherever the machine gets it, so this lists its keys and installs
 # nothing; a machine with Chrome imports it. Chrome takes no settings for
 # its keys, so these are its own, which mostly speak the keyboard's
 # language already (docs/design.md, The Keyboard): T tabs, W closes, a
 # number is that tab, and the arrows go back and forward. Its Recent in the
 # launcher lists the sites it visited lately, read from its history as
-# Chrome is stepped into (recent-sites).
-{ lib, pkgs, ... }:
+# Chrome is stepped into (recent-sites), and its own acts there open a
+# repository's page on GitHub or the link copied (ChromeProgram.qml).
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   grouped = group: map (key: key // { inherit group; });
 
@@ -116,6 +122,7 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/providers.nix
     ../quickshell/recents.nix
   ];
 
@@ -139,4 +146,22 @@ in
       ];
     }
   ];
+
+  # Chrome's own acts in the launcher (ChromeProgram.qml): Open a
+  # Repository on GitHub, through the git repositories under ~/src, which fd
+  # finds, stat dates and grep reads the remotes of, and Open the Copied
+  # Link, each in a new window. After every other provider, as it adds no
+  # rows of its own.
+  jitsusama.quickshell.launcher.providers.chrome = {
+    order = 52;
+    source = ./ChromeProgram.qml;
+    folder = "${config.home.homeDirectory}/src";
+    fd = lib.getExe pkgs.fd;
+    stat = lib.getExe' pkgs.coreutils "stat";
+    grep = lib.getExe pkgs.gnugrep;
+    command = [
+      "google-chrome-stable"
+      "--new-window"
+    ];
+  };
 }

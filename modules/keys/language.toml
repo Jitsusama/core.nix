@@ -844,8 +844,8 @@ changes = true
 undoable = true
 
 # A row's acts, each the verb on its row in lower case. A row's verb Vim
-# already has for the same thing is Vim's: Go To and Show {player} are :b,
-# to that window; Show Them, Show in Bluetooth, See It, All the Notices,
+# already has for the same thing is Vim's: Go To and Go To {player} are :b,
+# to that window; Show Them, Show in Bluetooth, Show in Calendar, All the Notices,
 # Guests and Attachments are :e, to that place; Done, Read and Clear are
 # :d, the row's ending; every Copy is :y; Save a Copy and Save Here are :w,
 # and Replace It :w!; New Window Below is :sp; Move the Meeting, Move to a
@@ -1017,7 +1017,9 @@ changes = true
 undoable = true
 
 # A new window, as Vim's :new opens one: New Window, Start a Session and
-# Wherever It Fits, and New Window Here as :new . for the folder. Two acts
+# Wherever It Fits, and New Window Here as :new . for the folder; beside
+# kitty's New Window, New Window in a Repository is :new repository and
+# SSH to a Machine :new ssh, and a machine's SSH to It is :new. Two acts
 # on one row differ by what follows the command, never by its order.
 [acts.new]
 command = "new"
@@ -1280,6 +1282,39 @@ changes = true
 ends = true
 command = "poweroff"
 short = "pow"
+kinds = ["list"]
+changes = true
+
+# A VM's own acts, each apart from the machine's so no line meant for a VM
+# can reach the machine it runs on. Started, Start It, as :boot, since
+# :start is Neovim's :startinsert: nothing is lost by it, and a system
+# VM's password, asked by polkit, is its asking, so it asks nothing more.
+# Its short form clears Neovim's :botright.
+[acts.boot]
+command = "boot"
+short = "boo"
+kinds = ["list"]
+changes = true
+guarded = true
+
+# Told to power itself off, as its power button would, Power It Off: it
+# ends what it runs, but its own system closes its programs, which ask
+# where work would be lost, as a window's do.
+[acts.off]
+ends = true
+command = "off"
+short = "off"
+kinds = ["list"]
+changes = true
+guarded = true
+
+# Its power cut, as pulling its plug would, Force It Off: whatever it
+# hadn't written is lost, so it asks once. Its short form clears Vim's
+# :for.
+[acts.forceoff]
+ends = true
+command = "forceoff"
+short = "forc"
 kinds = ["list"]
 changes = true
 

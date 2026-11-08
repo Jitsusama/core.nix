@@ -61,7 +61,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-people-are-one-person-each" { } ''
-      cp ${../../tests/person.qml} person.qml
+      cp ${./tests/person.qml} person.qml
       cp ${./Person.js} Person.js
       cp ${../quickshell/launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

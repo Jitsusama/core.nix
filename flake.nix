@@ -195,8 +195,9 @@
         inlyne = ./modules/inlyne/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
-        kitty = ./modules/kitty/home.nix;
+        kitty = moduleFrom ./modules/kitty/home.nix { inherit (self.homeModules) quickshell; };
         lag-watch = ./modules/lag-watch/home.nix;
+        libvirt = ./modules/libvirt/home.nix;
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
@@ -317,6 +318,7 @@
         hardening = ./modules/hardening/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        idevicerestore = ./modules/idevicerestore/nixos.nix;
         idle-sleep = ./modules/idle-sleep/nixos.nix;
         inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
@@ -397,6 +399,7 @@
 
         apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
           inherit nixos-apple-silicon;
+          inherit (self.nixosModules) hibernate;
         };
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
         microsoft-surface-laptop-4-1958 = ./hardware/microsoft-surface-laptop-4-1958/nixos.nix;

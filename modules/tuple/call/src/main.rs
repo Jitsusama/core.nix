@@ -27,6 +27,11 @@
 //! prints and this keeps, in `tuple-call/room` in the state folder, for
 //! the record to say from then on; until then, the record says the newest
 //! of Joel's own rooms, as Tuple's state lists them.
+//!
+//! Each call that ends and each missed is kept in Recent (recent.rs), with
+//! who rang whom where a ring answered or Joel's room opened says, and
+//! in `tuple-call/recent.jsonl` in the state folder as it changes, read
+//! back as this starts, so Joel's last calls outlive a restart.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -44,6 +49,7 @@ use serde_json::{Value, json};
 
 use tuple_call::Held;
 use tuple_call::ask::{self, Ask, KEY, VERSION, error};
+use tuple_call::recent::Recent;
 use tuple_call::stream::{self, Line};
 
 /// What follows the tuple command for its stream.
@@ -99,6 +105,9 @@ struct Daemon {
     /// When it last changed, in milliseconds since the epoch.
     heard: i64,
     since: i64,
+    /// Recent as its file last kept it, and the file.
+    saved: Recent,
+    recent: PathBuf,
 }
 
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
@@ -137,13 +146,17 @@ fn main() {
     let runtime = folder("XDG_RUNTIME_DIR", "");
     let tuples = runtime.join("tuple-0");
     let log = folder("XDG_DATA_HOME", ".local/share").join("tuple/0");
-    let room = folder("XDG_STATE_HOME", ".local/state").join("tuple-call/room");
+    let state = folder("XDG_STATE_HOME", ".local/state").join("tuple-call");
+    let room = state.join("room");
+    let recent = state.join("recent.jsonl");
     let kept = std::fs::read_to_string(&room)
         .ok()
         .map(|text| ask::link(&text).to_owned())
         .filter(|link| !link.is_empty());
     let began = now();
-    let held = Held::new(began, kept);
+    let mut held = Held::new(began, kept);
+    held.recent = Recent::read(&std::fs::read_to_string(&recent).unwrap_or_default());
+    let saved = held.recent.clone();
     let said = held.record();
     let shared: Shared = Arc::new((
         Mutex::new(Daemon {
@@ -153,6 +166,8 @@ fn main() {
             said,
             heard: began,
             since: began,
+            saved,
+            recent,
         }),
         Condvar::new(),
     ));
@@ -226,8 +241,15 @@ fn record(daemon: &Daemon) -> Value {
 }
 
 /// Tells every watch of the record, once it's no longer as last said, and
-/// wakes whatever waits on a change.
+/// wakes whatever waits on a change. Recent is kept in its file first,
+/// once it's no longer as the file holds it.
 fn changed(shared: &Shared, daemon: &mut Daemon) {
+    if daemon.held.recent != daemon.saved {
+        match write(&daemon.recent, &daemon.held.recent.lines()) {
+            Ok(()) => daemon.saved = daemon.held.recent.clone(),
+            Err(why) => eprintln!("<4>couldn't keep the calls had lately: {why}"),
+        }
+    }
     let record_now = daemon.held.record();
     if record_now != daemon.said {
         daemon.said = record_now;
@@ -281,7 +303,7 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
                 Standing::Starting
             };
             let mut daemon = lock(shared);
-            daemon.held.live = None;
+            daemon.held.follow(None, now());
             stand(&mut daemon, standing);
             changed(shared, &mut daemon);
             wait = if began.elapsed() >= FOLLOWED_FOR {
@@ -291,7 +313,7 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
             };
         } else {
             let mut daemon = lock(shared);
-            daemon.held.live = None;
+            daemon.held.follow(None, now());
             stand(&mut daemon, Standing::Starting);
             changed(shared, &mut daemon);
             wait = LOOKS_AGAIN;
@@ -344,7 +366,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 daemon.held.contacts = contacts;
                 daemon.held.personal = room;
                 if let Some(call) = call {
-                    daemon.held.live = call;
+                    daemon.held.follow(call, now());
                 }
                 let standing = if signed_in {
                     Standing::Answering
@@ -358,7 +380,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
-                daemon.held.live = call;
+                daemon.held.follow(call, now());
                 changed(shared, &mut daemon);
             }
             Line::Other => {}
@@ -410,6 +432,7 @@ fn took(shared: &Shared, lines: &[String], wake: &Sender<()>) {
     for line in lines {
         let heard = daemon.held.log.heard(line, now);
         daemon.held.miss(heard.missed);
+        daemon.held.answer(heard.answered);
         if heard.started {
             let _ = wake.send(());
         }
@@ -721,22 +744,27 @@ fn open(shared: &Shared, doing: &Doing, id: &Value) -> Value {
     keep(&doing.room, &link);
     let mut daemon = lock(shared);
     daemon.held.room = Some(link.clone());
+    // `tuple new` starts a call in Joel's room, so whoever comes to it
+    // came to his call.
+    daemon.held.began(String::new(), now());
     changed(shared, &mut daemon);
     json!({"id": id, "done": true, "link": link})
 }
 
-/// Keeps the room's link, written beside its file and moved into place so
-/// it's never read half written.
+/// Keeps the room's link.
 fn keep(room: &Path, link: &str) {
-    let written = room
-        .parent()
-        .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| {
-            let new = room.with_extension("new");
-            std::fs::write(&new, format!("{link}\n"))?;
-            std::fs::rename(&new, room)
-        });
-    if let Err(why) = written {
+    if let Err(why) = write(room, &format!("{link}\n")) {
         eprintln!("<4>couldn't keep the room's link: {why}");
     }
+}
+
+/// Writes a file of the state folder beside it and moves it into place,
+/// so it's never read half written.
+fn write(path: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(folder) = path.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    let new = path.with_extension("new");
+    std::fs::write(&new, text)?;
+    std::fs::rename(&new, path)
 }

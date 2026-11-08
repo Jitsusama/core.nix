@@ -5,6 +5,7 @@
   graphical,
   onLinux,
   pkgs,
+  shellFolderLint,
   ...
 }:
 let
@@ -43,6 +44,27 @@ let
   '';
 in
 onLinux {
+  # What Programs › kitty lists of kitty's own and what it opens is
+  # Kitty.js's and KittyOpens.js's, run in Qt's own engine over kitty's
+  # `ls` as open-now gives it, niri's windows, a ~/.ssh/config, a
+  # ~/.ssh/known_hosts, zsh's history and fd's and zoxide's lists
+  # (tests/kitty-tabs.qml).
+  kitty-lists-its-tabs =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "kitty-lists-its-tabs" { } ''
+      cp ${../../tests/kitty-tabs.qml} kitty-tabs.qml
+      cp ${./Kitty.js} Kitty.js
+      cp ${./KittyOpens.js} KittyOpens.js
+      cp ${../quickshell/launcher/Ago.js} Ago.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml kitty-tabs.qml
+      touch $out
+    '';
+
   # kitty reads back its files the same way. It warns about a setting it
   # doesn't know and refuses a value it can't parse; it doesn't check that a
   # mapped action exists.

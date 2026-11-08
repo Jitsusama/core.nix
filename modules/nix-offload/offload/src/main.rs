@@ -126,6 +126,17 @@
 //! /run/nix-offload/machines, for every build, beside the one lent, and
 //! only while they answer. Both files are read again each time the
 //! builders are named, so a switch that changes them needs no reload.
+//!
+//! Every lender proves its builder every minute with a tiny build no store
+//! holds, as src/proof.rs says, and the main one the builders beside too.
+//! A lent builder that fails two in a row is taken out of every file this
+//! lender writes and given back as lost, which ends its helper and the
+//! relay with it, so hung connections close and Nix sends their builds
+//! elsewhere, and another is asked for at once. A builder beside that
+//! fails two is left out until one passes. Each lender says how its
+//! builders stand in its folder's `health.json`. While the main lender's
+//! builder fails its proofs, or none is lent, its file for any work names
+//! the second lent builder, else the warm VM builders, that passed theirs.
 
 mod changed;
 mod decide;
@@ -133,6 +144,7 @@ mod held;
 mod journal;
 mod machines;
 mod passed;
+mod proof;
 mod queue;
 mod relay;
 mod sleep;
@@ -150,6 +162,7 @@ use std::{env, fs, thread};
 use decide::{Hours, Tick};
 use journal::{Event, Ran};
 use machines::Machines;
+use proof::{Keeper, State};
 
 /// How long a builder may take to be ready before it's given up on.
 const READY: Duration = Duration::from_mins(15);
@@ -1515,6 +1528,12 @@ fn stand(standing: Option<PathBuf>, beside: Option<PathBuf>) -> bool {
             return true;
         }
         machines.show(None);
+        proof::write(
+            Path::new(DIR),
+            None,
+            machines.beside_health().as_deref(),
+            now(),
+        );
         rest(TICK);
     }
     false
@@ -1529,7 +1548,7 @@ fn machines_of(settings: &Settings) -> Machines {
         .as_deref()
         .map_or_else(Vec::new, read_standing);
     let dir = &settings.dir;
-    Machines::new(
+    let machines = Machines::new(
         dir.join("machines"),
         dir.join("machines-with-standing"),
         dir.join("store"),
@@ -1544,7 +1563,125 @@ fn machines_of(settings: &Settings) -> Machines {
             .map_or_else(Vec::new, read_standing),
     )
     .for_anything(dir.join("machines-for-anything"))
-    .read_from(settings.standing.clone(), settings.beside.clone())
+    .read_from(settings.standing.clone(), settings.beside.clone());
+    // Only the lender for every build has others stand in for it: the
+    // rest lend only to `there`, which reads no file for any work.
+    if settings.only_there {
+        return machines;
+    }
+    let vm_dir =
+        env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
+    machines.stand_ins_from(more_dir(), vm_dirs(&vm_dir))
+}
+
+/// Prove `builder` with a tiny build when one is due, over `ssh` as
+/// `there` reaches it, or through the daemon where the helper named no
+/// store, keeping its proofs in `keeper`, which starts afresh for a
+/// builder it didn't keep: whether its last `proof::FAILS` failed.
+fn kept(
+    settings: &Settings,
+    keeper: &mut Option<Keeper>,
+    builder: &Lent,
+    at: Instant,
+    ssh: &str,
+) -> bool {
+    if keeper
+        .as_ref()
+        .is_none_or(|keeper| keeper.health.builder != builder.name)
+    {
+        *keeper = Some(Keeper::of(&builder.name));
+    }
+    let Some(keeper) = keeper.as_mut() else {
+        return false;
+    };
+    let (store, line) = (builder.store.clone(), builder.line.clone());
+    let (scratch, ssh) = (settings.dir.join("proving.d"), ssh.to_owned());
+    let was = keeper.health.state();
+    let heard = keeper.keep(at, now(), move || match store {
+        Some(store) => proof::over_ssh(&store, &scratch, &ssh, proof::WITHIN),
+        None => proof::through_daemon(&line, "nix", proof::WITHIN),
+    });
+    let name = &builder.name;
+    match heard {
+        Some(false) if !keeper.health.dropped() => {
+            eprintln!("nix-offload: {name} failed a proof; another in a row gives it back");
+        }
+        Some(true) if was == State::Failing => {
+            eprintln!("nix-offload: {name} passed its proof again");
+        }
+        _ => {}
+    }
+    keeper.health.dropped()
+}
+
+/// What's known at this tick.
+fn ticked(settings: &Settings, sleep: &mut sleep::Sleep) -> Tick {
+    let asked = there::wanted(&settings.dir);
+    Tick {
+        now: now(),
+        into_day: into_day(),
+        wants: decide::wants(
+            settings.only_there,
+            || fs::read_to_string(&settings.queue).is_ok_and(|queue| queue::wants(&queue, now())),
+            asked,
+        ),
+        asked,
+        woke: sleep.woke(now()),
+    }
+}
+
+/// Give back `builder` as `event` says: as one unanswered when its
+/// proofs in `keeper` say it failed them, keeping them for its folder to
+/// say so until another stands, else forgetting them.
+fn given_back(
+    settings: &Settings,
+    machines: &mut Machines,
+    builder: Lent,
+    event: Event,
+    keeper: &mut Option<Keeper>,
+) {
+    let unanswered = keeper
+        .as_ref()
+        .is_some_and(|keeper| keeper.health.builder == builder.name && keeper.health.dropped());
+    if unanswered {
+        give_back_unanswered(settings, machines, builder);
+    } else {
+        *keeper = None;
+        give_back(settings, machines, builder, event);
+    }
+}
+
+/// Name the one `lent`, if any, in every file a build reads, and say how
+/// it stands by the proofs `keeper` holds in `dir`'s health.json, beside
+/// the builders beside. Only its own proofs say how the one lent stands:
+/// a successor that just took over is yet to be proven.
+fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Option<&Keeper>) {
+    let health = keeper.map(|keeper| &keeper.health);
+    let state = match (lent, health) {
+        (Some(builder), Some(health)) if health.builder == builder.name => health.state(),
+        (Some(_), _) => State::Unproven,
+        (None, Some(health)) => health.state(),
+        (None, None) => State::None,
+    };
+    machines.proven(lent.map(|builder| builder.line.as_str()), state);
+    machines.show(lent.map(Lent::lending));
+    proof::write(dir, health, machines.beside_health().as_deref(), now());
+}
+
+/// Give back `builder`, which failed its last proofs, as lost: no build
+/// is sent there from now, since every file this lender writes leaves it
+/// out, and ending its helper ends the relay, closing every connection
+/// hung on it, so Nix sends those builds elsewhere. Another is asked for
+/// at once, as after any builder lost.
+fn give_back_unanswered(settings: &Settings, machines: &mut Machines, builder: Lent) {
+    eprintln!(
+        "nix-offload: {} failed {} proofs in a row, so no build goes there, its relay ends \
+         and it's given back",
+        builder.name,
+        proof::FAILS
+    );
+    machines.proven(None, State::Dropped);
+    give_back(settings, machines, builder, Event::Lost);
 }
 
 /// Whether a lender whose unit changed ends now, as `decide::restarts`
@@ -1591,22 +1728,11 @@ fn serve(settings: &Settings) -> bool {
     let mut sleep = sleep::Sleep::default();
     let mut said_superseded = false;
     let mut restarts = false;
+    // The lent builder's proofs, kept past its give-back when it failed
+    // them, so its folder says so until another stands.
+    let mut keeper: Option<Keeper> = None;
     while !ENDING.load(Ordering::SeqCst) {
-        let asked = there::wanted(dir);
-        let tick = Tick {
-            now: now(),
-            into_day: into_day(),
-            wants: decide::wants(
-                settings.only_there,
-                || {
-                    fs::read_to_string(&settings.queue)
-                        .is_ok_and(|queue| queue::wants(&queue, now()))
-                },
-                asked,
-            ),
-            asked,
-            woke: sleep.woke(now()),
-        };
+        let tick = ticked(settings, &mut sleep);
         let unreturned = give_back_unreturned(settings, lent.as_ref(), &leaving);
         let mut reached = false;
         lent = match lent.take() {
@@ -1624,10 +1750,12 @@ fn serve(settings: &Settings) -> bool {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
-                match decide::give_back(settings.hours, tick, builder.used, builder.ends, gone) {
+                let unanswered =
+                    !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
+                let (used, ends) = (builder.used, builder.ends);
+                match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
-                        let (used, ends) = (builder.used, builder.ends);
-                        give_back(settings, &mut machines, builder, event);
+                        given_back(settings, &mut machines, builder, event, &mut keeper);
                         hold = decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
@@ -1657,7 +1785,7 @@ fn serve(settings: &Settings) -> bool {
             say_others(settings);
             said_on = Some(day);
         }
-        machines.show(lent.as_ref().map(Lent::lending));
+        named(dir, &mut machines, lent.as_ref(), keeper.as_ref());
         if ends_superseded(tick.wants, reached, &mut said_superseded) {
             restarts = true;
             break;
@@ -2579,6 +2707,153 @@ exit 1
         let line = fs::read_to_string(folder.path().join("machines")).unwrap();
         assert!(line.starts_with("ssh-ng://far "), "{line}");
         end(&mut old.helper);
+    }
+
+    /// A helper that holds `lend-5` behind a relay, saying its pid in
+    /// `relay` beside it, and says each give-back in `given-back`.
+    const RELAYS: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+case "$1 $2" in
+"hold lend-5")
+  echo "store ssh-ng://far?ssh-key=/k"
+  echo "ssh-ng://far x86_64-linux /k 8 1 big-parallel - -"
+  sleep 60 &
+  echo $! > "$here/relay"
+  wait
+  ;;
+"down lend-5") echo lend-5 >> "$here/given-back"; exit 0 ;;
+esac
+exit 1
+"#;
+
+    /// Whether `keeper` says the builder is left out once the proof due at
+    /// `at` has ended, waiting at most 5 s.
+    fn proven_at(
+        settings: &Settings,
+        keeper: &mut Option<Keeper>,
+        builder: &Lent,
+        at: Instant,
+        ssh: &str,
+    ) -> bool {
+        let heard = |keeper: &Option<Keeper>| {
+            keeper.as_ref().map(|keeper| {
+                let health = &keeper.health;
+                (health.failures, health.last_success, health.last_failure)
+            })
+        };
+        let before = heard(keeper);
+        let ending = Instant::now() + Duration::from_secs(5);
+        loop {
+            let dropped = kept(settings, keeper, builder, at, ssh);
+            let now = heard(keeper);
+            if now != before && now != Some((0, None, None)) {
+                return dropped;
+            }
+            assert!(Instant::now() < ending, "no proof ended");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_lent_builder_failing_two_proofs_in_a_row_is_named_nowhere_and_given_back() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (settings, machines) = holding(folder.path(), journal);
+        executable(&settings.helper, RELAYS);
+        let mut machines = machines.for_anything(folder.path().join("machines-for-anything"));
+        let builder = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let read = |name: &str| fs::read_to_string(folder.path().join(name)).unwrap_or_default();
+        assert!(read("machines").starts_with("ssh-ng://far "));
+        assert!(read("machines-for-anything").starts_with("ssh-ng://far "));
+        let ending = Instant::now() + Duration::from_secs(5);
+        while read("relay").is_empty() && Instant::now() < ending {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let relay: i32 = read("relay").trim().parse().expect("the relay's pid");
+        // ssh as a builder out of memory answers it: never.
+        let ssh = folder.path().join("ssh");
+        executable(&ssh, "#!/bin/sh\nexit 255\n");
+        let ssh = ssh.display().to_string();
+        let mut keeper = None;
+        let began = Instant::now();
+        assert!(
+            !proven_at(&settings, &mut keeper, &builder, began, &ssh),
+            "one failure is a blip"
+        );
+        assert!(proven_at(
+            &settings,
+            &mut keeper,
+            &builder,
+            began + proof::EVERY,
+            &ssh
+        ));
+        give_back_unanswered(&settings, &mut machines, builder);
+        assert_eq!(read("machines"), "", "no build goes there");
+        assert_eq!(read("with-standing"), "");
+        assert_eq!(read("machines-for-anything"), "");
+        assert_eq!(read("store"), "");
+        assert!(proof::ends(relay), "its relay runs on");
+        assert_eq!(read("given-back"), "lend-5\n");
+        let journal = fs::read_to_string(&settings.journal).unwrap();
+        assert!(
+            journal
+                .lines()
+                .last()
+                .unwrap()
+                .contains("\"event\":\"lost\""),
+            "{journal}"
+        );
+        assert!(journal::unreturned(&journal).is_empty());
+        // Another is asked for at once, as after any builder lost.
+        let hold = decide::next_after(Event::Lost, true, 0, u64::MAX, false, 100);
+        assert_eq!(hold.until, 100);
+        let health = keeper.as_ref().map(|keeper| &keeper.health);
+        proof::write(folder.path(), health, None, 100);
+        let said: serde_json::Value =
+            serde_json::from_str(&read(proof::HEALTH)).expect("its health");
+        assert_eq!(said["builder"], "lend-5");
+        assert_eq!(said["state"], "dropped");
+        assert_eq!(said["consecutiveFailures"], 2);
+    }
+
+    #[test]
+    fn a_lent_builder_that_answers_its_proofs_stays() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (settings, mut machines) = holding(folder.path(), journal);
+        executable(&settings.helper, RELAYS);
+        let mut builder = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let ssh = folder.path().join("ssh");
+        executable(
+            &ssh,
+            "#!/bin/sh\n[ -f \"$(dirname \"$0\")/answers\" ] || exit 255\n",
+        );
+        let ssh = ssh.display().to_string();
+        let mut keeper = None;
+        let began = Instant::now();
+        assert!(!proven_at(&settings, &mut keeper, &builder, began, &ssh));
+        fs::write(folder.path().join("answers"), "").unwrap();
+        assert!(!proven_at(
+            &settings,
+            &mut keeper,
+            &builder,
+            began + proof::EVERY,
+            &ssh
+        ));
+        let health = &keeper.as_ref().expect("kept").health;
+        assert_eq!(
+            health.state(),
+            State::Passing,
+            "a failure between passes is forgotten"
+        );
+        assert!(runs(&mut builder.helper));
+        end(&mut builder.helper);
     }
 
     #[test]

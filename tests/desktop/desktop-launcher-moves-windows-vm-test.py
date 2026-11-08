@@ -1,7 +1,7 @@
 """The desktop test's launcher moves windows area.
 
-Here the launcher opens kitty, finds, frames and moves windows, goes back by Super+Tab, and
-shows each layer's shortcuts.
+Here the launcher opens kitty, lists its repositories and machines, goes to one of its tabs,
+finds, frames and moves windows, goes back by Super+Tab, and shows each layer's shortcuts.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -13,6 +13,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
@@ -169,6 +171,164 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
         desktop.in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
         timeout=dt.timedelta(seconds=10),
     )
+
+
+# What kitty's page in Programs lists beside its tabs, which the account has none of until the
+# test gives it stand-ins: the repositories under ~/src, the one zoxide saw visited last first
+# though its name sorts after, and the machines ssh's config names, the one zsh's history
+# reached most first though the config names it second and the other was reached since.
+REPOSITORIES = ("tide-tables", "sea-charts")
+MACHINES = ("ferry", "lighthouse")
+KITTY_ACTS = ("New Window in a Repository", "SSH to a Machine")
+
+# Each name is under .test, which nothing in the VM answers, and the key is no key, so nothing
+# could reach a machine even if a row were run.
+SSH_CONFIG = """\
+Host lighthouse
+    HostName lighthouse.harbour.test
+    User keeper
+    Port 2222
+
+Host ferry
+    HostName ferry.harbour.test
+    User deckhand
+    Port 2200
+"""
+KNOWN_HOSTS = "[ferry.harbour.test]:2200 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIStandInNotAKey\n"
+
+
+def kitty_stand_ins(desktop: Desktop) -> None:
+    """Give the account two repositories and two machines for kitty's page to list."""
+    now = int(desktop.as_account("date +%s"))
+    hour, day = 60 * 60, 24 * 60 * 60
+    for name in REPOSITORIES:
+        desktop.as_account(f"git init -q ~/src/{name}")
+    # The order comes from zoxide's record of visits, which z's form sets the time of, so
+    # neither visit has to wait for the clock to pass a second.
+    home = desktop.as_account("printf %s ~")
+    visits = "".join(
+        f"{home}/src/{name}|1|{now - ago}\n"
+        for name, ago in zip(REPOSITORIES, (hour, 6 * day), strict=True)
+    )
+    desktop.as_account(
+        f'z=$(mktemp) && printf %s {shlex.quote(visits)} > "$z"'
+        ' && _Z_DATA="$z" zoxide import z --merge && rm "$z"'
+    )
+    desktop.as_account(
+        "mkdir -p -m 700 ~/.ssh"
+        f" && printf %s {shlex.quote(SSH_CONFIG)} > ~/.ssh/config"
+        f" && printf %s {shlex.quote(KNOWN_HOSTS)} > ~/.ssh/known_hosts"
+    )
+    # The history is the file the launcher was told to read, in zsh's extended form: ferry three
+    # times, last a day ago, and lighthouse once, two hours ago, so use leads over recency.
+    providers = desktop.as_account("cat ~/.config/quickshell/Providers.qml")
+    history = re.search(r'"history":"([^"]+)"', providers)
+    assert history, "the launcher was told of no zsh history"
+    reached = (("ferry", 3 * day), ("ferry", 2 * day), ("ferry", day), ("lighthouse", 2 * hour))
+    lines = "".join(f": {now - ago}:0;ssh {name}\n" for name, ago in reached)
+    path = shlex.quote(history[1])
+    desktop.as_account(f'mkdir -p "$(dirname {path})" && printf %s {shlex.quote(lines)} >> {path}')
+
+
+def said_of(shown: Json, name: str) -> list[str]:
+    """Give what the row of this name reads, part by part, or nothing while none is shown."""
+    for thing in shown["things"]:
+        parts = thing["reads"].split(" \u00b7 ")
+        if parts[0] == name:
+            return cast("list[str]", parts)
+    return []
+
+
+def test_the_launcher_goes_to_a_kitty_tab_inside_its_window(desktop: Desktop) -> None:
+    """The launcher lists kitty's tabs, and Return on one goes to it through kitty.
+
+    One path through the connection: open-now asking a real kitty over its socket, the tab
+    matched to niri's window, and kitty's remote control bringing it forward once niri has
+    focused the window. Beside Tabs are the repositories fd finds under ~/src in zoxide's
+    order, and the machines ssh's files name, by zsh's history: each read from the account's
+    own files. No row of them is run, since each would open a window. Each case of the rows'
+    words and order is tests/kitty-tabs.qml's.
+    """
+    machine = desktop.machine
+    kitty_stand_ins(desktop)
+    kitty = f"kitten @ --to unix:@kitty-{desktop.focused_kitty()['pid']}"
+    # A second tab, named so its row is known, with the first in front again.
+    desktop.as_account(f"{kitty} launch --type=tab --tab-title 'Second Tab' --cwd /tmp")
+    desktop.as_account(f"{kitty} focus-tab --match index:0")
+    focused = f'{kitty} ls --match-tab state:focused | grep -qF \'"title": "Second Tab"\''
+    machine.wait_until_fails(desktop.in_session(focused), timeout=dt.timedelta(seconds=10))
+    # The shell reads kitty's repositories, machines and tabs ahead, as the launcher closes, so
+    # the stand-ins made since it started are read once it has opened and closed.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.close_launcher()
+
+    def counted(shown: Json) -> bool:
+        return "Tabs" in shown["rows"] and all(
+            said_of(shown, act)[1:2] == ["2"] for act in KITTY_ACTS
+        )
+
+    # Each act says how many it holds, in its place from the page's first frame, since a row
+    # arriving once a page is drawn would join its end.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.into_program()
+    desktop.launcher_until(counted)
+    shown = desktop.showing()
+    page = ["New Window Below", *KITTY_ACTS, "Tabs", "Recent"]
+    assert [row for row in shown["rows"] if row in page] == page, shown["rows"]
+    desktop.shoot("launcher-kitty-program")
+    walks_kittys_machines(desktop)
+    walks_kittys_repositories(desktop)
+    desktop.down_to("Tabs")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Second Tab" in shown["rows"])
+    desktop.down_to("Second Tab")
+    desktop.shoot("launcher-kitty-tabs")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(desktop.in_session(focused), timeout=dt.timedelta(seconds=10))
+    # kitty's match takes a space as "and", so the tab is matched by its first word.
+    desktop.as_account(f"{kitty} close-tab --match title:^Second")
+
+
+def walks_kittys_machines(desktop: Desktop) -> None:
+    """Step into SSH to a Machine, and back out to kitty's page, opening nothing."""
+    desktop.down_to("SSH to a Machine")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: set(MACHINES) <= set(shown["rows"]))
+    shown = desktop.showing()
+    assert [row for row in shown["rows"] if row in MACHINES] == list(MACHINES), shown["rows"]
+    # How many times each was reached is the history's, read by grep.
+    assert "3 times" in said_of(shown, "ferry"), shown["things"]
+    assert "once" in said_of(shown, "lighthouse"), shown["things"]
+    desktop.down_to("ferry")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["shown"]
+            and shown["drawer"]["title"] == "ferry"
+        )
+    )
+    # Its own block's settings, and the kind of key known_hosts holds where they reach.
+    facts = desktop.showing()["drawer"]["facts"]
+    assert {"HostName", "User", "Port", "Known Keys"} <= set(facts), facts
+    desktop.shoot("launcher-kitty-ssh")
+    desktop.step_out()
+
+
+def walks_kittys_repositories(desktop: Desktop) -> None:
+    """Step into New Window in a Repository, and back out to kitty's page, opening nothing."""
+    desktop.down_to("New Window in a Repository")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: set(REPOSITORIES) <= set(shown["rows"]))
+    shown = desktop.showing()
+    rows = shown["rows"]
+    assert [row for row in rows if row in REPOSITORIES] == list(REPOSITORIES), rows
+    # When zoxide saw it, read from its database, and never ~/src, which every row would say.
+    assert said_of(shown, "tide-tables")[1:] == ["1 h ago"], shown["things"]
+    desktop.shoot("launcher-kitty-repositories")
+    desktop.step_out()
 
 
 # Super+Tab opens the launcher on every other window, the one used last
@@ -867,9 +1027,10 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
     # theirs, nor Chrome, so none of its either. After the terminal's come
     # btop's, which every machine has, the picture viewer's, the markdown
-    # reader's, the document viewer's, the player's, Slack's (which this
-    # area's machine brings, for Now's Slack piece), 1Password's, GIMP's,
-    # Inkscape's and Spotify's.
+    # reader's, the document viewer's, the player's, Google's seven
+    # programs', whose keys are their pages' in any browser, Slack's (which
+    # this area's machine brings, for Now's Slack piece), 1Password's,
+    # GIMP's, Inkscape's and Spotify's.
     layers = [
         "Desktop",
         "Terminal",
@@ -878,6 +1039,13 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Markdown Reader",
         "Document Viewer",
         "Player",
+        "Mail",
+        "Calendar",
+        "Meet",
+        "Docs",
+        "Sheets",
+        "Slides",
+        "Drive",
         "Slack",
         "Passwords",
         "Picture Editor",
@@ -963,8 +1131,52 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.close_launcher()
 
 
+# Windows standing in for Google's programs in Chrome, which this machine doesn't run: a kitty
+# given the app id and title Chrome gives Mail's own window, and one given Chrome's app id and
+# the title of a tab showing a document; each by its layer's name and its picture's name
+# (launcher/KeyLayers.js reads both, VKCF3Z, 2026-11-07).
+GOOGLE_WINDOWS = [
+    ("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail", "Mail", "mail"),
+    ("google-chrome", "Notes - Google Docs - Google Chrome", "Docs", "docs-tab"),
+]
+
+
+def on_layer(layer: str, shown: Json) -> bool:
+    """Say whether Shortcuts holds the layer named, as its path ends."""
+    return cast("list[str]", shown["path"])[-1:] == [layer]
+
+
+def over_googles_programs(desktop: Desktop) -> None:
+    """Open Shortcuts over Mail's window and a Docs tab, each on its own keys, leading.
+
+    The program is told by the window's app id or its title's end, so a Docs tab in Chrome
+    names Docs and Mail's own window names Mail (VKCF3Z, 2026-11-07).
+    """
+    machine = desktop.machine
+    for app, title, layer, picture in GOOGLE_WINDOWS:
+        named_so = f"--class {shlex.quote(app)} --title {shlex.quote(title)}"
+        desktop.as_account(f"niri msg action spawn -- kitty {named_so}")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"niri msg --json windows | grep -qF {shlex.quote(title)}"),
+            timeout=STARTING,
+        )
+        window = desktop.window_titled(title)
+        try:
+            desktop.as_account(f"niri msg action focus-window --id {window['id']}")
+            machine.send_key("meta_l-shift-slash")
+            desktop.launcher_ready()
+            desktop.launcher_until(partial(on_layer, layer))
+            desktop.shoot(f"launcher-shortcuts-over-{picture}")
+            desktop.step_out()
+            desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
+            assert desktop.showing()["rows"][0] == layer, desktop.showing()["rows"]
+            desktop.close_launcher()
+        finally:
+            desktop.close(window)
+
+
 def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: Desktop) -> None:
-    """Super+Shift+/ over a terminal opens on the terminal's shortcuts."""
+    """Super+Shift+/ over a terminal, or one of Google's programs, opens on its shortcuts."""
     machine = desktop.machine
     desktop.focused_kitty()
     machine.send_key("meta_l-shift-slash")
@@ -991,6 +1203,7 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
     desktop.close_launcher()
+    over_googles_programs(desktop)
 
 
 def test_what_is_picked_inside_a_programs_page_is_learned_there(desktop: Desktop) -> None:

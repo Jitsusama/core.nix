@@ -24,7 +24,6 @@ pragma Singleton
 // or for a record from before it did, as its window's label cuts them;
 // no README is read for them. Nothing is asked of pi;
 // a want is said by starting pi-wants-you (home.nix), which posts its notice.
-import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -1757,8 +1756,7 @@ Singleton {
     signal unsteered(var session, string why)
     function steer(address, fields, then) {
         const upper = String(address).toUpperCase();
-        const said = Object.assign({ at: new Date().toISOString(), from: "joel" }, fields);
-        const told = answer => {
+        PiSource.steer(upper, fields, answer => {
             const machine = answer?.steered?.machine;
             if (machine) {
                 Report.say(`steered ${upper} on ${machine}`);
@@ -1770,13 +1768,7 @@ Singleton {
             }
             if (then)
                 then(Boolean(machine));
-        };
-        if (!node) {
-            told(null);
-            return;
-        }
-        // Its answer is for this steer alone, so nothing of it is held.
-        node.find({ ask: "steer", address: upper, steer: said }, told);
+        });
     }
 
     // Talks to a session: the words go with an id, so the session writes
@@ -1944,36 +1936,11 @@ Singleton {
         };
     }
 
-    // This boot, which a record's owner names the boot it began in.
-    FileView {
-        id: boot
-        path: "/proc/sys/kernel/random/boot_id"
-        blockLoading: true
-        printErrors: false
-    }
-    readonly property string bootId: boot.text().trim()
-    // When this boot began, in milliseconds since the epoch, read once.
-    FileView {
-        id: uptime
-        path: "/proc/uptime"
-        blockLoading: true
-        printErrors: false
-    }
-    readonly property real bootedAt: Date.now()
-        - Number(uptime.text().split(" ")[0] || 0) * 1000
-
-    // A parked session's marker, read when asked.
-    FileView {
-        id: process
-        blockLoading: true
-        printErrors: false
-    }
-    function read(path) {
-        process.path = path;
-        process.reload();
-        process.waitForJob();
-        return process.text();
-    }
+    // This boot, which a record's owner names the boot it began in, and
+    // when it began, in milliseconds since the epoch, as pi's source reads
+    // them.
+    readonly property string bootId: PiSource.bootId
+    readonly property real bootedAt: PiSource.bootedAt
 
     // The kitty window a session runs in, { socket, window }, or null: as
     // the node says a held one's is, or as its record's terminal says. One
@@ -1993,11 +1960,11 @@ Singleton {
     }
 
     // Each running session's record, { file, presence, kitty, held }, as
-    // the node has it. A held session is in the window the node says
-    // joined its holder last, or none, since its process has lost its own.
-    // Made again when the node tells of a change or a window comes or
-    // goes, and kept as it was when nothing in it did, so what reads it
-    // isn't told for nothing.
+    // pi's source sorts the node's (PiSource.js). A held session is in the
+    // window the node says joined its holder last, or none, since its
+    // process has lost its own. Made again when the source sorts them
+    // again or a window comes or goes, and kept as it was when nothing in
+    // it did, so what reads it isn't told for nothing.
     property var live: []
     property string liveSaid: ""
     // Each parked session's record, { file, presence, kitty, held }, as
@@ -2007,58 +1974,17 @@ Singleton {
     // `resting` keeps the parked ones', with when it changed last.
     property var ending: []
     function relive() {
-        const next = [];
-        const sleeping = [];
-        const ended = [];
-        const markers = parkedMarkers();
-        const held = node?.held ?? {};
-        for (const key of Object.keys(held).sort()) {
-            const session = held[key];
-            const id = String(session.id ?? key.replace(/^session:/, ""));
-            const presence = session.presence;
-            const state = String(session.state ?? "").toLowerCase();
-            const out = state === "unreachable";
-            const running = state === "busy" || state === "idle" || out;
-            const kitty = kittyOfWindow(session.window);
-            const here = typeof session.here === "boolean" ? session.here
-                : (session.machine ?? machine) === machine;
-            const changed = Date.parse(session.at ?? "") || 0;
-            // The node says one parked has ended, which its process has;
-            // its record says it's parked.
-            if (state === "ended" && here && parks(presence, markers)) {
-                sleeping.push({ file: id, presence: presence, kitty: null, held: null });
-                continue;
-            }
-            if (state === "ended" && here && presence && (presence.addresses ?? []).length > 0
-                && changed >= bootedAt) {
-                ended.push({ file: id, presence: presence, kitty: null, held: null,
-                    changed: changed });
-                continue;
-            }
-            if (!running || !presence || (presence.addresses ?? []).length === 0)
-                continue;
-            // One elsewhere the node last heard of before this boot is long
-            // gone, so a machine away for days leaves nothing.
-            if (here)
-                next.push({
-                    file: id,
-                    presence: presence,
-                    kitty: session.held ? kitty : kitty ?? kittyOf(presence),
-                    held: session.held ?? null
-                });
-            else if (changed >= bootedAt)
-                next.push({
-                    file: id,
-                    presence: presence,
-                    kitty: kitty,
-                    held: null,
-                    machine: String(session.machine),
-                    here: false,
-                    attach: out ? null : session.attach ?? null,
-                    reachable: !out,
-                    changed: changed
-                });
-        }
+        const kitted = record => {
+            const kitty = kittyOfWindow(record.window);
+            const kept = Object.assign({}, record, {
+                kitty: record.here === false || record.held ? kitty : kitty ?? kittyOf(record.presence)
+            });
+            delete kept.window;
+            return kept;
+        };
+        const next = PiSource.live.map(kitted);
+        const sleeping = PiSource.resting.map(kitted);
+        const ended = PiSource.ending.map(kitted);
         const said = JSON.stringify([next, sleeping, ended]);
         if (said === liveSaid)
             return;
@@ -2183,103 +2109,23 @@ Singleton {
         }
     }
 
-    // The machine's mycelium node, for the realm the machine is in: the
-    // realm's name, which the node keeps in its state, and this machine's,
-    // which the node names each session's machine by.
-    FileView {
-        id: realmFile
-        path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/mycelium/realm`
-        blockLoading: true
-        printErrors: false
-        // A node's first run writes it after the shell has started.
-        watchChanges: true
-        onFileChanged: reload()
-    }
-    readonly property string realm: realmFile.text().trim()
-    FileView {
-        id: hostname
-        path: "/proc/sys/kernel/hostname"
-        blockLoading: true
-        printErrors: false
-    }
-    readonly property string machine: hostname.text().trim()
+    // The machine's mycelium node, for the realm the machine is in, as pi's
+    // source keeps it: the realm's name and this machine's, which the node
+    // names each session's machine by.
+    readonly property string realm: PiSource.realm
+    readonly property string machine: PiSource.machine
 
-    // The node's sessions, every one it holds, over the daemon interface
-    // (mycelium's PROTOCOL.md, The Daemon Interface): watched whole, then
-    // told each change as only what differs. While the node isn't
-    // answering, as while a switch restarts it, what it last said stays
-    // held, and the shell guesses nothing in its place: no folder read, no
-    // process looked at (Joel, 2026-11-06: "treated way more like our
-    // hardware integrations").
-    readonly property string nodePath: realm !== "" && Quickshell.env("XDG_RUNTIME_DIR")
-        ? `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${realm}.sock` : ""
-    readonly property var node: nodeLink.item
-    LazyLoader {
-        id: nodeLink
-        active: root.nodePath !== ""
-
-        Daemon {
-            socket: root.nodePath
-            kind: "session"
-            changesDiffer: true
-            onRevisionChanged: root.relive()
+    // The node's sessions, as pi's source holds them (PiSource.qml): its
+    // socket, its link, and the folder of parked sessions' markers. Sorted
+    // again as the source sorts them, into the windows they run in here.
+    readonly property string nodePath: PiSource.nodePath
+    readonly property var node: PiSource.node
+    readonly property string parkedFolder: PiSource.parkedFolder
+    Connections {
+        target: PiSource
+        function onSorted() {
+            root.relive();
         }
-    }
-
-    // The sessions parked now, by the marker each keeps while it is
-    // (the harness's park-workflow/parked/<session>.json), deleted as it
-    // starts again. A record can go on saying "parked" after its session
-    // has stopped being, so it's parked only while its marker stands. One
-    // listing of one folder, which changes only as a session parks or
-    // wakes, rather than a file watched for each.
-    readonly property string parkedFolder: `${state}/park-workflow/parked`
-    // A listing of a folder that isn't there yet says it's empty, and never
-    // hears of it after, and the harness makes its park folder only as a
-    // session first parks. So the folders above it are listed too, each
-    // of nothing but folders, which change only as one is made, and the
-    // listing below one listed again as it does: never the one above,
-    // which would list itself again for ever.
-    function relist(listing, folder) {
-        listing.folder = "";
-        listing.folder = `file://${folder}`;
-    }
-    FolderListModel {
-        folder: `file://${root.state}`
-        showFiles: false
-        onCountChanged: root.relist(parkFolder, `${root.state}/park-workflow`)
-    }
-    FolderListModel {
-        id: parkFolder
-        folder: `file://${root.state}/park-workflow`
-        showFiles: false
-        onCountChanged: root.relist(markers, root.parkedFolder)
-    }
-    FolderListModel {
-        id: markers
-        folder: `file://${root.parkedFolder}`
-        showDirs: false
-        nameFilters: ["*.json"]
-        onCountChanged: root.relive()
-        onStatusChanged: root.relive()
-    }
-    function parkedMarkers() {
-        const ids = {};
-        if (markers.status !== FolderListModel.Ready)
-            return ids;
-        for (let at = 0; at < markers.count; at += 1)
-            ids[String(markers.get(at, "fileName")).replace(/\.json$/, "")] = true;
-        return ids;
-    }
-    // A park lasts only while its holder does, and no holder outlives the
-    // boot it began in, so one parked before this boot has nothing left to
-    // wake it, whatever its marker says: it's closed, and reopens as one.
-    // Taken for parked, it was passed over as running by Reopen (11 of them
-    // after the reboot at 19:15 on 2026-11-07). A record naming no boot is
-    // taken as this one's.
-    function parks(presence, markers) {
-        return !!presence && presence.state === "parked" && (presence.addresses ?? []).length > 0
-            && typeof presence.session === "string" && markers[presence.session] === true
-            && (presence.owner?.bootId ?? bootId) === bootId;
     }
 
     // Wakes a parked session, as a peer sending it a turn does: anything
@@ -2289,16 +2135,8 @@ Singleton {
     // read, so words left there first reach it as it wakes.
     function wake(session) {
         const id = String(session?.presence?.session ?? "");
-        if (!parked.some(one => one.presence.session === id))
-            return;
-        let marker = null;
-        try {
-            marker = JSON.parse(read(`${parkedFolder}/${id}.json`));
-        } catch (error) {
-            marker = null;
-        }
-        const wakes = typeof marker?.wake === "string" ? marker.wake : "";
-        if (!wakes.startsWith("/"))
+        const wakes = PiSource.wakes(id);
+        if (wakes === "")
             return;
         Niri.spawn(["sh", "-c", 'printf "%s\\n" "$2" > "$1"', "wake", wakes,
             JSON.stringify({ session: id, messageId: "joel", at: new Date().toISOString() })]);

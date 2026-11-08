@@ -63,17 +63,20 @@ mod monitor;
 mod screen;
 mod steer;
 mod switch;
+mod uevent;
 mod warmth;
 
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, ExitCode};
 use std::time::Instant;
 
+use tokio::io::unix::AsyncFd;
 use tokio::sync::watch;
 use zbus::export::futures_core::Stream;
 use zbus::fdo::DBusProxy;
@@ -273,8 +276,65 @@ async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'static>)>, Start
     (Some((Warmth::new(shown), relay)), started)
 }
 
+/// The light sensor may be set up only after the daemon starts, as at a
+/// boot where the sensor hub comes late, so until it's heard it's looked
+/// for again each time udev sets up an IIO device. Only the first look says
+/// it found none.
+fn look_for_light(readings: &mut Option<Readings>, backlight: &mut Backlight, first: bool) {
+    if readings.is_some() {
+        return;
+    }
+    if let Some((heard, lux)) = listen(Heard::Light, first) {
+        eprintln!("<6>hears {lux:.0} lux");
+        *readings = Some(heard);
+        backlight.heard(lux);
+    }
+}
+
+/// Whether a sensor the daemon could hear is still to be found: the light,
+/// or the warmth where there's a warmth to set.
+fn missing(readings: Option<&Readings>, warm: Option<&Readings>, backlight: &Backlight) -> bool {
+    readings.is_none() || (warm.is_none() && backlight.warmth.is_some())
+}
+
+/// udev's uevents, which say when it has set up a light sensor, or none
+/// when they can't be heard.
+fn hear_sensors() -> Option<AsyncFd<File>> {
+    uevent::socket_for(uevent::UDEV)
+        .inspect_err(|error| eprintln!("<4>can't hear light sensors come: {error}"))
+        .ok()
+}
+
+/// udev said it set up an IIO device, or it couldn't be heard: looks again
+/// for a missing sensor, and stops hearing udev once none is missing, or
+/// once it can't be heard, since only a late sensor is lost then.
+fn sensors_came(
+    came: io::Result<bool>,
+    sensors: &mut Option<AsyncFd<File>>,
+    readings: &mut Option<Readings>,
+    warm: &mut Option<Readings>,
+    backlight: &mut Backlight,
+) {
+    match came {
+        Ok(true) => {
+            look_for_light(readings, backlight, false);
+            look_for_warmth(warm, backlight);
+        }
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("<4>can't hear light sensors come: {error}");
+            *sensors = None;
+        }
+    }
+    if !missing(readings.as_ref(), warm.as_ref(), backlight) {
+        *sensors = None;
+    }
+}
+
 /// The sensor's colour may be set up only after the daemon starts, as at a
-/// switch, so until it's heard it's looked for again with each light.
+/// switch or a boot where the sensor hub comes late, so until it's heard
+/// it's looked for again with each light, and each time udev sets up an
+/// IIO device.
 fn look_for_warmth(warm: &mut Option<Readings>, backlight: &mut Backlight) {
     if warm.is_some() || backlight.warmth.is_none() {
         return;
@@ -419,19 +479,20 @@ async fn run() -> Result<(), Box<dyn Error>> {
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
     let (_switch_bus, mut said) = backlight.serve_switch().await;
+    // Heard before they're looked for, so a sensor set up between isn't
+    // missed.
+    let mut sensors = hear_sensors();
     let (mut warm, room) = listen(Heard::Warmth, true).unzip();
     backlight.sees = warm.is_some();
     backlight.lid(shut);
     let mut monitors = Monitors::find(backlight.screen.level_of(seen));
-    let (mut readings, now) = listen(Heard::Light, true).unzip();
-    if let Some(lux) = now {
-        eprintln!("<6>hears {lux:.0} lux");
-        backlight.heard(lux);
-    }
+    let mut readings = None;
+    look_for_light(&mut readings, &mut backlight, true);
     if let (Some(kelvin), Some(_)) = (room, &backlight.warmth) {
         eprintln!("<6>hears the room's light at {kelvin:.0} K");
         backlight.warmed(kelvin);
     }
+    sensors = sensors.filter(|_| missing(readings.as_ref(), warm.as_ref(), &backlight));
 
     loop {
         let wake = backlight.wake();
@@ -457,6 +518,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
             changed = monitors.changed() => {
                 changed?;
                 monitors.look();
+            }
+            came = uevent::heard(sensors.as_ref(), light::sets_up_a_sensor) => {
+                sensors_came(came, &mut sensors, &mut readings, &mut warm, &mut backlight);
             }
         }
         monitors.follow(backlight.screen.level_of(backlight.seen));

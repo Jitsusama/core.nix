@@ -129,7 +129,8 @@ impl World {
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --max-jobs 0 '*) if [ -e {no_builder} ] || {{ [ -e {no_small_builder} ] \
+                 *' --max-jobs 0 '*) if [ -e {hung} ]; then sleep 30; fi\n\
+                 if [ -e {no_builder} ] || {{ [ -e {no_small_builder} ] \
                  && [ \"${{*#*e-big}}\" = \"$*\" ]; }}; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' eval '*) if [ -e {fetch_fails} ]; then \
@@ -154,6 +155,7 @@ impl World {
                 fetch_fails = root.join("fetch-fails").display(),
                 overridden = root.join("overridden").display(),
                 no_builder = root.join("no-builder").display(),
+                hung = root.join("hung").display(),
                 no_small_builder = root.join("no-small-builder").display(),
                 big = root.join("big").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
@@ -203,6 +205,7 @@ impl World {
             holds: None,
             power_supplies: root.join("power"),
             cpu_pressure: root.join("pressure"),
+            silent_for: 2,
             tools: Tools {
                 git: program("git"),
                 gpg: program("gpg"),
@@ -1628,6 +1631,26 @@ fn the_small_pieces_are_built_here_once_the_builders_build_the_big() {
 }
 
 #[test]
+fn a_build_on_a_builder_that_goes_quiet_is_stopped_and_built_here() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    world.config.silent_for = 1;
+    // The builder takes the build and never answers again, as a lent
+    // builder whose tunnel kept resetting did on 8 November.
+    fs::write(world.root.join("hung"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let started = std::time::Instant::now();
+    assert_eq!(world.update().1, done(&head));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "it waited for the builder"
+    );
+    let here = world.read("here");
+    assert!(here.contains("/nix/store/b-heavy.drv^*"), "{here}");
+}
+
+#[test]
 fn a_piece_built_here_keeps_the_builders_named() {
     let mut world = World::new();
     elsewhere_with_here(&mut world, "14.99");
@@ -1846,6 +1869,27 @@ fn a_switch_that_would_restart_a_held_daemon_waits_for_a_hold() {
     assert_eq!(world.update().1, done(&head));
     assert_eq!(world.running(), system);
     assert!(!world.root.join("given").exists());
+}
+
+#[test]
+fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    let one = world.signed("one");
+    let waited = world.system(&one);
+    daemon_unit(&waited, "new");
+    assert!(matches!(world.update().1, Line::Refused { .. }));
+    // Main moves on while the hold is arranged; the grant's ask switches
+    // to what was built, rather than start over at the new head.
+    let two = world.signed("two");
+    daemon_unit(&world.system(&two), "newer");
+    let builds = world.builds();
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(world.update().1, done(&one));
+    assert_eq!(world.running(), waited);
+    assert_eq!(world.builds(), builds, "it built nothing again");
+    // The next ask takes the newer head as ever.
+    assert!(matches!(world.update().1, Line::Refused { .. }));
 }
 
 #[test]

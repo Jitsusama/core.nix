@@ -48,12 +48,13 @@ the-launcher-names-each-thing-its-term holds the row's name to it.
 
 ## The Context Map
 
-Nine contexts have places in the launcher. Seven are home's rows, in its
-order after Now: Agents, Programs, People, Desktop, Machine, Network and
-Keyboards, so home has eight rows. Disk's place is inside Machine, beside
-Processor, Memory and Heat, and Mail and Calendar are places inside Programs.
-Security, which the others lean on, has one place, Passwords. The Library and
-Checks, which are core.nix's own, are never places.
+Nine contexts have places in the launcher. Eight are home's rows, in its
+order after Now: Agents, Programs, People, Passwords, Desktop, Machine,
+Network and Keyboards, so home has nine rows. Disk's place is inside Machine,
+beside Processor, Memory and Heat, and Mail and Calendar are places inside
+Programs. Security, which the others lean on, has one place, Passwords, on a
+machine with a password manager. The Library and Checks, which are core.nix's
+own, are never places.
 
 - **People reaches across Programs**: a person is found in mail, meetings,
   calls and chat at once, each program a source of people.
@@ -247,7 +248,7 @@ or a copy, can be opened, copied or forgotten.
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
-| home | the launcher's first place: Now, Agents, Programs, People, Desktop, Machine, Network and Keyboards | | |
+| home | the launcher's first place: Now, Agents, Programs, People, Passwords, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
 | Recent | the group of the last things done with what holds it, as in a program, a person or Capture: newest first, each once, never one open or shown already | | `*:recent` |
 | field | the line at the top of every place: the find line, or the command line in its place | | |
@@ -289,6 +290,7 @@ off.
 | ---- | ----- | --- | ------- |
 | machine | one computer | host, computer | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
+| revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
 | version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
@@ -388,7 +390,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
 | rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
-| traffic | how much data the machine's link, the home network, a node or a device moved | data usage | `usage`, `data_usage`, `wifi:carried` |
+| traffic | how much data the machine's link, the home network, a node, a profile or a device moved | data usage | `usage`, `data_usage`, `wifi:carried` |
 | profile | a group of devices eero lets through or holds off together | | `profiles` |
 | light | a node's status light, on or off and how bright | | eero's `led_on`, `led_brightness` |
 | mode | how the gateway node gets its address: lent by the internet provider's server, set by hand, or through a sign-in | | eero's `lease.mode` |
@@ -475,6 +477,7 @@ entry can be copied from, opened at its site and filled in.
 | Passwords | the place holding Joel's entries from every password manager | | |
 | password manager | a program keeping Joel's entries, such as 1Password, each one an option | | |
 | entry | one thing a password manager keeps, called by its kind: a login, a card, a note, an identity or a key | | 1Password's items |
+| detail | one part of an entry, as its username, its password or its one-time code | | 1Password's fields |
 | one-time code | the code an entry gives for signing in, new every half-minute | OTP, TOTP | |
 | hidden | of a part of an entry, shown only when asked, as a password is | concealed | 1Password's `CONCEALED` |
 | greeter | what asks Joel to sign in when the machine starts | | greetd, tuigreet |

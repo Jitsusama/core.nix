@@ -27,7 +27,7 @@
 // (Joel, 2026-11-05: "fuck escape quitting").
 //
 // Each file and folder says beside its name how big it is and when it last
-// changed, "2.4 MB \u00b7 28 Oct", a folder how many items it shows, read
+// changed, "2.41 MB \u00b7 28 Oct", a folder how many items it shows, read
 // with the folder it's in; one opened lately elsewhere says its folder
 // instead. The one selected shows its plate in the drawer (FileFacts.js):
 // its kind, name, a preview where one is cheap (a picture, a PDF's first

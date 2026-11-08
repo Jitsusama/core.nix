@@ -223,9 +223,13 @@ QtObject {
             Object.assign({}, told, { hours: hours }, given)).facts
             .map(fact => fact.figure ? `${fact.label}=${fact.value}:${fact.figure.shape}`
                 : `${fact.label}=${fact.value}`).join(" ");
+        // An orchestrator's budget follows the whole of its spend, its own
+        // and its sessions' among it.
         const sparks = [sparked({ rebuilt: "$1.20" }),
-            sparked({ spent: "$14.20 in all", own: "$3.10", rebuilt: "" })].join(" | ");
-        if (sparks !== "spent=$4.20:spark rebuilt=$1.20 | spent=$14.20 in all own=$3.10:spark")
+            sparked({ spent: "$14.20 in all", own: "$3.10", rebuilt: "", budget: "Mine" })]
+            .join(" | ");
+        if (sparks !== "spent=$4.20:spark rebuilt=$1.20 | "
+            + "spent=$14.20 in all own=$3.10:spark budget=Mine")
             failures.push(`a drawer's hours: "${sparks}"`);
         // One paused, parked or closed never looks live: its glyph is muted,
         // every other a program's, as the live rows' are.
@@ -343,10 +347,11 @@ QtObject {
             failures.push(`the drawer's facts: "${facts}", not "spent works:words"`);
         // Its first screen holds what matters, in this order: what it's
         // doing, its step alone, what it needs Joel for, what it landed last,
-        // what it spent, its figures, then its quest, its machine and what its
-        // quest is about, that without the title the drawer already says
-        // (Joel, 2026-11-07: "the agents side panel generally just shows its
-        // title"; VKCF3Z, 2026-11-07).
+        // what it spent, the budget it drew on, its figures, then its quest,
+        // its machine and what its quest is about, that without the title
+        // the drawer already says (Joel, 2026-11-07: "the agents side panel
+        // generally just shows its title"; VKCF3Z, 2026-11-07; KP0L6A,
+        // 2026-11-07, for the budget).
         const full = SessionDrawer.drawer("A Quest", {
             worksOn: "A Quest: what it's for, at length",
             stepDetail: { kind: "tool", name: "edit", detail: "/src/core.nix/Drawer.qml" },
@@ -354,10 +359,12 @@ QtObject {
             questInfo: { id: "QEST-1", title: "A Quest", status: "active" }
         }, Object.assign({}, told, {
             needs: "Sign In", landed: "core.nix#1 \u00b7 15:44",
+            budget: "Your AI proxy token \u00b7 $24,349 of $40,000",
             machine: "there", figures: [{ label: "context", value: "84k of 200k" }]
         })).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
         const fullWant = "step=edit Drawer.qml; wants=which way? \u00b7 Sign In; "
-            + "last-landing=core.nix#1 \u00b7 15:44; spent=$4.20; context=84k of 200k; "
+            + "last-landing=core.nix#1 \u00b7 15:44; spent=$4.20; "
+            + "budget=Your AI proxy token \u00b7 $24,349 of $40,000; context=84k of 200k; "
             + "task=QEST-1; machine=there; works=what it's for, at length";
         if (full !== fullWant)
             failures.push(`the drawer's first screen: "${full}", not "${fullWant}"`);

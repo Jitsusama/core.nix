@@ -39,6 +39,7 @@
     homeModules.cargo
     homeModules.collector
     homeModules.disk-guard
+    homeModules.libvirt
     homeModules.link-keys
     homeModules.pnpm
     homeModules.podman

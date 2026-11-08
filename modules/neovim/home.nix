@@ -3,7 +3,8 @@
 # keys.nix, bound by keys.lua and listed for the launcher; the theme as its
 # colour scheme; a status line that tells a file's place and git's state
 # as the prompt does; and, on Linux, the file each Neovim has open leading
-# its Recent in the launcher (showing.lua).
+# its Recent in the launcher (showing.lua), and its own acts there, a file
+# opened by its name or the path copied (NeovimProgram.qml).
 { neovim-pi }:
 {
   config,
@@ -13,6 +14,8 @@
 }:
 let
   inherit (pkgs) vimPlugins;
+  # The launcher's parts are the desktop's, which only Linux has.
+  linux = pkgs.stdenv.hostPlatform.isLinux;
   open-now = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
   # Most plugins are configured by a Lua file of the same name in ./plugins.
   configured = plugin: file: {
@@ -152,6 +155,7 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
+    ../quickshell/providers.nix
     ../quickshell/recents.nix
   ];
 
@@ -292,6 +296,21 @@ in
       ];
     }
   ];
+  # Neovim's own acts in the launcher (NeovimProgram.qml): Open a File by
+  # Name, through the git repositories under ~/src, which fd finds and stat
+  # dates, and Open the Copied Path, each opening Neovim in kitty
+  # (NeovimOpening.js). After every other provider, as it adds no rows of
+  # its own.
+  jitsusama.quickshell.launcher.providers.neovim = lib.mkIf linux {
+    order = 52;
+    source = ./NeovimProgram.qml;
+    folder = "${config.home.homeDirectory}/src";
+    fd = lib.getExe pkgs.fd;
+    stat = lib.getExe' pkgs.coreutils "stat";
+  };
+  xdg.configFile."quickshell/launcher/NeovimOpening.js" = lib.mkIf linux {
+    source = ./NeovimOpening.js;
+  };
   xdg.configFile."nvim/lua/where.lua".text = "return ${
     lib.generators.toLua { } {
       engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });

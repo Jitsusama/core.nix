@@ -129,7 +129,7 @@ Provider {
             const at = priorities.indexOf(q.priority);
             return at < 0 ? priorities.length : at;
         };
-        const sorted = quests.slice().sort(Order.returned({
+        const sorted = Order.sorted(quests, Order.returned({
             first: isOpen,
             placed: (a, b) => bucket(a) - bucket(b)
                 || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9),

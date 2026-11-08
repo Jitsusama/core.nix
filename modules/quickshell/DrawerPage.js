@@ -16,6 +16,7 @@
 // view may scroll to (tops, below); and `xOf(line, letter)` and `letterAt(line, x)`, which ask the drawn lines
 // where a letter is and which letter is nearest a place.
 .pragma library
+.import "Reading.js" as Reading
 .import "Search.js" as Search
 
 // What visual takes, from where it began to the cursor, either way round:
@@ -344,6 +345,51 @@ function moved(act, count, page) {
     default:
         return still;
     }
+}
+
+// The space a line's joiner leaves at a line's end, which goes, since Qt's
+// engine has no trimEnd.
+const TRAILING = /\s+$/u;
+
+// A value given as items, each `{ said, path }`, as lines no wider than
+// `wide` by `width(text)`: as many items to a line as fit, `between` them
+// (a command's arguments a space apart, a list's a dot), the dot ending
+// the line it leaves, and never one broken across two. An item too wide
+// for a line of its own that names its `path` gives way from the path's
+// middle, "/nix/\u2026/firefox", its last part whole, as a folder does
+// (Reading.pathTries); any other runs on by its words. Nothing draws past
+// its frame (VKCF3Z, 2026-11-08).
+function valueLines(items, between, wide, width) {
+    const ends = between.replace(TRAILING, "");
+    const fitted = items.filter(item => item.said !== "").map(item => {
+        if (!item.path || width(item.said) <= wide) {
+            return item.said;
+        }
+        const ways = Reading.pathTries(item.path, true)
+            .map(way => item.said.replace(item.path, way));
+        return ways.find(way => width(way) <= wide) ?? ways[ways.length - 1];
+    });
+    const lines = [];
+    for (const said of fitted) {
+        const last = lines.length - 1;
+        if (last >= 0 && width(`${lines[last]}${between}${said}`) <= wide) {
+            lines[last] = `${lines[last]}${between}${said}`;
+        } else {
+            if (last >= 0) {
+                lines[last] = `${lines[last]}${ends}`;
+            }
+            lines.push(said);
+        }
+    }
+    return lines;
+}
+
+// How tall a preview stands: a picture its own height, so what follows it
+// is the groups' gap below the picture rather than below a band rounded
+// up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch, so
+// the words after them stay on the card's.
+function previewHeight(picture, lines, pitch) {
+    return picture > 0 ? Math.ceil(picture) : lines * pitch;
 }
 
 // The face a fact's value is set in, given the script its plate is in, ""

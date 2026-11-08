@@ -122,7 +122,7 @@ onLinux {
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/xdg-open-opens-each-kind.sh} ${pkgs.shared-mime-info}
+        ${lib.getExe pkgs.bash} ${./tests/xdg-open-opens-each-kind.sh} ${pkgs.shared-mime-info}
         touch $out
       '';
 }

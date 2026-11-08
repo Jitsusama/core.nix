@@ -1272,8 +1272,8 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
 
     The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
-    A node's and a device's plates lay their facts out one way, every name and value whole, at
-    both of Joel's scales.
+    A node's, a device's and a profile's plates lay their facts out one way, every name and value
+    whole, at both of Joel's scales.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session('test -s "$XDG_RUNTIME_DIR/eero/home-network.json"'),
@@ -1302,6 +1302,9 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
         desktop.shoot(f"launcher-home-network-device-at-{at}")
+        desktop.down_to("profile 1")
+        home_network_plate(desktop, scale, "profile 1")
+        desktop.shoot(f"launcher-home-network-profile-at-{at}")
         desktop.close_launcher()
         devices_plates_lie_on_the_lines(desktop, scale)
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
@@ -1311,14 +1314,16 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
     """Hold the speakers', the microphone's and the screen's plates to the lines, as a server's.
 
     Each says which way it goes or what it is over its name, then its parts, what moves most
-    first, laid one way, every name whole (VKCF3Z, 2026-11-07). The stand-in backlight lights
-    the one screen, so its Brightness leads.
+    first, laid one way, every name whole (VKCF3Z, 2026-11-07). A sound device's State, as
+    pipewire says it, leads its level (VKCF3Z, 2026-11-08); the stand-in backlight lights the
+    one screen, so its Brightness leads.
     """
-    for collection, typed, kind, first in [
-        ("sound", "speakers", "output", "Volume"),
-        ("sound", "microphone", "input", "Gain"),
-        ("displays", "", "monitor", "Brightness"),
+    for collection, typed, kind, leading in [
+        ("sound", "speakers", "output", ["State", "Volume"]),
+        ("sound", "microphone", "input", ["State", "Gain"]),
+        ("displays", "", "screen", ["Brightness"]),
     ]:
+        first = leading[-1]
         desktop.launcher_until(lambda shown: not shown["open"])
         desktop.as_account(f"qs ipc call launcher collection {collection}")
         desktop.launcher_ready()
@@ -1341,7 +1346,9 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         desktop.launcher_until(plated)
         drawer = plate_shown(desktop, scale)
         assert str(drawer["eyebrow"]).lower().endswith(kind), f"at {scale}: {drawer}"
-        assert drawer["facts"][0] == first, f"at {scale} {typed or kind} leads wrong: {drawer}"
+        assert drawer["facts"][: len(leading)] == leading, (
+            f"at {scale} {typed or kind} leads wrong: {drawer}"
+        )
         assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
             f"at {scale} {typed or kind}'s facts are off the pitch: {drawer}"
         )
@@ -2505,6 +2512,9 @@ def spend_line(key: str, name: str, side: str, note: str = "", role: str = "text
     line: Json = {"key": key, "name": name, "side": side, "copy": f"{name}: {side}", "role": role}
     if note:
         line["note"] = note
+    # A budget's row and a window's name what opens their drawer in budgets.json.
+    if key.startswith("budget:"):
+        line["budget"] = key
     return line
 
 
@@ -2516,16 +2526,41 @@ def marked(line: Json, mark: str, rows: list[Json] | None = None) -> Json:
     return line
 
 
-# How things stand with three budgets, as spend-watch writes it: today, then Budgets, the
-# month's whole in billed spend, its mark its nearest budget's colour; behind it today's whole,
-# then each budget nearest its allowance first, the plan stepping into its two windows.
+# How things stand with three budgets, as spend-watch writes it: today, with its drawer and the
+# day's cap behind it, opening its window's drawer; then Budgets, the month's whole in billed
+# spend, its mark its nearest budget's colour; behind it today's whole, then each budget nearest
+# its allowance first, the plan stepping into its two windows.
 BUDGETED = {
     "v": 2,
     "sessions": {},
     "helpers": {},
     "families": {},
     "now": [
-        marked(spend_line("today", "Today", "$412"), "date"),
+        marked(
+            spend_line("today", "Today", "$412")
+            | {
+                "drawn": {
+                    "eyebrow": "Sat 7 Nov \u00b7 day",
+                    "facts": [
+                        {"id": "ends", "value": "$520 \u00b7 likely $470 to $610"},
+                        {"id": "from", "value": "the bill \u00b7 pi's logs where it hasn't come"}
+                        | {"words": True},
+                        {"id": "rebuilding", "value": "$25 \u00b7 6%"},
+                        {"id": "most-quest", "value": "Build the shell \u00b7 31%"}
+                        | {"words": True},
+                        {"id": "most-model", "value": "claude-opus-5-5 \u00b7 all"},
+                    ],
+                }
+            },
+            "date",
+            rows=[
+                marked(
+                    spend_line("cap:premium", "Premium Day", "83%", "$250 spent", "warning")
+                    | {"budget": "budget:proxy:premium"},
+                    "clock",
+                )
+            ],
+        ),
         marked(
             spend_line("budgets", "Budgets", "$21,564 this month", "billed spend", "warning"),
             "agent",
@@ -2550,13 +2585,12 @@ BUDGETED = {
                                 "budget:claude:five-hours",
                                 "Five Hours",
                                 "85%",
-                                "resets 16:20",
-                                "warning",
+                                role="warning",
                             ),
                             "clock",
                         ),
                         marked(
-                            spend_line("budget:claude:week", "Week", "40%", "resets Mon 09:00"),
+                            spend_line("budget:claude:week", "Week", "40%"),
                             "clock",
                         ),
                     ],
@@ -2565,10 +2599,26 @@ BUDGETED = {
                     spend_line(
                         "budget:proxy",
                         "Your AI proxy token",
-                        "$27,570 of $40,000",
-                        "the employer's money \u00b7 the default",
+                        "$250 of $300",
+                        "the default \u00b7 the employer's money",
+                        "warning",
                     ),
                     "agent",
+                    rows=[
+                        marked(
+                            spend_line(
+                                "budget:proxy:premium",
+                                "Premium Day",
+                                "$250 of $300",
+                                role="warning",
+                            ),
+                            "clock",
+                        ),
+                        marked(
+                            spend_line("budget:proxy:weekly", "Week", "$27,570 of $40,000"),
+                            "clock",
+                        ),
+                    ],
                 ),
                 marked(
                     spend_line(
@@ -2583,22 +2633,143 @@ BUDGETED = {
 }
 
 
+def allowance(
+    name: str, label: str, standing: str, nearest: float, warn: float, **said: str
+) -> Json:
+    """Give one of a budget's windows as budgets.json has it, its facts in words."""
+    unit = "dollars" if standing.startswith("$") else "share"
+    window: Json = {"name": name, "label": label, "unit": unit, "warn": warn}
+    window |= {"standing": standing, "nearest": nearest}
+    keys = ("window", "warns", "resets", "ends", "changed", "read", "state")
+    return window | {"said": {key: said.get(key, "") for key in keys}}
+
+
+# How each of BUDGETED's budgets stands, as spend-watch's budgets.json says it, for their
+# drawers: a plan's share windows, one past where it warns and one not read yet; the employer's
+# money of two dollar windows, the nearer past where it warns; and a team's token of none.
+BUDGETS = {
+    "v": 1,
+    "default": "proxy",
+    "sessions": {},
+    "budgets": [
+        {
+            "name": "claude",
+            "label": "Claude Pro",
+            "words": "your own plan",
+            "providers": ["claude-code"],
+            "standing": "85% of 5 h",
+            "allowances": [
+                allowance(
+                    "five-hours",
+                    "Five Hours",
+                    "85% of 5 h",
+                    0.85,
+                    warn=0.8,
+                    window="5 hours",
+                    warns="at 80%",
+                    resets="16:20",
+                    read="Claude at 14:20",
+                ),
+                allowance(
+                    "week",
+                    "Week",
+                    "40% of the week",
+                    0.4,
+                    warn=0.8,
+                    window="a week",
+                    warns="at 80%",
+                    resets="Mon 09:00",
+                    read="Claude at 14:20",
+                ),
+            ],
+            "said": {
+                "spent": "",
+                "worth": "$84 today \u00b7 $1,120 this month",
+                "reading": "reading fine",
+            },
+        },
+        {
+            "name": "proxy",
+            "label": "Your AI proxy token",
+            "words": "the employer's money",
+            "providers": [],
+            "standing": "$250 of $300",
+            "allowances": [
+                allowance(
+                    "premium",
+                    "Premium Day",
+                    "$250 of $300",
+                    0.833,
+                    warn=0.5,
+                    window="a day",
+                    warns="at $150",
+                    resets="05:00 tomorrow",
+                    read="the AI proxy at 14:05",
+                ),
+                allowance(
+                    "weekly",
+                    "Week",
+                    "$27,570 of $40,000",
+                    0.689,
+                    warn=0.9,
+                    window="a week",
+                    warns="at $36,000",
+                    read="the AI proxy at 14:05",
+                ),
+            ],
+            "said": {
+                "spent": "$402 today \u00b7 $3,060 in 7 days \u00b7 $20,144 this month",
+                "worth": "",
+                "reading": "reading fine",
+            },
+        },
+        {
+            "name": "delta",
+            "label": "Delta team token",
+            "words": "a team's token",
+            "providers": [],
+            "standing": "$310 this month",
+            "allowances": [],
+            "said": {"spent": "$10 today \u00b7 $310 this month", "worth": "", "reading": ""},
+        },
+    ],
+}
+
+
+def written(desktop: Desktop, name: str, what: Json) -> None:
+    """Write one of spend-watch's files whole, as its daemon does, renaming it into place."""
+    # Its words have apostrophes, so the JSON is quoted for the shell whole.
+    desktop.as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo {shlex.quote(json.dumps(what))}"
+        f" > $XDG_RUNTIME_DIR/spend-watch/.{name}"
+        f" && mv $XDG_RUNTIME_DIR/spend-watch/.{name} $XDG_RUNTIME_DIR/spend-watch/{name}"
+    )
+
+
+def drawer_shot(desktop: Desktop, title: str, picture: str) -> list[str]:
+    """Shoot the drawer of the row selected once it's out with its title, and say its facts."""
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == title
+    )
+    desktop.shoot(picture)
+    return cast("list[str]", desktop.showing()["drawer"]["facts"])
+
+
 def test_the_budgets_stand_behind_one_row_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Shoot AI spend's Budgets row, the budgets behind it, and a plan's windows.
+    """Shoot AI spend's Budgets row, the budgets behind it, and their windows' drawers.
 
     One row stands for every budget, the month's whole beside it; behind it the whole first,
-    then each budget nearest its allowance first, each standing in its own unit, and a plan
-    steps into its windows (docs/design.md; VKCF3Z, 2026-11-06). Each is kept for the
-    design's look at Joel's scales.
+    then each budget nearest its allowance first, each standing in its own unit, and a budget
+    steps into its windows (docs/design.md; VKCF3Z, 2026-11-06). A budget's drawer and a
+    window's say what budgets.json holds of each (VKCF3Z, 2026-11-07): a plan's, the employer's
+    money's, a share window's and a dollar window past where it warns. A running period's
+    drawer says its days and what its cuts went to most, and a cap's is its window's. Each is
+    kept for the design's look at Joel's scales.
     """
-    # Its words have apostrophes, so the JSON is quoted for the shell whole.
-    desktop.as_account(
-        f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo {shlex.quote(json.dumps(BUDGETED))}"
-        " > $XDG_RUNTIME_DIR/spend-watch/.c"
-        " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
-    )
+    written(desktop, "budgets.json", BUDGETS)
+    written(desktop, "collection.json", BUDGETED)
     try:
         for scale in at_each_scale:
             named = scale.replace(".", "-")
@@ -2606,6 +2777,20 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             desktop.as_account("qs ipc call launcher collection spend")
             desktop.launcher_ready()
             desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+            desktop.down_to("Today")
+            facts = drawer_shot(desktop, "Today", f"launcher-spend-today-at-{named}")
+            assert facts == [
+                "Ends Near",
+                "Read From",
+                "Rebuilding Context",
+                "Most by Quest",
+                "Most by Model",
+            ], facts
+            desktop.step_in()
+            desktop.down_to("Premium Day")
+            facts = drawer_shot(desktop, "Premium Day", f"launcher-spend-cap-at-{named}")
+            assert facts == ["Standing", "Resets", "Read By", "Warns"], facts
+            desktop.step_out()
             desktop.down_to("Budgets")
             assert desktop.showing()["selected"]["side"] == "$21,564 this month"
             desktop.shoot(f"launcher-budgets-at-{named}")
@@ -2617,15 +2802,30 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
                 "Your AI proxy token",
                 "Delta team token",
             ], rows
+            desktop.down_to("Your AI proxy token")
+            facts = drawer_shot(
+                desktop, "Your AI proxy token", f"launcher-budgets-proxy-at-{named}"
+            )
+            assert facts == ["Premium Day", "Week", "Spent", "Feed"], facts
+            desktop.step_in()
+            desktop.down_to("Premium Day")
+            facts = drawer_shot(desktop, "Premium Day", f"launcher-budgets-dollars-at-{named}")
+            assert facts == ["Standing", "Resets", "Read By", "Warns"], facts
+            desktop.step_out()
             desktop.down_to("Claude Pro")
-            desktop.shoot(f"launcher-budgets-each-at-{named}")
+            facts = drawer_shot(desktop, "Claude Pro", f"launcher-budgets-each-at-{named}")
+            assert facts == ["Five Hours", "Week", "Worth at List", "Feed", "Providers"], facts
             desktop.step_in()
             rows = desktop.showing()["rows"]
             assert rows[:2] == ["Five Hours", "Week"], rows
-            desktop.shoot(f"launcher-budgets-windows-at-{named}")
+            facts = drawer_shot(desktop, "Five Hours", f"launcher-budgets-windows-at-{named}")
+            assert facts == ["Resets", "Read By", "Warns"], facts
             desktop.close_launcher()
     finally:
-        desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")
+        desktop.as_account(
+            "rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json"
+            " $XDG_RUNTIME_DIR/spend-watch/budgets.json"
+        )
 
 
 # What's typed for the meaning daemon's stand-in to find by its meaning, and the words in the
@@ -2874,8 +3074,8 @@ def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
 # open layout to the laptop's own in place, the margin lets its layer's mark go, and the
 # launcher neither finds its keys nor lists it among the keyboards; Super+K then shows the
 # laptop's, and plugging it back in turns the open card to the board's again (VKCF3Z,
-# 2026-11-07). With it back, its drawer and the others' are photographed
-# (players_and_boards_drawn), here rather than in a subtest of their own, since the board is
+# 2026-11-07). With it back, its drawer and every other new drawer are photographed
+# (each_drawer_drawn), here rather than in a subtest of their own, since the board is
 # already plugged in and the file keeps to twenty.
 
 
@@ -2918,18 +3118,207 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
         with desktop.told("gone keyboard"):
             desktop.as_account("qs ipc call keyboard toggle")
         assert ERGODOX in keyboards_listed(desktop, scale, "back")
-        players_and_boards_drawn(desktop, at_each_scale)
+        each_drawer_drawn(desktop, at_each_scale)
     finally:
         desktop.machine.succeed("systemctl stop ergodox || true")
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")
 
 
-# A player's and a keyboard's drawers say everything their sources hold (Joel, 2026-11-07:
-# "every integration has an insanely high bar of nerdiness and integration"), each where the
-# thing is and what it is above, and are photographed at each of Joel's scales for the design's
-# look: mpv's Media, playing and paused, the ErgoDox and the laptop's own board.
-def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
-    """Photograph mpv's Media and each keyboard's drawer, with the ErgoDox plugged in."""
+# How long a wait lasts before Now lists Lag, as tests/desktop.nix sets it.
+LAG_LASTS = 3600
+
+
+def disk_filling(desktop: Desktop) -> None:
+    """Write the machine's disk guard's status, /nix urgent and filling, as the guard does."""
+    now = time.time()
+    status = {
+        "v": 1,
+        "heartbeat": now + 3600,
+        "filesystems": [
+            {
+                "path": "/nix",
+                "band": "urgent",
+                "free": 18 * 2**30,
+                "total": 900 * 2**30,
+                "fill_per_hour": 3 * 2**30,
+                "full_at": now + 6 * 3600,
+                "says": "The disk is nearly full, with 18.0 GiB free.",
+            }
+        ],
+        "frozen": [],
+        "holders": [
+            {"path": "/nix/store", "bytes": 610 * 2**30, "grew": {"bytes": 9 * 2**30}},
+            {"path": "/var/log", "bytes": 2 * 2**30, "grew": {"bytes": 2**29}},
+        ],
+        "holders_at": now,
+        "cleared": [
+            {"at": now - 5400, "kind": "cache", "path": "/nix/var/cache", "bytes": 6 * 2**30}
+        ],
+    }
+    desktop.machine.succeed(
+        f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+        " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+    )
+
+
+def lag_lasting(desktop: Desktop) -> None:
+    """Write a window as lag-watch does, a wait on memory begun longer ago than Lag waits.
+
+    A window with no wait goes first, heard before the next, so a wait lag-watch itself saw
+    earlier ends and the stand-in's is a run of its own. Lag hears a window lag-watch stopped
+    rewriting as silent, so it's written just before its drawer is opened, each time.
+    """
+    now = int(desktop.machine.succeed("date +%s").strip())
+    lagged = "$XDG_RUNTIME_DIR/lag-watch/status.json"
+
+    def write(window: Json) -> None:
+        desktop.as_account(
+            f"mkdir -p $(dirname {lagged}) && echo '{json.dumps(window)}' > {lagged}.new"
+            f" && mv {lagged}.new {lagged}"
+        )
+
+    with desktop.told("heard lag nothing"):
+        write({"ended": now, "trouble": [], "worst": "", "who": "", "since": None})
+    with desktop.told("heard lag memory"):
+        write(lasting_window(now))
+
+
+def lasting_window(now: int) -> Json:
+    """Give lag-watch's window of a wait on memory begun longer ago than Lag waits.
+
+    It ends five minutes on, since Lag hears a window 30 seconds past its end as lag-watch
+    gone, and with lag-watch resting nothing writes the next: a walk to Lag at 2 outlasted it.
+    """
+    return {
+        "ended": now + 300,
+        "seconds": 10,
+        "stalls": {
+            "app": {"cpu_some": 2.4, "memory_some": 12.5, "io_some": 0.04},
+            "session": {"cpu_some": 0.5, "memory_some": 3.1, "io_some": 0.0},
+        },
+        "memory": {"app": {"swap_mib": 1144}},
+        "trouble": ["apps waited on memory"],
+        "worst": "memory",
+        "who": "apps",
+        "since": now - LAG_LASTS - 10,
+    }
+
+
+def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
+    """Open Now by Super+O, move down to a piece's row, and photograph its drawer."""
+    desktop.machine.send_key("meta_l-o")
+    desktop.in_now("Needs You")
+    desktop.launcher_until(lambda shown: row in shown["rows"])
+    desktop.down_to(row)
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["eyebrow"] == eyebrow
+    )
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+# Each drawer this desktop's integrations gained says everything its source holds (Joel,
+# 2026-11-07: "every integration has an insanely high bar of nerdiness and integration"), where
+# the thing is and what it is above, and each is photographed at each of Joel's scales for the
+# design's look: mpv's program row and its Media, playing and paused, the ErgoDox and the
+# laptop's own board, a picture Capture took, and Now's Disks and Lag.
+def media_drawer(desktop: Desktop, shot: str, side: str, program: str = "") -> None:
+    """Open mpv's Media, its side saying how it stands, and photograph its drawer.
+
+    On the way, mpv's own row's drawer is photographed too, where a shot is named for it.
+    """
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("mpv", selecting="mpv Media Player")
+    if program:
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "mpv Media Player"
+                and "Playing" in shown["drawer"]["facts"]
+            )
+        )
+        desktop.shoot(program)
+    desktop.into_program()
+    desktop.type_in("media", selecting="Media")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "Bless The Child"
+            and any(
+                thing["reads"].startswith("Media") and side in thing["reads"]
+                for thing in shown["things"]
+            )
+        )
+    )
+    drawer = desktop.showing()["drawer"]
+    assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
+    assert drawer["facts"][0] == "Position", drawer
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+def board_drawer(desktop: Desktop, name: str, eyebrow: str, shot: str) -> None:
+    """Open the keyboards on one, and photograph its drawer."""
+    desktop.answer("keyboards")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: name in shown["rows"])
+    desktop.down_to(name)
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == name
+    )
+    drawer = desktop.showing()["drawer"]
+    assert drawer["eyebrow"] == eyebrow, drawer
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+def recent_drawer(desktop: Desktop, shot: str) -> None:
+    """Open what Capture took lately on the newest, and photograph its drawer."""
+    desktop.capture()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.follow()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
+            and "Dimensions" in shown["drawer"]["facts"]
+        )
+    )
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
+def drawers_at(desktop: Desktop, scale: str) -> None:
+    """Photograph each drawer at one of Joel's scales."""
+    at_scale(desktop, scale)
+    at = scale.replace(".", "-")
+    media_drawer(
+        desktop,
+        f"launcher-media-drawer-playing-at-{at}",
+        "playing",
+        program=f"launcher-program-drawer-at-{at}",
+    )
+    desktop.as_account("qs ipc call music toggle")
+    media_drawer(desktop, f"launcher-media-drawer-paused-at-{at}", "paused")
+    desktop.as_account("qs ipc call music toggle")
+    board_drawer(desktop, ERGODOX, "on USB \u00b7 keyboard", f"launcher-ergodox-drawer-at-{at}")
+    board_drawer(
+        desktop,
+        "The Laptop's Keyboard",
+        "built in \u00b7 keyboard",
+        f"launcher-laptops-keyboard-drawer-at-{at}",
+    )
+    recent_drawer(desktop, f"launcher-capture-drawer-at-{at}")
+    now_drawer(desktop, "Disks", "on this machine \u00b7 disk", f"launcher-disk-drawer-at-{at}")
+    lag_lasting(desktop)
+    now_drawer(desktop, "Lag", "on this machine \u00b7 lag", f"launcher-lag-drawer-at-{at}")
+
+
+# Called from the unplugged ErgoDox subtest once the board is back, so it's plugged in here and
+# that subtest's own finally unplugs it.
+def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
+    """Photograph a program's, its Media's, each keyboard's, a capture's, Disks' and Lag's."""
     machine = desktop.machine
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
@@ -2937,60 +3326,22 @@ def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
     )
     named = "busctl --user list --acquired | grep -q '^org\\.mpris\\.MediaPlayer2\\.mpv'"
     machine.wait_until_succeeds(desktop.in_session(named), timeout=timedelta(seconds=30))
-
-    def media(shot: str, side: str) -> None:
-        """Open mpv's Media, its side saying how it stands, and photograph its drawer."""
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        desktop.type_in("mpv", selecting="mpv Media Player")
-        desktop.into_program()
-        desktop.type_in("media", selecting="Media")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["drawer"]["out"] is True
-                and shown["drawer"]["title"] == "Bless The Child"
-                and any(
-                    thing["reads"].startswith("Media") and side in thing["reads"]
-                    for thing in shown["things"]
-                )
-            )
-        )
-        drawer = desktop.showing()["drawer"]
-        assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
-        assert drawer["facts"][0] == "Position", drawer
-        desktop.shoot(shot)
-        desktop.close_launcher()
-
-    def board(name: str, eyebrow: str, shot: str) -> None:
-        """Open the keyboards on one, and photograph its drawer."""
-        desktop.answer("keyboards")
-        desktop.step_in()
-        desktop.launcher_until(lambda shown: name in shown["rows"])
-        desktop.down_to(name)
-        desktop.launcher_until(
-            lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == name
-        )
-        drawer = desktop.showing()["drawer"]
-        assert drawer["eyebrow"] == eyebrow, drawer
-        desktop.shoot(shot)
-        desktop.close_launcher()
-
+    # lag-watch would write its own window over the stand-in's, so it rests.
+    desktop.as_account("systemctl --user stop lag-watch.service")
     try:
+        desktop.capture()
+        with desktop.captured():
+            machine.send_key("ret")
+        disk_filling(desktop)
         for scale in scales:
-            at_scale(desktop, scale)
-            at = scale.replace(".", "-")
-            media(f"launcher-media-drawer-playing-at-{at}", "playing")
-            desktop.as_account("qs ipc call music toggle")
-            media(f"launcher-media-drawer-paused-at-{at}", "paused")
-            desktop.as_account("qs ipc call music toggle")
-            board(ERGODOX, "on USB \u00b7 keyboard", f"launcher-ergodox-drawer-at-{at}")
-            board(
-                "The Laptop's Keyboard",
-                "built in \u00b7 keyboard",
-                f"launcher-laptops-keyboard-drawer-at-{at}",
-            )
+            drawers_at(desktop, scale)
     finally:
         desktop.as_account("systemctl --user stop player || true")
+        machine.succeed("rm -f /run/disk-guard/status.json")
+        desktop.as_account(
+            "rm -f $XDG_RUNTIME_DIR/lag-watch/status.json"
+            " && systemctl --user start lag-watch.service"
+        )
 
 
 # The device Nearby hears: btvirt's second controller, named as BlueZ names a device by what it

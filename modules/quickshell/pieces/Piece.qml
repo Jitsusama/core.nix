@@ -37,6 +37,10 @@ Item {
     // figure, the room Now keeps for it.
     property var counts: null
     property string widest: ""
+    // Its value as items, `{ said, keep }`, where it says several, so Now's
+    // row gives way by whole items (Choice.qml's sideItems); empty, the
+    // value is said as it is.
+    property var valueItems: []
     property string role: "text"
     // The theme's glyph its value is read by at a glance, by name, or none,
     // and what a glance needs said after it: the least that tells Joel
@@ -110,6 +114,13 @@ Item {
     // Null for a piece whose row says all there is, or whose place's row
     // is its own and draws its own drawer.
     property var drawer: null
+    // The launcher's row whose drawer is this piece's too, where a place
+    // lists the thing it reads, as `{ place, key }`: the Microphone's is
+    // its device's in Sound, the Camera's the camera in use's, Tokens' its
+    // cap's in Spend (VKCF3Z,
+    // 2026-11-08: one thing gets one drawer). Its own row and acts stay
+    // its own. Null for a piece with no such row.
+    property var drawnBy: null
     // The things it stands for, each a fact of its own (Facts.js), where
     // it stands for several, as the Bluetooth devices' batteries do: each
     // a plain object read as a piece is, with a `key` of its own, made by

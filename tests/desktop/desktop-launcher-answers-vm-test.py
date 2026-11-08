@@ -419,7 +419,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Space"
-            and shown["selected"]["side"] == "20.0 GiB free"
+            and shown["selected"]["side"] == "21.5\u00a0GB free"
             and {"Speed", "Busy", "Latency"} <= set(shown["rows"])
         )
     )
@@ -431,7 +431,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
-            and shown["selected"]["side"] == "20.0 GiB free \u00b7 clearing old builds"
+            and shown["selected"]["side"] == "21.5\u00a0GB free \u00b7 clearing old builds"
             and (shown.get("drawer") or {}).get("out") is True
             and shown["drawer"]["facts"] == ["Free", "Size"]
             and shown["drawer"]["body"] == "The disk is filling, with 20.0 GiB free."
@@ -445,12 +445,12 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's Filling It"])
     desktop.type_in("filling", selecting="What's Filling It")
-    assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
+    assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.9\u00a0GB"
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"] == ["Containers", "Nix cache", "Copy"]
-            and shown["selected"]["side"] == "12.0 GiB"
+            and shown["selected"]["side"] == "12.9\u00a0GB"
             and str(shown["selected"]["reads"]).startswith("Container storage holds")
         )
     )
@@ -765,7 +765,7 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
             )
         )  # fmt: skip
         reads = [thing["reads"] for thing in desktop.showing()["things"]]
-        assert "Grew \u00b7 2.0 GiB in 20 h" in reads, reads
+        assert "Grew \u00b7 2.15\u00a0GB in 20 h" in reads, reads
         desktop.down_to("Keep")
         assert desktop.showing()["selected"]["side"] == "no"
         # Kept, it asks why, and the guard says so.
@@ -807,9 +807,10 @@ def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: "Clear" in shown["rows"])
         desktop.down_to("Clear")
-        assert desktop.showing()["selected"]["side"] == "1.0 GiB", desktop.showing()["selected"]
+        selected = desktop.showing()["selected"]
+        assert selected["side"] == "1.07\u00a0GB", selected
         desktop.step_in("ret")
-        desktop.launcher_until(lambda shown: shown["rows"] == ["Clear 1.0 GiB of ~/scratch"])
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Clear 1.07\u00a0GB of ~/scratch"])
         # The step asked, so its line is banged, and a fresh Return there clears it, asking
         # no more.
         desktop.line("delete!")

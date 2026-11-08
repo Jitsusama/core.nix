@@ -408,7 +408,7 @@ Provider {
 
     // Screens are choices: the built-in first, as it's always there, then by
     // name, and the one in use never moves for being chosen.
-    readonly property var shown: Object.values(outputs).sort(Order.choices({
+    readonly property var shown: Order.sorted(Object.values(outputs), Order.choices({
         natural: (a, b) => Number(builtIn(b)) - Number(builtIn(a)), name: output => output.name }))
     readonly property var lit: shown.filter(output => output.logical !== null)
 
@@ -504,7 +504,7 @@ Provider {
             : Screens.physical(output);
         return {
             eyebrow: Plate.runs([output.name, partSaid("", builtIn(output) ? "built-in"
-                : "monitor")]),
+                : "screen")]),
             eyebrowNames: true,
             title: named(output),
             facts: facts.concat(Screens.facts(output, {

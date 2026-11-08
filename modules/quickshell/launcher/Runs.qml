@@ -28,27 +28,11 @@ Provider {
 
     collection: Words.collection("runs")
 
-    // The node's records of runs (mycelium's PROTOCOL.md, The Daemon
-    // Interface), watched whole and then told each change as only what
-    // differs. What was held stays held while the node isn't answering, as
-    // while a switch restarts it.
-    readonly property var runKind: runLink.item
-    LazyLoader {
-        id: runLink
-        active: Sessions.nodePath !== ""
-
-        Daemon {
-            socket: Sessions.nodePath
-            kind: "run"
-            changesDiffer: true
-            answersWhole: true
-        }
-    }
-    // Each run's record as the node serves it, by its key.
-    property var records: {
-        runKind?.revision;
-        return Object.values(runKind?.held ?? {});
-    }
+    // Each run's record as its agent's source tells of it (AgentSources),
+    // pi's as the realm's node serves them (mycelium's PROTOCOL.md, The
+    // Daemon Interface). What was held stays held while the node isn't
+    // answering, as while a switch restarts it.
+    property var records: AgentSources.runs
 
     // The session that started each, by its own id, which a run's record
     // names as its `parent`: its address. Said as text first, which
@@ -176,7 +160,7 @@ Provider {
 
     // Running first, then the newest.
     readonly property var all: {
-        const sorted = runs.map(run => settled(run, started)).sort(Order.stream(
+        const sorted = Order.sorted(runs.map(run => settled(run, started)), Order.stream(
             run => String(run.started ?? ""), run => run.participants.some(p => running(p.state))));
         const sharing = Quiet.sharing;
         const sessions = started;
