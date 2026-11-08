@@ -83,9 +83,16 @@
       }
     },
     {
-      // A test's numbers are its example's, read where they're used.
+      // A test's numbers are its example's, read where they're used, and
+      // its strings are selectors and stand-ins' sources, which read to the
+      // secrets rule as random, never a secret.
       "includes": ["tests/**/*.mjs"],
-      "linter": { "rules": { "style": { "noMagicNumbers": "off" } } }
+      "linter": {
+        "rules": {
+          "style": { "noMagicNumbers": "off" },
+          "security": { "noSecrets": "off" }
+        }
+      }
     },
     {
       "includes": ["modules/pi/**/*.ts"],

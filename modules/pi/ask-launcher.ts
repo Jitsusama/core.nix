@@ -13,7 +13,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /** How long the launcher has to answer before the tool gives up on it. */
-const ANSWER_MS = 5_000;
+const ANSWER_MS = 5000;
 
 /** One place or action as the launcher lists it. */
 interface Entry {
@@ -70,9 +70,15 @@ function askLauncher(args: string[], signal?: AbortSignal): Promise<string> {
 function answerOf(printed: string): unknown {
   try {
     return JSON.parse(printed);
-  } catch {
-    const plain = printed.replace(/\x1b\[[0-9;]*m/g, "").replace(/\s+/g, " ").trim();
-    throw new Error(`The launcher didn't answer: ${plain || "it printed nothing"}`);
+  } catch (error) {
+    const plain = printed
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: qs colours its error with ANSI escapes, which open with ESC.
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    throw new Error(`The launcher didn't answer: ${plain || "it printed nothing"}`, {
+      cause: error,
+    });
   }
 }
 
@@ -86,12 +92,16 @@ export function listing(printed: string, match?: string): string {
         [entry.words, entry.in ?? "", entry.id].some((text) => text.toLowerCase().includes(needle)),
       )
     : entries;
-  if (shown.length === 0) return match ? `Nothing in the launcher matches "${match}".` : "The launcher lists nothing.";
+  if (shown.length === 0) {
+    return match ? `Nothing in the launcher matches "${match}".` : "The launcher lists nothing.";
+  }
   return shown
     .map((entry) => {
       const where = entry.in ? `${entry.in} › ` : "";
       const now = entry.says ? ` (now ${entry.says})` : "";
-      const takes = entry.args?.length ? ` (takes ${entry.args.map((arg) => arg.words ?? arg.name).join(", ")})` : "";
+      const takes = entry.args?.length
+        ? ` (takes ${entry.args.map((arg) => arg.words ?? arg.name).join(", ")})`
+        : "";
       const care = entry.disruptive ? " [disruptive: offered for Return, not done]" : "";
       return `${entry.id}: ${where}${entry.words}${now}${takes}${care}`;
     })
@@ -102,13 +112,32 @@ export function listing(printed: string, match?: string): string {
 export function outcome(printed: string): string {
   const parsed = answerOf(printed);
   const ran: Ran = isRecord(parsed) ? parsed : {};
-  if (typeof ran.error === "string") return `Not done: ${ran.error}`;
-  if (ran.done) return `Done${ran.said ? `: ${ran.said}` : "."}`;
+  if (typeof ran.error === "string") {
+    return `Not done: ${ran.error}`;
+  }
+  if (ran.done) {
+    return `Done${ran.said ? `: ${ran.said}` : "."}`;
+  }
   if (ran.offered) {
     const row = ran.said ? ` (${ran.said})` : "";
     return `Not done yet: it's disruptive, so the launcher shows it as a row${row} and Return does it.`;
   }
   return `The launcher answered something unexpected: ${printed}`;
+}
+
+/** What the tool says to a call: a listing, or what running an entry did. */
+async function answer(
+  params: { action: "list" | "run"; match?: string; id?: string; arg?: string },
+  signal: AbortSignal | undefined,
+): Promise<string> {
+  if (params.action === "list") {
+    return listing(await askLauncher(["list"], signal), params.match);
+  }
+  if (!params.id) {
+    return "Name the id to run, as list gives it.";
+  }
+  const call = params.arg ? ["runWith", params.id, params.arg] : ["run", params.id];
+  return outcome(await askLauncher(call, signal));
 }
 
 /** Registers the launcher tool. */
@@ -127,19 +156,16 @@ export default function (pi: ExtensionAPI) {
       action: Type.Union([Type.Literal("list"), Type.Literal("run")], {
         description: "list: read what the launcher offers. run: do one by its id.",
       }),
-      match: Type.Optional(Type.String({ description: "For list: only entries whose words, place or id hold this." })),
+      match: Type.Optional(
+        Type.String({ description: "For list: only entries whose words, place or id hold this." }),
+      ),
       id: Type.Optional(Type.String({ description: "For run: the entry's id, as list gives it." })),
-      arg: Type.Optional(Type.String({ description: "For run: the words or number an entry that takes one needs." })),
+      arg: Type.Optional(
+        Type.String({ description: "For run: the words or number an entry that takes one needs." }),
+      ),
     }),
     async execute(_toolCallId, params, signal) {
-      const text =
-        params.action === "list"
-          ? listing(await askLauncher(["list"], signal), params.match)
-          : params.id
-            ? outcome(
-                await askLauncher(params.arg ? ["runWith", params.id, params.arg] : ["run", params.id], signal),
-              )
-            : "Name the id to run, as list gives it.";
+      const text = await answer(params, signal);
       return { content: [{ type: "text", text }], details: {} };
     },
   });
