@@ -72,7 +72,7 @@ let
     KillMode = "mixed";
     TimeoutStopSec = "10s";
     Restart = "on-failure";
-    Slice = "background.slice";
+    Slice = "offload.slice";
     # A switch that changes it reloads it rather than restarting it: its
     # end ends the way to its builder, and every build reaching it with
     # that, which cut 8.1 hours of builds at three switches on 3 November.
@@ -159,6 +159,19 @@ in
         machines line once ready and running while it's there), gives one back
         (`down NAME`), and names those there (`alive PREFIX`). Without one,
         none is lent, and only the standing builders are named.
+      '';
+    };
+    whenNoneAnswers = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        A program the lender runs the moment no builder answers any work: the
+        one lent failed two proofs in a row and nothing stands in. Its first
+        argument is `none`, its second a sentence saying why; once a builder
+        answers again, or none is wanted, it runs once more with `back` and who.
+        It's waited on, so it must be quick, such as one writing a file for
+        whoever keeps the machine's builds moving. Without one, the lender
+        only says so in its journal.
       '';
     };
     prefix = lib.mkOption {
@@ -490,6 +503,17 @@ in
       ) cfg.nearby;
     };
 
+    # The lenders, their tunnels and relays carry every build sent away, so
+    # they weigh as much as a session does rather than background's 30: on
+    # 8 November, at 48% CPU pressure, a tunnel in background was so slow to
+    # answer that its relay hung up on 11 callers in 9 minutes. Their CPU is a few
+    # percent, so the weight buys them time when they need it and little
+    # else. The disk stays background's, since an upload's reads can wait.
+    systemd.user.slices.offload.Slice = {
+      CPUWeight = 100;
+      IOWeight = 1;
+    };
+
     systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || names) {
       Unit = {
         Description = "Names this machine's builders, lending one while its queue has builds one could take";
@@ -504,7 +528,9 @@ in
                 "stand"
               ]
             else
-              serving ++ [ "--prefix ${cfg.prefix}" ]
+              serving
+              ++ [ "--prefix ${cfg.prefix}" ]
+              ++ lib.optional (cfg.whenNoneAnswers != null) "--tell ${cfg.whenNoneAnswers}"
           )
           ++ lib.optional names "--standing ${listed "standing"} --beside ${listed "beside"}"
         );

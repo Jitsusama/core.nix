@@ -24,8 +24,9 @@ pub struct Sets {
     /// system keeps it in system.slice; nixpkgs runs it in build.slice,
     /// which bulk1 already covers.
     pub bulk2: Vec<String>,
-    /// Each account's work: jobs (timed work inside it), background, its
-    /// containers in user.slice and its machines.
+    /// Each account's work: jobs (timed work inside it), background, the
+    /// builds it sends away in offload, its containers in user.slice and
+    /// its machines.
     pub bulk4: Vec<String>,
     /// The shaper's own pings, which must measure the connection, not its
     /// queue.
@@ -48,9 +49,10 @@ pub struct Sets {
 }
 
 const SYSTEM_BULK: [&str; 2] = ["build.slice", "machine.slice"];
-const ACCOUNT_BULK: [&str; 4] = [
+const ACCOUNT_BULK: [&str; 5] = [
     "jobs.slice",
     "background.slice",
+    "offload.slice",
     "user.slice",
     "machine.slice",
 ];
@@ -320,6 +322,7 @@ mod tests {
         let root = tree(&[
             "user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service",
             "user.slice/user-1000.slice/user@1000.service/background.slice",
+            "user.slice/user-1000.slice/user@1000.service/offload.slice",
             "user.slice/user-1000.slice/user@1000.service/app.slice/tuple.service",
             "user.slice/user-1000.slice/user@1000.service/session.slice",
         ]);
@@ -328,7 +331,8 @@ mod tests {
             sets.bulk4,
             [
                 format!("{ACCOUNT}/jobs.slice"),
-                format!("{ACCOUNT}/background.slice")
+                format!("{ACCOUNT}/background.slice"),
+                format!("{ACCOUNT}/offload.slice")
             ]
         );
         assert_eq!(sets.app4, [format!("{ACCOUNT}/app.slice")]);
