@@ -6112,7 +6112,8 @@
     {
       "id": "on:lag:swap",
       "in": "on",
-      "name": "Swap"
+      "name": "Swap",
+      "term": "Machine/swap"
     },
     {
       "id": "on:sharing",
