@@ -565,7 +565,7 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     """The camera takes a picture and a video by the keys, and keeps a picture unmirrored."""
     camera = Camera(desktop)
     machine = desktop.machine
-    camera.viewfinder("picture from the camera")
+    camera.viewfinder("photo from the camera")
     # Return before the camera wakes takes the picture once it has, and then the viewfinder
     # goes, as a screenshot's would.
     with desktop.told("shows card Picture copied", timeout=WAKING):
@@ -576,7 +576,7 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
 
     # Tab makes Return record, and Return again stops it, the viewfinder going once the video
     # is saved.
-    camera.viewfinder("picture from the camera")
+    camera.viewfinder("photo from the camera")
     machine.send_key("tab")
     machine.send_key("ret")
     retry(lambda last: camera.recording(1, last), timeout=WAKING)
@@ -605,7 +605,7 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
 
     # Escape and q close nothing, as in all of Joel's programs; ZZ closes, keeping nothing.
     kept = machine.succeed(f"ls {camera.pictures} {camera.videos}")
-    camera.viewfinder("picture from the camera")
+    camera.viewfinder("photo from the camera")
     machine.send_key("esc")
     machine.send_key("q")
     machine.succeed(desktop.in_session(CAMERA))
