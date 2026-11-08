@@ -48,6 +48,8 @@ pub fn error(id: &Value, code: &str, message: &str) -> Value {
 
 /// What a daemon answers: one line from a client at a time, on the
 /// connection it came from, with where to tell that client of changes.
+/// An answer of null is one given later, through `told`, as meaning's
+/// search is once its words are embedded, so nothing is said now.
 pub trait Answers: Send + 'static {
     fn answer(&mut self, line: &str, connection: u64, told: &Sender<String>) -> Value;
 
@@ -192,6 +194,9 @@ fn serve<T: Answers>(daemon: &Shared<T>, stream: UnixStream, connection: u64) {
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
         let answer = daemon.lock().answer(&line, connection, &told);
+        if answer.is_null() {
+            continue;
+        }
         if told.send(answer.to_string()).is_err() {
             break;
         }
