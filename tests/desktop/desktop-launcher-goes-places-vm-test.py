@@ -891,8 +891,11 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
     # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26),
-    # and People after Programs (RSCH-20261028-2NK1E5).
-    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
+    # People after Programs (RSCH-20261028-2NK1E5), and Passwords, a place
+    # of its own as People is, after it, on a machine with a password
+    # manager, as this one has 1Password (VKCF3Z, 22949064).
+    home = ["Now", "Agents", "Programs", "People", "Passwords", "Desktop", "Machine", "Network",
+            "Keyboard"]  # fmt: skip
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -961,8 +964,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Ctrl+Y moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    # Past Programs and People.
-    for _step in range(3):
+    # Past Programs, People and Passwords.
+    for _step in range(4):
         desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")

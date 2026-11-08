@@ -230,6 +230,26 @@ fn detail(field: &Value, sections: &[Value]) -> Option<Value> {
     Some(Value::Object(detail))
 }
 
+/// The account's own id, from what `op account get --format json` says of
+/// it, or none. 1Password's own link to an item names it beside the vault
+/// and the item (`onepassword://view-item?a=ACCOUNT&v=VAULT&i=ITEM`), and
+/// nothing op says of an item does, so it's asked once and laid on each.
+pub fn account(said: &Value) -> Option<String> {
+    text(said, "id")
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+}
+
+/// An entry with its account's id under `own`, as `account`, for its link.
+pub fn in_account(mut entry: Value, account: Option<&str>) -> Value {
+    if let Some(account) = account
+        && let Some(own) = entry.get_mut("own").and_then(Value::as_object_mut)
+    {
+        own.insert("account".to_owned(), json!(account));
+    }
+    entry
+}
+
 /// The value of one field of an item, by its id: the one place a secret
 /// is read, for the detail Joel asked to copy or show.
 pub fn value(item: &Value, wanted: &str) -> Option<String> {
@@ -354,6 +374,20 @@ mod tests {
         );
         let note = json!({"id": "n", "category": "SECURE_NOTE", "additional_information": "Hi"});
         assert!(super::entry(&note).unwrap().get("username").is_none());
+    }
+
+    #[test]
+    fn an_entry_names_its_account_for_its_link() {
+        // As op account get gives it, in op 2's JSON.
+        let said = json!({"id": "ACCT1", "name": "Family", "domain": "my.1password.com",
+                          "type": "FAMILY", "state": "ACTIVE"});
+        assert_eq!(account(&said).as_deref(), Some("ACCT1"));
+        assert_eq!(account(&json!({"id": ""})), None);
+        let named = in_account(entry(&login()).unwrap(), Some("ACCT1"));
+        assert_eq!(named["own"]["account"], "ACCT1");
+        assert_eq!(named["collection"]["id"], "v1");
+        let unnamed = in_account(entry(&login()).unwrap(), None);
+        assert!(unnamed["own"].get("account").is_none(), "{unnamed}");
     }
 
     #[test]

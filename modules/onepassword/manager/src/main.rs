@@ -17,7 +17,7 @@ use std::io::{BufRead, Write};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use onepassword_manager::{entry, period, reason, value};
+use onepassword_manager::{account, entry, in_account, period, reason, value};
 use serde_json::{Value, json};
 
 /// What Joel reads while 1Password hasn't let the launcher in.
@@ -33,7 +33,11 @@ fn main() {
             op = path;
         }
     }
-    let mut manager = Manager { op, let_in: false };
+    let mut manager = Manager {
+        op,
+        let_in: false,
+        account: None,
+    };
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{}", json!({"state": "signed-out", "reason": LET_IN}));
     let _ = out.flush();
@@ -52,6 +56,8 @@ struct Manager {
     op: String,
     /// Whether op has answered since this started, so its leave is live.
     let_in: bool,
+    /// The account's id, once op has said it, for each entry's link.
+    account: Option<String>,
 }
 
 /// How op failed: signed out for a leave not given or lapsed, refused
@@ -127,13 +133,30 @@ impl Manager {
     fn list(&mut self, joels: bool) -> Result<Value, Failed> {
         self.may(joels)?;
         let items = self.json(&["item", "list", "--format", "json"])?;
+        let account = self.account();
         let entries: Vec<Value> = items
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(entry)
+            .map(|entry| in_account(entry, account.as_deref()))
             .collect();
         Ok(json!({"entries": entries}))
+    }
+
+    /// The account's id, asked of op once, only after it has answered for
+    /// this ask, so its leave is live and asking prompts Joel for nothing.
+    /// One op can't say leaves the entries without a link, and is asked
+    /// again with the next.
+    fn account(&mut self) -> Option<String> {
+        if self.account.is_none() {
+            self.account = self
+                .json(&["account", "get", "--format", "json"])
+                .ok()
+                .as_ref()
+                .and_then(account);
+        }
+        self.account.clone()
     }
 
     fn get(&mut self, item: &str, joels: bool) -> Result<Value, Failed> {
@@ -143,7 +166,8 @@ impl Manager {
             signed_out: false,
             reason: format!("1Password gave no item for {item}"),
         })?;
-        Ok(json!({"entry": entry}))
+        let account = self.account();
+        Ok(json!({"entry": in_account(entry, account.as_deref())}))
     }
 
     /// One detail's value, read from the whole item op gives and the rest

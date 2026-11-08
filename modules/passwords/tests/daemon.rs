@@ -3,9 +3,10 @@
 //! with its secrets left on; a get reads an entry in full, still without
 //! them; a held list or get asks no manager anything; a secret goes only
 //! to the client that asked to see it, or to the clipboard, cleared when
-//! its time is up; a one-time code says its period; a manager signed out
-//! is said so and refuses a secret; a watch hears entries arrive; and an
-//! ask or kind it doesn't know is refused.
+//! its time is up; a one-time code says its period, and its detail gives
+//! the code, never its seed; a manager signed out is said so and refuses
+//! a secret; a watch hears entries arrive; and an ask or kind it doesn't
+//! know is refused.
 
 mod common;
 
@@ -151,6 +152,29 @@ fn a_one_time_code_says_how_long_it_lasts() {
     assert_eq!(code["code"], "123456");
     assert_eq!(code["period"], 30);
     assert_eq!(code["left"], 12);
+}
+
+#[test]
+fn a_one_time_codes_detail_gives_its_code_never_its_seed() {
+    let running = Running::with("code-detail", &[("keeping", KEEPING)]);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let copied = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh",
+                                    "detail": "otp"}));
+    assert_eq!(copied["copied"], true, "{copied}");
+    assert_eq!(copied["detail"], "one-time password");
+    // How long the code lasts goes with it, so the shell can say so.
+    assert_eq!(copied["period"], 30, "{copied}");
+    assert_eq!(copied["left"], 12, "{copied}");
+    until("the code is copied", || {
+        std::fs::read_to_string(running.copied()).is_ok_and(|copied| copied == "123456")
+    });
+    let shown = client.ask(&json!({"id": 3, "ask": "reveal", "key": "entry:keeping:gh",
+                                   "detail": "otp"}));
+    assert_eq!(shown["value"], "123456", "{shown}");
+    // The seed was never asked of the manager, so it went nowhere.
+    let log = std::fs::read_to_string(running.folder.join("keeping.log")).unwrap();
+    assert!(!log.contains("\"reveal\""), "the seed was asked for: {log}");
 }
 
 #[test]

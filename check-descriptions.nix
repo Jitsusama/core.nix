@@ -1124,8 +1124,9 @@
   '';
   onepassword-manager-passes-no-secret-on = ''
     1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
-    value and no password's history, reads a secret only for the one detail asked, and says
-    1Password's categories and kinds in Passwords' own words
+    value and no password's history, reads a secret only for the one detail asked, says
+    1Password's categories and kinds in Passwords' own words, and names each entry's account from
+    op's own, for 1Password's link to it
   '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
@@ -1153,8 +1154,8 @@
     the passwords daemon holds every entry each password manager lists without a secret, even one
     given with its secrets on, answers a held list or get without asking a manager, gives a secret
     only to the client that asked to see it or to the clipboard marked sensitive and cleared when
-    its time is up, says a one-time code's period, says a manager signed out and gives no secret
-    from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    its time is up, says a one-time code's period, gives a one-time code's detail as its code and
+    never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     and the passwords command sets each answer in columns under a header for a person and
     tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
     finds an entry by its title and a detail by its label, and exits as its usage says
@@ -2065,6 +2066,21 @@
   the-panic-screen-wears-the-theme = ''
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
+  '';
+  the-passwords-place-copies-through-its-daemon-on-niri = ''
+    on a nested niri, the Passwords place asks the passwords daemon nothing until Joel steps in,
+    then lists once as his, leads with the row that lets a signed-out manager in, whose Return
+    asks it, copies an entry's password on Return through the daemon to the clipboard, the foot
+    counting to its clearing and nothing on screen saying it, and reads an entry in full as it's
+    stepped into, holding its acts in the design's order, with a stand-in for 1Password's manager
+  '';
+  the-passwords-show-every-figure-but-the-secret = ''
+    each kind of entry wears its own mark, the favourites are listed first, then what changed
+    lately, newest first, twenty at most, a row names its password manager only while two are on
+    the machine, an entry's acts come in the design's order, each only where it has what it needs,
+    its manager's link is filled only where the entry says every part, its drawer says every
+    figure, a hidden detail as hidden and never its value, and the foot counts a copy down to its
+    clearing, or a one-time code to its lapsing
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two

@@ -73,6 +73,16 @@ in
             type = lib.types.str;
             description = "Its name as Joel reads it.";
           };
+          shows = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = ''
+              The address that shows an entry in the manager's own program,
+              with `{account}`, `{collection}` and `{id}` where the entry's
+              own account, its collection's id and its id go, or none for a
+              manager whose program can't be shown one.
+            '';
+          };
         };
       }
     );
@@ -89,11 +99,21 @@ in
       (pkgs.callPackage ./completion.nix { })
     ];
 
+    # What the place works out apart from drawing it, beside it.
+    xdg.configFile."quickshell/launcher/Passwords.js".source = ./Passwords.js;
+
     # After Slack's program, before Search Slack, among the programs' own.
     jitsusama.quickshell.launcher.providers.passwords = {
       order = 48;
       source = ./Passwords.qml;
-      managers = map (manager: { inherit (manager) name program called; }) managers;
+      managers = map (manager: {
+        inherit (manager)
+          name
+          program
+          called
+          ;
+        shows = if manager.shows == null then "" else manager.shows;
+      }) managers;
     };
 
     # The passwords daemon. It isn't in background.slice: what it holds is
