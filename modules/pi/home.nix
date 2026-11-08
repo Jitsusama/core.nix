@@ -11,6 +11,8 @@
 # row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
 # machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
+# On Linux a run Joel typed rings when it's done, a low ding and then a
+# voice on the machine saying which session (chime.nix).
 # Each morning, on Linux, the installed harness writes its measure in the
 # background: what the day cost and which mistakes recurred.
 {
@@ -389,6 +391,16 @@ in
           ;
       };
     };
+
+    # What a run Joel typed rings with when it's done, where the harness's
+    # done-chime-widget reads it: the ding, the voice and the tools that play
+    # and speak them (chime.nix). A Mac rings with its own sound and voice,
+    # which the harness knows.
+    xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json" =
+      lib.mkIf pkgs.stdenv.hostPlatform.isLinux
+        {
+          text = builtins.toJSON (import ./chime.nix { inherit pkgs lib; });
+        };
 
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
       { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
