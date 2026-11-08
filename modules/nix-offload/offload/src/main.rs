@@ -1018,8 +1018,7 @@ fn standing(dir: &Path) -> Option<String> {
 
 /// `there --changed`: changed-checks run for the tree here on the lent
 /// builder, else a warm VM builder, else an evaluator with its builds
-/// sent on, else a builder
-/// waited for as `waiting` says (`changed.rs` says why). It exits with the
+/// sent on, else a builder waited for as `waiting` says (`changed.rs` says why). It exits with the
 /// run's status, or `NOT_TAKEN` when nowhere else took it.
 fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
@@ -1223,9 +1222,9 @@ impl Sent<'_> {
         }
         // A warm VM builder that stands takes the run while no lent
         // builder answers, rather than its waiting minutes for one: from
-        // 01:00 to 08:05 on 8 November the lent builders' disks stalled
-        // them, and every run waited and ended 69, while the VM builders
-        // took every VM test sent them by name.
+        // 01:00 to 08:05 on 8 November the lent builders ran out of
+        // memory and went silent, and every run waited and ended 69, while
+        // the VM builders took every VM test sent them by name.
         for builder in vm.iter().filter(|builder| there::warm(builder)) {
             if let Some(finished) = on_builder(standing(builder)) {
                 return Some(finished);
