@@ -41,6 +41,15 @@ pub fn one_json(model: &HomeNetwork, profile: &Profile) -> Result<String, String
     super::json::slice(model, One { profile, devices })
 }
 
+/// What the profile names the device with hardware address `mac`.
+fn member_name<'a>(profile: &'a Profile, mac: &str) -> Option<&'a str> {
+    profile
+        .members
+        .iter()
+        .find(|member| member.mac.eq_ignore_ascii_case(mac))
+        .and_then(|member| member.name.as_deref())
+}
+
 fn on_now(model: &HomeNetwork, profile: &Profile) -> usize {
     profile
         .devices
@@ -237,10 +246,12 @@ pub fn one(model: &HomeNetwork, profile: &Profile, clock: &Clock, ink: &Ink) -> 
                 vec![strong(location(model, device.node.as_deref()))],
                 said(device.address.as_deref()),
             ],
+            // One that isn't on now is named as the profile names it, its
+            // node saying it's not on.
             None => vec![
                 vec![plain(mac)],
+                said(member_name(profile, mac)),
                 vec![muted("not on now")],
-                Vec::new(),
                 Vec::new(),
             ],
         });
@@ -311,6 +322,7 @@ mod tests {
             state: None,
             paused: None,
             devices: Vec::new(),
+            members: Vec::new(),
             default: None,
             schedules,
             filters: Filters::default(),
