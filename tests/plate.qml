@@ -48,7 +48,7 @@ QtObject {
     // What backlight-now says, following the room, then holding a pick;
     // an empty file, as the daemon leaves it when it stops, says nothing;
     // and the learned points, dimmest first, a line it would refuse left out.
-    function backlight() {
+    function backlight(check) {
         const following = Backlight.now("level\t0.380\nlux\t28\nasks\t0.380\nfollowing\tyes\n");
         check("the daemon's level, its room and what the curve asks",
             JSON.stringify(following) === JSON.stringify({ level: 0.38, lux: 28, asks: 0.38,
@@ -62,9 +62,9 @@ QtObject {
         check("an empty file says nothing", Backlight.now("") === null
             && Backlight.follows(null, backlightSaid) === "", JSON.stringify(Backlight.now("")));
         const points = Backlight.learned("28 0.950\n6 0.377\nnot a point\n10000 1.000\n");
-        const said = Backlight.learnedSaid(points, backlightSaid, lux => `${lux} lx`);
+        const learned = Backlight.learnedSaid(points, backlightSaid, lux => `${lux} lx`);
         check("the learned points, dimmest first",
-            said === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10000 lx", said);
+            learned === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10000 lx", learned);
         check("nothing learned, nothing said", Backlight.learned("").length === 0, "some");
     }
 
@@ -169,7 +169,7 @@ QtObject {
         check("niri's size, in millimetres", Screens.physical(on) === "300 \u00d7 190 mm"
             && Screens.physical({ physical_size: [0, 0] }) === "", Screens.physical(on));
 
-        backlight();
+        backlight(check);
 
         if (failures.length > 0) {
             for (const failure of failures)
