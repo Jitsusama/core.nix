@@ -3153,10 +3153,16 @@ mod tests {
     /// process group of its own, as sshd does, and ends once its input
     /// closes. A run cut off waits a second for another to claim it.
     fn calling(run: &str, scratch: &Path) -> std::process::Child {
+        calling_within(run, scratch, 1)
+    }
+
+    /// `calling`, with a run cut off going on `grace` seconds for the
+    /// same run sent again.
+    fn calling_within(run: &str, scratch: &Path, grace: u32) -> std::process::Child {
         Command::new("sh")
             .args(["-c", "sh -c \"$1\" & read -r line", "caller", run])
             .env("TMPDIR", scratch)
-            .env("NIX_OFFLOAD_GRACE", "1")
+            .env("NIX_OFFLOAD_GRACE", grace.to_string())
             .env("NIX_OFFLOAD_OUTLIVE", "60")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -3170,21 +3176,23 @@ mod tests {
         // A lender restarting cuts every ssh to its builder, and the run
         // sent again waits on what the first was building. Each run writes
         // its shell's pid once its work is done, so two lines say the
-        // first went on past its caller.
+        // first went on past its caller. Its grace is 5 s: at 1 s, a
+        // builder busy with a suite's other tests on 8 November started
+        // the second caller too late, and the first was ended.
         let folder = tempfile::tempdir().unwrap();
         let done = folder.path().join("done");
         let run = far(&format!(
             "echo started; sleep 8; echo $$ >> {}",
             done.display()
         ));
-        let mut first = calling(&run, folder.path());
+        let mut first = calling_within(&run, folder.path(), 5);
         let mut said = BufReader::new(first.stdout.take().unwrap());
         let mut line = String::new();
         said.read_line(&mut line).unwrap();
         assert_eq!(line, "started\n");
         drop(first.stdin.take());
         first.wait().unwrap();
-        let mut again = calling(&run, folder.path());
+        let mut again = calling_within(&run, folder.path(), 5);
         let mut said = BufReader::new(again.stdout.take().unwrap());
         let mut line = String::new();
         said.read_line(&mut line).unwrap();
