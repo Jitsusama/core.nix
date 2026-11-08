@@ -30,17 +30,17 @@ pub fn listener(socket: &Path) -> Result<UnixListener, String> {
 /// Answers each caller in turn, for as long as the socket lasts.
 pub fn serve(listener: &UnixListener, minter: &mut Minter) {
     for caller in listener.incoming().flatten() {
-        if let Err(why) = answer(caller, minter) {
+        if let Err(why) = answer(&caller, minter) {
             eprintln!("github-broker: a caller went before its answer: {why}");
         }
     }
 }
 
-fn answer(caller: UnixStream, minter: &mut Minter) -> std::io::Result<()> {
+fn answer(caller: &UnixStream, minter: &mut Minter) -> std::io::Result<()> {
     caller.set_read_timeout(Some(PATIENCE))?;
     caller.set_write_timeout(Some(PATIENCE))?;
     let mut asked = String::new();
-    BufReader::new((&caller).take(64)).read_line(&mut asked)?;
+    BufReader::new(caller.take(64)).read_line(&mut asked)?;
     let said = match asked.trim_end() {
         "token" => match minter.token() {
             Ok(token) => format!("ok {} {}\n", token.value, token.expires_at),
@@ -51,7 +51,8 @@ fn answer(caller: UnixStream, minter: &mut Minter) -> std::io::Result<()> {
         },
         other => format!("no {other:?} isn't something to ask; ask `token`\n"),
     };
-    (&caller).write_all(said.as_bytes())
+    let mut caller = caller;
+    caller.write_all(said.as_bytes())
 }
 
 /// Asks the broker at `socket` for a token.

@@ -59,6 +59,7 @@ impl Minter {
     }
 
     /// The same, holding each token for `keep` rather than fifty minutes.
+    #[must_use]
     pub fn keeping(mut self, keep: Duration) -> Minter {
         self.keep = keep;
         self
