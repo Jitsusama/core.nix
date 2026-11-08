@@ -200,6 +200,7 @@
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
+        meaning = ./modules/meaning/home.nix;
         merge-net = ./modules/merge-net/home.nix;
         mpv = ./modules/mpv/home.nix;
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };

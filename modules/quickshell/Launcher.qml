@@ -273,9 +273,12 @@ Scope {
         const askedAll = Date.now();
         const listed = root.found.concat(stillActed(root.found));
         // An answer only there when nothing else is, as asking a model by a
-        // question's first word is, gives way to anything found.
+        // question's first word is, gives way to anything found. A thing
+        // found by its meaning is a guess below it, not a find: it comes
+        // late, and taking the answer away then would move the row above it.
         answer = said && said.fallback
-            && (listed.some(row => !row.category) || gathered.length > 0) ? null : said;
+            && (listed.some(row => !row.category && !row.byMeaning) || gathered.length > 0)
+            ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -291,7 +294,7 @@ Scope {
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
         // At home, every category is listed, to be browsed.
-        const things = new Set(listed.filter(row => !row.category)
+        const things = new Set(listed.filter(row => !row.category && !row.byMeaning)
             .map(row => Fuzzy.plainly(row.name)));
         const found = listed.filter(row => !row.category || atHome
             || !(things.has(Fuzzy.plainly(row.name)) || (answer && !answer.question)));
@@ -865,6 +868,18 @@ Scope {
                 found.push({ item: spot.prepared, score: m.score, grade: m.grade, row: spot });
         }
         return Fuzzy.keep(found).map(f => Object.assign({ grade: f.grade, tier: 2 }, f.row));
+    }
+
+    // The things what's typed means, from each source that finds by meaning
+    // (`meant`), as modules/meaning's does: only ever after everything its
+    // letters found, the spots and the collections gathered included, and
+    // none of those again, so a guess never hides or outranks a match
+    // (Joel, 2026-11-07: "never over truthfulness"). Asked by what a source
+    // can do, as Capture asks `takenByText`, since no source is named here.
+    function meantBelow(letters, listed) {
+        const shown = new Set(listed.map(row => Rank.identity(row)));
+        return sources.filter(source => typeof source.meant === "function")
+            .reduce((all, source) => all.concat(source.meant(letters, shown)), []);
     }
 
     // Goes to a spot: from the root into each step of its trail, found again
@@ -4834,7 +4849,8 @@ Scope {
                 kept: !!learned[f.choice.key]
             }, f.choice));
             const madeAll = Date.now();
-            root.found = made.concat(spotted(letters));
+            const spots = spotted(letters);
+            root.found = made.concat(spots, meantBelow(letters, made.concat(spots, gathered)));
             costs = { matching: matchedAll - listed, ordering: orderedAll - matchedAll,
                 making: madeAll - orderedAll, spots: Date.now() - madeAll, looked: looked.length,
                 found: found.length };

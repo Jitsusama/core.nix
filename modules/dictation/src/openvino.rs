@@ -102,6 +102,12 @@ unsafe extern "C" {
     -> i32;
     fn ov_partial_shape_free(shape: *mut PartialShape);
     fn ov_model_reshape_single_input(model: *const OvModel, shape: PartialShape) -> i32;
+    fn ov_model_reshape(
+        model: *const OvModel,
+        names: *const *const c_char,
+        shapes: *const PartialShape,
+        count: usize,
+    ) -> i32;
     fn ov_core_compile_model_props(
         core: *const OvCore,
         model: *const OvModel,
@@ -399,6 +405,53 @@ impl Model {
             status
         };
         check(status, "fixing the input's shape")
+    }
+
+    /// Fixes the shapes of several inputs by name, at once, as a model
+    /// with more than one, such as BERT's ids, mask and segments, needs on
+    /// the NPU.
+    ///
+    /// # Errors
+    ///
+    /// When an input isn't the model's or it refuses the shapes.
+    pub fn fix_inputs(&mut self, inputs: &[(&str, &[i64])]) -> Result<()> {
+        let names = inputs
+            .iter()
+            .map(|(name, _)| c_string(name))
+            .collect::<Result<Vec<CString>>>()?;
+        let mut shapes = Vec::with_capacity(inputs.len());
+        for (_, dims) in inputs {
+            let rank = i64::try_from(dims.len()).map_err(|_| "too many dimensions".to_owned())?;
+            let mut shape = PartialShape {
+                rank: Dimension { min: 0, max: 0 },
+                dims: ptr::null_mut(),
+            };
+            // SAFETY: dims holds rank values and the out struct is valid.
+            let made = check(
+                unsafe { ov_partial_shape_create_static(rank, dims.as_ptr(), &raw mut shape) },
+                "making an input's shape",
+            );
+            if let Err(why) = made {
+                free_shapes(&mut shapes);
+                return Err(why);
+            }
+            shapes.push(shape);
+        }
+        let pointers: Vec<*const c_char> = names.iter().map(|name| name.as_ptr()).collect();
+        // SAFETY: the names and shapes outlive the call, which reads them
+        // and keeps neither; the shapes are freed once after.
+        let status =
+            unsafe { ov_model_reshape(self.0, pointers.as_ptr(), shapes.as_ptr(), shapes.len()) };
+        free_shapes(&mut shapes);
+        check(status, "fixing the inputs' shapes")
+    }
+}
+
+/// Frees shapes made by `ov_partial_shape_create_static`, each once.
+fn free_shapes(shapes: &mut Vec<PartialShape>) {
+    for mut shape in shapes.drain(..) {
+        // SAFETY: each shape was made by OpenVINO and is freed only here.
+        unsafe { ov_partial_shape_free(&raw mut shape) };
     }
 }
 

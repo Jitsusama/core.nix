@@ -7857,6 +7857,7 @@
   ],
   "field": {
     "found": "{count} found",
+    "byMeaning": "found by its meaning",
     "matched": "{at} of {all}",
     "waiting": "{count} new",
     "home": "Home",

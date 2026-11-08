@@ -2490,6 +2490,65 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")
 
 
+# What's typed for the meaning daemon's stand-in to find by its meaning, and the words in the
+# keys of the things it finds for it, among those the launcher told it of.
+MEANT = "too bright to read"
+MEANT_KEYS = ("bright", "display", "night")
+# The most rows meaning adds below what typing found (VKCF3Z, 2026-11-07).
+MEANT_MOST = 3
+
+
+def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Find things by their meaning, below what typing found, and shoot them.
+
+    The launcher tells the meaning daemon its things as it opens and asks it what's typed, on
+    a stand-in that loads no model (tests/desktop/stand-in-meaning.py): at most three of what
+    it finds are added below every row typing found, none of them twice, each saying it was
+    found by its meaning (VKCF3Z, 2026-11-07). Which it adds, and that nothing moves when they
+    arrive late, is tests/meaning.qml's to prove; this is the wiring, and the look at Joel's
+    scales.
+    """
+    desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json $XDG_RUNTIME_DIR/meaning-asked")
+    desktop.answer(MEANT)
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("grep -q '^know [1-9]' $XDG_RUNTIME_DIR/meaning-asked"),
+        timeout=timedelta(seconds=10),
+    )
+    typed = [row["is"] for row in desktop.showing()["things"]]
+    desktop.close_launcher()
+    known = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-known").split()
+    meant = [key for key in known if any(word in key for word in MEANT_KEYS)]
+    assert meant, f"the launcher told of nothing a test can mean: {known}"
+
+    # Two keys can name one thing, a spot and its collection, so what's added is seen by
+    # identity: rows after the typed ones, and none of them twice.
+    def added(shown: dict[str, Any]) -> list[str]:
+        found = [row["is"] for row in shown["things"]]
+        return found[len(typed) :] if found[: len(typed)] == typed else []
+
+    desktop.as_account(
+        f"echo {shlex.quote(json.dumps({MEANT: meant}))} > $XDG_RUNTIME_DIR/meaning-means.json"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            desktop.answer(MEANT)
+            desktop.launcher_until(lambda shown: added(shown) != [])
+            meanings = added(desktop.showing())
+            assert len(meanings) <= MEANT_MOST, f"meaning added too many: {meanings}"
+            assert len(set(meanings)) == len(meanings), f"a meaning came twice: {meanings}"
+            assert not set(meanings) & set(typed), f"a meaning repeats a typed row: {meanings}"
+            desktop.down_to(desktop.showing()["rows"][len(typed)])
+            note = desktop.showing()["selected"]["note"]
+            assert note == "found by its meaning", f"a meant row says {note!r}"
+            desktop.shoot(f"launcher-found-by-meaning-at-{scale.replace('.', '-')}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json")
+
+
 # The ErgoDox as the kernel names it, the key the layout finds only on it, and what its watcher
 # says while it's locked on its keypad's layer.
 ERGODOX = "ZSA Technology Labs ErgoDox EZ"

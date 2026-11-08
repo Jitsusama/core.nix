@@ -756,6 +756,19 @@
   marks-past-the-basic-plane = ''
     a mark past U+FFFF reaches the shell whole
   '';
+  meaning-adds-only-below = ''
+    the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
+    the words each is known by, and adds at most three rows below what typing found, none found
+    already and none the launcher no longer holds, each saying in the foot how it was found
+  '';
+  meaning-finds-a-thing-by-what-it-means = ''
+    the meaning daemon, on the CPU with the service's model, finds each of the launcher's things by
+    words sharing none of its letters, nearest first, finds nothing for words meaning none of them,
+    and after a restart answers whole at once from the meanings it kept
+  '';
+  meaning-switches-to-the-new-one = ''
+    a switch restarts meaning after reloading its unit, so the shell asks the new one
+  '';
   memory-modules-passes-clippy = ''
     clippy finds nothing in memory-modules or its tests
   '';

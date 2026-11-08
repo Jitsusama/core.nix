@@ -73,6 +73,7 @@
     homeModules.kitty
     homeModules.lag-watch
     homeModules.load-proof
+    homeModules.meaning
     homeModules.noise-cancelled
     homeModules.onepassword
     homeModules.open-with
