@@ -15,8 +15,8 @@ use serde_json::Value;
 use crate::model::{
     Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DevicePort, Dns, Event, Filters,
     Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Member, Node,
-    NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate, Series, Speed,
-    SpeedTest, Thread, Usage,
+    NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate,
+    Series, Speed, SpeedTest, Thread, Usage,
 };
 use crate::time;
 
