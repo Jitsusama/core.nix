@@ -197,6 +197,8 @@ be read, marked unread and archived.
 | Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
+| podcast | a series of spoken episodes a player plays, such as one on Spotify | | Spotify's `show` |
+| episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
 
 ## People

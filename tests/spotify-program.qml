@@ -183,14 +183,14 @@ ShellRoot {
         same("Recent, what plays now first", names(recent), ["Morning", "Two", "The Show"]);
         same("beside each, playing, then how long ago", sides(recent),
             ["playing", "2 h ago", "1 d ago"]);
-        same("each noting its kind, size and who made it, a show's in episodes", notes(recent),
+        same("each noting its kind, size and who made it, a podcast's in episodes", notes(recent),
             ["playlist \u00b7 46 songs \u00b7 Joel", "album \u00b7 1 song \u00b7 Singer, Guest",
-                "show \u00b7 1,212 episodes \u00b7 A Publisher"]);
+                "podcast \u00b7 1,212 episodes \u00b7 A Publisher"]);
         same("each keyed by what it is", recent[0].key, "spotify:context:spotify:playlist:p9");
         same("each wearing its kind's mark, the one its list inside wears",
             recent.map(row => row.glyph), ["playlist", "album", "show"].map(kind => Words.glyph(
                 `spotify:${kind}s`)));
-        expect("a playlist, an album and a show tell apart at a glance, none wearing playing's",
+        expect("a playlist, an album and a podcast tell apart at a glance, none wearing playing's",
             new Set(recent.map(row => row.glyph).concat([Words.glyph("spotify:context")])).size
             === 4, JSON.stringify(recent.map(row => row.glyph)));
         expect("what plays now is played at this moment", recent[0].at >= before
@@ -204,7 +204,7 @@ ShellRoot {
         Launcher.Playing.player.isPlaying = true;
         const acts = well.programActs("spotify");
         same("its insides, Liked Songs, then each list Joel keeps", names(acts),
-            ["Liked Songs", "Playlists", "Albums", "Artists", "Shows"]);
+            ["Liked Songs", "Playlists", "Albums", "Artists", "Podcasts"]);
         same("each counted, none while empty", sides(acts),
             ["1,234 songs", "2", "1", "1", "none"]);
         const lists = acts[1].targets();
@@ -215,7 +215,7 @@ ShellRoot {
             ["10 songs \u00b7 Radiohead"]);
         same("an artist only its name", acts[3].targets().map(row => `${row.name}|${row.note}`),
             ["Artist|"]);
-        same("no shows, none inside", acts[4].targets(), []);
+        same("no podcasts, none inside", acts[4].targets(), []);
         const inside = recent[0].verbs();
         same("inside a row, Play, Open in Spotify, then Copy the Link", names(inside),
             ["Play", "Open in Spotify", "Copy the Link"]);
