@@ -367,6 +367,20 @@ Provider {
         }, () => [both("avg10_pct", "10"), both("avg60_pct", "60"), both("avg300_pct", "300")]);
     }
 
+    // A thing's parts in the order its words list them (VKCF3Z, 2026-11-07:
+    // what moves most first, then what describes, the model last), each
+    // part made where its figure is, then put in its place.
+    function ordered(thing, rows) {
+        const order = (Words.of(thing).parts ?? []).map(part => Words.name(part));
+        const place = row => {
+            const at = order.indexOf(row.name);
+            return at < 0 ? order.length : at;
+        };
+        return rows.map((row, at) => ({ row: row, at: at }))
+            .sort((a, b) => place(a.row) - place(b.row) || a.at - b.at)
+            .map(each => each.row);
+    }
+
     // What a record's rates are measured over, as a note says it.
     function since(record) {
         return record.since === "boot" ? "since the machine started"
@@ -455,7 +469,7 @@ Provider {
             side: Machine.maxed(loads),
             note: "at 95% or more"
         })];
-        const spent = Machine.spent(p.time);
+        const spent = Machine.spent(p.time, p.guest === true);
         if (spent.length > 0)
             rows.push(holderRow({
                 name: named("cpu:spent"),
@@ -600,7 +614,7 @@ Provider {
                 glyph: chip
             }, () => modelParts(p)));
         // Kept From Resting stands while the telemetry says it, kept from
-        // resting or not, as Held Back does; last, as VKCF3Z placed it.
+        // resting or not, as Held Back does, and beside it.
         const resting = ProcessorTelemetry.kept;
         if (resting) {
             const most = resting.by[0];
@@ -619,7 +633,7 @@ Provider {
                     graph: bar(part.share)
                 }))) : figure(fields));
         }
-        return rows;
+        return ordered(kinds.cpu, rows);
     }
 
     // The clock's range, the base it's sold at, and how it's driven.
@@ -688,7 +702,8 @@ Provider {
                     : binary(cache.size_b),
                 note: [cache.shared_by > 1 ? says("cpu:cache", "shared", { n: cache.shared_by })
                     : says("cpu:cache", "own"), Machine.cores(cache.cpus ?? []),
-                    cache.ways ? says("cpu:cache", "ways", { ways: cache.ways }) : ""]
+                    cache.ways ? says("cpu:cache", "ways", { ways: cache.ways }) : "",
+                    cache.line_b ? says("cpu:cache", "line", { line: cache.line_b }) : ""]
                     .filter(part => part !== "").join(", ")
             }))));
         return rows;
@@ -737,38 +752,47 @@ Provider {
                 graph: bar(info.Cached / m.total_b),
                 note: "files kept in memory, given up when it's wanted"
             }));
-        const kept = Machine.keptBy(info);
+        const held = Machine.keptBy(info);
         const zswap = Machine.compressed(info);
-        if (kept.length > 0)
+        if (held.length > 0)
             rows.push(holderRow({
-                name: named("memory:kept"),
-                side: `${named(`memory:kept-${kept[0].id}`)} ${gib(kept[0].bytes)}`,
+                name: named("memory:held"),
+                side: `${named(`memory:held-${held[0].id}`)} ${gib(held[0].bytes)}`,
                 glyph: chip,
-                note: says("memory:kept", "note")
-            }, () => kept.map(part => figure({
-                name: named(`memory:kept-${part.id}`),
+                note: says("memory:held", "note")
+            }, () => held.map(part => figure({
+                name: named(`memory:held-${part.id}`),
                 side: binary(part.bytes),
                 graph: bar(part.bytes / m.total_b),
-                note: says(`memory:kept-${part.id}`, "note")
+                note: says(`memory:held-${part.id}`, "note")
             })).concat(zswap ? [figure({
-                name: named("memory:kept-compressed"),
-                side: says("memory:kept-compressed", "side", { stored: binary(zswap.stored),
+                name: named("memory:held-compressed"),
+                side: says("memory:held-compressed", "side", { stored: binary(zswap.stored),
                     pool: binary(zswap.pool) }),
                 graph: bar(zswap.pool / m.total_b),
-                note: says("memory:kept-compressed", "note", { ratio: number(zswap.ratio, 1) })
+                note: says("memory:held-compressed", "note", { ratio: number(zswap.ratio, 1) })
             })] : []).concat(info.AnonHugePages > 0 || (m.huge_pages?.HugePages_Total ?? 0) > 0
                 ? [figure({
-                    name: named("memory:kept-huge"),
+                    name: named("memory:held-huge"),
                     side: binary((info.AnonHugePages ?? 0) + (info.Hugetlb ?? 0)),
-                    note: says("memory:kept-huge", "note", {
+                    note: says("memory:held-huge", "note", {
                         reserved: m.huge_pages?.HugePages_Total ?? 0 })
                 })] : [])));
+        // Its name alone on the row, the share beside it, and what's
+        // committed of what may be in the note (VKCF3Z, 2026-11-07).
         if (info.CommitLimit > 0)
             rows.push(figure({
                 name: named("memory:committed"),
-                side: `${gib(info.Committed_AS)} of ${gib(info.CommitLimit)}`,
+                side: percent(info.Committed_AS / info.CommitLimit),
                 graph: bar(info.Committed_AS / info.CommitLimit),
-                note: says("memory:committed", "note")
+                note: says("memory:committed", "note", { committed: bytes(info.Committed_AS),
+                    limit: bytes(info.CommitLimit) })
+            }));
+        if (typeof m.paged_in_b_per_s === "number")
+            rows.push(figure({
+                name: named("memory:paging"),
+                side: `${rate(m.paged_in_b_per_s)} \u00b7 ${rate(m.paged_out_b_per_s ?? 0)}`,
+                note: says("memory:paging", "note")
             }));
         if (typeof m.faults_per_s === "number")
             rows.push(figure({
@@ -831,7 +855,26 @@ Provider {
                     .filter(part => part !== "").join(", ")
             }, () => modules.map(each)));
         }
-        return rows;
+        // Every count the kernel keeps of its memory, by its own name, so
+        // none it gives is left unseen (#2204's bar): those in bytes, then
+        // the huge pages it counts by number.
+        const counted = Object.keys(info);
+        if (counted.length > 0)
+            rows.push(holderRow({
+                name: named("memory:counts"),
+                side: `${counted.length + Object.keys(m.huge_pages ?? {}).length}`,
+                glyph: chip,
+                note: says("memory:counts", "note")
+            }, () => counted.map(name => figure({
+                key: `machine:memory:count:${name}`,
+                name: name,
+                side: binary(info[name])
+            })).concat(Object.keys(m.huge_pages ?? {}).map(name => figure({
+                key: `machine:memory:count:${name}`,
+                name: name,
+                side: `${m.huge_pages[name]}`
+            })))));
+        return ordered(kinds.memory, rows);
     }
 
     // The disk.
@@ -1104,7 +1147,10 @@ Provider {
             return rows;
         const when = since(disk);
         const floor = 1e6;
-        const iops = count => says("disk:speed", "iops", { n: often(count ?? 0) });
+        const iops = (count, merged, total) => [says("disk:speed", "iops", { n: often(count ?? 0) }),
+            typeof merged === "number" ? says("disk:speed", "merged", { n: often(merged) }) : "",
+            typeof total === "number" ? says("disk:speed", "total", { total: bytes(total) }) : ""]
+            .filter(part => part !== "").join(", ");
         rows.push(holderRow({
             name: named("disk:speed"),
             side: rate((disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0)),
@@ -1115,16 +1161,16 @@ Provider {
             name: named("disk:reading"),
             side: rate(disk.read_b_per_s ?? 0),
             graph: spark(series.read ?? [], floor),
-            note: iops(disk.reads_per_s)
+            note: iops(disk.reads_per_s, disk.read_merges_per_s, disk.read_b)
         }), figure({
             name: named("disk:writing"),
             side: rate(disk.written_b_per_s ?? 0),
             graph: spark(series.write ?? [], floor),
-            note: iops(disk.writes_per_s)
+            note: iops(disk.writes_per_s, disk.write_merges_per_s, disk.written_b)
         }), figure({
             name: named("disk:discarding"),
             side: rate(disk.discarded_b_per_s ?? 0),
-            note: iops(disk.discards_per_s)
+            note: iops(disk.discards_per_s, null, disk.discarded_b)
         }), figure({
             name: named("disk:flushing"),
             side: often(disk.flushes_per_s ?? 0),
@@ -1168,6 +1214,28 @@ Provider {
         const smart = disk.health;
         if (smart && typeof smart.percent_used === "number")
             rows.push(healthRow(smart, chip));
+        // Each file system on it, by where it's mounted, with its room
+        // and its files, as the kernel says them.
+        const systems = disk.file_systems ?? [];
+        if (systems.length > 0)
+            rows.push(holderRow({
+                name: named("disk:file-systems"),
+                side: `${systems.length}`,
+                glyph: chip,
+                note: systems.map(fs => fs.mount).join(", ")
+            }, () => systems.map(fs => figure({
+                key: `machine:disk:file-system:${fs.mount}`,
+                name: fs.mount,
+                side: fs.size_b > 0 ? says("disk:file-systems", "room", {
+                    free: bytes(fs.available_b), size: bytes(fs.size_b) }) : fs.type,
+                graph: fs.size_b > 0 ? bar(1 - fs.available_b / fs.size_b) : undefined,
+                note: [fs.type, fs.device, fs.free_b > fs.available_b
+                    ? says("disk:file-systems", "reserved", {
+                        reserved: bytes(fs.free_b - fs.available_b) }) : "",
+                    fs.files > 0 ? says("disk:file-systems", "files", {
+                        free: number(fs.files_free, 0), files: number(fs.files, 0) }) : ""]
+                    .filter(part => part !== "").join(", ")
+            }))));
         if (disk.model)
             rows.push(holderRow({
                 name: named("disk:model"),
@@ -1175,7 +1243,7 @@ Provider {
                 copy: disk.model,
                 glyph: chip
             }, () => diskModelParts(disk)));
-        return rows;
+        return ordered(kinds.disks, rows);
     }
 
     // The disk's health, as its controller tells UDisks.
@@ -1189,7 +1257,10 @@ Provider {
             side: `${smart.percent_used}% worn`,
             graph: bar(worn, failing),
             glyph: chip,
-            note: failing ? "its controller says it's failing" : "as its controller says"
+            note: failing ? "its controller says it's failing"
+                : typeof smart.updated_s === "number" ? says("disk:health", "asked", {
+                    at: Qt.formatTime(new Date(smart.updated_s * 1000), "HH:mm") })
+                : "as its controller says"
         }, () => {
             const rows = [figure({
                 name: named("disk:spare"),
@@ -1257,7 +1328,19 @@ Provider {
     function diskModelParts(disk) {
         const rows = [leaf({ name: named("disk:model-name"), side: disk.model })];
         if (disk.firmware)
-            rows.push(leaf({ name: named("disk:firmware"), side: disk.firmware }));
+            rows.push(leaf({
+                name: named("disk:firmware"),
+                side: disk.firmware,
+                note: disk.health?.nvme_revision ? says("disk:firmware", "nvme", {
+                    revision: disk.health.nvme_revision }) : ""
+            }));
+        if (typeof disk.rotational === "boolean")
+            rows.push(figure({
+                name: named("disk:kind"),
+                side: says("disk:kind", disk.rotational ? "spinning" : "solid"),
+                note: [disk.transport ?? "", disk.removable ? says("disk:kind", "removable")
+                    : says("disk:kind", "fixed")].filter(part => part !== "").join(", ")
+            }));
         if (disk.link)
             rows.push(figure({
                 name: named("disk:link"),

@@ -65,7 +65,10 @@ function cores(numbers) {
 // Where the processor's time went, as Time Spent's parts are listed, each
 // by its part's id and the kernel's fields it sums: { id, share }, for
 // each field the kernel keeps. Guests' time is in the user's already, and
-// said beside it as what of it ran a virtual machine.
+// said beside it as what of it ran a virtual machine. Time stolen is only
+// ever taken by a machine this one runs inside, so on one that runs on
+// its own hardware (`guest` false) it's always none, and left out
+// (modules/machine/README.md says so).
 const SPENT = [
     ["user", ["user"]],
     ["system", ["system"]],
@@ -76,11 +79,12 @@ const SPENT = [
     ["guests", ["guest", "guest_nice"]]
 ];
 
-function spent(time) {
+function spent(time, guest) {
     if (!time) {
         return [];
     }
-    return SPENT.filter(([, fields]) => fields.some(field => typeof time[field] === "number"))
+    return SPENT.filter(([id]) => guest || id !== "stolen")
+        .filter(([, fields]) => fields.some(field => typeof time[field] === "number"))
         .map(([id, fields]) => ({
             id,
             share: fields.reduce((sum, field) => sum + (time[field] ?? 0), 0)

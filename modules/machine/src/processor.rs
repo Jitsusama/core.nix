@@ -56,6 +56,9 @@ pub struct Fixed {
     pub caches: Value,
     pub cpus: Vec<Cpu>,
     pub driver: Option<String>,
+    /// Whether it runs inside another machine, as its flags say, so time
+    /// stolen by that machine can be other than none.
+    pub guest: bool,
 }
 
 /// The counters a rate is measured between, from one read.
@@ -137,6 +140,8 @@ pub fn fixed(root: &Root) -> Fixed {
         stepping: number("stepping"),
         microcode: info(&cpuinfo, "microcode").map(str::to_owned),
         caches: caches(root, &numbers),
+        guest: info(&cpuinfo, "flags")
+            .is_some_and(|flags| flags.split_whitespace().any(|flag| flag == "hypervisor")),
         driver: numbers.first().and_then(|n| {
             root.said(&format!(
                 "/sys/devices/system/cpu/cpu{n}/cpufreq/scaling_driver"
@@ -455,6 +460,7 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
         "time": time,
         "cores": cores,
         "driver": fixed.driver,
+        "guest": fixed.guest,
         "governor": cpu(first, "scaling_governor"),
         "preference": cpu(first, "energy_performance_preference"),
         "turbo": turbo,

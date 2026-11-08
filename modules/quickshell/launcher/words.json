@@ -605,14 +605,16 @@
       "parts": [
         "machine:memory:used",
         "machine:memory:pressure",
-        "machine:memory:swap",
-        "machine:memory:cached",
-        "machine:memory:kept",
-        "machine:memory:committed",
         "machine:memory:faults",
         "machine:memory:swapping",
-        "machine:memory:out-of-memory",
+        "machine:memory:paging",
         "machine:memory:using",
+        "machine:memory:swap",
+        "machine:memory:cached",
+        "machine:memory:held",
+        "machine:memory:committed",
+        "machine:memory:out-of-memory",
+        "machine:memory:counts",
         "machine:memory:type"
       ]
     },
@@ -665,64 +667,64 @@
       "name": "Cached"
     },
     {
-      "id": "machine:memory:kept",
+      "id": "machine:memory:held",
       "in": "machine:memory",
-      "name": "Kept By",
+      "name": "Held By",
       "said": {
         "note": "what holds the memory, biggest first"
       }
     },
     {
-      "id": "machine:memory:kept-programs",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-programs",
+      "in": "machine:memory:held",
       "name": "Programs",
       "said": {
         "note": "programs' own memory"
       }
     },
     {
-      "id": "machine:memory:kept-files",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-files",
+      "in": "machine:memory:held",
       "name": "Files",
       "said": {
         "note": "files kept from the disk"
       }
     },
     {
-      "id": "machine:memory:kept-shared",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-shared",
+      "in": "machine:memory:held",
       "name": "Shared",
       "said": {
         "note": "memory programs share"
       }
     },
     {
-      "id": "machine:memory:kept-kernel",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-kernel",
+      "in": "machine:memory:held",
       "name": "Kernel",
       "said": {
         "note": "the kernel's own: its caches, stacks and page tables"
       }
     },
     {
-      "id": "machine:memory:kept-buffers",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-buffers",
+      "in": "machine:memory:held",
       "name": "Buffers",
       "said": {
         "note": "the disk's buffers"
       }
     },
     {
-      "id": "machine:memory:kept-unwritten",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-unwritten",
+      "in": "machine:memory:held",
       "name": "Waiting to Be Written",
       "said": {
         "note": "changes not yet written to the disk"
       }
     },
     {
-      "id": "machine:memory:kept-compressed",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-compressed",
+      "in": "machine:memory:held",
       "name": "Compressed",
       "said": {
         "side": "{stored} in {pool}",
@@ -730,8 +732,8 @@
       }
     },
     {
-      "id": "machine:memory:kept-huge",
-      "in": "machine:memory:kept",
+      "id": "machine:memory:held-huge",
+      "in": "machine:memory:held",
       "name": "Huge Pages",
       "said": {
         "note": "in pages of 2 MiB or more; {reserved} reserved"
@@ -742,7 +744,23 @@
       "in": "machine:memory",
       "name": "Committed",
       "said": {
-        "note": "promised to programs, of what the kernel will promise"
+        "note": "{committed} of {limit} committed"
+      }
+    },
+    {
+      "id": "machine:memory:paging",
+      "in": "machine:memory",
+      "name": "Paging",
+      "said": {
+        "note": "files read in \u00b7 written out"
+      }
+    },
+    {
+      "id": "machine:memory:counts",
+      "in": "machine:memory",
+      "name": "Every Count",
+      "said": {
+        "note": "each the kernel keeps, by its own name"
       }
     },
     {
@@ -800,23 +818,23 @@
         "down": "the machine daemon isn't answering"
       },
       "parts": [
-        "machine:cpu:cores",
-        "machine:cpu:maxed",
         "machine:cpu:spent",
         "machine:cpu:pressure",
+        "machine:cpu:switches",
+        "machine:cpu:interrupts",
+        "machine:cpu:started",
+        "machine:cpu:cores",
+        "machine:cpu:maxed",
         "machine:cpu:clock",
         "machine:cpu:held-back",
+        "machine:cpu:kept-from-resting",
         "machine:cpu:temperature",
         "machine:cpu:using",
         "machine:cpu:load",
         "machine:cpu:running",
-        "machine:cpu:switches",
-        "machine:cpu:interrupts",
-        "machine:cpu:started",
         "machine:cpu:npu-load",
         "machine:cpu:kinds",
-        "machine:cpu:model",
-        "machine:cpu:kept-from-resting"
+        "machine:cpu:model"
       ]
     },
     {
@@ -1107,7 +1125,8 @@
         "unified": "Unified",
         "own": "one a core",
         "shared": "each shared by {n} cores",
-        "ways": "{ways}-way"
+        "ways": "{ways}-way",
+        "line": "{line} B lines"
       }
     },
     {
@@ -1235,12 +1254,13 @@
         "machine:disk:space",
         "machine:disk:filling",
         "machine:disk:speed",
+        "machine:disk:pressure",
         "machine:disk:busy",
         "machine:disk:latency",
         "machine:disk:queue",
-        "machine:disk:pressure",
         "machine:disk:temperature",
         "machine:disk:health",
+        "machine:disk:file-systems",
         "machine:disk:model"
       ]
     },
@@ -1348,7 +1368,9 @@
         "disk speed"
       ],
       "said": {
-        "iops": "{n} requests"
+        "iops": "{n} requests",
+        "merged": "{n} merged",
+        "total": "{total} since it started"
       }
     },
     {
@@ -1458,7 +1480,20 @@
       "name": "Health",
       "answers": [
         "disk health"
-      ]
+      ],
+      "said": {
+        "asked": "as its controller said at {at}"
+      }
+    },
+    {
+      "id": "machine:disk:file-systems",
+      "in": "machine:disk",
+      "name": "File Systems",
+      "said": {
+        "room": "{free} free of {size}",
+        "reserved": "{reserved} kept back",
+        "files": "{free} of {files} files free"
+      }
     },
     {
       "id": "machine:disk:spare",
@@ -1550,7 +1585,21 @@
     {
       "id": "machine:disk:firmware",
       "in": "machine:disk:model",
-      "name": "Firmware"
+      "name": "Firmware",
+      "said": {
+        "nvme": "speaks NVMe {revision}"
+      }
+    },
+    {
+      "id": "machine:disk:kind",
+      "in": "machine:disk:model",
+      "name": "Kind",
+      "said": {
+        "solid": "solid state",
+        "spinning": "spinning",
+        "fixed": "fixed",
+        "removable": "removable"
+      }
     },
     {
       "id": "machine:disk:link",

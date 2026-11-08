@@ -456,7 +456,8 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     )
     desktop.close_launcher()
     # A part asked for alone, by its own words: how fast the disk
-    # reads and writes, each a step in.
+    # reads, writes, discards and flushes, each a step in, as the machine
+    # daemon says them.
     desktop.answer("disk speed")
     desktop.launcher_until(
         lambda shown: (
@@ -466,7 +467,9 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
         )
     )
     desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing", "Copy"])
+    desktop.launcher_until(
+        lambda shown: shown["rows"] == ["Reading", "Writing", "Discarding", "Flushing", "Copy"]
+    )
     desktop.close_launcher()
     # What the network carries now, in and out, from the kernel's
     # counters, and what the line can and how quickly it answers, from

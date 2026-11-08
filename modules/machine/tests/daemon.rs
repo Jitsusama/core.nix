@@ -368,6 +368,7 @@ fn a_watch_says_every_record_at_once_then_its_rates_as_of_now() {
     assert_eq!(processor["since"], "boot", "a first read is since boot");
     assert_eq!(processor["busy_ratio"], json!(0.1));
     assert_eq!(processor["model"], "Intel Core Ultra X7 358H");
+    assert_eq!(processor["guest"], false, "its flags name no hypervisor");
     assert_eq!(processor["cores"][0]["kind"], "performance");
     assert_eq!(processor["cores"][1]["kind"], "efficient");
     assert_eq!(processor["cores"][1]["temperature_c"], json!(73.0));

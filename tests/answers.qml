@@ -721,15 +721,19 @@ QtObject {
         machine("no cores", Machine.cores([]), "");
         // Where the processor's time went, interrupts both kinds together
         // and guests' both kinds, each field the kernel keeps.
-        machine("the processor's time spent", Machine.spent({ user: 0.4, nice: 0, system: 0.1,
-            idle: 0.4, iowait: 0.05, irq: 0.01, softirq: 0.02, steal: 0, guest: 0.01,
-            guest_nice: 0 }).map(each => [each.id, Math.round(each.share * 100)]),
+        const timeSpent = { user: 0.4, nice: 0, system: 0.1, idle: 0.4, iowait: 0.05, irq: 0.01,
+            softirq: 0.02, steal: 0.02, guest: 0.01, guest_nice: 0 };
+        machine("the processor's time spent inside another machine",
+            Machine.spent(timeSpent, true).map(each => [each.id, Math.round(each.share * 100)]),
             [["user", 40], ["system", 10], ["iowait", 5], ["interrupts", 3], ["niced", 0],
-                ["stolen", 0], ["guests", 1]]);
+                ["stolen", 2], ["guests", 1]]);
+        machine("the processor's time spent on its own hardware, none stolen",
+            Machine.spent(timeSpent, false).map(each => each.id),
+            ["user", "system", "iowait", "interrupts", "niced", "guests"]);
         machine("an old kernel's time, without steal or guests",
-            Machine.spent({ user: 0.5, nice: 0, system: 0.1, idle: 0.4, iowait: 0, irq: 0, softirq: 0 })
-                .map(each => each.id), ["user", "system", "iowait", "interrupts", "niced"]);
-        machine("no time said", Machine.spent(null), []);
+            Machine.spent({ user: 0.5, nice: 0, system: 0.1, idle: 0.4, iowait: 0, irq: 0, softirq: 0 },
+                true).map(each => each.id), ["user", "system", "iowait", "interrupts", "niced"]);
+        machine("no time said", Machine.spent(null, false), []);
         // What keeps the memory, biggest first; files are the page cache
         // less what's shared, which the kernel counts in it.
         const gib = 1073741824;
