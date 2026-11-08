@@ -1278,7 +1278,8 @@ Scope {
         }
         const ids = trail.map(one => steadyId(one));
         // Only the row the path names says its drawer, since a listed row's
-        // would be built for every row a long place holds, for one show.
+        // would be built for every row a long place holds, for one show;
+        // `everyDrawer` (`launcher show --drawers`) asks for each row's too.
         const entry = (one, at, drawn) => Showing.shaped(one, {
             id: at.concat([steadyId(one)]).join(catalogueStep),
             kind: Catalogue.kindOf(one),
