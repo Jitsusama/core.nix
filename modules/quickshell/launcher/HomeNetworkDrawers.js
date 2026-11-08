@@ -15,6 +15,7 @@
 .import "HomeNetworkHistory.js" as History
 .import "Interfaces.js" as Interfaces
 .import "Machine.js" as Machine
+.import "Order.js" as Order
 
 // A graph holds twenty readings, the newest last.
 const GRAPHED = 20;
@@ -314,7 +315,7 @@ function devicesCount(devices) {
 // is and how strongly it sends, each beside its last hour; then each
 // radio's hardware address.
 function radios(one) {
-    const list = (one.radios ?? []).slice().sort((a, b) => a.band.localeCompare(b.band));
+    const list = (one.radios ?? []).slice().sort(Order.byName(radio => radio.band));
     if (list.length === 0) {
         return [];
     }

@@ -19,6 +19,7 @@ import QtQuick
 import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 import "Traffic.js" as Traffic
 
 Provider {
@@ -287,7 +288,8 @@ Provider {
                 side: String(listed.length),
                 note: "each card, VPN and bridge, busiest first"
             }, () => listed.map((one, at) => ({ one: one, name: names[at] }))
-                .sort((a, b) => b.one.in + b.one.out - (a.one.in + a.one.out))
+                .sort(Order.amounts({ amount: each => each.one.in + each.one.out,
+                    name: each => each.name }))
                 .map(each => figure({
                     name: each.name,
                     keywords: each.one.name,

@@ -45,6 +45,7 @@ import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Order.js" as Order
 import "Plate.js" as Plate
 import "Sounds.js" as Sounds
 
@@ -1175,7 +1176,7 @@ Provider {
     // marked chosen where it stands, so choosing one never moves it
     // (RSCH-20261030-GB56HX: choices keep their natural order).
     function ordered(nodes) {
-        return nodes.slice().sort((a, b) => named(a).localeCompare(named(b)));
+        return nodes.slice().sort(Order.choices({ name: named }));
     }
 
     // A device going away can be read once more before the lists drop it.

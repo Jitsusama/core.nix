@@ -40,6 +40,7 @@ import "Addresses.js" as Addresses
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 import "Subnets.js" as Subnets
 
 Provider {
@@ -218,7 +219,7 @@ Provider {
         const rank = link => link.name === now.out ? -1 : kindOrder.indexOf(link.kind);
         return now.links.filter(link => link.four.length + link.six.length > 0
             || ((link.kind === "wifi" || link.kind === "wired") && link.state === "up"))
-            .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+            .sort(Order.live({ stands: rank, name: link => link.name }));
     }
 
     // A connection's name, by what it is, numbered when there are several

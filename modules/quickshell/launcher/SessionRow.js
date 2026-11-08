@@ -1,4 +1,5 @@
 .pragma library
+.import "Order.js" as Order
 // A pi session as the launcher shows it, said once, and named apart from
 // Session.qml, which is the desktop session: how it stands, the acts it
 // offers in their order, and its drawer's figures (SessionDrawer.js says
@@ -225,7 +226,7 @@ function landed(sessions, read) {
             url: WEB.test(String(one.url ?? "")) ? String(one.url) : "",
             session
         }))));
-    return rows.filter(one => !read.includes(one.key)).sort((a, b) => b.at.localeCompare(a.at));
+    return rows.filter(one => !read.includes(one.key)).sort(Order.stream(one => one.at));
 }
 
 // A landing's drawer: who landed it and when as its eyebrow, what landed

@@ -266,6 +266,7 @@ let
     "launcher/Pacing.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
+    "launcher/Order.js"
     "launcher/Becoming.js"
     "launcher/Recent.js"
     "launcher/SessionRow.js"

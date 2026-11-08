@@ -22,6 +22,7 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Order.js" as Order
 import "SessionRow.js" as SessionRow
 
 Provider {
@@ -137,7 +138,7 @@ Provider {
             byAddress[address] = (byAddress[address] ?? []).concat([talk]);
         }
         for (const address in byAddress)
-            byAddress[address].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+            byAddress[address].sort(Order.stream(talk => String(talk.at ?? "")));
         return byAddress;
     }
 

@@ -16,6 +16,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -124,19 +125,17 @@ Provider {
 
     // Open first, by priority and then rank; the rest, last touched first.
     readonly property var all: {
-        const sorted = quests.slice().sort((a, b) => {
-            const open = Number(isOpen(b)) - Number(isOpen(a));
-            if (open !== 0)
-                return open;
-            if (isOpen(a)) {
-                const bucket = q => {
-                    const at = priorities.indexOf(q.priority);
-                    return at < 0 ? priorities.length : at;
-                };
-                return bucket(a) - bucket(b) || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9);
-            }
-            return String(b.updated).localeCompare(String(a.updated));
-        });
+        const bucket = q => {
+            const at = priorities.indexOf(q.priority);
+            return at < 0 ? priorities.length : at;
+        };
+        const sorted = quests.slice().sort(Order.returned({
+            first: isOpen,
+            placed: (a, b) => bucket(a) - bucket(b)
+                || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9),
+            last: q => String(q.updated ?? ""),
+            name: q => q.title || q.id
+        }));
         const sessions = loaded;
         const next = {};
         const rows = sorted.map(quest => {

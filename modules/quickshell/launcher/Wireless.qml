@@ -28,6 +28,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Interfaces.js" as Interfaces
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -202,8 +203,8 @@ Provider {
                 heard.push(described(card.network, kept ? kept.security : "open", 0));
         }
         const rank = network => network.connected ? 0 : network.known ? 1 : 2;
-        return heard.sort((a, b) => rank(a) - rank(b) || b.strength - a.strength
-            || a.name.localeCompare(b.name));
+        return heard.sort(Order.live({ stands: rank, then: (a, b) => b.strength - a.strength,
+            name: network => network.name }));
     }
 
     function described(name, security, strength) {
