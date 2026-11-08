@@ -62,19 +62,19 @@ QtObject {
             read(Recent.listed([many], ["a", "c"])), "b d e f g h i j k");
         check(failures, "or as many as asked", read(Recent.listed([many], [], 2)), "a b");
 
-        const words = { none: "none", more: "and {more} more" };
+        const words = { none: "none" };
         check(failures, "its row says how many, and their names",
             JSON.stringify(Recent.said(["Wikipedia", "Kayak"], false, words)),
             JSON.stringify({ side: "2", note: "Wikipedia, Kayak" }));
         const nine = ["Wikipedia", "Kayak", "Maps", "Mail", "Docs", "News", "Weather",
             "Photos", "Music"];
-        check(failures, "as many names whole as fit, then how many more",
-            Recent.said(nine, false, words, 30).note, "Wikipedia, Kayak and 7 more");
-        check(failures, "the last one named when it fits without saying more",
-            Recent.said(["Wikipedia", "Kayak", "Maps"], false, words, 27).note,
+        check(failures, "as many names whole as fit, never how many more",
+            Recent.said(nine, false, words, 30).note, "Wikipedia, Kayak, Maps, Mail");
+        check(failures, "every name where they all fit",
+            Recent.said(["Wikipedia", "Kayak", "Maps"], false, words, 22).note,
             "Wikipedia, Kayak, Maps");
-        check(failures, "the first always named, the rest counted, when only it fits",
-            Recent.said(nine, false, words, 12).note, "Wikipedia and 8 more");
+        check(failures, "the first always named, though it alone is longer",
+            Recent.said(nine, false, words, 5).note, "Wikipedia");
         check(failures, "it says none while it holds nothing",
             JSON.stringify(Recent.said([], false, words)),
             JSON.stringify({ side: "none", note: "" }));

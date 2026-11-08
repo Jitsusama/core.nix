@@ -4466,8 +4466,7 @@
       "glyph": "recent",
       "empty": "Nothing yet.",
       "said": {
-        "none": "none",
-        "more": "and {more} more"
+        "none": "none"
       }
     },
     {
@@ -6103,7 +6102,6 @@
       "empty": "Nothing yet.",
       "said": {
         "none": "none",
-        "more": "and {more} more",
         "open": "{count} open",
         "tab": "1 tab",
         "tabs": "{count} tabs",

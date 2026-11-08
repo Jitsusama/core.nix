@@ -740,7 +740,7 @@ Provider {
         const kind = site ? "site" : source?.list && source.kind === "folder" ? "folder" : "file";
         const keyed = line => {
             const tab = line.indexOf("\t");
-            return `${kind}:${site && tab >= 0 ? line.slice(0, tab) : line}`;
+            return keyOf(kind, site && tab >= 0 ? line.slice(0, tab) : line);
         };
         const saved = site && !provider.isRunning(entry) ? provider.savedSites(entry)
             .map(line => ({ key: keyed(line), row: { line: line } })) : [];
@@ -786,9 +786,16 @@ Provider {
             return [];
         const lines = provider.recents.openIn(entry.id).map(line => line.split("\t"));
         return source.kind === "site"
-            ? lines.filter(tab => (tab[4] ?? "") !== "").map(tab => `site:${tab[4]}`)
+            ? lines.filter(tab => (tab[4] ?? "") !== "").map(tab => keyOf("site", tab[4]))
             : lines.filter(([who, path]) => (path ?? "") !== ""
-                && provider.fileWindow(entry, who) !== null).map(([, path]) => `file:${path}`);
+                && provider.fileWindow(entry, who) !== null).map(([, path]) => keyOf("file", path));
+    }
+
+    // The key a site, file or folder's row has (`site:`, `file:`,
+    // `folder:` and its address or path), the one way Recent and what's
+    // open name a thing, so one is never listed twice under two keys.
+    function keyOf(kind, thing) {
+        return `${kind}:${thing}`;
     }
 
     // The windows what it has open now stands for, by id: each window whose
@@ -961,7 +968,7 @@ Provider {
             run: () => Quickshell.clipboardText = address
         })]);
         return thing({
-            key: `site:${address}`,
+            key: keyOf("site", address),
             what: "site",
             component: "site",
             verb: all[0].verb,

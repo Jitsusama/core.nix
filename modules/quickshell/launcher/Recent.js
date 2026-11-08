@@ -58,9 +58,9 @@ const ROOM = 40;
 // holds nothing, and an ellipsis while it's still waiting, so the row
 // stands in its place from the first and never arrives late at the
 // bottom; as its note, drawn after its name as what a row holds is
-// (a row's `count`), the names, as many whole as fit, then how many
-// more by its words' `more` ("Wikipedia, Kayak", "Wikipedia and 8
-// more"; VKCF3Z, 2026-11-07). The first is always named, cut by the row
+// (a row's `count`), the names, as many whole as fit, giving way by
+// whole names and never saying how many more, which the side already
+// says (VKCF3Z, 2026-11-07). The first is always named, cut by the row
 // where it's longer than the room.
 function said(names, waiting, words, room) {
     const count = names.length;
@@ -70,18 +70,16 @@ function said(names, waiting, words, room) {
     if (count === 0) {
         return { side: words?.none ?? "", note: "" };
     }
-    return { side: String(count), note: noted(names, words, room ?? ROOM) };
+    return { side: String(count), note: noted(names, room ?? ROOM) };
 }
 
-// The names that fit in `room`, whole, and how many more were left out.
-function noted(names, words, room) {
-    const more = left => ` ${(words?.more ?? "and {more} more").replace("{more}", left)}`;
+// The names that fit in `room`, whole, the first always.
+function noted(names, room) {
     let note = names[0];
-    for (let at = 1; at < names.length; at++) {
+    for (let at = 1; at < names.length; at += 1) {
         const next = `${note}, ${names[at]}`;
-        const last = at === names.length - 1;
-        if (next.length + (last ? 0 : more(names.length - at - 1).length) > room) {
-            return `${note}${more(names.length - at)}`;
+        if (next.length > room) {
+            return note;
         }
         note = next;
     }
