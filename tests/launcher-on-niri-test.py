@@ -329,7 +329,7 @@ def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell
     # Return, since Return would do them.
     for typed, name, verb in [
         ("sle", "Sleep", "sleep"),
-        ("keep", "Keep Awake", "start"),
+        ("keep", "Keep Awake", "on"),
         ("reb", "Reboot", "reboot"),
         ("do not", "Do Not Disturb", "start"),
     ]:

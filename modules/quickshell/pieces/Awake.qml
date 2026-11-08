@@ -20,7 +20,7 @@ Piece {
         glyph: Theme.glyph.suspend,
         name: "Let It Sleep",
         // One word for Return, as the launcher's Let It Sleep says it.
-        verb: "stop",
+        verb: "turn off",
         stays: true,
         run: () => KeepAwake.release()
     }].concat(!KeepAwake.lidHolds ? [] : KeepAwake.lid ? [{

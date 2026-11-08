@@ -43,8 +43,10 @@ function holding(logind, mode, what) {
 // it's before sleep alike; and when the last sleep the daemon saw began
 // and how long it lasted. `said` gives the words (words.json's Keep
 // Awake), and `told` the moment it is (`now`), whether it's on the charger
-// (`plugged`), and how a moment (`when(at)`, as Captured.js's taken says
-// one) and a time (`lasted(seconds)`) are said. Left out: `preparing`,
+// (`plugged`), how a moment (`when(at)`, as Captured.js's taken says
+// one) and a time (`lasted(seconds)`) are said, and how a holder is
+// named (`named(who)`): as its program names itself where the desktop
+// knows it, "1Password" for 1password (VKCF3Z, 2026-11-08). Left out: `preparing`,
 // never true while the launcher is drawn, `idle` itself, since a launcher
 // open means a session that isn't, and each lock's uid and pid, since who
 // says what they would.
@@ -52,9 +54,10 @@ function facts(logind, said, told) {
     const held = HELD.map(([what, id]) => ({
         id,
         value: holding(logind, "block", what).filter((lock) => lock.who !== KEEPS_AWAKE)
-            .map((lock) => (lock.why ? `${lock.who} ${lock.why}` : lock.who)).join(BETWEEN)
+            .map((lock) => (lock.why ? `${told.named(lock.who)} ${lock.why}` : told.named(lock.who)))
+            .join(BETWEEN)
     }));
-    const delaying = holding(logind, "delay", "sleep").map((lock) => lock.who);
+    const delaying = holding(logind, "delay", "sleep").map((lock) => told.named(lock.who));
     return held.concat([
         { id: "awake:idle-sleep", value: idleSleep(logind, said, told) },
         { id: "awake:put-off", value: [...new Set(delaying)].join(BETWEEN) },

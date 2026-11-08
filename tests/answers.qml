@@ -2971,18 +2971,19 @@ QtObject {
                 { what: ["sleep"], who: "NetworkManager", why: "NetworkManager needs to",
                     mode: "delay" },
                 { what: ["sleep"], who: "swayidle", why: "Lock before sleep", mode: "delay" },
-                { what: ["sleep"], who: "swayidle", why: "Again", mode: "delay" }],
+                { what: ["sleep"], who: "swayidle", why: "Again", mode: "delay" },
+                { what: ["sleep"], who: "1password", why: "Locking", mode: "delay" }],
             last_sleep: { began_at_ms: awakeAt - 7_200_000 - 21_780_000,
                 ended_at_ms: awakeAt - 7_200_000 } };
         const awakeTold = plugged => ({ now: awakeAt, plugged, when: clock,
-            lasted: Interfaces.lasted });
+            lasted: Interfaces.lasted, named: who => ({ "1password": "1Password" })[who] ?? who });
         machine("keep awake's drawer, others' locks first, its own left out",
             Awake.facts(logind, awakeWords, awakeTold(false)), [
             { id: "awake:idle-held",
                 value: "Google Chrome Playing video \u00b7 mycelium holding work" },
             { id: "awake:sleep-held", value: "mycelium holding work" },
             { id: "awake:idle-sleep", value: "suspends 5 min after the screens go off" },
-            { id: "awake:put-off", value: "NetworkManager \u00b7 swayidle" },
+            { id: "awake:put-off", value: "NetworkManager \u00b7 swayidle \u00b7 1Password" },
             { id: "awake:slept", value: "-483 min \u00b7 6 h 3 min" }
         ]);
         const idleNow = Object.assign({}, logind, { idle: true, idle_since_ms: awakeAt - 60_000,

@@ -9665,12 +9665,12 @@
       "once": ["Caffeinate"],
       "name": "Keep Awake",
       "term": "Machine/Keep awake",
-      "verb": "start",
+      "verb": "turn on",
       "glyph": "awake",
       "states": {
         "on": {
           "name": "Let It Sleep",
-          "verb": "stop",
+          "verb": "turn off",
           "argument": "nokeepawake"
         }
       },

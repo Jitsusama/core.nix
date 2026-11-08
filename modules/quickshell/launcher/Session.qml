@@ -45,10 +45,11 @@ Provider {
 
     // Keep Awake as it stands, or as it will once systemd has started or
     // stopped what keeps it so: kept, a shut lid goes on too wherever the
-    // machine's on the charger (KeepAwake.qml).
+    // machine's on the charger (KeepAwake.qml). A switch always says how
+    // it stands, so off says "off" (VKCF3Z, 2026-11-08).
     function awakeRow(kept, lidToo) {
         return said("session:awake", kept ? "on" : "", Object.assign({
-            side: !kept ? "" : lidToo ? "awake, lid shut too" : "awake while open",
+            side: !kept ? "off" : lidToo ? "awake, lid shut too" : "awake while open",
             hue: "machine",
             stays: true,
             run: () => provider.keepAwake(!kept)
@@ -62,6 +63,15 @@ Provider {
     // keeps the machine up or lets it sleep, so while it has figures to
     // show it is a thing, its act still keeping awake or letting it sleep
     // (VKCF3Z, 2026-11-08).
+    // A lock's holder as its program names itself, where the desktop has
+    // an entry by the name logind was given ("1Password" for 1password),
+    // and otherwise as it was given: an entry by id rather than a
+    // heuristic, since a guess would rename NetworkManager for a settings
+    // program.
+    function programNamed(who) {
+        return (DesktopEntries.byId(who) ?? DesktopEntries.byId(who.toLowerCase()))?.name || who;
+    }
+
     function awakeFields() {
         const logind = sleepWatch.revision >= 0
             ? sleepWatch.held["sleep:main"]?.logind ?? null : null;
@@ -73,7 +83,8 @@ Provider {
             now,
             plugged: !UPower.onBattery,
             when: at => Captured.taken(at, now, provider.days),
-            lasted: Interfaces.lasted
+            lasted: Interfaces.lasted,
+            named: programNamed
         });
         return {
             thing: facts.length > 0,
