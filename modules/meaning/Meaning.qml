@@ -81,12 +81,13 @@ Provider {
         provider.pending = [];
         for (const text of asking)
             daemon.find({ ask: "search", kind: "thing", words: text, limit: provider.asksFor },
-                answer => provider.answered(text, answer));
+                answer => provider.heard(text, answer));
     }
 
     // A text's answer kept, unless the daemon wasn't there to give one,
-    // when it's let go to be asked again.
-    function answered(text, answer) {
+    // when it's let go to be asked again. It isn't called `answered`,
+    // which is Provider's own signal.
+    function heard(text, answer) {
         if (answer === null || answer.error) {
             provider.searches = provider.searches.filter(search => search.words !== text);
             return;
