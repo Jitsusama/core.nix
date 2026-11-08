@@ -97,21 +97,21 @@ function opens(actions) {
 // sender gives as the spec's `class.subtype`: "message" for `im`, an error
 // subtype as "transfer failed", and a bounced mail as "mail bounced"
 // (VKCF3Z, 2026-11-08). A category it doesn't name is left out, never
-// shown raw. `named` holds each class's word (`kinds`, by class), and
+// shown raw. `said` holds each class's word (`kinds`, by class), and
 // what `failed` and `bounced` say.
-function kind(category, named) {
+function kind(category, said) {
     const given = String(category ?? "");
     const dot = given.indexOf(".");
     const type = dot < 0 ? given : given.slice(0, dot);
     const subtype = dot < 0 ? "" : given.slice(dot + 1);
-    const word = named.kinds[type] ?? "";
+    const word = said.kinds[type] ?? "";
     if (word === "") {
         return "";
     }
     if (given === "email.bounced") {
-        return named.bounced;
+        return said.bounced;
     }
-    return subtype === "error" ? named.failed.replace("{kind}", word) : word;
+    return subtype === "error" ? said.failed.replace("{kind}", word) : word;
 }
 
 // Its drawer's eyebrow: where it's from, then its kind, never a time,
