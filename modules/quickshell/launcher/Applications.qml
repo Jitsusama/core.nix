@@ -44,6 +44,7 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
+import Quickshell.Io
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
