@@ -1313,8 +1313,17 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             desktop.type_in(typed, selecting=typed)
 
         def plated(shown: Json, first: str = first) -> bool:  # As launcher_until calls it.
-            """Say whether the drawer is out, holding this plate's first fact."""
-            return shown["drawer"]["out"] is True and first in shown["drawer"]["facts"]
+            """Say whether the drawer is out, holding this plate's first fact, its facts laid.
+
+            A busy VM has reported a plate out before its facts were placed, all on one line,
+            so it's waited for laid rather than held to the pitch at once.
+            """
+            drawer = shown["drawer"]
+            return (
+                drawer["out"] is True
+                and first in drawer["facts"]
+                and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+            )
 
         desktop.launcher_until(plated)
         drawer = plate_shown(desktop, scale)
@@ -1377,11 +1386,15 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
     machine.succeed(f"chown {desktop.account} /dev/{node}")
     desktop.answer("desk light")
     desktop.launcher_until(
-        lambda shown: shown["drawer"]["out"] is True and "Output" in shown["drawer"]["facts"]
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and "Output" in shown["drawer"]["facts"]
+            and things_apart(shown["drawer"]["lines"]["facts"], shown["drawer"]["factsWrapped"] > 0)
+        )
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["eyebrow"] == "on USB \u00b7 desk light", f"at {scale}: {drawer}"
-    assert drawer["facts"] == ["Output", "Node", "Serial"], f"at {scale}: {drawer}"
+    assert drawer["facts"] == ["Output", "HID Device", "Serial"], f"at {scale}: {drawer}"
     assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
         f"at {scale} the desk light's facts are off the pitch: {drawer}"
     )

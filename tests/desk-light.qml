@@ -128,7 +128,7 @@ ShellRoot {
         expect("its drawer", drawer !== null && drawer.eyebrow === "on USB \u00b7 desk light"
             && drawer.title === "Litra Glow stand-in"
             && drawer.facts.map(fact => `${fact.label}=${fact.value}`).join("; ")
-                === "Output=112 lm \u00b7 of 20 to 250 lm; Node=/dev/hidraw1; Serial=stand-in",
+                === "Output=112 lm \u00b7 of 20 to 250 lm; HID Device=/dev/hidraw1; Serial=stand-in",
             JSON.stringify(drawer));
         expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);

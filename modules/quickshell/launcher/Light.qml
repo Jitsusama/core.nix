@@ -248,7 +248,7 @@ Provider {
     // Its output is in lumens, the light's own units, of the range it
     // gives where it gives one, a second figure beside the answer's share
     // of that range (VKCF3Z, 2026-11-08); its warmth is the answer's, so
-    // it isn't said again; its node and serial come last, as identifiers
+    // it isn't said again; its HID device and serial come last, as identifiers
     // do in every drawer. litra speaks only to lights on USB.
     function deskDrawer(light = DeskLight.light) {
         if (light === null)
@@ -261,7 +261,7 @@ Provider {
         const facts = [
             ["output", light.lumens === undefined ? ""
                 : [lumens(light.lumens), range].filter(part => part !== "").join(" \u00b7 ")],
-            ["node", String(light.node ?? "")],
+            ["hid-device", String(light.node ?? "")],
             ["serial", String(light.serial ?? "")]
         ].filter(([, value]) => value !== "")
             .map(([id, value]) => ({ label: Words.name(`light:desk:${id}`), value: value }));

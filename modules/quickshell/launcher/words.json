@@ -2100,9 +2100,9 @@
       "name": "Output"
     },
     {
-      "id": "light:desk:node",
+      "id": "light:desk:hid-device",
       "in": "light",
-      "name": "Node"
+      "name": "HID Device"
     },
     {
       "id": "light:desk:serial",
