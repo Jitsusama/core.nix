@@ -1833,11 +1833,11 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
         desktop.launcher_until(lambda shown: "Timers" in shown["rows"])
         # Picked, by G as it's listed last, so it's in view at 2 and says its names and Return.
         desktop.normal()
+        # The card draws the pick a frame or more after the shell says it, and at 2 the list
+        # scrolls to it first, so the shot waits for a frame drawn since G.
+        drawn = int(desktop.as_account("qs ipc call launcher frames"))
         machine.send_chars("G")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
-        # The card draws the pick a frame or more after the shell says it, and at 2 the list
-        # scrolls to it first, so the shot waits for a frame drawn since.
-        drawn = int(desktop.as_account("qs ipc call launcher frames"))
         machine.wait_until_succeeds(
             desktop.in_session(f'test "$(qs ipc call launcher frames)" -gt {drawn}'),
             timeout=timedelta(seconds=30),
