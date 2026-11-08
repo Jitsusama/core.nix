@@ -12,7 +12,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
-use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted, Unsaved};
+use google::drive::{DOWNLOADS_KEPT, Document, Is, LISTINGS_KEPT, Unlisted, Unsaved};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
 use google::saves;
@@ -840,7 +840,7 @@ fn a_place_drive_wont_answer_costs_the_rest_nothing() {
     let state = watch.look(&now()).clone();
     assert_eq!(state.account, Standing::Ready);
     assert_eq!(state.documents.len(), 3);
-    assert!(state.drive.places.starred.files.is_empty());
+    assert_eq!(state.drive.places.starred.files, Vec::<Document>::new());
     assert_eq!(state.drive.places.recent.len(), 2);
     assert_eq!(state.drive.places.shared.files.len(), 1);
     assert_eq!(state.drive.places.drives.files.len(), 1);
