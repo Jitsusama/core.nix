@@ -5174,7 +5174,12 @@
         "seconds": "s",
         "notice": "{span} timer",
         "noticeLate": "{span} timer, rang late",
-        "from": "the timers"
+        "from": "the timers",
+        "gone": "that timer is gone",
+        "pausesRunning": "only a running timer pauses",
+        "resumesPaused": "only a paused timer resumes",
+        "nothing": "a timer counts more than nothing",
+        "pastAWeek": "a timer counts a week at most"
       }
     },
     {
@@ -5239,7 +5244,11 @@
         "unstarted": "not started",
         "lapsOne": "{state} \u00b7 1 lap",
         "laps": "{state} \u00b7 {count} laps",
-        "at": "at {count}"
+        "at": "at {count}",
+        "runningAlready": "the stopwatch is running already",
+        "pausesRunning": "only a running stopwatch pauses",
+        "lapsRunning": "only a running stopwatch laps",
+        "lapsFull": "the stopwatch keeps 999 laps at most"
       }
     },
     {

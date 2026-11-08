@@ -2291,8 +2291,8 @@
     its end passes; the notice's Again sets it going afresh and putting it away ends it, ending one
     rung takes its notice back, a ring with no server to take it is said once one comes, what's
     kept outlasts the daemon, one that ended meanwhile ringing late, an ask it can't do is
-    refused, and the stopwatch runs, laps, stops and resets, outlasts the daemon, and is heard
-    only by watches of its kind
+    refused with a reason the launcher says in its own words, and the stopwatch runs, laps,
+    pauses and resets, outlasts the daemon, and is heard only by watches of its kind
   '';
   timers-passes-clippy = ''
     clippy finds nothing in the timers daemon or its tests

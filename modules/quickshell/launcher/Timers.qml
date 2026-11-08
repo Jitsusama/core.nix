@@ -107,7 +107,7 @@ Provider {
     function ask(act, record) {
         const then = answer => {
             if (answer?.error !== undefined)
-                provider.refused(record.key, answer.error);
+                provider.refused(record.key, said[answer.reason] ?? answer.error);
         };
         switch (act) {
         case "pause":
@@ -229,7 +229,7 @@ Provider {
     function watchAsk(act) {
         const then = answer => {
             if (answer?.error !== undefined)
-                provider.refused("stopwatch", answer.error);
+                provider.refused("stopwatch", watchSaid[answer.reason] ?? answer.error);
         };
         switch (act) {
         case "run":
@@ -407,7 +407,8 @@ Provider {
             note: said.from ?? "",
             run: () => HeldTimers.start(asking.span, asking.name, record => {
                 if (record === null || record.error !== undefined) {
-                    provider.refused("command:timer", record?.error ?? said.away ?? "");
+                    provider.refused("command:timer", record === null ? said.away ?? ""
+                        : said[record.reason] ?? record.error);
                     return;
                 }
                 provider.started = { typed: typed, key: record.key };
