@@ -1591,10 +1591,12 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     shown = json.loads(desktop.as_account("launcher show machine --json"))
     assert shown["in"] == ["Machine"], shown
     assert "Disk" in [row["name"] for row in shown["rows"]], shown
-    # Only --drawers asks the shell to build each row's drawer.
-    assert not any("drawer" in row for row in shown["rows"]), shown
-    drawn = json.loads(desktop.as_account("launcher show --drawers --json machine"))
-    assert any("drawer" in row for row in drawn["rows"]), drawn
+    # Only --drawers asks the shell to build each row's drawer, as each screen has.
+    screens = json.loads(desktop.as_account("launcher show --json desktop screens"))
+    assert screens["rows"], screens
+    assert not any("drawer" in row for row in screens["rows"]), screens
+    drawn = json.loads(desktop.as_account("launcher show --drawers --json desktop screens"))
+    assert all("drawer" in row for row in drawn["rows"]), drawn
     status, said = machine.execute(desktop.in_session("launcher show mahcine 2>&1 >/dev/null"))
     assert status == 1, (status, said)
     assert "did you mean Machine?" in said, said
