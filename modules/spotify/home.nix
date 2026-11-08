@@ -231,7 +231,24 @@ in
     order = 47;
     source = ./SpotifyProgram.qml;
     command = [ (lib.getExe (pkgs.callPackage ./spotify-recent/package.nix { })) ];
-    spotify = [ (lib.getExe config.programs.spicetify.spicedSpotify) ];
+    # Where the client isn't built, a URI opens in the web player, whose
+    # paths are the URI's parts: spotify:playlist:x is /playlist/x.
+    spotify =
+      if config.programs.spicetify.enable then
+        [ (lib.getExe config.programs.spicetify.spicedSpotify) ]
+      else
+        [
+          (lib.getExe (
+            pkgs.writeShellApplication {
+              name = "spotify-on-the-web";
+              runtimeInputs = [ pkgs.xdg-utils ];
+              text = ''
+                part="''${1#spotify:}"
+                xdg-open "https://open.spotify.com/''${part//://}"
+              '';
+            }
+          ))
+        ];
     signIn = [
       "kitty"
       (lib.getExe config.programs.spotify-player.package)
