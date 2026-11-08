@@ -14,13 +14,19 @@ and once more a fifth of a second after a read whose rates aren't of now.
 On a sixteen-core laptop under load, a read of the processor, memory,
 disks and boot took 4 to 7 ms, and of every process 25 to 30 ms (7
 November 2026), which is why the programs are
-watched only while a part saying them is shown. The shell watches the
+watched only while a part saying them is shown, and a process's tree
+only by its key, for the pids a client names. The shell watches the
 processor, memory and boot only while one of Machine's answers is
 shown, and the disks only while a Disk answer or row is, since on an
 NVMe disk each temperature read is a command to the drive; a disk's
 limits are read once and kept. Rates are timed on the clock that counts
 since boot, which the wall clock's steps don't move, and UDisks is asked
 once a minute while disks are watched, its refusals said as such.
+
+A tree, `tree:<pid>`, is a process and every process under it, by each
+one's parent: a program's drawer watches its own pid's, so what it
+started counts as its own. A process that started since the read before
+counts all its time, and a pid given again counts from its new start.
 
 ## Every Figure, and Where It Shows
 
@@ -71,6 +77,7 @@ units, or named here as left out with the reason.
 |                 | kernel release and build                     | Kernel, its Release and Build             |
 | `using:cpu:N`   | each program's share, its processes          | Processor's Using It                      |
 | `using:memory:N`| each program's resident memory, processes    | Memory's Using It                         |
+| `tree:<pid>`    | its share, resident memory, processes, threads | a program's drawer, which watches it    |
 
 ## Left Out, and Why
 
@@ -97,6 +104,8 @@ units, or named here as left out with the reason.
   Written give the disk's whole life, which is what lasts; since boot,
   a note had no room for them beside the rates.
 - **The boot's id.** Nothing is done with it.
+- **Each process of a tree on its own.** A drawer says what its program
+  costs as a whole; Using It names programs apart.
 
 [main]: src/main.rs
 [lib]: src/lib.rs

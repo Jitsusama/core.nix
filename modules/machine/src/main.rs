@@ -13,12 +13,12 @@
 //! now (a first read's are since boot, and one after a gap since then),
 //! so a figure stands for now as soon as it can. Each read tells every
 //! watch the records it changed, all in one line. The programs are read
-//! only while someone watches `using`, since reading every process costs
-//! the most. Each disk's health is asked of `UDisks` once a minute while
+//! only while someone watches `using`, or a process's tree by its key,
+//! since reading every process costs the most. Each disk's health is asked of `UDisks` once a minute while
 //! disks are watched, on a thread of its own, so a slow bus never holds a
 //! read back.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
@@ -30,7 +30,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
-use machine::{Root, boot, clock_ms, disk, memory, now_ms, processor, using};
+use machine::{Root, boot, clock_ms, disk, memory, now_ms, processor, tree, using};
 use serde_json::{Value, json};
 
 /// How often what's watched is read.
@@ -89,8 +89,14 @@ struct Reader {
 }
 
 impl Reader {
-    /// Reads these kinds, as rates from their last read.
-    fn read(&mut self, kinds: &HashSet<String>, health: &BTreeMap<String, Value>) -> Vec<Value> {
+    /// Reads these kinds, as rates from their last read, the trees of
+    /// these pids among them.
+    fn read(
+        &mut self,
+        kinds: &HashSet<String>,
+        trees: &BTreeSet<u32>,
+        health: &BTreeMap<String, Value>,
+    ) -> Vec<Value> {
         let at = clock_ms();
         let mut records = Vec::new();
         let wants = |kind: &str| kinds.contains(kind);
@@ -133,9 +139,22 @@ impl Reader {
         if wants("boot") {
             records.push(boot::record(&self.root, boot::asleep_s()));
         }
-        if wants("using") {
-            let now = using::counters(&self.root);
-            records.extend(using::records(&now, self.programs.as_ref(), self.page_b));
+        // The programs and the trees share one read of every process, and
+        // each measures its rates from whichever read came last.
+        let trees_wanted = wants("tree") && !trees.is_empty();
+        if wants("using") || trees_wanted {
+            let now = using::counters(&self.root, at);
+            if wants("using") {
+                records.extend(using::records(&now, self.programs.as_ref(), self.page_b));
+            }
+            if trees_wanted {
+                records.extend(tree::records(
+                    trees,
+                    &now,
+                    self.programs.as_ref(),
+                    self.page_b,
+                ));
+            }
             self.programs = Some(now);
         }
         records
@@ -269,11 +288,28 @@ fn watched(daemon: &Daemon) -> HashSet<String> {
         .collect()
 }
 
-/// Reads these kinds now, keeps what changed, and tells each watch of it.
-fn read(shared: &Shared, kinds: &HashSet<String>) {
-    let health = lock(&shared.daemon).health.clone();
+/// The pids whose trees some watch names by key.
+fn watched_trees(daemon: &Daemon) -> BTreeSet<u32> {
+    daemon
+        .watches
+        .iter()
+        .filter_map(|watch| watch.keys.as_ref())
+        .flatten()
+        .filter_map(|key| tree::pid_of(key))
+        .collect()
+}
+
+/// Reads these kinds now, the trees watched and those `asked` names among
+/// them, keeps what changed, and tells each watch of it.
+fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
+    let (health, trees) = {
+        let daemon = lock(&shared.daemon);
+        let mut trees = watched_trees(&daemon);
+        trees.extend(asked.iter().filter_map(|key| tree::pid_of(key)));
+        (daemon.health.clone(), trees)
+    };
     let started = Instant::now();
-    let records = lock(&shared.reader).read(kinds, &health);
+    let records = lock(&shared.reader).read(kinds, &trees, &health);
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);
     daemon.took.push_back(took);
@@ -392,7 +428,7 @@ fn watch_loop(shared: &Shared) {
             continue;
         }
         drop(daemon);
-        read(shared, &due);
+        read(shared, &due, &[]);
     }
 }
 
@@ -609,7 +645,7 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
 }
 
 /// The records held of these kinds or keys, read first where they aren't
-/// fresh, in the daemon's order: by kind, then by key.
+/// fresh or a key isn't held, in the daemon's order: by kind, then by key.
 fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
     refresh(shared, kinds, keys);
     held(&lock(&shared.daemon), kinds, keys)
@@ -635,16 +671,23 @@ fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
         wanted
             .iter()
             .filter(|kind| {
-                daemon
-                    .read_at
-                    .get(*kind)
-                    .is_none_or(|at| at.elapsed() > FRESH)
+                // A key not yet held is read for, as a tree first asked is.
+                let unheld = keys.is_some_and(|keys| {
+                    keys.iter().any(|key| {
+                        kind_of(key) == Some(kind.as_str()) && !daemon.held.contains_key(key)
+                    })
+                });
+                unheld
+                    || daemon
+                        .read_at
+                        .get(*kind)
+                        .is_none_or(|at| at.elapsed() > FRESH)
             })
             .cloned()
             .collect()
     };
     if !stale.is_empty() {
-        read(shared, &stale);
+        read(shared, &stale, keys.unwrap_or_default());
     }
 }
 
