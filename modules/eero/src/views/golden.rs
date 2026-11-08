@@ -113,7 +113,7 @@ golden! {
         model, View::Profile("profile 1".into()) => "profile.txt";
     a_profile_sets_a_device_on_now_by_its_node:
         profiled, View::Profile("profile 3".into()) => "profile-on.txt";
-    events_lead_each_day_with_its_date: model, View::Events => "events.txt";
+    events_and_what_was_told_run_as_one_timeline: model, View::Events => "events.txt";
 }
 
 /// The record with two devices on now in profile 3, since none of the
@@ -411,10 +411,12 @@ fn the_profile_and_event_slices_hold_them_whole() {
         serde_json::to_value(&model.profiles[1]).unwrap()
     );
     assert!(profile["devices"].is_array());
+    let events = slice(&View::Events);
     assert_eq!(
-        slice(&View::Events)["events"],
+        events["events"],
         serde_json::to_value(&model.events).unwrap()
     );
+    assert_eq!(events["told"], serde_json::to_value(&model.told).unwrap());
 }
 
 #[test]

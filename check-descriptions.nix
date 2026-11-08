@@ -431,8 +431,9 @@
     its own look at the internet, the gateway node only from home, and an outage from the first
     look out to the first back; it tells, as notices, the internet out and back, a node offline
     and back online, a device new to the home network, firmware waiting and changing, and an event
-    no other notice says, each once and none before eero first answers or on its first answer;
-    and it sends the conferencing setting as a bare boolean, counted
+    no other notice says, each once and none before eero first answers or on its first answer,
+    and keeps what each said, drawing 30 days of it into the model, at most 50, a history from
+    before keeping its rows; and it sends the conferencing setting as a bare boolean, counted
     taken only once eero reads it back; every view's page matches its golden one, saying
     when eero isn't answering or the reading is old, colouring only on a terminal, each view's JSON
     is the record's own slice, and a watch draws its view again from each model the socket writes

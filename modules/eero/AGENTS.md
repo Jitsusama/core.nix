@@ -57,6 +57,10 @@ on a machine that's the first laptop.
   activity list.
 - `joins_and_leaves[]`: the devices that joined or left over the last
   day, with the name each had.
+- `told[]`: what the daemon told as notices over the last 30 days,
+  newest first and at most 50, each with when, its kind and the notice's
+  summary and body; an event it told from eero's activity list is left
+  out, since `events[]` holds it in eero's words.
 
 ## How It Reads
 
@@ -141,7 +145,10 @@ it answers says nothing, setting what the next is compared with. Each
 change told is recorded in the history's `told` table by its kind and
 subject, such as a node's id and its last heartbeat, so a restart, or a
 figure flapping back, never tells it twice, and an outage told out is
-timed from when it was told. A notice about the internet, a node or the
+timed from when it was told. Each keeps its notice's summary and body
+too, which the model draws as `told`, one a notice however many changes
+it told; a row recorded before notices kept their words has none, and
+isn't drawn. A notice about the internet, a node or the
 firmware takes the place of the last one about it, so "The internet is
 back" replaces "The internet is out".
 

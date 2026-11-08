@@ -22,7 +22,8 @@
 //! and 30 days of speed tests and outages.
 //!
 //! It also keeps each change a notice told of (notices.rs), by its kind
-//! and subject, so a restart never tells one twice.
+//! and subject, so a restart never tells one twice, and what the notice
+//! said, so the model carries 30 days of what was told.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -34,9 +35,9 @@ use serde_json::Value;
 
 use crate::model::{
     DeviceHistory, HomeNetwork, JoinOrLeave, JoinOrLeaveKind, NodeHistory, Outage, OutageSeenBy,
-    Probe, ProbeHistory, RadioHistory, Roam, SpeedTest,
+    Probe, ProbeHistory, RadioHistory, Roam, SpeedTest, ToldChange,
 };
-use crate::notices::{Kind, Said, Told};
+use crate::notices::{Kind, Notice, Said, Told};
 use crate::probe::Reading;
 use crate::time;
 
@@ -71,6 +72,11 @@ const MOVES_S: i64 = DAY_S;
 const ROAMS_SHOWN: usize = 20;
 const JOINS_AND_LEAVES_SHOWN: i64 = 50;
 
+/// The most told changes the model shows, so a node flapping all month
+/// can't swell it: a notice's words come to a few hundred bytes, so these
+/// take about 10 kB at most.
+const TOLD_SHOWN: i64 = 50;
+
 const TABLES: &str = "
 CREATE TABLE devices (id INTEGER PRIMARY KEY, mac TEXT NOT NULL UNIQUE, name TEXT);
 CREATE TABLE radios (id INTEGER PRIMARY KEY, node TEXT NOT NULL, band TEXT NOT NULL,
@@ -100,8 +106,14 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 /// this shape keeps all it holds.
 const ADDED: &str = "
 CREATE TABLE IF NOT EXISTS told (kind TEXT NOT NULL, subject TEXT NOT NULL,
-    at INTEGER NOT NULL, PRIMARY KEY (kind, subject)) WITHOUT ROWID;
+    at INTEGER NOT NULL, summary TEXT, body TEXT, PRIMARY KEY (kind, subject)) WITHOUT ROWID;
 ";
+
+/// The columns added to a table since it was made, each with the table it
+/// goes in, added where missing, so a row already there keeps all it held
+/// and reads the new column as `NULL`.
+const ADDED_COLUMNS: [(&str, &str, &str); 2] =
+    [("told", "summary", "TEXT"), ("told", "body", "TEXT")];
 
 /// The history, open.
 pub struct History {
@@ -165,18 +177,37 @@ impl History {
 
     fn added(self) -> Result<History, String> {
         self.db.execute_batch(ADDED).map_err(sql)?;
+        for (table, column, kind) in ADDED_COLUMNS {
+            let there: bool = self
+                .db
+                .query_row(
+                    "SELECT count(*) > 0 FROM pragma_table_info(?1) WHERE name = ?2",
+                    params![table, column],
+                    |row| row.get(0),
+                )
+                .map_err(sql)?;
+            if !there {
+                self.db
+                    .execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {kind};"))
+                    .map_err(sql)?;
+            }
+        }
         Ok(self)
     }
 
-    /// Records a change a notice told of at `at`, by its kind and subject.
-    pub fn record_told(&mut self, (kind, subject): &Told, at: i64) -> Result<(), String> {
-        self.db
-            .execute(
-                "INSERT OR IGNORE INTO told VALUES (?1, ?2, ?3)",
-                params![kind.name(), subject, at],
-            )
-            .map_err(sql)?;
-        Ok(())
+    /// Records a change at `at`, by its kind and subject, as told though no
+    /// notice said it.
+    pub fn record_told(&mut self, told: &Told, at: i64) -> Result<(), String> {
+        told_row(&self.db, told, None, at)
+    }
+
+    /// Records each change a notice told at `at`, with what it said.
+    pub fn record_notice(&mut self, notice: &Notice, at: i64) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(sql)?;
+        for told in &notice.tells {
+            told_row(&tx, told, Some(notice), at)?;
+        }
+        tx.commit().map_err(sql)
     }
 
     fn was_told(&self, kind: Kind, subject: &str) -> Result<bool, String> {
@@ -264,7 +295,37 @@ impl History {
         internet.history.outages = self.outages(now - KEPT_S)?;
         internet.history.probes = self.probe_series(now - SERIES_S)?;
         internet.probe = self.last_probe()?;
+        self.draw_told(model, now)
+    }
+
+    /// Draws what was told into the model, as it stands at `now`, so a
+    /// notice raised after the rest was drawn is in the model it's told
+    /// from.
+    pub fn draw_told(&self, model: &mut HomeNetwork, now: i64) -> Result<(), String> {
+        model.told = self.told(now - KEPT_S)?;
         Ok(())
+    }
+
+    /// The changes told with words since `since`, newest first: a notice
+    /// telling of several, as the nodes updating together, is one, since
+    /// each change it told was recorded with its words at its time. Those
+    /// recorded before notices kept their words have none to show, and an
+    /// event eero lists is shown from its list.
+    fn told(&self, since: i64) -> Result<Vec<ToldChange>, String> {
+        self.rows(
+            "SELECT DISTINCT at, kind, summary, body FROM told
+             WHERE summary IS NOT NULL AND kind != ?1 AND at > ?2
+             ORDER BY at DESC, kind, summary LIMIT ?3",
+            params![Kind::Event.name(), since, TOLD_SHOWN],
+            |row| {
+                Ok(ToldChange {
+                    at: time::from_unix(row.get(0)?),
+                    kind: row.get(1)?,
+                    summary: row.get(2)?,
+                    body: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                })
+            },
+        )
     }
 
     fn device_series(&self, since: i64) -> Result<BTreeMap<String, DeviceHistory>, String> {
@@ -629,6 +690,30 @@ fn aside(path: &Path, shape: i64) -> PathBuf {
         .map(|n| path.with_extension(format!("sqlite.shape-{shape}.{n}")))
         .find(|aside| !aside.exists())
         .expect("a free name")
+}
+
+/// Records a change told at `at`, by its kind and subject, with what its
+/// notice said where one did. One already recorded keeps the time and
+/// words it was first told with.
+fn told_row(
+    db: &Connection,
+    (kind, subject): &Told,
+    notice: Option<&Notice>,
+    at: i64,
+) -> Result<(), String> {
+    db.execute(
+        "INSERT OR IGNORE INTO told (kind, subject, at, summary, body)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            kind.name(),
+            subject,
+            at,
+            notice.map(|notice| &notice.summary),
+            notice.map(|notice| &notice.body)
+        ],
+    )
+    .map(|_| ())
+    .map_err(sql)
 }
 
 /// Where a device is: its node and its band.
@@ -1251,6 +1336,118 @@ mod tests {
         assert!(history.said(Kind::InternetOut, &start));
         assert_eq!(out, Some(start));
         assert_eq!(history.out_since(), None);
+    }
+
+    fn notice(kind: Kind, subjects: &[&str], summary: &str, body: &str) -> Notice {
+        Notice {
+            about: None,
+            summary: summary.into(),
+            body: body.into(),
+            urgency: crate::notices::Urgency::Normal,
+            tells: subjects.iter().map(|s| (kind, (*s).to_owned())).collect(),
+        }
+    }
+
+    /// The told changes drawn at `now`, as `seconds-after-AT kind summary: body`.
+    fn told(history: &History, now: i64) -> Vec<String> {
+        let mut model = model();
+        history.draw(&mut model, now).unwrap();
+        model
+            .told
+            .iter()
+            .map(|told| {
+                let after = time::to_unix(&told.at).unwrap() - AT;
+                format!("{after} {} {}: {}", told.kind, told.summary, told.body)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_model_carries_what_each_notice_said_newest_first_and_once() {
+        let mut history = History::in_memory();
+        let out = notice(
+            Kind::InternetOut,
+            &["t0"],
+            "The internet is out",
+            "Nothing.",
+        );
+        let updated = notice(
+            Kind::Updated,
+            &["2001 v7.18.0-1", "2002 v7.18.0-1"],
+            "The nodes updated to v7.18.0-1",
+            "From v7.17.4-5.",
+        );
+        let event = notice(Kind::Event, &["e"], "Guest network turned on.", "eero's.");
+
+        history.record_notice(&out, AT).unwrap();
+        history.record_notice(&updated, AT + 60).unwrap();
+        history.record_notice(&event, AT + 90).unwrap();
+        history
+            .record_told(&(Kind::InternetBack, "t0".into()), AT + 120)
+            .unwrap();
+        history.record_notice(&out, AT + 180).unwrap();
+
+        assert_eq!(
+            told(&history, AT + 200),
+            [
+                "60 updated The nodes updated to v7.18.0-1: From v7.17.4-5.",
+                "0 internet-out The internet is out: Nothing.",
+            ],
+            "one notice of two changes is one, a change settled without a notice and an \
+             event eero lists aren't, and one told again keeps its first time"
+        );
+    }
+
+    #[test]
+    fn the_model_carries_30_days_of_told_changes_and_at_most_50() {
+        let mut history = History::in_memory();
+        for n in 0..60 {
+            let subject = n.to_string();
+            let words = notice(
+                Kind::Joined,
+                &[subject.as_str()],
+                &format!("device {n}"),
+                "",
+            );
+            history.record_notice(&words, AT + n * 60).unwrap();
+        }
+
+        let shown = told(&history, AT + 59 * 60);
+        let past = told(&history, AT + KEPT_S + 30 * 60);
+
+        assert_eq!(shown.len(), 50);
+        assert_eq!(shown[0], "3540 joined device 59: ");
+        assert_eq!(past.len(), 29, "those past 30 days are left out");
+    }
+
+    #[test]
+    fn a_history_told_before_notices_kept_their_words_keeps_its_rows() {
+        let folder = std::env::temp_dir().join(format!("eero-words-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("history.sqlite");
+        let _ = fs::remove_file(&path);
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(&format!(
+                "BEGIN; {TABLES} PRAGMA user_version = {SHAPE};
+                 CREATE TABLE told (kind TEXT NOT NULL, subject TEXT NOT NULL,
+                     at INTEGER NOT NULL, PRIMARY KEY (kind, subject)) WITHOUT ROWID;
+                 INSERT INTO told VALUES ('joined', '02:00:00:00:00:20', {AT}); COMMIT;"
+            ))
+            .unwrap();
+
+        let mut history = History::open(&path).unwrap();
+        let joined = notice(Kind::Joined, &["02:00:00:00:00:21"], "phone 3", "New.");
+        history.record_notice(&joined, AT + 60).unwrap();
+
+        assert!(history.said(Kind::Joined, "02:00:00:00:00:20"));
+        assert_eq!(told(&history, AT + 60), ["60 joined phone 3: New."]);
+        drop(history);
+        assert!(
+            History::open(&path).is_ok(),
+            "a history whose words were added opens again"
+        );
+        fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]

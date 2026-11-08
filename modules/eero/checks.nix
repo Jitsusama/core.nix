@@ -21,6 +21,8 @@ onLinux {
   # machine and its outages drawn from sequences of looks, the status line says what eero said and nothing it didn't,
   # each change worth a notice between two models is told once in its words, from the internet
   # out and back to an event no other notice says, and nothing before eero's first answer,
+  # what each notice said is kept and the last 30 days of it drawn into the model, at most
+  # 50 and one a notice, a history from before the words were kept keeping its rows,
   # and the conferencing setting is sent as eero takes it and counted only
   # once read back. Every view's page is held to a golden one drawn from
   # home-network.json (src/views/golden/), its figures lined up by their
