@@ -220,6 +220,7 @@
       "id": "agents:landed",
       "in": "agents",
       "name": "Landed",
+      "term": "Agents/Landed",
       "verb": "more",
       "glyph": "done"
     },

@@ -194,9 +194,10 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
-| Media | the place in Programs holding every player | | `program:media` |
+| Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
+| speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
 
 ## People
 
