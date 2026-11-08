@@ -571,12 +571,13 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
         )
+
         # In the step, its act selected says nothing of its own, and stays.
-        desktop.launcher_until(
-            lambda shown: (
-                shown["open"] and (stepping or (shown["selected"] or {}).get("side") == "chosen")
-            )  # noqa: B023
-        )
+        def stays_open(shown: Json, stepped: bool = stepping) -> bool:
+            chosen = (shown["selected"] or {}).get("side") == "chosen"
+            return bool(shown["open"]) and (stepped or chosen)
+
+        desktop.launcher_until(stays_open)
         option = profile.removeprefix("power-")
         for line in [f"set power profile {option}", f"power profile {option} taken"]:
             machine.wait_until_succeeds(

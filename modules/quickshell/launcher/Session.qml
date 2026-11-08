@@ -191,10 +191,10 @@ Provider {
     readonly property var profiles: profileChoices.map(choice => {
         void provider.profileHeard;
         const key = `session:power:${choice.was}`;
-        const chosen = PowerProfiles.profile === choice.profile;
         const refusal = provider.profileRefused;
         return said(key, "", {
-            side: chosen ? "chosen" : refusal.daemon === choice.daemon ? refusal.why : "",
+            side: refusal.daemon === choice.daemon ? refusal.why
+                : provider.profileOn(choice) ? "chosen" : "",
             hue: "machine",
             of: Words.of(key).of,
             part: Words.of(key).part,
@@ -210,6 +210,17 @@ Provider {
     property string profileHeard: ""
     // The last pick the daemon didn't take, by its name, and why.
     property var profileRefused: ({ daemon: "", why: "" })
+    // The pick a read of the daemon was started for, so its answer is
+    // judged against that pick, never one made while it ran.
+    property var profileAsked: null
+
+    // Whether the daemon's on a profile: as it said when it last refused a
+    // pick, until the next, since Quickshell's copy says what was asked;
+    // else as Quickshell's copy says.
+    function profileOn(choice) {
+        return provider.profileRefused.daemon !== "" ? provider.profileHeard === choice.daemon
+            : PowerProfiles.profile === choice.profile;
+    }
 
     // Picks a profile, by Return or :set power=: said in the journal, its
     // row chosen at once and held so until the daemon says it's on it, then
@@ -225,7 +236,9 @@ Provider {
         provider.profileRefused = { daemon: "", why: "" };
         provider.profileHeard = "";
         becomes(key, { side: "chosen" }, name, "set", {
-            done: () => provider.profileHeard === choice.daemon,
+            // One a newer pick overtook is let go of, unsaid.
+            done: () => provider.profilePicked !== choice
+                || provider.profileHeard === choice.daemon,
             within: profileWaits
         });
         PowerProfiles.profile = choice.profile;
@@ -236,11 +249,13 @@ Provider {
     // How long a pick waits to be said back: the daemon's asked half way.
     readonly property int profileWaits: 2000
 
+    // The daemon's answer for the pick it was asked about; one a newer
+    // pick has overtaken is let be, its own read already timed.
     function profileToldBack(text) {
-        const picked = provider.profilePicked;
-        if (picked === null)
+        const picked = provider.profileAsked;
+        provider.profileAsked = null;
+        if (picked === null || picked !== provider.profilePicked)
             return;
-        provider.profilePicked = null;
         const heard = Power.activeProfile(text);
         const why = Power.profileRefusal(picked.daemon, heard, {
             holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
@@ -256,22 +271,32 @@ Provider {
         provider.profileHeard = heard;
         if (why === "") {
             console.info(`launcher: power profile ${picked.option} taken`);
-            return;
+        } else {
+            console.warn(`launcher: power profile ${picked.option} not taken: ${why}`);
+            provider.profileRefused = { daemon: picked.daemon, why };
+            // Said while the pick's still held, so the foot says it too.
+            refused(`session:power:${picked.was}`, why);
         }
-        console.warn(`launcher: power profile ${picked.option} not taken: ${why}`);
-        provider.profileRefused = { daemon: picked.daemon, why };
-        refused(`session:power:${picked.was}`, why);
+        provider.profilePicked = null;
     }
 
     Timer {
         id: profileAsking
         interval: provider.profileWaits / 2
-        onTriggered: profileDaemon.running = true
+        onTriggered: {
+            if (profileDaemon.running) {
+                profileAsking.restart();
+                return;
+            }
+            provider.profileAsked = provider.profilePicked;
+            profileDaemon.running = true;
+        }
     }
 
     // What power-profiles-daemon says it's on, asked of it on the system
     // bus rather than read from Quickshell's copy, so what's said back is
-    // the daemon's own.
+    // the daemon's own. One short busctl runs per pick, a key Joel
+    // pressed, never on a clock, so it costs nothing while he's away.
     Process {
         id: profileDaemon
         command: ["busctl", "get-property", "org.freedesktop.UPower.PowerProfiles",
@@ -282,7 +307,7 @@ Provider {
         }
     }
     readonly property var profileChosen: {
-        const choice = profileChoices.find(each => each.profile === PowerProfiles.profile);
+        const choice = profileChoices.find(each => provider.profileOn(each));
         return choice ? `session:power:${choice.was}` : "";
     }
     readonly property var profile: thingRow({
