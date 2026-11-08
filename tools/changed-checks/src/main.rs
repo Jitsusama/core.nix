@@ -110,6 +110,11 @@ const NOT_TAKEN: i32 = 75;
 /// Set on the far side's run, which runs there and never sends itself on.
 const HERE: &str = "CHANGED_CHECKS_HERE";
 
+/// Set by a caller that can try again later, such as the net: a run no
+/// builder took runs here only while the machine is idle, and otherwise
+/// fails saying so. It isn't passed to the far side, which runs there.
+const HERE_WHEN_IDLE: &str = "CHANGED_CHECKS_HERE_WHEN_IDLE";
+
 /// Set on the far side's run to the checks that passed at its commit
 /// already, which it builds none of again (`passed_at` says how).
 const PASSED: &str = "CHANGED_CHECKS_PASSED";
@@ -249,6 +254,17 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     }
     if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
+    }
+    if pressure::waits_for_idle(
+        options.here || env::var_os(HERE).is_some(),
+        env::var_os(HERE_WHEN_IDLE).is_some(),
+        pressure::cpu_busy(),
+    ) {
+        return Err(
+            "no builder took the run and this machine is busy, so it waits to be tried again; \
+             --here runs it anyway"
+                .to_owned(),
+        );
     }
     // A base kept ahead of time is never worth evaluating beside the
     // person's work, at about 20 GB, unless asked to.

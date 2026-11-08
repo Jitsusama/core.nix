@@ -62,14 +62,47 @@ fn own_cgroup(proc: &Path) -> Option<PathBuf> {
 /// Whether a pressure file's "some" line says ten seconds' stall at or past
 /// [`STALLED_AT`].
 pub fn stalled(text: &str) -> bool {
+    some(text, "avg10=").is_some_and(|stall| stall >= STALLED_AT)
+}
+
+/// The CPU stall, as PSI's "some" over a minute, in percent, at or past
+/// which the machine isn't idle: the person's work stays ahead of a run
+/// that no builder took. On 7 November the net's evaluations, run here
+/// while the builders didn't answer, held optimus near 70% with Joel at it.
+pub const BUSY_AT: f64 = 15.0;
+
+/// Whether the machine's CPU is busy now. A reading that can't be had is
+/// idle, as on a machine without PSI.
+pub fn cpu_busy() -> bool {
+    let file =
+        std::env::var_os(CPU).map_or_else(|| PathBuf::from("/proc/pressure/cpu"), PathBuf::from);
+    busy(&fs::read_to_string(file).unwrap_or_default())
+}
+
+/// Whether a run nowhere else took waits rather than run here: asked to
+/// run here only when idle, not asked to run here, and the machine busy.
+pub fn waits_for_idle(here: bool, when_idle: bool, busy: bool) -> bool {
+    when_idle && !here && busy
+}
+
+/// What names the CPU pressure file read in place of the machine's.
+const CPU: &str = "CHANGED_CHECKS_CPU_PRESSURE";
+
+/// Whether a CPU pressure file's "some" line says a minute's stall at or
+/// past [`BUSY_AT`].
+pub fn busy(text: &str) -> bool {
+    some(text, "avg60=").is_some_and(|stall| stall >= BUSY_AT)
+}
+
+/// The "some" line's value of `field`, such as `avg10=`.
+fn some(text: &str, field: &str) -> Option<f64> {
     text.lines()
         .find(|line| line.starts_with("some "))
         .and_then(|line| {
             line.split_whitespace()
-                .find_map(|field| field.strip_prefix("avg10="))
+                .find_map(|word| word.strip_prefix(field))
                 .and_then(|value| value.parse::<f64>().ok())
         })
-        .is_some_and(|stall| stall >= STALLED_AT)
 }
 
 #[cfg(test)]
@@ -85,6 +118,27 @@ mod tests {
         assert!(stalled(PRESSED));
         assert!(!stalled(CALM));
         assert!(stalled("some avg10=10.00 avg60=0 avg300=0 total=1\n"));
+    }
+
+    #[test]
+    fn a_minutes_cpu_stall_past_fifteen_is_busy() {
+        assert!(busy("some avg10=3.00 avg60=15.00 avg300=40.00 total=1\n"));
+        assert!(!busy("some avg10=80.00 avg60=14.90 avg300=40.00 total=1\n"));
+        assert!(!busy(""), "no reading is idle");
+    }
+
+    #[test]
+    fn a_run_no_builder_took_waits_only_when_asked_and_busy() {
+        assert!(waits_for_idle(false, true, true));
+        assert!(
+            !waits_for_idle(false, true, false),
+            "an idle machine runs it"
+        );
+        assert!(!waits_for_idle(true, true, true), "--here runs it anyway");
+        assert!(
+            !waits_for_idle(false, false, true),
+            "a person's run isn't held"
+        );
     }
 
     #[test]
