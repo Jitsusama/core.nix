@@ -112,6 +112,9 @@ pub struct Way {
     pub streams: Option<u32>,
     /// The pause between symbols, in microseconds.
     pub guard: Option<f64>,
+    /// Whether Wi-Fi 6's dual carrier is on: each symbol sent twice, on
+    /// subcarriers apart, at half the rate, to ride out a weak signal.
+    pub dcm: Option<bool>,
     pub bytes: Option<u64>,
     pub packets: Option<u32>,
 }
@@ -172,6 +175,10 @@ impl Polled {
                 streams,
                 guard: match value(&key("guard-interval")) {
                     Some(Value::F64(microseconds)) => Some(*microseconds),
+                    _ => None,
+                },
+                dcm: match value(&key("dcm")) {
+                    Some(Value::Bool(on)) => Some(*on),
                     _ => None,
                 },
                 bytes: match value(&key("bytes")) {
@@ -490,6 +497,7 @@ mod tests {
             mcs: Some(mcs),
             streams: Some(2),
             guard: Some(0.8),
+            dcm: Some(false),
             bytes: None,
             packets: None,
         }
@@ -702,6 +710,8 @@ mod tests {
             ("tx-he-mcs".into(), owned(&Value::from(7u32))),
             ("tx-he-nss".into(), owned(&Value::from(1u32))),
             ("tx-guard-interval".into(), owned(&Value::from(1.6f64))),
+            ("rx-dcm".into(), owned(&Value::from(false))),
+            ("tx-dcm".into(), owned(&Value::from(true))),
             (
                 "expected-throughput".into(),
                 owned(&Value::from(887_703u32)),
@@ -730,6 +740,7 @@ mod tests {
                     mcs: Some(9),
                     streams: Some(2),
                     guard: Some(0.8),
+                    dcm: Some(false),
                     bytes: Some(23_661_070_224),
                     packets: Some(27_210_952),
                 },
@@ -739,6 +750,7 @@ mod tests {
                     mcs: Some(7),
                     streams: Some(1),
                     guard: Some(1.6),
+                    dcm: Some(true),
                     bytes: Some(10_734_060_673),
                     packets: Some(12_881_183),
                 },
