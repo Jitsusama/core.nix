@@ -7333,7 +7333,7 @@
     {
       "id": "verb:chrome:link",
       "command": "open",
-      "argument": "link",
+      "argument": "page",
       "in": "applications",
       "name": "Open the Copied Link",
       "verb": "open",
