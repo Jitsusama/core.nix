@@ -44,6 +44,9 @@ Provider {
     property var searches: []
     readonly property int keeps: 8
     readonly property int againAfter: 1000
+    // How long the things are left to settle while the launcher is open
+    // before they're told again (the Timer `settled`).
+    readonly property int settlesIn: 500
     // Searches waiting for the connection, { kind, words }, asked once
     // it's made.
     property var pending: []
@@ -157,12 +160,22 @@ Provider {
         const daemon = reader.item as Daemon;
         if (!daemon || daemon.wire === null || !provider.launcher)
             return;
-        const things = Meaning.things(provider.launcher.choices);
-        const as = JSON.stringify(things);
-        if (as === provider.toldAs)
+        const telling = Meaning.telling(provider.launcher.choices);
+        if (telling.as === provider.toldAs)
             return;
-        provider.toldAs = as;
-        daemon.ask({ ask: "know", kind: "thing", things: things }, null);
+        provider.toldAs = telling.as;
+        daemon.ask({ ask: "know", kind: "thing", things: telling.things }, null);
+    }
+
+    // The things change while the launcher is open as windows and notices
+    // come and go, often several at once; walking them takes the shell's
+    // thread about 5 ms over a thousand in Qt's engine (2026-11-08), so a
+    // run of changes is told once, after it settles, never between keys.
+    Timer {
+        id: settled
+
+        interval: provider.settlesIn
+        onTriggered: provider.tell()
     }
 
     // The connection is made as the launcher opens, so the things are told
@@ -179,13 +192,14 @@ Provider {
                 return;
             }
             reader.active = false;
+            settled.stop();
             provider.pending = [];
             provider.searches = [];
         }
 
         function onChoicesChanged(): void {
             if (provider.launcher.open)
-                Qt.callLater(provider.tell);
+                settled.restart();
         }
     }
 

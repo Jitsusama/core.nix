@@ -54,6 +54,12 @@ QtObject {
         expect("a meaning's own row is never told again",
             Meaning.things([Object.assign({}, kitty, { byMeaning: true })]), []);
         expect("no choices tell nothing", Meaning.things(undefined), []);
+        // Told again only when what's told changes: `as` stands for it all.
+        expect("the same things are told as the same",
+            Meaning.telling([brightness, window]).as, Meaning.telling([brightness]).as);
+        expect("another thing is told as another",
+            Meaning.telling([brightness, kitty]).as === Meaning.telling([brightness]).as,
+            false);
 
         // Asked: in lower case, its spaces single, from three letters.
         expect("what's typed is asked plainly", Meaning.asked("  Dim  the Screen "),
@@ -82,6 +88,12 @@ QtObject {
             rows.map(row => [row.note, row.byMeaning, row.tier]),
             [[note, true, 3], [note, true, 3]]);
         expect("the launcher's own thing is left as it was", brightness.note, undefined);
+        // Its own note stays after how it was found, as when typed, and
+        // gives way first (Y2YBTS, 2026-11-08).
+        const placed = thing("place:screens", "Screens", null, { note: "in Machine" });
+        expect("its own note follows how it was found",
+            Meaning.rows(records(["place:screens"]), { "place:screens": placed }, new Set(),
+                how).map(row => row.note), ["found by its meaning \u00b7 in Machine"]);
         expect("one already found by its letters isn't added again",
             Meaning.rows(records(["action:brightness", "program:kitty"]), keyed,
                 new Set(["action:brightness"]), how).map(row => row.key),
