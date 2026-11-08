@@ -1,5 +1,5 @@
 # BAAI's bge-base-en-v1.5 (MIT), as OpenVINO exported it at eight bits
-# with its tokenizer, at the revision measured on optimus's NPU: 4.7 to
+# with its tokenizer, at the revision measured on an Intel NPU: 4.7 to
 # 5 ms a query at 64 tokens using about 1 ms of CPU time, against 27 ms
 # on the processor (M4RL61's npu-everywhere, item 7). The folder holds
 # what meaning reads: the model's graph and weights, and the tokenizer.

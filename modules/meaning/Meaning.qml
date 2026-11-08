@@ -13,6 +13,8 @@
 // later says the launcher found more, which adds the rows below without
 // moving the selection or a row above (Launcher.qml's foundMore). The
 // connection is held only while the launcher shows.
+pragma ComponentBehavior: Bound
+
 import qs
 import Quickshell
 import QtQuick
@@ -70,11 +72,13 @@ Provider {
         provider.pending = provider.pending.filter(text => text !== words).concat([words])
             .slice(-provider.keeps);
         reader.active = true;
-        provider.ask();
+        provider.send();
     }
 
-    function ask() {
-        const daemon = reader.item;
+    // The texts waiting sent, once there's a connection. It isn't called
+    // `ask`, which is Provider's own.
+    function send() {
+        const daemon = reader.item as Daemon;
         if (!daemon || daemon.wire === null)
             return;
         const asking = provider.pending;
@@ -119,7 +123,7 @@ Provider {
 
     // The things told to the daemon, when they've changed since.
     function tell() {
-        const daemon = reader.item;
+        const daemon = reader.item as Daemon;
         if (!daemon || daemon.wire === null || !provider.launcher)
             return;
         const things = Meaning.things(provider.launcher.choices);
@@ -168,7 +172,7 @@ Provider {
             onWireChanged: {
                 provider.toldAs = "";
                 provider.tell();
-                provider.ask();
+                provider.send();
             }
         }
     }
