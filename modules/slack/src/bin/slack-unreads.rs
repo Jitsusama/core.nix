@@ -91,12 +91,14 @@ fn main() {
                 Ok((conversations, recent))
             },
         );
+        // The messages wanting Joel are kept through Slack refusing or out
+        // of reach, since none was seen read (lib's `daemon::records`).
         let none = |state| Said {
             state,
             conversations: Vec::new(),
             recent: Vec::new(),
-            messages: Vec::new(),
-            marks: Vec::new(),
+            messages: messages.raised(),
+            marks: messages.marks(),
         };
         let said = match asked {
             Ok((conversations, recent)) => {

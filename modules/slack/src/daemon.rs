@@ -57,8 +57,11 @@ const KINDS: [&str; 5] = [
 /// wanting him, newest first, then their conversations' read marks, then
 /// the account.
 /// Only while Slack answered are any conversations said, so an old count
-/// is never held as a current one; with no sign-in, `said` is none and
-/// the account says so. Each is without its `heard`, which the daemon
+/// is never held as a current one; the messages wanting him are said
+/// through Slack refusing or out of reach too, since one unread stays
+/// unread until Slack says it was read, and what holds its notice would
+/// take one gone for read. With no sign-in, `said` is none, nothing but
+/// the account is said, and the account says so. Each is without its `heard`, which the daemon
 /// adds as it learns when one changed.
 pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
     fn record(kind: &str, id: &str, thing: Value) -> (String, Value) {
@@ -94,6 +97,8 @@ pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
             thing["read"] = json!(one.at);
             made.push(record("slack-recent", &one.id, thing));
         }
+    }
+    if let Some(said) = said {
         for one in &said.messages {
             let id = one.key.strip_prefix("slack-message:").unwrap_or(&one.key);
             made.push(record("slack-message", id, json!(one)));
@@ -611,6 +616,18 @@ mod tests {
             team: "T1".to_owned(),
             done,
         }
+    }
+
+    #[test]
+    fn a_message_wanting_joel_is_still_said_while_slack_doesnt_answer() {
+        let mut said = ok(vec![one("D1", Kind::Dm, 1, "1")], vec![]);
+        said.messages = vec![message("D1", "1730300001.000100", None)];
+        said.state = State::Unreachable;
+        let keys: Vec<String> = records(Some(&said))
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect();
+        assert_eq!(keys, ["slack-message:D1:1730300001.000100", ACCOUNT]);
     }
 
     #[test]
