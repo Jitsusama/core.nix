@@ -45,6 +45,16 @@
       url = "github:nix-community/disko/v1.13.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Asahi Linux's kernel, m1n1 and U-Boot for Apple's laptops. Its last
+    # release is from July and builds against that summer's nixpkgs, so
+    # it's pinned by commit, on the 7.2 kernel, until a release follows.
+    # Its commits from 2026-11-08 on want an avd-fw newer than nixpkgs here.
+    nixos-apple-silicon = {
+      url = "github:nix-community/nixos-apple-silicon/73301d52f114946d53e62902692c36b0fea0c904";
+      inputs.nixpkgs.follows = "nixpkgs";
+      # Only its non-flake users take it.
+      inputs.flake-compat.follows = "";
+    };
     wallpapers.url = "github:Jitsusama/wallpapers.nix";
     # Builds Spotify's client with the theme's colours in it.
     spicetify-nix = {
@@ -88,6 +98,7 @@
       lanzaboote,
       rust-overlay,
       disko,
+      nixos-apple-silicon,
       wallpapers,
       neovim-pi,
       mycelium,
@@ -363,6 +374,9 @@
           inherit nixpkgs;
         };
 
+        apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
+          inherit nixos-apple-silicon;
+        };
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
         microsoft-surface-laptop-4-1958 = ./hardware/microsoft-surface-laptop-4-1958/nixos.nix;
       };

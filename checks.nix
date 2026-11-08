@@ -868,6 +868,12 @@ gather (
           inherit nixpkgs;
         }
       );
+      example-apple-laptop = evaluates "example-apple-laptop" (
+        import ./examples/apple-laptop.nix {
+          core = self;
+          inherit nixpkgs;
+        }
+      );
       example-darwin = evaluates "example-darwin" (
         import ./examples/darwin.nix {
           core = self;

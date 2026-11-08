@@ -193,8 +193,11 @@ in
     spicetify-nix.homeManagerModules.spicetify
   ];
 
+  # Spotify builds its client for x86_64 Linux and Macs alone, so a machine
+  # it isn't built for, such as an Apple laptop on Linux, plays through
+  # spotify-player and the web player instead.
   programs.spicetify = {
-    enable = true;
+    enable = lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.spotify;
     customColorScheme = lib.mapAttrs (_: lib.removePrefix "#") scheme;
     # Spicetify's plain theme, which only recolours, with the faces added.
     theme = spices.themes.default // {

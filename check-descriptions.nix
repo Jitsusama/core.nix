@@ -459,6 +459,9 @@
     bang and what follows, :g and :v, the rows a range names, and Vim's own errors for what it can't
     take
   '';
+  example-apple-laptop = ''
+    a laptop on the MacBook Air M2, aarch64-linux with no TPM or Secure Boot, evaluates
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';
