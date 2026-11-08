@@ -248,15 +248,15 @@ mod tests {
     #[test]
     fn a_place_named_is_its_first_answer() {
         let said = json!({"results": [
-            {"name": "Lighthouse", "latitude": 51.05, "longitude": -114.07,
+            {"name": "Lighthouse", "latitude": 52.34, "longitude": -115.67,
              "admin1": "Alberta", "country": "Canada", "timezone": "America/Edmonton"},
             {"name": "Lighthouse", "latitude": 1.0, "longitude": 2.0, "admin1": "Elsewhere"}
         ]});
         assert_eq!(
             found(&said),
             Some(Found {
-                latitude: 51.05,
-                longitude: -114.07,
+                latitude: 52.34,
+                longitude: -115.67,
                 place: "Lighthouse, Alberta".into(),
                 country: Some("Canada".into()),
                 zone: Some("America/Edmonton".into()),

@@ -182,7 +182,6 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
                 tried = 0;
                 Some(now)
             } else {
-                tried = tried.saturating_add(1);
                 last.clone().filter(Fix::unnamed)
             };
             if let Some(fix) = renamed {
@@ -210,7 +209,13 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
                 Some(update) => found = geoclue::fix(&bus, update.args()?.now().clone()).await,
                 None => return Err("GeoClue's client stopped saying anything".into()),
             },
-            () = tokio::time::sleep(AGAIN), if unnamed => found = last.clone(),
+            // Only these retries count toward the hour's worth: a laptop
+            // offline for longer, saying it's still, is named once a
+            // network comes.
+            () = tokio::time::sleep(AGAIN), if unnamed => {
+                tried = tried.saturating_add(1);
+                found = last.clone();
+            }
             _ = gone.next() => return Err("GeoClue left the bus".into()),
         }
     }

@@ -29,7 +29,7 @@ function places(accuracy) {
     return MOST - passed;
 }
 
-// A position as degrees and hemispheres, one figure: "43.7° N · 79.4° W",
+// A position as degrees and hemispheres, one figure: "12.3° N · 98.8° W",
 // the hemispheres' letters `said`'s. A degree that rounds to none has no
 // hemisphere to say.
 function coordinates(here, said) {
