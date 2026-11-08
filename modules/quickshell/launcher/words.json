@@ -2635,7 +2635,7 @@
     {
       "id": "networks:lease-hostname",
       "in": "networks:lease",
-      "name": "Host Name"
+      "name": "Machine Name"
     },
     {
       "id": "networks:neighbour",
@@ -2680,7 +2680,7 @@
     {
       "id": "networks:neighbour-profile",
       "in": "networks:neighbour",
-      "name": "Usage Profile"
+      "name": "Maker's Profile"
     },
     {
       "id": "networks:public",

@@ -62,7 +62,7 @@ function offered(given) {
 // One connection's lease: the server that gave it, how long it's given
 // for; when it was got, when it's renewed with that server, rebound with
 // any and when it ends, each in seconds since boot, as /proc/uptime counts;
-// and the name servers, time servers, domain and host name the server
+// and the name servers, time servers, domain and machine name the server
 // offered. What networkd doesn't say is null, as an older one says only
 // the times.
 function lease(said) {
@@ -114,7 +114,7 @@ const ACTS = [
 // What's at the other end of each cable, by the connection's name, from
 // GetLLDPNeighbors' reply: each neighbour's system name and description,
 // the port it's heard on and that port's name, its chassis, what it's
-// acting as now, its VLAN and its usage profile's address (RFC 8520), each
+// acting as now, its VLAN and its maker's profile's address (RFC 8520), each
 // null where it doesn't say.
 function neighbours(reply) {
     const out = {};
