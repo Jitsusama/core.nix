@@ -329,6 +329,95 @@ function made(year, month, day) {
     return yearMonth;
 }
 
+// The steps a sleep goes through, in the order Linux takes them, each as
+// its suspend_stats names it.
+const SLEEP_STEPS = ["freeze", "prepare", "suspend", "suspend_late", "suspend_noirq",
+    "resume_noirq", "resume_early", "resume"];
+const MICROSECONDS = 1_000_000;
+
+// How sleep stands, from the machine daemon's sleep:main record, or null
+// before it has answered: the mode it sleeps in and the others it could,
+// what it can do, how often it slept and failed since it started, each
+// step's failures in the order they're taken, the step, device and
+// error it last failed with, and the time in hardware sleep, in seconds,
+// with the most its counter can tell.
+function sleepOf(record) {
+    if (!record) {
+        return null;
+    }
+    const failedAt = SLEEP_STEPS.map((step) => ({ step, count: record.failed_at?.[step] ?? 0 }))
+        .filter((each) => each.count > 0);
+    const lastStep = record.last_failed_step ?? "";
+    const mode = record.mode ?? "";
+    return {
+        mode,
+        others: (record.modes ?? []).filter((each) => each !== mode),
+        states: record.states ?? [],
+        slept: record.successes ?? null,
+        failures: record.failures ?? 0,
+        failedAt,
+        lastStep,
+        // How often the step it last failed at has failed.
+        lastFailures: failedAt.find((each) => each.step === lastStep)?.count ?? 0,
+        lastDevice: record.last_failed_device ?? "",
+        errno: record.last_failed_errno ?? null,
+        lastHardware: seconds(record.last_hardware_sleep_us),
+        allHardware: seconds(record.total_hardware_sleep_us),
+        countsTo: seconds(record.hardware_sleep_counts_to_us)
+    };
+}
+
+function seconds(microseconds) {
+    return microseconds === null || microseconds === undefined ? null
+        : microseconds / MICROSECONDS;
+}
+
+// The errors a sleep most often fails with, by their names in Linux's
+// own headers, since a number alone says nothing.
+const ERRORS = { 1: "EPERM", 5: "EIO", 11: "EAGAIN", 12: "ENOMEM", 16: "EBUSY", 19: "ENODEV",
+    22: "EINVAL", 110: "ETIMEDOUT" };
+
+// An error number as Linux gives it, -16, said with its name and the
+// real minus: "EBUSY (\u221216)".
+function errorOf(errno) {
+    const number = errno < 0 ? `\u2212${-errno}` : String(errno);
+    const name = ERRORS[Math.abs(errno)];
+    return name ? `${name} (${number})` : number;
+}
+
+// What Sleep's row says of how sleep stands, in the words `said` gives
+// (words.json's Sleep), with `lasted` saying a time: its mode as the
+// side, the step it last failed at and how often as the note, "failed
+// while freezing \u00b7 2 times", and its drawer's facts by their words'
+// ids, each step's failures in the order taken, the device that failed
+// last, an identifier, last of all. A figure that's none or zero gives
+// way.
+function sleepSaid(sleep, said, lasted) {
+    const times = (count) => count === 1 ? said.time : String(said.times).replace("{count}", count);
+    const step = (name) => said[name] ?? name;
+    const at = (each) => String(said.at).replace("{count}", each.count).replace("{step}",
+        step(each.step));
+    const took = (value) => value === null || value <= 0 ? "" : lasted(value);
+    const facts = [
+        { id: "sleep:others", value: sleep.others.join(" \u00b7 ") },
+        { id: "sleep:ways", value: sleep.states.join(" \u00b7 ") },
+        { id: "sleep:slept", value: sleep.slept > 0 ? times(sleep.slept) : "" },
+        { id: "sleep:failed", value: sleep.failedAt.map(at).join(" \u00b7 ") },
+        { id: "sleep:error", value: sleep.errno === null ? "" : errorOf(sleep.errno) },
+        { id: "sleep:hardware", value: took(sleep.lastHardware) },
+        { id: "sleep:hardware-all", value: took(sleep.allHardware) },
+        { id: "sleep:counts-to", value: took(sleep.countsTo) },
+        { id: "sleep:device", value: sleep.lastDevice, named: true }
+    ].filter((fact) => fact.value !== "");
+    const failed = sleep.lastStep !== "" && sleep.lastFailures > 0;
+    return {
+        side: sleep.mode,
+        note: failed ? `${String(said.failed).replace("{step}", step(sleep.lastStep))} \u00b7 ${
+            times(sleep.lastFailures)}` : "",
+        facts
+    };
+}
+
 // The writes that move a charge limit to stop at `wanted`, starting again
 // `gap` below it, as [file, value] in the order the kernel takes them: it
 // refuses a start at or above the stop, so a limit raised moves its stop

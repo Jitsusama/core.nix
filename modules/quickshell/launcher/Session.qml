@@ -3,10 +3,12 @@
 // session by accident. While the machine is kept awake or notices are held,
 // undoing it leads the home screen, since a mode should never hold unseen.
 import qs
+import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
 import "Power.js" as Power
+import "Interfaces.js" as Interfaces
 
 Provider {
     id: provider
@@ -421,6 +423,45 @@ Provider {
         }
     })
 
+    // Whether Sleep's row is listed, in Power or found by name, so the
+    // machine daemon is asked how sleep stands only while it can be seen.
+    readonly property bool sleepShown: launcher !== null && launcher.open
+        && launcher.matches.some(row => row.key === "session:Suspend")
+    readonly property var sleeping: sleepWatch.revision >= 0
+        ? Power.sleepOf(sleepWatch.held["sleep:main"] ?? null) : null
+
+    // What Sleep's row says of how sleep stands: the mode it sleeps in,
+    // the step it last failed at, and its drawer (Power.js's sleepSaid).
+    function sleepFields() {
+        if (sleeping === null)
+            return {};
+        const told = Power.sleepSaid(sleeping, Words.of("session:Suspend").said ?? {},
+            Interfaces.lasted);
+        return {
+            side: told.side,
+            note: told.note,
+            drawer: {
+                title: Words.name("session:Suspend"),
+                facts: told.facts.map(fact => ({
+                    label: Words.name(fact.id),
+                    value: fact.value,
+                    named: fact.named === true
+                })),
+                body: ""
+            }
+        };
+    }
+
+    Daemon {
+        id: sleepWatch
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "sleep"
+        live: provider.sleepShown
+        keptThroughGap: false
+        answersWhole: true
+    }
+
     // What ending the session closes, said before it's done.
     readonly property string closing: {
         // Niri's windows are kept by id.
@@ -437,7 +478,7 @@ Provider {
     // what Joel taught it.
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], [profile], profiles, [
         { was: "Lock", does: locks, run: () => provider.launcher.lock.lock() },
-        { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]) },
+        { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]), fields: sleepFields() },
         { was: "Log Out", run: () => Niri.act({ Quit: { skip_confirmation: true } }) },
         { was: "Reboot", run: () => Niri.spawn(["systemctl", "reboot"]) },
         { was: "Power Off", run: () => Niri.spawn(["systemctl", "poweroff"]) }
@@ -445,7 +486,7 @@ Provider {
         const key = `session:${action.was}`;
         const sure = Words.of(key).sure ?? "";
         const asked = Words.of(key).asked ?? "";
-        return said(key, "", {
+        return said(key, "", Object.assign({
             chord: action.does ? bound(action.does) : [],
             hue: "machine",
             run: action.run,
@@ -465,6 +506,6 @@ Provider {
                 hue: "alert",
                 run: action.run
             })] : null
-        });
+        }, action.fields ?? {}));
     }))
 }

@@ -104,9 +104,10 @@ units, or named here as left out with the reason.
 |                 | a port's volts, amps, those offered, USB types | Power's Charger, each port and its drawer |
 |                 | a port's roles, mode, revisions, partner     | each port's drawer                        |
 |                 | UPower's state, times, rate                  | Power's headline, Drawing                 |
-| `sleep:main`    | mode and those offered, successes, failures  | Keep Awake's Sleep                        |
-|                 | failures by step, last device, step, errno   | Sleep's Failed                            |
-|                 | last, longest and all hardware sleep         | Sleep's drawer                            |
+| `sleep:main`    | mode, those offered, the ways Linux can sleep | Sleep's side, Other Modes, Ways to Sleep |
+|                 | successes, the last failed step and its count | Slept, Sleep's note                      |
+|                 | failures by step, last device, errno         | Failed, Last Failed Device, Last Error    |
+|                 | last and all hardware sleep, and the most it counts | Sleep's drawer                     |
 |                 | logind: idle, since, idle action and delay   | Keep Awake's headline                     |
 |                 | every inhibitor, the last sleep's start, end | Keep Awake's Held By, Last Slept          |
 | `firmware:<id>` | name, vendor, version                        | Firmware, each device                     |

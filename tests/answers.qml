@@ -2836,6 +2836,44 @@ QtObject {
             { refused: "its service didn't answer", note: "" }
         ]);
 
+        // How sleep stands, from the daemon's sleep:main record, in Sleep's
+        // words: a machine that failed twice freezing and once resuming,
+        // last freezing, held by a device.
+        const sleepWords = { failed: "failed while {step}", at: "{count} while {step}",
+            time: "1 time", times: "{count} times", freeze: "freezing", resume: "resuming" };
+        const slept = Power.sleepOf({ key: "sleep:main", mode: "s2idle", modes: ["s2idle", "deep"],
+            states: ["freeze", "mem", "disk"], successes: 12, failures: 3,
+            failed_at: { freeze: 2, prepare: 0, resume: 1, suspend: null },
+            last_failed_device: "0000:00:14.0", last_failed_step: "freeze",
+            last_failed_errno: -16, last_hardware_sleep_us: 3_600_000_000,
+            total_hardware_sleep_us: 0, hardware_sleep_counts_to_us: 523_986_009_990 });
+        machine("sleep's failures by step, in the order taken", slept.failedAt,
+            [{ step: "freeze", count: 2 }, { step: "resume", count: 1 }]);
+        machine("sleep's other modes", slept.others, ["deep"]);
+        machine("sleep's hardware time in seconds", [slept.lastHardware, slept.countsTo],
+            [3600, 523986.00999]);
+        const sleepTold = Power.sleepSaid(slept, sleepWords, Interfaces.lasted);
+        machine("sleep's mode and the step it last failed at", [sleepTold.side, sleepTold.note],
+            ["s2idle", "failed while freezing \u00b7 2 times"]);
+        machine("sleep's drawer, the device last", sleepTold.facts, [
+            { id: "sleep:others", value: "deep" },
+            { id: "sleep:ways", value: "freeze \u00b7 mem \u00b7 disk" },
+            { id: "sleep:slept", value: "12 times" },
+            { id: "sleep:failed", value: "2 while freezing \u00b7 1 while resuming" },
+            { id: "sleep:error", value: "EBUSY (\u221216)" },
+            { id: "sleep:hardware", value: "1 h" },
+            { id: "sleep:counts-to", value: "6 d 1 h" },
+            { id: "sleep:device", value: "0000:00:14.0", named: true }
+        ]);
+        const rested = Power.sleepSaid(Power.sleepOf({ mode: "s2idle", modes: ["s2idle"],
+            successes: 1, failures: 0, failed_at: {}, last_failed_step: "",
+            last_failed_errno: null, last_hardware_sleep_us: null }), sleepWords, Interfaces.lasted);
+        machine("sleep that never failed says only its mode", [rested.note, rested.facts],
+            ["", [{ id: "sleep:slept", value: "1 time" }]]);
+        machine("sleep before the daemon answers", Power.sleepOf(null), null);
+        machine("an error Linux names", Power.errorOf(-5), "EIO (\u22125)");
+        machine("an error with no name kept", Power.errorOf(-71), "\u221271");
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);

@@ -9687,7 +9687,66 @@
       "name": "Sleep",
       "term": "Machine/sleep",
       "verb": "sleep",
-      "glyph": "suspend"
+      "glyph": "suspend",
+      "said": {
+        "failed": "failed while {step}",
+        "at": "{count} while {step}",
+        "time": "1 time",
+        "times": "{count} times",
+        "freeze": "freezing",
+        "prepare": "preparing",
+        "suspend": "suspending",
+        "suspend_late": "suspending late",
+        "suspend_noirq": "suspending without interrupts",
+        "resume_noirq": "resuming without interrupts",
+        "resume_early": "resuming early",
+        "resume": "resuming"
+      }
+    },
+    {
+      "id": "sleep:others",
+      "in": "session:Suspend",
+      "name": "Other Modes"
+    },
+    {
+      "id": "sleep:ways",
+      "in": "session:Suspend",
+      "name": "Ways to Sleep"
+    },
+    {
+      "id": "sleep:slept",
+      "in": "session:Suspend",
+      "name": "Slept"
+    },
+    {
+      "id": "sleep:failed",
+      "in": "session:Suspend",
+      "name": "Failed"
+    },
+    {
+      "id": "sleep:error",
+      "in": "session:Suspend",
+      "name": "Last Error"
+    },
+    {
+      "id": "sleep:hardware",
+      "in": "session:Suspend",
+      "name": "Last Hardware Sleep"
+    },
+    {
+      "id": "sleep:hardware-all",
+      "in": "session:Suspend",
+      "name": "All Hardware Sleep"
+    },
+    {
+      "id": "sleep:counts-to",
+      "in": "session:Suspend",
+      "name": "Hardware Counts To"
+    },
+    {
+      "id": "sleep:device",
+      "in": "session:Suspend",
+      "name": "Last Failed Device"
     },
     {
       "id": "session:Log Out",
