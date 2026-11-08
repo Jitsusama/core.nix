@@ -6,7 +6,9 @@
 // left is told as a clock and a span in its largest units, and timers
 // are listed rung first, then by what they have left; and the stopwatch
 // counts on while it runs, shows its count to the tenth, and lists its
-// laps newest first.
+// laps newest first; and Now says timers are on while any runs, is
+// paused or has rung, or the stopwatch runs, told by the one Timers
+// lists first and naming them in that order, the stopwatch last.
 import QtQuick
 import "Timing.js" as Timing
 
@@ -122,6 +124,54 @@ QtObject {
                 { number: 1, lap: 42100, at: 42100 }
             ]);
         check(failures, "no laps", Timing.laps({ laps: [] }), []);
+
+        const said = { pausedSide: "paused \u00b7 {left}", rung: "rang {clock}",
+            late: "rang late, {clock}" };
+        const rangAt = new Date(2026, 10, 8, 3, 27).getTime();
+        check(failures, "a time of day", Timing.timeOfDay(rangAt), "03:27");
+        check(failures, "a running timer's side counts down",
+            Timing.side({ state: "running", ends: 9 * minute + 50 * second }, 0, said), "9:50");
+        check(failures, "a paused one's says so",
+            Timing.side({ state: "paused", left: 9 * minute + 50 * second }, 0, said),
+            "paused \u00b7 9:50");
+        check(failures, "a rung one's says when",
+            Timing.side({ state: "rung", rang: rangAt }, 0, said), "rang 03:27");
+        check(failures, "and that it was late",
+            Timing.side({ state: "rung", rang: rangAt, late: true }, 0, said),
+            "rang late, 03:27");
+
+        const tea = { key: "timer:1", state: "running", ends: 10 * minute, set: 1 };
+        const bread = { key: "timer:2", state: "running", ends: 25 * minute, set: 2 };
+        const eggs = { key: "timer:3", state: "rung", rang: 100, set: 3 };
+        const held = { key: "timer:4", state: "paused", left: minute, set: 4 };
+        const running = { key: "stopwatch", state: "running", counted: 0, since: 0, laps: [] };
+        const stopped = { key: "stopwatch", state: "stopped", counted: 500, laps: [] };
+        const onNow = (timers, watch) => {
+            const said = Timing.onNow(timers, watch, 0);
+            return [said.on, said.rung, said.first?.key ?? null,
+                said.named.map(record => record.key)];
+        };
+        check(failures, "nothing on", onNow([], stopped), [false, false, null, []]);
+        check(failures, "the soonest leads, named soonest first", onNow([bread, tea], null),
+            [true, false, "timer:1", ["timer:1", "timer:2"]]);
+        check(failures, "a rung one leads them all", onNow([bread, eggs, tea], stopped),
+            [true, true, "timer:3", ["timer:3", "timer:1", "timer:2"]]);
+        check(failures, "a paused one alone is on", onNow([held], null),
+            [true, false, "timer:4", ["timer:4"]]);
+        check(failures, "and comes after one running", onNow([held, bread], null),
+            [true, false, "timer:2", ["timer:2", "timer:4"]]);
+        check(failures, "the stopwatch alone running is on", onNow([], running),
+            [true, false, null, ["stopwatch"]]);
+        check(failures, "and is named last", onNow([tea], running),
+            [true, false, "timer:1", ["timer:1", "stopwatch"]]);
+        check(failures, "a running timer ticks Now's row while it's open",
+            Timing.ticks([tea], null, true), true);
+        check(failures, "and never while the launcher is closed",
+            Timing.ticks([tea], running, false), false);
+        check(failures, "nor while nothing counts", Timing.ticks([held, eggs], stopped, true),
+            false);
+        check(failures, "the stopwatch alone running ticks it", Timing.ticks([], running, true),
+            true);
 
         if (failures.length > 0) {
             for (const failure of failures)

@@ -33,6 +33,9 @@ Singleton {
             Date.now()) : []
     // The stopwatch as the daemon says it, or null while it isn't there.
     readonly property var stopwatch: daemon.revision >= 0 ? daemon.held.stopwatch ?? null : null
+    // Whether the launcher is open, where the time left is drawn, so Now's
+    // row is told it only then (shell.qml binds it, as it does Jobs').
+    property bool showing: false
     // Whether the daemon is there to ask.
     readonly property bool answering: daemon.wire !== null
     // Said once a change, with the keys it touched, as Daemon.qml says it.

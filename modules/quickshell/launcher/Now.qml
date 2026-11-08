@@ -594,6 +594,11 @@ Provider {
                 : piece.actions[0].verb ?? piece.actions[0].name.toLowerCase(),
             name: piece.title,
             side: piece.value,
+            counts: piece.counts ?? undefined,
+            // What it holds, after its name, as a place's row says what
+            // it holds, while its side says only how it stands (VKCF3Z,
+            // 2026-11-08).
+            count: parted(piece),
             note: piece.context,
             glyph: Theme.glyph[piece.markGlyph || fact.entry.mark],
             hue: Marks.tone(piece),
@@ -608,6 +613,19 @@ Provider {
                     actions[0].run();
             }
         }, drawn));
+    }
+
+    // A piece's parts as its row says them after its name: as many whole
+    // names as the row leaves room for beside its name and its side, cut
+    // from the end as a place's are (Launcher.qml's listed), or all of them
+    // where no launcher says the room.
+    function parted(piece) {
+        const parts = piece.parts ?? [];
+        const launcher = provider.launcher;
+        if (parts.length === 0 || !launcher)
+            return parts.join(", ");
+        const beside = piece.title.length + piece.value.length + "  ".length;
+        return launcher.listed(parts, launcher.rowRoom() - beside);
     }
 
     // What's typed inside Now narrows its rows by name, as every place's

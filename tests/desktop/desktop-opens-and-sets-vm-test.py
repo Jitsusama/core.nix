@@ -1654,7 +1654,7 @@ def shoot_the_timers(desktop: Desktop) -> None:
     """Shoot Timers holding one running, one paused and one rung, at Joel's two scales.
 
     The stopwatch, listed last, is set going and lapped twice first, and its laps are shot from
-    inside it.
+    inside it. Then Now is shot with one rung, with none rung, and with only paused ones.
     """
     machine = desktop.machine
     listed = len(TIMERS_SHOWN) + 1
@@ -1712,6 +1712,7 @@ def shoot_the_timers(desktop: Desktop) -> None:
         desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
+    shoot_now_through_the_timers(desktop)
     desktop.as_account("systemctl --user stop timers.service")
     desktop.as_account(f"rm -f {TIMERS_KEPT}")
     desktop.as_account("qs ipc call notices putAway || true")
@@ -1785,6 +1786,75 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
         lambda shown: {"System \u00b7 machine", "Port \u00b7 switch0"} <= set(reads(shown))
     )
     desktop.close_launcher()
+
+
+def shoot_now_through_the_timers(desktop: Desktop) -> None:
+    """Shoot Now with one timer rung, then with that one ended, then with only paused ones."""
+    machine = desktop.machine
+    shoot_now_holding_timers(desktop, "rung")
+    # Eggs ended, by the keys that carry End, leaves them running. End can't be undone, so it
+    # asks once, and takes y only once the ask is ready.
+    pick_a_timer(desktop, "Eggs")
+    with desktop.told("ask ready"), desktop.told("asked End Eggs? (y/n)"):
+        machine.send_chars("dd")
+    with desktop.told("answered yes"):
+        machine.send_chars("y")
+    # An ended row stays, drawn as gone, until the launcher closes.
+    desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
+    desktop.close_launcher()
+    shoot_now_holding_timers(desktop, "running")
+    # Bread paused and the stopwatch stopped leave only what's paused.
+    pick_a_timer(desktop, "Bread")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("side")).startswith("paused")
+    )
+    desktop.close_launcher()
+    pick_a_timer(desktop, "Stopwatch")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("note")).startswith("stopped")
+    )
+    desktop.close_launcher()
+    shoot_now_holding_timers(desktop, "paused")
+
+
+def pick_a_timer(desktop: Desktop, name: str) -> None:
+    """Open Timers afresh and stand on the one named, in normal, for a key to act on it."""
+    desktop.as_account("qs ipc call launcher collection timers")
+    desktop.launcher_ready()
+    desktop.type_in(name.lower(), selecting=name)
+    desktop.normal()
+
+
+def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
+    """Shoot Now with its Timers row, and the margin with its mark, at Joel's two scales."""
+    machine = desktop.machine
+    for scale in ("1.5", "2"):
+        # Each scale is set with the launcher closed, so it opens laid out for it, as
+        # desktop-looks sets its own.
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: "Timers" in shown["rows"])
+        # Picked, by G as it's listed last, so it's in view at 2 and says its names and Return.
+        desktop.normal()
+        # The screen shows the pick some frames after the shell says it, and at 2 the list
+        # scrolls to it first, so the shot waits for the screen itself to move from before G:
+        # a count of the card's frames moves with the piece's own clock too.
+        desktop.held_still()
+        before = desktop.screen_now()
+        machine.send_chars("G")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
+
+        def moved(_: bool, before: Image.Image = before) -> bool:
+            return ImageChops.difference(before, desktop.screen_now()).getbbox() is not None
+
+        retry(moved, timeout=timedelta(seconds=30))
+        desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
 
 
 # A binding that throws or assigns the wrong type only warns, and

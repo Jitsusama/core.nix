@@ -376,6 +376,7 @@ onLinux {
           "sharing"
           "camera"
           "recording"
+          "timers"
           "playing"
         ]
         && piece.battery.low == 15
