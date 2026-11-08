@@ -1505,9 +1505,29 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          done; if [ -n \"$held\" ]; then gone=0; else gone=$((gone + 1)); fi; done; \
          {unnamed}rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
          </dev/null >/dev/null 2>&1 & \
-         trap 'exit 143' HUP TERM; {command}; exit $?"
+         {ROOM_SAID} watching=$!; \
+         trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; {command}; \
+         status=$?; kill $watching 2>/dev/null; exit $status"
     )
 }
+
+/// What a run sent far says every `NIX_OFFLOAD_ROOM_EVERY` seconds, 300 by
+/// default, while its builder runs as many builds as it runs at once, so a
+/// run waiting there for room is never read as a hung one: on 8 November
+/// the net's VM test said nothing for 30 minutes on a busy VM builder and
+/// held main as a stall. A builder with room says nothing, so a hung build
+/// stays silent. Builds are counted by their users, a build user's or an
+/// allocated range of 65536 from Nix's first, and nothing is said where
+/// either can't be read.
+const ROOM_SAID: &str = "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
+     said=$((said + 1)); [ \"$said\" -lt \"${NIX_OFFLOAD_ROOM_EVERY:-300}\" ] && continue; \
+     said=0; most=$(nix config show max-jobs 2>/dev/null); \
+     running=$(ps -eo uid= 2>/dev/null | awk '$1 >= 872415232 \
+     { print int(($1 - 872415232) / 65536) } $1 > 30000 && $1 < 31000 { print \"b\" $1 }' \
+     | sort -u | wc -l); \
+     [ -n \"$most\" ] && [ \"$running\" -ge \"$most\" ] 2>/dev/null && echo \"nix-offload: \
+     the builder runs $running builds, as many as it runs at once, so this may wait there \
+     for room\" >&2; done) </dev/null >/dev/null &";
 
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
@@ -3284,6 +3304,60 @@ mod tests {
             .unwrap();
         assert_eq!(ran.status.code(), Some(1), "{ran:?}");
         assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n");
+    }
+
+    /// What a run sent far says while it runs for `seconds`, and how long
+    /// it took, on a builder whose `ps` names `uids` as running and whose
+    /// Nix runs `most` builds at once, asked about every second.
+    fn said_far(seconds: u32, uids: &str, most: &str) -> (String, Duration) {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        for (name, says) in [("ps", uids), ("nix", most)] {
+            let fake = bin.join(name);
+            fs::write(&fake, format!("#!/bin/sh\nprintf '%s\\n' {says}\n")).unwrap();
+            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let began = std::time::Instant::now();
+        let ran = Command::new("sh")
+            .args(["-c", &far(&format!("sleep {seconds}"))])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("TMPDIR", folder.path())
+            .env("NIX_OFFLOAD_ROOM_EVERY", "1")
+            .process_group(0)
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        (
+            String::from_utf8_lossy(&ran.stderr).into_owned(),
+            began.elapsed(),
+        )
+    }
+
+    #[test]
+    fn a_run_sent_to_a_full_builder_says_it_may_wait_there_for_room() {
+        // On 8 November the net's VM test said "building on the lent
+        // builder nix-offload-vm-4" and then nothing for 30 minutes, which
+        // the net read as a stall and held main. A builder running as
+        // many builds as it runs at once, two allocated and one build
+        // user's here, says so; one with room says nothing, so a hung
+        // build stays silent.
+        let full = "872415232 872415233 872480768 30001 0 1000";
+        let (said, took) = said_far(3, full, "3");
+        assert!(
+            said.contains(
+                "nix-offload: the builder runs 3 builds, as many as it runs at once, \
+                 so this may wait there for room"
+            ),
+            "{said}"
+        );
+        assert!(took < Duration::from_secs(6), "it ended late: {took:?}");
+        let (said, _) = said_far(3, full, "4");
+        assert_eq!(said, "");
     }
 
     #[test]
