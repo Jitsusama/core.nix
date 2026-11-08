@@ -929,6 +929,23 @@ onLinux {
       touch $out
     '';
 
+  # Recent means one thing in every place it stands: the last nine things,
+  # newest first, each once, never what's open, as tests/recent.qml holds
+  # launcher/Recent.js to it in Qt's own engine.
+  recent-means-one-thing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "recent-means-one-thing" { } ''
+      cp ${../../tests/recent.qml} recent.qml
+      cp ${./launcher/Recent.js} Recent.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml recent.qml
+      touch $out
+    '';
+
   # A row an act asked a daemon to change is drawn as it will be until its
   # source agrees, as tests/becoming.qml holds launcher/Becoming.js to it in
   # Qt's own engine.
@@ -2114,6 +2131,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Recents.qml} launcher/Recents.qml
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./launcher/Ago.js} launcher/Ago.js

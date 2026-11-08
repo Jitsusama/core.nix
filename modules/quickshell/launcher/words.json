@@ -6099,7 +6099,9 @@
       "name": "Recent",
       "verb": "more",
       "glyph": "recent",
+      "empty": "Nothing yet.",
       "said": {
+        "none": "none",
         "open": "{count} open",
         "tab": "1 tab",
         "tabs": "{count} tabs",

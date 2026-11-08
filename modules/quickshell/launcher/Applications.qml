@@ -15,9 +15,10 @@
 //
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
-// first (Go To, New window, New window below, its other windows by title,
-// its desktop entry's own actions, Recent where it keeps what it had open
-// lately, its Shortcuts where it has keys of its own, Quit), then its parts (Media while it
+// first (Go To, New window, New window below, its desktop entry's own
+// actions, what it has open now, each the thing it is, its other windows
+// by title, Recent where it keeps what it had open lately, its Shortcuts
+// where it has keys of its own, Quit), then its parts (Media while it
 // has a player, Sound while it plays or records, Notifications while the
 // history holds any of its), then any part another provider gives it, such
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
@@ -46,6 +47,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Recent.js" as Recent
 
 Provider {
     id: provider
@@ -116,13 +118,13 @@ Provider {
 
     // What a program found from the top by its name lists under it, so
     // what it holds shows without a key (VKCF3Z, 2026-11-07: Return still
-    // switches at once): its Recent, in its own order, as Chrome's open
-    // tabs and then the sites it visited, kitty's folders or Docs'
+    // switches at once): what it has open, then its Recent, as Chrome's
+    // open tabs and then the sites it visited, kitty's folders or Docs'
     // documents, of which the launcher shows the first few. The same rows
-    // its Recent holds, so Return does there what it does inside.
+    // its step holds, so Return does there what it does inside.
     function under(entry) {
         const held = recent(entry)[0];
-        return held ? held.targets() : [];
+        return openRows(entry).concat(held ? held.targets() : []);
     }
 
     // The desktop's actions that run exactly this command.
@@ -177,19 +179,24 @@ Provider {
         return (running[entry.id] ?? []).length > 0;
     }
 
-    // The pages a closed browser's saved session holds, each as a site it
-    // visited, newest looked at first, each once.
+    // The pages a closed browser's saved session holds, each as a line of
+    // the sites it visited, its address, a tab and its title, newest looked
+    // at first, each once.
     function savedSites(entry) {
         const seen = new Set();
         return provider.recents.openIn(entry.id).map(line => line.split("\t"))
             .filter(tab => (tab[4] ?? "") !== "")
             .sort((a, b) => Number(b[3]) - Number(a[3]))
             .filter(tab => !seen.has(tab[4]) && seen.add(tab[4]))
-            .map(tab => provider.visited(entry, `${tab[4]}\t${tab[5] ?? ""}`));
+            .map(tab => `${tab[4]}\t${tab[5] ?? ""}`);
     }
 
-    function windowsOf(entry) {
-        return (running[entry.id] ?? []).slice(1).map(window => windowRow(window, entry));
+    // Its windows but the one used last and those a row it has open
+    // already stands for (`held`, window ids), so a window and its front
+    // tab or its file are never two rows.
+    function windowsOf(entry, held) {
+        return (running[entry.id] ?? []).slice(1).filter(window => !(held ?? []).includes(window.id))
+            .map(window => windowRow(window, entry));
     }
 
     // One of a program's windows, as its row, by its title.
@@ -657,8 +664,11 @@ Provider {
         }
     }
 
-    // Recent: what it had open lately (Recents.qml), in the order it keeps
-    // them, each a folder or a file by its name, beside the folder it's in.
+    // Recent: what it had open lately and has open no more (Recents.qml),
+    // laid out as every Recent is (Recent.js): newest first, each once,
+    // never what it has open now, which its step lists above it
+    // (`openRows`), nine at most. Each is a folder or a file by its name,
+    // beside the folder it's in.
     // Return opens it through the program as its own list's settings say:
     // `open` while a window of it is open, through the process behind the
     // window used last ({pid}), and `start` while none is. A file from the
@@ -668,47 +678,145 @@ Provider {
     // desktop opens it, which is what the list itself says of those.
     // A site Chrome visited, its source's `site` kind, is the page's title
     // beside its host, opened by the program's own command given the page
-    // when its source names no command of its own. What it has open now,
-    // where its source says (`opened`), leads, every one of it, and up to
-    // nine closed follow, a page open now never listed again as closed
-    // (openSites). A file source may say what's open now the same way, as
-    // mpv's says the file each mpv plays (openFiles), and one saying no
-    // more than that keeps the list programs share for the rest. Any other
-    // provider may
-    // give a program's Recent its own things after these, each its one
-    // row, by `recentOf(program)`, newest first, as Docs' documents are
-    // given (Documents.qml).
+    // when its source names no command of its own. A closed browser's
+    // saved session is the sites it visited last, before its history. A
+    // file source may say what's open now, as mpv's says the file each mpv
+    // plays, and one saying no more than that keeps the list programs
+    // share for the rest. Any other provider may give a program's Recent
+    // its own things after these, each its one row, by
+    // `recentOf(program)`, newest first, as Docs' documents are given
+    // (Documents.qml).
+    //
+    // It stands wherever the program has a source of what it had, its own
+    // list's settings or a provider that says it keeps some
+    // (`keepsRecentOf(program)`), saying "none" while it holds nothing, and
+    // an ellipsis until a source read only as it's stepped into first
+    // answers, so it never comes late at the bottom of a step already
+    // drawn. Its side says how many, its note the first one's name.
     function recent(entry) {
-        const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
-        const own = source?.list ? source : null;
-        provider.recents.ask(entry.id);
-        const listed = () => {
-            const site = source?.kind === "site";
-            // A browser's tabs are open only while it runs: one its saved
-            // session still holds once it's closed is a site it visited,
-            // never "open" beside a Return that starts it (VKCF3Z,
-            // 2026-11-07).
-            const live = provider.isRunning(entry);
-            const open = site && live ? provider.openSites(entry, source)
-                : site ? provider.savedSites(entry)
-                : source?.opened ? provider.openFiles(entry, source) : [];
-            const shown = open.map(row => row.key);
-            return open.concat(provider.recents.of(entry.id)
-                .map(path => source?.kind === "site"
-                    ? provider.visited(entry, path) : provider.lately(entry, own, path))
-                .filter(row => !shown.includes(row.key))
-                .concat(givenRecent(entry.id)).slice(0, provider.recents.most));
-        };
-        const count = listed().length;
-        if (count === 0)
+        if (!provider.keepsRecent(entry))
             return [];
+        provider.recents.ask(entry.id);
+        const words = Words.of("program:recent");
+        const kept = provider.kept(entry);
+        const first = kept.length > 0 ? provider.made(entry, kept[0]).name : "";
+        const source = provider.sourceOf(entry);
+        const waiting = source?.asked === true && !(entry.id in provider.recents.lately);
+        const stands = Recent.said(kept.length, first, waiting, words.said);
         return [said("program:recent", "", {
             hue: "program",
-            side: String(count),
+            side: stands.side,
+            note: stands.note,
             ask: "which?",
             nested: true,
-            targets: listed
+            empty: waiting ? "\u2026" : words.empty,
+            targets: () => provider.kept(entry).map(one => provider.made(entry, one))
         })];
+    }
+
+    // Its list's settings, or null where it has none.
+    function sourceOf(entry) {
+        return (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+    }
+
+    // Whether it has a source of what it had: its own list's settings, the
+    // list programs share naming it, or another provider keeping some or
+    // giving some now.
+    function keepsRecent(entry) {
+        return provider.sourceOf(entry) !== null || provider.recents.of(entry.id).length > 0
+            || (provider.launcher?.sources ?? []).some(other => other !== provider
+                && typeof other.keepsRecentOf === "function" && other.keepsRecentOf(entry.id))
+            || givenRecent(entry.id).length > 0;
+    }
+
+    // What its Recent holds, as Recent.js lays them out, each { key, at,
+    // row } with `row` what its row is made from (`made`), so counting
+    // them makes no rows: a closed browser's saved pages, then what its
+    // list keeps, then what other providers give, none of what it has open
+    // now.
+    function kept(entry) {
+        const source = provider.sourceOf(entry);
+        const site = source?.kind === "site";
+        const kind = site ? "site" : source?.list && source.kind === "folder" ? "folder" : "file";
+        const keyed = line => {
+            const tab = line.indexOf("\t");
+            return `${kind}:${site && tab >= 0 ? line.slice(0, tab) : line}`;
+        };
+        const saved = site && !provider.isRunning(entry) ? provider.savedSites(entry)
+            .map(line => ({ key: keyed(line), row: { line: line } })) : [];
+        const listed = provider.recents.of(entry.id)
+            .map(line => ({ key: keyed(line), row: { line: line } }));
+        const given = givenRecent(entry.id).map(row => ({ key: row.key, row: { made: row } }));
+        return Recent.listed([saved, listed, given], provider.openKeys(entry),
+            provider.recents.most);
+    }
+
+    // One of what its Recent holds as its row.
+    function made(entry, one) {
+        if (one.row.made)
+            return one.row.made;
+        const source = provider.sourceOf(entry);
+        if (source?.kind === "site")
+            return provider.visited(entry, one.row.line);
+        return provider.lately(entry, source?.list ? source : null, one.row.line);
+    }
+
+    // What it has open now, where its source says (`opened`), each the
+    // thing it is, listed in its step before its Recent: every page a
+    // browser has open while it runs (openSites), each file mpv plays
+    // (openFiles). A browser's tabs are open only while it runs: one its
+    // saved session still holds once it's closed is a site it visited,
+    // in its Recent, never "open" beside a Return that starts it (VKCF3Z,
+    // 2026-11-07). Not named opened, the hook the launcher calls as
+    // Programs is stepped into (Provider.qml).
+    function openRows(entry) {
+        const source = provider.sourceOf(entry);
+        if (!source?.opened || !provider.isRunning(entry))
+            return [];
+        provider.recents.ask(entry.id);
+        return source.kind === "site" ? provider.openSites(entry, source)
+            : provider.openFiles(entry, source);
+    }
+
+    // The keys of what it has open now, read from what its source said
+    // without making a row, so its Recent never lists one again.
+    function openKeys(entry) {
+        const source = provider.sourceOf(entry);
+        if (!source?.opened || !provider.isRunning(entry))
+            return [];
+        const lines = provider.recents.openIn(entry.id).map(line => line.split("\t"));
+        return source.kind === "site"
+            ? lines.filter(tab => (tab[4] ?? "") !== "").map(tab => `site:${tab[4]}`)
+            : lines.filter(([who, path]) => (path ?? "") !== ""
+                && provider.fileWindow(entry, who) !== null).map(([, path]) => `file:${path}`);
+    }
+
+    // The windows what it has open now stands for, by id: each window whose
+    // front tab is a page it has open, as niri titles Chrome's windows by
+    // it, and each window a file it has open is in.
+    function heldWindows(entry) {
+        const source = provider.sourceOf(entry);
+        if (!source?.opened || !provider.isRunning(entry))
+            return [];
+        const lines = provider.recents.openIn(entry.id).map(line => line.split("\t"));
+        if (source.kind === "site") {
+            const fronts = new Set(lines.filter(tab => tab[2] === "true" && (tab[4] ?? "") !== "")
+                .map(tab => tab[5] ?? ""));
+            return (running[entry.id] ?? []).filter(window => fronts.has(titled(window, entry)))
+                .map(window => window.id);
+        }
+        return lines.filter(([, path]) => (path ?? "") !== "")
+            .map(([who]) => provider.fileWindow(entry, who)).filter(window => window !== null)
+            .map(window => window.id);
+    }
+
+    // The window a file open now is in, by what its source said holds it:
+    // the process that has it, or `@` and niri's window where one process
+    // has many, as kitty does for each Neovim; null once it's gone.
+    function fileWindow(entry, who) {
+        return !who.startsWith("@")
+            ? (running[entry.id] ?? []).find(one => one.pid === Number(who)) ?? null
+            : Niri.windows[who.slice(1)] ?? null;
     }
 
     // What other providers give a program's Recent.
@@ -753,15 +861,12 @@ Provider {
         const addresses = new Set(open.map(line => line.split("\t")[4] ?? "")
             .filter(address => address !== ""));
         const pages = addresses.size;
-        // What's open is listed once, as Recent lists it, so a file just
-        // opened and so among the ones opened lately isn't counted again.
-        const held = site ? addresses
-            : new Set(open.map(line => line.split("\t")[1] ?? "").filter(path => path !== ""));
         // A closed browser's saved tabs are counted as recent, as listed.
         const live = isRunning(entry);
         const opened = site ? (live ? pages : 0) : open.length;
-        const kept = provider.recents.of(entry.id).filter(path => !held.has(path)).length
-            + givenRecent(entry.id).length + (site && !live ? pages : 0);
+        // As many as its Recent lists, so what's open, listed above it, isn't
+        // counted twice.
+        const kept = provider.keepsRecent(entry) ? provider.kept(entry).length : 0;
         const parts = provider.launcher?.partsOfRows[`program:${entry.id}`] ?? [];
         const meetings = parts.filter(part => part.what === "meeting");
         const mail = parts.filter(part => part.what === "mail").length;
@@ -966,12 +1071,9 @@ Provider {
             const [who, path, go] = line.split("\t");
             if (!path)
                 continue;
-            const own = !who.startsWith("@");
-            const window = own
-                ? (running[entry.id] ?? []).find(one => one.pid === Number(who)) ?? null
-                : Niri.windows[who.slice(1)] ?? null;
+            const window = provider.fileWindow(entry, who);
             if (window)
-                held.push({ window: window, path: path, go: go ?? "", own: own });
+                held.push({ window: window, path: path, go: go ?? "", own: !who.startsWith("@") });
         }
         held.sort((a, b) => provider.focusedAt(b.window) - provider.focusedAt(a.window));
         const closed = provider.recents.closed[entry.id] ?? [];
@@ -1032,11 +1134,14 @@ Provider {
 
     // Everything the right arrow holds for a program, as it stands now, in
     // one order for every program: Go To or Open, what's given it to lead,
-    // New Window, New Window Below, its own actions, Recent, its windows, its notices, Shortcuts
-    // and Quit, then Media and Sound while it plays. What it does comes
-    // first and what ends it near the bottom, so Return on a program never
-    // lands in its Recent. One that steps in has only what's given it,
-    // its Recent, its notices and Shortcuts, in that order, never starting.
+    // New Window, New Window Below, its own actions, what it has open, its
+    // other windows, Recent, its notices, Shortcuts and Quit, then Media
+    // and Sound while it plays. What it does comes first and what ends it
+    // near the bottom, so Return on a program never lands in its Recent,
+    // and what's open comes before what was, so Recent sits straight after
+    // them in every program. One that steps in has only what's given it,
+    // what it has open, its Recent, its notices and Shortcuts, in that
+    // order, never starting.
     // Either way, what's given it to copy comes after everything, as Meet's
     // Copy a New Meeting's Link does, since Copy is last.
     function controls(entry, start, below) {
@@ -1056,7 +1161,8 @@ Provider {
         const doing = given.filter(row => row.leads !== true && !copying(row));
         const copies = given.filter(copying);
         if (stepsIn(entry)) {
-            return leading.concat(doing, recent(entry), notices(same), keysOf(entry), copies);
+            return leading.concat(doing, openRows(entry), recent(entry), notices(same), keysOf(entry),
+                copies);
         }
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
@@ -1070,7 +1176,7 @@ Provider {
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
         return acts.slice(0, 1).concat(leading, acts.slice(1), menu(entry, taken), doing,
-            recent(entry), windowsOf(entry),
+            openRows(entry), windowsOf(entry, heldWindows(entry)), recent(entry),
             notices(same), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
