@@ -285,6 +285,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         guide = ./modules/guide/nixos.nix;
+        hardening = ./modules/hardening/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         idle-sleep = ./modules/idle-sleep/nixos.nix;
