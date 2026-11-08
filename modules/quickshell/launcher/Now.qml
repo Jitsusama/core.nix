@@ -599,6 +599,7 @@ Provider {
             // it holds, while its side says only how it stands (VKCF3Z,
             // 2026-11-08).
             count: parted(piece),
+            sideWidest: piece.widest,
             note: piece.context,
             glyph: Theme.glyph[piece.markGlyph || fact.entry.mark],
             hue: Marks.tone(piece),

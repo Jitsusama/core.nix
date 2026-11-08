@@ -1,15 +1,23 @@
-// Bluetooth, a collection: the devices around, those connected first, then
-// those paired, then the rest by name, each glyph saying what kind of device
-// it is and the footer its battery where it says, and last the machine's
-// own Adapter. Return connects one, pairing it first if it's new, or
-// disconnects the one connected, and the launcher stays, saying it's
-// connecting, until it's done or says why not. A device that wants a
-// passkey typed is paired in bluetoothctl instead, since this pairs only as
-// headphones and mice do, with nothing to type. Turning Bluetooth off and
-// on is an action in the main search, and the Adapter's Radio too.
-// Everything of a device's state comes from BlueZ over D-Bus through
-// Quickshell, so no process is asked, and the radio looks for devices only
-// while the launcher is open.
+// Bluetooth, a collection: the devices paired, those connected first, then
+// the rest by name, each glyph saying what kind of device it is and the
+// footer its battery where it says; then Nearby, where a device never
+// paired is found; and last the machine's own Adapter. Return connects
+// one, or disconnects the one connected, and the launcher stays, saying
+// it's connecting, until it's done or says why not, in BlueZ's own terms
+// made plain (Nearby.js). A device that wants a passkey typed is paired
+// in bluetoothctl instead, since this pairs only as headphones and mice
+// do, with nothing to type. Turning Bluetooth off and on is an action in
+// the main search, and the Adapter's Radio too. Everything of a device's
+// state comes from BlueZ over D-Bus through Quickshell, so no process is
+// asked.
+//
+// Nearby is a place: only while it's open does the radio look for
+// devices, and it lists every named one it hears, paired or not,
+// strongest first, each with its kind's glyph, its signal as a bar and in
+// dBm, and whether it's paired or connected. Return on one never paired
+// trusts it, pairs it and connects it; on one paired, connects it. A
+// device's signal and why a pairing failed come from the shell's patch to
+// Quickshell (modules/quickshell/bluetooth-rssi-and-failures.patch).
 //
 // A device's right arrow lists what can be done to it, then its parts:
 // its Battery as a bar; its Signal and how well its link carries (Link
@@ -43,13 +51,16 @@ import QtQuick
 import "../Devices.js" as Devices
 import "../Fuzzy.js" as Fuzzy
 import "Links.js" as Links
+import "Nearby.js" as Nearby
+import "Order.js" as Order
 
 Provider {
     id: provider
 
     what: "Bluetooth"
 
-    readonly property var adapter: Bluetooth.defaultAdapter
+    // BlueZ's own, which a check gives a stand-in for.
+    property var adapter: Bluetooth.defaultAdapter
     readonly property bool on: adapter !== null && adapter.enabled
 
     // :set bluetooth, nobluetooth and bluetooth! turn it as its row does.
@@ -66,16 +77,22 @@ Provider {
         }
     })
 
-    collection: adapter === null ? null : Words.collection("bluetooth", {
-        empty: on ? "Looking for devices\u2026" : "Bluetooth is off."
-    })
+    // On, it always holds Nearby and the Adapter, so only off is it empty.
+    collection: adapter === null ? null : Words.collection("bluetooth")
 
-    // Looking for devices costs the radio's power, so it looks only while
-    // the launcher is there to show them.
+    // Looking for devices costs the radio's power, and has BlueZ keep every
+    // stranger it hears, so it looks only while Nearby is open to show
+    // them.
+    readonly property bool looksNearby: {
+        const launcher = provider.launcher;
+        return on && launcher !== null && launcher.open
+            && (launcher.held ?? []).some(step => step.row.key === "bluetooth:nearby");
+    }
+
     Binding {
         target: provider.adapter
         property: "discovering"
-        value: provider.on && provider.launcher !== null && provider.launcher.open
+        value: provider.looksNearby
         when: provider.adapter !== null
     }
 
@@ -101,19 +118,57 @@ Provider {
         return Theme.glyph[Devices.kind(device.icon)];
     }
 
-    // Connected, then paired, then the rest, then by name; a device that
-    // never said its name is left out, as nothing could find it.
+    // The devices paired, or connected while pairing, connected first, then
+    // by name; a device that never said its name is left out, as nothing
+    // could find it. One never paired is Nearby's.
     readonly property var devices: {
         if (!on)
             return [];
-        const rank = device => device.connected ? 0 : device.paired ? 1 : 2;
-        return adapter.devices.values.filter(device => device.deviceName !== "")
-            .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+        const rank = device => device.connected ? 0 : 1;
+        return adapter.devices.values.filter(device => device.deviceName !== ""
+            && (device.paired || device.connected))
+            .sort(Order.live({ stands: rank, name: device => device.name }));
     }
+
+    // Those Nearby hears, strongest first, as their rows say them: a list
+    // shown keeps its order as they move (Steady.js), so only the first
+    // look orders them. Heard again, Nearby's rows say so. Those that never
+    // said their names are only counted, after the rest.
+    readonly property var nearby: on && looksNearby ? Nearby.heard(adapter.devices.values) : []
+    readonly property var nameless: on && looksNearby
+        ? Nearby.nameless(adapter.devices.values) : []
+    readonly property string nearbySaid: nearby.concat(nameless)
+        .map(device => [device.address, device.rssi, device.paired, device.connected].join(" "))
+        .join(",")
+    onNearbySaidChanged: changed()
 
     // The device being connected, and what it said if it wouldn't be.
     property var joining: null
     property string trouble: ""
+
+    // What Bluetooth says, in words.json's words, of a device where it's
+    // given, as the foot says how connecting it goes.
+    function word(id) {
+        return Words.of("bluetooth").said?.[id] ?? id;
+    }
+
+    function saidOf(id, device) {
+        return word(id).replace("{device}", device.name);
+    }
+
+    // What BlueZ answered a pairing or connecting that failed, in Joel's
+    // words (Nearby.js's failure), as a live act says it didn't happen:
+    // "Buds not paired \u00b7 it wants a passkey"; a reason Joel has no
+    // words for in BlueZ's own. Nothing for one done already. Quickshell
+    // says it before the device stops pairing, so which it was is known.
+    function failed(device, name, message) {
+        const failure = Nearby.failure(name, message);
+        if (failure === "")
+            return;
+        const why = failure === "other" ? Nearby.plain(name, message) : word(failure);
+        trouble = word("because").replace("{failed}",
+            saidOf(device.pairing ? "notPaired" : "notConnected", device)).replace("{why}", why);
+    }
 
     // A new device is trusted before it pairs. Headphones start their audio
     // the moment they're paired, and with no agent to ask, BlueZ refuses an
@@ -135,8 +190,7 @@ Provider {
             return otherwise;
         if (trouble !== "")
             return trouble;
-        const doing = device.pairing ? "pairing with" : "connecting";
-        return `${doing} ${device.name}\u2026`;
+        return saidOf(device.pairing ? "pairing" : "connecting", device);
     }
 
     // Disconnected, the device's row says so at once, and inside it
@@ -151,8 +205,10 @@ Provider {
 
     // The device's row, as connected as `joinedAs` says where it's given,
     // or as bluez says.
-    function made(device, joinedAs) {
+    function made(device, joinedAs, nearby) {
         const joined = joinedAs ?? device.connected;
+        if (nearby)
+            return nearbyRow(device, joined);
         // The side says connected or paired, so the note says only what it
         // doesn't: the battery, or that the device is new.
         const told = joined || device.paired ? "" : "new";
@@ -199,7 +255,66 @@ Provider {
         adapter: adapter
     }, () => provider.adapterParts(provider.adapter))
 
+    // A device as Nearby hears it: what kind it is, how strong it's heard,
+    // as a bar and in dBm, and whether it's paired or connected; the same
+    // thing as its Bluetooth row, holding the same acts and parts. Its
+    // figure is said at its right as an access point's is, and how strong
+    // that is follows it muted after a dot, as every figure's qualifier
+    // does (docs/design.md; VKCF3Z, 2026-11-07); paired or connected says
+    // most, and the band gives way first.
+    function nearbyRow(device, joined) {
+        const strength = Nearby.strength(device);
+        const items = (strength === null ? [] : [
+            { said: word("heard").replace("{dbm}", Nearby.dbm(device)), keep: 2 },
+            { said: word(strength.word), keep: 1, hue: "muted" }
+        ]).concat([{ said: joined ? "connected" : device.paired ? "paired" : "", keep: 3 }])
+            .filter(item => item.said !== "");
+        return member({
+            thing: true,
+            key: `bluetooth:${device.address}`,
+            verb: joined ? "disconnect" : device.paired ? "connect" : "pair",
+            name: device.name,
+            glyph: kind(device),
+            hue: "machine",
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items,
+            graph: strength === null ? undefined : bar(strength.value, false),
+            device: device,
+            state: () => provider.said(device, ""),
+            stays: true,
+            run: joined ? () => provider.leave(device) : () => provider.join(device),
+            verbs: () => provider.verbs(device),
+            ends: joined ? Words.ending("verb:bluetooth-disconnect").ends : ""
+        });
+    }
+
+    // Nearby, the place a device is found in, after those paired: it says
+    // how many it heard once it's looked, and what it does until then.
+    readonly property var nearbyPlace: !on ? null : thingRow({
+        thing: true,
+        key: "bluetooth:nearby",
+        name: Words.name("bluetooth:nearby"),
+        keywords: (Words.of("bluetooth:nearby").words ?? []).join(" "),
+        side: nearby.length > 0 ? word("heardCount").replace("{count}", nearby.length) : "",
+        note: word("looks"),
+        glyph: Words.glyph("bluetooth:nearby"),
+        empty: Words.of("bluetooth:nearby").empty
+    }, () => provider.nearby.map(device => provider.made(device, undefined, true))
+        .concat(provider.namelessRow === null ? [] : [provider.namelessRow]))
+
+    // Those heard without a name, counted as Nearby's last row, so nothing
+    // heard is hidden and nothing unreadable is listed among the rest.
+    // Stepped into, it lists them by the addresses BlueZ names them by, so
+    // one whose name comes only once it's paired can still be.
+    readonly property var namelessRow: nameless.length === 0 ? null : thingRow({
+        key: "bluetooth:nearby:nameless",
+        name: word("nameless").replace("{count}", nameless.length),
+        glyph: "",
+        hue: "machine"
+    }, () => provider.nameless.map(device => provider.made(device, undefined, true)))
+
     readonly property var all: devices.map(device => made(device))
+        .concat(nearbyPlace === null ? [] : [nearbyPlace])
         .concat(adapterRow === null ? [] : [adapterRow])
     onAllChanged: changed()
 
@@ -718,11 +833,20 @@ Provider {
                 device.connect();
         }
 
+        // BlueZ's answer comes before pairing is said to have ended, so a
+        // pairing that ends unpaired with no answer says only that.
+        function onFailed(name, message) {
+            const device = provider.joining;
+            if (device)
+                provider.failed(device, name, message);
+        }
+
         function onPairingChanged() {
             const device = provider.joining;
             if (device && !device.pairing && !device.paired) {
                 device.trusted = false;
-                provider.trouble = "it didn't pair; it may want a passkey";
+                if (provider.trouble === "")
+                    provider.trouble = provider.saidOf("notPaired", device);
             }
         }
 
@@ -735,8 +859,8 @@ Provider {
         function onStateChanged() {
             const device = provider.joining;
             if (device && device.paired && device.state === BluetoothDeviceState.Disconnected
-                && !device.connected)
-                provider.trouble = "it didn't connect; is it on and near?";
+                && !device.connected && provider.trouble === "")
+                provider.trouble = provider.saidOf("notConnected", device);
         }
     }
 

@@ -41,6 +41,7 @@ class Values(TypedDict):
     ask_portal: str
     choose_a_file: str
     copilot_key: str
+    desk_light: str
     ergodox: str
     keyboard: str
     touchscreen: str

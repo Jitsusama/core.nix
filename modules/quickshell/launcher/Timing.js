@@ -254,13 +254,37 @@ function onNow(timers, watch, now) {
 }
 
 // Whether Now's row must be told the time each second: only while the
-// launcher is open, where its side is drawn, and something counts then.
+// launcher is open, where its side is drawn, and a timer counts down then.
 // The margin wears only the mark, which says how things stand and not
 // the time, so a clock ticking with the launcher closed would wake the
-// shell each second for nothing (Y2YBTS, 2026-11-08).
-function ticks(timers, watch, shown) {
-    return shown && (timers.some(record => record.state === "running")
-        || watch?.state === "running");
+// shell each second for nothing (Y2YBTS, 2026-11-08); and the stopwatch
+// alone is drawn afresh by the launcher, to the tenth, so Now's rows
+// aren't made again each second for it.
+function ticks(timers, shown) {
+    return shown && timers.some(record => record.state === "running");
+}
+
+// A figure more, as a count grows one.
+const FIGURE = 10;
+
+// The count at which the stopwatch's next grows a figure: ten minutes, an
+// hour, then ten hours, a hundred and on.
+function grows(span) {
+    if (span < FIGURE * MINUTE) {
+        return FIGURE * MINUTE;
+    }
+    let at = HOUR;
+    while (span >= at) {
+        at *= FIGURE;
+    }
+    return at;
+}
+
+// The widest the stopwatch's count reads until it next grows a figure,
+// "9:59.9" below ten minutes and "59:59.9" below an hour, so the room
+// its side keeps holds every count of its range (Y2YBTS, 2026-11-08).
+function widest(span) {
+    return tenths(grows(span) - TENTH);
 }
 
 // The stopwatch's laps, newest first, each { number, lap, at }: its

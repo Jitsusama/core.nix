@@ -1,0 +1,135 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] bluetooth: take BlueZ up whenever it starts
+
+Bluez asked the bus for BlueZ's object manager once, as the shell
+started, and gave up if BlueZ wasn't there yet, so a shell started
+before bluetoothd, or one whose bluetoothd restarted, as a system switch
+restarts it, had no adapter and no devices until the shell itself was
+restarted. It now watches for org.bluez coming onto the system bus and
+takes up its objects each time it does. BlueZ sends no InterfacesRemoved
+as it stops, so its leaving is watched for too: every adapter and device
+is forgotten then, and again before taking BlueZ up, so only what
+GetManagedObjects returns is kept, and no device lingers with its last
+signal.
+
+Each adapter is told first that it no longer looks, before anything
+moves: a binding letting go of an adapter that was looking would
+otherwise ask org.bluez to stop, and a call to a name nobody owns has
+the bus start bluetoothd again, cancelling the stop that was asked for.
+
+---
+diff --git a/src/bluetooth/bluez.cpp b/src/bluetooth/bluez.cpp
+index f2c4300..ccd4a44 100644
+--- a/src/bluetooth/bluez.cpp
++++ b/src/bluetooth/bluez.cpp
+@@ -1,7 +1,9 @@
+ #include "bluez.hpp"
+ 
++#include <qalgorithms.h>
+ #include <qcontainerfwd.h>
+ #include <qdbusconnection.h>
++#include <qdbusservicewatcher.h>
+ #include <qdbusextratypes.h>
+ #include <qlogging.h>
+ #include <qloggingcategory.h>
+@@ -58,12 +60,81 @@ void Bluez::init() {
+ 	    &Bluez::onInterfacesRemoved
+ 	);
+ 
++	// BlueZ may start after the shell, or stop and start again, so it's
++	// taken up whenever it comes onto the bus, not only if it's there now,
++	// and forgotten when it leaves, since it says nothing of its objects
++	// as it goes.
++	auto* watcher = new QDBusServiceWatcher(
++	    "org.bluez",
++	    bus,
++	    QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration,
++	    this
++	);
++
++	QObject::connect(
++	    watcher,
++	    &QDBusServiceWatcher::serviceRegistered,
++	    this,
++	    &Bluez::onBluezRegistered
++	);
++
++	QObject::connect(
++	    watcher,
++	    &QDBusServiceWatcher::serviceUnregistered,
++	    this,
++	    &Bluez::onBluezUnregistered
++	);
++
+ 	if (!this->objectManager->setInterface("org.bluez", "/", bus)) {
+-		qCDebug(logBluetooth) << "BlueZ is not running. Bluetooth integration will not work.";
++		qCDebug(logBluetooth) << "BlueZ is not running yet. Waiting for it to start.";
+ 		return;
+ 	}
+ }
+ 
++void Bluez::onBluezRegistered() {
++	qCDebug(logBluetooth) << "BlueZ started";
++	// Only what BlueZ has now is kept, should its leaving have gone unheard.
++	this->forgetAll();
++	this->objectManager->setInterface("org.bluez", "/", QDBusConnection::systemBus());
++}
++
++void Bluez::onBluezUnregistered() {
++	qCDebug(logBluetooth) << "BlueZ stopped";
++	this->forgetAll();
++}
++
++// Drops every device and adapter, as their InterfacesRemoved would, in the
++// same order: out of the models first, then deleted.
++void Bluez::forgetAll() {
++	// No adapter looks once BlueZ is gone. Said first, before anything moves, so a
++	// binding letting go of an adapter stops nothing on the bus: a call to org.bluez
++	// then would have the bus start bluetoothd again, undoing its stop.
++	for (auto* adapter: this->mAdapters.valueList()) {
++		adapter->bindableDiscovering().setValue(false);
++	}
++
++	const auto devices = this->mDevices.valueList();
++	for (auto* device: devices) {
++		if (auto* adapter = device->adapter()) {
++			adapter->devices()->removeObject(device);
++		}
++
++		this->mDevices.removeObject(device);
++	}
++
++	this->mDeviceMap.clear();
++
++	const auto adapters = this->mAdapters.valueList();
++	for (auto* adapter: adapters) {
++		this->mAdapters.removeObject(adapter);
++	}
++
++	this->mAdapterMap.clear();
++	this->updateDefaultAdapter();
++	qDeleteAll(devices);
++	qDeleteAll(adapters);
++}
++
+ void Bluez::onInterfacesAdded(
+     const QDBusObjectPath& path,
+     const DBusObjectManagerInterfaces& interfaces
+diff --git a/src/bluetooth/bluez.hpp b/src/bluetooth/bluez.hpp
+index 9d7c93c..d1d9808 100644
+--- a/src/bluetooth/bluez.hpp
++++ b/src/bluetooth/bluez.hpp
+@@ -38,10 +38,13 @@ private slots:
+ 	onInterfacesAdded(const QDBusObjectPath& path, const DBusObjectManagerInterfaces& interfaces);
+ 	void onInterfacesRemoved(const QDBusObjectPath& path, const QStringList& interfaces);
+ 	void updateDefaultAdapter();
++	void onBluezRegistered();
++	void onBluezUnregistered();
+ 
+ private:
+ 	explicit Bluez();
+ 	void init();
++	void forgetAll();
+ 
+ 	qs::dbus::DBusObjectManager* objectManager = nullptr;
+ 	QHash<QString, BluetoothAdapter*> mAdapterMap;

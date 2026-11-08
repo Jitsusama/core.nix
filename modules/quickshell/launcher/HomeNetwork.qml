@@ -259,9 +259,10 @@ Provider {
             note: said.note,
             glyph: Words.glyph("eero:profile"),
             gap: first,
-            drawer: () => provider.plate("profile", Drawers.profile(provider.model, profile))
+            drawer: () => provider.plate("profile", Drawers.profile(provider.model, profile,
+                provider.settings))
         }, () => provider.parts("profile", `eero:profile:${profile.id}`,
-            Drawers.profile(provider.model, profile)));
+            Drawers.profile(provider.model, profile, provider.settings)));
     }
 
     // Every row, made again as the record changes: the internet, then

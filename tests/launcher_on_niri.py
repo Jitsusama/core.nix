@@ -6,7 +6,8 @@ surfaces, typed at through wtype, in seconds rather than a machine booted for
 it. wtype's keys reach the surface holding the keyboard, the launcher's or the
 held notices', but never niri's binds, so what a bind runs is run instead, and
 nothing of a machine's is here: no battery, backlight, system services or
-other programs. A case needing any of those stays in the
+other programs, only the machine daemon over the sandbox's own /proc when
+the check gives it as MACHINE. A case needing any of those stays in the
 desktop's VM tests (tests/desktop/); one that only types and reads the
 launcher comes here. The helpers keep desktop_session.Desktop's names, so a
 case moves between the two with few words changed: keys are pressed on the
@@ -69,9 +70,21 @@ class Shell:
         self.folder = folder
         self.log = logs / "shell.log"
         self.process: subprocess.Popen[bytes] | None = None
+        self.machine: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
         """Start the shell, and wait until its launcher answers, closed."""
+        # Machine's answers come from the machine daemon, over the sandbox's own /proc, on the
+        # socket the account's systemd would hold for it.
+        if "MACHINE" in os.environ:
+            daemons = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons"
+            daemons.mkdir(mode=0o700, exist_ok=True)
+            with (self.log.parent / "machine.log").open("wb") as log:
+                self.machine = subprocess.Popen(  # noqa: S603
+                    [os.environ["MACHINE"], str(daemons / "machine.sock")],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                )
         with self.log.open("wb") as log:
             self.process = subprocess.Popen(  # noqa: S603
                 ["qs", "-p", str(self.folder)],  # noqa: S607
@@ -89,9 +102,10 @@ class Shell:
 
     def stop(self) -> None:
         """End the shell."""
-        if self.process is not None:
-            self.process.terminate()
-            self.process.wait(timeout=10)
+        for process in (self.process, self.machine):
+            if process is not None:
+                process.terminate()
+                process.wait(timeout=10)
 
     def tail(self) -> str:
         """Give the end of the shell's log, to say why a wait failed."""

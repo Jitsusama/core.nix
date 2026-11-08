@@ -605,9 +605,16 @@
       "parts": [
         "machine:memory:used",
         "machine:memory:pressure",
+        "machine:memory:faults",
+        "machine:memory:swapping",
+        "machine:memory:paging",
+        "machine:memory:using",
         "machine:memory:swap",
         "machine:memory:cached",
-        "machine:memory:using",
+        "machine:memory:held",
+        "machine:memory:committed",
+        "machine:memory:out-of-memory",
+        "machine:memory:counts",
         "machine:memory:type"
       ]
     },
@@ -622,18 +629,163 @@
       "name": "Pressure",
       "answers": [
         "memory pressure"
-      ]
+      ],
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited for memory",
+        "pair": "{some}% something waited \u00b7 {full}% everything",
+        "some": "{some}% something waited"
+      }
+    },
+    {
+      "id": "machine:memory:pressure-10",
+      "in": "machine:memory:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:memory:pressure-60",
+      "in": "machine:memory:pressure",
+      "name": "Last Minute"
+    },
+    {
+      "id": "machine:memory:pressure-300",
+      "in": "machine:memory:pressure",
+      "name": "Last 5 Minutes"
     },
     {
       "id": "machine:memory:swap",
       "in": "machine:memory",
       "name": "Swap",
-      "term": "Machine/swap"
+      "term": "Machine/swap",
+      "said": {
+        "cached": "{cached} of it also still in memory"
+      }
     },
     {
       "id": "machine:memory:cached",
       "in": "machine:memory",
       "name": "Cached"
+    },
+    {
+      "id": "machine:memory:held",
+      "in": "machine:memory",
+      "name": "Held By",
+      "said": {
+        "note": "what holds the memory, biggest first"
+      }
+    },
+    {
+      "id": "machine:memory:held-programs",
+      "in": "machine:memory:held",
+      "name": "Programs",
+      "said": {
+        "note": "programs' own memory"
+      }
+    },
+    {
+      "id": "machine:memory:held-files",
+      "in": "machine:memory:held",
+      "name": "Files",
+      "said": {
+        "note": "files kept from the disk"
+      }
+    },
+    {
+      "id": "machine:memory:held-shared",
+      "in": "machine:memory:held",
+      "name": "Shared",
+      "said": {
+        "note": "memory programs share"
+      }
+    },
+    {
+      "id": "machine:memory:held-kernel",
+      "in": "machine:memory:held",
+      "name": "System",
+      "said": {
+        "note": "the system's own: its caches, stacks and page tables"
+      }
+    },
+    {
+      "id": "machine:memory:held-buffers",
+      "in": "machine:memory:held",
+      "name": "Buffers",
+      "said": {
+        "note": "the disk's buffers"
+      }
+    },
+    {
+      "id": "machine:memory:held-unwritten",
+      "in": "machine:memory:held",
+      "name": "Waiting to Be Written",
+      "said": {
+        "note": "changes not yet written to the disk"
+      }
+    },
+    {
+      "id": "machine:memory:held-compressed",
+      "in": "machine:memory:held",
+      "name": "Compressed",
+      "said": {
+        "side": "{stored} in {pool}",
+        "note": "swapped into memory, {ratio} times smaller"
+      }
+    },
+    {
+      "id": "machine:memory:held-huge",
+      "in": "machine:memory:held",
+      "name": "Huge Pages",
+      "said": {
+        "note": "in pages of 2 MiB or more; {reserved} reserved"
+      }
+    },
+    {
+      "id": "machine:memory:committed",
+      "in": "machine:memory",
+      "name": "Committed",
+      "said": {
+        "note": "{committed} of {limit} committed"
+      }
+    },
+    {
+      "id": "machine:memory:paging",
+      "in": "machine:memory",
+      "name": "Paging",
+      "said": {
+        "note": "files read in \u00b7 written out"
+      }
+    },
+    {
+      "id": "machine:memory:counts",
+      "in": "machine:memory",
+      "name": "Every Count",
+      "said": {
+        "note": "each Linux keeps, by its own name"
+      }
+    },
+    {
+      "id": "machine:memory:faults",
+      "in": "machine:memory",
+      "name": "Faults",
+      "said": {
+        "note": "{major} from the disk"
+      }
+    },
+    {
+      "id": "machine:memory:swapping",
+      "in": "machine:memory",
+      "name": "Swapping",
+      "said": {
+        "compressed": "compressed {both}"
+      }
+    },
+    {
+      "id": "machine:memory:out-of-memory",
+      "in": "machine:memory",
+      "name": "Out of Memory",
+      "said": {
+        "note": "programs ended for memory since the machine started"
+      }
     },
     {
       "id": "machine:memory:using",
@@ -661,19 +813,143 @@
         "cores",
         "load"
       ],
+      "said": {
+        "down": "the machine daemon isn't answering"
+      },
       "parts": [
+        "machine:cpu:spent",
+        "machine:cpu:pressure",
+        "machine:cpu:switches",
+        "machine:cpu:interrupts",
+        "machine:cpu:started",
         "machine:cpu:cores",
         "machine:cpu:maxed",
         "machine:cpu:clock",
         "machine:cpu:held-back",
+        "machine:cpu:kept-from-resting",
         "machine:cpu:temperature",
         "machine:cpu:using",
         "machine:cpu:load",
+        "machine:cpu:running",
         "machine:cpu:npu-load",
         "machine:cpu:kinds",
-        "machine:cpu:model",
-        "machine:cpu:kept-from-resting"
+        "machine:cpu:model"
       ]
+    },
+    {
+      "id": "machine:cpu:spent",
+      "in": "machine:cpu",
+      "name": "Time Spent"
+    },
+    {
+      "id": "machine:cpu:spent-user",
+      "in": "machine:cpu:spent",
+      "name": "Programs",
+      "said": {
+        "note": "programs' own work"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-system",
+      "in": "machine:cpu:spent",
+      "name": "System",
+      "said": {
+        "note": "the system's work for them"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-iowait",
+      "in": "machine:cpu:spent",
+      "name": "Waiting on Disk",
+      "said": {
+        "note": "idle, with a disk request out"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-interrupts",
+      "in": "machine:cpu:spent",
+      "name": "Interrupts",
+      "said": {
+        "note": "answering devices, and the work they put off"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-niced",
+      "in": "machine:cpu:spent",
+      "name": "Niced",
+      "said": {
+        "note": "programs set to give way"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-stolen",
+      "in": "machine:cpu:spent",
+      "name": "Stolen",
+      "said": {
+        "note": "taken by a machine this one runs inside"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-guests",
+      "in": "machine:cpu:spent",
+      "name": "Guests",
+      "said": {
+        "note": "virtual machines this one runs, counted in User too"
+      }
+    },
+    {
+      "id": "machine:cpu:pressure",
+      "in": "machine:cpu",
+      "name": "Pressure",
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited for a processor"
+      }
+    },
+    {
+      "id": "machine:cpu:pressure-10",
+      "in": "machine:cpu:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:cpu:pressure-60",
+      "in": "machine:cpu:pressure",
+      "name": "Last Minute"
+    },
+    {
+      "id": "machine:cpu:pressure-300",
+      "in": "machine:cpu:pressure",
+      "name": "Last 5 Minutes"
+    },
+    {
+      "id": "machine:cpu:running",
+      "in": "machine:cpu",
+      "name": "Running",
+      "said": {
+        "blocked": "{blocked} waiting on a disk",
+        "tasks": "of {tasks} tasks"
+      }
+    },
+    {
+      "id": "machine:cpu:switches",
+      "in": "machine:cpu",
+      "name": "Switches"
+    },
+    {
+      "id": "machine:cpu:interrupts",
+      "in": "machine:cpu",
+      "name": "Interrupts",
+      "said": {
+        "note": "{deferred} put off"
+      }
+    },
+    {
+      "id": "machine:cpu:started",
+      "in": "machine:cpu",
+      "name": "Started",
+      "said": {
+        "note": "processes started"
+      }
     },
     {
       "id": "machine:cpu:cores",
@@ -700,6 +976,46 @@
       "answers": [
         "clock speed"
       ]
+    },
+    {
+      "id": "machine:cpu:clock-range",
+      "in": "machine:cpu:clock",
+      "name": "Range",
+      "said": {
+        "kinds": "its slowest cores top out at {least}"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-base",
+      "in": "machine:cpu:clock",
+      "name": "Base",
+      "said": {
+        "note": "the clock it's sold at"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-driver",
+      "in": "machine:cpu:clock",
+      "name": "Driver"
+    },
+    {
+      "id": "machine:cpu:clock-governor",
+      "in": "machine:cpu:clock",
+      "name": "Governor"
+    },
+    {
+      "id": "machine:cpu:clock-preference",
+      "in": "machine:cpu:clock",
+      "name": "Preference"
+    },
+    {
+      "id": "machine:cpu:clock-turbo",
+      "in": "machine:cpu:clock",
+      "name": "Turbo",
+      "said": {
+        "on": "it may clock past its base",
+        "off": "held to its base"
+      }
     },
     {
       "id": "machine:cpu:held-back",
@@ -763,6 +1079,63 @@
       "answers": [
         "processor model"
       ]
+    },
+    {
+      "id": "machine:cpu:model-name",
+      "in": "machine:cpu:model",
+      "name": "Name"
+    },
+    {
+      "id": "machine:cpu:vendor",
+      "in": "machine:cpu:model",
+      "name": "Vendor"
+    },
+    {
+      "id": "machine:cpu:family",
+      "in": "machine:cpu:model",
+      "name": "Family",
+      "said": {
+        "side": "family {family} \u00b7 model {model} \u00b7 stepping {stepping}"
+      }
+    },
+    {
+      "id": "machine:cpu:microcode",
+      "in": "machine:cpu:model",
+      "name": "Microcode"
+    },
+    {
+      "id": "machine:cpu:caches",
+      "in": "machine:cpu:model",
+      "name": "Caches",
+      "said": {
+        "note": "all of them together"
+      }
+    },
+    {
+      "id": "machine:cpu:cache",
+      "in": "machine:cpu:caches",
+      "name": "L{level} {type}",
+      "said": {
+        "own": "one a core",
+        "shared": "each shared by {n} cores",
+        "ways": "{ways}-way",
+        "line": "{line} B lines"
+      }
+    },
+    {
+      "id": "machine:cpu:cache-data",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Data"
+    },
+    {
+      "id": "machine:cpu:cache-instruction",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Instruction"
+    },
+    {
+      "id": "machine:cpu:cache-unified",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Unified"
     },
     {
       "id": "machine:cpu:kept-from-resting",
@@ -833,7 +1206,50 @@
       "name": "Uptime",
       "answers": [
         "uptime"
+      ],
+      "parts": [
+        "machine:uptime:idle",
+        "machine:uptime:asleep",
+        "machine:uptime:started",
+        "machine:uptime:kernel"
       ]
+    },
+    {
+      "id": "machine:uptime:asleep",
+      "in": "machine:uptime",
+      "name": "Asleep",
+      "said": {
+        "never": "never",
+        "note": "{share} of the time since it started"
+      }
+    },
+    {
+      "id": "machine:uptime:idle",
+      "in": "machine:uptime",
+      "name": "Idle",
+      "said": {
+        "note": "of the processors' time awake since it started"
+      }
+    },
+    {
+      "id": "machine:uptime:started",
+      "in": "machine:uptime",
+      "name": "Started"
+    },
+    {
+      "id": "machine:uptime:kernel",
+      "in": "machine:uptime",
+      "name": "Linux"
+    },
+    {
+      "id": "machine:uptime:release",
+      "in": "machine:uptime:kernel",
+      "name": "Release"
+    },
+    {
+      "id": "machine:uptime:build",
+      "in": "machine:uptime:kernel",
+      "name": "Build"
     },
     {
       "id": "machine:disk",
@@ -856,10 +1272,13 @@
         "machine:disk:space",
         "machine:disk:filling",
         "machine:disk:speed",
+        "machine:disk:pressure",
         "machine:disk:busy",
         "machine:disk:latency",
+        "machine:disk:queue",
         "machine:disk:temperature",
         "machine:disk:health",
+        "machine:disk:file-systems",
         "machine:disk:model"
       ]
     },
@@ -965,7 +1384,24 @@
       "name": "Speed",
       "answers": [
         "disk speed"
-      ]
+      ],
+      "said": {
+        "iops": "{n} requests/s",
+        "merged": "{n} merged/s"
+      }
+    },
+    {
+      "id": "machine:disk:discarding",
+      "in": "machine:disk:speed",
+      "name": "Discarding"
+    },
+    {
+      "id": "machine:disk:flushing",
+      "in": "machine:disk:speed",
+      "name": "Flushing",
+      "said": {
+        "note": "each a wait for the disk to keep what it holds"
+      }
     },
     {
       "id": "machine:disk:reading",
@@ -988,7 +1424,63 @@
       "name": "Latency",
       "answers": [
         "disk latency"
-      ]
+      ],
+      "said": {
+        "idle": "none asked of it"
+      }
+    },
+    {
+      "id": "machine:disk:latency-reading",
+      "in": "machine:disk:latency",
+      "name": "Reading"
+    },
+    {
+      "id": "machine:disk:latency-writing",
+      "in": "machine:disk:latency",
+      "name": "Writing"
+    },
+    {
+      "id": "machine:disk:latency-discarding",
+      "in": "machine:disk:latency",
+      "name": "Discarding"
+    },
+    {
+      "id": "machine:disk:latency-flushing",
+      "in": "machine:disk:latency",
+      "name": "Flushing"
+    },
+    {
+      "id": "machine:disk:queue",
+      "in": "machine:disk",
+      "name": "Queue",
+      "said": {
+        "queued": "{queued} on average",
+        "depth": "{depth} at most"
+      }
+    },
+    {
+      "id": "machine:disk:pressure",
+      "in": "machine:disk",
+      "name": "Pressure",
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited on a disk"
+      }
+    },
+    {
+      "id": "machine:disk:pressure-10",
+      "in": "machine:disk:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:disk:pressure-60",
+      "in": "machine:disk:pressure",
+      "name": "Last Minute"
+    },
+    {
+      "id": "machine:disk:pressure-300",
+      "in": "machine:disk:pressure",
+      "name": "Last 5 Minutes"
     },
     {
       "id": "machine:disk:temperature",
@@ -1004,7 +1496,20 @@
       "name": "Health",
       "answers": [
         "disk health"
-      ]
+      ],
+      "said": {
+        "asked": "as its controller said at {at}"
+      }
+    },
+    {
+      "id": "machine:disk:file-systems",
+      "in": "machine:disk",
+      "name": "File Systems",
+      "said": {
+        "room": "{free} free of {size}",
+        "reserved": "{reserved} kept back",
+        "files": "{free} of {files} files free"
+      }
     },
     {
       "id": "machine:disk:spare",
@@ -1023,14 +1528,62 @@
       "name": "Read"
     },
     {
+      "id": "machine:disk:powered",
+      "in": "machine:disk:health",
+      "name": "Powered For",
+      "said": {
+        "note": "over {cycles} times it was powered"
+      }
+    },
+    {
+      "id": "machine:disk:busy-for",
+      "in": "machine:disk:health",
+      "name": "Busy For",
+      "said": {
+        "note": "its controller's time at work"
+      }
+    },
+    {
       "id": "machine:disk:errors",
       "in": "machine:disk:health",
       "name": "Errors"
     },
     {
+      "id": "machine:disk:error-log",
+      "in": "machine:disk:health",
+      "name": "Error Log",
+      "said": {
+        "note": "entries its controller logged"
+      }
+    },
+    {
       "id": "machine:disk:shutdowns",
       "in": "machine:disk:health",
       "name": "Unsafe Shutdowns"
+    },
+    {
+      "id": "machine:disk:too-hot",
+      "in": "machine:disk:health",
+      "name": "Too Hot For",
+      "said": {
+        "warning": "past {warning}",
+        "critical": "{lasted} past {critical}"
+      }
+    },
+    {
+      "id": "machine:disk:warnings",
+      "in": "machine:disk:health",
+      "name": "Warnings",
+      "said": {
+        "note": "what its controller warns of",
+        "none": "none",
+        "spare": "spare running out",
+        "temperature": "temperature",
+        "degraded": "reliability degraded",
+        "read-only": "read-only",
+        "volatile-memory": "its memory's backup failed",
+        "persistent-memory-read-only": "its persistent memory read-only"
+      }
     },
     {
       "id": "machine:disk:model",
@@ -1040,6 +1593,61 @@
       "answers": [
         "disk model"
       ]
+    },
+    {
+      "id": "machine:disk:model-name",
+      "in": "machine:disk:model",
+      "name": "Name"
+    },
+    {
+      "id": "machine:disk:firmware",
+      "in": "machine:disk:model",
+      "name": "Firmware",
+      "term": "Machine/firmware",
+      "said": {
+        "nvme": "speaks NVMe {revision}"
+      }
+    },
+    {
+      "id": "machine:disk:kind",
+      "in": "machine:disk:model",
+      "name": "Kind",
+      "said": {
+        "solid": "solid state",
+        "spinning": "spinning",
+        "fixed": "fixed",
+        "removable": "removable"
+      }
+    },
+    {
+      "id": "machine:disk:link",
+      "in": "machine:disk:model",
+      "name": "Link",
+      "said": {
+        "full": "as fast as it goes",
+        "slower": "of {most} at most"
+      }
+    },
+    {
+      "id": "machine:disk:capacity",
+      "in": "machine:disk:model",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:block",
+      "in": "machine:disk:model",
+      "name": "Block Size",
+      "said": {
+        "both": "{logical} B logical \u00b7 {physical} B physical"
+      }
+    },
+    {
+      "id": "machine:disk:scheduler",
+      "in": "machine:disk:model",
+      "name": "Scheduler",
+      "said": {
+        "also": "also {all}"
+      }
     },
     {
       "id": "power",
@@ -1470,7 +2078,12 @@
       "answers": [
         "desk light",
         "warmth"
-      ]
+      ],
+      "said": {
+        "usb": "on USB",
+        "plate": "desk light",
+        "of": "of {least} to {most}"
+      }
     },
     {
       "id": "light:desk:brightness",
@@ -1480,7 +2093,23 @@
     {
       "id": "light:desk:warmth",
       "in": "light",
-      "name": "Warmth"
+      "name": "Warmth",
+      "term": "Desktop/warmth"
+    },
+    {
+      "id": "light:desk:output",
+      "in": "light",
+      "name": "Output"
+    },
+    {
+      "id": "light:desk:hid-device",
+      "in": "light",
+      "name": "HID Device"
+    },
+    {
+      "id": "light:desk:serial",
+      "in": "light",
+      "name": "Serial"
     },
     {
       "id": "light:desk:level",
@@ -1977,6 +2606,37 @@
       "id": "eero:profile:listed",
       "in": "eero:profile",
       "name": "Devices in It"
+    },
+    {
+      "id": "eero:profile:blocks",
+      "in": "eero:profile",
+      "name": "Blocks"
+    },
+    {
+      "id": "eero:profile:enforces",
+      "in": "eero:profile",
+      "name": "Enforces"
+    },
+    {
+      "id": "eero:profile:allows",
+      "in": "eero:profile",
+      "name": "Allows"
+    },
+    {
+      "id": "eero:profile:schedule",
+      "in": "eero:profile",
+      "name": "Schedule"
+    },
+    {
+      "id": "eero:profile:default",
+      "in": "eero:profile",
+      "name": "Default"
+    },
+    {
+      "id": "eero:profile:traffic",
+      "in": "eero:profile",
+      "name": "Traffic",
+      "term": "Network/traffic"
     },
     {
       "id": "eero:internet:events",
@@ -2543,7 +3203,8 @@
     {
       "id": "keyboards:firmware",
       "in": "keyboards",
-      "name": "Firmware"
+      "name": "Firmware",
+      "term": "Machine/firmware"
     },
     {
       "id": "keyboards:usb-id",
@@ -2801,7 +3462,8 @@
     {
       "id": "networks:lease-time-servers",
       "in": "networks:lease",
-      "name": "Time Servers"
+      "name": "Time Servers",
+      "term": "Desktop/time server"
     },
     {
       "id": "networks:lease-domain",
@@ -3504,7 +4166,8 @@
     {
       "id": "time:server",
       "in": "time:servers",
-      "name": "Time Server"
+      "name": "Time Server",
+      "term": "Desktop/time server"
     },
     {
       "id": "time:server:address",
@@ -3774,7 +4437,8 @@
     {
       "id": "sound:microphones",
       "in": "sound",
-      "name": "Microphones"
+      "name": "Microphones",
+      "term": "Machine/microphone"
     },
     {
       "id": "sound:called:speakers",
@@ -5174,7 +5838,12 @@
         "seconds": "s",
         "notice": "{span} timer",
         "noticeLate": "{span} timer, rang late",
-        "from": "the timers"
+        "from": "the timers",
+        "gone": "that timer is gone",
+        "pausesRunning": "only a running timer pauses",
+        "resumesPaused": "only a paused timer resumes",
+        "nothing": "a timer counts more than nothing",
+        "pastAWeek": "a timer counts a week at most"
       }
     },
     {
@@ -5235,11 +5904,15 @@
       "glyph": "stopwatch",
       "said": {
         "running": "running",
-        "stopped": "stopped",
+        "stopped": "paused",
         "unstarted": "not started",
         "lapsOne": "{state} \u00b7 1 lap",
         "laps": "{state} \u00b7 {count} laps",
-        "at": "at {count}"
+        "at": "at {count}",
+        "runningAlready": "the stopwatch is running already",
+        "pausesRunning": "only a running stopwatch pauses",
+        "lapsRunning": "only a running stopwatch laps",
+        "lapsFull": "the stopwatch keeps 999 laps at most"
       }
     },
     {
@@ -5247,7 +5920,7 @@
       "in": "stopwatch",
       "name": "Lap",
       "term": "Desktop/lap",
-      "glyph": "stopwatch",
+      "glyph": "lap",
       "states": {
         "numbered": {
           "name": "Lap {number}"
@@ -5264,9 +5937,15 @@
       "states": {
         "running": {
           "command": "pause",
-          "name": "Stop",
-          "verb": "stop",
+          "name": "Pause",
+          "verb": "pause",
           "glyph": "pause"
+        },
+        "stopped": {
+          "command": "resume",
+          "name": "Resume",
+          "verb": "resume",
+          "glyph": "resume"
         }
       }
     },
@@ -5276,11 +5955,11 @@
       "in": "stopwatch",
       "name": "Lap",
       "verb": "lap",
-      "glyph": "stopwatch"
+      "glyph": "lap"
     },
     {
       "id": "verb:stopwatch:reset",
-      "command": "delete",
+      "command": "reset",
       "in": "stopwatch",
       "name": "Reset",
       "verb": "reset",
@@ -5307,7 +5986,10 @@
       "said": {
         "no-link": "no link here",
         "one-link": "only 1 link here",
-        "links": "only {count} links here"
+        "links": "only {count} links here",
+        "from": "from {who}",
+        "failed": "{kind} failed",
+        "bounced": "mail bounced"
       }
     },
     {
@@ -5433,7 +6115,7 @@
           "said": "taken back by its sender at {at}"
         },
         "resting": {
-          "said": "off the screen, still open"
+          "said": "off the screen \u00b7 still open"
         },
         "shown": {
           "said": "still on the screen"
@@ -5446,13 +6128,43 @@
       "name": "Urgency",
       "states": {
         "low": {
-          "name": "Low"
+          "said": "low"
         },
         "normal": {
-          "name": "Normal"
+          "said": "normal"
         },
         "critical": {
-          "name": "Critical"
+          "said": "critical"
+        }
+      }
+    },
+    {
+      "id": "notices:arrived",
+      "in": "notices",
+      "name": "Arrived"
+    },
+    {
+      "id": "notices:kind",
+      "in": "notices",
+      "name": "Kind",
+      "states": {
+        "im": {
+          "said": "message"
+        },
+        "email": {
+          "said": "mail"
+        },
+        "device": {
+          "said": "device"
+        },
+        "network": {
+          "said": "network"
+        },
+        "presence": {
+          "said": "status"
+        },
+        "transfer": {
+          "said": "transfer"
         }
       }
     },
@@ -5471,7 +6183,29 @@
       "term": "Machine/Bluetooth",
       "noun": "devices",
       "glyph": "bluetooth",
-      "ask": "which device?"
+      "ask": "which device?",
+      "empty": "Bluetooth is off.",
+      "said": {
+        "pairing": "pairing with {device}",
+        "connecting": "connecting {device}",
+        "notPaired": "{device} not paired",
+        "notConnected": "{device} not connected",
+        "because": "{failed} \u00b7 {why}",
+        "passkey": "it wants a passkey",
+        "refused": "it said no",
+        "stopped": "it gave up",
+        "unreached": "it stopped answering",
+        "busy": "it's already pairing or connecting",
+        "unready": "the adapter isn't ready",
+        "nothing": "it offers nothing this machine uses",
+        "heard": "{dbm} dBm",
+        "nameless": "{count} more without a name",
+        "strong": "strong",
+        "fair": "fair",
+        "weak": "weak",
+        "heardCount": "{count} heard",
+        "looks": "looks while open"
+      }
     },
     {
       "id": "displays",
@@ -5511,6 +6245,7 @@
       "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
+      "term": "Desktop/warmth",
       "verb": "turn off",
       "answers": [
         "screen warmth"
@@ -6026,14 +6761,14 @@
     {
       "id": "spotify:context",
       "of": "program:spotify",
-      "name": "Playlist, Album, Artist or Show",
+      "name": "Playlist, Album, Artist or Podcast",
       "glyph": "playing",
       "verb": "play",
       "said": {
         "playlist": "playlist",
         "album": "album",
         "artist": "artist",
-        "show": "show",
+        "show": "podcast",
         "collection": "liked songs",
         "playing": "playing",
         "paused": "paused",
@@ -6078,7 +6813,8 @@
     {
       "id": "spotify:shows",
       "of": "program:spotify",
-      "name": "Shows",
+      "term": "Programs/podcast",
+      "name": "Podcasts",
       "verb": "more",
       "glyph": "show"
     },
@@ -6527,6 +7263,16 @@
       "name": "Access Point's Beacons"
     },
     {
+      "id": "wifi:interval",
+      "in": "wifi:signal",
+      "name": "Beacon Interval"
+    },
+    {
+      "id": "wifi:dtim",
+      "in": "wifi:signal",
+      "name": "DTIM Period"
+    },
+    {
       "id": "wifi:margin",
       "in": "wifi:signal",
       "name": "Over the Noise"
@@ -6553,6 +7299,11 @@
       "name": "Out"
     },
     {
+      "id": "wifi:expected",
+      "in": "wifi:speed",
+      "name": "Expected"
+    },
+    {
       "id": "wifi:generation",
       "in": "wifi:speed",
       "name": "Generation"
@@ -6561,6 +7312,21 @@
       "id": "wifi:coding",
       "in": "wifi:speed",
       "name": "Coding"
+    },
+    {
+      "id": "wifi:streams",
+      "in": "wifi:speed",
+      "name": "Streams"
+    },
+    {
+      "id": "wifi:guard",
+      "in": "wifi:speed",
+      "name": "Guard Interval"
+    },
+    {
+      "id": "wifi:dcm",
+      "in": "wifi:speed",
+      "name": "DCM"
     },
     {
       "id": "wifi:width",
@@ -6574,9 +7340,45 @@
       "term": "Network/channel"
     },
     {
+      "id": "wifi:preamble",
+      "in": "wifi:speed",
+      "name": "Preamble"
+    },
+    {
+      "id": "wifi:slot",
+      "in": "wifi:speed",
+      "name": "Slot Time"
+    },
+    {
+      "id": "wifi:wmm",
+      "in": "wifi:speed",
+      "name": "WMM"
+    },
+    {
       "id": "wifi:retries",
       "in": "wifi:speed",
       "name": "Retries"
+    },
+    {
+      "id": "wifi:carried",
+      "in": "wifi",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "wifi:received",
+      "in": "wifi:carried",
+      "name": "Received"
+    },
+    {
+      "id": "wifi:sent",
+      "in": "wifi:carried",
+      "name": "Sent"
+    },
+    {
+      "id": "wifi:idle",
+      "in": "wifi:carried",
+      "name": "Idle For"
     },
     {
       "id": "wifi:retried",
@@ -6765,6 +7567,15 @@
       "id": "bluetooth:address",
       "in": "bluetooth",
       "name": "Address"
+    },
+    {
+      "id": "bluetooth:nearby",
+      "in": "bluetooth",
+      "name": "Nearby",
+      "term": "Machine/Nearby",
+      "words": ["find a device", "pair a device"],
+      "glyph": "nearby",
+      "empty": "Nothing heard yet."
     },
     {
       "id": "bluetooth:adapter",
@@ -7224,6 +8035,84 @@
       "glyph": "link"
     },
     {
+      "id": "verb:mpv:link",
+      "command": "open",
+      "argument": "link",
+      "in": "applications",
+      "name": "Play the Copied Link",
+      "verb": "play",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:mpv:on",
+      "command": "resume",
+      "in": "path:file",
+      "name": "Resume",
+      "verb": "resume",
+      "glyph": "resume",
+      "said": {
+        "stopped": "{at} of {length} \u00b7 {when}",
+        "whole": "{length} \u00b7 {when}",
+        "from": "from {at}",
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "video": "video",
+        "audio": "audio",
+        "speed": "{figure}\u00d7",
+        "volume": "{figure}%",
+        "seconds": "{figure} s",
+        "off": "off",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday"
+      }
+    },
+    {
+      "id": "mpv:stopped:to-go",
+      "in": "verb:mpv:on",
+      "name": "Still to Play"
+    },
+    {
+      "id": "mpv:stopped:speed",
+      "in": "verb:mpv:on",
+      "name": "Speed",
+      "term": "Programs/speed"
+    },
+    {
+      "id": "mpv:stopped:volume",
+      "in": "verb:mpv:on",
+      "name": "Volume",
+      "term": "Machine/volume"
+    },
+    {
+      "id": "mpv:stopped:audio",
+      "in": "verb:mpv:on",
+      "name": "Audio"
+    },
+    {
+      "id": "mpv:stopped:subtitles",
+      "in": "verb:mpv:on",
+      "name": "Subtitles"
+    },
+    {
+      "id": "mpv:stopped:size",
+      "in": "verb:mpv:on",
+      "name": "Size"
+    },
+    {
+      "id": "mpv:stopped:path",
+      "in": "verb:mpv:on",
+      "name": "Path"
+    },
+    {
+      "id": "verb:mpv:start",
+      "command": "resume",
+      "bang": true,
+      "in": "path:file",
+      "name": "Play From the Start",
+      "verb": "play",
+      "glyph": "playing"
+    },
+    {
       "id": "docs:document",
       "of": "program:google-docs",
       "name": "Document",
@@ -7481,6 +8370,7 @@
       "id": "program:media",
       "in": "applications",
       "name": "Media",
+      "term": "Programs/Media",
       "verb": "more",
       "glyph": "playing",
       "said": {
@@ -7501,7 +8391,8 @@
     {
       "id": "program:media:volume",
       "in": "program:media",
-      "name": "Volume"
+      "name": "Volume",
+      "term": "Machine/volume"
     },
     {
       "id": "program:media:shuffle",
@@ -7516,7 +8407,8 @@
     {
       "id": "program:media:speed",
       "in": "program:media",
-      "name": "Speed"
+      "name": "Speed",
+      "term": "Programs/speed"
     },
     {
       "id": "program:media:fullscreen",
@@ -7541,7 +8433,8 @@
     {
       "id": "program:media:track",
       "in": "program:media",
-      "name": "Track"
+      "name": "Track",
+      "term": "Programs/track"
     },
     {
       "id": "program:media:genre",
@@ -7661,6 +8554,7 @@
       "id": "program:notices",
       "in": "applications",
       "name": "Notices",
+      "term": "Desktop/notice",
       "verb": "more",
       "glyph": "notifications"
     },

@@ -118,9 +118,12 @@ are joined by `url`.
 
 | Figure | Means | Shows |
 | ------ | ----- | ----- |
-| `name`, `state.value`, `paused`, `default`, `schedule` | a profile and whether it's held off now | place (a device's profile), profile, `profiles` |
+| `name`, `state.value`, `paused`, `default`, `schedule` | a profile and whether it's held off now; `schedule` as how many | place (a device's profile), profile, `profiles` |
+| `state.schedule`, `resources.schedules` | the schedule holding it off now, and where its schedules are read | left out: `null` here, so its shape is unknown, and no schedule to read |
 | `devices[]` | the devices in it | profile, `profile` |
-| `premium_dns`, `unified_content_filters` | what it blocks | profile, `profile` |
+| `unified_content_filters`, `premium_dns.{dns_policies,ad_block_settings,advanced_content_filters,blocked_applications}` | what it blocks and lets through; a kind the unified filters leave out is `premium_dns`'s | profile, `profile`, `profiles` |
+| `premium_dns.{zscaler_location_enabled,dns_provider}` | who answers its filtered lookups | left out: off and `null` here |
+| `proxied_nodes` | not known | left out: empty here |
 | `usage.profile.<id>.json` series | its bytes by hour | profile (a spark), `traffic` |
 | `members[].user_role` | who may change the network | internet, `internet`; names are dropped |
 | `net.reservations.json`, `net.forwards.json`, `net.routing.json` | reserved addresses and forwarded ports | internet, `internet`, the device a reservation names |

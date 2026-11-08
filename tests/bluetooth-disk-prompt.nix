@@ -23,20 +23,7 @@ let
   # unseen. Here it takes this long, and the prompt has to ask well before.
   unsealSeconds = 15;
 
-  # btvirt is built only with BlueZ's tests, which nixpkgs leaves out. Its
-  # server reads every client into one buffer and loses the start of a
-  # header a read ends in, so two machines on serial ports, which pass a
-  # few bytes at a time, each got replies to the other's commands; the
-  # patch gives each client its own buffer, with a header's start kept at
-  # its front.
-  btvirt = pkgs.bluez.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./btvirt-keeps-each-clients-bytes.patch ];
-    configureFlags = old.configureFlags ++ [ "--enable-testing" ];
-    doCheck = false;
-    postInstall = old.postInstall + ''
-      install -Dm755 emulator/btvirt $out/bin/btvirt
-    '';
-  });
+  btvirt = import ./btvirt.nix { inherit pkgs; };
 
   # Each machine's second serial port, ttyS1, to btvirt.
   controller = [

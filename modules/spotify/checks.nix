@@ -32,7 +32,7 @@ onLinux {
   # Spotify's program in the launcher reads Spotify only as it's stepped
   # into, once an opening, and holds its Recent, newest first, each row
   # timed and noting its kind and size, and Liked Songs, Playlists,
-  # Albums, Artists and Shows, each counted, each played, opened and
+  # Albums, Artists and Podcasts, each counted, each played, opened and
   # copied as it says, its note saying when it's signed out or out of
   # reach (tests/spotify-program.qml), with spotify-recent, niri and
   # what's playing stood in.
@@ -70,6 +70,7 @@ onLinux {
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../quickshell/Fuzzy.js} Fuzzy.js
+      cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
       cp ${../quickshell/Words.qml} Words.qml
       cp ${../quickshell/launcher/words.json} launcher/words.json
       cp ${../quickshell/launcher/Provider.qml} launcher/Provider.qml

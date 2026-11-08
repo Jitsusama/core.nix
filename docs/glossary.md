@@ -197,6 +197,8 @@ be read, marked unread and archived.
 | Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
+| podcast | a series of spoken episodes a player plays, such as one on Spotify | | Spotify's `show` |
+| episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
 
 ## People
@@ -222,6 +224,8 @@ or a copy, can be opened, copied or forgotten.
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
 | screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
 | brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
+| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's | | the `backlight` program's colour temperature |
+| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
 | window | a program's rectangle on the screen | | |
@@ -268,6 +272,9 @@ or a copy, can be opened, copied or forgotten.
 | photo | a picture Joel takes with the camera | | |
 | screenshot text | the words in a screenshot, read on the machine as it's taken, so it's found by them and they can be copied | OCR | `screen-text` |
 | location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` program |
+| time server | a clock elsewhere that the machine sets its own time by, over the network, listed in Time's Servers | | chrony's sources, its `server` mode |
+| time peer | a time server that sets its time by the machine's too, each keeping the other right | | chrony's `peer` mode |
+| reference clock | a clock wired to the machine that it sets its time by, such as a GPS receiver | | chrony's `refclock` |
 | here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
 
 ## Machine
@@ -381,7 +388,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
 | rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
-| traffic | how much data the home network, a node or a device moved, by hour | data usage | `usage`, `data_usage` |
+| traffic | how much data the machine's link, the home network, a node or a device moved | data usage | `usage`, `data_usage`, `wifi:carried` |
 | profile | a group of devices eero lets through or holds off together | | `profiles` |
 | light | a node's status light, on or off and how bright | | eero's `led_on`, `led_brightness` |
 | mode | how the gateway node gets its address: lent by the internet provider's server, set by hand, or through a sign-in | | eero's `lease.mode` |

@@ -6,7 +6,8 @@ and 2, as the laptop does. Its drawer is a plate whose every line lies on one of
 (docs/design.md, the drawer), measured from what the launcher reports of both to a hundredth of a
 pixel, and shot in the gallery for a person to measure too; the file picker's plate is
 held to the same lines for each kind of file it previews. An ErgoDox unplugged goes from the
-keyboard's layout and the launcher, and comes back plugged in. tests/desktop.nix runs this
+keyboard's layout and the launcher, and comes back plugged in. Bluetooth's Nearby hears a
+device of BlueZ's emulator while it's open, and only then. tests/desktop.nix runs this
 through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
 test proves. Every test asks for the desktop, started once a run (desktop_session.py), and leaves
 it as it found it.
@@ -1252,10 +1253,8 @@ def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
     assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
 
 
-def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
-    """The Home Network shows the eero daemon's record, and each thing's plate whole.
+def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
+    """Hold the Home Network to the eero daemon's record, and each thing's plate whole.
 
     The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
@@ -1291,6 +1290,7 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
         desktop.shoot(f"launcher-home-network-device-at-{at}")
         desktop.close_launcher()
         devices_plates_lie_on_the_lines(desktop, scale)
+        the_desk_lights_plate_lies_on_the_lines(desktop, scale)
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
@@ -1312,8 +1312,17 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             desktop.type_in(typed, selecting=typed)
 
         def plated(shown: Json, first: str = first) -> bool:  # As launcher_until calls it.
-            """Say whether the drawer is out, holding this plate's first fact."""
-            return shown["drawer"]["out"] is True and first in shown["drawer"]["facts"]
+            """Say whether the drawer is out, holding this plate's first fact, its facts laid.
+
+            A busy VM has reported a plate out before its facts were placed, all on one line,
+            so it's waited for laid rather than held to the pitch at once.
+            """
+            drawer = shown["drawer"]
+            return (
+                drawer["out"] is True
+                and first in drawer["facts"]
+                and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+            )
 
         desktop.launcher_until(plated)
         drawer = plate_shown(desktop, scale)
@@ -1350,6 +1359,54 @@ def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
         assert (unread["count"], unread["side"]) == ("Lunch on Friday", "1"), unread
         desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+
+
+def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> None:
+    """Hold the desk light's plate to the lines, as a sound device's.
+
+    A stand-in Litra Glow (desk-light-stand-in.py) is plugged in, lit as a Glow first is, and
+    the desk light answer's drawer says where it is and what it is over the light's own name,
+    then its output in lumens of its range, its HID device and its serial (VKCF3Z, 2026-11-08).
+    It's unplugged again after, so no later shot holds a light that test order put there.
+    systemd's hwdb opens a Litra to the seat by its USB parent, which a uhid stand-in hasn't, so
+    its node is given to the account here, as udev gives a real one; `litra watch` tries again
+    when it is.
+    """
+    machine = desktop.machine
+    light = desktop.values["desk_light"]
+    machine.succeed(
+        "systemctl is-active --quiet desk-light"
+        f" || systemd-run --unit=desk-light {light} litra /run/desk-light.log"
+    )
+    try:
+        found = machine.wait_until_succeeds(
+            "grep -l HID_ID=0003:0000046D:0000C900 /sys/class/hidraw/*/device/uevent",
+            timeout=timedelta(seconds=30),
+        )
+        node = found.split("/")[4]
+        machine.succeed(f"chown {desktop.account} /dev/{node}")
+        desktop.answer("desk light")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and "Output" in shown["drawer"]["facts"]
+                and things_apart(
+                    shown["drawer"]["lines"]["facts"], shown["drawer"]["factsWrapped"] > 0
+                )
+            )
+        )
+        drawer = plate_shown(desktop, scale)
+        assert drawer["eyebrow"] == "on USB \u00b7 desk light", f"at {scale}: {drawer}"
+        assert drawer["facts"] == ["Output", "HID Device", "Serial"], f"at {scale}: {drawer}"
+        assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
+            f"at {scale} the desk light's facts are off the pitch: {drawer}"
+        )
+        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
+        desktop.shoot(f"launcher-plate-desk-light-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    finally:
+        machine.succeed("systemctl stop desk-light")
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
@@ -2920,3 +2977,150 @@ def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
             )
     finally:
         desktop.as_account("systemctl --user stop player || true")
+
+
+# The device Nearby hears: btvirt's second controller, named as BlueZ names a device by what it
+# calls itself, and how strong btvirt says every device is heard (emulator/btdev.c's inquiry).
+HEARD = "Buds"
+HEARD_AT = "\u221260 dBm \u00b7 strong"
+# BlueZ's adapters, both seen as Buds: the launcher looks from the first Quickshell is told of,
+# which with BlueZ starting after the shell is either, and hears the other.
+ADAPTERS = ("/org/bluez/hci0", "/org/bluez/hci1")
+
+
+def bluez_set(desktop: Desktop, adapter: str, name: str, kind: str, value: str) -> None:
+    """Set one of an adapter's properties over BlueZ's D-Bus, as bluetoothctl would."""
+    desktop.machine.succeed(
+        f"busctl set-property org.bluez {adapter} org.bluez.Adapter1 {name} {kind} {value}"
+    )
+
+
+def discovering(adapter: str) -> str:
+    """Ask BlueZ whether an adapter is looking for devices, which busctl says as "b true"."""
+    return f"busctl get-property org.bluez {adapter} org.bluez.Adapter1 Discovering"
+
+
+def looking(desktop: Desktop) -> bool:
+    """Say whether the launcher's adapter, whichever it is, is looking for devices."""
+    return any(
+        desktop.machine.succeed(discovering(adapter)).strip() == "b true" for adapter in ADAPTERS
+    )
+
+
+def radios_up(desktop: Desktop) -> None:
+    """Power both of btvirt's adapters once BlueZ lists them."""
+    for adapter in ADAPTERS:
+        # An adapter BlueZ lists may still be setting up, and refuses power until it's done.
+        desktop.machine.wait_until_succeeds(
+            f"busctl set-property org.bluez {adapter} org.bluez.Adapter1 Powered b true",
+            timeout=timedelta(seconds=30),
+        )
+
+
+def radios_seen(desktop: Desktop, seen: bool) -> None:
+    """Make both adapters visible as Buds, for good, or hide them; BlueZ keeps which."""
+    for adapter in ADAPTERS:
+        bluez_set(desktop, adapter, "Alias", "s", HEARD)
+        bluez_set(desktop, adapter, "DiscoverableTimeout", "u", "0")
+        bluez_set(desktop, adapter, "Discoverable", "b", "true" if seen else "false")
+
+
+def looks_soon(desktop: Desktop) -> None:
+    """Wait for the launcher's adapter, whichever it is, to look for devices."""
+    desktop.machine.wait_until_succeeds(
+        " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS),
+        timeout=timedelta(seconds=30),
+    )
+
+
+def buds(shown: dict[str, Any]) -> list[bool]:
+    """Say, for each row of Buds the launcher lists, whether it's gone."""
+    return [thing["gone"] for thing in shown["things"] if thing["reads"].startswith(HEARD)]
+
+
+# Nearby lists the devices the radio hears only while it's open (VKCF3Z, 2026-11-07): two
+# controllers of btvirt's, each made visible as Buds, so the launcher's radio, whichever it is,
+# looks once Nearby is stepped into, and the other is listed with its signal as Quickshell's
+# patch says it (modules/quickshell/bluetooth-rssi-and-failures.patch), never paired. BlueZ
+# starts here after the shell, as a restarted bluetoothd does, which the shell takes up
+# (bluetooth-finds-bluez-late.patch). bluetoothd restarting, as a switch restarts it, says
+# nothing of its devices as it stops, and comes back knowing none it hadn't paired, so the shell
+# forgets them as it goes and keeps only what BlueZ has on return: with both radios hidden
+# across the restart, Buds stays in Nearby, still open, gone, as Steady keeps a row, rather than
+# heard on with its last signal, while Nearby looks again; shown once more, Buds is heard afresh,
+# by whichever radio the shell now takes for its own, so as the same row or beside the one gone.
+# Run last of the area's, since BlueZ starting moves what the launcher holds.
+
+
+def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]) -> None:
+    """Hold Nearby to looking once open, listing Buds with its signal, no longer than BlueZ."""
+    machine = desktop.machine
+    machine.succeed("modprobe bluetooth && modprobe hci_vhci")
+    machine.succeed(f"systemd-run --unit=btvirt {values['btvirt']} -l2")
+    machine.succeed("systemctl start bluetooth.service")
+    try:
+        radios_up(desktop)
+        radios_seen(desktop, seen=True)
+        for scale in at_each_scale:
+            named = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            desktop.answer("bluetooth")
+            # The find answers a moment after the letters, with nothing selected until then.
+            desktop.launcher_until(
+                lambda shown: (shown["selected"] or {}).get("name") == "Bluetooth"
+            )
+            desktop.step_in()
+            desktop.launcher_until(lambda shown: "Nearby" in shown["rows"])
+            # Not looking yet: only Nearby looks.
+            assert not looking(desktop)
+            desktop.down_to("Nearby")
+            desktop.step_in()
+            desktop.launcher_until(
+                lambda shown: HEARD in shown["rows"], timeout=timedelta(seconds=60)
+            )
+            assert looking(desktop)
+            desktop.down_to(HEARD)
+            selected = desktop.showing()["selected"]
+            assert selected["side"] == HEARD_AT, selected
+            desktop.shoot(f"launcher-nearby-at-{named}")
+            desktop.step_out()
+            # Out of Nearby, the radio stops looking, and Bluetooth lists only what's paired.
+            machine.wait_until_succeeds(
+                " && ".join(f"{discovering(adapter)} | grep -qx 'b false'" for adapter in ADAPTERS),
+                timeout=timedelta(seconds=30),
+            )
+            assert HEARD not in desktop.showing()["rows"]
+            desktop.shoot(f"launcher-bluetooth-at-{named}")
+            desktop.close_launcher()
+        desktop.answer("bluetooth")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Bluetooth")
+        desktop.step_in()
+        desktop.down_to("Nearby")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: buds(shown) == [False], timeout=timedelta(seconds=60))
+        # Hidden at once, then stopped well before BlueZ would forget Buds for going unheard.
+        radios_seen(desktop, seen=False)
+        # Restarted, not stopped then started: a BlueZ client on the bus (WirePlumber's) may ask
+        # for it the moment it's gone, which has the bus start it again and cancel a stop.
+        machine.succeed("systemctl restart bluetooth.service")
+        radios_up(desktop)
+        desktop.launcher_until(lambda shown: buds(shown) == [True], timeout=timedelta(seconds=30))
+        looks_soon(desktop)
+        radios_seen(desktop, seen=True)
+        desktop.launcher_until(lambda shown: False in buds(shown), timeout=timedelta(seconds=60))
+        desktop.close_launcher()
+    finally:
+        machine.succeed("systemctl stop bluetooth.service btvirt || true")
+
+
+# What's around the machine, on its network and in the air, as the places that list it lay it
+# out: one subtest, since the area holds the pyramid's twenty (docs/testing.md), and last, for
+# Nearby's sake.
+
+
+def test_the_home_network_and_nearby_list_whats_around_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]
+) -> None:
+    """The Home Network lays out the eero daemon's record, and Nearby what the radio hears."""
+    home_network_laid_out(desktop, at_each_scale)
+    nearby_heard(desktop, at_each_scale, values)

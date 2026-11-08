@@ -33,6 +33,11 @@ pub const LAPS: usize = 999;
 /// so.
 pub const LATE: u64 = 5_000;
 
+/// How long past its end a timer coming due is still heard aloud. Later,
+/// as after a reboot or a night's suspend, its notice saying it rang late
+/// is enough, and a ding for a tea that went cold hours ago is noise.
+pub const HEARD: u64 = 60_000;
+
 /// The longest span a timer takes: a week, past which it's a reminder,
 /// not a timer.
 pub const LONGEST: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -114,18 +119,28 @@ impl Timer {
 pub enum Refusal {
     /// No timer is kept by this key.
     Unknown(String),
-    /// What was asked doesn't fit it, in a sentence.
-    Unfit(&'static str),
+    /// What was asked doesn't fit it: why, by a reason the launcher says in
+    /// its own words (words.json's timer and stopwatch), and in a sentence
+    /// for anything else that asks.
+    Unfit {
+        reason: &'static str,
+        why: &'static str,
+    },
 }
 
 impl Refusal {
     /// The daemon interface's error for it.
     pub fn json(&self, id: &Value) -> Value {
-        match self {
-            Refusal::Unknown(key) => error(id, "not-found", &format!("no timer {key}")),
-            Refusal::Unfit(why) => error(id, "refused", why),
-        }
+        let (code, reason, message) = match self {
+            Refusal::Unknown(key) => ("not-found", "gone", format!("no timer {key}")),
+            Refusal::Unfit { reason, why } => ("refused", *reason, (*why).to_owned()),
+        };
+        json!({"id": id, "error": {"code": code, "reason": reason, "message": message}})
     }
+}
+
+fn unfit(reason: &'static str, why: &'static str) -> Refusal {
+    Refusal::Unfit { reason, why }
 }
 
 /// The one stopwatch: what it counted in the stretches it ran before,
@@ -166,7 +181,7 @@ impl Stopwatch {
     /// Sets it counting on from what it has.
     pub fn run(&mut self, now: u64) -> Result<&Stopwatch, Refusal> {
         if self.since.is_some() {
-            return Err(Refusal::Unfit("the stopwatch is running already"));
+            return Err(unfit("runningAlready", "the stopwatch is running already"));
         }
         self.since = Some(now);
         Ok(self)
@@ -175,7 +190,7 @@ impl Stopwatch {
     /// Holds what it has counted.
     pub fn stop(&mut self, now: u64) -> Result<&Stopwatch, Refusal> {
         let Some(since) = self.since else {
-            return Err(Refusal::Unfit("only a running stopwatch stops"));
+            return Err(unfit("pausesRunning", "only a running stopwatch pauses"));
         };
         self.counted += now.saturating_sub(since);
         self.since = None;
@@ -185,10 +200,10 @@ impl Stopwatch {
     /// Marks its count now as a lap.
     pub fn lap(&mut self, now: u64) -> Result<&Stopwatch, Refusal> {
         if self.since.is_none() {
-            return Err(Refusal::Unfit("only a running stopwatch laps"));
+            return Err(unfit("lapsRunning", "only a running stopwatch laps"));
         }
         if self.laps.len() >= LAPS {
-            return Err(Refusal::Unfit("the stopwatch keeps 999 laps at most"));
+            return Err(unfit("lapsFull", "the stopwatch keeps 999 laps at most"));
         }
         self.laps.push(self.count(now));
         Ok(self)
@@ -270,7 +285,7 @@ impl Held {
     pub fn pause(&mut self, key: &str, now: u64) -> Result<&Timer, Refusal> {
         let timer = self.find(key)?;
         let Standing::Running { ends } = timer.standing else {
-            return Err(Refusal::Unfit("only a running timer pauses"));
+            return Err(unfit("pausesRunning", "only a running timer pauses"));
         };
         timer.standing = Standing::Paused {
             left: ends.saturating_sub(now),
@@ -282,7 +297,7 @@ impl Held {
     pub fn resume(&mut self, key: &str, now: u64) -> Result<&Timer, Refusal> {
         let timer = self.find(key)?;
         let Standing::Paused { left } = timer.standing else {
-            return Err(Refusal::Unfit("only a paused timer resumes"));
+            return Err(unfit("resumesPaused", "only a paused timer resumes"));
         };
         timer.standing = Standing::Running { ends: now + left };
         Ok(timer)
@@ -305,7 +320,7 @@ impl Held {
         let more = fitting(more)?;
         let timer = self.find(key)?;
         if timer.left(now) + more > LONGEST {
-            return Err(Refusal::Unfit("a timer counts a week at most"));
+            return Err(unfit("pastAWeek", "a timer counts a week at most"));
         }
         timer.standing = match timer.standing {
             Standing::Running { ends } => Standing::Running { ends: ends + more },
@@ -329,6 +344,14 @@ impl Held {
             .position(|timer| timer.key == key)
             .ok_or_else(|| Refusal::Unknown(key.to_owned()))?;
         Ok(self.timers.remove(at))
+    }
+
+    /// Whether any running one whose end has passed by `now` passed it
+    /// recently enough to be heard, asked before `due` rings them.
+    pub fn heard(&self, now: u64) -> bool {
+        self.timers.iter().any(|timer| {
+            matches!(timer.standing, Standing::Running { ends } if ends <= now && now - ends <= HEARD)
+        })
     }
 
     /// Rings every running one whose end has passed by `now`, saying which.
@@ -393,9 +416,9 @@ pub fn unsaid(timer: &Timer, server: &str) -> bool {
 /// A span a timer can count: more than nothing and a week at most.
 fn fitting(span: u64) -> Result<u64, Refusal> {
     if span == 0 {
-        Err(Refusal::Unfit("a timer counts more than nothing"))
+        Err(unfit("nothing", "a timer counts more than nothing"))
     } else if span > LONGEST {
-        Err(Refusal::Unfit("a timer counts a week at most"))
+        Err(unfit("pastAWeek", "a timer counts a week at most"))
     } else {
         Ok(span)
     }
@@ -675,10 +698,19 @@ mod tests {
     #[test]
     fn a_span_of_nothing_or_past_a_week_is_refused() {
         let mut held = Held::default();
-        assert!(matches!(held.start("", 0, 0), Err(Refusal::Unfit(_))));
+        assert!(matches!(
+            held.start("", 0, 0),
+            Err(Refusal::Unfit {
+                reason: "nothing",
+                ..
+            })
+        ));
         assert!(matches!(
             held.start("", LONGEST + 1, 0),
-            Err(Refusal::Unfit(_))
+            Err(Refusal::Unfit {
+                reason: "pastAWeek",
+                ..
+            })
         ));
         assert!(held.timers.is_empty());
     }
@@ -710,11 +742,33 @@ mod tests {
     fn pausing_or_resuming_what_doesnt_fit_is_refused() {
         let mut held = Held::default();
         held.start("tea", MINUTE, 0).unwrap();
-        assert!(matches!(held.resume("timer:1", 0), Err(Refusal::Unfit(_))));
+        assert!(matches!(
+            held.resume("timer:1", 0),
+            Err(Refusal::Unfit {
+                reason: "resumesPaused",
+                ..
+            })
+        ));
         assert_eq!(
             held.pause("timer:9", 0),
             Err(Refusal::Unknown("timer:9".to_owned()))
         );
+    }
+
+    #[test]
+    fn a_timer_coming_due_is_heard_only_within_a_minute_of_its_end() {
+        let mut held = Held::default();
+        assert!(!held.heard(MINUTE));
+        held.start("tea", MINUTE, 0).unwrap();
+        assert!(!held.heard(MINUTE - 1));
+        assert!(held.heard(MINUTE));
+        assert!(held.heard(MINUTE + HEARD));
+        assert!(!held.heard(MINUTE + HEARD + 1));
+        // One heard among those due is enough to sound the ring once.
+        held.start("eggs", MINUTE + HEARD, 0).unwrap();
+        assert!(held.heard(MINUTE + HEARD + 1));
+        held.due(MINUTE + HEARD + 1);
+        assert!(!held.heard(MINUTE + HEARD + 1));
     }
 
     #[test]
@@ -906,11 +960,23 @@ mod tests {
         assert_eq!(held.stopwatch.json()["state"], "unstarted");
         held.stopwatch.run(1_000).unwrap();
         assert_eq!(held.stopwatch.count(4_000), 3_000);
-        assert!(matches!(held.stopwatch.run(4_000), Err(Refusal::Unfit(_))));
+        assert!(matches!(
+            held.stopwatch.run(4_000),
+            Err(Refusal::Unfit {
+                reason: "runningAlready",
+                ..
+            })
+        ));
         held.stopwatch.stop(5_000).unwrap();
         assert_eq!(held.stopwatch.count(60_000), 4_000);
         assert_eq!(held.stopwatch.json()["state"], "stopped");
-        assert!(matches!(held.stopwatch.stop(6_000), Err(Refusal::Unfit(_))));
+        assert!(matches!(
+            held.stopwatch.stop(6_000),
+            Err(Refusal::Unfit {
+                reason: "pausesRunning",
+                ..
+            })
+        ));
         held.stopwatch.run(10_000).unwrap();
         assert_eq!(
             held.stopwatch.json(),
@@ -923,7 +989,13 @@ mod tests {
     #[test]
     fn a_lap_marks_its_count_only_while_it_runs_and_reset_clears_them() {
         let mut held = Held::default();
-        assert!(matches!(held.stopwatch.lap(0), Err(Refusal::Unfit(_))));
+        assert!(matches!(
+            held.stopwatch.lap(0),
+            Err(Refusal::Unfit {
+                reason: "lapsRunning",
+                ..
+            })
+        ));
         held.stopwatch.run(0).unwrap();
         held.stopwatch.lap(2_000).unwrap();
         held.stopwatch.stop(3_000).unwrap();
@@ -931,7 +1003,13 @@ mod tests {
         held.stopwatch.lap(12_000).unwrap();
         assert_eq!(held.stopwatch.laps, vec![2_000, 5_000]);
         held.stopwatch.laps = vec![0; LAPS];
-        assert!(matches!(held.stopwatch.lap(13_000), Err(Refusal::Unfit(_))));
+        assert!(matches!(
+            held.stopwatch.lap(13_000),
+            Err(Refusal::Unfit {
+                reason: "lapsFull",
+                ..
+            })
+        ));
         held.stopwatch.reset();
         assert_eq!(held.stopwatch, Stopwatch::default());
     }

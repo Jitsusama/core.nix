@@ -729,8 +729,9 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             )
         )
         desktop.shoot("launcher-displays")
-        # A scale is said as a multiple, "1.5\u00d7", and typed as one. A
-        # whole one starts every other too, and what was picked last leads
+        # A scale is said as a multiple, "1.5\u00d7", and typed as one inside,
+        # or found from outside by its share, "scale 150", as niri says it.
+        # A whole one starts every other too, and what was picked last leads
         # them, so the row is gone down to.
         multiple = f"{wanted:g}"
         if inside:
@@ -739,7 +740,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             desktop.launcher_until(lambda shown: "Scale to 1.5\u00d7" in shown["rows"])
             desktop.type_in(multiple)
         else:
-            desktop.type_in(f"scale {multiple}")
+            desktop.type_in(f"scale {round(wanted * 100)}")
         desktop.down_to(f"Scale to {multiple}\u00d7")
         desktop.land()
         machine.send_key("ret")
@@ -1328,6 +1329,17 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
     machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
+    # Its traffic each way since it connected, as wifid reads it, each
+    # way's packets a step in.
+    desktop.type_in("traffic", selecting="Traffic")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: {"Received", "Sent"} <= set(shown["rows"]))
+    desktop.step_out()
+    desktop.launcher_until(
+        lambda shown: len(shown["held"]) == office and shown["typed"] == "traffic"
+    )
+    machine.send_chars("cc", delay=KEY_PACE)
+    desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them; the figure's
     # own Copy last (docs/design.md, "Copy ... is always the last").
@@ -1803,7 +1815,7 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
     desktop.close_launcher()
     shoot_now_holding_timers(desktop, "running")
-    # Bread paused and the stopwatch stopped leave only what's paused.
+    # Bread and the stopwatch paused leave only what's paused.
     pick_a_timer(desktop, "Bread")
     machine.send_key("ret")
     desktop.launcher_until(
@@ -1813,7 +1825,7 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     pick_a_timer(desktop, "Stopwatch")
     machine.send_key("ret")
     desktop.launcher_until(
-        lambda shown: str((shown["selected"] or {}).get("note")).startswith("stopped")
+        lambda shown: str((shown["selected"] or {}).get("note")).startswith("paused")
     )
     desktop.close_launcher()
     shoot_now_holding_timers(desktop, "paused")

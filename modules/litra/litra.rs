@@ -127,6 +127,38 @@ fn lights(sys: &Path, dev: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// What a light says of itself when it's plugged in, by the HID device
+/// behind its node: its name ("Logitech Litra Glow") and its serial, each
+/// empty where it gives none, and whether it's a Glow, whose range in
+/// lumens this knows. A Beam's is wider, 30 to 400, and this maps it as a
+/// Glow's, so it says no range for one rather than a wrong one.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct About {
+    name: String,
+    serial: String,
+    glow: bool,
+}
+
+fn about(sys: &Path, node: &Path) -> About {
+    let Some(name) = node.file_name() else {
+        return About::default();
+    };
+    let uevent = sys.join("class/hidraw").join(name).join("device/uevent");
+    let text = fs::read_to_string(uevent).unwrap_or_default();
+    let field = |key: &str| {
+        text.lines()
+            .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    };
+    About {
+        name: field("HID_NAME"),
+        serial: field("HID_UNIQ"),
+        glow: text.lines().any(|line| line == LIGHTS[0]),
+    }
+}
+
 /// Every light plugged in, each with the HID device behind its node. hidraw
 /// gives a light plugged back in the name it had before, as nothing took it
 /// meanwhile, but the HID device is made anew at every plug, so it tells a
@@ -331,20 +363,45 @@ fn hear(state: &mut State, report: &[u8]) -> Heard {
     }
 }
 
-/// The lights that have said everything about themselves, as JSON.
-fn json<'a>(lights: impl IntoIterator<Item = (&'a Path, &'a State)>) -> String {
+/// Text as a JSON string holds it.
+fn quoted(text: &str) -> String {
+    use std::fmt::Write as _;
+    let mut said = String::with_capacity(text.len() + 2);
+    said.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => said.push_str("\\\""),
+            '\\' => said.push_str("\\\\"),
+            c if u32::from(c) < 0x20 => {
+                let _ = write!(said, "\\u{:04x}", u32::from(c));
+            }
+            c => said.push(c),
+        }
+    }
+    said.push('"');
+    said
+}
+
+/// The lights that have said everything about themselves, as JSON: each
+/// one's node, whether it's on, its share of the brightest and the lumens
+/// that is, which its own units are, its warmth, and its name and serial
+/// as it gives them.
+fn json<'a>(lights: impl IntoIterator<Item = (&'a Path, &'a State, &'a About)>) -> String {
     let said: Vec<String> = lights
         .into_iter()
-        .filter_map(|(node, state)| {
+        .filter_map(|(node, state, about)| {
             let (on, units, kelvin) = (state.on?, state.units?, state.kelvin?);
-            let node = node
-                .display()
-                .to_string()
-                .replace('\\', "\\\\")
-                .replace('"', "\\\"");
+            let range = if about.glow {
+                format!(r#","dimmest":{DIMMEST},"brightest":{BRIGHTEST}"#)
+            } else {
+                String::new()
+            };
             Some(format!(
-                r#"{{"node":"{node}","on":{on},"percent":{},"kelvin":{kelvin}}}"#,
-                percent(units)
+                r#"{{"node":{},"on":{on},"percent":{},"lumens":{units}{range},"kelvin":{kelvin},"name":{},"serial":{}}}"#,
+                quoted(&node.display().to_string()),
+                percent(units),
+                quoted(&about.name),
+                quoted(&about.serial)
             ))
         })
         .collect();
@@ -370,7 +427,10 @@ fn status(as_json: bool) -> ExitCode {
     let mut said = Vec::new();
     for node in lights(Path::new("/sys"), Path::new("/dev")) {
         match ask_state(&node) {
-            Ok(state) if as_json => said.push((node, state)),
+            Ok(state) if as_json => {
+                let about = about(Path::new("/sys"), &node);
+                said.push((node, state, about));
+            }
             Ok(State {
                 on: Some(on),
                 units: Some(units),
@@ -387,7 +447,10 @@ fn status(as_json: bool) -> ExitCode {
     if as_json {
         println!(
             "{}",
-            json(said.iter().map(|(node, state)| (node.as_path(), state)))
+            json(
+                said.iter()
+                    .map(|(node, state, about)| (node.as_path(), state, about))
+            )
         );
     }
     ExitCode::SUCCESS
@@ -607,6 +670,20 @@ struct Watched {
     node: PathBuf,
     light: Light,
     state: State,
+    about: About,
+}
+
+impl Watched {
+    /// A light found out, with what its HID device says of it.
+    fn new(node: PathBuf, light: Light, state: State) -> Self {
+        let about = about(Path::new("/sys"), &node);
+        Self {
+            node,
+            light,
+            state,
+            about,
+        }
+    }
 }
 
 fn watch() -> ExitCode {
@@ -637,7 +714,7 @@ fn watch() -> ExitCode {
                 let mut state = State::default();
                 let asking = vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS];
                 if find_out(&mut light, &mut state, asking).is_ok() {
-                    watched.push(Watched { node, light, state });
+                    watched.push(Watched::new(node, light, state));
                 }
             }
             look = false;
@@ -646,7 +723,7 @@ fn watch() -> ExitCode {
         let line = json(
             watched
                 .iter()
-                .map(|light| (light.node.as_path(), &light.state)),
+                .map(|light| (light.node.as_path(), &light.state, &light.about)),
         );
         if said.as_ref() != Some(&line) {
             if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
@@ -806,6 +883,31 @@ mod tests {
         assert_eq!(lights(&root.join("nothing"), Path::new("/dev")), [] as [std::path::PathBuf; 0]);
     }
 
+    #[test]
+    fn a_light_says_its_name_and_serial_as_its_hid_device_gives_them() {
+        let root = root("about");
+        let device = root.join("sys/class/hidraw/hidraw1/device");
+        fs::create_dir_all(&device).unwrap();
+        fs::write(
+            device.join("uevent"),
+            "HID_ID=0003:0000046D:0000C900\nHID_NAME=Logitech Litra Glow\nHID_UNIQ=2213FE40\n",
+        )
+        .unwrap();
+        assert_eq!(
+            about(&root.join("sys"), Path::new("/dev/hidraw1")),
+            About {
+                name: "Logitech Litra Glow".to_owned(),
+                serial: "2213FE40".to_owned(),
+                glow: true,
+            }
+        );
+        node(&root, "hidraw2", "0003:0000046D:0000C901");
+        assert_eq!(
+            about(&root.join("sys"), Path::new("/dev/hidraw2")),
+            About::default()
+        );
+    }
+
     /// A light's node as the kernel makes it: hidraw's entry linked to the
     /// HID device behind it, which is numbered anew at each plug.
     fn plugged_in(root: &Path, name: &str, device: &str) {
@@ -950,20 +1052,26 @@ mod tests {
             on: Some(true),
             ..State::default()
         };
+        let glow = About {
+            name: "Logitech Litra Glow".to_owned(),
+            serial: "2213FE40".to_owned(),
+            glow: true,
+        };
+        let unknown = About::default();
         assert_eq!(json([]), "[]");
         assert_eq!(
             json([
-                (Path::new("/dev/hidraw1"), &whole),
-                (Path::new("/dev/hidraw4"), &partial),
+                (Path::new("/dev/hidraw1"), &whole, &glow),
+                (Path::new("/dev/hidraw4"), &partial, &glow),
             ]),
-            r#"[{"node":"/dev/hidraw1","on":false,"percent":17,"kelvin":5000}]"#
+            r#"[{"node":"/dev/hidraw1","on":false,"percent":17,"lumens":59,"dimmest":20,"brightest":250,"kelvin":5000,"name":"Logitech Litra Glow","serial":"2213FE40"}]"#
         );
         assert_eq!(
             json([
-                (Path::new("/dev/a\"b"), &whole),
-                (Path::new("/dev/c"), &whole)
+                (Path::new("/dev/a\"b"), &whole, &unknown),
+                (Path::new("/dev/c\\\u{1}"), &whole, &unknown)
             ]),
-            r#"[{"node":"/dev/a\"b","on":false,"percent":17,"kelvin":5000},{"node":"/dev/c","on":false,"percent":17,"kelvin":5000}]"#
+            r#"[{"node":"/dev/a\"b","on":false,"percent":17,"lumens":59,"kelvin":5000,"name":"","serial":""},{"node":"/dev/c\\\u0001","on":false,"percent":17,"lumens":59,"kelvin":5000,"name":"","serial":""}]"#
         );
     }
 

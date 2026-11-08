@@ -6,6 +6,7 @@
 // always last, after every group. Apart from the launcher, so
 // tests/now-groups.qml holds it in Qt's own engine.
 .pragma library
+.import "Order.js" as Order
 
 // Now's groups, top to bottom: what wants Joel, what reaches other people
 // (a call, a share, a recording), what's playing, and the modes he left
@@ -25,6 +26,6 @@ function rank(row) {
 // says it holds rows (Launcher.qml), so Now's rows are given beside
 // their group rather than carrying it.
 function ordered(rows) {
-    return rows.slice().sort((a, b) => rank(a) - rank(b)
-        || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+    return rows.slice().sort(Order.then((a, b) => rank(a) - rank(b),
+        Order.byName(row => row.name)));
 }

@@ -21,8 +21,10 @@ const LOOPS = ["off", "track", "playlist"];
 // A rate said to two places at most, as players offer them: 1.25×.
 const PLACES = 100;
 
-// A remote picture, which the network gives.
-const REMOTE = /^https?:/i;
+// A remote picture, which the network gives, and only over TLS: lookups
+// say the network may be asked, not that it may be asked in the clear
+// (Y2YBTS, 2026-11-08), so art at an http address is never drawn.
+const REMOTE = /^https:/i;
 // One on the machine, or held in the address itself, as mpv's gives the
 // art a file carries: neither asks the network.
 const LOCAL = /^(?:file:\/\/|data:image\/)/i;

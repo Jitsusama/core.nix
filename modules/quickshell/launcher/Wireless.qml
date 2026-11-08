@@ -10,24 +10,32 @@
 // server proving it's that domain's before it's told. Stepping into a
 // network gives, after what can be done to it, the network in detail, each
 // a part named first: the card's Signal (a spark of it while shown, each
-// antenna, the transmit power a step in), its Speed (each way, the Wi-Fi
-// generation, coding, width, channel and Retries a step in), its
-// Protection, said for what it means, its Access points, each a step into
-// its own parts, with the one wifid would pick and why, and how long it's
-// been Connected for. A network wanting a sign-in offers to sign in to it
-// first. Turning Wi-Fi off and on is an action in the main search.
-// Everything else comes from wifid over its socket (Wifi.qml), and the
-// cards look for networks only while the launcher is open. What wifid
-// doesn't say of a link (each antenna, transmit power, retries, how long
-// it's been on, the generation) iw reads, every few seconds while the
-// network joined is shown, by one spawn of the `iw` setting's script, and
-// never for a key.
+// antenna, the beacons' timing and the transmit power a step in), its Speed
+// (each way, what the link is expected to carry, the Wi-Fi generation, and
+// the coding, streams, guard interval, DCM and width each way, the
+// channel, how its frames are framed and wait for the air, and Retries a
+// step in),
+// its Traffic each way since it connected (the packets, and how long
+// since a frame, a step in), its Protection, said for what it means, its
+// Access points, each a step into its own parts, with the one wifid would
+// pick and why, and how long it's been Connected for. A network wanting a
+// sign-in offers to sign in to it first. Turning Wi-Fi off and on is an
+// action in the main search. Everything else comes from wifid over its
+// socket (Wifi.qml), and the cards look for networks only while the
+// launcher is open. What wifid doesn't say of a link (each antenna,
+// transmit power, retries, how long it's been on, each way's width, Wi-Fi
+// 7's coding, the beacons' timing, the preamble, slot time and WMM) iw reads, every few seconds while the network joined is
+// shown, by one spawn of the `iw` setting's script, and never for a key.
+// What the card carries a second is Traffic's, so it isn't said here too.
 import qs
 import Quickshell.Io
 import QtQuick
+import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Interfaces.js" as Interfaces
+import "WifiLink.js" as WifiLink
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -37,6 +45,10 @@ Provider {
     // A machine without wifid, or without a card, has no Wi-Fi to show.
     readonly property bool present: Wifi.described && Wifi.cards.length > 0
     readonly property bool on: present && Wifi.radio
+
+    // An access point's time unit, in which it says how often its beacons
+    // come: 1024 microseconds, in milliseconds.
+    readonly property real timeUnit: 1.024
 
     // :set wifi, nowifi and wifi! turn the radio as Wi-Fi Off and On do,
     // and :set wifi=Home-5G joins a network saved, as Return on it does;
@@ -202,8 +214,8 @@ Provider {
                 heard.push(described(card.network, kept ? kept.security : "open", 0));
         }
         const rank = network => network.connected ? 0 : network.known ? 1 : 2;
-        return heard.sort((a, b) => rank(a) - rank(b) || b.strength - a.strength
-            || a.name.localeCompare(b.name));
+        return heard.sort(Order.live({ stands: rank, then: (a, b) => b.strength - a.strength,
+            name: network => network.name }));
     }
 
     function described(name, security, strength) {
@@ -406,7 +418,7 @@ Provider {
         : (Wifi.cards.find(card => card.network === looking) ?? { name: "" }).name
     readonly property string reader: settings.iw ?? ""
 
-    // What iw last read of that card's link (Interfaces.radio), as
+    // What iw last read of that card's link (WifiLink.radio), as
     // { card, said }, and the signal it's read since the network was shown,
     // each from 0 to 1, the newest last.
     property var linkRead: null
@@ -441,7 +453,7 @@ Provider {
     function readOf(card, text) {
         if (card !== looked)
             return;
-        const said = Interfaces.radio(text);
+        const said = WifiLink.radio(text);
         linkRead = said ? { card: card, said: said } : null;
         if (said && said.signal !== null)
             saw(said.signal);
@@ -576,6 +588,56 @@ Provider {
         rows.push(holds(key("speed"), "speed", rates.side !== "" ? rates.side : "not read yet",
             { note: rates.note },
             () => provider.speedParts(name, card)));
+        const carried = carriedRow(name, card);
+        if (carried !== null)
+            rows.push(carried);
+        return rows;
+    }
+
+    // Each way of a card's link, as wifid and iw together read it
+    // (WifiLink.way).
+    function waysOf(link, read) {
+        return {
+            in: WifiLink.way(link.receive, read?.receive),
+            out: WifiLink.way(link.send, read?.send)
+        };
+    }
+
+    // What the card's carried each way since it connected, in bytes; a step
+    // in, each way's packets too, and how long since a frame came or went.
+    function carriedRow(name, card) {
+        const link = linkOf(name, card);
+        if (link === null)
+            return null;
+        const ways = waysOf(link, readOfCard(card));
+        const side = WifiLink.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed);
+        if (side === "")
+            return null;
+        return holds(`wifi:link:${card}:carried`, "carried", side, {
+            note: "since it connected"
+        }, () => provider.carriedParts(name, card));
+    }
+
+    function carriedParts(name, card) {
+        const link = linkOf(name, card);
+        if (link === null)
+            return [];
+        const ways = waysOf(link, readOfCard(card));
+        const key = id => `wifi:link:${card}:carried:${id}`;
+        const packets = count => `${number(count)} ${count === 1 ? "packet" : "packets"}`;
+        const rows = [["received", ways.in], ["sent", ways.out]]
+            .filter(each => each[1].bytes !== null)
+            .map(each => fact(key(each[0]), each[0], FileFacts.weighed(each[1].bytes), {
+                copy: String(each[1].bytes),
+                note: each[1].packets !== null ? packets(each[1].packets) : ""
+            }));
+        if (link.idle !== null)
+            rows.push(fact(key("idle"), "idle", WifiLink.idle(link.idle,
+                (value, decimals) => Numbers.format(value, decimals, settings.group,
+                    settings.point)), {
+                copy: `${link.idle} ms`,
+                note: "since a frame last came or went"
+            }));
         return rows;
     }
 
@@ -591,22 +653,22 @@ Provider {
         })];
     }
 
-    // The rates each way, as iw reads them or else as wifid does, in Mb/s,
-    // and what's said of them at a glance.
+    // The rates each way, as wifid reads them or else as iw does, in Mb/s,
+    // and what's said of them at a glance: the generation, the width and
+    // what the link's expected to carry.
     function speeds(link, read) {
-        const inward = read?.receive.mbps ?? link.receive;
-        const outward = read?.send.mbps ?? link.send;
-        const rx = inward !== null ? Math.round(inward) : null;
-        const tx = outward !== null ? Math.round(outward) : null;
-        const generation = read?.receive.generation ?? null;
+        const ways = waysOf(link, read);
+        const rx = ways.in.mbps !== null ? Math.round(ways.in.mbps) : null;
+        const tx = ways.out.mbps !== null ? Math.round(ways.out.mbps) : null;
+        const generation = ways.in.generation ?? ways.out.generation;
         return {
             in: rx,
             out: tx,
             // Each way said as the network's speed says it.
             side: rx === null ? "" : tx !== null && tx !== rx
                 ? `${rx} Mb/s in \u00b7 ${tx} Mb/s out` : `${rx} Mb/s`,
-            note: [generation ? `Wi-Fi ${generation}` : "", link.width ?? ""]
-                .filter(part => part !== "").join(", ")
+            note: fitting([generation ? `Wi-Fi ${generation}` : "", link.width ?? "",
+                link.expected !== null ? `${link.expected} Mb/s expected` : ""])
         };
     }
 
@@ -628,6 +690,24 @@ Provider {
             rows.push(fact(key("beacons"), "beacons", dbm(read.beacons), {
                 graph: level(read.beacons),
                 note: "how loud the access point says it is, on average"
+            }));
+        // How often the beacons come, in the access point's time units of
+        // 1.024 ms each, and one in how many says what it holds for a card
+        // asleep, which is as long as the card may sleep.
+        const beacon = read?.interval ?? null;
+        const tenths = value => Numbers.format(value, 1, settings.group, settings.point);
+        if (beacon !== null)
+            rows.push(fact(key("interval"), "interval", `${tenths(beacon * timeUnit)} ms`, {
+                copy: `${beacon} TU`,
+                note: `${beacon} time units of 1.024 ms`
+            }));
+        if (read && read.dtim !== null)
+            rows.push(fact(key("dtim"), "dtim", read.dtim === 1 ? "every beacon"
+                : `one beacon in ${read.dtim}`, {
+                copy: String(read.dtim),
+                note: beacon !== null
+                    ? `says what's held for a card asleep, every ${tenths(beacon * timeUnit
+                        * read.dtim)} ms` : "says what's held for a card asleep"
             }));
         if (link.margin !== null)
             rows.push(fact(key("margin"), "margin", `${link.margin} dB`, {
@@ -654,28 +734,59 @@ Provider {
             rows.push(fact(key("in"), "in", `${rates.in} Mb/s`));
         if (rates.out !== null)
             rows.push(fact(key("out"), "out", `${rates.out} Mb/s`));
-        const coded = read ? read.receive : null;
-        const generation = coded?.generation ?? null;
+        if (link.expected !== null)
+            // Unparted, as the rates each way are.
+            rows.push(fact(key("expected"), "expected", `${link.expected} Mb/s`, {
+                note: "what the card expects to get through, after the air's own overhead"
+            }));
+        const ways = waysOf(link, read);
+        const generation = ways.in.generation ?? ways.out.generation;
         if (generation !== null)
-            rows.push(fact(key("generation"), "generation", `Wi-Fi ${generation}`, {
+            rows.push(fact(key("generation"), "generation", WifiLink.eachWay(
+                ways.in.generation, ways.out.generation, each => `Wi-Fi ${each}`), {
                 note: generationSaid[generation] ?? ""
             }));
-        const mcs = coded?.mcs ?? link.mcs;
-        const streams = coded?.streams ?? link.streams;
-        if (mcs !== null && mcs !== undefined)
-            rows.push(fact(key("coding"), "coding", streams
-                ? `MCS ${mcs}, ${streams} ${streams === 1 ? "stream" : "streams"}` : `MCS ${mcs}`, {
-                note: "how densely it packs each signal; higher is faster"
-            }));
-        const width = coded?.width ? `${coded.width} MHz` : link.width ?? "";
-        if (width !== "")
-            rows.push(fact(key("width"), "width", width));
+        // The coding, streams, guard interval and width, each said once
+        // where both ways agree and each way where they don't.
+        const each = (id, figure, say, note) => {
+            const side = WifiLink.eachWay(ways.in[figure], ways.out[figure], say);
+            if (side !== "")
+                rows.push(fact(key(id), id, side, { note: note }));
+        };
+        each("coding", "mcs", value => `MCS ${value}`,
+            "how densely it packs each signal; higher is faster");
+        each("streams", "streams", value => `${value}`,
+            "carried side by side, each on antennas of its own");
+        each("guard", "guard",
+            value => `${Numbers.format(value, 1, settings.group, settings.point)} \u00b5s`,
+            "the pause between symbols; shorter is faster, longer rides out echoes");
+        each("dcm", "dcm", on => on ? "on" : "off",
+            "each symbol sent twice, apart, at half the rate, to ride out a weak signal");
+        if (ways.in.width !== null || ways.out.width !== null)
+            each("width", "width", value => `${value} MHz`, "");
+        else if (link.width)
+            rows.push(fact(key("width"), "width", link.width));
         const frequency = link.frequency ?? read?.frequency ?? null;
         const channel = read?.channel ?? null;
         if (frequency !== null || channel !== null)
             rows.push(fact(key("channel"), "channel", [channel !== null ? `${channel}` : "",
                 frequency !== null ? bandOf(frequency) : ""].filter(part => part !== "")
                 .join(", "), { note: frequency !== null ? `${number(frequency)} MHz` : "" }));
+        // How frames are framed and wait for the air: the preamble each
+        // opens with, the slot time between tries, and whether traffic is
+        // sorted by kind (WMM).
+        if (read && read.preamble !== null)
+            rows.push(fact(key("preamble"), "preamble", read.preamble, {
+                note: "the header each frame opens with at the oldest rates; short is quicker"
+            }));
+        if (read && read.shortSlot !== null)
+            rows.push(fact(key("slot"), "slot", read.shortSlot ? "short" : "long", {
+                note: "how long a card waits between tries for the air; short is quicker"
+            }));
+        if (read && read.wmm !== null)
+            rows.push(fact(key("wmm"), "wmm", read.wmm ? "on" : "off", {
+                note: "calls and video sent ahead of downloads and backups"
+            }));
         if (read && read.retries !== null)
             rows.push(retriesRow(name, card, read));
         return rows;

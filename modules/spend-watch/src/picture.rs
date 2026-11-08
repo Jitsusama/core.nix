@@ -133,6 +133,9 @@ pub struct Picture {
     pub titles: HashMap<String, String>,
     /// When pi's logs last grew.
     pub logs_at: Option<f64>,
+    /// Each allowance over now, with where what every source said as it
+    /// went over is written.
+    pub crossings: Vec<crate::over::Crossing>,
     pub fed: bool,
     /// How many days ahead an override's end is warned of, first and last.
     pub lead: (u32, u32),
@@ -276,6 +279,7 @@ impl Picture {
         let (waste, work) = kept.weeks(history, week_start, now)?;
         let rebuilt_today = waste::rebuilt_by_session(history, zone.day_start(today), now + 1.0)?;
         let quests = read_quests(history)?;
+        let crossings = crate::over::open(history)?;
         Ok(Picture {
             now,
             today: figure(today, today),
@@ -305,6 +309,7 @@ impl Picture {
                 .collect(),
             quests,
             logs_at,
+            crossings,
             fed: inputs.fed,
             zone: zone.clone(),
             hours: hours.clone(),

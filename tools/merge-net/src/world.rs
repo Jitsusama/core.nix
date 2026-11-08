@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::holds;
 use crate::state::{now, short};
-use crate::watch::{Bad, Changed, Merged, UNCHECKED, World};
+use crate::watch::{Bad, Changed, Merged, UNCHECKED, UNSENT, World};
 
 /// Where the quarantine list is in the repository.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
@@ -280,6 +280,14 @@ impl Real {
     }
 }
 
+/// Whether a build's log says its builder couldn't fetch the commit's own
+/// source, as when GitHub answered 503 to every builder at 06:38 on
+/// 8 November, and the net called a test it never ran flaky.
+pub fn unfetched(log: &str, commit: &str) -> bool {
+    log.lines()
+        .any(|line| line.contains("while fetching the input") && line.contains(commit))
+}
+
 /// The checks a nix build's log says it couldn't build, by the names their
 /// derivations go by.
 pub fn unbuilt(log: &str) -> Vec<String> {
@@ -417,6 +425,14 @@ impl World for Real {
             .ok()?;
         loop {
             match child.try_wait() {
+                // A run whose builder couldn't fetch the commit's source ran
+                // nothing, so it's sent again like one no builder took.
+                Ok(Some(status))
+                    if !status.success()
+                        && unfetched(&fs::read_to_string(log).unwrap_or_default(), commit) =>
+                {
+                    return Some(UNSENT);
+                }
                 Ok(Some(status)) => return status.code(),
                 Ok(None) if clock.overdue(log, Instant::now()) => {
                     let _ = child.kill();
@@ -695,6 +711,23 @@ fn run(command: &mut Command) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_source_the_builder_couldnt_fetch_is_no_failure() {
+        let commit = "df45383375c37fbbfb1cee0afa8943ff123e4ac6";
+        let log = format!(
+            "error:\n       \u{2026} while fetching the input 'github:someone/core/{commit}'\n\n\
+             \x20      error: Failed to open archive (Source threw exception: error: unable \
+             to download 'https://github.com/someone/core/archive/{commit}.tar.gz': \
+             HTTP error 503\n"
+        );
+        assert!(unfetched(&log, commit));
+        assert!(
+            !unfetched(&log, "0123456789abcdef0123456789abcdef01234567"),
+            "another input's fetch is the test's own to fail on"
+        );
+        assert!(!unfetched("error: builder failed with exit code 1", commit));
+    }
 
     #[test]
     fn a_build_log_names_the_checks_it_couldnt_build() {

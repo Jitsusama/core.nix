@@ -28,6 +28,8 @@ let
     '';
   # Quickshell's runner, the one the account's shell runs on.
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # The daemon Machine's answers come from, run over a check's own /proc.
+  machine = pkgs.callPackage ../machine/package.nix { };
   # Every QML file the shell and the modules beside it draw, by its path
   # under modules/, its tests left out: a module's surface is drawn in the
   # theme as the shell's own are.
@@ -242,6 +244,8 @@ let
           "LOGS=logs"
           "TAKE_NOTICES=${lib.escapeShellArgs (spawnedBy "Super+N")}"
           "PYTHONPATH=${checked}"
+          # Machine's answers come from its daemon, as the account's do.
+          "MACHINE=${lib.getExe machine}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given
@@ -961,10 +965,31 @@ onLinux {
     pkgs.runCommandLocal "recent-means-one-thing" { } ''
       cp ${../../tests/recent.qml} recent.qml
       cp ${./launcher/Recent.js} Recent.js
+      cp ${./launcher/Recents.js} Recents.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml recent.qml
+      touch $out
+    '';
+
+  # Each kind of list keeps its one order with nothing typed (docs/design.md,
+  # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
+  # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
+  # place that lists things, its sort its kind's order and no A to Z by hand.
+  each-list-keeps-its-kinds-order =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "each-list-keeps-its-kinds-order" { } ''
+      ${lib.getExe pkgs.python3} ${../../tests/every-list-keeps-its-kinds-order.py} \
+        ${./launcher} ${../people}
+      cp ${../../tests/order.qml} order.qml
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml order.qml
       touch $out
     '';
 
@@ -1032,6 +1057,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
       cp ${../../tests/session-row.qml} session-row.qml
       cp ${./launcher/SessionRow.js} SessionRow.js
+      cp ${./launcher/Order.js} Order.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
       cp ${./Reading.js} Reading.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -1172,12 +1198,14 @@ onLinux {
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Networkd.js} Networkd.js
+      cp ${./launcher/WifiLink.js} WifiLink.js
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js
       cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${./launcher/KeyCounts.js} KeyCounts.js
+      cp ${./launcher/Order.js} Order.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -1223,6 +1251,7 @@ onLinux {
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
       cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
+      cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Numbers.js} Numbers.js
       cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1569,6 +1598,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
@@ -1626,6 +1656,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Orchestrators.qml} launcher/Orchestrators.qml
       cp ${./launcher/SessionRow.js} launcher/SessionRow.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
@@ -1687,6 +1718,7 @@ onLinux {
       cp ${./launcher/Now.qml} launcher/Now.qml
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
@@ -1767,6 +1799,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Ask.qml} launcher/Ask.qml
       cp ${./launcher/SessionRow.js} launcher/SessionRow.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
@@ -1833,6 +1866,7 @@ onLinux {
         cp ${./launcher/Networkd.js} launcher/Networkd.js
         cp ${./launcher/Subnets.js} launcher/Subnets.js
         cp ${./launcher/Networks.qml} launcher/Networks.qml
+        cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Characters.js} launcher/Characters.js
         cp ${./launcher/Characters.qml} launcher/Characters.qml
         cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
@@ -1872,51 +1906,49 @@ onLinux {
         touch $out
       '';
 
-  # The launcher's Machine answers the processors and the memory from the
-  # sandbox's own /proc without making their parts or listing the
-  # processes, and lists them only once the parts are looked at
-  # (tests/machine.qml), the list stood in for by one that says each time
-  # it's run, and the queue and niri stood in for.
-  the-machine-lists-processes-for-its-parts =
-    let
-      listing = pkgs.writeShellScript "process-list" ''
-        echo listed >> "$XDG_RUNTIME_DIR/listed"
-        echo 4096
-        exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat
+  # The launcher's Machine answers the processors, the memory and the
+  # uptime from the machine daemon, run over the sandbox's own /proc,
+  # without making their parts, and asks it for the programs only once a
+  # part saying them is looked at (tests/machine.qml), the queue, niri and
+  # the telemetry stood in for.
+  the-machine-answers-from-its-daemon =
+    pkgs.runCommandLocal "the-machine-answers-from-its-daemon" { }
+      ''
+        mkdir -p launcher runtime/daemons && chmod -R 700 runtime
+        cp ${./Daemon.qml} Daemon.qml
+        cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+        cp ${./launcher/Asking.js} launcher/Asking.js
+        cp ${./launcher/Numbers.js} launcher/Numbers.js
+        cp ${./launcher/Heat.js} launcher/Heat.js
+        cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+        cp ${./launcher/Machine.js} launcher/Machine.js
+        cp ${./launcher/Machine.qml} launcher/Machine.qml
+        cp ${./launcher/Sensors.qml} launcher/Sensors.qml
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Words.qml} Words.qml
+        cp ${./launcher/words.json} launcher/words.json
+        cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
+        cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
+        cp ${singleton "Facts.qml" "property var all: []"} Facts.qml
+        cp ${singleton "ProcessorTelemetry.qml" ''
+          property int watching: 0
+          property var reading: null
+          property var kept: null
+          property bool refused: false
+          property bool missing: false
+        ''} ProcessorTelemetry.qml
+        cp ${../../tests/machine.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${lib.getExe machine} "$XDG_RUNTIME_DIR/daemons/machine.sock" &
+        daemon=$!
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        kill "$daemon"
+        touch $out
       '';
-    in
-    pkgs.runCommandLocal "the-machine-lists-processes-for-its-parts" { } ''
-      mkdir -p launcher runtime && chmod 700 runtime
-      cp ${./Fuzzy.js} Fuzzy.js
-      cp ${./launcher/Provider.qml} launcher/Provider.qml
-      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${./launcher/Asking.js} launcher/Asking.js
-      cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/Heat.js} launcher/Heat.js
-      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${./launcher/Machine.js} launcher/Machine.js
-      cp ${./launcher/Machine.qml} launcher/Machine.qml
-      cp ${./launcher/Sensors.qml} launcher/Sensors.qml
-      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${./Words.qml} Words.qml
-      cp ${./launcher/words.json} launcher/words.json
-      cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
-      cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
-      cp ${singleton "ProcessorTelemetry.qml" ''
-        property int watching: 0
-        property var reading: null
-        property var kept: null
-        property bool refused: false
-        property bool missing: false
-      ''} ProcessorTelemetry.qml
-      cp ${../../tests/machine.qml} shell.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PROCESSES=${listing}
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      touch $out
-    '';
 
   # The launcher's Sound leaves out a jack with nothing plugged in and a
   # display's output with no display, and never listens to a headset's
@@ -1943,6 +1975,7 @@ onLinux {
       cp ${./launcher/Sounds.js} launcher/Sounds.js
       cp ${./launcher/Plate.js} launcher/Plate.js
       cp ${./launcher/Sound.qml} launcher/Sound.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -1976,10 +2009,17 @@ onLinux {
           feed=$XDG_RUNTIME_DIR/litra-feed
           [ -e "$state" ] || echo "true 40 4000" > "$state"
           read -r on percent kelvin < "$state"
+          # A light as litra says it: its lumens are a Glow's, 20 to 250
+          # across its share, and it names itself as its HID device does.
+          said() {
+            printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"lumens":%s,"kelvin":%s,%s}]\n' \
+              "$on" "$percent" "$((20 + 230 * percent / 100))" "$kelvin" \
+              '"dimmest":20,"brightest":250,"name":"Litra Glow stand-in","serial":"stand-in"' \
+              >> "$feed"
+          }
           case "$1" in
             watch)
-              printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"kelvin":%s}]\n' \
-                "$on" "$percent" "$kelvin" >> "$feed"
+              said
               exec tail -n +1 -f "$feed"
               ;;
             on) on=true ;;
@@ -1996,8 +2036,7 @@ onLinux {
             *) exit 2 ;;
           esac
           echo "$on $percent $kelvin" > "$state"
-          printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"kelvin":%s}]\n' \
-            "$on" "$percent" "$kelvin" >> "$feed"
+          said
         '';
       };
     in
@@ -2237,7 +2276,9 @@ onLinux {
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./Music.js} Music.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
+      cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
@@ -2346,6 +2387,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
+      cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
       cp ${./FileFacts.js} FileFacts.js
@@ -2358,13 +2400,16 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       # A folder of notes, two hidden things in it, and a file opened lately
       # elsewhere beside one of its own; notes.txt is the largest, then b.png.
-      # Two folders deep elsewhere go from one to the other on ]b.
+      # Two folders deep elsewhere go from one to the other on ]b. The list
+      # opened lately is as recent-files prints it, its time last, empty
+      # where it's not known.
       mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere/deep/one $HOME/elsewhere/deep/two
       touch $HOME/notes/a.md $HOME/notes/.hidden.txt
       printf 'twelve bytes' > $HOME/notes/notes.txt
       printf 'png' > $HOME/notes/b.png
       touch $HOME/elsewhere/old.md
-      printf 'Notes\t%s\nNotes\t%s\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" > $HOME/recent
+      printf 'Notes\t%s\t1700000000\nNotes\t%s\t\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" \
+        > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
       printf '50:text/markdown:*.md\n50:image/png:*.png\n50:text/plain:*.txt\n' > kinds/globs2
       printf 'text/markdown text/plain\n' > kinds/subclasses
@@ -2453,6 +2498,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Runs.qml} launcher/Runs.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/runs.qml} shell.qml
@@ -2799,6 +2845,7 @@ onLinux {
       cp ${../people/People.qml} launcher/People.qml
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${../people/Person.js} launcher/Person.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Zones.js} launcher/Zones.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../people/PersonSource.qml} PersonSource.qml
@@ -3094,6 +3141,11 @@ onLinux {
         property string backlight: ""
         signal turned
       '';
+      # No shortcuts, and no key faces: the boards here count nothing.
+      shortcuts = singleton "Shortcuts.qml" ''
+        property var actions: []
+        property var faces: ({})
+      '';
       # The laptop's own layout, as keyd's module describes it.
       laptop =
         pkgs.writeText "laptop.json"
@@ -3118,11 +3170,12 @@ onLinux {
       cp ${./launcher/Keyboards.qml} launcher/Keyboards.qml
       cp ${./launcher/Keyboards.js} launcher/Keyboards.js
       cp ${./launcher/KeyCounts.js} launcher/KeyCounts.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
-      cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      cp ${shortcuts} Shortcuts.qml
       cp ${lights} Lights.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -3142,7 +3195,9 @@ onLinux {
   # and version, as bluetooth-links would write it: the headphones'
   # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
   # A stand-in Facts says the headphones are running low, as the devices
-  # piece would.
+  # piece would. A stand-in adapter and launcher hold Nearby to looking
+  # only while it's open, with devices heard as the shell's patch to
+  # Quickshell says them (bluetooth-rssi-and-failures.patch).
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -3179,7 +3234,9 @@ onLinux {
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
+        cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Links.js} launcher/Links.js
+        cp ${./launcher/Nearby.js} launcher/Nearby.js
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
@@ -3355,6 +3412,7 @@ onLinux {
     pkgs.runCommandLocal "now-lists-by-group" { } ''
       cp ${../../tests/now-groups.qml} now-groups.qml
       cp ${./launcher/NowGroups.js} NowGroups.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3737,6 +3795,10 @@ onLinux {
     pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
       cp ${./Daemon.qml} Daemon.qml
+      # The copied link Tuple offers to join is read from the shell's one
+      # watcher of the clipboard.
+      cp ${./Copied.qml} Copied.qml
+      cp ${./Copied.js} Copied.js
       # Tuple's rows are named as the launcher's vocabulary says.
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml

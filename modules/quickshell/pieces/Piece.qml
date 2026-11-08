@@ -33,8 +33,10 @@ Item {
     // Its value as it runs on by itself, given the time, for one that
     // counts faster than it's made again, as the stopwatch does to the
     // tenth: Now's row draws it afresh (Launcher.qml's counts). Null for
-    // one whose value says it.
+    // one whose value says it. And the widest that reads until it grows a
+    // figure, the room Now keeps for it.
     property var counts: null
+    property string widest: ""
     property string role: "text"
     // The theme's glyph its value is read by at a glance, by name, or none,
     // and what a glance needs said after it: the least that tells Joel
@@ -125,6 +127,7 @@ Item {
             active: false,
             value: "",
             counts: null,
+            widest: "",
             role: "text",
             sign: "",
             glance: "",

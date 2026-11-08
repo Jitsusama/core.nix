@@ -17,6 +17,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -175,10 +176,8 @@ Provider {
 
     // Running first, then the newest.
     readonly property var all: {
-        const sorted = runs.map(run => settled(run, started)).sort((a, b) => {
-            const live = run => Number(run.participants.some(p => running(p.state)));
-            return live(b) - live(a) || String(b.started).localeCompare(String(a.started));
-        });
+        const sorted = runs.map(run => settled(run, started)).sort(Order.stream(
+            run => String(run.started ?? ""), run => run.participants.some(p => running(p.state))));
         const sharing = Quiet.sharing;
         const sessions = started;
         const next = {};

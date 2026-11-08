@@ -201,6 +201,8 @@ let
     "FileFacts.js"
     "When.js"
     "Taken.qml"
+    "Copied.qml"
+    "Copied.js"
     "Pasting.qml"
     "Notices.qml"
     "Forward.js"
@@ -245,7 +247,9 @@ let
     "launcher/Firmware.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
+    "launcher/WifiLink.js"
     "launcher/Links.js"
+    "launcher/Nearby.js"
     "launcher/Sounds.js"
     "launcher/Plate.js"
     "launcher/Screens.js"
@@ -266,8 +270,10 @@ let
     "launcher/Pacing.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
+    "launcher/Order.js"
     "launcher/Becoming.js"
     "launcher/Recent.js"
+    "launcher/Recents.js"
     "launcher/SessionRow.js"
     "launcher/SessionDrawer.js"
     "launcher/Trials.js"
@@ -324,6 +330,14 @@ let
   # pressed.
   wholeKeys = [ "f23" ];
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
+  # Each key's face by the key map's spelling of it, its xkb name in lower
+  # case, and the three it spells otherwise: the one table a chord's keys
+  # and a keyboard's most pressed are drawn from (Shortcuts.qml's faces).
+  spelledFaces = lib.mapAttrs' (name: lib.nameValuePair (lib.toLower name)) keyFaces // {
+    enter = keyFaces.Return;
+    pageup = keyFaces.Page_Up;
+    pagedown = keyFaces.Page_Down;
+  };
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
   # as the desktop's are: a key with a face wears it, a letter is a capital,
@@ -340,11 +354,6 @@ let
   stepFaces =
     keys:
     let
-      faces = lib.mapAttrs' (name: lib.nameValuePair (lib.toLower name)) keyFaces // {
-        enter = keyFaces.Return;
-        pageup = keyFaces.Page_Up;
-        pagedown = keyFaces.Page_Down;
-      };
       key = if lib.hasSuffix "++" keys then "+" else lib.last (lib.splitString "+" keys);
       held = lib.init (lib.splitString "+" (lib.removeSuffix "+" keys));
       pressed = if lib.elem key wholeKeys then [ key ] else held ++ [ key ];
@@ -353,7 +362,7 @@ let
         {
           wide = false;
         }
-        // (faces.${word} or {
+        // (spelledFaces.${word} or {
           text =
             if lib.stringLength word == 1 then
               lib.toUpper word
@@ -723,6 +732,16 @@ let
   # The program that keeps Joel's timers and rings them, for Timers.
   timers = pkgs.callPackage ./timers/package.nix { };
   keepsTimers = launcher.providers.timers.enable or false;
+  # What a timer coming due is heard with: pi's loud, low, dog-safe ding
+  # where the machine has pi (modules/pi/chime.nix), played by pw-play,
+  # quietly while a-call-is-on says a call is on. A machine without pi
+  # rings its timers as notices alone.
+  timerChime = config.jitsusama.pi.chime or null;
+  timerSound = lib.optionals (timerChime != null) [
+    timerChime.player
+    timerChime.ding
+    (lib.getExe (pkgs.callPackage ../calls/package.nix { }))
+  ];
   # What a timer's notice says, from the launcher's vocabulary, so a word
   # is said in one place.
   timerWords =
@@ -757,15 +776,6 @@ let
   emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
   timeZones = import ./launcher/zones.nix { inherit lib pkgs; };
   characterNames = import ./launcher/names.nix { inherit lib pkgs; };
-
-  # Every process's counters at one moment, for the machine's answers to
-  # say which programs use the processors and the memory: the page size,
-  # then the machine's counters and each process's, in one spawn rather
-  # than a read for each of hundreds of files on the shell's thread.
-  processList = pkgs.writeShellScript "process-list" ''
-    ${lib.getExe' pkgs.getconf "getconf"} PAGESIZE
-    exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat /proc/[0-9]*/stat 2>/dev/null
-  '';
 
   # A Wi-Fi card's link as iw reads it, for a network's detail in the
   # launcher: the link, the access point as the card hears it, and what
@@ -886,6 +896,8 @@ in
       [ "jitsusama" "quickshell" "overview" "pieces" ]
       [ "jitsusama" "quickshell" "margin" "pieces" ]
     )
+    # Machine's answers are what the machine daemon holds.
+    ../machine/home.nix
   ];
 
   options.jitsusama.quickshell.margin.pieces = lib.mkOption {
@@ -1766,14 +1778,6 @@ in
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
                     }
-                    # What the machine's answers spawn: the processes'
-                    # counters, UDisks for the disk's health, and stat for
-                    # a file system's room where no disk guard says it.
-                    // lib.optionalAttrs (provider.source == "machine") {
-                      processes = "${processList}";
-                      busctl = lib.getExe' pkgs.systemd "busctl";
-                      stat = lib.getExe' pkgs.coreutils "stat";
-                    }
                     # What each connection is, from ip, and a Wi-Fi link
                     # in detail, from iw.
                     // lib.optionalAttrs (provider.source == "networks") {
@@ -1874,6 +1878,9 @@ in
               readonly property var actions: ${builtins.toJSON actions}
               // Every layer's shortcuts, top to bottom, each with its glyph.
               readonly property var layers: ${builtins.toJSON shortcutLayers}
+              // Each key's face, { text, wide }, by the key map's lower-case
+              // xkb name for it, as every chord here is drawn.
+              readonly property var faces: ${builtins.toJSON spelledFaces}
           }
         '';
         "quickshell/Theme.qml".text = ''
@@ -2187,7 +2194,15 @@ in
       };
       Service = {
         StateDirectory = "timers";
-        ExecStart = "${lib.getExe timers} %t/daemons/timers.sock %S/timers/held.json ${timerWords}";
+        ExecStart = lib.concatStringsSep " " (
+          [
+            (lib.getExe timers)
+            "%t/daemons/timers.sock"
+            "%S/timers/held.json"
+            "${timerWords}"
+          ]
+          ++ timerSound
+        );
         Restart = "on-failure";
         RestartSec = 1;
       };

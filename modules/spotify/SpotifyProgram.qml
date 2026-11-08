@@ -1,7 +1,7 @@
 // Spotify's program in the launcher (Programs › Spotify), from Spotify's
 // Web API through spotify-recent (spotify-recent/src/main.rs), held to
 // VKCF3Z's rulings. Its Recent (recentOf, which Applications.qml asks
-// every provider that has it) is the playlists, albums and shows it
+// every provider that has it) is the playlists, albums and podcasts it
 // played lately, each once, newest first, nine at most, what plays now
 // first: beside each, "playing" or "paused" as Spotify's player stands,
 // or how long ago it played, and as its note its kind and size, then who
@@ -14,7 +14,7 @@
 //
 // Its insides one step in (programActs) are Liked Songs, saying how many,
 // which plays them as a row of Recent plays, then Playlists, Albums,
-// Artists and Shows, each saying how many it holds and holding every one
+// Artists and Podcasts (Spotify's shows), each saying how many it holds and holding every one
 // Joel keeps, each the same row as Recent's, its note its size and who
 // made it, found inside by typing. Each stands once it's been read, and
 // says none while it holds nothing, so none comes and goes between

@@ -10,6 +10,7 @@
 .pragma library
 .import "Numbers.js" as Numbers
 .import "Interfaces.js" as Interfaces
+.import "Order.js" as Order
 
 const KILO = 1000;
 const BARS = 5;
@@ -146,11 +147,10 @@ function stateOf(node) {
     return String(node.state ?? "").toLowerCase();
 }
 
-// The nodes as the place lists them: the gateway node first, then each
-// node after the one it hangs from, as the backhaul runs, siblings by
-// location, and any whose upstream eero didn't name last.
+// The nodes as the place lists them: the gateway node first, then each node after the one it hangs
+// from, as the backhaul runs, siblings by location, and any whose upstream eero didn't name last.
 function nodesInOrder(nodes) {
-    const byName = (a, b) => nodeName(a).localeCompare(nodeName(b));
+    const byName = Order.byName(nodeName);
     const listed = [];
     const placed = new Set();
     const under = (node) => {

@@ -1278,6 +1278,67 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     machine.wait_until_fails(desktop.in_session(there), timeout=timedelta(seconds=30))
 
 
+def test_mpvs_recent_says_where_a_file_stopped(desktop: Desktop) -> None:
+    """Mpv's Recent holds a file it stopped part way through, saying where, to resume.
+
+    The account's own lister reads the account's own watch_later folder here, the one connection
+    no tier below has whole, as far as the drawer drawing what mpv kept. Its order among the rest,
+    a file watched whole, each option said and what Return runs are held offscreen
+    (the-launcher-plays-on-where-mpv-stopped), and mpv keeping them and playing on from where it
+    stopped with mpv's own settings (mpv-says-where-it-stopped), since mpv opens no window in this
+    machine, which has no GPU: its video output aborts as it starts.
+    """
+    clip = f"/home/{desktop.account}/Videos/stopped.mkv"
+    later = f"/home/{desktop.account}/.local/state/mpv/watch_later"
+    # Where mpv stopped in it and the speed it played at, written as mpv
+    # writes them quitting part way, named by its path's hash.
+    kept = f"{later}/$(printf %s {clip} | md5sum | cut -c 1-32 | tr a-f A-F)"
+    desktop.as_account(
+        f"mkdir -p {later} ~/Videos && mpv --no-config --really-quiet --ovc=ffv1"
+        f" 'av://lavfi:testsrc=duration=60:size=64x64:rate=2' --o={clip}"
+        f" && printf '# %s\\nstart=12.000000\\nspeed=1.500000\\n' {clip} > {kept}"
+    )
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("mpv", selecting="mpv Media Player")
+        desktop.into_program()
+        desktop.type_in("recent", selecting="Recent")
+        desktop.follow()
+
+        def says_where(shown: Json) -> bool:
+            """Say whether the clip is first in Recent, selected, saying where and when, drawn.
+
+            It's the newest thing mpv left, and nothing else in Recent has a time. Its length is
+            the last frame's end, which mpv's encoding puts a frame short of a minute, and it was
+            left as it was written, under a minute ago unless the machine is slow to get here, a
+            count of minutes kept to its unit with a no-break space.
+            Its drawer is drawn once it's out and draws its own title, every fact known.
+            """
+            row = shown["selected"] or {}
+            where = re.fullmatch(
+                r"0:12 of (0:59|1:00) \u00b7 (just now|\d+\u00a0min ago)", str(row.get("side", ""))
+            )
+            drawer = shown.get("drawer") or {}
+            return (
+                row.get("name") == "stopped.mkv"
+                and row.get("verb") == "resume"
+                and where is not None
+                and drawer.get("out") is True
+                and drawer.get("shown") is True
+                and drawer.get("drawn") == "stopped.mkv"
+                and drawer.get("eyebrow") == "in ~/Videos \u00b7 video"
+                and drawer.get("drawnFacts") == ["Still to Play", "Speed", "Size", "Path"]
+                and None not in (drawer.get("values") or [None])
+            )
+
+        desktop.launcher_until(says_where)
+        desktop.shoot("launcher-mpv-stopped")
+    finally:
+        desktop.close_launcher()
+        desktop.as_account(f"rm -f {clip} {kept}")
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 

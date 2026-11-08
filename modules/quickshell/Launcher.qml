@@ -441,6 +441,9 @@ Scope {
             heard: said.heard ?? "",
             // An answer that is a thing, as a pi's whole words are, says so.
             thing: said.thing ?? false,
+            // One with more to say than its words, as the desk light's,
+            // gives its drawer, as the headline it is when asked does.
+            drawer: said.drawer,
             // Its name says why it came to nothing, so nothing else does.
             missed: said.missed === true,
             live: said.live ?? null,
@@ -608,6 +611,9 @@ Scope {
         now: true,
         stays: answer.stays ?? false,
         thing: answer.thing ?? false,
+        // An answer that's a thing with more to say than its words, as the
+        // desk light's is, gives its drawer as any thing's row does.
+        drawer: answer.drawer,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
@@ -1528,8 +1534,11 @@ Scope {
     // word starting with it, and then a row found only by what it holds of
     // its own (hiddenWords), each tier best match first. Such a word isn't
     // said beside the row, since it may be a name the machine knows a thing
-    // by, such as tailscale0, that Joel never sees.
-    function within(rows, letters) {
+    // by, such as tailscale0, that Joel never sees. Within a tier, one
+    // picked before for what's typed comes first, as at the top (`picked`,
+    // Picks.qml's weights), so the same letters land on the same row inside
+    // a step too.
+    function within(rows, letters, picked) {
         const typedWords = Fuzzy.words(letters);
         const need = Fuzzy.letters(typedWords);
         const found = [];
@@ -1560,7 +1569,7 @@ Scope {
                     choice: row
                 });
         }
-        return Rank.order(found, {}).map(f => f.choice);
+        return Rank.order(found, { picked: picked ?? {} }).map(f => f.choice);
     }
 
     // A row's other words, prepared to match: its keywords, which say only
@@ -1587,7 +1596,11 @@ Scope {
         const pool = offered.reduce((all, row) => all.concat([row], row.group ? row.verbs() : []),
             []);
         const inside = offered.filter(row => row.from).map(row => row.from);
-        return namedFirst(within(pool, letters).concat(gathering(letters, inside)), letters);
+        const here = held[held.length - 1].row.key ?? "";
+        const picked = Rank.joined(picks.weights(letters),
+            picks.weights(Rank.stepped(here, letters)));
+        return namedFirst(within(pool, letters, picked).concat(gathering(letters, inside)),
+            letters);
     }
 
     // Rows named what's typed, whole, before the rest, each in its order.
@@ -2506,8 +2519,13 @@ Scope {
 
     function noteFigures() {
         const step = `${held.map(each => steadyId(each.row)).join("/")}|${typed}`;
+        // A side that counts on by itself holds room for the widest it
+        // reads until it grows a figure (its `sideWidest`), since it's
+        // measured only when its row is made.
         const said = row => ((held.length === 0 ? kindOf(row) : "")
-            || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length;
+            || ((row.chord ?? []).length > 0 ? ""
+                : typeof row.counts === "function" ? row.sideWidest ?? row.side ?? ""
+                : row.side ?? "")).length;
         const now = Math.max(0, ...matches.filter(row => !!row.graph).map(said));
         const sides = Math.max(0, ...matches.map(said));
         if (step !== figuresStep) {
@@ -3099,7 +3117,7 @@ Scope {
     // of a second while one is listed: only that side changes, so its
     // provider makes no rows again and the list isn't put together anew
     // (Y2YBTS, 2026-11-08). Its `side` stays what it said when made, for
-    // the column's width and what the tests read.
+    // what the tests read, and its `sideWidest` gives the column its room.
     property real tenth: Date.now()
     readonly property bool counting: open
         && matches.some(row => typeof row?.counts === "function")
@@ -4183,8 +4201,16 @@ Scope {
             for (const source of due)
                 Report.say(`refresh of ${source.settings.name} began ${refreshedAt}`);
         refreshing = [];
-        for (const source of due)
+        // Each a span of the opening (Traces.qml), saying which source
+        // changed, how long its refresh took by the shell's clock, and how
+        // many rows the list held after (Y2YBTS, 2026-11-07).
+        for (const source of due) {
+            const startedAt = Date.now();
+            const started = KeyTimes.now();
             refreshNow(source);
+            traces.did("refresh", startedAt, { source: source.settings.name,
+                tookMs: KeyTimes.now() - started, rows: matches.length, depth: held.length });
+        }
         actsRefreshed(due, begun);
         heldAgreed(due);
     }
@@ -4749,7 +4775,9 @@ Scope {
             else
                 found = (held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
-                        row.offers && row.verbs ? row.verbs() : []), []), letters));
+                        row.offers && row.verbs ? row.verbs() : []), []), letters,
+                        picks.weights(Rank.stepped(held[held.length - 1].row.key ?? "",
+                            letters))));
             found = found.concat(stillActed(found));
             answer = null;
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
@@ -5540,6 +5568,15 @@ Scope {
         // been typed (Rank.js's leastOf), so a slip of two letters never
         // powers off.
         picks.picked(picking ? typed : first.typed, meant.key, knowing());
+        // Inside a thing's own page, what was picked is learned for what was
+        // typed there too, apart from the top, so the same letters land on
+        // it there next time (Rank.js's stepped). A collection or category
+        // held alone has just learned it under what's typed, which it reads
+        // (inCategory); one stepped into past it learns it here too, so a
+        // page inside Machine and Machine reached from a page both find it.
+        const step = held.length > 0 ? held[held.length - 1].row : null;
+        if (!(picking && held.length === 1) && step && step !== choice && step.key)
+            picks.picked(Rank.stepped(step.key, typed), choice.key, null);
     }
 
     function run(choice, below) {

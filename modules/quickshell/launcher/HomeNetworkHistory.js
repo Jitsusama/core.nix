@@ -2,9 +2,10 @@
 // keeps of the last hour and day (modules/eero/AGENTS.md, How It Reads):
 // each figure's history as a spark beside it, a device's moves, how busy
 // each radio is and how strongly it sends, this machine's own looks at
-// the internet, the outages of 30 days, and the devices that joined or
-// left. The record keeps a history as one list a figure, a sample a read,
-// oldest first, null where eero gave none (modules/eero/src/model.rs).
+// the internet, the outages of 30 days, the devices that joined or left,
+// and what happened, with what the daemon told. The record keeps a
+// history as one list a figure, a sample a read, oldest first, null
+// where eero gave none (modules/eero/src/model.rs).
 // The pieces a fact is made of are here too, and HomeNetworkDrawers.js
 // takes them from here, so the two files read a figure one way. Plain
 // reading of the record, held in Qt's own engine (tests/home-network.qml).
@@ -260,4 +261,17 @@ function joinsAndLeaves(model, now) {
                 + where, one.band]),
         };
     }));
+}
+
+// What happened over the last 30 days as one list, newest first: eero's
+// activity in its own words, and each change the daemon told as a notice,
+// its summary then what the notice said, a sentence as eero's are, so the
+// drawer reads as `eero events` does. Each is { at, text }, as an event.
+function timeline(model) {
+    const told = (model?.told ?? []).map((one) => ({
+        at: one.at,
+        text: [one.summary, one.body].filter(known).join(". "),
+    }));
+    return (model?.events ?? []).concat(told)
+        .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }

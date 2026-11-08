@@ -201,7 +201,11 @@
     facts held by how it's carried, whether it reconnects by itself and wakes the machine as
     settings whose choices set them, and its address to copy; lists the adapter's radio,
     visibility and pairing as settings, its traffic as a spark and what it is; answers how the
-    links are doing; and says a device running low at its row's side
+    links are doing; says a device running low at its row's side; lists only devices paired,
+    then Nearby, which has the radio look only while it's open and lists the named devices heard,
+    strongest first, each with its signal in dBm and as a bar, then counts those without a name,
+    which it lists by address when stepped into; and says what BlueZ answered a pairing or
+    connecting that failed, in the launcher's words
   '';
   bluetooth-seal-keeps-only-what-a-keyboard-needs = ''
     the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to
@@ -424,6 +428,11 @@
   do-not-disturb-holds-while-sharing = ''
     do not disturb turns on while the screen is shared, not recorded, and off after; ended mid-share
     it stays off until the next, and one kept by hand outlasts it
+  '';
+  each-list-keeps-its-kinds-order = ''
+    each kind of list the launcher shows keeps one order with nothing typed, A to Z only its last
+    tie and numbers read by their value, a choice never moving when chosen, and each place that
+    lists things sorts by its kind's order with no A to Z made by hand
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
@@ -774,6 +783,20 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  machine-holds-the-machine-ready = ''
+    the machine daemon says hello on the socket systemd hands it, says every record of a watch's
+    kinds at once and their rates as of now a moment later, a disk's rates, sensors, link and file
+    systems found through what's mapped over it, a disk taken out as gone and programs ranked by
+    their share and memory, reads nothing once nothing is watched, and refuses an ask or a kind it
+    doesn't know
+  '';
+  machine-passes-clippy = ''
+    clippy finds nothing in the machine daemon or its tests
+  '';
+  machine-runs-beside-the-shell = ''
+    the shell brings the machine daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, restarted by a switch
+  '';
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
@@ -845,6 +868,14 @@
   '';
   mpv-says-the-files-it-plays = ''
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
+  '';
+  mpv-says-where-it-stopped = ''
+    the launcher's lister reads where the account's mpv stopped each file it quit part way through
+    or held on its last frame, newest first with its length, when it was left, its size, whether
+    it's a video or audio, and every option mpv kept for it, its speed, volume and tracks among
+    them, nine at most, only the last read as watched whole, passing over a folder's redirect
+    entry, a stream and a deleted file, and mpv started as Resume starts it plays on from there,
+    and as Play From the Start does, from its start
   '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
@@ -1703,7 +1734,8 @@
   the-home-network-says-each-figure = ''
     the Home Network place lists the gateway node first and each node after the one it hangs
     from, its devices under it, and says every figure the eero contract places in the internet's,
-    a node's and a device's drawer, each in its own unit, none eero didn't give
+    a node's, a device's and a profile's drawer, each in its own unit, none eero didn't give, the
+    internet's timeline setting each notice the daemon told among eero's events, newest first
   '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
@@ -1784,8 +1816,8 @@
     emoji are found by name and meaning, best first
   '';
   the-launcher-finds-the-desk-light = ''
-    the launcher says how the desk light is lit and sets its brightness, warmth and power through
-    litra, and the bar hears changes but not a camera putting it out
+    the launcher says how the desk light is lit, its drawer its lumens, node and serial, sets its
+    brightness, warmth and power through litra, and the bar hears changes but not a camera
   '';
   the-launcher-finds-the-keyboards-keys = ''
     a key is found by what it types, and shown where it is, and the board's Layer and Lights hold
@@ -1834,7 +1866,8 @@
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and
-    its row says how many and the first one's name, none while empty and an ellipsis while waiting
+    its row says how many and the first one's name, none while empty and an ellipsis while waiting,
+    and a source's lines are read with their times apart, the shared list's by each program
   '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
@@ -1849,7 +1882,7 @@
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
     and holds its Recent, newest first, each row timed and noting its kind and size, and Liked
-    Songs, Playlists, Albums, Artists and Shows, each counted, each played, opened and copied as
+    Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-lays-sessions-under-their-orchestrators = ''
@@ -1890,6 +1923,15 @@
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
+  '';
+  the-launcher-plays-on-where-mpv-stopped = ''
+    mpv's Recent merges each file mpv left by when it left it, newest first, with the files the
+    shared list gives, each once and none open now, read once mpv is stepped into, each opening;
+    one stopped part way has "12:04 of 41:10 · 12 min ago" at its side, Return resuming and From
+    the Start inside, one watched whole says its length and when and play, and each drawer says
+    where it is and its kind, then what's still to play, what mpv kept, its size and its path;
+    and Play the Copied Link is offered only while the clipboard's one web address is one mpv
+    plays, a video site's page or a media file
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows list This Window, then the rest the one used last first, and when the
@@ -1938,8 +1980,8 @@
     the switch reads dark, or none was lit, doubts it otherwise, and reads the hinge's buffer
   '';
   the-litra-follows-the-cameras = ''
-    `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
-    by a whole file naming a program
+    `litra` finds the lights by their ids, speaks their reports, says each one's lumens, name and
+    serial, and counts a camera streaming only by a whole file naming a program
   '';
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run
@@ -1948,9 +1990,10 @@
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
     it, gives the theme's sans or monospaced face, carrying the name asked for
   '';
-  the-machine-lists-processes-for-its-parts = ''
-    the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
-    once looked at, list the processes once
+  the-machine-answers-from-its-daemon = ''
+    Machine answers the processors, the memory, the disk and the uptime from the machine daemon
+    reading the sandbox's own /proc, their headlines making no parts, and asks it for the programs
+    using the machine only once a part saying them is looked at
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces
@@ -2291,8 +2334,10 @@
     its end passes; the notice's Again sets it going afresh and putting it away ends it, ending one
     rung takes its notice back, a ring with no server to take it is said once one comes, what's
     kept outlasts the daemon, one that ended meanwhile ringing late, an ask it can't do is
-    refused, and the stopwatch runs, laps, stops and resets, outlasts the daemon, and is heard
-    only by watches of its kind
+    refused with a reason the launcher says in its own words, and the stopwatch runs, laps,
+    pauses and resets, outlasts the daemon, and is heard only by watches of its kind. A timer
+    coming due within a minute of its end plays its sound once, not again when its notice is said
+    afresh, and quietly while a call is on; one found long past its end is said late, unheard
   '';
   timers-passes-clippy = ''
     clippy finds nothing in the timers daemon or its tests
@@ -2573,6 +2618,10 @@
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
     a whole number of half rows below; and a row's words, home's lists and a found row's note,
     are in the serif a step after its name and on its baseline to half a device pixel
+  '';
+  vm-desktop-looks-machine = ''
+    on the laptop's screen at 1.5 and at 2, Machine's processor, memory, disk and uptime step
+    into the parts the machine daemon reads from the guest, and those parts into their own
   '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not

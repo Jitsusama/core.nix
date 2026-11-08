@@ -16,7 +16,9 @@ import QtQuick
 Singleton {
     id: root
 
-    // Each light: { node, on, percent, kelvin }.
+    // Each light: { node, on, percent, lumens, kelvin, name, serial }, its
+    // name and serial as its HID device gives them, empty where it gives
+    // none.
     property var lights: []
     readonly property var light: lights.length > 0 ? lights[0] : null
     // What the light can do, as litra takes it.

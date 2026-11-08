@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 7;
+pub const SCHEMA: i64 = 8;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -94,6 +94,19 @@ END;
     };
 }
 
+/// Each time an allowance went over: from when, until when it came back
+/// under (none while it's over), and what every source said as it went,
+/// kept here as well as in the report written from it.
+macro_rules! crossings {
+    () => {
+        "
+CREATE TABLE crossings (
+    budget TEXT NOT NULL, allowance TEXT NOT NULL, at REAL NOT NULL, back REAL,
+    path TEXT NOT NULL, said TEXT NOT NULL, PRIMARY KEY (budget, allowance, at));
+"
+    };
+}
+
 /// What a feed billed, by everything a record keys it by: an empty budget
 /// is the feed's own.
 macro_rules! billed {
@@ -147,7 +160,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 6] = [
+const UPGRADES: [&str; 7] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -182,6 +195,7 @@ const UPGRADES: [&str; 6] = [
         "INSERT INTO cap_events_7 SELECT *, '' FROM cap_events; DROP TABLE cap_events;
          ALTER TABLE cap_events_7 RENAME TO cap_events;"
     ),
+    crossings!(),
 ];
 
 const TABLES: &str = concat!(
@@ -242,6 +256,7 @@ CREATE TABLE marks (key TEXT PRIMARY KEY, mark TEXT NOT NULL, at REAL NOT NULL);
 CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
     id INTEGER NOT NULL, withdrawn REAL);
 ",
+    crossings!(),
     hours!()
 );
 
@@ -888,7 +903,9 @@ mod tests {
     feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
     before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
 ";
+        // The seventh shape kept no crossings; the eighth gains them.
         TABLES
+            .replace(crossings!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)

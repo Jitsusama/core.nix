@@ -44,7 +44,12 @@
 # it plays over MPRIS, so the media keys and the shell's player reach it,
 # and says each file it plays to the desktop's list of files opened lately
 # (recent-files.lua), so its Recent in the launcher lists them, led by
-# the file each mpv plays now (playing.lua), which Return goes to.
+# the file each mpv plays now (playing.lua), which Return goes to. Among
+# them, by when mpv left each, are the files it stopped part way through,
+# each saying where, which Return resumes, and those it played to their
+# end, which Return plays from the start (MpvProgram.qml). While the
+# clipboard holds an address it plays, a video site's page or a media
+# file, Programs › mpv offers Play the Copied Link, and only then.
 # umpv, the package's second entry, which queues files into one window,
 # stays out of the launcher, where it would sit beside mpv as a second mpv.
 {
@@ -79,6 +84,9 @@ let
 
   # Where each mpv keeps the file it plays now (playing.lua).
   playing = "${config.xdg.stateHome}/mpv/playing";
+  # Where mpv keeps where it stopped in each file, named here so mpv and
+  # the launcher's lister of them (stopped.sh) read one folder.
+  watchLater = "${config.xdg.stateHome}/mpv/watch_later";
 
   # The theme's #RRGGBB as stats writes a colour, blue first.
   bgr =
@@ -295,6 +303,20 @@ in
   xdg.configFile."mpv/scripts/copy-frame.lua".source = ./copy-frame.lua;
   xdg.configFile."mpv/scripts/vi-keys.lua".source = ./vi-keys.lua;
   xdg.configFile."mpv/scripts/osd-by-scale.lua".source = ./osd-by-scale.lua;
+  # What mpv's provider works out, beside it, where its import finds it.
+  xdg.configFile."quickshell/launcher/Mpv.js".source = ./Mpv.js;
+
+  # The files mpv left, in its Recent, and Play the Copied Link, among its
+  # acts; after Slack's, beside the desktop's actions, as GIMP's and
+  # Tuple's are.
+  jitsusama.quickshell.launcher.providers.mpv = {
+    order = 48;
+    source = ./MpvProgram.qml;
+    stopped = [
+      (lib.getExe (pkgs.callPackage ./stopped.nix { }))
+      watchLater
+    ];
+  };
 
   # The file each mpv plays now, for its Recent in the launcher to lead
   # with, kept in a folder made at sign-in (playing.lua), each mpv's line
@@ -365,6 +387,11 @@ in
 
       keep-open = true;
       save-position-on-quit = true;
+      # Each file's where-it-stopped names the file, so the launcher can
+      # list them (stopped.sh). mpv leaves it off for privacy, but each
+      # path is in the desktop's list of files opened lately already.
+      watch-later-dir = watchLater;
+      write-filename-in-watch-later-config = true;
       title = "\${media-title}";
 
       osd-font = font.mono.family;

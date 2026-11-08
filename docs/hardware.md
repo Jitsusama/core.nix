@@ -1392,6 +1392,13 @@ limit is the firmware's temperature target, not a profile's power limit.
 The profiles changed only the fan: from cold, low-power kept it off at
 88 °C where the others started it.
 
+Held for five minutes on the charger, after three minutes' cooling, the
+profiles still drew alike over the last minute: 21.7 to 22.3 W at 2.75 to
+2.80 GHz and 90 °C. What differed was how fast the fan was let run, about
+5,200 rpm in power-saver, 6,300 in balanced and 7,500 in performance, which
+bought 1.6% more clock. Idle, the chip drew 6.0 to 6.2 W in all three, as
+the GPU's driver reads it.
+
 ### Wi-Fi's Country
 
 The AX200 learns its country from the access points it hears
@@ -1430,6 +1437,16 @@ has. A touch still lands where it's made, since it's mapped to the
 display, but anything that measures it in millimetres reads the height
 13% short. The module's hwdb entry gives the touchscreen 116 and 173
 units a millimetre, the pen's size.
+
+The driver arms a watchdog at each heat map the panel sends, to start a
+stalled stream again in its raw mode. These settings keep the panel in its
+standard HID mode, where the watchdog only logs, so once the panel streamed
+heat maps the kernel's log took a line every 2 s, 1,822 in three hours. The
+module sets `stream_watchdog_ms=0`, which leaves it unarmed.
+
+With the lid shut and nothing on the glass, the panel still sent about 39
+empty heat maps a second, each an interrupt, once it had begun sending
+them; before that it sent none.
 
 ### The Ports and Bluetooth
 
@@ -1483,6 +1500,8 @@ sealed to.
 | Camera     | both cameras list their formats; neither's picture is checked yet              |
 | Firmware   | the TPM's capsule waits on whether its upgrade keeps the TPM's owner state     |
 | Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
+| Touch      | what its heat maps under a shut lid cost on battery isn't read yet             |
+| Power      | the profiles are read on the charger only, not yet on battery                  |
 
 [1]: kernel.md
 [2]: ../hardware/dell-xps-14-da14260/nixos.nix

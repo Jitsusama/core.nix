@@ -75,6 +75,44 @@ function plainly(typed) {
     return String(typed).trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// What opens the query a pick inside a step is kept under. Nothing typed
+// at the top starts with it, so what's learned inside a step ("n" in
+// kitty's page meaning New Window Below) leans on that step alone and never
+// on the same letters typed anywhere else (RSCH-20261030-GB56HX: learning
+// applies wherever typing searches, inside a step too).
+const STEP = "\u203a";
+
+// The query what's typed inside the step keyed `step` is learned as, or ""
+// when nothing's typed.
+function stepped(step, typed) {
+    const query = plainly(typed);
+    return query === "" ? "" : `${STEP}${plainly(step)}${STEP}${query}`;
+}
+
+// Whether a kept query was typed inside a step.
+function isStepped(query) {
+    return String(query).startsWith(STEP);
+}
+
+// What was picked for what's typed in a category, as Picks.qml weighs it:
+// what was picked there with it held first (`top`, kept under what's
+// typed itself) and what was picked there reached from another step
+// (`inside`, kept under `stepped`), each thing's weight and times added,
+// so learning in Machine or Desktop applies however it was reached.
+function joined(top, inside) {
+    const out = {};
+    for (const table of [top, inside]) {
+        for (const thing of Object.keys(table ?? {})) {
+            const found = out[thing] ?? { weight: 0, times: 0 };
+            out[thing] = {
+                weight: found.weight + table[thing].weight,
+                times: found.times + table[thing].times
+            };
+        }
+    }
+    return out;
+}
+
 // The tier of a name starting with what's typed, between one typed whole
 // and one whose later word starts with it.
 const NAME_START = 0.5;
@@ -187,6 +225,11 @@ function heldAt(latches, typed) {
 // counts at (it, and every start of it when it's one word) left on what's
 // latched there now, and a latch on a row with no picks left forgotten.
 function relatch(latches, picks, typed, there) {
+    // Only the top latches: inside a step, what's learned orders the rows
+    // found there and never lands on one by itself.
+    if (isStepped(plainly(typed))) {
+        return latches;
+    }
     const picked = new Set();
     for (const asked of Object.keys(picks)) {
         for (const key of Object.keys(picks[asked])) {

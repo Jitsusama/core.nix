@@ -1,7 +1,8 @@
 // A notice's acts, in the order its card and its row in the launcher both
-// list them, run in Qt's own JavaScript engine, the one the shell runs it
-// in. The `a-notice-is-one-thing` check copies Notice.js beside this file
-// and runs `qml -platform offscreen notice.qml`.
+// list them, and how its drawer tells it, run in Qt's own JavaScript
+// engine, the one the shell runs it in. The `a-notice-is-one-thing` check
+// copies Notice.js beside this file and runs
+// `qml -platform offscreen notice.qml`.
 import QtQuick
 import "Notice.js" as Notice
 
@@ -93,6 +94,44 @@ QtObject {
             Notice.readOffer([{ identifier: "2", text: "Read" }]), { identifier: "2", text: "Read" });
         expect("and none where it offers none, a word holding read among them",
             Notice.readOffer(slack.concat([{ identifier: "readme", text: "Readme" }])), null);
+
+        // Its kind in words, from its category: a class alone or with its
+        // subtype, an error failing, a bounced mail, and one never named
+        // left out rather than shown raw.
+        const named = {
+            kinds: { im: "message", email: "mail", transfer: "transfer" },
+            failed: "{kind} failed", bounced: "mail bounced"
+        };
+        expect("a kind by its class", Notice.kind("im", named), "message");
+        expect("and with its subtype", Notice.kind("im.received", named), "message");
+        expect("an error fails", Notice.kind("transfer.error", named), "transfer failed");
+        expect("a bounced mail", Notice.kind("email.bounced", named), "mail bounced");
+        expect("one never named", Notice.kind("x-gnome.music", named), "");
+        expect("and none given", Notice.kind(undefined, named), "");
+
+        // Its eyebrow: where it's from, then its kind, either alone.
+        expect("from and kind", Notice.eyebrow("Slack", "message", "from {who}"),
+            "from Slack \u00b7 message");
+        expect("from alone", Notice.eyebrow("Desktop", "", "from {who}"), "from Desktop");
+        expect("kind alone", Notice.eyebrow("", "mail", "from {who}"), "mail");
+
+        // Its facts: Arrived first, unless Left says that time already.
+        const arrived = { label: "Arrived", at: "10:51" };
+        const urgency = { label: "Urgency", said: "low" };
+        expect("arrived, left later, and its urgency",
+            Notice.facts(arrived, { label: "Left", said: "put away at {at}", at: "10:53" },
+                urgency),
+            [{ label: "Arrived", value: "10:51" }, { label: "Left", value: "put away at 10:53" },
+                { label: "Urgency", value: "low" }]);
+        expect("left that same minute, Left stands for both",
+            Notice.facts(arrived, { label: "Left", said: "put away at {at}", at: "10:51" },
+                { label: "Urgency", said: "" }),
+            [{ label: "Left", value: "put away at 10:51" }]);
+        expect("still open, Left tells no time",
+            Notice.facts(arrived, { label: "Left", said: "still on the screen", at: "" },
+                { label: "Urgency", said: "" }),
+            [{ label: "Arrived", value: "10:51" },
+                { label: "Left", value: "still on the screen" }]);
 
         for (const failure of failures)
             console.warn(failure);

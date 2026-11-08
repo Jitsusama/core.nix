@@ -747,6 +747,12 @@ in
       "9.3Z"
     ];
   };
+  # Bluetooth's rune sounding out, as the radio does while it looks.
+  nearby = {
+    glyph = nerd "f00b0";
+    console = "?";
+    means = "the Bluetooth devices the radio hears nearby, to find one to pair";
+  };
   bluetoothOff = {
     glyph = nerd "f00b2";
     console = "b";
@@ -1381,6 +1387,12 @@ in
     glyph = nerd "f13ab";
     console = "W";
     means = "the stopwatch, counting up from when it was started, with its laps";
+  };
+  # A flag, as one drops at the end of each stretch (VKCF3Z, 2026-11-08).
+  lap = {
+    glyph = nerd "f023b";
+    console = "L";
+    means = "a lap of the stopwatch, and Lap, which marks one";
   };
   zone = {
     glyph = nerd "f01e7";

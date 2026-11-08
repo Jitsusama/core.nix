@@ -1,4 +1,5 @@
 .pragma library
+.import "Order.js" as Order
 // A pi session as the launcher shows it, said once, and named apart from
 // Session.qml, which is the desktop session: how it stands, the acts it
 // offers in their order, and its drawer's figures (SessionDrawer.js says
@@ -207,12 +208,11 @@ function landingKey(session, one) {
     return `${session.presence?.session ?? session.address} ${one.ref} ${one.at}`;
 }
 
-// What sessions landed that Joel hasn't read, for Now's Landed (VKCF3Z,
-// 2026-11-06), newest first: each change merged, and anything else that
-// says what he should try (`person`). A plan item ticked, which a session
-// lands too, is its own progress, 27 of the 77 landings on 2026-11-07,
-// so it's left out unless it says what to try. Each is { key, at, ref,
-// what, person, url, session }, `url` only a web link.
+// What sessions landed that Joel hasn't read, for Now's Landed (VKCF3Z, 2026-11-06), newest
+// first: each change merged, and anything else that says what he should try (`person`). A plan
+// item ticked, which a session lands too, is its own progress, 27 of the 77 landings on
+// 2026-11-07, so it's left out unless it says what to try. Each is { key, at, ref, what, person,
+// url, session }, `url` only a web link.
 function landed(sessions, read) {
     const rows = [].concat(...sessions.map(session => (session.presence?.landings ?? [])
         .filter(one => isChange(String(one.ref ?? "")) || String(one.person ?? "") !== "")
@@ -225,7 +225,7 @@ function landed(sessions, read) {
             url: WEB.test(String(one.url ?? "")) ? String(one.url) : "",
             session
         }))));
-    return rows.filter(one => !read.includes(one.key)).sort((a, b) => b.at.localeCompare(a.at));
+    return rows.filter(one => !read.includes(one.key)).sort(Order.stream(one => one.at));
 }
 
 // A landing's drawer: who landed it and when as its eyebrow, what landed

@@ -24,7 +24,7 @@
 #
 # In the launcher, Programs › Spotify holds the playlists, albums and
 # shows Spotify played lately as its Recent, and Liked Songs, Playlists,
-# Albums, Artists and Shows inside it, each played from there
+# Albums, Artists and Podcasts inside it, each played from there
 # (SpotifyProgram.qml), read through spotify-recent with spotify-player's
 # sign-in only as Spotify is stepped into.
 { spicetify-nix, quickshell }:

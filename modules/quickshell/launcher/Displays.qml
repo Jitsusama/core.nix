@@ -43,6 +43,7 @@ import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 import "Plate.js" as Plate
 import "Power.js" as Power
 import "Screens.js" as Screens
@@ -405,8 +406,10 @@ Provider {
             + `\u00b7 scale ${Screens.scale(output.logical.scale)}`;
     }
 
-    readonly property var shown: Object.values(outputs).sort((a, b) =>
-        Number(builtIn(b)) - Number(builtIn(a)) || a.name.localeCompare(b.name))
+    // Screens are choices: the built-in first, as it's always there, then by
+    // name, and the one in use never moves for being chosen.
+    readonly property var shown: Object.values(outputs).sort(Order.choices({
+        natural: (a, b) => Number(builtIn(b)) - Number(builtIn(a)), name: output => output.name }))
     readonly property var lit: shown.filter(output => output.logical !== null)
 
     readonly property string focusedOutput: {
@@ -531,10 +534,11 @@ Provider {
 
     // A choice wears the theme's mark of the setting it's for, by name.
     // Setting it keeps the launcher, the setting saying what it's at now.
-    function choice(key, name, mark, chosen, run) {
+    function choice(key, name, mark, chosen, run, keywords) {
         return thing({
             key: `verb:display-${key}`,
             name: name,
+            keywords: keywords ?? "",
             glyph: Theme.glyph[mark],
             hue: "action",
             side: chosen ? "chosen" : "",
@@ -626,12 +630,14 @@ Provider {
         const scale = output.logical.scale;
         // A scale is a multiple, as the theme says one, never a share, so
         // the row, the part and the drawer call it one way (VKCF3Z,
-        // 2026-11-07).
+        // 2026-11-07). Its share is a hidden word, so "scale 150", as niri
+        // and other systems say it, still finds 1.5\u00d7.
         const rows = lightRows(output).concat([setting(output, "scale", Screens.scale(scale),
             "scale", scales.map(each => choice(`scale-${each}`,
                 `Scale to ${Screens.scale(each)}`, "scale",
                 Math.abs(each - scale) < 0.01,
-                () => change(output, { Scale: { scale: { Specific: each } } }))))]);
+                () => change(output, { Scale: { scale: { Specific: each } } }),
+                `${Math.round(each * 100)}%`)))]);
         if (now !== null) {
             const rates = output.modes.filter(m => m.width === now.width && m.height === now.height);
             const refreshes = rates.length < 2 ? [] : rates.map(each =>

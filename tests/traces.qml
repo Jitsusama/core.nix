@@ -82,6 +82,20 @@ QtObject {
             JSON.stringify(about.into));
         expect("one line", !JSON.stringify(request).includes("\n"), "more than one");
         expect("a truth", Traces.attribute("b", false).value.boolValue === false, "not one");
+
+        // Work already done, as a refresh, is a span ended as it's made, in
+        // its opening's trace; and a hold of the notices is sent as their
+        // own service (Y2YBTS, 2026-11-07).
+        const refresh = Traces.ended(Traces.begun("refresh", 1300, opening,
+            { source: "session", tookMs: 3.5, rows: 9 }), 1304, {});
+        expect("a refresh ended as it's made", refresh.start === 1300 && refresh.end === 1304
+            && refresh.parent === opening.span && refresh.trace === opening.trace,
+            JSON.stringify(refresh));
+        const hold = Traces.ended(Traces.begun("hold", 0, null, { cards: 2 }), 10, { done: 1 });
+        const notices = Traces.request([hold], "notices").resourceSpans[0];
+        expect("the notices' service", notices.resource.attributes[0].value.stringValue
+            === "notices" && notices.scopeSpans[0].scope.name === "notices",
+            JSON.stringify(notices));
         expect("a fraction", Traces.attribute("f", 1.5).value.doubleValue === 1.5, "not one");
 
         if (failures.length > 0) {

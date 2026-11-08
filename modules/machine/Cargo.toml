@@ -1,0 +1,18 @@
+# How this machine is doing, held ready for the shell: one resident
+# program that reads the kernel's files, and asks UDisks for each disk's
+# health, only while someone watches, and answers over a socket in the
+# shell's daemon interface (src/main.rs says how).
+[package]
+name = "machine"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The clocks the kernel counts time awake and time since boot by, which
+# std doesn't name.
+libc = "0.2"
+serde_json = "1"
+# UDisks, asked for a disk's health over the system bus, never spawned.
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
