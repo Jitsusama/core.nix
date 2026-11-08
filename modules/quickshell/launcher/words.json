@@ -6159,7 +6159,7 @@
         "stopped": "it gave up",
         "unreached": "it stopped answering",
         "busy": "it's already pairing or connecting",
-        "unready": "Bluetooth isn't ready",
+        "unready": "the adapter isn't ready",
         "nothing": "it offers nothing this machine uses",
         "heard": "{dbm} dBm",
         "nameless": "{count} more without a name",

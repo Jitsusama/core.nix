@@ -167,7 +167,8 @@ ShellRoot {
             finding.nearbyPlace.side);
         const unnamed = rows[2].verbs();
         expect("the nameless stepped into, by address, to pair", rows[2].verb === "more"
-            && said(unnamed) === "AA-00-00-00-00-03=" && unnamed[0].verb === "pair",
+            && said(unnamed) === "AA-00-00-00-00-03=\u221240 dBm \u00b7 strong"
+            && unnamed[0].verb === "pair",
             said(unnamed));
         expect("a stranger is paired", rows[0].verb === "pair" && rows[1].verb === "connect",
             `${rows[0].verb}, ${rows[1].verb}`);
