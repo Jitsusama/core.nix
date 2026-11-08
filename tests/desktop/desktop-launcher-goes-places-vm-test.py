@@ -52,7 +52,7 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
 HEAP = "/tmp/quickshell-heap.raw"
 # Throwaway: whether this run records under heaptrack, and the render loop it asks Qt for.
 TRACKED = False
-LOOP = "basic"
+LOOP = ""
 
 
 def heaptrack_home(desktop: Desktop) -> str:
