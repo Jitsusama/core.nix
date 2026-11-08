@@ -6288,6 +6288,8 @@ Scope {
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
+                // What's drawn after its name, what a row holds.
+                count: row.count ?? "",
                 // Its glyph's role, and whether what it says at its right
                 // takes the alert's.
                 hue: row.hue ?? "",

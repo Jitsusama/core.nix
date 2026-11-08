@@ -3,9 +3,11 @@
 // today to a week on and each who sent mail that wants him (Google.js's
 // people). With no account there's nobody. Its main act writes them a
 // new mail in Mail's window; their next meeting is the first with them
-// not yet over, and their Recent the meetings with them that are and the
-// mail they sent, each drawn by its own row (Calendar.row, Mail.row), so
-// a meeting or a mail there is the very one it is everywhere else.
+// not yet over, their Unread the mail they sent that wants him, and their
+// Recent the meetings with them that are over, each drawn by its own row
+// (Calendar.row, Mail.row), so a meeting or a mail there is the very one
+// it is everywhere else. Mail is Unread and never Recent, since all the
+// mail held is unread, and Recent is what Joel had with them (GB56HX).
 // Google's own contacts would need a sign-in pi doesn't ask for, so
 // who's known is only who's met or written.
 import qs
@@ -41,13 +43,15 @@ PersonSource {
         return coming ? { at: coming.start, row: Calendar.row(coming, provider) } : null;
     }
 
+    function unread(person, provider) {
+        return Mail.mail.filter(one => Google.withThem(one, person.emails))
+            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing) }));
+    }
+
     function recent(person, provider) {
         const now = Date.now();
-        const meetings = Calendar.meetings.filter(meeting => meeting.end <= now
+        return Calendar.meetings.filter(meeting => meeting.end <= now
             && Google.withThem(meeting, person.emails))
             .map(meeting => ({ at: meeting.end, row: Calendar.row(meeting, provider) }));
-        const mail = Mail.mail.filter(one => Google.withThem(one, person.emails))
-            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing) }));
-        return meetings.concat(mail);
     }
 }

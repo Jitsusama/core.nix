@@ -115,13 +115,14 @@ function programNote(stands) {
     return stands === "unknown" ? "Slack can't be reached" : "";
 }
 
-// Its note: who and where, the first two named and how many more, of
-// those wanting him in Now, or of every one in Slack's Unread.
-function context(told, stands, every) {
+// Its note in Now: who and where, the first two named and how many more,
+// of those wanting him. Slack's own Unread names them after its name
+// instead, as every row holding things does (SlackProgram.qml).
+function context(told, stands) {
     if (stands !== "ok") {
         return "";
     }
-    const names = (every ? told.conversations : wanting(told)).map(one => one.name);
+    const names = wanting(told).map(one => one.name);
     if (names.length <= 2) {
         return names.join(" and ");
     }

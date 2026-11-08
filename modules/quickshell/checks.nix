@@ -2722,6 +2722,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../people/People.qml} launcher/People.qml
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${../people/Person.js} launcher/Person.js
       cp ${./launcher/Zones.js} launcher/Zones.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
