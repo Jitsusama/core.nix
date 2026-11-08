@@ -122,7 +122,7 @@ fn main() -> ExitCode {
             ExitCode::from(MISUSED)
         }
         Asked::Completion => {
-            print!("{}", include_str!("completion.zsh"));
+            print!("{}", names::completion(&words));
             ExitCode::SUCCESS
         }
         Asked::Names { steps } => match ask(&steps, false, &words) {
@@ -277,10 +277,5 @@ mod tests {
             asked(&words(&["show", "--jsno"])),
             Asked::Unknown("--jsno".to_string())
         );
-    }
-
-    #[test]
-    fn the_completion_is_zshs_for_launcher() {
-        assert!(include_str!("completion.zsh").starts_with("#compdef launcher\n"));
     }
 }

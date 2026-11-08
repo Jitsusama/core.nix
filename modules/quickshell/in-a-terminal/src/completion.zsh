@@ -10,7 +10,8 @@ _launcher() {
   # which show takes anywhere.
   typed=(${(Q)${words[2,CURRENT-1]}:#-*})
   if (( ${#typed} == 0 )); then
-    commands=('show:any place, row or drawer the launcher holds')
+    # Each command and what it does, from words.json, as launcher writes it.
+    commands=(@commands@)
     _describe -t commands command commands
     return
   fi

@@ -5,6 +5,25 @@
 
 use serde_json::Value;
 
+use crate::words::Words;
+
+/// The commands zsh's completion offers first.
+const COMMANDS: [&str; 1] = ["show"];
+
+/// zsh's completion for launcher, each command described in words.json's
+/// words, single-quoted as zsh reads them, a colon in a name escaped.
+pub fn completion(words: &Words) -> String {
+    let commands = COMMANDS
+        .iter()
+        .map(|command| {
+            let offered = format!("{}:{}", command.replace(':', "\\:"), words.offered(command));
+            format!("'{}'", offered.replace('\'', "'\\''"))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    include_str!("completion.zsh").replace("@commands@", &commands)
+}
+
 /// A row's name as a step is typed: `Sessions to Reopen` is
 /// `sessions-to-reopen`.
 pub fn typed(name: &str) -> String {
@@ -46,6 +65,17 @@ pub fn for_zsh(shown: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_command_is_offered_in_the_launchers_words() {
+        let words = Words::from_value(&serde_json::json!({"terminal": {"offers": {
+            "show": "what Joel's launcher holds"}}}));
+        let written = completion(&words);
+        assert!(written.starts_with("#compdef launcher\n"));
+        assert!(written.contains("commands=('show:what Joel'\\''s launcher holds')"));
+        let bare = completion(&Words::from_value(&Value::Null));
+        assert!(bare.contains("commands=('show:show')"));
+    }
 
     #[test]
     fn a_name_is_typed_in_lower_case_a_hyphen_for_a_space() {

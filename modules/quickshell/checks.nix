@@ -4264,6 +4264,7 @@ onLinux {
           pkgs.zsh
         ];
         LAUNCHER_QS = pkgs.writeShellScript "qs" (builtins.readFile ./in-a-terminal/tests/qs);
+        LAUNCHER_WORDS = ./launcher/words.json;
       }
       ''
         export HOME=$PWD

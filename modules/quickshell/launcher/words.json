@@ -10863,6 +10863,9 @@
       "launcher completion zsh writes zsh's completion, which offers each place's",
       "rows as you type."
     ],
+    "offers": {
+      "show": "any place, row or drawer the launcher holds"
+    },
     "missing": "nothing called {step}",
     "missingIn": "nothing called {step} in {place}",
     "meant": "did you mean {names}?",

@@ -788,8 +788,8 @@
   launcher-fits-what-it-shows-to-the-terminal = ''
     `launcher` lays what the shell shows out to the terminal's width, a count and then a side giving
     way by whole items and a name cut only at a word, inks it only where the terminal takes colour,
-    in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows when asked,
-    and says a miss and the nearest names in the launcher's words
+    in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows when
+    asked, and says a miss and the nearest names in the launcher's words
   '';
   launcher-passes-clippy = ''
     clippy finds nothing in launcher, the launcher in a terminal, or its tests
