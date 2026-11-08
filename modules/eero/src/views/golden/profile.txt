@@ -1,0 +1,17 @@
+profile 1 · id 3001 · read 1 min 7 s ago
+
+state    Active
+paused   no
+devices  10 · 0 on now
+
+hardware           device      node  address
+02:00:00:00:00:2b  not on now
+02:00:00:00:00:2c  not on now
+02:00:00:00:00:2d  not on now
+02:00:00:00:00:2e  not on now
+02:00:00:00:00:2f  not on now
+02:00:00:00:00:30  not on now
+02:00:00:00:00:31  not on now
+02:00:00:00:00:32  not on now
+02:00:00:00:00:33  not on now
+02:00:00:00:00:34  not on now

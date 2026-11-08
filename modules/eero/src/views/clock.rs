@@ -56,6 +56,11 @@ impl Clock {
     pub fn hour(&self, at: Timestamp) -> String {
         self.local(at, "%H:%M")
     }
+
+    /// The time to the second, for events that come seconds apart: 17:42:35.
+    pub fn second(&self, at: Timestamp) -> String {
+        self.local(at, "%H:%M:%S")
+    }
 }
 
 /// A length of time in its two largest units: 37 s, 19 min 55 s,

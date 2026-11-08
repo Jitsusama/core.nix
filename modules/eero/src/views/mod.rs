@@ -11,6 +11,7 @@
 
 mod clock;
 mod devices;
+mod events;
 mod figures;
 mod firmware;
 mod graph;
@@ -20,6 +21,7 @@ mod json;
 mod marks;
 mod mesh;
 mod nodes;
+mod profiles;
 mod radio;
 mod speeds;
 mod text;
@@ -29,7 +31,7 @@ mod traffic;
 pub use clock::Clock;
 pub use text::Ink;
 
-use crate::model::{CloudState, Device, HomeNetwork, Node};
+use crate::model::{CloudState, Device, HomeNetwork, Node, Profile};
 use figures::joined;
 use marks::marks;
 use text::{Line, Page, Role, muted, plain, run, strong};
@@ -136,7 +138,9 @@ pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Resul
         View::Internet => internet::page(model, clock, ink),
         View::Firmware => firmware::page(model, clock),
         View::Traffic => traffic::page(model, clock, ink),
-        _ => return Err(unbuilt(view)),
+        View::Profiles => profiles::all(model, clock),
+        View::Profile(name) => profiles::one(model, find_profile(model, name)?, clock),
+        View::Events => events::page(model, clock),
     };
     Ok(ink.page(&page))
 }
@@ -156,13 +160,10 @@ pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
         View::Internet => internet::json(model),
         View::Firmware => firmware::json(model),
         View::Traffic => traffic::json(model),
-        _ => Err(unbuilt(view)),
+        View::Profiles => profiles::all_json(model),
+        View::Profile(name) => profiles::one_json(model, find_profile(model, name)?),
+        View::Events => events::json(model),
     }
-}
-
-/// What a view not yet set says.
-fn unbuilt(view: &View) -> String {
-    format!("{view:?} isn't set yet")
 }
 
 /// The head every page opens with: what it's of, how old the reading is,
@@ -258,6 +259,25 @@ fn find_node<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Node, String>
         .ok_or_else(|| {
             let names: Vec<&str> = model.nodes.iter().map(node_name).collect();
             format!("no node is called {name}; the nodes are {}", listed(&names))
+        })
+}
+
+/// A profile's name, or its id where eero gives none.
+fn profile_name(profile: &Profile) -> &str {
+    profile.name.as_deref().unwrap_or(&profile.id)
+}
+
+fn find_profile<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Profile, String> {
+    model
+        .profiles
+        .iter()
+        .find(|profile| profile.id == name || profile_name(profile).eq_ignore_ascii_case(name))
+        .ok_or_else(|| {
+            let names: Vec<&str> = model.profiles.iter().map(profile_name).collect();
+            format!(
+                "no profile is called {name}; the profiles are {}",
+                listed(&names)
+            )
         })
 }
 

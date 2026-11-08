@@ -108,6 +108,21 @@ golden! {
     firmware_lists_each_nodes_own: model, View::Firmware => "firmware.txt";
     firmware_marks_an_update_waiting: troubled, View::Firmware => "firmware-troubled.txt";
     traffic_sets_every_hour_by_node: model, View::Traffic => "traffic.txt";
+    profiles_counts_each_ones_devices: model, View::Profiles => "profiles.txt";
+    a_profile_lists_its_devices_on_now_or_not:
+        model, View::Profile("profile 1".into()) => "profile.txt";
+    a_profile_sets_a_device_on_now_by_its_node:
+        profiled, View::Profile("profile 3".into()) => "profile-on.txt";
+    events_lead_each_day_with_its_date: model, View::Events => "events.txt";
+}
+
+/// The record with two devices on now in profile 3, since none of the
+/// record's own profiles holds one.
+fn profiled() -> HomeNetwork {
+    let mut model = model();
+    let on: Vec<String> = model.devices[..2].iter().map(|d| d.mac.clone()).collect();
+    model.profiles[2].devices.extend(on);
+    model
 }
 
 /// The views a terminal's colours are tried on, and those that fit a
@@ -133,6 +148,9 @@ fn narrow() -> Vec<View> {
         View::Mesh,
         View::Internet,
         View::Firmware,
+        View::Profiles,
+        View::Profile("3002".into()),
+        View::Events,
     ]
 }
 
@@ -230,6 +248,20 @@ fn an_unknown_node_names_the_nodes_there_are() {
     assert_eq!(
         refused.unwrap_err(),
         "no node is called Attic; the nodes are Hall, Study and Den"
+    );
+}
+
+#[test]
+fn an_unknown_profile_names_the_profiles_there_are() {
+    let refused = text(
+        &View::Profile("kids".into()),
+        &model(),
+        &soon(),
+        &Ink::plain(),
+    );
+    assert_eq!(
+        refused.unwrap_err(),
+        "no profile is called kids; the profiles are profile 1, profile 2 and profile 3"
     );
 }
 
@@ -363,6 +395,25 @@ fn the_internet_firmware_and_traffic_slices_hold_their_part() {
     assert_eq!(
         traffic["nodes"][0]["usage"],
         serde_json::to_value(&model.nodes[0].usage).unwrap()
+    );
+}
+
+#[test]
+fn the_profile_and_event_slices_hold_them_whole() {
+    let model = model();
+    assert_eq!(
+        slice(&View::Profiles)["profiles"],
+        serde_json::to_value(&model.profiles).unwrap()
+    );
+    let profile = slice(&View::Profile("3002".into()));
+    assert_eq!(
+        profile["profile"],
+        serde_json::to_value(&model.profiles[1]).unwrap()
+    );
+    assert!(profile["devices"].is_array());
+    assert_eq!(
+        slice(&View::Events)["events"],
+        serde_json::to_value(&model.events).unwrap()
     );
 }
 
