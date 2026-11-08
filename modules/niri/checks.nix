@@ -205,7 +205,7 @@ onLinux {
   # niri walks every window at most once a frame, however often a client's
   # commits wake it (refreshes-once-a-frame.patch): its real niri, with the
   # account's configuration, nested in a headless sway in the sandbox
-  # (tests/nested-niri.sh), counts its refreshes in its trace log while a
+  # (tests/nested-niri.sh), counts its refreshes in its log while a
   # stand-in commits a thousand times a second
   # (tests/refreshes-once-a-frame.py). niri's own tests say what it puts
   # off and what it doesn't; this shows the count falls on a running niri.
@@ -228,7 +228,7 @@ onLinux {
         GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
         LIBGL_ALWAYS_SOFTWARE = 1;
         # niri's own filter, with the line tallying its refreshes let through.
-        RUST_LOG = "niri=debug,niri::niri=trace";
+        RUST_LOG = "niri=debug,refresh_pacing=debug";
       }
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD

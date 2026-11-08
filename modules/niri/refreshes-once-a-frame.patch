@@ -3,11 +3,12 @@ of its event loop, to at most once per frame of its fastest output. A
 wakeup within a frame of the last refresh puts the walk off to one timer,
 so every wakeup is still followed by a refresh within a frame, and a burst
 of client commits by one. Input, an action, a keyboard focus change and a
-window or layer surface coming or going refresh at once. Blockers, popups
+window or layer surface coming or going have the next two refreshes at
+once, since niri's layout sends what one changes in the next. Blockers, popups
 and the keyboard's focus are still handled on every wakeup. niri's own
 tests run unpaced, as written; those in src/tests/refresh_pacing.rs pace.
-A trace line once a second says how many refreshes ran in how many
-wakeups.
+A debug line once a second, under the target refresh_pacing, says how
+many refreshes ran in how many wakeups.
 
 diff --git a/src/handlers/compositor.rs b/src/handlers/compositor.rs
 index 1163610..da24b4c 100644
@@ -117,7 +118,7 @@ index ca9076b..eff15ac 100644
              });
  
 diff --git a/src/niri.rs b/src/niri.rs
-index b8f1919..5b26fef 100644
+index b8f1919..3be3ad0 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
 @@ -171,6 +171,7 @@ use crate::ui::hotkey_overlay::HotkeyOverlay;
@@ -154,7 +155,7 @@ index b8f1919..5b26fef 100644
          // Should be called before refresh_layout() because that one will refresh other window
          // states and then send a pending configure.
          self.niri.refresh_window_states();
-@@ -916,6 +929,53 @@ impl State {
+@@ -916,6 +929,56 @@ impl State {
          self.niri.refresh_a11y();
      }
  
@@ -172,7 +173,10 @@ index b8f1919..5b26fef 100644
 +        let wait = self.niri.refresh_pacer.pace(now, interval);
 +
 +        if let Some(tally) = self.niri.refresh_pacer.take_tally(now) {
-+            trace!(
++            // Release builds keep nothing past debug, which niri logs by default, so the tally
++            // takes a target of its own outside niri's, asked for by name.
++            debug!(
++                target: "refresh_pacing",
 +                "refreshed {} times in {} wakeups",
 +                tally.refreshes,
 +                tally.wakeups
@@ -194,7 +198,7 @@ index b8f1919..5b26fef 100644
 +                        .event_loop
 +                        .insert_source(timer, |_, _, state| {
 +                            state.niri.refresh_deferred = None;
-+                            state.niri.refresh_pacer.hurry();
++                            state.niri.refresh_pacer.due();
 +                            TimeoutAction::Drop
 +                        })
 +                        .unwrap();
@@ -208,17 +212,17 @@ index b8f1919..5b26fef 100644
      fn notify_blocker_cleared(&mut self) {
          let dh = self.niri.display_handle.clone();
          while let Ok(client) = self.niri.blocker_cleared_rx.try_recv() {
-@@ -1331,6 +1391,9 @@ impl State {
+@@ -1331,6 +1394,9 @@ impl State {
  
          let keyboard = self.niri.seat.get_keyboard().unwrap();
          if self.niri.keyboard_focus != focus {
-+            // The windows' activated states go out in the refresh, so it runs at once.
++            // The windows' activated states go out in the refreshes after, so they run at once.
 +            self.niri.refresh_pacer.hurry();
 +
              trace!(
                  "keyboard focus changed from {:?} to {:?}",
                  self.niri.keyboard_focus,
-@@ -2625,6 +2688,8 @@ impl Niri {
+@@ -2625,6 +2691,8 @@ impl Niri {
              dmabuf_pre_commit_hook: HashMap::new(),
              blocker_cleared_tx,
              blocker_cleared_rx,
@@ -241,10 +245,10 @@ index 2654dfe..e89cde1 100644
  mod window_opening;
 diff --git a/src/tests/refresh_pacing.rs b/src/tests/refresh_pacing.rs
 new file mode 100644
-index 0000000..70f07c9
+index 0000000..d6a7c25
 --- /dev/null
 +++ b/src/tests/refresh_pacing.rs
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,139 @@
 +//! niri's refresh, paced to once a frame: what a client's commits change waits for the next
 +//! frame's refresh, and what input, an action, a focus change or a window coming needs is sent
 +//! at once.
@@ -315,6 +319,7 @@ index 0000000..70f07c9
 +#[test]
 +fn the_refresh_put_off_runs_within_a_frame() {
 +    let (mut f, id, surface) = set_up(Duration::from_millis(20));
++    let before = refreshes(&mut f);
 +
 +    f.client(id).window(&surface).set_fullscreen(None);
 +    f.client(id).window(&surface).commit();
@@ -336,14 +341,15 @@ index 0000000..70f07c9
 +    }
 +
 +    assert!(sent.contains("Fullscreen"), "{sent:?}");
-+    assert!(f.niri().refresh_deferred.is_none());
++    assert!(refreshes(&mut f) > before);
 +}
 +
 +#[test]
 +fn a_focus_change_refreshes_at_once() {
 +    let (mut f, id, surface) = set_up(FOREVER);
 +
-+    // Focusing the empty output takes the keyboard from the window, which loses Activated.
++    // Focusing the empty output takes the keyboard from the window, which loses Activated. The
++    // layout sends that a refresh after it makes it, so it takes both roundtrips' refreshes.
 +    f.niri_focus_output(2);
 +    f.double_roundtrip(id);
 +
@@ -427,10 +433,10 @@ index bbeac5b..ecc90f0 100644
  pub mod signals;
 diff --git a/src/utils/refresh_pacer.rs b/src/utils/refresh_pacer.rs
 new file mode 100644
-index 0000000..072e524
+index 0000000..ca4cdf3
 --- /dev/null
 +++ b/src/utils/refresh_pacer.rs
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,264 @@
 +//! Pacing of niri's refresh.
 +//!
 +//! After every wakeup of the event loop niri refreshes: it walks every window to update its
@@ -447,14 +453,19 @@ index 0000000..072e524
 +/// How long the tally counts before it reports.
 +const TALLY_PERIOD: Duration = Duration::from_secs(1);
 +
++/// The refreshes a hurry runs at once. niri's layout decides whether to send a window's
++/// configure before it changes the window's state, so a change made in one refresh goes out in
++/// the next, which niri ran on the wakeup after; a hurry keeps that second refresh at once too.
++const HURRIED_REFRESHES: u8 = 2;
++
 +#[derive(Debug)]
 +pub struct RefreshPacer {
 +    /// Whether refreshes are paced at all, rather than run after every wakeup.
 +    paced: bool,
 +    /// The frame interval, when fixed rather than the outputs', as niri's tests fix it.
 +    frame: Option<Duration>,
-+    /// Whether something needs the next refresh at once.
-+    hurried: bool,
++    /// How many of the next refreshes run at once, whenever their wakeup comes.
++    hurried: u8,
 +    /// When the last refresh ran.
 +    last: Option<Duration>,
 +    /// Wakeups and refreshes since the tally began.
@@ -463,7 +474,7 @@ index 0000000..072e524
 +    refreshes: u64,
 +}
 +
-+/// Wakeups and the refreshes they led to, counted for niri's trace log.
++/// Wakeups and the refreshes they led to, counted for niri's log.
 +#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 +pub struct Tally {
 +    pub since: Option<Duration>,
@@ -477,7 +488,7 @@ index 0000000..072e524
 +        Self {
 +            paced: true,
 +            frame: None,
-+            hurried: false,
++            hurried: 0,
 +            last: None,
 +            tally: Tally::default(),
 +            refreshes: 0,
@@ -502,10 +513,16 @@ index 0000000..072e524
 +        }
 +    }
 +
-+    /// Something needs the next refresh at once: input, an action, a focus change, a window
-+    /// mapping or going, or the deferred refresh's timer.
++    /// Something needs the next refreshes at once: input, an action, a focus change, or a window
++    /// or layer surface coming or going.
 +    pub fn hurry(&mut self) {
-+        self.hurried = true;
++        self.hurried = HURRIED_REFRESHES;
++    }
++
++    /// The refresh put off is due, so the next wakeup's refresh runs, as the deferred refresh's
++    /// timer says; only the one, so a busy client still gets a refresh a frame.
++    pub fn due(&mut self) {
++        self.hurried = self.hurried.max(1);
 +    }
 +
 +    /// Whether a wakeup at `now` refreshes at once, as `None`, or waits for how long, given the
@@ -515,14 +532,14 @@ index 0000000..072e524
 +        let interval = self.frame.unwrap_or(interval);
 +
 +        let wait = match self.last {
-+            Some(last) if self.paced && !self.hurried => {
-+                (last + interval).checked_sub(now).filter(|wait| !wait.is_zero())
-+            }
++            Some(last) if self.paced && self.hurried == 0 => (last + interval)
++                .checked_sub(now)
++                .filter(|wait| !wait.is_zero()),
 +            _ => None,
 +        };
 +
 +        if wait.is_none() {
-+            self.hurried = false;
++            self.hurried = self.hurried.saturating_sub(1);
 +            self.last = Some(now);
 +            self.tally.refreshes += 1;
 +            self.refreshes += 1;
@@ -597,22 +614,45 @@ index 0000000..072e524
 +    }
 +
 +    #[test]
-+    fn a_hurried_wakeup_refreshes_at_once_and_only_the_once() {
++    fn a_hurry_refreshes_the_next_two_wakeups_at_once() {
 +        let mut pacer = RefreshPacer::paced();
 +        pacer.pace(ms(100), FRAME);
 +
 +        pacer.hurry();
 +        assert_eq!(pacer.pace(ms(101), FRAME), None);
++        assert_eq!(pacer.pace(ms(102), FRAME), None);
++        assert_eq!(pacer.pace(ms(103), FRAME), Some(ms(7)));
++    }
++
++    #[test]
++    fn a_due_refresh_runs_only_the_once() {
++        let mut pacer = RefreshPacer::paced();
++        pacer.pace(ms(100), FRAME);
++
++        pacer.due();
++        assert_eq!(pacer.pace(ms(101), FRAME), None);
 +        assert_eq!(pacer.pace(ms(102), FRAME), Some(ms(7)));
 +    }
 +
 +    #[test]
-+    fn a_hurry_before_any_refresh_is_spent_on_the_first() {
++    fn a_due_refresh_keeps_a_hurry() {
++        let mut pacer = RefreshPacer::paced();
++        pacer.pace(ms(100), FRAME);
++
++        pacer.hurry();
++        pacer.due();
++        assert_eq!(pacer.pace(ms(101), FRAME), None);
++        assert_eq!(pacer.pace(ms(102), FRAME), None);
++    }
++
++    #[test]
++    fn a_hurry_before_any_refresh_is_spent_on_the_first_two() {
 +        let mut pacer = RefreshPacer::paced();
 +        pacer.hurry();
 +        pacer.pace(ms(100), FRAME);
++        pacer.pace(ms(101), FRAME);
 +
-+        assert_eq!(pacer.pace(ms(101), FRAME), Some(ms(7)));
++        assert_eq!(pacer.pace(ms(102), FRAME), Some(ms(7)));
 +    }
 +
 +    #[test]

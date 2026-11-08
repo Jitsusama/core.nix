@@ -4,7 +4,7 @@ niri's refresh walks every window, and it ran after each wakeup of niri's loop, 
 commit a client makes is. Paced (refreshes-once-a-frame.patch), it runs at most once a frame,
 60 times a second on a nested niri, however often commits wake it. The stand-in client speaks
 the Wayland wire protocol itself: it binds wl_compositor, makes a surface and commits it, over
-and over. niri's trace log says once a second how many refreshes ran in how many wakeups.
+and over. niri's log says once a second how many refreshes ran in how many wakeups.
 
 usage: refreshes-once-a-frame.py <niri's log>
 """
