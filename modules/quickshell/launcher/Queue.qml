@@ -226,9 +226,10 @@ Provider {
         return out;
     }
 
-    // Running first, then in line.
+    // Running first, then in line, those at one place in the order the
+    // queue said them.
     readonly property var all: provider.launcher?.open ?? true
-        ? Jobs.running.concat(Jobs.waiting.slice().sort((a, b) => (a.place ?? 0) - (b.place ?? 0)))
+        ? Jobs.running.concat(Order.sorted(Jobs.waiting, (a, b) => (a.place ?? 0) - (b.place ?? 0)))
             .map(job => made(job))
         : []
     onAllChanged: changedTo(all)
