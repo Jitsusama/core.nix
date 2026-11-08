@@ -446,7 +446,12 @@ Provider {
             carries: false,
             side: told.side,
             note: told.note,
+            // Its eyebrow says where its figures come from, then what
+            // kind of thing it is, as every drawer's does (VKCF3Z,
+            // 2026-11-08).
             drawer: {
+                eyebrow: (Words.of("session:Suspend").said ?? {}).eyebrow ?? "",
+                eyebrowNames: true,
                 title: Words.name("session:Suspend"),
                 facts: told.facts.map(fact => ({
                     label: Words.name(fact.id),
