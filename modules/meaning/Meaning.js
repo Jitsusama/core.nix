@@ -95,8 +95,14 @@ function keyedBy(listed) {
 // tells them again only when it changes. It's walked by index and seen in
 // a plain object, which Qt's engine does in a tenth of the time an
 // iterator and a Set take, and `as` is joined rather than stringified.
+// A spot's text is its bare name, so every device's Volume would mean
+// alike, the daemon breaking the tie by key, and each would take one of
+// the few records a search asks for. So a name is told once, the first
+// spot in the launcher's order, and a spot named as a thing told, as
+// Sound's stream named for Firefox, is left to the thing.
 function telling(choices, spots) {
     const seen = {};
+    const named = {};
     const out = [];
     const lines = [];
     const all = (choices ?? []).concat(spots ?? []);
@@ -106,10 +112,12 @@ function telling(choices, spots) {
             continue;
         }
         const text = textOf(choice);
-        if (text === "") {
+        const name = String(choice.name ?? "").trim().toLowerCase();
+        if (text === "" || (isSpot(choice) && named[name] === true)) {
             continue;
         }
         seen[choice.key] = true;
+        named[name] = true;
         out.push({ key: choice.key, text });
         lines.push(`${choice.key}\t${text}`);
     }
@@ -126,6 +134,13 @@ function enough(words) {
     return String(words).replace(/ /g, "").length >= FEWEST;
 }
 
+// The places a spot lives in, which it stands for when found: its trail
+// past the first step, which is the category it's listed under, a page
+// of many more things than the one it holds.
+function placesOf(spot) {
+    return spot.trail.slice(1);
+}
+
 // The rows an answer adds, nearest first: each record's thing as the
 // launcher keys it, or its spot as `how.spots` keys them, a copy saying in
 // the foot how it was found, but none already shown (`shown`, a set of
@@ -136,19 +151,9 @@ function enough(words) {
 // A meaning lands on the part rather than the place it lives in (VKCF3Z,
 // 2026-11-08): a spot found stands where the first place on its trail was
 // found, every other place on it found goes, and none is added after it.
-// A spot's name is meant once, so "too loud" is one Volume rather than
-// every device's, the nearest.
-// The places a spot lives in, which it stands for when found: its trail
-// past the first step, which is the category it's listed under, a page
-// of many more things than the one it holds.
-function placesOf(spot) {
-    return spot.trail.slice(1);
-}
-
 function rows(records, keyed, shown, how) {
     const found = [];
     const taken = new Set(shown);
-    const named = {};
     for (const record of records ?? []) {
         const key = record?.key;
         const choice = keyed?.[key] ?? how.spots?.[key];
@@ -160,10 +165,6 @@ function rows(records, keyed, shown, how) {
             continue;
         }
         if (isSpot(choice)) {
-            if (named[choice.name] === true) {
-                continue;
-            }
-            named[choice.name] = true;
             taken.add(id);
             const within = placesOf(choice);
             const place = found.findIndex(row => within.includes(row.is ?? row.key));

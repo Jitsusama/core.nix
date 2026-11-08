@@ -877,11 +877,11 @@
   '';
   meaning-adds-only-below = ''
     the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
-    the words each is known by, and the parts places hold by their names, and adds at most three
-    rows below what typing found, none found already and none the launcher no longer holds, each
-    saying in the foot how it was found, a part meant standing where its place would and each
-    part's name meant once, and at most three pictures below those Recent found by their names and
-    words, none listed already
+    the words each is known by, and the parts places hold by their names, each name once and none
+    a thing has, and adds at most three rows below what typing found, none found already and none
+    the launcher no longer holds, each saying in the foot how it was found, a part meant standing
+    where every place past its category would, and at most three pictures below those Recent
+    found by their names and words, none listed already
   '';
   meaning-finds-a-picture-by-what-it-shows = ''
     the meaning daemon, on the CPU with the service's SigLIP 2 towers, looks at each picture in its

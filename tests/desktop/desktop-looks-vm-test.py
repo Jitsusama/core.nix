@@ -3029,8 +3029,10 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
     """
     desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json $XDG_RUNTIME_DIR/meaning-asked")
     desktop.answer(MEANT)
+    # The spots are told a moment after the things, once the launcher makes them, so it waits
+    # for the part the shot lands on rather than for the first things told.
     desktop.machine.wait_until_succeeds(
-        desktop.in_session("grep -q '^know [1-9]' $XDG_RUNTIME_DIR/meaning-asked"),
+        desktop.in_session("grep -q '^spot:.*brightness$' $XDG_RUNTIME_DIR/meaning-known"),
         timeout=timedelta(seconds=10),
     )
     typed = [row["is"] for row in desktop.showing()["things"]]
