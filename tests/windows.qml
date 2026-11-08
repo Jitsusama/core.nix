@@ -48,6 +48,14 @@ ShellRoot {
         settings: ({ name: "capture", camera: false })
     }
 
+    // One whose file-preview answers slowly, so what's wanted next waits.
+    Launcher.Capture {
+        id: previewer
+
+        launcher: launcher
+        settings: ({ name: "previews", camera: false, preview: ["sh", "-c", "sleep 5", "preview"] })
+    }
+
     // Nothing here waits forever: a case that never comes fails, by name.
     Timer {
         running: true
@@ -125,6 +133,17 @@ ShellRoot {
             changed({ "12": { title: "Letters" } }, 13);
             expect("a window renamed made again", rowOf(12).name === "Letters", rowOf(12).name);
             expect("Capture's row of it too", takingOf("Letters") !== null, names(capture.windows));
+
+            // Only the newest wanted waits for file-preview, so one it
+            // replaces is asked again when its drawer is next shown.
+            previewer.previewAsked = { "/a.png": true, "/b.png": true, "/c.png": true };
+            previewer.preview("/a.png");
+            previewer.preview("/b.png");
+            previewer.preview("/c.png");
+            const asked = Object.keys(previewer.previewAsked).join(", ");
+            expect("a picture replaced while it waits is no longer asked",
+                asked === "/a.png, /c.png" && previewer.previewNext === "/c.png",
+                `${asked}; next ${previewer.previewNext}`);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);

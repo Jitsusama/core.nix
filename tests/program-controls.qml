@@ -580,6 +580,15 @@ ShellRoot {
             same("what it opens, from its desktop file", described.facts[1].value, "HTML");
             same("its categories, as words", described.facts[3].value,
                 "Office \u00b7 Text Editor");
+            // Its processes are watched only while a program's row is the
+            // one selected (Applications.qml).
+            applications.treesWanted = [5151];
+            launcher.selected = program("tester");
+            same("a program's row keeps its processes watched",
+                applications.treesWanted.join(", "), "5151");
+            launcher.selected = { is: "media:playing" };
+            same("moving off it ends the watch", applications.treesWanted.join(", "), "");
+            launcher.selected = null;
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");
