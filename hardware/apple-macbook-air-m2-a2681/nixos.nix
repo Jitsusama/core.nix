@@ -7,7 +7,7 @@
 # Wi-Fi, Bluetooth and the camera taken from macOS by Asahi's installer.
 # It has no TPM and no Secure Boot a Linux system can use. docs/hardware.md
 # says what works and what's left.
-{ nixos-apple-silicon }:
+{ nixos-apple-silicon, hibernate }:
 { ... }:
 {
   imports = [
@@ -16,9 +16,17 @@
     ./kernel/nixos.nix
   ];
 
-  # core builds the kernel itself, so nixos-apple-silicon's kernel module,
-  # which would set its own, is left out.
-  disabledModules = [ "${nixos-apple-silicon}/apple-silicon-support/modules/kernel" ];
+  disabledModules = [
+    # core builds the kernel itself, so nixos-apple-silicon's kernel module,
+    # which would set its own, is left out.
+    "${nixos-apple-silicon}/apple-silicon-support/modules/kernel"
+    # The laptop role hibernates, which here can't come back: systemd keeps
+    # where the image went in an EFI variable, and U-Boot keeps none, so
+    # the next start would begin afresh and the session would be lost. No
+    # one has yet resumed from disk on Apple silicon. The kernel is built
+    # without hibernation too, so nothing offers it.
+    hibernate
+  ];
 
   nixpkgs.hostPlatform = "aarch64-linux";
 

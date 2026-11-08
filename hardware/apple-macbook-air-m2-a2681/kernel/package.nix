@@ -49,6 +49,11 @@ buildLinux (
       APPLE_PMGR_PWRSTATE = yes;
       # Without it Bluetooth audio stutters.
       BT_BRCMEXT = yes;
+      # Asahi's defconfig has it, but nothing here can resume: the image's
+      # place is kept in an EFI variable, which U-Boot doesn't keep. Off,
+      # systemd doesn't offer to hibernate (../nixos.nix leaves the laptop
+      # role's hibernation out).
+      HIBERNATION = no;
     };
 
     kernelPatches = [

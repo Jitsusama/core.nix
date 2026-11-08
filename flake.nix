@@ -399,6 +399,7 @@
 
         apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
           inherit nixos-apple-silicon;
+          inherit (self.nixosModules) hibernate;
         };
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
         microsoft-surface-laptop-4-1958 = ./hardware/microsoft-surface-laptop-4-1958/nixos.nix;
