@@ -381,7 +381,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
 | rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
-| traffic | how much data the home network, a node or a device moved, by hour | data usage | `usage`, `data_usage` |
+| traffic | how much data the machine's link, the home network, a node or a device moved | data usage | `usage`, `data_usage`, `wifi:carried` |
 | profile | a group of devices eero lets through or holds off together | | `profiles` |
 | light | a node's status light, on or off and how bright | | eero's `led_on`, `led_brightness` |
 | mode | how the gateway node gets its address: lent by the internet provider's server, set by hand, or through a sign-in | | eero's `lease.mode` |

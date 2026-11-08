@@ -151,6 +151,11 @@ def test_and_one_network_in_detail_with_the_link_of_the_card_on_it_as_it_changes
     assert (reading["card"], reading["bssid"]) == ("wlan2", heard["bssid"]), reading
     assert reading["signal"] < 0, reading
     assert reading["frequency"] == INN_FREQUENCY, reading
+    # Each way on its own, from the rate to what's been carried.
+    for way in (reading["receive"], reading["send"]):
+        assert way["mbps"] > 0, reading
+        assert way["bytes"] > 0, reading
+        assert way["packets"] > 0, reading
 
     # And once nobody asks, the card stops reading it.
     def unpolled(_: bool) -> bool:

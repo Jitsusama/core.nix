@@ -2,10 +2,11 @@
 // says it, by what it is (Wi-Fi, wired, a tunnel, a virtual bridge or
 // another virtual network), named the same from sysfs for the network's
 // speed, the gateways from the kernel's routing tables, the name servers
-// from resolv.conf, and a Wi-Fi card's link as iw reads it. Networks.qml,
-// Wireless.qml and Traffic.qml read the files and run the programs;
-// everything here is plain reading of what they said, so it's tested
-// offscreen (tests/answers.qml).
+// from resolv.conf, and how a signal and a time lasted are told. A Wi-Fi
+// card's own link is WifiLink.js's. Networks.qml, Wireless.qml and
+// Traffic.qml read the files and run the programs; everything here is
+// plain reading of what they said, so it's tested offscreen
+// (tests/answers.qml).
 .pragma library
 
 const HEX = 16;
@@ -15,14 +16,6 @@ const SPACES = /\s+/;
 const ZEROS = /^0+$/;
 const MIRROR = /^ifb/;
 const WIRELESS = /^wl/;
-const FIELD = /^\s*([^:]+):\s*(.*)$/;
-const SECTION = /^@@ (\w+)$/;
-const NUMBER = /-?\d+(?:\.\d+)?/;
-const CHAINS = /\[([^\]]*)\]/;
-const RATE = /([\d.]+) MBit\/s/;
-const WIDTH = /(\d+)MHz/;
-const TX_POWER = /txpower ([\d.]+) dBm/;
-const CHANNEL = /channel (\d+) \((\d+) MHz\)/;
 const ROUTE_FIELDS = 8;
 const ROUTE_GATEWAY = 2;
 const ROUTE_METRIC = 6;
@@ -39,18 +32,6 @@ const DAY = 86_400;
 // the ends of a signal's graph.
 const FAINTEST = -90;
 const LOUDEST = -30;
-// Wi-Fi 4's rates name each stream count by eight indexes.
-const HT_PER_STREAM = 8;
-const WIFI_4 = 4;
-const WIFI_5 = 5;
-const WIFI_6 = 6;
-const WIFI_7 = 7;
-// How iw marks a rate of each newer Wi-Fi, the newest first.
-const GENERATIONS = [
-    { tag: "EHT", generation: WIFI_7 },
-    { tag: "HE", generation: WIFI_6 },
-    { tag: "VHT", generation: WIFI_5 },
-];
 
 // The kinds of link the kernel makes for a tunnel.
 const TUNNELS = [
@@ -340,99 +321,6 @@ function linkRate(mbps, number) {
 // device, or set by software.
 function assigned(text) {
     return ["own", "random", "taken", "set"][Number.parseInt(text, 10)] ?? "";
-}
-
-// A number at the start of what iw says, or null.
-function figure(text) {
-    const found = NUMBER.exec(String(text ?? ""));
-    return found ? Number(found[0]) : null;
-}
-
-// A rate as iw says it, "1200.9 MBit/s 80MHz HE-MCS 11 HE-NSS 2", as
-// { mbps, width, generation, mcs, streams }: HE is Wi-Fi 6, EHT 7, VHT 5 and
-// HT 4, whose index says the streams too; anything older has no generation.
-function rate(text) {
-    const said = String(text ?? "");
-    const field = (key) => {
-        const found = new RegExp(`\\b${key} (\\d+)`).exec(said);
-        return found ? Number(found[1]) : null;
-    };
-    const mbps = RATE.exec(said);
-    const width = WIDTH.exec(said);
-    const known = GENERATIONS.find((each) => field(`${each.tag}-MCS`) !== null);
-    const coded = { generation: null, mcs: null, streams: null };
-    if (known) {
-        coded.generation = known.generation;
-        coded.mcs = field(`${known.tag}-MCS`);
-        coded.streams = field(`${known.tag}-NSS`);
-    } else if (field("MCS") !== null) {
-        coded.generation = WIFI_4;
-        coded.mcs = field("MCS") % HT_PER_STREAM;
-        coded.streams = Math.floor(field("MCS") / HT_PER_STREAM) + 1;
-    }
-    return Object.assign(
-        {
-            mbps: mbps ? Number(mbps[1]) : null,
-            width: width ? Number(width[1]) : null,
-        },
-        coded,
-    );
-}
-
-// What iw said of each part it was asked, by the section the script heads
-// it with ("@@ link", "@@ station", "@@ info"), each a map of its fields.
-function sections(text) {
-    const said = { link: {}, station: {}, info: {}, infoLines: [] };
-    let at = "";
-    for (const line of String(text).split("\n")) {
-        const heading = SECTION.exec(line.trim());
-        if (heading) {
-            at = String(heading[1]);
-        } else if (at !== "" && said[at] !== undefined) {
-            const found = FIELD.exec(line);
-            if (found && said[at][found[1].trim()] === undefined) {
-                said[at][found[1].trim()] = found[2].trim();
-            }
-            if (at === "info") {
-                said.infoLines.push(line.trim());
-            }
-        }
-    }
-    return said;
-}
-
-// A Wi-Fi card's link as iw reads it: its signal now, at each antenna, on
-// average and of the access point's beacons, in dBm; what it transmits at;
-// how many frames it sent again, couldn't send and dropped, and beacons it
-// missed; how long it's been on, in seconds; whether its management frames
-// are protected; and its rates each way. Null when it's on no network.
-function radio(text) {
-    const said = sections(text);
-    const { station } = said;
-    if (Object.keys(station).length === 0) {
-        return null;
-    }
-    const chains = CHAINS.exec(station.signal ?? "");
-    const info = said.infoLines.join("\n");
-    const power = TX_POWER.exec(info);
-    const channel = CHANNEL.exec(info);
-    return {
-        signal: figure(station.signal),
-        antennas: chains ? chains[1].split(",").map((each) => Number(each.trim())) : [],
-        average: figure(station["signal avg"]),
-        beacons: figure(station["beacon signal avg"]),
-        power: power ? Number(power[1]) : null,
-        retries: figure(station["tx retries"]),
-        failed: figure(station["tx failed"]),
-        missed: figure(station["beacon loss"]),
-        dropped: figure(station["rx drop misc"]),
-        connected: figure(station["connected time"]),
-        protected: station.MFP === undefined ? null : station.MFP === "yes",
-        channel: channel ? Number(channel[1]) : null,
-        frequency: figure(said.link.freq),
-        receive: rate(station["rx bitrate"]),
-        send: rate(station["tx bitrate"]),
-    };
 }
 
 // How long something's lasted, in days, hours and minutes, the largest two,

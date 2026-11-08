@@ -7169,6 +7169,16 @@
       "name": "Access Point's Beacons"
     },
     {
+      "id": "wifi:interval",
+      "in": "wifi:signal",
+      "name": "Beacon Interval"
+    },
+    {
+      "id": "wifi:dtim",
+      "in": "wifi:signal",
+      "name": "DTIM Period"
+    },
+    {
       "id": "wifi:margin",
       "in": "wifi:signal",
       "name": "Over the Noise"
@@ -7195,6 +7205,11 @@
       "name": "Out"
     },
     {
+      "id": "wifi:expected",
+      "in": "wifi:speed",
+      "name": "Expected"
+    },
+    {
       "id": "wifi:generation",
       "in": "wifi:speed",
       "name": "Generation"
@@ -7203,6 +7218,21 @@
       "id": "wifi:coding",
       "in": "wifi:speed",
       "name": "Coding"
+    },
+    {
+      "id": "wifi:streams",
+      "in": "wifi:speed",
+      "name": "Streams"
+    },
+    {
+      "id": "wifi:guard",
+      "in": "wifi:speed",
+      "name": "Guard Interval"
+    },
+    {
+      "id": "wifi:dcm",
+      "in": "wifi:speed",
+      "name": "DCM"
     },
     {
       "id": "wifi:width",
@@ -7216,9 +7246,45 @@
       "term": "Network/channel"
     },
     {
+      "id": "wifi:preamble",
+      "in": "wifi:speed",
+      "name": "Preamble"
+    },
+    {
+      "id": "wifi:slot",
+      "in": "wifi:speed",
+      "name": "Slot Time"
+    },
+    {
+      "id": "wifi:wmm",
+      "in": "wifi:speed",
+      "name": "WMM"
+    },
+    {
       "id": "wifi:retries",
       "in": "wifi:speed",
       "name": "Retries"
+    },
+    {
+      "id": "wifi:carried",
+      "in": "wifi",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "wifi:received",
+      "in": "wifi:carried",
+      "name": "Received"
+    },
+    {
+      "id": "wifi:sent",
+      "in": "wifi:carried",
+      "name": "Sent"
+    },
+    {
+      "id": "wifi:idle",
+      "in": "wifi:carried",
+      "name": "Idle For"
     },
     {
       "id": "wifi:retried",
