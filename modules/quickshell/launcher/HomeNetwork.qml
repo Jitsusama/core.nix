@@ -216,7 +216,7 @@ Provider {
     }
 
     function deviceRow(device) {
-        const said = Home.deviceRow(device, settings, model.profiles);
+        const said = Home.deviceRow(device, settings, model?.profiles ?? []);
         return thingRow({
             thing: true,
             what: "eero device",
@@ -260,7 +260,9 @@ Provider {
     // Every row, made again as the record changes: the internet, then
     // each node with its devices under it, then the profiles.
     readonly property var all: {
-        if (!present)
+        // The record itself is asked, not `present`, which follows it a
+        // binding later, so a record let go makes no rows from nothing.
+        if (model === null || model === undefined)
             return [];
         const rows = [internetRow()];
         Home.grouped(model).forEach((group, at) => {
@@ -269,7 +271,7 @@ Provider {
             for (const device of group.devices)
                 rows.push(deviceRow(device));
         });
-        (model.profiles ?? []).forEach((profile, at) => rows.push(profileRow(profile, at === 0)));
+        (model?.profiles ?? []).forEach((profile, at) => rows.push(profileRow(profile, at === 0)));
         return rows;
     }
     onAllChanged: changedTo(all)
