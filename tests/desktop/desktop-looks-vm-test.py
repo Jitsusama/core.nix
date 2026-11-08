@@ -1629,6 +1629,15 @@ def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
     )
 
 
+def warp_opened_again(desktop: Desktop, state: str) -> None:
+    """Step out of WARP to Network, wait until its row says this state, and step in again."""
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: reading(shown, "WARP ").startswith(f"WARP \u00b7 {state}"))
+    desktop.down_to("WARP")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "State" in shown["rows"])
+
+
 def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
     """Shoot WARP in Network, a step in with a drawer open, held, down, degraded and silent.
 
@@ -1679,9 +1688,14 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
             " && mv -f ~/warp-cli/.next ~/warp-cli/status.json"
         )
         desktop.launcher_until(lambda shown: "Connect WARP" in shown["rows"])
-        desktop.down_to("Connect WARP")
+        # Rows WARP no longer gives stay while the place is shown, so it's opened
+        # again to show only what WARP says once down.
+        warp_opened_again(desktop, "disconnected")
+        desktop.launcher_until(lambda shown: "Round Trip" not in shown["rows"])
         desktop.shoot(f"launcher-warp-disconnected-at-{at}")
         warp_answers(desktop, *connected)
+        warp_opened_again(desktop, "connected")
+        desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
         # WARP finds the network degraded, which its Health says a step in, and its
         # row in Network, in the warning colour.
         warp_answers(desktop, ("status.degraded.json", "status.json"))
