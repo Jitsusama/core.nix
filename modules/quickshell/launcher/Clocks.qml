@@ -32,16 +32,16 @@
 // so and no more.
 //
 // Every figure timekeeping reads is shown (docs/design.md, As deep as the
-// deepest) but three, each left out as the same figure told again: a
+// deepest) but four, each left out as the same figure told again: a
 // server's last exchange gives its stratum and its offset, which its own
-// Stratum and Offset already say, and the clock's address is the chosen
-// server's, which its plate's eyebrow names and Servers lists. A server's
-// leap indicator is its own, since an unsynchronised one says so by it.
-// timekeeping reads no more than these (chrony.rs): chronyd's activity
-// counts the servers online, which Servers' own count already says, and a
-// last exchange's port and mode are NTP's own, 123 and a server's answer
-// for every server, and its poll the one the server would ask at, which
-// sets nothing here, chronyd asking at its own, its Poll Interval.
+// Stratum and Offset already say; the clock's address is the chosen
+// server's, which its plate's eyebrow names and Servers lists; and
+// chronyd's activity counts the servers online, which Servers' own count
+// says. A server's leap indicator is its own, since an unsynchronised one
+// says so by it. timekeeping reads no more of chronyd than these
+// (chrony.rs): a last exchange's port and mode are NTP's own, 123 and a
+// server's answer for every server, and its poll the one the server would
+// ask at, which sets nothing here, chronyd asking at its own Poll Interval.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -257,9 +257,9 @@ Provider {
     // it hasn't, or nothing keeps it that way.
     readonly property var kept: Timekeeping.reading
 
-    // What Time says of its keeping, in the vocabulary's words: the
-    // clock's and the servers'.
-    // and the decimal mark every figure is said in.
+    // What Time says of its keeping, in the vocabulary's words, the
+    // clock's and the servers', each with the decimal mark every figure
+    // is said in.
     readonly property var clockSaid: Object.assign({ point: settings.point ?? "." },
         Words.of("time:clock").said ?? {})
     readonly property var serversSaid: Object.assign({ point: settings.point ?? "." },
@@ -369,13 +369,14 @@ Provider {
             part("why", Keeping.why(server, said)),
             part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
             // Its name already says it's an interval, so the span stands alone.
-            part("poll", Keeping.span(server.poll)),
+            part("poll", Keeping.span(server.poll, said.point)),
             part("reach", Keeping.reach(server.reach, said)),
             part("last-sample", sampledNow
                 ? said.ago.replace("{span}", Keeping.span(server.lastSample)) : ""),
             // Adjusted for the slewing since, as chronyc sources says it,
             // with what was measured beside it.
-            part("offset", sampledNow ? Keeping.seconds(server.offset, true, said.point) : "", said.measured
+            part("offset", sampledNow ? Keeping.seconds(server.offset, true, said.point) : "",
+                said.measured
                 .replace("{offset}", Keeping.seconds(server.measured, true, said.point))
                 .replace("{error}", Keeping.seconds(server.error, false, said.point))),
             // What chronyc's selectdata calls the Interval: the range expected

@@ -74,9 +74,9 @@ function ppm(value, signed, point) {
 
 // A span of seconds as hours, minutes and seconds, the largest two that
 // say it; under a second, to a tenth.
-function span(value) {
+function span(value, point) {
     if (value < 1) {
-        return `${Number(value.toFixed(1))} s`;
+        return `${String(Number(value.toFixed(1))).replace(".", point ?? ".")} s`;
     }
     const whole = Math.round(value);
     const hours = Math.floor(whole / HOUR);
@@ -93,7 +93,7 @@ function span(value) {
 
 // Whether seconds read as none in the unit that reads them.
 function none(value) {
-    return ["0 s", "0 ns"].includes(seconds(value, false));
+    return seconds(value, false) === "0 s";
 }
 
 // How far a clock is out, from how far ahead of true time it is: "12.0 µs

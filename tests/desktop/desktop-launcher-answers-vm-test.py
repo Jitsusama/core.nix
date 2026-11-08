@@ -1232,6 +1232,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             and shown["drawer"]["facts"][: len(inside)] == inside
         )
     )
+    facts = desktop.showing()["drawer"]["facts"]
+    assert facts.index("Address") > facts.index("Packets"), facts
     desktop.down_to("far.harbour.test")
     assert desktop.showing()["selected"]["note"] == "out of reach", desktop.showing()["selected"]
     desktop.down_to("time.harbour.test")
@@ -1239,7 +1241,6 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
     for read in (
-        "Address \u00b7 127.0.0.1",
         "Why \u00b7 the clock is kept by it",
         "Stratum \u00b7 2",
         "NTP Version \u00b7 4",
