@@ -199,13 +199,87 @@ Provider {
         }), () => usb.map(port => {
             const what = Power.port(port.said, provider.number);
             return copyRow({
+                thing: true,
                 key: `power:port:${port.n}`,
                 name: provider.named("port", "", { n: port.n }),
                 side: what,
                 copy: what,
-                glyph: ""
+                glyph: "",
+                // How its power and data go and what's plugged in offers,
+                // under the row (Power.js's portDrawer).
+                drawer: () => provider.portDrawerOf(port.n)
             });
         }));
+    }
+
+    // What each USB-C port's drawer read of the kernel's USB-C class, by
+    // its number: read just after the drawer asks, since reading moves the
+    // reader its binding would follow, and again each second while the
+    // launcher is open, so a charger plugged in shows without a key.
+    property var portReadings: ({})
+    property int portDrawn: 0
+
+    function portDrawerOf(n) {
+        const read = portReadings[n];
+        if (read === undefined) {
+            Qt.callLater(() => provider.readPort(n));
+            return null;
+        }
+        return Object.assign({ title: named("port", "", { n }) }, Power.portDrawer(read,
+            provider.number, id => Words.name(id), Words.of("power:port:drawer").said));
+    }
+
+    // A charger's source capabilities, as its partner's power delivery
+    // folder lists them, fixed supplies and programmable ones; the kernel
+    // numbers them from one, and a charger offers at most seven.
+    readonly property int offered: 7
+
+    function capabilitiesOf(folder) {
+        const found = [];
+        for (let i = 1; i <= offered; i++) {
+            const fixed = `${folder}/${i}:fixed_supply`;
+            const programmable = `${folder}/${i}:programmable_supply`;
+            const millis = (path, file) => Number(said(`${path}/${file}`).replace(/\D+$/, ""))
+                / 1000;
+            if (said(`${fixed}/voltage`) !== "")
+                found.push({ volts: millis(fixed, "voltage"),
+                    amps: millis(fixed, "maximum_current") });
+            else if (said(`${programmable}/maximum_voltage`) !== "")
+                found.push({ volts: millis(programmable, "minimum_voltage"),
+                    to: millis(programmable, "maximum_voltage"),
+                    amps: millis(programmable, "maximum_current") });
+        }
+        return found;
+    }
+
+    function readPort(n) {
+        const typec = `/sys/class/typec/port${n - 1}`;
+        const read = {
+            n: n,
+            power: said(`${typec}/power_role`),
+            data: said(`${typec}/data_role`),
+            mode: said(`${typec}/power_operation_mode`),
+            accessory: said(`${typec}-partner/accessory_mode`),
+            capabilities: capabilitiesOf(`${typec}-partner/usb_power_delivery/source-capabilities`),
+            revision: said(`${typec}/usb_power_delivery_revision`),
+            partnerRevision: said(`${typec}-partner/usb_power_delivery_revision`)
+        };
+        portDrawn = n;
+        if (JSON.stringify(read) !== JSON.stringify(portReadings[n]))
+            portReadings = Object.assign({}, portReadings, { [n]: read });
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: provider.portDrawn > 0 && (provider.launcher?.open ?? false)
+        onRunningChanged: {
+            if (!running) {
+                provider.portReadings = ({});
+                provider.portDrawn = 0;
+            }
+        }
+        onTriggered: provider.readPort(provider.portDrawn)
     }
 
     // The last reads of what moves, each kept with its time: the watts

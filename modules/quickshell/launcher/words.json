@@ -1848,6 +1848,53 @@
       "name": "Port {n}"
     },
     {
+      "id": "power:port:drawer",
+      "in": "power:port",
+      "said": {
+        "eyebrow": "on port {n} \u00b7 charger",
+        "accessory": "{mode} accessory",
+        "mode:usb_power_delivery": "USB Power Delivery",
+        "mode:default": "USB default",
+        "mode:1.5A": "USB-C at 1.50 A",
+        "mode:3.0A": "USB-C at 3.00 A"
+      }
+    },
+    {
+      "id": "power:port:power-role",
+      "in": "power:port",
+      "name": "Power Role"
+    },
+    {
+      "id": "power:port:data-role",
+      "in": "power:port",
+      "name": "Data Role"
+    },
+    {
+      "id": "power:port:mode",
+      "in": "power:port",
+      "name": "Mode"
+    },
+    {
+      "id": "power:port:offers",
+      "in": "power:port",
+      "name": "Offers"
+    },
+    {
+      "id": "power:port:partner",
+      "in": "power:port",
+      "name": "Partner"
+    },
+    {
+      "id": "power:port:revision",
+      "in": "power:port",
+      "name": "PD Revision"
+    },
+    {
+      "id": "power:port:partner-revision",
+      "in": "power:port",
+      "name": "Partner's PD Revision"
+    },
+    {
       "id": "power:charge",
       "in": "power",
       "name": "Charge"

@@ -81,18 +81,30 @@ function protocol(usbType) {
     return PROTOCOLS[now] ?? "USB";
 }
 
+// The figures a value is said to: three, "45.0", "3.00", "100".
+const SIGNIFICANT = 3;
+
+// A figure to three significant figures, written by `number` to so many
+// places.
+function significant(value, number) {
+    const whole = Math.floor(Math.log10(Math.max(Math.abs(value), 1))) + 1;
+    return number(value, Math.max(0, SIGNIFICANT - whole));
+}
+
 // What a USB-C port gives, in a few words: its watts, volts, amps and
-// protocol while it charges the machine, that it's the machine powering
-// what's plugged in, that something's plugged in giving nothing, or that
-// it's empty. `number` writes a figure to so many places.
+// protocol while it charges the machine, each figure its own part
+// (VKCF3Z, 2026-11-08: "45.0 W \u00b7 15.0 V \u00b7 3.00 A", never a comma),
+// that it's the machine powering what's plugged in, that something's
+// plugged in giving nothing, or that it's empty. `number` writes a figure
+// to so many places.
 function port(said, number) {
     if (said.online && said.volts > 0 && said.amps > 0) {
-        const watts = number(said.volts * said.amps, 0);
-        const figures = `${watts} W, ${number(said.volts, 0)} V at ${number(said.amps, 1)} A`;
-        return said.protocol === "" ? figures : `${figures}, ${said.protocol}`;
+        return [`${significant(said.volts * said.amps, number)} W`,
+            `${significant(said.volts, number)} V`, `${significant(said.amps, number)} A`,
+            said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.online) {
-        return said.protocol === "" ? "charging" : `charging, ${said.protocol}`;
+        return ["charging", said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.giving) {
         return "powering what's plugged in";
@@ -101,6 +113,53 @@ function port(said, number) {
         return "plugged in, giving nothing";
     }
     return "empty";
+}
+
+// Volts as a power source offers them: whole, or to a tenth ("3.3").
+function volts(value) {
+    return String(Math.round(value * 10) / 10);
+}
+
+// What a charger offers, from its source capabilities, each { volts, amps }
+// or a programmable one's { volts, to, amps }: "5 V \u00b7 9 V \u00b7 20 V at
+// 3.00 A" when every one gives the same current, or each with its own.
+function offers(capabilities, number) {
+    const each = offer => offer.to === undefined ? `${volts(offer.volts)} V`
+        : `${volts(offer.volts)} to ${volts(offer.to)} V`;
+    const at = offer => `at ${significant(offer.amps, number)} A`;
+    if (capabilities.length === 0) {
+        return "";
+    }
+    if (capabilities.every(offer => offer.amps === capabilities[0].amps)) {
+        return `${capabilities.map(each).join(" \u00b7 ")} ${at(capabilities[0])}`;
+    }
+    return capabilities.map(offer => `${each(offer)} ${at(offer)}`).join(" \u00b7 ");
+}
+
+// A USB-C port's drawer, from what the kernel's USB-C class says of it:
+// which way its power and data go, how it negotiates, what's plugged in
+// and what that offers, then the power delivery revisions that identify
+// them. `known` holds the port's number (`n`), its `power` and `data`
+// roles as the kernel lists them, its `mode`, the partner's `accessory`
+// mode, `capabilities` (offers' input), and the `revision` and
+// `partnerRevision`.
+function portDrawer(known, number, named, said) {
+    const fact = (id, value) => ({ label: named(`power:port:${id}`), value });
+    const accessory = known.accessory ?? "";
+    const partnerRevision = known.partnerRevision ?? "";
+    return {
+        eyebrow: filled(said.eyebrow, { n: known.n }),
+        facts: [
+            fact("power-role", chosen(known.power).now),
+            fact("data-role", chosen(known.data).now),
+            fact("mode", known.mode ? said[`mode:${known.mode}`] ?? known.mode : ""),
+            fact("offers", offers(known.capabilities ?? [], number)),
+            fact("partner", accessory === "" || accessory === "none" ? ""
+                : filled(said.accessory, { mode: accessory })),
+            fact("revision", known.revision ?? ""),
+            fact("partner-revision", partnerRevision === "0.0" ? "" : partnerRevision)
+        ].filter(each => (each.value ?? "") !== "")
+    };
 }
 
 // The years a battery's date can be, and the months and days of one.
