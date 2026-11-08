@@ -301,10 +301,10 @@
     broken one, builds those added and changed unless asked only to name them, the VM tests only
     with --build and without --no-vm, compares the system with the most checks unless told one,
     sends a commit origin has to a lent builder to build by itself and anything else, or what no
-    builder took, builds here, and evaluates a commit's checks once; where nix-offload takes it, the whole run goes to
-    `there --changed` naming this machine's system and a base as its merge base's commit, and it
-    runs here with --here, a base origin's main doesn't hold, edits not yet committed, or
-    nowhere taking it
+    builder took, builds here, and evaluates a commit's checks once; where nix-offload takes it,
+    the whole run goes to `there --changed` naming this machine's system and a base as its merge
+    base's commit; with a base origin's main doesn't hold, edits not yet committed, or nowhere
+    taking it, it runs nothing and exits 75, and it runs here only with --here
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests

@@ -15,9 +15,7 @@
 //! With `--keep-base` it only evaluates the base
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
-//! It goes only to a builder already standing, and evaluates on this
-//! machine only with `--here`. Any other run no builder took runs here only
-//! while the machine's CPU is idle, or with `--here`.
+//! It goes only to a builder already standing.
 //! `changed-checks keep-main` does that for each head of origin's main, once
 //! it has stood two minutes, where runs are sent (`keep.rs` says why).
 //!
@@ -47,9 +45,10 @@
 //! 4.8 GB and several cores of the person's machine. The far side runs
 //! the commit's own changed-checks with the same arguments and marked so
 //! it never sends itself on, a `--base` given as its merge base's commit.
-//! With `--here`, a base whose merge base origin's main doesn't hold,
-//! which the far side wouldn't have, edits not yet committed, which it
-//! would pass over, or nowhere to send it, it runs here. nix-offload keeps
+//! A base whose merge base origin's main doesn't hold, which the far side
+//! wouldn't have, edits not yet committed, which it would pass over, or
+//! nowhere to send it leaves the run unrun, exiting 75 to be asked again;
+//! it runs here only with `--here`. nix-offload keeps
 //! what passed at each commit, since each builder it lends starts with an
 //! empty store, and tells the far side, as `CHANGED_CHECKS_PASSED`, which
 //! checks passed at its commit, so it builds none of them again; the same
@@ -258,24 +257,28 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
     }
-    // A run no builder took evaluates beside the person's work, at several
-    // gigabytes, so it does only while the machine is idle unless asked.
-    if pressure::waits_for_idle(
-        options.here || env::var_os(HERE).is_some(),
-        pressure::cpu_busy(),
-    ) {
-        return Err(
-            "no builder took the run and this machine is busy, so run it again in a few \
-             minutes; --here runs it here anyway"
-                .to_owned(),
-        );
-    }
+    // Asked to, or the far side's run, which runs where it was sent.
+    let here = options.here || env::var_os(HERE).is_some();
     // A base kept ahead of time is never worth evaluating beside the
     // person's work, at about 20 GB, unless asked to.
-    if options.keep_base && !options.here && env::var_os(HERE).is_none() {
+    if options.keep_base && !here {
         eprintln!(
             "changed-checks: no standing builder took the base to keep, so it's left unkept; \
              --here keeps it on this machine"
+        );
+        return Ok(ExitCode::from(UNSENT));
+    }
+    // A run that went nowhere else evaluates at several gigabytes and
+    // builds what its builders didn't take, beside the person's work. It
+    // did so while the machine looked idle, and an idle machine at the
+    // start was no promise for the hours after: on 8 November one built
+    // openvino here for three hours with Joel at it. So it runs here only
+    // when asked, and is otherwise run again later, as nix-offload's 75
+    // asks.
+    if !here {
+        eprintln!(
+            "changed-checks: the run went nowhere else, so nothing was run here; --here runs \
+             it on this machine"
         );
         return Ok(ExitCode::from(UNSENT));
     }
@@ -412,7 +415,7 @@ fn elsewhere(
         .is_ok_and(|status| status.success());
     if options.base != ORIGIN_MAIN && !holds {
         eprintln!(
-            "changed-checks: origin's main doesn't hold {}, so the run stays on this machine",
+            "changed-checks: origin's main doesn't hold {}, so the run isn't sent",
             base.get(..12).unwrap_or(base)
         );
         return Ok(None);
@@ -434,14 +437,13 @@ fn elsewhere(
         .iter()
         .all(|word| words.lines().any(|line| line == *word));
     if !takes_it {
+        eprintln!("changed-checks: this machine's nix-offload doesn't take the run");
         return Ok(None);
     }
     // The far side checks a commit, so edits not yet in one would be passed
     // over for the last commit's checks.
     if clean_commit()?.is_none() {
-        eprintln!(
-            "changed-checks: uncommitted changes stay on this machine; commit to send the run"
-        );
+        eprintln!("changed-checks: uncommitted changes aren't sent; commit to send the run");
         return Ok(None);
     }
     // A base is given as its merge base's commit, which a ref named only
@@ -483,7 +485,10 @@ fn elsewhere(
         .status()
         .map_err(|error| format!("running nix-offload: {error}"))?;
     Ok(match status.code() {
-        Some(NOT_TAKEN) => None,
+        Some(NOT_TAKEN) => {
+            eprintln!("changed-checks: no builder took the run");
+            None
+        }
         Some(code) => Some(ExitCode::from(u8::try_from(code).unwrap_or(1))),
         None => Some(ExitCode::FAILURE),
     })
