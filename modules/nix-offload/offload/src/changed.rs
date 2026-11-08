@@ -116,8 +116,11 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
         "\"$HOME\"/.cache/nix-offload/changed/{}.git",
         github.replace('/', "-")
     );
-    // A folder named for this run, gone when its shell ends.
-    let into = format!("/tmp/nix-offload-changed-{}", std::process::id());
+    // A folder named for the far side's shell, gone when it ends. Named
+    // for this process instead, a run sent again after its connection
+    // dropped shared the folder with the first, still running there,
+    // which removed it as it ended: "cannot get cwd" on 8 November.
+    let into = "/tmp/nix-offload-changed-$$";
     let unbundled = bundle.as_ref().map_or_else(String::new, |(_, tip)| {
         format!(
             "cat > {into}/there.bundle; \
@@ -311,6 +314,8 @@ mod tests {
             "\"$HOME\"/.cache/nix-offload/changed/someone-thing.git",
             "fetch -q https://github.com/someone/thing +refs/heads/main:refs/heads/main abc123",
             "symbolic-ref HEAD refs/heads/main",
+            "git clone -q --shared \"$HOME\"/.cache/nix-offload/changed/someone-thing.git \
+             /tmp/nix-offload-changed-$$/tree;",
             "checkout -q -B nix-offload-changed abc123",
             "CHANGED_CHECKS_HERE=1 WORK_RUNS_ELSEWHERE=1 nix run .#changed-checks -- \
              --build --system x86_64-linux",
