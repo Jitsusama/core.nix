@@ -1,11 +1,14 @@
 //! Reviving sessions that died: which sessions are watched, whether one
 //! that is gone died or was ended, and whether it may be started again
-//! now. The orchestrators and the steward's own sessions are watched, so
-//! a crash overnight costs minutes, not the night. Everything here is a
+//! now. The orchestrators and every orchestrator's sessions are watched,
+//! so a crash overnight costs minutes, not the night. Everything here is a
 //! decision over what was read; main.rs reads and starts.
 
 use std::collections::BTreeMap;
 
+use jiff::Timestamp;
+use jiff::civil::DateTime;
+use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
 /// No second start of one session within this long, so a slow start
@@ -29,6 +32,10 @@ pub fn settled(since: Option<i64>, now: i64) -> bool {
 
 /// A session as its presence describes it, and whether its process runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a separate fact a presence says of its session"
+)]
 pub struct Seen {
     pub address: String,
     pub session: String,
@@ -41,6 +48,38 @@ pub struct Seen {
     /// Whether its pi ran during this boot, by the boot its presence was
     /// written in. One that didn't ended with the machine, not by a crash.
     pub this_boot: bool,
+    /// Whether it hears its own orchestration's group, as every
+    /// orchestrator does, whether or not it has sessions yet.
+    pub orchestrates: bool,
+    /// How its pi last ended on purpose, by pi's own record of the
+    /// session (`ended_on_purpose`), if it did.
+    pub ended: Option<String>,
+}
+
+/// How a session's pi ended on purpose, by the record pi keeps of each
+/// session: its last ending, when that came after its newest process
+/// started. A quit, a signal (`mesh_end`'s, or a window closing) or a
+/// swap to another session is on purpose; a crash or a `kill -9` writes
+/// none. A start time that can't be read says nothing, as before.
+#[must_use]
+pub fn ended_on_purpose(record: &str, zone: &TimeZone) -> Option<String> {
+    let record: serde_json::Value = serde_json::from_str(record).ok()?;
+    let last = record.get("endings")?.as_array()?.last()?;
+    let reason = last.get("endReason")?.as_str()?;
+    if !matches!(reason, "quit" | "signalled" | "swapped") {
+        return None;
+    }
+    let closed: Timestamp = last.get("closedAt")?.as_str()?.parse().ok()?;
+    // The start is the process's own clock line, such as
+    // "Sat Nov  7 23:15:03 2026", in the machine's time zone.
+    let token = record.pointer("/process/startToken")?.as_str()?;
+    let token = token.split_whitespace().collect::<Vec<_>>().join(" ");
+    let started = DateTime::strptime("%a %b %d %H:%M:%S %Y", &token)
+        .ok()?
+        .to_zoned(zone.clone())
+        .ok()?
+        .timestamp();
+    (closed >= started).then(|| reason.to_owned())
 }
 
 /// What a quest's README says of itself and of its sessions.
@@ -99,11 +138,15 @@ pub struct Memory {
     pub defects: BTreeMap<String, i64>,
 }
 
-/// The sessions to watch: every orchestrator, those named and any that
-/// runs with no orchestrator above it while another names it as theirs,
-/// and every session of the steward's. One per address, a running one
+/// The sessions to watch: every orchestrator, and every session of one.
+/// An orchestrator is one named, or one with no orchestrator above it
+/// that hears its own orchestration's group or that another names as
+/// theirs, running or gone: on 7 November one found only while running
+/// would have been left down once it died, and two orchestrators with no
+/// sessions yet were found by neither. One per address, a running one
 /// over a gone one and then the newest, since a session that was
-/// replaced leaves its old presence behind.
+/// replaced leaves its old presence behind; `judge` leaves those an
+/// earlier boot ended.
 #[must_use]
 pub fn watched<'a>(
     seen: &'a [Seen],
@@ -117,13 +160,23 @@ pub fn watched<'a>(
         .collect();
     let is_orchestrator = |s: &Seen| {
         orchestrators.contains(&s.address)
-            || (s.running && s.orchestrated_by.is_none() && named.contains(&s.address.as_str()))
+            || s.address == steward
+            || (s.orchestrated_by.is_none()
+                && (s.orchestrates || named.contains(&s.address.as_str())))
     };
+    let leads: Vec<&str> = seen
+        .iter()
+        .filter(|s| is_orchestrator(s))
+        .map(|s| s.address.as_str())
+        .chain(std::iter::once(steward))
+        .collect();
     let mut by_address: BTreeMap<&str, &Seen> = BTreeMap::new();
     for s in seen {
-        if skip.contains(&s.address)
-            || !(is_orchestrator(s) || s.orchestrated_by.as_deref() == Some(steward))
-        {
+        let led = s
+            .orchestrated_by
+            .as_deref()
+            .is_some_and(|by| leads.contains(&by));
+        if skip.contains(&s.address) || !(is_orchestrator(s) || led) {
             continue;
         }
         let better = by_address
@@ -162,6 +215,12 @@ pub fn judge(
     }
     if named || entry.pid.is_some_and(runs) {
         return Verdict::Alive;
+    }
+    // On 7 November a session its orchestrator ended with `mesh_end`
+    // was started again two minutes later: a revived pi doesn't take
+    // its quest entry back, so its clean end left that entry active.
+    if let Some(how) = &seen.ended {
+        return Verdict::Left(format!("it was ended on purpose ({how})"));
     }
     // Joel reopens what a boot ended when he asks, not cadence: on 7
     // November he said he never wanted sessions back by themselves.
@@ -393,6 +452,8 @@ mod tests {
             running,
             parked: false,
             this_boot: true,
+            orchestrates: false,
+            ended: None,
         }
     }
 
@@ -462,7 +523,31 @@ mod tests {
             .iter()
             .map(|s| (s.address.as_str(), s.running))
             .collect();
-        assert_eq!(names, [("MINE", true), ("ORCH", true), ("STEW", true)]);
+        assert_eq!(
+            names,
+            [
+                ("MINE", true),
+                ("ORCH", true),
+                ("STEW", true),
+                ("THEIRS", false)
+            ]
+        );
+    }
+
+    #[test]
+    fn an_orchestrator_found_while_running_is_still_watched_once_gone() {
+        let all = vec![
+            seen("ORCH", None, false, "1"),
+            seen("THEIRS", Some("ORCH"), false, "1"),
+            Seen {
+                orchestrates: true,
+                ..seen("ALONE", None, false, "1")
+            },
+            seen("LONER", None, false, "1"),
+        ];
+        let watched = watched(&all, &[], "STEW", &[]);
+        let names: Vec<&str> = watched.iter().map(|s| s.address.as_str()).collect();
+        assert_eq!(names, ["ALONE", "ORCH", "THEIRS"]);
     }
 
     fn quest_with(status: &str, entry: &str, pid: Option<u32>) -> Quest {
@@ -495,6 +580,39 @@ mod tests {
             judge(&gone, Some(&done), |_| false, false),
             Verdict::Left("its quest is concluded".into())
         );
+    }
+
+    fn record(endings: &str) -> String {
+        format!(
+            r#"{{"sessionId": "s-A-1", "endings": [{endings}],
+                "process": {{"pid": 9, "startToken": "Sat Nov  7 23:15:03 2026"}}}}"#
+        )
+    }
+
+    #[test]
+    fn a_session_ended_through_mesh_end_stays_down_and_a_kill_does_not() {
+        let utc = TimeZone::UTC;
+        let by_mesh_end =
+            record(r#"{"closedAt": "2026-11-07T23:20:00.000Z", "endReason": "signalled"}"#);
+        let ended = ended_on_purpose(&by_mesh_end, &utc);
+        assert_eq!(ended.as_deref(), Some("signalled"));
+        let gone = Seen {
+            ended,
+            ..seen("A", None, false, "1")
+        };
+        let q = quest_with("active", "active", Some(9));
+        assert_eq!(
+            judge(&gone, Some(&q), |_| false, false),
+            Verdict::Left("it was ended on purpose (signalled)".into())
+        );
+        // A kill writes no ending, and one written before this process
+        // started belongs to the pi it replaced.
+        assert_eq!(ended_on_purpose(&record(""), &utc), None);
+        let before =
+            record(r#"{"closedAt": "2026-11-07T23:13:39.371Z", "endReason": "signalled"}"#);
+        assert_eq!(ended_on_purpose(&before, &utc), None);
+        let crashed = record(r#"{"closedAt": "2026-11-08T01:00:00.000Z", "endReason": "died"}"#);
+        assert_eq!(ended_on_purpose(&crashed, &utc), None);
     }
 
     #[test]
