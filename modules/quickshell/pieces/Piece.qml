@@ -112,7 +112,8 @@ Item {
     property var drawer: null
     // The launcher's row whose drawer is this piece's too, where a place
     // lists the thing it reads, as `{ place, key }`: the Microphone's is
-    // its device's in Sound, the Camera's the camera in use's (VKCF3Z,
+    // its device's in Sound, the Camera's the camera in use's, Tokens' its
+    // cap's in Spend (VKCF3Z,
     // 2026-11-08: one thing gets one drawer). Its own row and acts stay
     // its own. Null for a piece with no such row.
     property var drawnBy: null
