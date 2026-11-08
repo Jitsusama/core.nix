@@ -107,6 +107,7 @@ the queue and conclude.
 | waiting on | what a session can't go on without: Joel, an answer, or its turn in the queue | | |
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
 | Doing | the step a session is on now: thinking, or a tool and what it's on | | `stepDetail` |
+| Needs You For | what a session wants of Joel, said on it: an answer, a yes or an unblock | | `agents:wants` |
 | turn | one round of a session's work, from the message or key that starts it to the answer it ends on | | `attention: "turn"`, for a mesh message that starts one at once |
 | peer | another session on the same machine, reached over the mesh | instance, swarm | |
 | mesh | how sessions on one machine message each other | | `mesh_send` |
