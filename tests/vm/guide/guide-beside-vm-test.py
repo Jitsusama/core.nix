@@ -65,13 +65,18 @@ def screen(machine: QemuMachine) -> str:
     return machine.get_tty_text("1")
 
 
-def on_screen(machine: QemuMachine, pattern: str, timeout: timedelta = SCREEN) -> None:
+def on_screen(
+    machine: QemuMachine,
+    pattern: str,
+    timeout: timedelta = SCREEN,
+    stopped: str = r"try again|look again",
+) -> None:
     """Wait until the pattern is on the guide's screen, failing at once if the guide stopped."""
 
     def shown(_: bool) -> bool:
         """Say whether the pattern is on the screen, failing if the guide says it stopped."""
         text = screen(machine)
-        if re.search(r"(?i)(try again|look again)", text):
+        if re.search(f"(?i)({stopped})", text):
             message = "the guide stopped:\n" + text
             raise RuntimeError(message)
         return re.search("(?i)" + pattern, " ".join(text.split())) is not None
@@ -199,11 +204,13 @@ def recovery_key(machine: QemuMachine, confirmed: str, values: dict[str, Any]) -
 def installed(machine: QemuMachine, recovery_key: str, rig: Rig, values: dict[str, Any]) -> str:
     """Put the stick back, let the system install, give alice her password, and give the card."""
     del recovery_key
-    on_screen(machine, "Put the stick back in", timeout=STEP)
+    # The card asking for the stick offers "look again" until the guide
+    # next looks, up to two seconds after the stick is back.
+    on_screen(machine, "Put the stick back in", timeout=STEP, stopped="try again")
     machine.send_monitor_command(f"drive_add 0 if=none,id=stick,format=qcow2,file={rig.stick}")
     machine.send_monitor_command("device_add usb-storage,bus=xhci.0,drive=stick,id=stickdev")
     machine.wait_until_succeeds("test -e /dev/disk/by-partlabel/vault", timeout=PLUGGED)
-    on_screen(machine, "a password for alice", timeout=INSTALLED)
+    on_screen(machine, "a password for alice", timeout=INSTALLED, stopped="try again")
     enter(machine, values["password"])
     on_screen(machine, "the same password again")
     enter(machine, values["password"])
