@@ -65,6 +65,14 @@ struct Rest {
     until: f64,
     seconds: f64,
     band: Band,
+    /// Whether the pass fell short while the system daemon couldn't be
+    /// asked about the processes this account can't read, so what it kept
+    /// may only have wanted that word. Such a rest ends once the daemon
+    /// answers again: on 8 November the first pass after a start sometimes
+    /// went unheard, and a critical disk's cache waited a minute. Never
+    /// twice in a row, so a daemon whose word keeps failing costs a survey
+    /// a rest, not one a step.
+    unvouched: bool,
 }
 
 /// How long a filesystem rests after a pass that fell short, at first and
@@ -1000,6 +1008,7 @@ impl Guard {
         let spare_moment =
             spare(senses.power, senses.saver, &self.memory.awake, tick.wall) && !overload;
         let mut due = Vec::new();
+        let heard = self.system_heard;
         for (&device, watched) in &mut self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
                 watched.space = None;
@@ -1024,6 +1033,7 @@ impl Guard {
             });
             let resting = watched.rest.is_some_and(|rest| {
                 tick.monotonic < rest.until
+                    && !(rest.unvouched && heard)
                     && matches!(decision, Decision::Reach(band) if band <= rest.band)
             });
             // A user daemon on this filesystem asks for the garbage in its
@@ -1855,7 +1865,9 @@ impl Guard {
             let Decision::Reach(band) = decision else {
                 continue;
             };
+            let unheard = scan.went_unheard();
             if let Some(watched) = self.watched.get_mut(&device) {
+                let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
                 watched.rest = (end != End::Reached).then(|| {
                     let seconds = watched.rest.map_or(FIRST_REST, |rest| {
                         (rest.seconds * 2.0).min(longest_rest(band))
@@ -1864,6 +1876,7 @@ impl Guard {
                         until: tick.monotonic + seconds,
                         seconds,
                         band,
+                        unvouched,
                     }
                 });
             }

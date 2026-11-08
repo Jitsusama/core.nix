@@ -74,7 +74,9 @@ or launchd, and [`home.nix`][2] the account's.
   running, is left for the next group; a batch predicting under a gigabyte
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
-  while filling, five when nearly full and one when critically full. A survey counts the
+  while filling, five when nearly full and one when critically full. One
+  that kept things only for want of the system guard's word ends its rest
+  as soon as the system guard answers again, once in a row. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
   cloned with their builds inside share them: what it predicts is what
   deleting them all frees, unless something it didn't measure shares them
