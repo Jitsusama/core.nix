@@ -25,6 +25,10 @@ use crate::state::{Ran, State, now, short};
 /// What `nix-offload` exits with when no builder took the build.
 pub const UNSENT: i32 = 75;
 
+/// How a revert or quarantine whose checks no builder took fails, so the
+/// net tries it again next round rather than leave its hold for a person.
+pub const UNCHECKED: &str = "no builder took its checks";
+
 /// How many times a run the builder never took is sent again, two minutes
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
@@ -678,6 +682,60 @@ fn movers(world: &dyn World, merges: &[String], test: &str) -> Vec<String> {
         .collect()
 }
 
+/// Keeps in the hold how its revert went: the PR and commit that landed,
+/// or that it's to be tried again because no builder took its checks.
+fn keep_revert(
+    state: &State,
+    hold: &mut Value,
+    reverted: &Result<Merged, String>,
+) -> Result<(), String> {
+    match reverted {
+        Ok(merged) => {
+            hold["revert_pr"] = json!(merged.pr);
+            hold["revert_commit"] = json!(merged.commit);
+            hold["revert_again"] = json!(false);
+        }
+        Err(why) if why.starts_with(UNCHECKED) => hold["revert_again"] = json!(true),
+        Err(_) => hold["revert_again"] = json!(false),
+    }
+    state.set_hold(hold)
+}
+
+/// Try again a revert whose checks no builder took, as each round begins:
+/// on 8 November the lent builders were down when the net blamed #2263,
+/// and its hold sat with no revert until one was landed by hand.
+fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
+    let Some(mut hold) = state.hold() else {
+        return Ok(());
+    };
+    let (true, Some(commit), Some(test)) = (
+        hold["revert_again"] == true,
+        hold["bad"].as_str().map(str::to_owned),
+        hold["test"].as_str().map(str::to_owned),
+    ) else {
+        return Ok(());
+    };
+    let subject = world.subject(&commit);
+    let found = Bad {
+        commit: commit.clone(),
+        pr: pr_of(&subject),
+        subject,
+        test: test.clone(),
+        log: state.log(&commit, &test, 2).display().to_string(),
+    };
+    let reverted = world.revert(&found);
+    keep_revert(state, &mut hold, &reverted)?;
+    state.say(&match &reverted {
+        Ok(merged) => format!(
+            "reverted {} for {test} in #{}, its checks taken this time",
+            short(&commit),
+            merged.pr
+        ),
+        Err(why) => format!("couldn't revert {} yet: {why}", short(&commit)),
+    });
+    Ok(())
+}
+
 /// Clear the hold once its revert is on main, fetching main first when the
 /// revert isn't on it as last fetched: on 7 November a revert merged at
 /// 16:02, and the hold waited 13 minutes for the next round's fetch while
@@ -737,6 +795,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         Some(began) if passed.as_deref() != Some(began.as_str()) => began,
         _ => world.head()?,
     };
+    revert_again(world, state)?;
     clear_if_reverted(world, state)?;
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
@@ -1023,11 +1082,7 @@ fn broke(
     });
     state.set_hold(&hold)?;
     let reverted = world.revert(&found);
-    if let Ok(merged) = &reverted {
-        hold["revert_pr"] = json!(merged.pr);
-        hold["revert_commit"] = json!(merged.commit);
-        state.set_hold(&hold)?;
-    }
+    keep_revert(state, &mut hold, &reverted)?;
     state.find(&json!({
         "kind": "failed", "test": test, "commit": commit, "owner_pr": found.pr, "log": log,
         "revert_pr": reverted.as_ref().ok().map(|merged| merged.pr),
@@ -1101,6 +1156,8 @@ mod tests {
         newest_builds_as: Option<String>,
         put_in_quarantine: Mutex<Vec<String>>,
         held: Option<String>,
+        /// How many reverts to come find no builder for their checks.
+        unchecked_reverts: Mutex<u32>,
     }
 
     impl Stand {
@@ -1224,6 +1281,11 @@ mod tests {
             self.quarantined.clone()
         }
         fn revert(&self, bad: &Bad) -> Result<Merged, String> {
+            let mut unchecked = self.unchecked_reverts.lock().unwrap();
+            if *unchecked > 0 {
+                *unchecked -= 1;
+                return Err(format!("{UNCHECKED}, land.log"));
+            }
             *self.fetched_since_revert.lock().unwrap() = false;
             self.reverted.lock().unwrap().push(bad.commit.clone());
             self.revert_seen.notify_all();
@@ -2015,6 +2077,51 @@ mod tests {
         );
         assert_eq!(world.built(), vec![("h".into(), "vm-b".into())]);
         assert!(state.hold().is_some(), "the hold waits for the revert");
+        assert!(world.reverted.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_revert_no_builder_checked_is_tried_again_next_round() {
+        let state = state("revert-again");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            unchecked_reverts: Mutex::new(1),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        let hold = state.hold().unwrap();
+        assert_eq!(hold["revert_again"], true, "{hold}");
+        assert!(world.reverted.lock().unwrap().is_empty());
+
+        // The next round, with a builder back, lands it before anything else.
+        state.set_heads("s", "s").unwrap();
+        round(&world, &state, "s").unwrap();
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        let hold = state.hold().unwrap();
+        assert_eq!(hold["revert_commit"], "revert", "{hold}");
+        assert_eq!(hold["revert_again"], false, "{hold}");
+    }
+
+    #[test]
+    fn a_revert_that_wont_apply_is_not_tried_again() {
+        let state = state("revert-not-again");
+        state
+            .set_hold(&json!({ "test": "vm-a", "bad": "b", "revert_pr": null }))
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("b h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
         assert!(world.reverted.lock().unwrap().is_empty());
     }
 

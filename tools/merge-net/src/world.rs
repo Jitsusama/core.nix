@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::holds;
 use crate::state::{now, short};
-use crate::watch::{Bad, Changed, Merged, World};
+use crate::watch::{Bad, Changed, Merged, UNCHECKED, World};
 
 /// Where the quarantine list is in the repository.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
@@ -175,6 +175,11 @@ impl Real {
             .stderr(file(&log)?)
             .status()
             .map_err(|error| format!("running changed-checks: {error}"))?;
+        // Exits 75 and 69 are nix-offload's: no builder or evaluator took
+        // the run, so nothing was checked.
+        if matches!(checked.code(), Some(75 | 69)) {
+            return Err(format!("{UNCHECKED}, {}", log.display()));
+        }
         if !checked.success() {
             let before = self.git(&["rev-parse", &followed])?;
             let failed = unbuilt(&fs::read_to_string(&log).unwrap_or_default());
