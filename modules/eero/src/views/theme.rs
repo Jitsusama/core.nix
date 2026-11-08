@@ -125,27 +125,12 @@ pub fn ink(terminal: bool) -> Ink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     /// Osaka Jade's roles and terminal colours, as its theme.json holds
-    /// them.
+    /// them. They live in a file of their own, the one place in eero that
+    /// names a colour, since they're what's tested on rather than a look.
     fn osaka_jade() -> Value {
-        json!({
-            "colours": {
-                "text": "#D6D5BC", "strong": "#F7E8B2", "muted": "#B7B69D",
-                "rule": "#53685B", "alert": "#FF6F5F", "warning": "#E5C736"
-            },
-            "terminal": {
-                "foreground": "#D6D5BC",
-                "black": "#111c18", "red": "#FF5345", "green": "#549e6a",
-                "yellow": "#459451", "blue": "#509475", "magenta": "#DF88B3",
-                "cyan": "#2DD5B7", "white": "#C1C497",
-                "bright_black": "#718779", "bright_red": "#db9f9c",
-                "bright_green": "#63b07a", "bright_yellow": "#E5C736",
-                "bright_blue": "#ACD4CF", "bright_magenta": "#75bbb3",
-                "bright_cyan": "#8CD3CB", "bright_white": "#F7E8B2"
-            }
-        })
+        serde_json::from_str(include_str!("../../tests/osaka-jade.json")).unwrap()
     }
 
     #[test]

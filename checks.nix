@@ -707,12 +707,14 @@ gather (
         pkgs.runCommandLocal "nothing-names-its-own-look" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
           cd ${./.}
           # The launcher's colour answers, and the colours they're tested on, name
-          # colours because colours are what's asked; neither is a look.
+          # colours because colours are what's asked, and eero's views are tested
+          # on a theme's terminal colours; none is a look.
           # ripgrep answers 0 for a match, 1 for none and 2 when it can't
           # search, and only none passes.
           status=0
           rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
             --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
+            --glob '!modules/eero/tests/osaka-jade.json' \
             -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix \
             || status=$?
           if [ $status = 0 ]; then
