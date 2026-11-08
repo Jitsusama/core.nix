@@ -345,3 +345,7 @@ function moved(act, count, page) {
         return still;
     }
 }
+
+function faceOf(_fact, _script) {
+    return "";
+}

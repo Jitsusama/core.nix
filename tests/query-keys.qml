@@ -981,6 +981,24 @@ QtObject {
     // object's i or a and a g going before it, and r for its letter, any
     // digit being one; Escape or Ctrl+C lets them go unsaid. q says how to
     // close, as on the rows.
+    // The face each fact's value is set in: an identifier (a node, a serial,
+    // a bus name) in the Name face, as the drawer's last facts are (VKCF3Z,
+    // 2026-11-07); a sentence in the words' face; Latin on a script's plate
+    // in the theme's own; and the rest at Figure.
+    function drawerFaces(holds) {
+        const cases = [
+            ["an identifier", { identifies: true }, "", "name"],
+            ["an identifier on a script's plate", { identifies: true }, "hebrew", "name"],
+            ["a sentence", { words: true }, "", "words"],
+            ["Latin on a script's plate", { latin: true }, "hebrew", "latin"],
+            ["Latin on the theme's own plate", { latin: true }, "", "value"],
+            ["a figure", {}, "", "value"],
+            ["no fact", null, "", "value"]
+        ];
+        for (const [what, fact, script, want] of cases)
+            holds(`a drawer sets ${what} in its face`, Page.faceOf(fact, script), want);
+    }
+
     function drawerRefusals(holds) {
         const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done]
@@ -1865,6 +1883,7 @@ QtObject {
         drawerSearch(holds);
         drawerVisual(holds);
         drawerRefusals(holds);
+        drawerFaces(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
