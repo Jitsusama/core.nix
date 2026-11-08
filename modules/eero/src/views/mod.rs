@@ -320,7 +320,10 @@ fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, Str
     let matches: Vec<&Device> = model.devices.iter().filter(called).collect();
     match matches.as_slice() {
         [one] => Ok(one),
-        [] => Err(format!("no device on now is called {name}")),
+        [] => {
+            Err(off_now(model, name)
+                .unwrap_or_else(|| format!("no device on now is called {name}")))
+        }
         many => {
             let each: Vec<String> = many
                 .iter()
@@ -334,6 +337,30 @@ fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, Str
             ))
         }
     }
+}
+
+/// Why a device eero knows isn't shown: it isn't on now, and where and
+/// when it last was, in UTC, since a refusal is said before any clock.
+fn off_now(model: &HomeNetwork, name: &str) -> Option<String> {
+    let off = model.devices_off.iter().find(|device| {
+        device.mac.eq_ignore_ascii_case(name)
+            || [&device.name, &device.nickname, &device.hostname]
+                .into_iter()
+                .flatten()
+                .any(|said| said.eq_ignore_ascii_case(name))
+    })?;
+    let mut last = Vec::new();
+    if let Some(node) = off.node.as_deref() {
+        last.push(location(model, Some(node)).to_owned());
+    }
+    if let Some(at) = off.last_active.as_deref().and_then(clock::parse) {
+        last.push(at.strftime("%Y-%m-%d %H:%M UTC").to_string());
+    }
+    Some(if last.is_empty() {
+        format!("{name} isn't on now")
+    } else {
+        format!("{name} isn't on now; it was last on {}", last.join(", "))
+    })
 }
 
 /// A count and its noun, the noun made plural past one: 1 device, 15 devices.
