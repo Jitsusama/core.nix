@@ -1,9 +1,9 @@
 // Drives the launcher's Machine (modules/quickshell/launcher/Machine.qml)
 // through Quickshell itself, with the machine daemon (modules/machine)
-// running over the sandbox's own /proc: once the launcher opens, the
-// processors', memory's and uptime's headlines are the daemon's, and
+// running over the sandbox's own /proc: once a Machine answer is shown,
+// the processors', memory's and uptime's headlines are the daemon's, and
 // make none of their parts; the programs using the machine aren't asked
-// for until a part saying them is looked at, and then are. It exits 0
+// for until the processor's parts are stepped into, and then are. It exits 0
 // once every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
 import QtQuick
@@ -34,7 +34,13 @@ ShellRoot {
         launcher: launcher
     }
 
-    Component.onCompleted: waiting.start()
+    // The Processor answer shown, as the launcher shows it once typed,
+    // before the daemon has said anything, since Machine asks it only
+    // while one of its answers is shown.
+    Component.onCompleted: {
+        launcher.answer = machine.answer("processor");
+        waiting.start();
+    }
 
     function fail(error) {
         console.warn(`FAIL ${error.message ?? error}`);
@@ -78,8 +84,8 @@ ShellRoot {
             expect("both say they have parts", processors.parted && memory.parted,
                 `${processors.parted} ${memory.parted}`);
             expect("the headlines asked for no programs", !machine.usingWanted, "they did");
-            // Shown and looked at, its parts ask for the programs.
-            launcher.answer = processors;
+            // Stepped into, its parts ask for the programs.
+            launcher.held = [{ row: processors }];
             const parts = processors.rows.map(row => row.name);
             expect("the processors' parts", parts.includes("Cores") && parts.includes("Time Spent"),
                 parts.join(", "));
