@@ -344,16 +344,21 @@ QtObject {
             now: "connected now", once: "once", times: "{count} times",
             config: "~/.ssh/config", known: "~/.ssh/known_hosts"
         };
+        // Its use alone, its address being the drawer's; where it goes
+        // only for one never reached.
         check("a machine reached", Opens.machineSide(machines[0], state, now),
-            "3 d ago \u00b7 2 times \u00b7 joel@10.0.0.5:2222");
+            "3 d ago \u00b7 2 times");
         check("one connected now", Opens.machineSide(machines[1], state, now),
-            "connected now \u00b7 once \u00b7 joel@10.0.0.5:2222");
+            "connected now \u00b7 once");
+        check("one never reached, by where it goes",
+            Opens.machineSide(machines[0], { open: [], reached: {}, time: state.time }, now),
+            "joel@10.0.0.5:2222");
         check("one never reached, with nothing to say",
             Opens.machineSide(machines[3], state, now), "");
         check("one known by two names", Opens.machineSide(machines[4], state, now),
             "2 d ago \u00b7 2 times");
         check("one on a port", Opens.machineSide(machines[5], state, now),
-            "2 d ago \u00b7 once \u00b7 nas:2200");
+            "2 d ago \u00b7 once");
         const named = { said: now, named: id => `<${id}>` };
         check("a machine's drawer", Opens.machineDrawer(machines[2], state, named), {
             title: "quoted", facts: [

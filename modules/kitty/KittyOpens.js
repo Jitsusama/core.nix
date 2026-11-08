@@ -260,11 +260,14 @@ function timesOf(one, state, said) {
     return times === 1 ? said.once : Kitty.fill(said.times, { count: times });
 }
 
-// What's said beside a machine: when it was reached, how many times, then
-// where it goes, so a side cut short keeps when.
+// What's said beside a machine: when it was reached and how many times,
+// which order the list, or, for one never reached, where it goes. Its
+// address is its drawer's HostName, User and Port otherwise, said once
+// there rather than again in a side too long to fit beside them.
 function machineSide(one, state, said) {
-    return [lastReached(one, state, said), timesOf(one, state, said), goesTo(one)]
-        .filter(part => part !== "").join(" \u00b7 ");
+    const use = [lastReached(one, state, said), timesOf(one, state, said)]
+        .filter(part => part !== "");
+    return use.length > 0 ? use.join(" \u00b7 ") : goesTo(one);
 }
 
 // A machine's drawer: when it was last reached and how many times, which
