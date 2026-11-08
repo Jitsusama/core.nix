@@ -83,6 +83,14 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_ACCOUNT")
 
 
+def for_you_rows(desktop: Desktop) -> None:
+    """Open the launcher on Now and step into For You, whose Lately band holds Mail and Slack."""
+    now_rows(desktop)
+    desktop.down_to("For You")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+
+
 # When the stand-in's mail came or its documents were opened, minutes before it started, as
 # a side says it: just now within a minute, on a fast builder, minutes ago within the hour,
 # then its time, or yesterday past midnight.
@@ -93,7 +101,7 @@ CAME = r"(just now|\d+ min ago|\d\d:\d\d|yesterday)"
 def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_does(
     desktop: Desktop,
 ) -> None:
-    """The mail that wants Joel is counted in Now, and Return lists it as Mail does.
+    """The mail that wants Joel is counted in For You, and Return lists it as Mail does.
 
     Each piece is the same row as in Programs \u203a Mail, with its details beside it, and Show
     the Mail after them goes there.
@@ -124,7 +132,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
             and drawer.get("body") == lunch["body"]
         )
 
-    now_rows(desktop)
+    for_you_rows(desktop)
     desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
     desktop.down_to("Mail")
     desktop.launcher_until(
@@ -164,7 +172,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Show the Mail, after the mail, goes to Mail in Programs.
-    now_rows(desktop)
+    for_you_rows(desktop)
     desktop.down_to("Mail")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Show the Mail" in shown["rows"])
@@ -226,8 +234,8 @@ def slack_goes(desktop: Desktop) -> None:
 
 
 def slack_is_not_in_now(desktop: Desktop) -> None:
-    """Open Now, wait until it holds no Slack row, and close the launcher."""
-    now_rows(desktop)
+    """Open For You, wait until it holds no Slack row, and close the launcher."""
+    for_you_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_until(lambda shown: not shown["open"])
@@ -257,12 +265,12 @@ def slack_program_says(
 def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop: Desktop,
 ) -> None:
-    """What in Slack wants Joel is counted in Now, and never an old count.
+    """What in Slack wants Joel is counted in For You, and never an old count.
 
     Return lists each conversation as Slack's one conversation row, then Show Slack. When
-    Slack can't be reached or refused the sign-in, Now has no Slack row, since neither wants
-    Joel, and Slack's program row says why, its first act signing in again when signed out;
-    with Slack's daemon gone, Now has no Slack row and never a count of nothing.
+    Slack can't be reached or refused the sign-in, For You has no Slack row, since neither
+    wants Joel, and Slack's program row says why, its first act signing in again when signed
+    out; with Slack's daemon gone, For You has no Slack row and never a count of nothing.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
@@ -291,13 +299,14 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     ]
     slack_says(desktop, "ok", conversations)
     try:
-        now_rows(desktop)
+        for_you_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
+        # Its note names each conversation, as many whole as fit (VKCF3Z, 2026-11-08).
         desktop.launcher_until(
             lambda shown: (
                 shown["selected"]["side"] == "6 to read"
-                and shown["selected"]["note"] == "Ada Lovelace, #deploys and 1 more"
+                and shown["selected"]["note"] == "Ada Lovelace, #deploys, Threads"
             )
         )
         machine.send_key("ret")
@@ -321,7 +330,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
             "A row drawn by the surface listing it, though a thing is one row:\n"
             + "\n".join(said["uncomposed"])
         )
-        # Slack out of reach wants nothing of Joel, so Now has no Slack row;
+        # Slack out of reach wants nothing of Joel, so For You has no Slack row;
         # Slack's program row says why.
         slack_says(desktop, "unreachable", [])
         slack_is_not_in_now(desktop)
@@ -341,13 +350,13 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # What wants Joel again, and then the daemon gone, as when
         # slack-unreads stops: what it held goes with it.
         slack_says(desktop, "ok", conversations)
-        now_rows(desktop)
+        for_you_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
         slack_goes(desktop)
-    now_rows(desktop)
+    for_you_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -363,10 +372,10 @@ def slack_program(desktop: Desktop) -> None:
 def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants_joel(
     desktop: Desktop,
 ) -> None:
-    """Slack's program holds Unread and then Recent, and Now only the part that wants Joel.
+    """Slack's program holds Unread and then Recent, and For You only what wants Joel.
 
     Unread says how many to read and who, and lists every conversation unread, direct
-    messages, mentions and Threads first, then the channels merely unread; Now's Slack row
+    messages, mentions and Threads first, then the channels merely unread; For You's Slack row
     is its first three groups, so it neither counts nor lists a channel merely unread.
     Recent lists the conversations Joel read last, newest first.
     """
@@ -394,14 +403,14 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
     ]
     slack_says(desktop, "ok", unread, recent=recent)
     try:
-        # Now counts and lists only what wants Joel.
-        now_rows(desktop)
+        # For You counts and lists only what wants Joel.
+        for_you_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
         desktop.launcher_until(
             lambda shown: (
                 shown["selected"]["side"] == "6 to read"
-                and shown["selected"]["note"] == "Ada Lovelace, #deploys and 1 more"
+                and shown["selected"]["note"] == "Ada Lovelace, #deploys, Threads"
             )
         )
         machine.send_key("ret")
