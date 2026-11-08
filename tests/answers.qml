@@ -1946,6 +1946,7 @@ QtObject {
         machine("a layer locked", boardDrawer.facts[0].value, "Numb \u00b7 locked");
         machine("only the locks on", boardDrawer.facts[1].value, "num");
         machine("its polling rate in Hz", boardDrawer.facts[3].value, "1,000 Hz");
+        machine("its USB id in the Name face", boardDrawer.facts[10].identifies, true);
         const bareBoard = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
             locks: [{ id: "caps", on: false }], connection: "USB" }, keyNamed, boardSaid);
         machine("no lock on, and a bus the eyebrow says", bareBoard.facts.map(fact =>
