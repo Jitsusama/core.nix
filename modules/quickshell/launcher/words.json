@@ -9494,5 +9494,16 @@
       ],
       "why": "Inside the stopwatch, Lap marks one and each lap it marked is named by its number, so lap finds the act and the laps together."
     }
-  ]
+  ],
+  "terminal": {
+    "usage": "launcher show [step ...] [--json]\n\nShows a place or a row the launcher holds, its drawer and what is inside it, as the launcher would: launcher show machine disk. Each step is a row's name, in any case, a hyphen for a space, or the start of only one. With none, it shows home. --json prints what the launcher says as JSON.\n",
+    "missing": "nothing called {step}",
+    "missingIn": "nothing called {step} in {place}",
+    "meant": "did you mean {names}?",
+    "or": "or",
+    "apart": "\u00b7",
+    "silent": "the shell isn't answering",
+    "unknown": "launcher doesn't take {what}",
+    "waiting": "\u2026"
+  }
 }

@@ -740,6 +740,9 @@
     records the microphone, and in an idle window nothing,
     reads a stand-in's named thread from the kernel, and sums each generation by its load
   '';
+  launcher-passes-clippy = ''
+    clippy finds nothing in launcher, the launcher in a terminal, or its tests
+  '';
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
   '';
@@ -1920,6 +1923,11 @@
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from
     the top, says how fast the desktop answers in plain words, and says nothing's slowing the
     desktop when nothing is
+  '';
+  the-launcher-shows-a-terminal-what-it-holds = ''
+    a step of `launcher show` names its row by its name in any case, a hyphen for a space, or the
+    one name it starts, a miss offers the nearest names, and a row and its drawer reach the
+    terminal as the words the launcher draws, a getter's and an empty fact left out
   '';
   the-launcher-shows-no-replaced-word = ''
     nothing the launcher's vocabulary shows of a thing, a place or a command says a name
