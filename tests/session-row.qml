@@ -487,7 +487,7 @@ QtObject {
                 folder: "tree", endedAt: "2026-11-08T05:41:00.000Z",
                 presence: { questInfo: { title: "Recent, Once" }, repo: "core.nix" } },
             { id: "s-2", address: "B", title: "notes", machine: "here", folder: "notes",
-                endedAt: "2026-11-08T05:30:00.000Z",
+                quest: "QEST-B", endedAt: "2026-11-08T05:30:00.000Z",
                 presence: { questInfo: { title: "Write It Up" } } },
             { id: "s-3", address: "C", title: "C", machine: "here", folder: "x",
                 endedAt: "2026-11-08T05:00:00.000Z", presence: {} },
@@ -503,6 +503,11 @@ QtObject {
         const shownSays = SessionRow.shownElsewhere(closed, [{ id: "s-3" }], ["D", "Z"]).join();
         if (shownSays !== "session:s-3,session:s-4")
             failures.push(`closed shown elsewhere: "${shownSays}"`);
+        // One whose quest a session works on again, at a new address, is
+        // left out too, since reopening it would give the quest two.
+        const questSays = SessionRow.shownElsewhere(closed, [], [], ["QEST-B", ""]).join();
+        if (questSays !== "session:s-2")
+            failures.push(`closed with its quest working again: "${questSays}"`);
         // Its note never says its name again: its quest's title where
         // that differs, else where it ran, its repository before its folder.
         const notes = closed.slice(0, 3).map(SessionRow.closedNote).join(" | ");

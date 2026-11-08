@@ -851,10 +851,12 @@ Provider {
     // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
     readonly property var recent: {
         const closed = Sessions.closed;
+        const live = Sessions.running.concat(Sessions.parked);
         const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
-            .concat(Sessions.running.concat(Sessions.parked).map(one => one.address));
+            .concat(live.map(one => one.address));
+        const quests = live.map(one => one.presence?.questInfo?.id ?? one.presence?.quest ?? "");
         const listed = Recent.listed([SessionRow.closedRecent(closed)],
-            SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses));
+            SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses, quests));
         const words = Words.of("agents:recent");
         const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
             || one.row.id)), false, words.said ?? {});

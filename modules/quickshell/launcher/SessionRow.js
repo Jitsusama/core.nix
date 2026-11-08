@@ -461,15 +461,15 @@ function closedRecent(closed) {
         row: one }));
 }
 
-// What Agents already shows of those closed, so Recent never holds it
-// again: a closed orchestrator at the tree's end, by its address, and one
-// of Sessions to Reopen, by its id, or one running again by its address.
-// Keys as closedRecent makes them.
-function shownElsewhere(closed, toReopen, addresses) {
+// Those closed Agents shows already, as closedRecent keys them: a closed
+// orchestrator or one running again by address, one to reopen by id, or
+// one whose quest a live session works on, which reopening would double.
+function shownElsewhere(closed, toReopen, addresses, quests) {
     const reopening = new Set((toReopen ?? []).map(one => String(one.id)));
     const listed = new Set(addresses ?? []);
+    const working = new Set((quests ?? []).filter(quest => quest));
     return (closed ?? []).filter(one => reopening.has(String(one.id))
-        || listed.has(one.address)).map(one => `session:${one.id}`);
+        || listed.has(one.address) || working.has(one.quest)).map(one => `session:${one.id}`);
 }
 
 // A closed session's note, which never says its name again: its quest's
