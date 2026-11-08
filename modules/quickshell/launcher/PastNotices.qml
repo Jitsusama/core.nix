@@ -23,6 +23,7 @@ import "../Fuzzy.js" as Fuzzy
 import "../NoticeBody.js" as NoticeBody
 import "Notice.js" as Notice
 import "Ago.js" as Ago
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -418,8 +419,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest)
-            .sort((a, b) => b.score - a.score || b.row.at - a.row.at);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score || b.row.at - a.row.at);
         return { rows: aged(kept.map(f => f.row)), grade: finest };
     }
 

@@ -39,6 +39,7 @@ import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Captured.js" as Captured
 import "Recent.js" as Recent
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -557,7 +558,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: finest };
     }
 

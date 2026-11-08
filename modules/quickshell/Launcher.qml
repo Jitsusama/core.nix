@@ -72,6 +72,7 @@ import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Order.js" as Order
 
 Scope {
     id: root
@@ -3096,8 +3097,8 @@ Scope {
         const before = found.filter(row => learned[row.key]);
         if (before.length === 0)
             return found;
-        before.sort((a, b) => learned[b.key].weight - learned[a.key].weight);
-        return before.concat(found.filter(row => !learned[row.key]));
+        return Order.sorted(before, (a, b) => learned[b.key].weight - learned[a.key].weight)
+            .concat(found.filter(row => !learned[row.key]));
     }
 
     // Shift+Return, as a chord beside a verb that does what it does.

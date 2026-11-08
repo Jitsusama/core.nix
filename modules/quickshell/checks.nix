@@ -2799,6 +2799,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Queue.qml} launcher/Queue.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/queue.qml} shell.qml

@@ -27,6 +27,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -277,8 +278,8 @@ Provider {
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
-        found.sort((a, b) => b.score - a.score);
-        return { rows: found.map(f => f.row), grade: 0 };
+        const ranked = Order.sorted(found, (a, b) => b.score - a.score);
+        return { rows: ranked.map(f => f.row), grade: 0 };
     }
 
     // The memory each running job's slice holds now.

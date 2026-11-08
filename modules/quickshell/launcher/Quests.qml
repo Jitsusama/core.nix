@@ -364,8 +364,9 @@ Provider {
             }
             kept.push({ score: best.score, row: row });
         }
-        kept.sort((a, b) => Number(b.row.unfinished) - Number(a.row.unfinished) || b.score - a.score);
-        return { rows: kept.map(f => f.row), grade: grade };
+        const ranked = Order.sorted(kept, (a, b) =>
+            Number(b.row.unfinished) - Number(a.row.unfinished) || b.score - a.score);
+        return { rows: ranked.map(f => f.row), grade: grade };
     }
 
     function everything() {

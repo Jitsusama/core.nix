@@ -585,7 +585,8 @@ Provider {
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
         const grade = Math.min(3, ...found.map(f => f.grade));
-        const kept = found.filter(f => f.grade === grade).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === grade),
+            (a, b) => b.score - a.score);
         // Ranked, each reads flat, at no depth (the header says why).
         return { rows: kept.map(f => f.row.ranked ? f.row.ranked() : f.row), grade: grade };
     }

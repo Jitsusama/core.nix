@@ -64,8 +64,11 @@ Provider {
     // only as it opens or closes, which Joel did himself
     // (collection-order.md).
     function everything() {
+        return Order.sorted(programs, returned());
+    }
+    function returned() {
         const open = row => (running[row.key.slice("program:".length)] ?? []).length > 0;
-        return Order.sorted(programs, Order.returned({ first: open, name: row => row.name }));
+        return Order.returned({ first: open, name: row => row.name });
     }
 
     // Inside Programs, by its name or what it is, the best grade first.
@@ -84,7 +87,10 @@ Provider {
         }
         matchedIn(programs, typed, found.map(f => f.row));
         const grade = Math.min(3, ...found.map(f => f.grade));
-        const kept = found.filter(f => f.grade === grade).sort((a, b) => b.score - a.score);
+        // Those alike in score keep the order nothing typed lists them in.
+        const order = returned();
+        const kept = Order.sorted(found.filter(f => f.grade === grade),
+            (a, b) => b.score - a.score || order(a.row, b.row));
         return { rows: kept.map(f => f.row), grade: grade };
     }
 
