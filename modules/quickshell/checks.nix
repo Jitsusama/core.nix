@@ -1069,6 +1069,24 @@ onLinux {
       touch $out
     '';
 
+  # pi, as an agent source, sorts the node's sessions into those running,
+  # parked and closed this boot, and says each as the agent source
+  # contract's record, leaving out what pi didn't say, as
+  # tests/pi-source.qml holds PiSource.js to it in Qt's own engine.
+  pi-tells-of-its-sessions-as-an-agent-source =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "pi-tells-of-its-sessions-as-an-agent-source" { } ''
+      cp ${../../tests/pi-source.qml} pi-source.qml
+      cp ${./PiSource.js} PiSource.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml pi-source.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
@@ -1696,12 +1714,17 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./AgentSources.qml} AgentSources.qml
+      cp ${./PiSource.qml} PiSource.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${jobs} Jobs.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      # pi's source finds the node by the realm the node keeps.
+      mkdir -p $HOME/.local/state/mycelium && echo harbour > $HOME/.local/state/mycelium/realm
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -2548,6 +2571,7 @@ onLinux {
       cp ${../../tests/runs.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
+      cp ${singleton "AgentSources.qml" "readonly property var runs: []"} AgentSources.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
@@ -2738,6 +2762,8 @@ onLinux {
       ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./PiSource.qml} PiSource.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
@@ -2802,6 +2828,8 @@ onLinux {
       ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./PiSource.qml} PiSource.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js

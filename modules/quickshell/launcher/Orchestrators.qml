@@ -106,28 +106,13 @@ Provider {
             ? `~${folder.slice(home.length)}` : folder;
     }
 
-    // The node's records of talks (mycelium's PROTOCOL.md, The Daemon
-    // Interface), watched whole and then told each change as only what
-    // differs; what was held stays held while the node isn't answering.
-    readonly property var talkKind: talkLink.item
-    LazyLoader {
-        id: talkLink
-        active: Sessions.nodePath !== ""
-
-        Daemon {
-            socket: Sessions.nodePath
-            kind: "talk"
-            changesDiffer: true
-            answersWhole: true
-        }
-    }
-
     // Each talk with a session, by its address, newest first, its lines
-    // folded: { id, at, words, stage, after, reply, why, came }.
+    // folded: { id, at, words, stage, after, reply, why, came }; from the
+    // talks every agent source tells of (AgentSources), pi's as the
+    // realm's node serves them, held while the node isn't answering.
     readonly property var talks: {
-        talkKind?.revision;
         const byAddress = {};
-        for (const record of Object.values(talkKind?.held ?? {})) {
+        for (const record of AgentSources.talks) {
             const address = String(record?.address ?? "").toUpperCase();
             const talk = { id: String(record?.id ?? ""), at: "", words: "", stage: "", after: "",
                 reply: "", why: "", came: "" };
