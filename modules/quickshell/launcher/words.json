@@ -8177,7 +8177,13 @@
       "id": "session:profile",
       "name": "Power Profile",
       "term": "Machine/power profile",
-      "glyph": "balanced"
+      "glyph": "balanced",
+      "said": {
+        "set": "power profile set to {profile}",
+        "silent": "the profile daemon didn't answer",
+        "held": "{app} holds {profile}",
+        "kept": "the daemon kept {profile}"
+      }
     },
     {
       "id": "session:profile:drawer",

@@ -3,13 +3,15 @@
 // run it in Qt's own engine, as the shell does: which of a list the kernel
 // marks as in use, what a USB-C port's protocol is called, what each port
 // gives, the date a battery was made, the order a charge limit's two files
-// are written in, how bright a room is, and what the power profile's drawer
-// says. Power.qml, Light.qml and Session.qml read the files and say the
-// figures.
+// are written in, how bright a room is, what the power profile's drawer
+// says, and why a profile picked didn't take. Power.qml, Light.qml and
+// Session.qml read the files and say the figures.
 .pragma library
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
 const MARKED = /\[([^\]]+)\]/;
+// A string D-Bus property as busctl prints it: s "balanced".
+const BUS_STRING = /^s "([^"]*)"$/;
 const BRACKETS = /^\[|\]$/g;
 const SPACES = /\s+/;
 
@@ -43,6 +45,32 @@ function profileDrawer(known, named, said) {
             fact("firmware-driver", (known.firmwareDrivers ?? []).join(" \u00b7 "))
         ].filter(each => (each.value ?? "") !== "")
     };
+}
+
+// The profile power-profiles-daemon says it's on, from busctl's answer to
+// its ActiveProfile, by the daemon's own name ("power-saver", "balanced",
+// "performance"); "" when it didn't answer.
+function activeProfile(text) {
+    return BUS_STRING.exec(String(text ?? "").trim())?.[1] ?? "";
+}
+
+// Why a profile picked by the daemon's name, `wanted`, didn't take, from
+// the one it said back, `heard`: "" when it did. `told` holds the daemon's
+// `holds`, each { profile, app }, `named`, each profile's name as the
+// launcher says it, by the daemon's, and `said`, words.json's
+// session:profile words: nothing heard, a program holding the one heard,
+// or the daemon keeping it for its own reasons.
+function profileRefusal(wanted, heard, told) {
+    if (heard === wanted) {
+        return "";
+    }
+    if (heard === "") {
+        return told.said.silent;
+    }
+    const profile = told.named[heard] ?? heard;
+    const holding = (told.holds ?? []).find(hold => hold.profile === heard);
+    return holding ? filled(told.said.held, { profile, app: holding.app })
+        : filled(told.said.kept, { profile });
 }
 
 // What a list the kernel marks one of says: the one in use and all of
