@@ -12,9 +12,14 @@ is forgotten then, and again before taking BlueZ up, so only what
 GetManagedObjects returns is kept, and no device lingers with its last
 signal.
 
+Each adapter is told first that it no longer looks, before anything
+moves: a binding letting go of an adapter that was looking would
+otherwise ask org.bluez to stop, and a call to a name nobody owns has
+the bus start bluetoothd again, cancelling the stop that was asked for.
+
 ---
 diff --git a/src/bluetooth/bluez.cpp b/src/bluetooth/bluez.cpp
-index f2c4300..3f36c55 100644
+index f2c4300..ccd4a44 100644
 --- a/src/bluetooth/bluez.cpp
 +++ b/src/bluetooth/bluez.cpp
 @@ -1,7 +1,9 @@
@@ -27,7 +32,7 @@ index f2c4300..3f36c55 100644
  #include <qdbusextratypes.h>
  #include <qlogging.h>
  #include <qloggingcategory.h>
-@@ -58,12 +60,74 @@ void Bluez::init() {
+@@ -58,12 +60,81 @@ void Bluez::init() {
  	    &Bluez::onInterfacesRemoved
  	);
  
@@ -78,6 +83,13 @@ index f2c4300..3f36c55 100644
 +// Drops every device and adapter, as their InterfacesRemoved would, in the
 +// same order: out of the models first, then deleted.
 +void Bluez::forgetAll() {
++	// No adapter looks once BlueZ is gone. Said first, before anything moves, so a
++	// binding letting go of an adapter stops nothing on the bus: a call to org.bluez
++	// then would have the bus start bluetoothd again, undoing its stop.
++	for (auto* adapter: this->mAdapters.valueList()) {
++		adapter->bindableDiscovering().setValue(false);
++	}
++
 +	const auto devices = this->mDevices.valueList();
 +	for (auto* device: devices) {
 +		if (auto* adapter = device->adapter()) {
