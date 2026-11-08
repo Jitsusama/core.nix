@@ -1050,7 +1050,8 @@
     the daemon in slots of its own for a builder beside, runs one at a time a minute apart, and
     fails at its time limit, ending what it started; a lent builder failing two in a row is named
     nowhere, its relay ended and given back as lost, a builder beside failing two is left out
-    until one passes, and each folder's health.json says how they stand; a day's journal sums to its hours and cost, each at its price; and
+    until one passes, and each folder's health.json says how they stand; a day's journal sums
+    to its hours and cost, each at its price; and
     `there` sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, waiting afresh for each loss after the build sent again ran a
     while and for a lender restarting, saying how long, or, when none stands or none answers,
