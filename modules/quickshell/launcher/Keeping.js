@@ -7,6 +7,7 @@
 // trailing zeros too, in the settings' decimal mark, `point` (VKCF3Z,
 // 2026-11-07, as Machine.js and Screens.js keep them).
 .pragma library
+.import "Numbers.js" as Numbers
 
 const MINUS = "\u2212";
 
@@ -32,19 +33,11 @@ function sign(value) {
 }
 
 // A size to three significant digits, its trailing zeros kept, in the
-// decimal mark `point`: "915", "1.52", "0.0400". A rounding that carries
-// into a fourth digit, as 999.6 does to 1000, is said whole.
+// decimal mark `point`, as every measured figure is said (Numbers.js):
+// "915", "1.52", "0.0400". A unit reads under a thousand of it, so none
+// is grouped.
 function digits(size, point) {
-    if (size === 0) {
-        return "0";
-    }
-    const whole = Math.floor(Math.log10(size)) + 1;
-    let fixed = size.toFixed(Math.max(0, SIGNIFICANT - whole));
-    const carried = Math.floor(Math.log10(Number(fixed))) + 1;
-    if (carried > whole) {
-        fixed = size.toFixed(Math.max(0, SIGNIFICANT - carried));
-    }
-    return fixed.replace(".", point ?? ".");
+    return Numbers.significant(size, "", point);
 }
 
 // Whether a size reads as a thousand or more in its unit, once it's
