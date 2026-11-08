@@ -1605,6 +1605,10 @@
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
     figures and its parts' heat answer
   '';
+  the-screens-go-off-on-niri = ''
+    on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
+    off, and :set noscreens asks it too, as read on the way to niri's socket
+  '';
   the-newest-surface-takes-the-keys-on-niri = ''
     on niri, the launcher opened over held notices takes the keys and gives them back as it
     closes; held notices take them from the open launcher and give them back, and a notice
