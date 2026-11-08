@@ -176,8 +176,10 @@ of each kind of line it sets, and a row's pitch is its height.
   no widow and no hyphen break. A figure keeps three significant digits,
   taking the next unit past 999 ("370 Mb/s", "1.20 Gb/s"), and a negative
   one the real minus ("−48 dBm"), never a hyphen; a figure that names
-  rather than measures keeps every digit (a mode's "120.001 Hz", a
-  channel's "5,745 MHz", a version). Sizes are decimal, worked out
+  rather than measures keeps every digit and gains no zeros (a mode's
+  "120.001 Hz", a channel's "5,745 MHz", a version, a charger's offered
+  "5 V · 20 V at 3 A", a learned set point's "2 klx"), while a measure keeps
+  its zeros ("0.500 A", "96.0 ppi"). Sizes are decimal, worked out
   from bytes ("1.52 GB of 4.08 GB", "915 MB"), never a GiB beside a GB;
   thousands take a comma ("4,000 K", "2,400 rpm"); a scale reads "2×",
   never "200%"; and a pair says which is which ("12 kB/s in · 0 B/s
@@ -907,7 +909,7 @@ lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
 What each is, in words, is the launcher's Now, opened by Super+O on its
-first row, Needs You, or by clicking a mark, on that mark's row: a
+first row, For You, or by clicking a mark, on that mark's row: a
 row each, its glyph, its name, how it stands at the right, and what more
 there is to know in the footer, grouped by how much it asks with what
 wants Joel first. Return does there what it
@@ -1255,7 +1257,9 @@ works the same way everywhere.
   too"; Night Light, "on"), and a setting's two states are never
   a place holding both. Return flips it and the launcher stays; one that
   would cut off something in use asks once first ("Turn Bluetooth Off,
-  Disconnecting the Keychron"). A choice is said by its value alone
+  Disconnecting the Keychron"). An ask names the act on its thing, from
+  the act's own words, never a place's name joined to it: "Reboot the
+  Machine, Closing 12 Windows?", never "Reboot Power?". A choice is said by its value alone
   ("100%", "60 Hz", "Upright"), the setting it's for named in the path
   above it, the one chosen saying "chosen", whoever picked it. "In use"
   is only ever what a program holds, as a camera Chrome has open. Rows
@@ -1362,21 +1366,21 @@ works the same way everywhere.
   machine with a password manager, beside People (VKCF3Z). Disk is a
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
-  fast shows in Now. Now's top never changes: Needs You first, always,
-  its side how many, its note the first of them, or "Nothing needs you.";
+  fast shows in Now. Now's top never changes: For You first, always,
+  its side a bare count of what waits on Joel, or "nothing now";
   then its own
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
   one row that thing is anywhere it shows, never a version Now draws of
-  it. Below them, only while true, come what else wants Joel (unread
-  mail, missed notices, a low battery), what reaches other people,
+  it. Below them, only while true, come what else wants Joel (a low
+  battery; mail and notices are For You's), what reaches other people,
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
-  left on). Needs You is a place, so Return steps into it whatever it
+  left on). For You is a place, so Return steps into it whatever it
   holds, and Return on what's first goes where it's done; Super+O,
   Return, Return reaches the pressing thing, each press foreseen. Every place
-  and list opens on its first row, Now and Notices included, so the same
+  and list opens on its first row, Now and For You included, so the same
   keys land on the same row every time: what's pressing earns the top by
   order, never by the selection travelling to it (Joel, 2026-10-29:
   "when opening the launcher it selects seemingly random things"). Each
@@ -1398,28 +1402,49 @@ works the same way everywhere.
   a row that holds parts, a program or anything else with a page of its
   own, since Down and Ctrl+N already go to the next row (VKCF3Z,
   2026-11-07), so "chrome" and Tab reach Chrome's page.
-- **Needs You holds only what only Joel can do, and keeps itself
-  true.** Each item is raised by the session that needs him, under its
-  quest, through the one tool every session uses, and is never copied
-  into a list someone keeps by hand. Every item says how it'll be known
-  done: a check that passes, a sign such as a boot, a switch, a sign-in,
-  a device seen or a file written, or, where nothing can tell, only Joel
-  saying so, which its drawer says. It goes the moment its check passes
-  or its sign comes, its quest ends or its session takes it back, never
-  staying once done; a session ending keeps its items. An item that
-  can't be done yet waits under Later, saying what for, until a fact
-  makes it ready, and one notice says when it does. Every item reads in
-  the same four parts: its title the act, in Title Case ("Send the Deploy
-  v3 Update"); its side how long ("3 min"); its note where, and any
-  limit ("not during a call"); its drawer the steps, numbered, one
-  sentence on why only he can, and how it'll be known done. Anything
-  timed comes first, soonest first, then the quickest, so a few free
-  minutes always find something; a session that needs Joel is there
-  drawn as the session. Return goes where it's done (the window, the
-  page, the program), else steps in; inside are Go To, Done, Not Now and
-  its quest. The name says what's in it (Joel, 2026-10-30: "i don't even
-  know what waiting on me means"), so its row reads as a sentence with
-  its count: "Needs You · 2".
+- **For You is the one place for Joel's attention, fed by sources**
+  (Joel, 2026-11-08: "Why would we not just have a single place to grab
+  my attention from that grabs data from various sources?"). Sources
+  plug in as Passwords' do, each giving items of one shape, so a new
+  source adds rows, never a place for him to watch. What waits on him
+  leads, in one list by weight, heaviest first, so "the most critical
+  stuff bubbles up": to-dos, what only he can do, each raised by the
+  session that needs him through the one tool every session uses; looks,
+  what a session points him at, never opened for him; and landings
+  whose line asks him to try something. Weight comes from what it holds
+  up (a session parked on him counts most), a deadline near, its
+  source's urgency and, slowly, how long it's waited; the order is
+  worked out as the place opens and holds still while it's open. A row's
+  mark and eyebrow say its kind ("from Reef Quest · look"), and its side
+  the strongest reason it's there, state first ("session ended · 12 min
+  ago", "blocks 2 sessions", "due 15:00", else "12 min ago"). Lately
+  follows, what came: a row per source holding parts ("Mail", "Slack"),
+  its side "12 to read", its note its senders newest first, ordered by
+  its heaviest, and a notice its source calls critical lifts into the
+  first band. Then Later, what was put off or can't be done yet, each
+  saying what for; then History.
+- **For You keeps itself true, and forgets nothing.** Nothing in it times
+  out. An item leaves the moment its source says it no longer needs him:
+  a check passes, a sign comes (a boot, a switch, a sign-in, a device
+  seen, a file written), a pull request merges, a meeting ends, a
+  message is read where it lives, or he clears it with dd; where nothing
+  can tell, only Joel saying so, which its drawer says. History keeps
+  everything resolved for good, newest first, each side saying how and
+  when ("merged 14:02", "read in Slack 14:02", "cleared by you 13:10"),
+  and `/` finds any. A kind or a source is a step-in, never a mode:
+  `:filter look` or `:filter slack` goes in, Tab completing the kinds and
+  sources present with their counts, the head says it ("For You › To
+  Look At"), and - comes back out. Every row has a drawer, "nerdy and
+  useful" (Joel, 2026-11-08): its why whole in the serif; Weight, as a
+  figure and its parts ("82 · blocks 2 sessions · waiting 2 h · due
+  15:00"), so he sees why it's where it is; Takes, Waiting Since, Last
+  Checked and Clears When; its source's own facts (a pull request's
+  checks and lines, a mail's sender and labels); its quest and session;
+  identifiers last. Return on a look opens it in its own program; on a
+  to-do it steps in, where the first act is where it's done: Go To its
+  window when it names one, else Deal With It, bringing its session
+  forward with a prompt filled in and never sent; then Mark It Done, Put
+  It Off and Open Its Quest (VKCF3Z, 2026-11-08).
 - **Ctrl+Y only completes.** It takes the grey completion the field shows,
   as his Neovim's completion menu takes its selection, and does nothing
   while none shows; Tab moves through the rows, as that menu's does, but
@@ -1496,8 +1521,8 @@ works the same way everywhere.
   It, Turn Off, Stop, an agent's Close, Done, and the session's Lock,
   Sleep, Log Out, Reboot and Power Off. An agent's Close always asks,
   naming the session by its address, since the path above says its title,
-  and its ask says what stays, "Close 8IDU4E? Its worktree and 1 Needs You
-  item stay. (y/n)", so ending one never reads as losing its work.
+  and its ask says what stays, "Close 8IDU4E? Its worktree and 1 to-do
+  stay. (y/n)", so ending one never reads as losing its work.
   Return on its row puts its command on the command line,
   `:disconnect`, the menu saying what it acts on, and a fresh Return there
   runs it; the row and the foot name the key that carries it, "d
