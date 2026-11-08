@@ -150,7 +150,7 @@ ShellRoot {
         const place = finding.nearbyPlace;
         expect("Nearby says it looks while open", place.side === ""
             && place.note === "looks while open" && place.verb === "more"
-            && place.empty === "Looking for devices\u2026", `${place.side}; ${place.note}`);
+            && place.empty === "Nothing heard yet.", `${place.side}; ${place.note}`);
         launcher.held = [{ row: { key: "bluetooth:nearby" } }];
         expect("looking while Nearby is open", air.discovering, "the radio isn't looking");
         const rows = finding.nearbyPlace.verbs();

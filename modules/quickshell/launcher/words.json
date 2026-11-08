@@ -7533,7 +7533,7 @@
       "name": "Nearby",
       "words": ["find a device", "pair a device"],
       "glyph": "nearby",
-      "empty": "Looking for devices\u2026"
+      "empty": "Nothing heard yet."
     },
     {
       "id": "bluetooth:adapter",
