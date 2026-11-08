@@ -103,6 +103,39 @@ QtObject {
                 failures.push(`${position}s of ${length}s said "${got}", not "${expected}"`);
         }
 
+        // How the Media place's row stands: state first, as a timer's.
+        const standings = [
+            [98.6, 403, true, "1:38 of 6:43"],
+            [98, 403, false, "paused \u00b7 1:38 of 6:43"],
+            [61, 0, false, "paused \u00b7 1:01"]
+        ];
+        for (const [position, length, playing, expected] of standings) {
+            asked++;
+            const got = Music.standing(position, length, playing);
+            if (got !== expected)
+                failures.push(`standing at ${position}s said "${got}", not "${expected}"`);
+        }
+
+        // A place typed for :set position, in seconds or as a clock.
+        const typed = [["90", 90], ["1:30", 90], ["1:02:05", 3725], ["2.5", 2.5],
+            ["1:75", null], ["soon", null], ["", null]];
+        for (const [text, expected] of typed) {
+            asked++;
+            const got = Music.placeIn(text);
+            if (got !== expected)
+                failures.push(`"${text}" read as ${got}, not ${expected}`);
+        }
+
+        // Looping in Joel's words, MPRIS's None being Off, and back.
+        asked++;
+        if ([0, 1, 2].map(Music.loopOf).join() !== "off,track,playlist"
+                || ["off", "Track", "playlist", "none"].map(Music.loopState).join() !== "0,1,2,0")
+            failures.push("a loop isn't said as off, track and playlist");
+
+        asked++;
+        if ([1, 0.5, 1.25, 2.0001].map(Music.speed).join() !== "1\u00d7,0.5\u00d7,1.25\u00d7,2\u00d7")
+            failures.push("a speed isn't said in as few figures as say it");
+
         asked++;
         if (Music.mark("Spotify") !== String.fromCodePoint(0xf1bc)
                 || Music.mark("") !== String.fromCodePoint(0xf075a)

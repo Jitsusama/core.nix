@@ -65,6 +65,47 @@ function where(position, length, playing) {
     return length > 0 ? `${time(position)} of ${time(length)}` : time(position);
 }
 
+// How a player stands, as the Media place's row says it at its far end,
+// its state first as a timer's is (VKCF3Z, 2026-11-08): "1:38 of 6:43"
+// playing, "paused \u00b7 1:38 of 6:43" paused, and a stream with no
+// length only how far it's come.
+function standing(position, length, playing) {
+    const at = length > 0 ? `${time(position)} of ${time(length)}` : time(position);
+    return playing ? at : `paused \u00b7 ${at}`;
+}
+
+// A place in a track as typed: seconds, as 90, or m:ss or h:mm:ss, as
+// 1:30; null for anything else.
+const CLOCK = /^(?:(\d+):)?(\d+):([0-5]\d)$/;
+const SECONDS = /^\d+(?:\.\d+)?$/;
+function placeIn(typed) {
+    const text = String(typed ?? "").trim();
+    if (SECONDS.test(text)) {
+        return Number(text);
+    }
+    const clock = CLOCK.exec(text);
+    if (!clock) {
+        return null;
+    }
+    return Number(clock[1] ?? 0) * HOUR + Number(clock[2]) * 60 + Number(clock[3]);
+}
+
+// How a player loops, in Joel's words, by MPRIS's LoopStatus as Quickshell
+// numbers it (None, Track, Playlist): MPRIS's None is Off to him (VKCF3Z,
+// 2026-11-08).
+const LOOPS = ["off", "track", "playlist"];
+function loopOf(state) {
+    return LOOPS[state] ?? "off";
+}
+function loopState(word) {
+    return Math.max(0, LOOPS.indexOf(String(word ?? "").toLowerCase()));
+}
+
+// A speed as a player is asked it, "1\u00d7", in as few figures as say it.
+function speed(rate) {
+    return `${Number(rate.toFixed(2))}\u00d7`;
+}
+
 // A player's mark where Nerd Fonts has one, by the desktop entry it names,
 // and a note otherwise.
 const marks = {

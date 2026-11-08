@@ -720,6 +720,7 @@ let
     wifi = ./launcher/Wireless.qml;
     eero = ./launcher/HomeNetwork.qml;
     sound = ./launcher/Sound.qml;
+    media = ./launcher/Players.qml;
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
@@ -1471,6 +1472,13 @@ in
         # What reads a card's ports, and what moves one onto another.
         pwDump = lib.getExe' pkgs.pipewire "pw-dump";
         wpctl = lib.getExe' pkgs.wireplumber "wpctl";
+      };
+      # Every media player and what it plays, beside Sound, which holds the
+      # devices it plays through.
+      media = {
+        order = 103;
+        source = "media";
+        weight = 0.9;
       };
       # The headphones, mice and keyboards paired or around, and turning
       # Bluetooth off as an action.

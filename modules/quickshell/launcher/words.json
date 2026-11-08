@@ -52,6 +52,7 @@
         "energy",
         "bluetooth",
         "sound",
+        "media",
         "cameras",
         "light",
         "machine:cpu",
@@ -7274,6 +7275,198 @@
       "id": "capture:length",
       "in": "capture",
       "name": "Length"
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "noun": "players",
+      "what": "player",
+      "glyph": "playing",
+      "ask": "which player?",
+      "empty": "Nothing is playing.",
+      "answers": [
+        "music",
+        "players"
+      ],
+      "said": {
+        "percent": "{n}%",
+        "on": "on",
+        "off": "off",
+        "chosen": "chosen",
+        "speeds": "{speed} · {least} to {most}"
+      }
+    },
+    {
+      "id": "verb:media:pause",
+      "command": "pause",
+      "in": "media",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause",
+      "states": {
+        "paused": {
+          "command": "resume",
+          "name": "Play",
+          "verb": "play",
+          "glyph": "resume"
+        }
+      }
+    },
+    {
+      "id": "verb:media:next",
+      "command": "skip",
+      "in": "media",
+      "name": "Next",
+      "verb": "next",
+      "glyph": "next"
+    },
+    {
+      "id": "verb:media:previous",
+      "command": "skip",
+      "bang": true,
+      "in": "media",
+      "name": "Previous",
+      "verb": "previous",
+      "glyph": "previous"
+    },
+    {
+      "id": "media:position",
+      "in": "media",
+      "name": "Position",
+      "glyph": "position"
+    },
+    {
+      "id": "verb:media:back",
+      "command": "set",
+      "argument": "position-=10",
+      "in": "media:position",
+      "name": "Back 10 Seconds",
+      "verb": "back"
+    },
+    {
+      "id": "verb:media:ahead",
+      "command": "set",
+      "argument": "position+=10",
+      "in": "media:position",
+      "name": "Ahead 10 Seconds",
+      "verb": "ahead"
+    },
+    {
+      "id": "verb:media:further",
+      "command": "set",
+      "argument": "position+=30",
+      "in": "media:position",
+      "name": "Ahead 30 Seconds",
+      "verb": "ahead"
+    },
+    {
+      "id": "verb:media:start",
+      "command": "set",
+      "argument": "position=0",
+      "in": "media:position",
+      "name": "From the Start",
+      "verb": "restart"
+    },
+    {
+      "id": "media:volume",
+      "in": "media",
+      "name": "Volume",
+      "glyph": "volume"
+    },
+    {
+      "id": "verb:media:louder",
+      "command": "set",
+      "argument": "playervolume+=10",
+      "in": "media:volume",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:media:quieter",
+      "command": "set",
+      "argument": "playervolume-=10",
+      "in": "media:volume",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "media:volume:level",
+      "in": "media:volume",
+      "name": "Volume to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "media:shuffle",
+      "command": "set",
+      "argument": "noshuffle",
+      "in": "media",
+      "name": "Shuffle",
+      "verb": "turn off",
+      "glyph": "shuffle",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "shuffle"
+        }
+      }
+    },
+    {
+      "id": "media:loop",
+      "in": "media",
+      "name": "Loop",
+      "glyph": "loop"
+    },
+    {
+      "id": "media:loop:off",
+      "command": "set",
+      "argument": "loop=off",
+      "in": "media:loop",
+      "name": "Off",
+      "verb": "set"
+    },
+    {
+      "id": "media:loop:track",
+      "command": "set",
+      "argument": "loop=track",
+      "in": "media:loop",
+      "name": "Track",
+      "verb": "set"
+    },
+    {
+      "id": "media:loop:playlist",
+      "command": "set",
+      "argument": "loop=playlist",
+      "in": "media:loop",
+      "name": "Playlist",
+      "verb": "set"
+    },
+    {
+      "id": "media:speed",
+      "in": "media",
+      "name": "Speed",
+      "glyph": "playSpeed"
+    },
+    {
+      "id": "media:speed:choice",
+      "in": "media:speed",
+      "name": "Speed to {speed}",
+      "verb": "set"
+    },
+    {
+      "id": "verb:media:window",
+      "command": "buffer",
+      "in": "media",
+      "name": "Go To Its Window",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:media:link",
+      "command": "yank",
+      "in": "media",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
     },
     {
       "id": "cameras",

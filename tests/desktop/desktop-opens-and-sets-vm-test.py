@@ -537,6 +537,66 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     machine.succeed(f"rm -r {tones}")
 
 
+def test_the_media_place_lists_each_player_and_its_acts_reach_it(desktop: Desktop) -> None:
+    """The Media place lists each player, and its acts and :set reach the player itself.
+
+    Two players, one playing and one paused, each a row saying how it stands; Return on the
+    paused one plays it, a step in holds its acts, and :set shuffle reaches the one that
+    matters now, as MPRIS tells D-Bus.
+    """
+    machine = desktop.machine
+    track = desktop.values["track"]
+    for unit, paused in [("first-player", ""), ("second-player", " --pause")]:
+        desktop.as_account(
+            f"systemd-run --user --collect --unit={unit} mpv --ao=null --no-video"
+            f" --no-terminal --loop{paused} {track}"
+        )
+    try:
+        named = "busctl --user list --acquired | grep -c '^org\\.mpris\\.MediaPlayer2\\.mpv'"
+        machine.wait_until_succeeds(desktop.in_session(f"test $({named}) -ge 2"), timeout=WAIT)
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("media", selecting="Media")
+        desktop.step_in("ret")
+
+        def stands(shown: Json) -> bool:
+            sides = [thing["reads"] for thing in shown["things"]]
+            return any("paused \u00b7 " in side for side in sides) and any(
+                re.search(r"\d:\d\d of \d:\d\d", side) and "paused" not in side for side in sides
+            )
+
+        desktop.launcher_until(stands)
+        desktop.shoot("launcher-media")
+        # Tab into a player holds its acts, the first named for what it will do.
+        desktop.into_program()
+        desktop.launcher_until(lambda shown: shown["rows"][:1] in (["Pause"], ["Play"]))
+        desktop.shoot("launcher-media-player")
+        desktop.close_launcher()
+        playing = "busctl --user --json=short get-property {bus} /org/mpris/MediaPlayer2"
+        buses = desktop.as_account(
+            "busctl --user list --acquired | grep -o '^org\\.mpris\\.MediaPlayer2\\.mpv\\S*'"
+        ).split()
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.normal()
+        machine.send_chars(":set shuffle\n", delay=KEY_PACE)
+
+        def shuffled(_: bool) -> bool:
+            return any(
+                json.loads(
+                    desktop.as_account(
+                        f"{playing.format(bus=bus)} org.mpris.MediaPlayer2.Player Shuffle"
+                    )
+                )["data"]
+                for bus in buses
+            )
+
+        retry(shuffled, timeout=WAIT)
+        desktop.close_launcher()
+    finally:
+        desktop.as_account("systemctl --user stop first-player second-player || true")
+
+
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     """The launcher sets the power profile, staying to say so, from a step in too."""
     machine = desktop.machine

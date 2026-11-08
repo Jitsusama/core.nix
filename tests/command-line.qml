@@ -295,7 +295,8 @@ QtObject {
             mute: { kind: "switch" },
             volume: { kind: "number", least: 0, most: 100 },
             brightness: { kind: "number", least: 0, most: 100 },
-            background: { kind: "choice", values: ["light", "dark"] }
+            background: { kind: "choice", values: ["light", "dark"] },
+            position: { kind: "number", least: 0, clock: true }
         };
         const set = arg => SetWords.setting(arg, options);
         const first = arg => (set(arg).changes ?? [])[0] ?? null;
@@ -326,6 +327,11 @@ QtObject {
             { error: "E518: Unknown option: wfii" });
         holds("a word for a number says E521", set("volume=loud"),
             { error: "E521: Number required after =: volume=loud" });
+        holds(":set position=1:30 reads a clock, in seconds, and 1:02:05 past the hour",
+            [first("position=1:30")?.value, first("position=1:02:05")?.value,
+                first("position+=10")?.value], [90, 3725, 10]);
+        holds("but only where the option keeps time", set("volume=1:30"),
+            { error: "E521: Number required after =: volume=1:30" });
         holds("a number past its ends says E474", set("volume=140"),
             { error: "E474: Invalid argument: volume=140" });
         holds("a choice it hasn't says E474", set("background=blue"),
