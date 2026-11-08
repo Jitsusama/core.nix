@@ -78,6 +78,10 @@ pub struct Config {
     pub holds: Option<Holds>,
     /// Where Linux says how the machine is powered.
     pub power_supplies: PathBuf,
+    /// Where Linux says how long runnable tasks waited for a CPU, which
+    /// says whether `here` may build; a Mac has none, so nothing builds
+    /// there.
+    pub cpu_pressure: PathBuf,
     /// The programs it runs, by their paths in the store.
     pub tools: Tools,
     /// How a command is run in an account's login session, where a Mac's
@@ -113,8 +117,9 @@ pub struct Here {
     pub max_jobs: u32,
     /// How many cores each piece may use.
     pub cores: u32,
-    /// The minute's load average at or above which they wait.
-    pub below_load: f64,
+    /// The share of the last minute, in percent, that some runnable task
+    /// waited for a CPU, at or above which they wait.
+    pub busy_at: f64,
 }
 
 /// Daemons whose restart waits for a hold: whoever asks puts the machine's

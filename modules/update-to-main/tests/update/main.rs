@@ -194,6 +194,7 @@ impl World {
             refuse_while: Vec::new(),
             holds: None,
             power_supplies: root.join("power"),
+            cpu_pressure: root.join("pressure"),
             tools: Tools {
                 git: program("git"),
                 gpg: program("gpg"),
@@ -1456,20 +1457,30 @@ fn a_kept_piece_with_no_builders_of_its_own_builds_nothing() {
 }
 
 /// Builds elsewhere, letting what its builders don't build be built here,
-/// small, under `below_load`.
-fn elsewhere_with_here(world: &mut World, below_load: f64) {
+/// small, while CPU pressure is under 15%, and says it is `waited`.
+fn elsewhere_with_here(world: &mut World, waited: &str) {
     world.config.elsewhere = true;
     world.config.here = Some(Here {
         max_jobs: 1,
         cores: 4,
-        below_load,
+        busy_at: 15.0,
     });
+    if !waited.is_empty() {
+        fs::write(
+            &world.config.cpu_pressure,
+            format!(
+                "some avg10=90.00 avg60={waited} avg300=1.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+            ),
+        )
+        .unwrap();
+    }
 }
 
 /// Keeps the secret pieces to builders of their own, which may be built
-/// here, small, under `below_load`.
-fn kept_with_here(world: &mut World, below_load: f64) {
-    elsewhere_with_here(world, below_load);
+/// here, small, while CPU pressure is under 15%, and says it is `waited`.
+fn kept_with_here(world: &mut World, waited: &str) {
+    elsewhere_with_here(world, waited);
     world.config.kept = Kept {
         names: vec!["secret*".to_owned()],
         builders: Some("@/etc/kept-builders".to_owned()),
@@ -1495,7 +1506,7 @@ fn building_elsewhere_goes_to_the_builders_named() {
 #[test]
 fn a_piece_the_builders_dont_take_is_built_here_small() {
     let mut world = World::new();
-    elsewhere_with_here(&mut world, 1e9);
+    elsewhere_with_here(&mut world, "14.99");
     fs::write(world.root.join("no-builder"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
@@ -1510,7 +1521,7 @@ fn a_piece_the_builders_dont_take_is_built_here_small() {
 #[test]
 fn a_piece_built_here_keeps_the_builders_named() {
     let mut world = World::new();
-    elsewhere_with_here(&mut world, 1e9);
+    elsewhere_with_here(&mut world, "14.99");
     world.config.builders = Some("@/etc/builders-for-anything".to_owned());
     fs::write(world.root.join("no-builder"), "").unwrap();
     let head = world.signed("one");
@@ -1526,8 +1537,8 @@ fn a_piece_built_here_keeps_the_builders_named() {
 #[test]
 fn a_piece_the_builders_dont_take_waits_rather_than_build_here_under_load() {
     let mut world = World::new();
-    // No load is below nothing.
-    elsewhere_with_here(&mut world, 0.0);
+    // A busy last ten seconds counts for nothing; the minute does.
+    elsewhere_with_here(&mut world, "15.00");
     fs::write(world.root.join("no-builder"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
@@ -1535,7 +1546,10 @@ fn a_piece_the_builders_dont_take_waits_rather_than_build_here_under_load() {
         panic!("not failed")
     };
     assert!(why.contains("on the machine's builders"), "{why}");
-    assert!(why.contains("not below 0, so they wait"), "{why}");
+    assert!(
+        why.contains("CPU pressure here is 15.0%, not below 15%, so they wait"),
+        "{why}"
+    );
     assert_eq!(lines, ["local builds are disabled"]);
     assert_eq!(world.read("here"), "");
     assert_eq!(world.builds(), 0);
@@ -1544,7 +1558,7 @@ fn a_piece_the_builders_dont_take_waits_rather_than_build_here_under_load() {
 #[test]
 fn a_kept_piece_its_builders_dont_build_is_built_here_small() {
     let mut world = World::new();
-    kept_with_here(&mut world, 1e9);
+    kept_with_here(&mut world, "14.99");
     fs::write(world.root.join("no-kept-builder"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
@@ -1565,7 +1579,7 @@ fn a_kept_piece_its_builders_dont_build_is_built_here_small() {
 #[test]
 fn a_kept_piece_its_builders_build_is_not_built_here() {
     let mut world = World::new();
-    kept_with_here(&mut world, 1e9);
+    kept_with_here(&mut world, "14.99");
     let head = world.signed("one");
     world.system(&head);
     assert_eq!(world.update().1, done(&head));
@@ -1580,15 +1594,18 @@ fn a_kept_piece_its_builders_build_is_not_built_here() {
 #[test]
 fn a_kept_piece_waits_rather_than_build_here_under_load() {
     let mut world = World::new();
-    // No load is below nothing.
-    kept_with_here(&mut world, 0.0);
+    // Where CPU pressure can't be read, as on a Mac, nothing builds here.
+    kept_with_here(&mut world, "");
     fs::write(world.root.join("no-kept-builder"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
     let Line::Failed { why, lines, .. } = world.update().1 else {
         panic!("not failed")
     };
-    assert!(why.contains("not below 0, so they wait"), "{why}");
+    assert!(
+        why.contains("CPU pressure here can't be read, so they wait"),
+        "{why}"
+    );
     assert_eq!(lines, ["no kept builder answers"]);
     assert_eq!(world.read("here"), "");
     assert_eq!(world.builds(), 0);
@@ -1597,7 +1614,7 @@ fn a_kept_piece_waits_rather_than_build_here_under_load() {
 #[test]
 fn a_kept_piece_with_no_builders_named_is_built_here_when_it_may_be() {
     let mut world = World::new();
-    kept_with_here(&mut world, 1e9);
+    kept_with_here(&mut world, "14.99");
     world.config.kept.builders = None;
     let head = world.signed("one");
     world.system(&head);
