@@ -1,7 +1,10 @@
 # Joel's passwords, held ready for the shell and the command line: one
 # resident program that runs each password manager as a child and answers
 # over a socket in the shell's daemon interface, and the `passwords`
-# command that asks it (src/main.rs says how).
+# command that asks it (src/main.rs says how). An audit, run only when
+# Joel asks, hashes each password with ring's SHA-1 and asks Have I Been
+# Pwned's range of each hash's first five characters through ureq, the
+# client every other module here reaches the web with (src/audit.rs).
 [package]
 name = "passwords"
 version = "0.1.0"
@@ -10,5 +13,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+ring = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ureq = { version = "3", features = ["json"] }

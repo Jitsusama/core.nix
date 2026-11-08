@@ -5,14 +5,18 @@
 //! to the client that asked to see it, or to the clipboard, cleared when
 //! its time is up; a one-time code says its period, and its detail gives
 //! the code, never its seed; a manager signed out is said so and refuses
-//! a secret; a watch hears entries arrive; and an ask or kind it doesn't
-//! know is refused.
+//! a secret; a watch hears entries arrive; an ask or kind it doesn't
+//! know is refused; and an audit, asked by Joel alone, finds the entries
+//! sharing a password and those Have I Been Pwned's stand-in has seen in a
+//! breach, sending it each hash's five characters alone, and saying no
+//! secret, nor any hash, in an answer or a log.
 
 mod common;
 
 use std::path::Path;
 
-use common::{KEEPING, Running, SIGNED_OUT, until};
+use common::{AUDITING, Breaches, KEEPING, Running, SIGNED_OUT, until};
+use passwords::audit::hash;
 use serde_json::{Value, json};
 
 fn keys(answer: &Value) -> Vec<String> {
@@ -231,6 +235,156 @@ fn a_watch_hears_entries_arrive() {
     };
     assert_eq!(changed["changed"].as_array().unwrap().len(), 3);
     holds_no_secret(&changed);
+}
+
+/// Have I Been Pwned's stand-in, having seen "password" 1,204 times and
+/// listing "abc"'s hash only as padding, which counts 0.
+fn breaches() -> Breaches {
+    let password = hash("password");
+    let abc = hash("abc");
+    Breaches::answering(vec![
+        (
+            password[..5].to_owned(),
+            format!(
+                "0018A45C4D1DEF81644B54AB7F969B88D65:1\r\n{}:1204\r\n",
+                &password[5..]
+            ),
+        ),
+        (abc[..5].to_owned(), format!("{}:0\r\n", &abc[5..])),
+    ])
+}
+
+/// Fails if anything said holds a password the auditing manager keeps,
+/// or any part of a hash past the five characters sent.
+fn says_no_secret(said: &str) {
+    for secret in [
+        "\"value\"".to_owned(),
+        hash("password")[5..].to_owned(),
+        hash("abc")[5..].to_owned(),
+    ] {
+        assert!(!said.contains(&secret), "{secret} was said: {said}");
+    }
+}
+
+#[test]
+fn an_audit_finds_passwords_reused_and_breached() {
+    let breaches = breaches();
+    let running = Running::with_env(
+        "audit",
+        &[("auditing", AUDITING)],
+        &[("PASSWORDS_BREACHES", &breaches.address)],
+    );
+    let mut client = running.client();
+    let audited = client.ask(&json!({"id": 1, "ask": "audit", "asked": true}));
+    assert_eq!(audited["audited"], 4, "{audited}");
+    assert_eq!(audited["reused"], 3, "{audited}");
+    assert_eq!(audited["breached"], 3, "{audited}");
+    assert!(audited.get("unreached").is_none(), "{audited}");
+    assert_eq!(
+        keys(&audited),
+        [
+            "entry:auditing:gh",
+            "entry:auditing:gist",
+            "entry:auditing:mail"
+        ]
+    );
+    // Each of three sharing a password counts the two others.
+    assert_eq!(
+        audited["records"][0]["health"],
+        json!({"reused": 2, "breached": 1204})
+    );
+    // Bank's hash is in its range only as padding, so it's no breach.
+    let listed = client.ask(&json!({"id": 2, "ask": "list", "held": true}));
+    assert_eq!(
+        listed["records"][3]["health"],
+        json!({"reused": 0, "breached": 0})
+    );
+    // Each range was asked by its five characters alone, padded.
+    let requests = breaches.requests();
+    let mut paths: Vec<&str> = requests
+        .iter()
+        .filter_map(|request| request.split_whitespace().nth(1))
+        .collect();
+    paths.sort_unstable();
+    let mut wanted = [
+        format!("/range/{}", &hash("password")[..5]),
+        format!("/range/{}", &hash("abc")[..5]),
+    ];
+    wanted.sort();
+    assert_eq!(paths, wanted);
+    for request in &requests {
+        assert!(
+            request.to_lowercase().contains("add-padding: true"),
+            "{request}"
+        );
+        says_no_secret(request);
+        assert!(!request.contains("abc"), "{request}");
+    }
+    says_no_secret(&audited.to_string());
+    says_no_secret(&listed.to_string());
+    says_no_secret(&running.logged());
+}
+
+#[test]
+fn an_audit_unasked_by_joel_is_refused() {
+    let breaches = breaches();
+    let running = Running::with_env(
+        "audit-unasked",
+        &[("auditing", AUDITING)],
+        &[("PASSWORDS_BREACHES", &breaches.address)],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "audit"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    let refused = client.ask(&json!({"id": 3, "ask": "audit", "asked": false}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    // Nothing was read and nothing sent, and no list says a health.
+    assert!(!running.asked_of("auditing").contains("audit"));
+    assert!(breaches.requests().is_empty());
+    let listed = client.ask(&json!({"id": 4, "ask": "list", "held": true}));
+    assert!(
+        listed["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record.get("health").is_none()),
+        "{listed}"
+    );
+}
+
+#[test]
+fn an_audit_of_a_manager_signed_out_is_refused() {
+    let breaches = breaches();
+    let running = Running::with_env(
+        "audit-signed-out",
+        &[("locked", SIGNED_OUT)],
+        &[("PASSWORDS_BREACHES", &breaches.address)],
+    );
+    let mut client = running.client();
+    let refused = client.ask(&json!({"id": 1, "ask": "audit", "asked": true}));
+    assert_eq!(refused["error"]["code"], "signed-out", "{refused}");
+    assert!(breaches.requests().is_empty());
+}
+
+#[test]
+fn an_audit_unable_to_ask_about_breaches_says_reuse_alone() {
+    // A port nothing listens on any more.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/range/", closed.local_addr().unwrap());
+    drop(closed);
+    let running = Running::with_env(
+        "audit-unreached",
+        &[("auditing", AUDITING)],
+        &[("PASSWORDS_BREACHES", &address)],
+    );
+    let mut client = running.client();
+    let audited = client.ask(&json!({"id": 1, "ask": "audit", "asked": true}));
+    assert_eq!(audited["breached"], Value::Null, "{audited}");
+    assert!(audited["unreached"].is_string(), "{audited}");
+    assert_eq!(audited["records"][0]["health"], json!({"reused": 2}));
+    says_no_secret(&audited.to_string());
+    says_no_secret(&running.logged());
 }
 
 #[test]

@@ -6,7 +6,8 @@
 //! whether or not `--reveal` is asked (1Password's forum, 2026-04-13), and
 //! a password's history beside it, so nothing here passes an item on as
 //! op gives it: [`entry`] builds each entry afresh from what's safe to
-//! show, and only [`value`] reads a secret, for the one detail asked.
+//! show, and only [`value`] reads a secret, for the one detail asked, and
+//! [`passwords`] every login's password, for an audit Joel asked for.
 
 use serde_json::{Map, Value, json};
 
@@ -261,6 +262,43 @@ pub fn value(item: &Value, wanted: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// Each login's password from what `op item get - --reveal --format json`
+/// says of many items, given the list on its input: op writes one JSON
+/// object an item, one after another, or an array of them. What's built
+/// is only what an audit needs, each item's id and its password, the one
+/// whose purpose is a password, else the field so named; an item without
+/// one is left out. Every other part of what op said goes as this returns.
+pub fn passwords(said: &str) -> Vec<(String, String)> {
+    let mut items = Vec::new();
+    for value in serde_json::Deserializer::from_str(said)
+        .into_iter::<Value>()
+        .map_while(Result::ok)
+    {
+        match value {
+            Value::Array(many) => items.extend(many),
+            one => items.push(one),
+        }
+    }
+    items
+        .iter()
+        .filter_map(|item| {
+            let id = text(item, "id").filter(|id| !id.is_empty())?;
+            let fields = item.get("fields")?.as_array()?;
+            let password = fields
+                .iter()
+                .find(|field| text(field, "purpose") == Some("PASSWORD"))
+                .or_else(|| {
+                    fields
+                        .iter()
+                        .find(|field| text(field, "id") == Some("password"))
+                })
+                .and_then(|field| text(field, "value"))
+                .filter(|value| !value.is_empty())?;
+            Some((id.to_owned(), password.to_owned()))
+        })
+        .collect()
+}
+
 /// The period of an item's one-time code in seconds, from its otpauth
 /// address's `period`, else the 30 every authenticator assumes.
 pub fn period(item: &Value) -> u64 {
@@ -396,6 +434,28 @@ mod tests {
         assert_eq!(value(&login(), "nothing"), None);
         assert_eq!(period(&login()), 60);
         assert_eq!(period(&json!({"fields": []})), 30);
+    }
+
+    #[test]
+    fn an_audit_reads_each_items_password_alone() {
+        // As op item get - --reveal writes many items: one after another.
+        let mut note = login();
+        note["id"] = json!("note");
+        note["fields"] = json!([{"id": "notesPlain", "type": "STRING", "value": "hi"}]);
+        let mut plain = login();
+        plain["id"] = json!("pw");
+        plain["fields"] = json!([{"id": "password", "type": "CONCEALED", "value": "abc"}]);
+        let said = format!("{:#}\n{}\n{}", login(), note, plain);
+        assert_eq!(
+            passwords(&said),
+            [
+                ("abc123".to_owned(), "hunter2".to_owned()),
+                ("pw".to_owned(), "abc".to_owned())
+            ]
+        );
+        let array = format!("[{}]", login());
+        assert_eq!(passwords(&array).len(), 1);
+        assert!(passwords("").is_empty());
     }
 
     #[test]

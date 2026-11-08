@@ -2,14 +2,15 @@
 //! manager, read as a program reads it, through a pipe: each command's
 //! rows tab-separated, its `--json` the daemon's own answer with no secret
 //! but the one `show` asks for, a title or a detail's label naming what it
-//! names, each exit status the usage says, and what zsh's completion asks
-//! answered from what's held, never asking the manager anything.
+//! names, each exit status the usage says, what zsh's completion asks
+//! answered from what's held, never asking the manager anything, and an
+//! audit a row an entry with a problem, saying no secret.
 
 mod common;
 
 use std::process::{Command, Output};
 
-use common::{KEEPING, Running, SIGNED_OUT, until};
+use common::{AUDITING, Breaches, KEEPING, Running, SIGNED_OUT, until};
 use serde_json::{Value, json};
 
 /// The command run with these words against the running daemon.
@@ -139,6 +140,37 @@ fn health_is_a_row_a_manager() {
         serde_json::from_str(&said(&passwords(&running, &["health", "--json"]))).unwrap();
     assert_eq!(json["domain"], "passwords");
     assert!(json.get("id").is_none(), "{json}");
+}
+
+#[test]
+fn an_audit_is_a_row_an_entry_with_a_problem() {
+    // Have I Been Pwned's stand-in, knowing no password, answers padding.
+    let breaches = Breaches::answering(Vec::new());
+    let running = Running::with_env(
+        "audit",
+        &[("auditing", AUDITING)],
+        &[("PASSWORDS_BREACHES", &breaches.address)],
+    );
+    let audited = passwords(&running, &["audit"]);
+    assert_eq!(status(&audited), 0, "{}", complained(&audited));
+    assert_eq!(
+        said(&audited),
+        "GitHub\t2\t0\tentry:auditing:gh\n\
+         Gist\t2\t0\tentry:auditing:gist\n\
+         Mail\t2\t0\tentry:auditing:mail\n"
+    );
+    let json: Value =
+        serde_json::from_str(&said(&passwords(&running, &["audit", "--json"]))).unwrap();
+    assert_eq!(json["audited"], 4);
+    assert_eq!(
+        json["records"][0]["health"],
+        json!({"reused": 2, "breached": 0})
+    );
+    assert!(json.get("id").is_none(), "{json}");
+    for said in [said(&audited), json.to_string(), running.logged()] {
+        assert!(!said.contains("\"value\""), "{said}");
+    }
+    assert_eq!(breaches.requests().len(), 4);
 }
 
 #[test]

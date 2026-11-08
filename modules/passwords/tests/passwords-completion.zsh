@@ -94,7 +94,8 @@ unasked() {
 }
 
 asked=$(asked_so_far)
-expect 'passwords ' find list details show copy code let-in health keys help
+expect 'passwords ' find list details show copy code let-in health audit keys help
+expect 'passwords a' audit
 expect 'passwords co' copy code
 # Nothing's held until something has been read, so no entry is offered.
 refuse 'passwords show ' GitHub
@@ -114,6 +115,7 @@ expect 'passwords copy Git' GitHub
 expect 'passwords let-in ' keeping
 expect 'passwords list -' --json
 expect 'passwords show GitHub -' --json
+expect 'passwords audit -' --json
 refuse 'passwords let-in keeping -' --json
 unasked
 exit $failed

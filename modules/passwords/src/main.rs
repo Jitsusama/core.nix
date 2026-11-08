@@ -1,14 +1,14 @@
 //! passwords daemon SOCKET MANAGERS
 //! passwords find WORDS | list | details ENTRY | show ENTRY [DETAIL]
 //! passwords copy ENTRY [DETAIL] | code ENTRY | let-in MANAGER | health
-//! passwords keys | help [--json]
+//! passwords audit | keys | help [--json]
 //!
 //! Joel's passwords, from every password manager he keeps, held ready for
 //! the shell and the command line over SOCKET in the shell's daemon
 //! interface (lib.rs). Each manager in MANAGERS, a JSON file
 //! `{"managers": [{"name", "command"}]}`, runs as a child on the passwords
 //! line protocol: a JSON line in for each ask, `{"id", "ask"}` with `list`,
-//! `get`, `reveal`, `code` or `let-in`, and a JSON line out answering it by
+//! `get`, `reveal`, `code`, `audit` or `let-in`, and a JSON line out answering it by
 //! its id, or `{"state", "reason"}` unasked as how it stands changes. A
 //! manager that stops is started again. How each manager stands goes to
 //! clients as the interface's `sources`, the word every daemon's client
@@ -21,6 +21,13 @@
 //! without its secrets (lib.rs); a secret goes from its manager to the
 //! client that asked to see it, or to the clipboard, marked sensitive and
 //! cleared after CLEARS, and is never kept, written or logged here.
+//!
+//! An audit is the one ask that reads every password: asked by Joel alone
+//! (`asked`), never at start, on a timer or with a list, it asks each
+//! manager for its passwords (`audit`, answered `{"passwords": [{"entry",
+//! "value"}]}`), hashes each as it's taken, and asks Have I Been Pwned, at
+//! `$PASSWORDS_BREACHES` or its own address, by each hash's first five
+//! characters alone (audit.rs). Only each entry's two counts outlive it.
 //!
 //! Run with any other word, it's the command line, asking the daemon at
 //! `$PASSWORDS_SOCKET`, else `$XDG_RUNTIME_DIR/daemons/passwords.sock`, its
@@ -43,8 +50,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use passwords::{
-    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, Said, Standing, VERSION, ask, cli, error, named,
-    now, said, standing,
+    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, Said, Standing, VERSION, ask, audit, cli, error,
+    key, named, now, said, standing,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -91,6 +98,8 @@ struct Daemon {
     since: u64,
     /// The copy on the clipboard now, cleared when its time is up.
     copied: Option<Child>,
+    /// Whether an audit is running, so a second waits for none.
+    auditing: bool,
 }
 
 /// The daemon's state, and what wakes an ask waiting on a manager to start.
@@ -143,6 +152,7 @@ fn daemon(socket: &std::path::Path, managers: &str) {
             took: VecDeque::new(),
             since: now(),
             copied: None,
+            auditing: false,
         }),
         Condvar::new(),
     ));
@@ -497,6 +507,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             Err((code, message)) => error(&id, code, &message),
         },
         Ask::Code { id, key } => code(shared, &id, &key),
+        Ask::Audit { id, asked } => audit_all(shared, &id, asked),
         Ask::LetIn { id, manager } => {
             if !lock(shared).held.managers().contains(&manager) {
                 return error(
@@ -780,6 +791,128 @@ fn code(shared: &Shared, id: &Value, key: &str) -> Value {
     }
 }
 
+/// How long a manager may take to give every password: 1Password asks
+/// Joel to let it in first where its leave has lapsed, as letting in does.
+const AUDIT_PATIENCE: u64 = 120_000;
+
+/// Audits every password of every manager, Joel having asked (`asked`),
+/// one audit at a time: each manager's passwords read at once, each
+/// hashed as it's taken (audit.rs), and every entry's health told to each
+/// watch. Answered with how many were audited, how many entries are
+/// reused and breached, and each entry with a problem; never a secret.
+fn audit_all(shared: &Shared, id: &Value, asked: bool) -> Value {
+    if !asked {
+        return error(id, "refused", "passwords are audited only when you ask");
+    }
+    {
+        let mut daemon = lock(shared);
+        if daemon.auditing {
+            return error(id, "not-ready", "every password is being audited already");
+        }
+        daemon.auditing = true;
+    }
+    let answer = audit_read(shared, id);
+    lock(shared).auditing = false;
+    answer
+}
+
+fn audit_read(shared: &Shared, id: &Value) -> Value {
+    // What's audited is said of the entries held, so a manager not listed
+    // yet is listed first, as Joel's own ask.
+    list(shared, false, true, AUDIT_PATIENCE);
+    let managers: Vec<String> = lock(shared).held.managers().to_vec();
+    let reading: Vec<_> = managers
+        .into_iter()
+        .map(|manager| {
+            let shared = Arc::clone(shared);
+            std::thread::spawn(move || {
+                let asked = asking("audit", &[("asked", json!(true))]);
+                let answer = ask_of(&shared, &manager, asked, AUDIT_PATIENCE);
+                (manager, answer)
+            })
+        })
+        .collect();
+    let mut passwords = Vec::new();
+    let mut read = Vec::new();
+    let mut refused = None;
+    for thread in reading {
+        let Ok((manager, answer)) = thread.join() else {
+            continue;
+        };
+        match answer {
+            Ok(mut answer) => {
+                // Each password is moved, never copied, into the audit,
+                // which hashes it and drops it.
+                if let Some(Value::Array(given)) = answer.remove("passwords") {
+                    for one in given {
+                        let Value::Object(mut one) = one else {
+                            continue;
+                        };
+                        if let (Some(Value::String(entry)), Some(Value::String(value))) =
+                            (one.remove("entry"), one.remove("value"))
+                            && !value.is_empty()
+                        {
+                            passwords.push((key(&manager, &entry), value));
+                        }
+                    }
+                }
+                read.push(manager);
+            }
+            Err(failed) => {
+                refused.get_or_insert(failed);
+            }
+        }
+    }
+    if read.is_empty() {
+        let (code, message) =
+            refused.unwrap_or(("refused", "no password manager could be read".to_owned()));
+        return error(id, code, &message);
+    }
+    let audited = passwords.len();
+    let breaches =
+        std::env::var("PASSWORDS_BREACHES").unwrap_or_else(|_| audit::BREACHES.to_owned());
+    let found = audit::audit(passwords, &breaches);
+    let mut daemon = lock(shared);
+    let changed = daemon.held.audited(&read, found.health);
+    let records: Vec<Value> = changed
+        .iter()
+        .filter_map(|key| daemon.held.record(key))
+        .collect();
+    if !records.is_empty() {
+        for watch in &daemon.watches {
+            let line = json!({"id": watch.id, "changed": records, "gone": []});
+            let _ = watch.told.send(line.to_string());
+        }
+    }
+    let troubled: Vec<Value> = daemon
+        .held
+        .records()
+        .into_iter()
+        .filter(|record| {
+            record["key"]
+                .as_str()
+                .and_then(|key| daemon.held.health(key))
+                .is_some_and(audit::Health::troubled)
+        })
+        .collect();
+    let reused = troubled
+        .iter()
+        .filter(|record| record["health"]["reused"].as_u64().unwrap_or(0) > 0)
+        .count();
+    let breached = troubled
+        .iter()
+        .filter(|record| record["health"]["breached"].as_u64().unwrap_or(0) > 0)
+        .count();
+    let mut answer = json!({"id": id, "audited": audited, "reused": reused,
+                            "breached": breached, "records": troubled,
+                            "sources": daemon.held.standings()});
+    if let Some(why) = found.unreached {
+        answer["breached"] = Value::Null;
+        answer["unreached"] = json!(why);
+    }
+    answer
+}
+
 /// The command line: one command, its answer set for a person at a
 /// terminal or for a program reading a pipe, or as `--json`, and its exit
 /// status as the usage says.
@@ -860,6 +993,27 @@ fn command_line(command: cli::Command, json: bool) -> i32 {
             } else {
                 cli::health(&answer, terminal)
             });
+            0
+        }
+        cli::Command::Audit => {
+            // Reading every password may wait on Joel letting a manager in.
+            let answer = talk.ask(json!({"ask": "audit", "asked": true}));
+            if let Some(failed) = failed(&answer) {
+                return failed;
+            }
+            say(&if json {
+                cli::as_json(&answer)
+            } else {
+                cli::audit(&answer, terminal)
+            });
+            if !terminal {
+                for said in cli::standings(&answer["sources"]) {
+                    eprintln!("{said}");
+                }
+            }
+            if let Some(why) = answer["unreached"].as_str() {
+                eprintln!("{why}; no password was checked for breaches.");
+            }
             0
         }
         cli::Command::Names(names) => {

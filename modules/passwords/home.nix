@@ -12,7 +12,11 @@
 # the shell's daemon interface, for the shell and for `passwords`, the
 # command that asks it. A secret goes from its manager only to whoever
 # asked to see it, or to the clipboard, marked sensitive and cleared after
-# 90 seconds; nothing here or there keeps one.
+# 90 seconds; nothing here or there keeps one. An audit, only when Joel
+# asks, reads every password to find those reused and those breached,
+# hashing each in the daemon's memory and sending Have I Been Pwned the
+# first five characters of a hash alone; the unit restricts no network, so
+# that reaches it as it is.
 #
 # `passwords` completes in zsh with the completion it writes itself
 # (completion.nix), which offers the entries and details the daemon holds
@@ -55,10 +59,11 @@ in
             description = ''
               The program and its arguments the passwords daemon runs for it,
               speaking Passwords' line protocol: a JSON line in for each ask
-              (`list`, `get`, `reveal`, `code` or `let-in`, with its `id`),
-              and a JSON line out answering it by that id, or saying how it
-              stands (`state` and `reason`) unasked. It never gives a hidden
-              detail's value but to `reveal`.
+              (`list`, `get`, `reveal`, `code`, `audit` or `let-in`, with its
+              `id`), and a JSON line out answering it by that id, or saying
+              how it stands (`state` and `reason`) unasked. It never gives a
+              hidden detail's value but to `reveal`, and every password only
+              to `audit`, asked by Joel alone.
             '';
           };
           program = lib.mkOption {
