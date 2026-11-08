@@ -204,6 +204,16 @@ ShellRoot {
         sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
         expect("a dropout warns", keeping(card)[0].value === "2" && keeping(card)[0].warns,
             JSON.stringify(keeping(card)[0]));
+        // A frame of pw-top as it comes: a driver, then its follower in
+        // the driver's cycle, whole once the next header opens.
+        const header = "S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME ";
+        [header, "R  52  1024  48000  20.1us 665.6us  0.00  0.03  0  F32LE 2 48000 speakers",
+            "R  90  0  0  1.0us  2.1ms  0.00  0.10  0  F32LE 2 48000 + pw-cat", header]
+            .forEach(line => sound.heardTiming(line));
+        expect("a frame read whole, its follower in its driver's cycle",
+            sound.timings[52]?.quantum === 1024 && sound.timings[90]?.quantum === 1024
+            && keeping(card)[1]?.value === "3.12% of each cycle",
+            JSON.stringify(sound.timings));
         sound.timings = {};
         expect("none while pw-top doesn't say it runs", keeping(card).length === 1,
             JSON.stringify(keeping(card)));

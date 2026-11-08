@@ -1070,25 +1070,32 @@ Provider {
     readonly property string timedDevice: {
         const key = launcher !== null && launcher.open && launcher.drawerOut
             ? String(launcher.selected?.key ?? "") : "";
-        return key.startsWith("sound:") && key.split(":").length === 2
-            ? key.slice("sound:".length) : "";
+        const device = devices.find(node => `sound:${node.name}` === key);
+        return device === undefined ? "" : device.name;
     }
 
     // How each running node keeps time, by its id, as pw-top's last whole
-    // frame said it (Sounds.timing), and the frame it's reading now.
+    // frame said it (Sounds.timing), the frame it's reading now, and the
+    // driver last read in it, whose cycle its followers run in. The drawer
+    // reads `timings`, so it moves with each frame without the launcher
+    // refreshing.
     property var timings: ({})
     property var timing: ({})
-    onTimingsChanged: changed()
+    property var driving: null
 
     // pw-top prints every node each second until it's stopped; a frame
-    // opens with its header, so the one before stands whole then.
+    // opens with its header, so the one before stands whole then. It
+    // never flushes, so into a pipe its frames would come in clumps of a
+    // few kilobytes; stdbuf has it give each line as it's printed.
     Process {
         running: provider.timedDevice !== ""
-        command: [provider.settings.pwTop ?? "pw-top", "--batch-mode"]
+        command: [provider.settings.stdbuf ?? "stdbuf", "-oL",
+            provider.settings.pwTop ?? "pw-top", "--batch-mode"]
         onRunningChanged: {
             if (!running) {
                 provider.timings = ({});
                 provider.timing = ({});
+                provider.driving = null;
             }
         }
         stdout: SplitParser {
@@ -1100,11 +1107,15 @@ Provider {
         if (Sounds.heading(line)) {
             timings = timing;
             timing = ({});
+            driving = null;
             return;
         }
-        const timed = Sounds.timing(line);
-        if (timed !== null)
-            timing[timed.id] = timed;
+        const timed = Sounds.timing(line, driving);
+        if (timed === null)
+            return;
+        timing[timed.id] = timed;
+        if (timed.drives)
+            driving = timed;
     }
 
     Process {

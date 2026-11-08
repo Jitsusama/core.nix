@@ -1652,7 +1652,8 @@
     the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
     display, and never listens to a headset's microphone while it plays music; a device's drawer
     says where it is and which way it goes, its state, its volume in decibels, its parts, how it
-    keeps time while it runs (dropouts warned past none, load and cycle), its format, the
+    keeps time while it runs (dropouts warned past none, load from its busy time over the cycle,
+    a follower in its driver's cycle), its format, the
     kernel's facts, and its priority and identifiers last, never whether it's muted nor its
     level; and channels at one level are balanced, a stereo pair's otherwise named without front
   '';

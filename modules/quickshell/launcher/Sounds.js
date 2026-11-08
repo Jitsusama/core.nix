@@ -14,14 +14,21 @@
 const AIMED = /"?([A-Za-z0-9_.-]+)"?\s*[=:]\s*"([^"]*)"/g;
 // A stream's "frames/rate", as it asks for its latency or says its rate.
 const FRACTION = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
-// pw-top's mark for a node running, as against idle (I), suspended (S)
-// or created (C).
-const RUNNING = "R";
+// pw-top's marks for a node running, as against idle (I), suspended (S)
+// or created (C): R, or T and t where its transport runs or starts, as a
+// JACK client's does (pw-top.c's state_as_string).
+const RUNNING = ["R", "T", "t"];
 // Where pw-top's batch line holds each figure: its state, id, quantum,
 // rate, wait and busy times, those as shares of the cycle (W/Q, B/Q),
-// then its error count; its format and name follow.
-const COLUMN = { state: 0, id: 1, quantum: 2, rate: 3, busy: 7, errors: 8 };
+// then its error count; its format and name follow, a follower's name
+// after a lone "+".
+const COLUMN = { state: 0, id: 1, quantum: 2, rate: 3, busy: 5, errors: 8 };
 const WHOLE = /^\d+$/;
+const FOLLOWS = "+";
+// A time as pw-top prints it, to a tenth of its unit; "---", "+++" and
+// "???" say it has none.
+const TIME = /^(\d+(?:\.\d+)?)(us|ms|s)$/;
+const SECONDS = { us: 1e-6, ms: 1e-3, s: 1 };
 const HEADER = /^\s*S\s+ID\s+QUANT\b/;
 const PERCENT = 100;
 // A USB card names itself by its ids.
@@ -173,35 +180,51 @@ function sameFormat(graph, card) {
     return card === graph || String(card ?? "").startsWith(`${graph}${APART}`);
 }
 
+// A time pw-top prints, in seconds, or null where it has none.
+function seconds(text) {
+    const found = TIME.exec(String(text ?? ""));
+    return found ? Number(found[1]) * SECONDS[found[2]] : null;
+}
+
 // How a node is keeping time, from one line of `pw-top --batch-mode`:
-// "R  79  1024  48000  20.1us  10.2us  0.02  0.01  0  S32LE 2 48000 name",
+// "R  79  1024  48000  20.1us  10.2us  0.00  0.00  0  S32LE 2 48000 name",
 // its state, its id, the quantum it moves each cycle in frames, the
 // rate of the clock driving it, how long it waited and was busy in the
 // last cycle, those as shares of the cycle, and how many times it has
-// run short since it started (xruns). Only a node running (R) has a
-// cycle to speak of: { id, quantum, rate, ms, busy, errors }, busy a
-// share of the cycle or null where pw-top can't say; null for the
-// header, an idle or suspended node and a line it can't read.
-function timing(line) {
+// run short since it started (xruns). Only a running node has a cycle
+// to speak of: { id, quantum, rate, ms, busy, errors, drives }, busy
+// its busy time as a share of the cycle, or null where pw-top can't
+// say; null for the header, an idle or suspended node and a line it
+// can't read. A follower's quantum and rate are the latency it asks
+// for, not the cycle it runs in, so it takes its driver's, the line
+// before it in the frame, and is null without one. pw-top prints B/Q to
+// two places, too few for three significant digits, so busy is worked
+// out from the time.
+function timing(line, driver) {
     const fields = String(line ?? "").trim().split(SPACES);
     const whole = [COLUMN.id, COLUMN.quantum, COLUMN.rate, COLUMN.errors]
         .every(at => WHOLE.test(fields[at] ?? ""));
-    if (fields[COLUMN.state] !== RUNNING || !whole) {
+    if (!RUNNING.includes(fields[COLUMN.state]) || !whole) {
         return null;
     }
-    const quantum = Number(fields[COLUMN.quantum]);
-    const clock = Number(fields[COLUMN.rate]);
-    if (quantum === 0 || clock === 0) {
+    const drives = !fields.slice(COLUMN.errors + 1).includes(FOLLOWS);
+    const cycle = drives ? {
+        quantum: Number(fields[COLUMN.quantum]),
+        rate: Number(fields[COLUMN.rate])
+    } : driver ?? { quantum: 0, rate: 0 };
+    if (cycle.quantum === 0 || cycle.rate === 0) {
         return null;
     }
-    const busy = Number(fields[COLUMN.busy]);
+    const length = cycle.quantum / cycle.rate;
+    const busy = seconds(fields[COLUMN.busy]);
     return {
         id: Number(fields[COLUMN.id]),
-        quantum,
-        rate: clock,
-        ms: (quantum / clock) * MILLISECONDS,
-        busy: Number.isFinite(busy) ? busy : null,
-        errors: Number(fields[COLUMN.errors])
+        quantum: cycle.quantum,
+        rate: cycle.rate,
+        ms: length * MILLISECONDS,
+        busy: busy === null ? null : busy / length,
+        errors: Number(fields[COLUMN.errors]),
+        drives
     };
 }
 
