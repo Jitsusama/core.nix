@@ -107,7 +107,7 @@ function bands(holding) {
 // its read messages are Slack's history and its notices aren't, so none
 // is told twice.
 function done(given, say) {
-    const worded = (words, how) => (words ?? {})[how] ?? how;
+    const worded = (words, how) => words?.[how] ?? how;
     const messages = Array.isArray(given.messages) ? given.messages : null;
     const mail = (Array.isArray(given.finished) ? given.finished : [])
         .filter(one => doneOf(one) !== null)
