@@ -1321,6 +1321,9 @@ onLinux {
       cp ${./launcher/Cameras.js} Cameras.js
       cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Warp.js} Warp.js
+      cp ${./launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${./launcher/Ago.js} Ago.js
+      cp ${./launcher/words.json} words.json
       cp ${../warp/warp.json} warp.json
       cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${./launcher/KeyCounts.js} KeyCounts.js

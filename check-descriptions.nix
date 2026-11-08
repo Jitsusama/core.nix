@@ -1875,7 +1875,9 @@
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
     figures and its parts' heat answer, and WARP says how its link stands from the record warp
-    prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli
+    prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli,
+    every figure of the record a part in its own unit and in words.json's words, its settings
+    saying who set each, its TLS and DNS a step in
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors

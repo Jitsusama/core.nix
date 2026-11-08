@@ -39,22 +39,22 @@ figure it shows is in `warp --json` too.
 | `protocol`                               | place: Protocol, how it's carried its note; page |
 | `edge.colo`, `edge.metal`                | place: Colo, the metal its note; page          |
 | `bytes_sent`, `bytes_received`           | place: Sent and Received; page                 |
-| `v4_endpoint`, `v6_endpoint`             | page; `::` is none                             |
-| `secs_since_last_handshake`              | page                                           |
-| `warp_is_on`                             | page, when it's off                            |
-| `tls`: version, curve, cipher, post-quantum, SNI | page                                   |
-| `operation_mode`, `always_on`, `switch_locked`, `auto_connect_after_min`, `organization`, `warp_tunnel_protocol`, `post_quantum_config` | page, each with who set it |
-| `split_tunnel_mode`, and how many hosts and networks it lists | page          |
-| every count in `dns stats`, and its average | page                                        |
+| `v4_endpoint`, `v6_endpoint`             | place: Endpoint; page; `::` is none            |
+| `secs_since_last_handshake`              | place: Last Handshake; page                    |
+| `warp_is_on`                             | place: Tunnel, when it's off; page             |
+| `tls`: version, curve, cipher, post-quantum, SNI | place: TLS, a step in; page            |
+| `operation_mode`, `always_on`, `switch_locked`, `auto_connect_after_min`, `organization`, `warp_tunnel_protocol`, `post_quantum_config` | place: Settings, a step in; page; each with who set it |
+| `split_tunnel_mode`, and how many hosts and networks it lists | place: Settings' Split Tunnel; page |
+| every count in `dns stats`, and its average | place: DNS, a step in; page                 |
 
 ## Left Out, and Why
 
-- The drawer's, still to come: the handshake, the endpoints and TLS in the
-  place, sparks of latency and loss, and the split tunnel's hosts and
-  networks themselves, with `doh_hostname`, `doh_resolver_ips`,
-  `fallback_domains`, `lan_subnet_size`, the captive portal's settings,
-  `emergency_disconnect`, `enable_pmtud`, and `support_url` once one is
-  set. Each is a setting or a detail worth a look, not how the link stands.
+- The drawer's, still to come: sparks of latency and loss, and the split
+  tunnel's hosts and networks themselves, with `doh_hostname`,
+  `doh_resolver_ips`, `fallback_domains`, `lan_subnet_size`, the captive
+  portal's settings, `emergency_disconnect`, `enable_pmtud`, and
+  `support_url` once one is set. Each is a setting or a detail worth a
+  look, not how the link stands.
 - For `:connect` and `:disconnect`, to come with them: `allowed_to_leave`,
   `allow_mode_switch` and `override show`, which say whether Joel may.
 - Identifiers that mean nothing read: `profile_id`, and `registration

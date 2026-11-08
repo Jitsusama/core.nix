@@ -3,10 +3,13 @@
 // says how its link stands, "connected · 127 ms", in the warning colour
 // while WARP finds the network degraded or its service doesn't answer;
 // a step in are its State and why, the network's Health as WARP judges it,
-// the tunnel's Latency and Loss as WARP estimates them, its Protocol, the
-// Colo it ends in, and what it has Sent and Received (Warp.js works each
-// out). A machine whose system installs no warp-cli has no WARP here at
-// all (home.nix enables this only where it does).
+// its Settings (the mode, always on and the split tunnel first, each saying
+// who set it), the tunnel's Latency and Loss as WARP estimates them, its
+// Protocol, the Colo it ends in, its Endpoint and Last Handshake, what it
+// has Sent and Received and its TLS, and what its DNS proxy answered
+// (Warp.js works each out, in the words words.json gives warp). A machine
+// whose system installs no warp-cli has no WARP here at all (home.nix
+// enables this only where it does).
 //
 // What it shows comes from `warp --json` (modules/warp), which asks
 // warp-cli and keeps nothing, so it's run as the answer is wanted and
@@ -18,7 +21,6 @@
 import qs
 import Quickshell.Io
 import QtQuick
-import "Numbers.js" as Numbers
 import "Warp.js" as Warp
 
 Provider {
@@ -42,9 +44,8 @@ Provider {
         && (launcher.answer?.live === provider || launcher.placed.includes("warp")
             || launcher.held.some(step => step.row.asker === provider))
 
-    function number(value, places) {
-        return Numbers.format(value, places, settings.group, settings.point);
-    }
+    // warp's words, as words.json gives them.
+    readonly property var words: Words.of("warp").said ?? {}
 
     function answer(typed) {
         if (warp === "" || asks(typed) === "")
@@ -74,7 +75,7 @@ Provider {
     // warp can't read, which the row says in its place; or there's no
     // warp-cli, so no WARP at all.
     function failedAnswer() {
-        const failed = Warp.failed(said);
+        const failed = Warp.failed(said, words);
         if (failed === null)
             return null;
         return {
@@ -89,7 +90,7 @@ Provider {
     }
 
     function told() {
-        const linked = Warp.told(said, number);
+        const linked = Warp.told(said, settings, words);
         if (linked === null)
             return null;
         return {
@@ -97,19 +98,30 @@ Provider {
             copy: linked.headline,
             warns: linked.warns,
             glyph: Words.glyph("warp"),
-            rows: linked.parts.map(part => copyRow({
-                key: `warp:${part.id}`,
-                name: Words.name(`warp:${part.id}`),
-                side: part.side,
-                copy: part.copy,
-                note: part.note,
-                warns: part.warns,
-                hue: "machine",
-                glyph: ""
-            })),
+            rows: linked.parts.map(partRow),
             note: "",
             live: provider
         };
+    }
+
+    // A part as its row: a figure Return copies, or one holding parts of
+    // its own, as the Settings, TLS and DNS do, which wears WARP's glyph
+    // dimmed and steps in to them.
+    function partRow(part) {
+        const fields = {
+            key: `warp:${part.id}`,
+            name: Words.name(`warp:${part.id}`),
+            side: part.side,
+            copy: part.copy,
+            note: part.note,
+            warns: part.warns,
+            hue: "machine",
+            glyph: ""
+        };
+        if (part.parts === undefined)
+            return copyRow(fields);
+        return holderRow(Object.assign(fields, { glyph: Words.glyph("warp") }),
+            () => part.parts.map(partRow));
     }
 
     function look() {
@@ -124,7 +136,7 @@ Provider {
             return;
         const printed = parsed(text);
         said = printed.status !== undefined || printed.error !== undefined
-            ? printed : { error: "unreadable", said: "warp printed nothing it could read" };
+            ? printed : { error: "unreadable", said: words.printedNothing ?? "" };
         saidAt = Date.now();
         answered();
     }

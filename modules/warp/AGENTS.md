@@ -38,10 +38,9 @@ listen to when one is wanted, rather than anything polling.
 ## What Comes Next
 
 - The drawer: sparks of latency and loss, kept by the shell while it's
-  shown as Traffic's are, the handshake, endpoints and TLS, the split
-  tunnel's hosts and networks, the organisation and who set each setting.
-  Each is in the record already, but the split tunnel's entries, which
-  `read.rs` counts and would list.
+  shown as Traffic's are, and the split tunnel's hosts and networks, which
+  `read.rs` counts and would list. Every other figure in the record is
+  already a part in the launcher's WARP.
 - `:connect` and `:disconnect`, which need `allowed_to_leave`,
   `switch_locked` and `override show` read first, so the act is offered
   only where policy lets Joel take it.

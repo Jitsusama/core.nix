@@ -1595,9 +1595,12 @@ works the same way everywhere.
   measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
   too), "warp" or "vpn" (WARP's State and why, the network's Health as
-  WARP judges it, the tunnel's Latency and Loss as WARP estimates them,
-  its Protocol and Colo, and what it has Sent and Received, listed in
-  Network after Speed where the system runs WARP) and "uptime". The
+  WARP judges it, its Settings a step in, the Mode, Always On and Split
+  Tunnel first, each saying who set it, the tunnel's Latency and Loss as
+  WARP estimates them, its Protocol, Colo, Endpoint and Last Handshake,
+  what it has Sent and Received, its TLS a step in, and what its DNS
+  proxy answered, each count a step in, listed in Network after Speed
+  where the system runs WARP) and "uptime". The
   queue is Agents', beside the sessions whose heavy work it holds, and
   "queue" finds it: each job named in words, its time against its last
   run or what it waits for, and its quest and memory below. The devices hold as much: "heat"

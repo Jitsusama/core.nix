@@ -1861,7 +1861,45 @@
       "answers": [
         "warp",
         "vpn"
-      ]
+      ],
+      "said": {
+        "notAnswering": "not answering",
+        "unreadable": "unreadable",
+        "didntAnswer": "its service didn't answer: {said}",
+        "printedNothing": "warp printed nothing it could read",
+        "estimated": "as WARP estimates it",
+        "through": "through the tunnel",
+        "metal": "metal {metal}",
+        "rtt": "round trip",
+        "percent": "{figure}%",
+        "ms": "{figure} ms",
+        "minutes": "{figure} min",
+        "on": "on",
+        "off": "off",
+        "noIpv4": "no IPv4",
+        "noIpv6": "no IPv6",
+        "postQuantum": "post-quantum",
+        "alwaysOn": "always on",
+        "split": "split tunnel",
+        "host": "{count} host",
+        "hosts": "{count} hosts",
+        "network": "{count} network",
+        "networks": "{count} networks",
+        "answered": "{success} of {total} answered",
+        "proxyOff": "proxy off",
+        "by": "set by {who}",
+        "by:default": "the default",
+        "by:local_policy": "set by local policy",
+        "by:network_policy": "set by network policy",
+        "by:override": "set by an override",
+        "mode:warp": "the tunnel with DNS proxied over UDP",
+        "mode:doh": "DNS over HTTPS alone",
+        "mode:warp+doh": "the tunnel with DNS over HTTPS",
+        "mode:dot": "DNS over TLS alone",
+        "mode:warp+dot": "the tunnel with DNS over TLS",
+        "mode:proxy": "the tunnel as a SOCKS5 proxy",
+        "mode:tunnel_only": "the tunnel alone"
+      }
     },
     {
       "id": "warp:state",
@@ -1872,6 +1910,56 @@
       "id": "warp:health",
       "in": "warp",
       "name": "Health"
+    },
+    {
+      "id": "warp:settings",
+      "in": "warp",
+      "name": "Settings"
+    },
+    {
+      "id": "warp:settings:mode",
+      "in": "warp:settings",
+      "name": "Mode"
+    },
+    {
+      "id": "warp:settings:always-on",
+      "in": "warp:settings",
+      "name": "Always On"
+    },
+    {
+      "id": "warp:settings:split-tunnel",
+      "in": "warp:settings",
+      "name": "Split Tunnel"
+    },
+    {
+      "id": "warp:settings:switch-locked",
+      "in": "warp:settings",
+      "name": "Switch Locked"
+    },
+    {
+      "id": "warp:settings:auto-connect",
+      "in": "warp:settings",
+      "name": "Auto-Connect After"
+    },
+    {
+      "id": "warp:settings:organisation",
+      "in": "warp:settings",
+      "name": "Organisation"
+    },
+    {
+      "id": "warp:settings:tunnel-protocol",
+      "in": "warp:settings",
+      "name": "Tunnel Protocol"
+    },
+    {
+      "id": "warp:settings:post-quantum",
+      "in": "warp:settings",
+      "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:tunnel",
+      "in": "warp",
+      "name": "Tunnel"
     },
     {
       "id": "warp:latency",
@@ -1894,6 +1982,16 @@
       "name": "Colo"
     },
     {
+      "id": "warp:endpoint",
+      "in": "warp",
+      "name": "Endpoint"
+    },
+    {
+      "id": "warp:handshake",
+      "in": "warp",
+      "name": "Last Handshake"
+    },
+    {
       "id": "warp:sent",
       "in": "warp",
       "name": "Sent"
@@ -1902,6 +2000,76 @@
       "id": "warp:received",
       "in": "warp",
       "name": "Received"
+    },
+    {
+      "id": "warp:tls",
+      "in": "warp",
+      "name": "TLS"
+    },
+    {
+      "id": "warp:tls:version",
+      "in": "warp:tls",
+      "name": "Version"
+    },
+    {
+      "id": "warp:tls:curve",
+      "in": "warp:tls",
+      "name": "Curve"
+    },
+    {
+      "id": "warp:tls:cipher",
+      "in": "warp:tls",
+      "name": "Cipher"
+    },
+    {
+      "id": "warp:tls:post-quantum",
+      "in": "warp:tls",
+      "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:tls:server-name",
+      "in": "warp:tls",
+      "name": "Server Name"
+    },
+    {
+      "id": "warp:dns",
+      "in": "warp",
+      "name": "DNS"
+    },
+    {
+      "id": "warp:dns:proxy",
+      "in": "warp:dns",
+      "name": "Proxy"
+    },
+    {
+      "id": "warp:dns:average",
+      "in": "warp:dns",
+      "name": "Average"
+    },
+    {
+      "id": "warp:dns:asked",
+      "in": "warp:dns",
+      "name": "Asked"
+    },
+    {
+      "id": "warp:dns:answered",
+      "in": "warp:dns",
+      "name": "Answered"
+    },
+    {
+      "id": "warp:dns:no-record",
+      "in": "warp:dns",
+      "name": "No Record"
+    },
+    {
+      "id": "warp:dns:timed-out",
+      "in": "warp:dns",
+      "name": "Timed Out"
+    },
+    {
+      "id": "warp:dns:failed",
+      "in": "warp:dns",
+      "name": "Failed"
     },
     {
       "id": "power:charger",
