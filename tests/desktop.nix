@@ -802,10 +802,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.tuple-answers.Service.ExecStart =
           "${lib.getExe pkgs.socat} UNIX-LISTEN:%t/tuple-0,fork,unlink-early /dev/null";
         # The screen-text daemon, where Capture's Recent is searched by
-        # what its screenshots say, a stand-in that reads no picture.
-        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (area == "launcher-goes-places") (
-          lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json"
-        );
+        # what its screenshots say, a stand-in that reads no picture; in
+        # looks too, where it's photographed beside what meaning saw.
+        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (builtins.elem area [
+          "launcher-goes-places"
+          "looks"
+        ]) (lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json");
         # The meaning daemon would embed every thing on the processor, with
         # no NPU here, beside every test; a stand-in that loads no model
         # answers what the test writes, and the real one is proven in the

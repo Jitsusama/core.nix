@@ -14,6 +14,8 @@ it as it found it.
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import shlex
 import tarfile
@@ -29,7 +31,7 @@ import pytest
 # pytest finds a fixture by its name in the test's module, so the stand-in Google's is
 # brought here.
 from desktop_session import LAUNCHER_OPEN, google  # noqa: F401
-from PIL import Image, ImageChops, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -2576,6 +2578,80 @@ def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale
             desktop.close_launcher()
     finally:
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json")
+
+
+def drawn(shape: str, colour: str) -> str:
+    """Give a picture of one shape on white, as base64, for the drawer to show."""
+    picture = Image.new("RGB", (224, 224), "white")
+    box = (40, 40, 184, 184)
+    if shape == "circle":
+        ImageDraw.Draw(picture).ellipse(box, fill=colour)
+    else:
+        ImageDraw.Draw(picture).rectangle(box, fill=colour)
+    png = io.BytesIO()
+    picture.save(png, "PNG")
+    return base64.b64encode(png.getvalue()).decode()
+
+
+def test_a_screenshot_found_by_what_it_shows_sits_below_recents_finds_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """In Capture's Recent, a screenshot found by its look sits below those found by name and words.
+
+    Typing in Recent finds the screenshot named for the words, then the one whose words hold
+    them, its line below it, then the one the meaning daemon says looks like them, on a stand-in
+    that loads no model (tests/desktop/stand-in-meaning.py), saying in the foot that it was
+    found by its meaning and nothing under it (VKCF3Z, 2026-11-07). Which it adds is
+    tests/meaning.qml's to prove; this is the wiring, and the look at Joel's scales.
+    """
+    shots = desktop.pictures
+    named, said, seen = (
+        f"{shots}/wombat plan.png",
+        f"{shots}/2026-10-01 09-00-00.png",
+        f"{shots}/2026-09-15 08-00-00.png",
+    )
+    texts = {said: ["Standup", "The wombat review moved to Friday"], named: ["Wombat"]}
+    pictures = {named: drawn("square", "steelblue"), said: drawn("square", "grey")}
+    pictures[seen] = drawn("circle", "sienna")
+    desktop.as_account(
+        f"mkdir -p {shlex.quote(shots)}"
+        + "".join(
+            f" && printf %s {picture} | base64 -d > {shlex.quote(path)}"
+            for path, picture in pictures.items()
+        )
+        + f" && printf %s {shlex.quote(json.dumps(texts))}"
+        " > $XDG_RUNTIME_DIR/screen-text-texts.json"
+        + f" && printf %s {shlex.quote(json.dumps({'wombat': [seen]}))}"
+        " > $XDG_RUNTIME_DIR/meaning-means.json"
+    )
+    found = ["wombat plan.png", "2026-10-01 09-00-00.png", "2026-09-15 08-00-00.png"]
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            desktop.answer("wombat")
+            desktop.launcher_until(
+                lambda shown: (shown["selected"] or {}).get("name") == "wombat plan.png"
+            )
+            desktop.step_in()
+            desktop.launcher_until(
+                lambda shown: shown["held"][-1:] == ["Recent"] and shown["rows"] == found
+            )
+            desktop.down_to(found[1])
+            desktop.launcher_until(
+                lambda shown: shown["selected"]["note"] == "The wombat review moved to Friday"
+            )
+            desktop.down_to(found[2])
+            note = desktop.showing()["selected"]["note"]
+            assert note == "found by its meaning", f"a looked-at screenshot says {note!r}"
+            desktop.photograph(f"capture-recent-found-by-meaning-at-{scale.replace('.', '-')}")
+            desktop.close_launcher()
+        asked = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-asked").split("\n")
+        assert "look wombat" in asked, f"the pictures were never asked of: {asked}"
+    finally:
+        desktop.as_account(
+            "rm -f $XDG_RUNTIME_DIR/meaning-means.json $XDG_RUNTIME_DIR/screen-text-texts.json "
+            + " ".join(shlex.quote(path) for path in pictures)
+        )
 
 
 # The ErgoDox as the kernel names it, the key the layout finds only on it, and what its watcher

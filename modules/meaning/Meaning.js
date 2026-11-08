@@ -1,7 +1,8 @@
 // What Meaning.qml works out, kept apart from it so tests/meaning.qml
 // proves it in Qt's own engine: which of the launcher's things the meaning
-// daemon is told and as what text, how what's typed is asked, and the rows
-// an answer adds below everything typing found.
+// daemon is told and as what text, how what's typed is asked, the rows an
+// answer adds below everything typing found, and the pictures one adds
+// below those Capture's Recent found by their names and words.
 .pragma library
 
 // The kinds whose rows come and go or are renamed as Joel works, by their
@@ -93,6 +94,26 @@ function rows(records, keyed, shown, how) {
         }
         taken.add(id);
         out.push(Object.assign({}, choice, { note: how.note, byMeaning: true, tier: TIER }));
+    }
+    return out;
+}
+
+// The pictures an answer adds, nearest first, by their paths: none
+// already listed (`listed`, a set of paths) and none twice, at most
+// `most`.
+function paths(records, listed, most) {
+    const out = [];
+    const taken = new Set(listed);
+    for (const record of records ?? []) {
+        if (out.length >= most) {
+            break;
+        }
+        const path = record?.key;
+        if (record?.kind !== "picture" || typeof path !== "string" || taken.has(path)) {
+            continue;
+        }
+        taken.add(path);
+        out.push(path);
     }
     return out;
 }

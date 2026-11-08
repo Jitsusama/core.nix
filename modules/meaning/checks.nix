@@ -57,4 +57,26 @@
         $BASH ${./tests/a-thing-is-found-by-its-meaning.sh} ${dictation}/bin/meaning ${models}
         touch $out
       '';
+
+  # The daemon's pictures end to end, on the CPU, in the build's sandbox:
+  # tests/a-picture-is-found-by-what-it-shows.sh says what it proves.
+  meaning-finds-a-picture-by-what-it-shows =
+    let
+      dictation = pkgs.callPackage ../dictation/package.nix { };
+      models = pkgs.callPackage ./models.nix { };
+      sight = pkgs.callPackage ./sight.nix { };
+    in
+    pkgs.runCommand "meaning-finds-a-picture-by-what-it-shows"
+      {
+        nativeBuildInputs = [
+          pkgs.imagemagick
+          pkgs.jq
+          pkgs.socat
+        ];
+      }
+      ''
+        $BASH ${./tests/a-picture-is-found-by-what-it-shows.sh} \
+          ${dictation}/bin/meaning ${models} ${sight}
+        touch $out
+      '';
 }
