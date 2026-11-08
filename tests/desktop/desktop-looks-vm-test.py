@@ -187,14 +187,18 @@ def bottom_set(drawer: Json, lines: list[float]) -> bool:
 def says_what_it_hides(drawer: Json, lines: list[float]) -> bool:
     """Say whether its last line counts the things hidden below and how to go in to them.
 
-    A thing is hidden when its first baseline lies past the foot; a heading isn't one.
+    A thing is hidden when its first baseline lies past the foot; a heading isn't one. The
+    chord is drawn key by key, each + its own part, as the rows and the foot draw one.
     """
     hidden = sum(
         1 for at, line in enumerate(lines) if line >= drawer["foot"] and drawer["facts"][at] != ""
     )
     if hidden == 0:
         return bool(drawer["moreSays"] == "")
-    return bool(drawer["moreSays"] == f"{hidden} more \u00b7 Ctrl+W l")
+    return bool(
+        drawer["moreSays"] == f"{hidden} more \u00b7 Ctrl+W l"
+        and drawer.get("moreKeys") == ["Ctrl", "+", "W", "l"]
+    )
 
 
 def room_beside_the_card(desktop: Desktop) -> int:

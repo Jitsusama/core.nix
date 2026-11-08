@@ -1379,21 +1379,46 @@ Floating {
     function countWords() {
         bodyText.counting = drawer.wordsCut;
     }
-    readonly property string moreSays: hiddenBelow === 0 ? ""
-        : `${hiddenBelow} more` + (drawer.keys ? "" : " \u00b7 Ctrl+W l")
+    readonly property string moreCount: hiddenBelow === 0 ? "" : `${hiddenBelow} more`
+    // The way in, while the drawer doesn't hold the keys already.
+    readonly property string moreKey: drawer.keys ? "" : "Ctrl+W l"
+    readonly property string moreSays: moreCount === "" ? ""
+        : moreCount + (moreKey === "" ? "" : ` \u00b7 ${moreKey}`)
+    // What the way in is drawn as, key by key.
+    readonly property var moreKeys: moreKey === "" ? [] : moreHints.partsOf(moreKey)
 
-    Text {
-        id: moreText
+    // How many are hidden, then the way in drawn as the rows and the foot
+    // draw a chord, key by key with a tie each side of its + (KeyHints), a
+    // muted dot a mark from each as a status line joins its parts, so one
+    // chord reads one way everywhere (VKCF3Z, 2026-11-07).
+    Row {
         x: column.x
-        width: column.width
-        y: drawer.moreBase - Theme.border - baselineOffset
+        y: drawer.moreBase - Theme.border - moreText.baselineOffset
         visible: drawer.moreSays !== ""
-        text: drawer.moreSays
-        textFormat: Text.PlainText
-        elide: Text.ElideRight
-        color: Theme.muted
-        font.family: Theme.level.note.family
-        font.pointSize: Theme.level.note.pointSize
+        spacing: Theme.space.rung.mark
+
+        Text {
+            id: moreText
+            text: drawer.moreCount
+            textFormat: Text.PlainText
+            color: Theme.muted
+            font.family: Theme.level.note.family
+            font.pointSize: Theme.level.note.pointSize
+        }
+
+        Text {
+            visible: drawer.moreKey !== ""
+            text: moreHints.dot
+            color: Theme.muted
+            font.family: Theme.level.note.family
+            font.pointSize: Theme.level.note.pointSize
+        }
+
+        KeyHints {
+            id: moreHints
+            visible: drawer.moreKey !== ""
+            keys: drawer.moreKey === "" ? [] : [[drawer.moreKey, ""]]
+        }
     }
 
     Flickable {
