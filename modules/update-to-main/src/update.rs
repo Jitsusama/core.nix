@@ -69,26 +69,7 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     // on 8 November the morning switch started over three times for newer
     // heads while Joel waited.
     if granted && let Some(waiting) = waited(config) {
-        let _ = fs::remove_file(waiting_file(config));
-        tell(&Line::Building {
-            commit: waiting.commit.clone(),
-        });
-        if let Some(why) = busy(config) {
-            return Line::Refused { commit: last, why };
-        }
-        tell(&Line::Switching {
-            commit: waiting.commit.clone(),
-        });
-        if run::stopping() {
-            return failed(last, Failure::new("the update was stopped"));
-        }
-        return switch(
-            config,
-            &waiting.system,
-            last,
-            waiting.commit,
-            waiting.followed,
-        );
+        return switch_waiting(config, waiting, last, tell);
     }
     tell(&Line::Fetching);
     let main = Repo::main(config);
@@ -212,6 +193,35 @@ fn keep_waiting(
     if let Ok(text) = serde_json::to_string(&waiting) {
         let _ = fs::write(waiting_file(config), text);
     }
+}
+
+/// Switches to the system that waited for the hold now granted.
+fn switch_waiting(
+    config: &Config,
+    waiting: Waiting,
+    last: Option<String>,
+    tell: &mut dyn FnMut(&Line),
+) -> Line {
+    let _ = fs::remove_file(waiting_file(config));
+    tell(&Line::Building {
+        commit: waiting.commit.clone(),
+    });
+    if let Some(why) = busy(config) {
+        return Line::Refused { commit: last, why };
+    }
+    tell(&Line::Switching {
+        commit: waiting.commit.clone(),
+    });
+    if run::stopping() {
+        return failed(last, Failure::new("the update was stopped"));
+    }
+    switch(
+        config,
+        &waiting.system,
+        last,
+        waiting.commit,
+        waiting.followed,
+    )
 }
 
 /// The system waiting for a hold, while it's still in the store and isn't
