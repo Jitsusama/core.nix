@@ -1,5 +1,5 @@
 // How the margin sets its glyphs, run in Qt's own JavaScript engine, the
-// one the shell runs it in. The `the-margins-glyphs-stand-level` check
+// one the shell runs it in. The `the-margins-marks-stand-level` check
 // copies Marks.js beside this file and runs `qml -platform offscreen
 // marks.qml` over ink measured as TextMetrics measures it: from the
 // baseline, its top negative.

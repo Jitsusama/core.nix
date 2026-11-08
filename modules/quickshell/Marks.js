@@ -1,5 +1,5 @@
 // How the margin sets its glyphs, for Margin.qml. Kept apart from
-// Quickshell's types, so the `the-margins-glyphs-stand-level` check can run
+// Quickshell's types, so the `the-margins-marks-stand-level` check can run
 // it in Qt's own engine over ink it makes up (tests/marks.qml). Ink is a
 // glyph's tight bounds as TextMetrics measures them: from the pen's start
 // on the baseline, so its top is negative.
