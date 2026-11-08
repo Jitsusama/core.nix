@@ -194,6 +194,14 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-screen-text.py);
 
+  # Stands in for the meaning daemon, which would embed the launcher's
+  # things with its model, on its socket, finding for each text what the
+  # runtime folder's meaning-means.json says it means
+  # (desktop/stand-in-meaning.py).
+  standInMeaning = pkgs.writers.writePython3 "stand-in-meaning" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-meaning.py);
+
   # Google's own pages' window, as jitsusama.google.window opens one: what
   # it was asked to open, written down, since the VM has no browser.
   googleWindow = pkgs.writeShellScript "google-window" ''
@@ -772,6 +780,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (area == "launcher-goes-places") (
           lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json"
         );
+        # The meaning daemon would embed every thing on the processor, with
+        # no NPU here, beside every test; a stand-in that loads no model
+        # answers what the test writes, and the real one is proven in the
+        # build sandbox (modules/meaning/checks.nix).
+        systemd.user.services.meaning.Service.ExecStart =
+          lib.mkForce "${standInMeaning} %t/daemons/meaning.sock %t/meaning-means.json";
         # The collector where the launcher's traces are tested, started by
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {

@@ -867,6 +867,18 @@ Scope {
         return Fuzzy.keep(found).map(f => Object.assign({ grade: f.grade, tier: 2 }, f.row));
     }
 
+    // The things what's typed means, from each source that finds by meaning
+    // (`meant`), as modules/meaning's does: only ever after everything its
+    // letters found, the spots and the collections gathered included, and
+    // none of those again, so a guess never hides or outranks a match
+    // (Joel, 2026-11-07: "never over truthfulness"). Asked by what a source
+    // can do, as Capture asks `takenByText`, since no source is named here.
+    function meantBelow(letters, listed) {
+        const shown = new Set(listed.map(row => Rank.identity(row)));
+        return sources.filter(source => typeof source.meant === "function")
+            .reduce((all, source) => all.concat(source.meant(letters, shown)), []);
+    }
+
     // Goes to a spot: from the root into each step of its trail, found again
     // by what it is, then onto the spot itself. A step gone since, such as a
     // headset turned off, stops it where it got to. Each step's row is
@@ -4834,7 +4846,8 @@ Scope {
                 kept: !!learned[f.choice.key]
             }, f.choice));
             const madeAll = Date.now();
-            root.found = made.concat(spotted(letters));
+            const spots = spotted(letters);
+            root.found = made.concat(spots, meantBelow(letters, made.concat(spots, gathered)));
             costs = { matching: matchedAll - listed, ordering: orderedAll - matchedAll,
                 making: madeAll - orderedAll, spots: Date.now() - madeAll, looked: looked.length,
                 found: found.length };

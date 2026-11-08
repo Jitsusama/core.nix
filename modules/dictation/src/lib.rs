@@ -4,9 +4,10 @@
 //! said on a call with Parakeet (parakeet.rs) and sums it up with a
 //! language model (language.rs). The two share OpenVINO's calls and the
 //! cache of what's compiled. screen-text
-//! (bin/screen-text), which reads the words in screenshots, shares its
-//! OpenVINO calls, and it and call-transcripts serve the shell alike
-//! (daemon.rs).
+//! (bin/screen-text), which reads the words in screenshots, and meaning
+//! (bin/meaning), which finds the launcher's things by what they mean,
+//! share its OpenVINO calls, and they and call-transcripts serve the
+//! shell alike (daemon.rs).
 
 pub mod cache;
 pub mod daemon;

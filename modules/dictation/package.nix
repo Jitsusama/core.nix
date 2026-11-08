@@ -1,4 +1,4 @@
-# dictation, call-transcripts, screen-text and noise-cancelled, built
+# dictation, call-transcripts, screen-text, noise-cancelled and meaning, built
 # from this directory's crate with its tests run as it builds, linked to
 # OpenVINO's C API and GenAI's, and PipeWire's. It takes what counts as
 # a call from modules/calls' crate, so the source holds both, from
