@@ -183,7 +183,8 @@ fn main() -> ExitCode {
             }
             done(&steps, &said, yes, &words)
         }
-        Asked::Names { steps } => match ask(&steps, false, &words) {
+        // Completion wants only names, so it doesn't wait for figures.
+        Asked::Names { steps } => match ask(&steps, Ask::Names, &words) {
             Ok(shown) => {
                 print!("{}", names::for_zsh(&shown));
                 ExitCode::SUCCESS
@@ -194,7 +195,7 @@ fn main() -> ExitCode {
             steps,
             json,
             drawers,
-        } => match ask(&steps, drawers, &words) {
+        } => match ask(&steps, Ask::Settled { drawers }, &words) {
             Ok(shown) => {
                 let out = if json {
                     format!(
@@ -292,11 +293,22 @@ fn errors() -> Look {
     Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stderr())
 }
 
+/// How a place is asked: for its names alone, or settled, with every
+/// row's drawer where `drawers` says.
+enum Ask {
+    Names,
+    Settled { drawers: bool },
+}
+
 /// What the shell shows at the steps, or how to exit, said on stderr,
 /// where a step names nothing or the shell doesn't answer.
-fn ask(steps: &[String], drawers: bool, words: &Words) -> Result<Value, ExitCode> {
+fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, ExitCode> {
     let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
-    heard(asking::show(&qs, steps, drawers), words)
+    let answer = match how {
+        Ask::Names => asking::show(&qs, steps, false),
+        Ask::Settled { drawers } => asking::settled(&qs, steps, drawers, &words.waiting()),
+    };
+    heard(answer, words)
 }
 
 /// What the shell answered, or how to exit, said on stderr, where a step

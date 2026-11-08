@@ -35,6 +35,63 @@ pub enum Answer {
     },
 }
 
+/// How long what a place shows may still be reading once it's first asked:
+/// a provider asks its daemon only when it's shown, as Machine does, so a
+/// place asked cold says its placeholder until that answers.
+const SETTLING: Duration = Duration::from_millis(1500);
+
+/// How long between asking again while it settles.
+const ASK_AGAIN: Duration = Duration::from_millis(150);
+
+/// Asks as `show` does, again while what it shows is still reading (a row
+/// whose side is `waiting`, the placeholder, or a drawer's fact with no
+/// value yet), until it's read or `SETTLING` has passed, when it says
+/// what it has.
+pub fn settled(qs: &str, steps: &[String], drawers: bool, waiting: &str) -> Result<Answer, String> {
+    let began = Instant::now();
+    loop {
+        let answer = show(qs, steps, drawers)?;
+        let reading = matches!(&answer, Answer::Shown(shown) if still_reading(shown, waiting));
+        if !reading || began.elapsed() >= SETTLING {
+            return Ok(answer);
+        }
+        thread::sleep(ASK_AGAIN);
+    }
+}
+
+/// Whether anything a place shows is still being read: a row saying the
+/// placeholder as its side, or a drawer's fact with no value.
+pub fn still_reading(shown: &Value, waiting: &str) -> bool {
+    let rows = ["rows", "acts"]
+        .iter()
+        .filter_map(|key| shown.get(*key).and_then(Value::as_array))
+        .flatten()
+        .chain(shown.get("row").filter(|row| row.is_object()));
+    rows.into_iter().any(|row| {
+        row.get("side").and_then(Value::as_str) == Some(waiting)
+            || row.get("drawer").is_some_and(unread)
+    })
+}
+
+/// Whether a drawer holds a fact it hasn't read, among its facts or groups.
+fn unread(drawer: &Value) -> bool {
+    let facts = drawer
+        .get("facts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
+    let grouped = drawer
+        .get("groups")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten();
+    facts
+        .chain(grouped)
+        .any(|fact| fact.get("label").is_some() && fact.get("value").is_some_and(Value::is_null))
+}
+
 /// Asks the shell through `qs` what the steps show, with each row's drawer
 /// where `drawers` asks, since the shell builds them only then. An error is
 /// the shell not answering, with what qs said where it said anything.
@@ -181,6 +238,25 @@ fn plain(said: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_place_still_reading_says_its_placeholder_or_an_unread_fact() {
+        let waiting = "\u{2026}";
+        let read = serde_json::json!({"row": {"name": "Machine"},
+            "rows": [{"name": "Disk", "side": "412 GB free"}]});
+        assert!(!still_reading(&read, waiting));
+        let side = serde_json::json!({"row": null, "rows": [{"name": "Disk", "side": "\u{2026}"}]});
+        assert!(still_reading(&side, waiting));
+        let fact = serde_json::json!({"row": {"name": "Disk", "drawer": {
+            "facts": [{"label": "Free", "value": null}]}}, "rows": []});
+        assert!(still_reading(&fact, waiting));
+        let grouped = serde_json::json!({"row": {"name": "Now", "drawer": {
+            "groups": [[{"label": "Load", "value": null}]]}}, "rows": []});
+        assert!(still_reading(&grouped, waiting));
+        let heading = serde_json::json!({"row": {"name": "Now", "drawer": {
+            "facts": [{"heading": "Parts"}]}}, "rows": []});
+        assert!(!still_reading(&heading, waiting));
+    }
 
     #[test]
     fn home_is_asked_as_the_mark_alone_and_a_place_after_it() {
