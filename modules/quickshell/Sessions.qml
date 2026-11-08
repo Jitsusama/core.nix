@@ -405,9 +405,16 @@ Singleton {
         printErrors: false
     }
 
-    readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
-        && restoring.boot !== bootId && restoring.boot !== putOff
-        ? restoring.sessions.filter(one => one.carried === undefined) : []
+    // The last boot's sessions not back here, and which boot that was: the
+    // reboot's list while it names any, else restore.json's (Places.js).
+    readonly property var lastBootOffered: Places.lastBoot(rebootListed, restoring, {
+        boot: bootId,
+        putOff: putOff,
+        back: running.concat(parked).filter(session => session.here)
+            .map(session => session.presence.session)
+    })
+    readonly property string lastBootIs: lastBootOffered.boot
+    readonly property var lastBoot: lastBootOffered.sessions
 
     // The sessions other machines carried here as they went away, offered
     // whatever the boot until each runs here, when the harness drops it,
@@ -440,7 +447,7 @@ Singleton {
         printErrors: false
     }
     function forgetReopen(lost) {
-        const named = restoring.sessions.map(one => one.id);
+        const named = restoring.sessions.concat(rebootListed.sessions).map(one => one.id);
         forgotten = forgotten.filter(id => named.includes(id)).concat([lost.id]);
         forgottenFile.setText(JSON.stringify({ ids: forgotten }));
     }
@@ -516,59 +523,34 @@ Singleton {
     }
 
     function putOffLastBoot() {
-        putOff = restoring.boot;
+        putOff = lastBootIs;
         putOffFile.setText(JSON.stringify({ boot: putOff }));
     }
 
-    // The sessions live as a reboot's hold went out, reopened by themselves
-    // as the next boot's shell starts, each where its list says it sat, so
-    // a reboot asks nothing of Joel past his disk's PIN and his sign-in
-    // (Joel, 2026-11-07, by P9R1KI [6ecca200]: "make sure i can quickly
-    // recover afterwards"). Only that list, which the reboot's hold writes
-    // just before it, never restore.json, whose last boot can be days old:
-    // at 09:08 that day a switch restarting the shell reopened 36 sessions
-    // a boot four days old had left (P9R1KI [deedb390]). Places.js names
-    // a list another boot took shortly before this one began, and the shell
-    // keeps the one it reopened, so it's reopened once.
+    // The sessions live as a reboot's hold went out, each where it sat,
+    // which the reboot's hold lists just before it. After the boot they
+    // wait for Joel: Reopen Them All, or :reopen, brings them back in one
+    // act, each where the list says it sat, and nothing reopens them
+    // before he asks. The shell once reopened them by itself as it first
+    // saw niri, which he never wanted (Joel, 2026-11-07 20:2x: "no, i never
+    // wanted them automatic, you decided that by yourself"); on 11-01 he
+    // had chosen to reopen them by hand. Places.js names only a list
+    // another boot took shortly before this one began, so the sessions a
+    // boot days old left are never offered as the reboot's (P9R1KI
+    // [deedb390]: at 09:08 that day a restart reopened 36 of those).
     FileView {
         id: rebootFile
         path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/pi/reboot-reopen.json`
         blockLoading: true
         printErrors: false
     }
-    property string rebootReopened: {
-        try {
-            return String(JSON.parse(rebootReopenedFile.text()).taken ?? "");
-        } catch (error) {
-            return "";
-        }
-    }
-    FileView {
-        id: rebootReopenedFile
-        path: Quickshell.statePath("reboot-reopened.json")
-        blockLoading: true
-        printErrors: false
-    }
-    // Looked at once, as niri first says its workspaces to this shell.
-    property bool rebootLooked: false
-    function reopenTheReboot() {
-        if (rebootLooked || Object.keys(Niri.workspaces ?? {}).length === 0)
-            return;
-        rebootLooked = true;
-        const list = Places.rebootList(rebootFile.text(), bootId, bootedAt);
-        if (list.sessions.length === 0 || list.taken === rebootReopened)
-            return;
-        rebootReopened = list.taken;
-        rebootReopenedFile.setText(JSON.stringify({ taken: list.taken }));
-        Report.say(`reopening the ${list.sessions.length} the reboot listed`);
-        // Where the list says each sat, else where the shell kept it.
+    readonly property var rebootListed: Places.rebootList(rebootFile.text(), bootId, bootedAt)
+    // Where the reboot's list says each of its sessions sat, by id.
+    readonly property var rebootPlaces: {
         const places = {};
-        for (const one of list.sessions)
+        for (const one of rebootListed.sessions)
             places[one.id] = one.at;
-        const before = root.arrangedBefore();
-        root.reopenThemAll(list.sessions, (one, cwd) => console.info(`sessions: ${one.id} `
-            + `not reopened, since its folder, ${cwd}, is gone`),
-            id => places[id] ?? arrangement[before]?.[id] ?? null);
+        return places;
     }
 
     // Where each session's window sits, kept so Reopen Them All puts every
@@ -1428,7 +1410,10 @@ Singleton {
         const boot = root.arrangedBefore();
         const kept = Array.isArray(arrangedOthers[boot]) ? arrangedOthers[boot] : [];
         puttingBack = kept.length > 0 ? { boot, kept, used: [], back: [], seen: [] } : null;
-        root.reopenAll(lost, gone, keptAt ?? null, carryOn);
+        // Where the reboot's list says one sat, else where the shell kept it.
+        const sat = keptAt ?? (id => rebootPlaces[id]
+            ?? arrangement[rebootListed.sessions.length > 0 ? boot : restoring.boot]?.[id] ?? null);
+        root.reopenAll(lost, gone, sat, carryOn);
     }
     // Each window but kitty's, as it first shows tiled this boot, matched to
     // one kept by its program and title (Places.js's matchOther) and moved
@@ -2165,7 +2150,6 @@ Singleton {
     Connections {
         target: Niri
         function onRevisionChanged() {
-            root.reopenTheReboot();
             const seen = Object.keys(Niri.windows).join(" ");
             if (seen === root.windowsSeen)
                 return;

@@ -37,6 +37,13 @@ machine, one path through each connection.
   (`quickshell-opens-programs-through-niri`).
 - **Keys first.** Every surface can be driven from the keyboard alone, on the
   laptop and the ErgoDox, in the language docs/design.md sets out.
+- **Sessions reopen when Joel asks.** After a boot, the sessions it ended wait
+  in Agents' Sessions to Reopen until he presses Reopen Them All or types
+  `:reopen`, which brings them all back in one act, each where it sat; the
+  shell starting never reopens one. He chose that on 2026-11-01, and the
+  shell reopening them by itself after a reboot was undone on 2026-11-07
+  ("no, i never wanted them automatic"). A session that dies while the
+  machine is up is cadence's to start again, not the shell's.
 
 ## Layout
 

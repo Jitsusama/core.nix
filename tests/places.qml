@@ -223,7 +223,9 @@ QtObject {
                     at: { output: "eDP-1", workspace: 2, column: 1, tile: 1 } },
                 { id: "01-loose", cwd: "/home/j/loose", title: "Loose", at: null }
             ]);
-        expect("a list this boot took names none, so a shell restart reopens nothing",
+        expect("it says the boot it was taken in",
+            Places.rebootList(listed({}), "this-one", began).boot, "the-last");
+        expect("a list this boot took names none, so a shell restart offers nothing",
             ids(Places.rebootList(listed({ boot: "this-one" }), "this-one", began)), []);
         expect("nor one taken more than an hour before this boot began",
             ids(Places.rebootList(listed({ taken: "2026-11-07T15:59:00Z" }), "this-one",
@@ -234,6 +236,30 @@ QtObject {
         expect("nor one with no boot, nor what isn't a list",
             [ids(Places.rebootList(listed({ boot: "" }), "this-one", began)),
                 ids(Places.rebootList("{", "this-one", began))], [[], []]);
+
+        // What Sessions to Reopen offers of the last boot, which nothing
+        // reopens until Joel asks: the reboot's list while it names any,
+        // each until it's back here, else what restore.json kept.
+        const rebooted = Places.rebootList(listed({}), "this-one", began);
+        const unlisted = Places.rebootList("{", "this-one", began);
+        const restored = { boot: "the-last", sessions: [{ id: "01-kept", cwd: "/tmp" },
+            { id: "01-ferried", cwd: "/tmp", carried: { from: "far", at: "" } }] };
+        const offered = (list, putOff, back) => {
+            const last = Places.lastBoot(list, restored, { boot: "this-one", putOff, back });
+            return [last.boot, ids(last)];
+        };
+        expect("the reboot's list, over what restore.json kept",
+            offered(rebooted, "", []), ["the-last", ["01-boss", "01-loose"]]);
+        expect("each of the list until it's back here",
+            offered(rebooted, "", ["01-boss"]), ["the-last", ["01-loose"]]);
+        expect("with no list, what restore.json kept but the carried",
+            offered(unlisted, "", []), ["the-last", ["01-kept"]]);
+        expect("nothing of a boot Joel put off",
+            [offered(rebooted, "the-last", [])[1], offered(unlisted, "the-last", [])[1]],
+            [[], []]);
+        expect("nothing of this boot's own", ids(Places.lastBoot(unlisted,
+            { boot: "this-one", sessions: restored.sessions },
+            { boot: "this-one", putOff: "", back: [] })), []);
 
         if (failures.length > 0) {
             for (const failure of failures)

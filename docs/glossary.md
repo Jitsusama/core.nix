@@ -98,7 +98,7 @@ the queue and conclude.
 | resume | Joel letting a paused session carry on where it left off | | |
 | park | a session ending itself while idle to give back its memory, until a message or a key wakes it in its window | | presence `parked`, park-workflow |
 | reopen | opening a closed session again where it left off, in its own window and folder | restore | `restore.json` |
-| Sessions to Reopen | the sessions the last boot's end took away and those another machine carried here | Reopen Last Boot's Sessions | `toReopen` |
+| Sessions to Reopen | the sessions the last boot's end took away, the reboot's list when its hold took one, and those another machine carried here, each reopened only when Joel asks | Reopen Last Boot's Sessions | `toReopen` |
 | carried | a session another machine handed this one as it went away, to reopen here | | `carried` in `restore.json` |
 | waiting on | what a session can't go on without: Joel, an answer, or its turn in the queue | | |
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
