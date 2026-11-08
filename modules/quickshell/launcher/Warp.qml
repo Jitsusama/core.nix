@@ -8,8 +8,9 @@
 // first, each saying who set it), the tunnel's Round Trip and Loss as
 // WARP estimates them, its Protocol, the Data Centre it ends in, its
 // Endpoint and Last Handshake, its Traffic each way and its TLS, and what
-// its DNS proxy answered (Warp.js works each out, in the words words.json
-// gives warp). A machine
+// its DNS proxy answered (Warp.js works each out, WarpSeen.js the sparks
+// and WarpSwitch.js the switch, in the words words.json gives warp). A
+// machine
 // whose system installs no warp-cli has no WARP here at all (home.nix
 // enables this only where it does).
 //
@@ -28,6 +29,8 @@ import qs
 import Quickshell.Io
 import QtQuick
 import "Warp.js" as Warp
+import "WarpSeen.js" as WarpSeen
+import "WarpSwitch.js" as WarpSwitch
 
 Provider {
     id: provider
@@ -44,7 +47,7 @@ Provider {
     // before it first answers this opening.
     property var said: null
     property real saidAt: 0
-    // What it has read of the tunnel since it was shown (Warp.saw), for
+    // What it has read of the tunnel since it was shown (WarpSeen.saw), for
     // the sparks, or null before a read; forgotten as the launcher closes.
     property var seen: null
     // What the last switch said, for its row's note, until the launcher
@@ -104,15 +107,16 @@ Provider {
     // How the link stands: its switch first, as :connect and :disconnect
     // name it, then every part.
     function told() {
-        const linked = Warp.told(said, settings, words, seen);
+        const linked = Warp.told(said, settings, words);
         if (linked === null)
             return null;
+        const parts = WarpSeen.drawn(linked.parts, seen, settings, words);
         return {
             headline: linked.headline,
             copy: linked.headline,
             warns: linked.warns,
             glyph: Words.glyph("warp"),
-            rows: [switchRow()].concat(linked.parts.map(partRow)),
+            rows: [switchRow()].concat(parts.map(partRow)),
             note: "",
             live: provider
         };
@@ -138,9 +142,9 @@ Provider {
     // says who holds a switch the organisation holds, when WARP always on
     // comes back, or what the last switch said.
     function switchRow(upAs) {
-        const up = upAs ?? Warp.up(said);
+        const up = upAs ?? WarpSwitch.up(said);
         const wordState = up ? "" : "off";
-        const note = switchSaid !== "" ? switchSaid : Warp.switchNote(said, up, words);
+        const note = switchSaid !== "" ? switchSaid : WarpSwitch.switchNote(said, up, words);
         return thing(Object.assign({
             key: "warp:power",
             what: "",
@@ -174,7 +178,7 @@ Provider {
     // note says when WARP comes back where it will; held or refused, the
     // row goes back and says why.
     function switched(text) {
-        const done = Warp.switched(parsed(text), words);
+        const done = WarpSwitch.switched(parsed(text), words);
         if (done.refused !== "") {
             refused("warp:power", done.refused);
             return;
@@ -197,7 +201,7 @@ Provider {
             note: part.note,
             warns: part.warns,
             // A figure with a history sparks it, and its drawer says the
-            // rest (Warp.told).
+            // rest (WarpSeen.drawn).
             graph: part.graph,
             drawer: part.drawer ? () => provider.plate(part) : undefined,
             hue: "machine",
@@ -225,7 +229,7 @@ Provider {
             ? printed : { error: "unreadable", said: words.printedNothing ?? "" };
         saidAt = Date.now();
         if (said.status !== undefined)
-            seen = Warp.saw(seen, said, saidAt);
+            seen = WarpSeen.saw(seen, said, saidAt);
         answered();
     }
 

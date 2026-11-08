@@ -33,6 +33,8 @@ import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
 import "Firmware.js" as Firmware
 import "Warp.js" as Warp
+import "WarpSeen.js" as WarpSeen
+import "WarpSwitch.js" as WarpSwitch
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "WifiLink.js" as WifiLink
@@ -2489,14 +2491,14 @@ QtObject {
                 received_bytes: received, sent_bytes: sent }) });
         const reads = [warpRead(120, 0.01, 1000, 500), warpRead(140, 0.02, 3000, 1500),
             warpRead(130, 0.015, 7000, 2500)];
-        const seen = reads.reduce((kept, each, at) => Warp.saw(kept, each, at * 2000), null);
+        const seen = reads.reduce((kept, each, at) => WarpSeen.saw(kept, each, at * 2000), null);
         machine("WARP keeps what it read while shown, and the speed each way between",
             [seen.latency, seen.loss, seen.inward, seen.outward],
             [[120, 140, 130], [0.01, 0.02, 0.015], [1000, 2000], [500, 500]]);
         const spark = values => ({ shape: "spark", values, warn: false });
         const over = (values, least) => values.map(value => value / Math.max(least, ...values));
-        const sparked = Warp.told(reads[2], {}, warpSaid, seen);
-        const drawn = id => (sparked.parts.find(part => part.id === id) ?? {});
+        const sparked = WarpSeen.drawn(Warp.told(reads[2], {}, warpSaid).parts, seen, {}, warpSaid);
+        const drawn = id => (sparked.find(part => part.id === id) ?? {});
         const tunnel = "via WARP \u00b7 tunnel";
         const trip = spark(over([120, 140, 130], 100));
         machine("Round Trip sparks what was read, its drawer saying whose",
@@ -2514,13 +2516,14 @@ QtObject {
                     { id: "in", value: "16.0 kb/s", figure: spark(over([1000, 2000], 0)) },
                     { id: "out", value: "4.00 kb/s", figure: spark(over([500, 500], 0)) }] }]);
         machine("one read sparks nothing, so no drawer says only the row again",
-            Warp.told(reads[0], {}, warpSaid, Warp.saw(null, reads[0], 0)).parts
-                .filter(part => part.graph !== undefined || part.drawer !== undefined), []);
-        const anew = Warp.saw(seen, { status: { state: "Disconnected", reason: "Manual" },
+            WarpSeen.drawn(Warp.told(reads[0], {}, warpSaid).parts, WarpSeen.saw(null, reads[0], 0),
+                {}, warpSaid).filter(part => part.graph !== undefined || part.drawer !== undefined),
+            []);
+        const anew = WarpSeen.saw(seen, { status: { state: "Disconnected", reason: "Manual" },
             tunnel: null }, 6000);
         machine("a state changed starts the reads again",
             [anew.latency, anew.loss, anew.inward], [[], [], []]);
-        const back = Warp.saw(seen, warpRead(125, 0.01, 10, 5), 6000);
+        const back = WarpSeen.saw(seen, warpRead(125, 0.01, 10, 5), 6000);
         machine("a counter gone back, as a link made again starts it, gives no speed",
             [back.latency.length, back.inward], [4, [1000, 2000]]);
         // WARP's switch, :connect and :disconnect: who holds it, where the
@@ -2529,20 +2532,22 @@ QtObject {
         const locked = Object.assign({}, warp, {
             settings: Object.assign({}, warp.settings, { switch_locked: true }) });
         machine("WARP's switch says when, always on, it comes back, who holds it, or nothing",
-            [Warp.switchNote(warp, true, warpSaid), Warp.switchNote(locked, true, warpSaid),
-                Warp.switchNote(warp, false, warpSaid)],
+            [WarpSwitch.switchNote(warp, true, warpSaid),
+                WarpSwitch.switchNote(locked, true, warpSaid),
+                WarpSwitch.switchNote(warp, false, warpSaid)],
             ["comes back by itself in 2 min", "example holds the switch", ""]);
         machine("WARP up or on its way, so its switch takes it down",
             ["Connected", "Connecting", "Disconnected"].map(state =>
-                Warp.up({ status: { state } })), [true, true, false]);
+                WarpSwitch.up({ status: { state } })), [true, true, false]);
         machine("a switch done, held, refused or unread, as warp says each", [
-            Warp.switched({ act: "disconnect", done: true, refused: null,
+            WarpSwitch.switched({ act: "disconnect", done: true, refused: null,
                 comes_back_after_min: 2 }, warpSaid),
-            Warp.switched({ act: "disconnect", done: false, refused: "held",
+            WarpSwitch.switched({ act: "disconnect", done: false, refused: "held",
                 organisation: "example" }, warpSaid),
-            Warp.switched({ act: "connect", done: false, refused: "refused",
+            WarpSwitch.switched({ act: "connect", done: false, refused: "refused",
                 said: "warp-cli wouldn't connect: Invalid account type." }, warpSaid),
-            Warp.switched({ error: "not-answering", said: "its service didn't answer" }, warpSaid)
+            WarpSwitch.switched({ error: "not-answering", said: "its service didn't answer" },
+                warpSaid)
         ], [
             { refused: "", note: "comes back by itself in 2 min" },
             { refused: "example holds the switch", note: "" },
