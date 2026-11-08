@@ -1789,11 +1789,12 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     machine = desktop.machine
     shoot_now_holding_timers(desktop, "rung")
     # Eggs ended, by the keys that carry End, leaves them running. End can't be undone, so it
-    # asks once.
+    # asks once, and takes y only once the ask is ready.
     pick_a_timer(desktop, "Eggs")
-    machine.send_chars("dd")
-    desktop.launcher_until(lambda shown: shown["question"] == "End Eggs? (y/n)")
-    machine.send_chars("y")
+    with desktop.told("ask ready"), desktop.told("asked End Eggs? (y/n)"):
+        machine.send_chars("dd")
+    with desktop.told("answered yes"):
+        machine.send_chars("y")
     # An ended row stays, drawn as gone, until the launcher closes.
     desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
     desktop.close_launcher()
