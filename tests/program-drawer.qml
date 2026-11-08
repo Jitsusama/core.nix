@@ -1,8 +1,9 @@
 // What a program's drawer says, run in Qt's own JavaScript engine, the one
 // the shell runs it in. The `a-program-says-all-it-knows` check copies
 // launcher/Program.js beside this file and runs `qml -platform offscreen
-// program-drawer.qml` over a desktop entry and shared-mime-info's globs
-// made up here, shaped as the files write them.
+// program-drawer.qml` over what the machine daemon says of its processes,
+// a desktop entry and shared-mime-info's globs made up here, shaped as
+// the daemon and the files write them.
 import QtQuick
 import "launcher/Program.js" as Program
 
@@ -44,6 +45,16 @@ QtObject {
     function run() {
 
         expect("a share", [0.045, 0.37, 0].map(Program.percent), ["4.5%", "37%", "0%"]);
+        // Two windows' processes and all each started, as the daemon's
+        // tree kind says them, and a window it hasn't said yet.
+        expect("what its processes use, summed over its windows", Program.usage([
+            { pid: 40, share_ratio: 0.2, resident_b: 641376000, processes: 3 },
+            { pid: 77, share_ratio: 0.05, resident_b: 100000000, processes: 1 },
+            null
+        ]), { processor: 0.25, memory: 741376000, count: 4 });
+        expect("nothing while the daemon says nothing", Program.usage([null, undefined]), null);
+        expect("no share past the whole", Program.usage([{ share_ratio: 0.8 },
+            { share_ratio: 0.7 }]).processor, 1);
 
         expect("its windows' workspaces", Program.eyebrow([4, 1, 4], "web browser", said),
             "on 1 and 4 \u00b7 web browser");

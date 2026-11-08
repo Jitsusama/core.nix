@@ -2298,6 +2298,7 @@ onLinux {
       cp ${./launcher/Program.js} launcher/Program.js
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Music.js} Music.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml

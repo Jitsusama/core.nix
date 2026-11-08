@@ -442,8 +442,12 @@ Provider {
         }
         const looked = {};
         const player = playerOf(given => provider.names(entry, given, looked));
+        // Each process once, as two windows are often one process's.
+        const pids = Array.from(new Set((running[entry.id] ?? []).map(window => window.pid)
+            .filter(pid => Number.isInteger(pid) && pid > 0))).sort((a, b) => a - b);
         return Program.drawer({
             name: entry.name,
+            usage: Program.usage(treesOf(pids)),
             places: (running[entry.id] ?? [])
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),
@@ -752,8 +756,44 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.recents.forget();
+                provider.treesWanted = [];
+            }
+        }
+    }
+
+    // What a program's processes use is the machine daemon's (modules/
+    // machine), a `tree:<pid>` for each of its windows' processes, with
+    // all each started counted in. The daemon reads a tree only while it's
+    // watched, so the drawer names its pids just after it first asks, and
+    // they're watched over a connection of their own only while the
+    // launcher is open; closing it closes the connection, which ends the
+    // watch. Moving to another program's drawer watches its pids instead.
+    property var treesWanted: []
+
+    function treesOf(pids) {
+        if (JSON.stringify(pids) !== JSON.stringify(treesWanted))
+            Qt.callLater(() => {
+                provider.treesWanted = pids;
+            });
+        const watch = trees.item;
+        return watch && watch.revision >= 0
+            ? pids.map(pid => watch.held[`tree:${pid}`] ?? null) : [];
+    }
+
+    LazyLoader {
+        id: trees
+
+        active: provider.treesWanted.length > 0 && (provider.launcher?.open ?? false)
+
+        Daemon {
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+            kind: "tree"
+            live: false
+            ahead: provider.treesWanted.map(pid => `tree:${pid}`)
+            keptThroughGap: false
+            answersWhole: true
         }
     }
 

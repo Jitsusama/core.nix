@@ -60,6 +60,24 @@ function percent(share) {
     return `${Number((share * 100).toFixed(places))}%`;
 }
 
+// What a program's processes use, from what the machine daemon says of
+// each of its windows' processes and every one it started (its `tree`
+// kind, each { share_ratio, resident_b, processes }): their share of the
+// processors, the memory they hold and how many there are, summed; null
+// while it says nothing.
+function usage(trees) {
+    const said = trees.filter(tree => tree !== null && tree !== undefined);
+    if (said.length === 0) {
+        return null;
+    }
+    const sum = field => said.reduce((all, tree) => all + (Number(tree[field]) || 0), 0);
+    return {
+        processor: Math.max(0, Math.min(1, sum("share_ratio"))),
+        memory: sum("resident_b"),
+        count: sum("processes")
+    };
+}
+
 // The kinds of file a desktop entry says it opens, from its file's text:
 // its own group's MimeType, in its order.
 function mimeTypes(text) {
