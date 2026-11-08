@@ -79,6 +79,12 @@ let
       # isn't, so its provider and what it imports are read as if it were.
       cp ${../libvirt/Machines.qml} qs/launcher/vms.qml
       cp ${../libvirt/Machines.js} qs/launcher/Machines.js
+      # Neovim's and Chrome's acts are installed only where a machine brings
+      # Neovim or Chrome, as the graphical example doesn't, so they're read
+      # here as if one had.
+      cp ${../neovim/NeovimProgram.qml} qs/launcher/neovim.qml
+      cp ${../neovim/NeovimOpening.js} qs/launcher/NeovimOpening.js
+      cp ${../chrome/ChromeProgram.qml} qs/launcher/chrome.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
@@ -3706,6 +3712,104 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml tuple.qml
+      touch $out
+    '';
+
+  # A program's act on a copy or on the repositories under ~/src shows only
+  # while it can act, and opens what it says: what decides it, in Qt's own
+  # engine (tests/quick-acts.qml, over Copied.js, launcher/Repositories.js
+  # and Neovim's NeovimOpening.js), then each program's provider with the
+  # shell's one watcher of the clipboard, through Quickshell itself, over
+  # repositories made here and read once for both programs by the real fd,
+  # stat and grep (launcher/Repositories.qml), with niri and the
+  # clipboard's history stood in (tests/program-acts.qml).
+  the-launcher-acts-only-on-what-it-can =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      # A kitty used last, whose remote control Neovim opens through.
+      niri = singleton "Niri.qml" ''
+        property var windows: ({
+          "4": { id: 4, app_id: "kitty", pid: 40, focus_timestamp: { secs: 10, nanos: 0 } },
+          "5": { id: 5, app_id: "kitty", pid: 41, focus_timestamp: { secs: 20, nanos: 0 } }
+        })
+        property var spawned: []
+        function spawn(command) { spawned = command; }
+      '';
+      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
+      # Three repositories a folder deep, alpha's git written last, alpha's
+      # origin and gamma's upstream on GitHub and beta's on GitLab, and one
+      # four folders deep, past where they're looked for.
+      repositories = ''
+        repository() {
+          mkdir -p "$HOME/src/$1/.git"
+          printf '[core]\n\tbare = false\n[remote "%s"]\n\turl = %s\n' "$2" "$3" \
+            > "$HOME/src/$1/.git/config"
+          touch -d "@$4" "$HOME/src/$1/.git"
+        }
+        mkdir -p $HOME/src/alpha/docs $HOME/src/beta
+        printf 'fn main() {}\n' > $HOME/src/alpha/main.rs
+        printf 'KEY=1\n' > $HOME/src/alpha/.env
+        printf '# Notes\n' > $HOME/src/alpha/docs/notes.md
+        printf 'ignored.txt\n' > $HOME/src/alpha/.gitignore
+        printf 'not listed\n' > $HOME/src/alpha/ignored.txt
+        touch -d @1700000400 $HOME/src/alpha/main.rs
+        touch -d @1700000300 $HOME/src/alpha/.env
+        touch -d @1700000200 $HOME/src/alpha/docs/notes.md
+        touch -d @1700000100 $HOME/src/alpha/.gitignore
+        printf '# Beta\n' > $HOME/src/beta/README.md
+        repository alpha origin git@github.com:Jitsusama/alpha.git 1700000900
+        repository beta origin https://gitlab.com/someone/beta 1700000800
+        repository gamma upstream https://github.com/NixOS/gamma.git 1700000700
+        repository far/away/too origin git@github.com:someone/too.git 1700000950
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-acts-only-on-what-it-can" { } ''
+      mkdir cases shell
+      cd $TMPDIR/cases
+      cp ${../../tests/quick-acts.qml} quick-acts.qml
+      cp ${./Copied.js} Copied.js
+      cp ${./launcher/Repositories.js} Repositories.js
+      cp ${../neovim/NeovimOpening.js} NeovimOpening.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml quick-acts.qml
+      cd $TMPDIR/shell
+      mkdir -p launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${./Words.qml} Words.qml
+      cp ${./Files.qml} Files.qml
+      cp ${./Copied.qml} Copied.qml
+      cp ${./Copied.js} Copied.js
+      cp ${niri} Niri.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
+      cp ${./launcher/Repositories.qml} launcher/Repositories.qml
+      cp ${./launcher/Repositories.js} launcher/Repositories.js
+      cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
+      cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
+      cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
+      cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
+      cp ${../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
+      cp ${../../tests/program-acts.qml} shell.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime
+      export PATH=${
+        lib.makeBinPath [
+          paste
+          pkgs.fd
+          pkgs.coreutils
+          pkgs.gnugrep
+        ]
+      }:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      ${repositories}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 

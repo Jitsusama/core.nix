@@ -9,8 +9,10 @@
 // groups, Code's each a dozen or fewer; and the window the launcher opened
 // over, as the launcher says it as Shortcuts opens, puts its program's
 // layers first, its own chord opening on the first of them, until the
-// launcher closes; and a key that sends its own modifiers, as the Copilot
-// key does, is said as the one key. It exits 0 once every case holds, and otherwise 1, saying which
+// launcher closes; a program's desktop entry holds its own layer, one run
+// in the terminal, as Neovim or btop is, by its entry rather than its
+// window; and a key that sends its own modifiers, as the Copilot key
+// does, is said as the one key. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -198,11 +200,11 @@ ShellRoot {
                 lead ? `${lead.name} ${lead.note}` : "nothing");
             expect("its chords searched first", String(map.all[0].key)
                 .startsWith("shortcut:neovim:"), map.all[0].key);
-            // A program's own layer, by its desktop entry: Neovim's, though
-            // its windows are the terminal's, a window's own by its app id,
-            // and the desktop's for one with none; Neovim's layer row says
-            // whose it is.
-            for (const entry of [["nvim", "neovim"], ["kitty", "terminal"],
+            // A program's own layer, by its desktop entry: Neovim's and
+            // btop's, though their windows are the terminal's, a window's own
+            // by its app id, and the desktop's for one with none; Neovim's
+            // and btop's layer rows say whose they are.
+            for (const entry of [["nvim", "neovim"], ["btop", "btop"], ["kitty", "terminal"],
                 ["swayimg", "swayimg"], ["google-chrome", "chrome"], ["slack", "slack"],
                 ["virt-manager", "desktop"]])
                 expect(`${entry[0]}'s own layer`, map.ofProgram(entry[0]) === entry[1],
@@ -210,6 +212,9 @@ ShellRoot {
             const neovimKeys = map.layerOf("nvim");
             expect("nvim holds Neovim's keys", neovimKeys !== null && neovimKeys.layer === "neovim",
                 neovimKeys ? neovimKeys.layer : "nothing");
+            const btopKeys = map.layerOf("btop");
+            expect("btop holds its own keys", btopKeys !== null && btopKeys.layer === "btop",
+                btopKeys ? btopKeys.layer : "nothing");
             over("kitty", "\u03C0 - core.nix");
             expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
                 === "Agents, Terminal, Desktop", names(map.everything()).join(", "));
