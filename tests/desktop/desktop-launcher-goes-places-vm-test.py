@@ -947,6 +947,12 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         f"home moved as the queue changed: from {scrolled} to {still}"
     )
     desktop.shoot("launcher-home-categories")
+    # And at Joel's scales, where each place's own mark is judged.
+    if desktop.values["shots"]:
+        for scale in ("1.5", "2"):
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
+        desktop.as_account("niri msg output winit scale 1")
     desktop.close_launcher()
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
