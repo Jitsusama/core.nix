@@ -197,6 +197,20 @@ pub(crate) fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Rec
     heard
 }
 
+/// A system daemon at `socket` that hears every heartbeat and collects
+/// nothing, but answers an ask about processes with something else, as
+/// one too busy to scan them might fail it.
+fn fake_system_vouching_nothing(socket: &Path) -> std::thread::JoinHandle<()> {
+    let mut server = disk_guard::socket::Server::bind(socket, std::time::Duration::ZERO).unwrap();
+    std::thread::spawn(move || {
+        loop {
+            server
+                .serve(&mut |_, _, responder| responder.send(&Reply::Collects(Vec::new())))
+                .unwrap();
+        }
+    })
+}
+
 #[test]
 fn a_user_daemon_asks_the_system_for_the_store_garbage_in_its_turn() {
     let home = Home::new();
@@ -609,6 +623,62 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
         seen.push(passes());
     }
     assert_eq!(seen, [1, 1, 1, 2, 2, 2, 3], "a minute's rest, then two");
+}
+
+#[test]
+fn a_pass_kept_short_by_an_unheard_system_daemon_looks_again_once_it_answers() {
+    // The first pass after the account's daemon starts may find the system
+    // daemon not answering in time: on 8 November that left a critical
+    // disk's cache and an idle build target a full minute's rest.
+    let home = Home::new();
+    let cold = home.cold_scratch("run-1");
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(home.config("100%", "100%")), &places).unwrap();
+    guard.step(&tick_at(3600.0), &CALM).unwrap();
+    assert!(cold.exists(), "kept while no one vouches for process 300");
+
+    let _heard = fake_system(&socket, false);
+    guard.step(&tick_at(3605.0), &CALM).unwrap();
+    assert!(
+        !cold.exists(),
+        "looked at again once the system daemon answers, not a minute on"
+    );
+}
+
+#[test]
+fn a_pass_kept_short_twice_by_an_unheard_system_daemon_rests() {
+    // A system daemon whose heartbeat answers but whose vouching keeps
+    // failing would otherwise have every step survey again.
+    let home = Home::new();
+    let cold = home.cold_scratch("run-1");
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(home.config("100%", "100%")), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3605.0, 3610.0, 3615.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert!(cold.exists());
+    assert_eq!(seen, [1, 2, 2, 2], "looked at once more, then rested");
 }
 
 #[test]
