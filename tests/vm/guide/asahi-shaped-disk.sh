@@ -32,7 +32,7 @@ sfdisk --json "$raw" >"$out/table.json"
 
 # So many bytes of a line said over and over. yes stops when head has
 # enough, which pipefail would take for a failure.
-bytes() { (yes "$1" || true) | head -c "$2"; }
+bytes() { (yes "$1" 2>/dev/null || true) | head -c "$2"; }
 
 # Where a partition starts and how long it is, in sectors.
 part() {
@@ -50,15 +50,17 @@ for n in 1 2 3 4; do
 done
 
 # The boot partition, FAT as Asahi's installer makes it, with m1n1's next
-# stage and the firmware's copy where they live.
+# stage and the firmware's copy where they live. It's made apart and laid
+# in, since mkfs.fat sizes a filesystem by the file it's given.
 read -r first sectors < <(part 5)
-mkfs.fat --offset="$first" "$raw" $((sectors / 2)) >/dev/null
-esp="$raw@@$((first * 512))"
+esp=esp.img
+mkfs.fat -C "$esp" $((sectors / 2)) >/dev/null
 bytes "m1n1 and U-Boot" $((1 << 20)) >boot.bin
 bytes "the firmware copied from macOS" $((2 << 20)) >firmware.cpio
 mmd -i "$esp" ::m1n1 ::vendorfw
 mcopy -i "$esp" boot.bin ::m1n1/boot.bin
 mcopy -i "$esp" firmware.cpio ::vendorfw/firmware.cpio
+dd if="$esp" of="$raw" bs=512 seek="$first" conv=notrunc status=none
 sha256sum boot.bin | cut -d' ' -f1 >"$out/boot.bin.sha256"
 sha256sum firmware.cpio | cut -d' ' -f1 >"$out/firmware.cpio.sha256"
 
