@@ -1,7 +1,7 @@
 // What Recent holds, run in Qt's own JavaScript engine, the one the shell
 // runs it in. The `recent-means-one-thing` check copies
-// modules/quickshell/launcher/Recent.js and Recents.js beside this file and
-// runs `qml -platform offscreen recent.qml`. Each case is a promise of the
+// modules/quickshell/launcher/Recent.js, Recents.js and Order.js, which
+// Recent.js imports, beside this file and runs `qml -platform offscreen recent.qml`. Each case is a promise of the
 // one meaning Joel can hold in his head: the last nine things he did with
 // it, newest first, each once, never what's open or shown already. The last
 // are how a source's lines are read for it, and when each thing was used.
@@ -49,6 +49,7 @@ QtObject {
                 "a b x y"],
             ["and its things are listed once too", ["x y x"], "", "x y"],
             ["things done at once keep their sources' order", ["a@1", "b@1"], "", "a b"],
+            ["however many there are", ["d@1 e@1", "a@0 f@1", "g@1"], "", "d e f g a"],
             ["nothing kept is nothing", [], "", ""],
             ["an empty source changes nothing", ["", "a@1"], "", "a"]
         ];

@@ -3,10 +3,11 @@
 // keeps one order"; RSCH-20261030-GB56HX). A list moves only by what Joel
 // does, never by a guess, and a choice never moves when it's chosen; only
 // typing ranks (Rank.js), and a list shown keeps its rows still while it's
-// open (Steady.js). Each order here is a comparator for Array.sort, which
-// keeps rows alike in it in the order they came. A fixed set and a search
-// have none: a fixed set keeps the order it was designed in, and a search
-// is Rank.js's. tests/every-list-keeps-its-kinds-order.py holds each place
+// open (Steady.js). Each order here is a comparator, and `sorted` sorts by
+// one keeping rows alike in it in the order they came, which Qt's engine's
+// own Array.sort doesn't: it leaves four rows alike as 2 3 4 1. A fixed
+// set and a search have none: a fixed set keeps the order it was designed
+// in, and a search is Rank.js's. tests/every-list-keeps-its-kinds-order.py holds each place
 // to its kind's order here. Apart from the launcher, so tests/order.qml can
 // hold it in Qt's own engine.
 .pragma library
@@ -127,6 +128,14 @@ function amounts(how) {
 // where it stands, so choosing one never moves it.
 function choices(how) {
     return then(how.natural ?? (() => 0), byName(how.name));
+}
+
+// The rows in an order, those alike in it in the order they came, as
+// Array.sort alone doesn't keep them in Qt's engine.
+function sorted(rows, order) {
+    return Array.from(rows ?? [], (row, at) => ({ row, at }))
+        .sort((one, other) => order(one.row, other.row) || one.at - other.at)
+        .map(each => each.row);
 }
 
 // Where rows listed in this order first break it: the place of the first

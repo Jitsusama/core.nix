@@ -15,9 +15,9 @@ const room = 8;
 const scrolloff = 4;
 
 // The cards' ids, the newest first, by when each arrived, as every stream
-// keeps them.
+// keeps them, those arriving together in the order they came.
 function ordered(ids, arrived) {
-    return ids.slice().sort(Order.stream(id => arrived[id] ?? 0));
+    return Order.sorted(ids, Order.stream(id => arrived[id] ?? 0));
 }
 
 // The first line in view, from the one before, so the cursor stays as far

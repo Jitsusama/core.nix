@@ -35,11 +35,11 @@ function listed(sources, shown, most) {
             (Number.isFinite(one.at) ? dated : undated).push(one);
         }
     }
-    // Recent is a stream, and Array.prototype.sort is stable, so things done
-    // at the same moment keep their sources' order.
-    dated.sort(Order.stream(one => one.at));
+    // Recent is a stream, and things done at the same moment keep their
+    // sources' order.
+    const newest = Order.sorted(dated, Order.stream(one => one.at));
     const rows = [];
-    for (const one of dated.concat(undated)) {
+    for (const one of newest.concat(undated)) {
         if (rows.length >= (most ?? MOST)) {
             break;
         }
