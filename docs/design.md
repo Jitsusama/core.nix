@@ -757,7 +757,10 @@ it share a column.
 **Chords are drawn key by key:** a key's own glyph where a proper one exists
 (⇧, ↵ and the arrows), its name where none does (Super, Ctrl, Alt, Esc,
 Tab, Space), and a letter as itself, joined by + with the same room on each
-side, all muted, even on the selected row. Super is named, since the NixOS
+side, all muted, even on the selected row. A chord is spaced the same
+wherever it's drawn, in a row, the foot or a drawer's last line ("17 more
+· Ctrl + W l"), by one piece that draws every chord, never as a string
+typed out (VKCF3Z, 2026-11-07). Super is named, since the NixOS
 mark at Note's size reads as a gear (Joel's shot of 2026-11-06 read "⚙ +
 0"), and a chord's figures take Monaspace's slashed zero (`cv01`), in
 chords, the foot's keys and the key list alone, so Super + O never reads as
@@ -1241,7 +1244,15 @@ works the same way everywhere.
   Quest, how that stands said only where it isn't active; its Machine;
   and Working On last, as words, without the title the drawer already
   says (VKCF3Z, 2026-11-07). A row's note says no title again either,
-  and gives way at a whole word, never a letter and an ellipsis. Its figures go by
+  and gives way at a whole word, never a letter and an ellipsis. Agents
+  is a place with sources, as Passwords is (Joel, 2026-11-07: "password
+  management should be a universal concern with 1password being a
+  particular implementation. same with agents"): a session's source is
+  named only while two or more are on the machine, first in its note and
+  never in its name, its glyph the agent's mark whatever runs it; its
+  drawer's eyebrow always says it; typing a source's name finds its
+  sessions; and an act its source can't do is absent, never dimmed.
+  Its figures go by
   OpenTelemetry's gen_ai names: Context ("142k of 200k") and Last Turn
   first, then Model, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.
@@ -1408,8 +1419,15 @@ works the same way everywhere.
   volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
   Disturb, Keep Awake, the power profile, the desk light, a keyboard's
   light or layer, a program's playing) keeps it open, and its row says
-  the new state at once. Going into one lists its acts, led by Return's
-  own, which there does it and closes, so
+  the new state at once (Joel, 2026-11-07), before the system confirms
+  it. A refusal, or no answer in 5 s, puts the row back and says so in
+  the foot until the next key, naming the act that didn't happen and
+  why: "Home-5G not disconnected · not connected", or "Home-5G not
+  disconnected yet · no answer", the yet saying it may still come.
+  The failure's mark and what didn't happen are in alert and the why
+  muted, and short of room the why gives way from its end. Going into
+  one lists its acts, led by Return's own, which there does it and
+  closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"). **An act that ends or takes away
   never runs on Return**, from any mode: Disconnect It, Forget It, Close
@@ -1568,8 +1586,10 @@ works the same way everywhere.
   picture, a notice's whole words, a mail, a meeting's details) shows
   beside the card's right side, a floating surface like the card, top
   aligned and as tall as it, 12 (m) from it. It's set as a plate, a small
-  page about the selected thing (look 3): an eyebrow saying when or
-  where, at Label, a notice's sender by the name its card signs it with;
+  page about the selected thing (look 3): an eyebrow saying where and
+  then what kind of thing it is, as Type says, at Label while every word
+  is ours and in Note as written once one is the world's, a notice's
+  sender by the name its card signs it with;
   the thing's name at Title, strong; its facts as a name at Note and a
   figure at Figure, the names whole and the
   figures on one edge 24 (xl) beyond the longest, a figure wrapping with
@@ -1580,8 +1600,14 @@ works the same way everywhere.
   list (VKCF3Z, 2026-11-07); a fact that's a sentence stands under its
   name as a paragraph and doesn't decide which. A figure's spark or meter
   draws in its text's ink on a muted track, in warning only past its
-  limit's warn, as Context's past 80%. A fact still being read a fixed
-  placeholder, and none that only says the name again; then its words,
+  limit's warn, as Context's past 80%. The facts run from what moves
+  most, through what describes the thing, to its identifiers last in the
+  Name face (a node, a bus name, a model's code), so the first screen
+  holds what he came for (VKCF3Z, 2026-11-07). A fact still being read a
+  fixed placeholder, and none that only says again the name, or what the
+  row's side or note already says: a speaker's row saying "volume 100%"
+  leaves its Volume fact "0 dB", and a fact equal in every part says it
+  once ("stereo · balanced"); then its words,
   a notice's in the serif upright its card reads them in; then its picture. Its
   text is as far from its frame as the card's (the inset, l and the
   hairline) on every side, its foot included, so it ends at the last
@@ -1722,7 +1748,7 @@ works the same way everywhere.
   what its sender offers, Read, one switch saying yes or no, Forget It, and
   Copy What It Said last. Held, a card's acts are commands, never a row
   stepped into: the cursor card names what its sender offers under its
-  sender, ":reply \u00b7 :play", and : puts them first in the menu, after
+  sender, ":reply · :play", and : puts them first in the menu, after
   Return's going to it; d, :forg and yy do the rest. A
   notice on screen waits while Joel's away, thirty seconds with nothing
   typed or moved (`notices.away`), whatever keeps the screen awake, so one
