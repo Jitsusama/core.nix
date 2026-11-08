@@ -282,7 +282,11 @@ mod tests {
             Some(Restart::HandingOver),
             "a build reaches it"
         );
-        assert_eq!(restarts(true, true, true), None, "one it handed over finishes");
+        assert_eq!(
+            restarts(true, true, true),
+            None,
+            "one it handed over finishes"
+        );
         assert_eq!(restarts(false, true, false), None, "nothing changed it");
     }
 

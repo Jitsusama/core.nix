@@ -1180,16 +1180,25 @@ mod tests {
 
     #[test]
     fn each_way_back_from_no_builder_answering_says_which() {
-        assert_eq!(told(Named::Lent, Named::Unanswered).map(|(word, _)| word), Some("none"));
+        assert_eq!(
+            told(Named::Lent, Named::Unanswered).map(|(word, _)| word),
+            Some("none")
+        );
         assert_eq!(told(Named::Unanswered, Named::Unanswered), None);
         assert_eq!(told(Named::Lent, Named::Second), None, "a stand-in answers");
         assert_eq!(
             told(Named::Unanswered, Named::Second),
-            Some(("back", "a builder answers again: the second lent builder stands in".into()))
+            Some((
+                "back",
+                "a builder answers again: the second lent builder stands in".into()
+            ))
         );
         assert_eq!(
             told(Named::Unanswered, Named::Vm(2)),
-            Some(("back", "a builder answers again: 2 VM builders stand in".into()))
+            Some((
+                "back",
+                "a builder answers again: 2 VM builders stand in".into()
+            ))
         );
         assert_eq!(
             told(Named::Unanswered, Named::Nothing),

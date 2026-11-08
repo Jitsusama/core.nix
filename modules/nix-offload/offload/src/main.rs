@@ -1938,7 +1938,12 @@ fn let_go(settings: &Settings, leaving: Vec<Leaving>, now: u64) -> Vec<Leaving> 
 /// back. Its helper ends with it, unless it `hands_over`: then the helper,
 /// run through `--outlasting` so the unit's end leaves it, takes no new
 /// connection and finishes the builds it carries beside the next start's.
-fn left_as_it_ends(settings: &Settings, machines: &mut Machines, mut builder: Lent, hands_over: bool) {
+fn left_as_it_ends(
+    settings: &Settings,
+    machines: &mut Machines,
+    mut builder: Lent,
+    hands_over: bool,
+) {
     machines.show(None);
     if hands_over {
         told_to_hand_over(&builder.helper);
@@ -2772,7 +2777,11 @@ exit 1
         );
         let journal = fs::read_to_string(&settings.journal).unwrap();
         assert!(
-            journal.lines().last().unwrap().contains(r#""event":"ended","name":"lend-5""#),
+            journal
+                .lines()
+                .last()
+                .unwrap()
+                .contains(r#""event":"ended","name":"lend-5""#),
             "{journal}"
         );
     }
