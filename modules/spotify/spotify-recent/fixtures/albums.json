@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "added_at": "2026-11-01T10:00:00Z",
+      "album": {
+        "uri": "spotify:album:b1",
+        "name": "Kid A",
+        "total_tracks": 10,
+        "artists": [{ "name": "Radiohead" }]
+      }
+    },
+    {
+      "added_at": "2026-10-01T10:00:00Z",
+      "album": {
+        "uri": "spotify:album:b2",
+        "name": "Together",
+        "artists": [{ "name": "Singer" }, { "name": "Guest" }]
+      }
+    },
+    { "added_at": "2026-09-01T10:00:00Z", "album": null }
+  ],
+  "next": null,
+  "total": 3
+}

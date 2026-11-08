@@ -22,10 +22,11 @@
 # the theme's, so it needs no theme of its own, and it reports what's
 # playing to the desktop's media keys.
 #
-# In the launcher, Programs › Spotify holds what Spotify played lately as
-# its Recent, and Liked Songs and Playlists as its own acts, each played
-# from there (SpotifyProgram.qml), read through spotify-recent with
-# spotify-player's sign-in only as Spotify is stepped into.
+# In the launcher, Programs › Spotify holds the playlists, albums and
+# shows Spotify played lately as its Recent, and Liked Songs, Playlists,
+# Albums, Artists and Shows inside it, each played from there
+# (SpotifyProgram.qml), read through spotify-recent with spotify-player's
+# sign-in only as Spotify is stepped into.
 { spicetify-nix, quickshell }:
 {
   config,
@@ -221,7 +222,7 @@ in
   # is spotify.
   jitsusama.keys.spotify = keys;
 
-  # Spotify's Recent, Liked Songs and Playlists in Programs › Spotify,
+  # Spotify's Recent and what Joel keeps there in Programs › Spotify,
   # made beside Slack's program and the other programs' acts. Each is played
   # through spotify-recent while a Spotify runs, else opened in the
   # client; signed out, Sign In runs spotify-player's sign-in in kitty,

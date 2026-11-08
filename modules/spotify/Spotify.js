@@ -1,8 +1,8 @@
 // What Spotify's program in the launcher works out from what spotify-recent
 // prints (SpotifyProgram.qml): its lines read into records, what each says
-// beside it, the link it copies, and how Spotify stands by the command's
-// exit status. Plain JavaScript, so tests/spotify-program.qml reaches it
-// in the shell's own engine.
+// beside it and as its note, when it played, the link it copies, and how
+// Spotify stands by the command's exit status. Plain JavaScript, so
+// tests/spotify-program.qml reaches it in the shell's own engine.
 .pragma library
 .import "Ago.js" as Ago
 
@@ -10,8 +10,13 @@
 // Spotify stands for each.
 const STANDS = { 0: "ok", 2: "signedOut", 3: "nowhere", 4: "unreachable" };
 
-// The fields of a line: its URI, kind, name, who made it and when.
-const FIELDS = 5;
+// The fields of a line: its URI, kind, name, who made it, when, and how
+// many it holds.
+const FIELDS = 6;
+
+// The lists Joel keeps, each an inside of Spotify's program, in the order
+// they're listed, by the words spotify-recent is asked them by.
+const LISTS = ["playlists", "albums", "artists", "shows"];
 
 // How Spotify stands after the command ended with `code`: "ok",
 // "signedOut", "nowhere" for nothing to play on, "unreachable", or
@@ -30,14 +35,22 @@ function worst(codes) {
 }
 
 // The records in what spotify-recent printed, a line each: { uri, kind,
-// name, detail, at }, where `at` is when it was last played, or `playing`
-// or `paused`, and for a playlist listed whole, how many songs it holds.
-// A line without its five fields is left out, as a cut-off one would be.
+// name, detail, at, size }, where `at` is when it was last played, or
+// `playing` or `paused`, and `size` how many songs or episodes it holds,
+// each empty where Spotify doesn't say. A line without its six fields is
+// left out, as a cut-off one would be.
 function records(text) {
     return text.split("\n")
         .map(line => line.split("\t"))
         .filter(fields => fields.length === FIELDS && fields[0] !== "")
-        .map(([uri, kind, name, detail, at]) => ({ uri, kind, name, detail, at }));
+        .map(([uri, kind, name, detail, at, size]) => ({ uri, kind, name, detail, at, size }));
+}
+
+// When a record was last played, in milliseconds, as Recent lays rows out
+// by: what plays now as `now`, since it's newer than anything played, and
+// NaN for one that says no time.
+function when(record, now) {
+    return current(record) ? now : Date.parse(record.at);
 }
 
 // Whether a record is what Spotify has now, playing or paused.
@@ -46,27 +59,40 @@ function current(record) {
 }
 
 // What a row of Recent says beside it: whether it plays now, and once
-// over, its kind and how long ago it last played, in the words `said`
-// gives for each, as "playlist · 2 h ago"; Liked Songs says only when,
-// its name saying what it is. What plays now says so by `playing`,
-// Spotify's own player's live state where it has one, so a pause after
-// it was read still shows.
+// over, how long ago it last played, as "2 h ago", its note saying what
+// it is. What plays now says so by `playing`, Spotify's own player's live
+// state where it has one, so a pause after it was read still shows.
 function beside(record, playing, now, said) {
     if (current(record)) {
         const live = playing === null ? record.at === "playing" : playing;
         return said[live ? "playing" : "paused"] ?? "";
     }
     const at = Date.parse(record.at);
-    const kind = record.kind === "collection" ? "" : said[record.kind] ?? record.kind;
-    const when = Number.isNaN(at) ? "" : Ago.ago(at, now);
-    return [kind, when].filter(part => part !== "").join(" \u00b7 ");
+    return Number.isNaN(at) ? "" : Ago.ago(at, now);
+}
+
+// What a row says as its note, in the words `said` gives: its kind where
+// `kinded`, how many songs it holds, or episodes for a show, and who made
+// it, as "playlist · 46 songs · Joel", each left out where Spotify
+// doesn't say.
+function noted(record, kinded, said) {
+    const size = (record.size ?? "") === "" ? ""
+        : record.kind === "show"
+            ? counted(Number(record.size), said.episode ?? "", said.episodes ?? "")
+            : counted(Number(record.size), said.song ?? "", said.songs ?? "");
+    const kind = kinded ? said[record.kind] ?? record.kind : "";
+    return [kind, size, record.detail ?? ""].filter(part => part !== "").join(" \u00b7 ");
+}
+
+// A count grouped by thousands, as "1,234".
+function grouped(count) {
+    return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 // A count as it's said, grouped by thousands, and `one` or `many` with it
 // in place of {count}.
 function counted(count, one, many) {
-    const grouped = String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return (count === 1 ? one : many).replace("{count}", grouped);
+    return (count === 1 ? one : many).replace("{count}", grouped(count));
 }
 
 // The link anyone can open for a Spotify URI: open.spotify.com's, as

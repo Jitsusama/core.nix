@@ -2,13 +2,16 @@
 // SpotifyProgram.qml) through Quickshell itself, with spotify-recent stood
 // in (tests/spotify-recent-stand-in.sh), and niri and what's playing too.
 // Nothing is read while the launcher is closed; stepped into, Spotify is
-// read once an opening, its three reads together, and again the next
-// time it opens. Its Recent leads with what plays now, saying "playing"
-// or "paused" as Spotify's player stands, the rest their kind and how
-// long ago, their note who made them; its acts are Liked Songs, saying
-// how many, and Playlists, each beside how many songs it holds. Inside a
-// row are Play, Open in Spotify, then Copy the Link, its link Spotify's
-// own for anyone; Return plays through the command while a Spotify runs,
+// read once an opening, its six reads together, and again the next time
+// it opens. Its Recent is the playlists, albums and shows played lately,
+// newest first, each with its time in milliseconds, leading with what
+// plays now, saying "playing" or "paused" as Spotify's player stands, the
+// rest how long ago, each noting its kind, size and who made it; its
+// insides are Liked Songs, saying how many, then Playlists, Albums,
+// Artists and Shows, each counted, "none" while empty, each row inside
+// noting its size and who made it. Inside a row are Play, Open in
+// Spotify, then Copy the Link, its link Spotify's own for anyone; Return
+// plays through the command while a Spotify runs,
 // and otherwise, or when the command finds nowhere to play, opens the
 // client on it. Signed out, its note says so and Sign In leads, running
 // spotify-player's sign-in; out of reach, its note says that. It exits 0
@@ -145,6 +148,10 @@ ShellRoot {
         return rows.map(row => row.side);
     }
 
+    function notes(rows) {
+        return rows.map(row => row.note);
+    }
+
     Component.onCompleted: Qt.callLater(root.closed)
 
     // While the launcher is closed, nothing is read, however it's asked.
@@ -160,32 +167,48 @@ ShellRoot {
             same("stepped into, it's read", well.reading, true);
             well.programActs("spotify");
             waitFor("Spotify read", () => well.recent.length === 3 && well.liked === 1234
-                && well.playlists.length === 2, root.read);
+                && Object.keys(well.lists).length === 4, root.read);
         } catch (error) {
             fail(error.message);
         }
     }
 
     function read() {
-        same("stepped into twice, Spotify is read once, all three together", askedOf("well"),
-            ["well ", "well liked", "well playlists"]);
+        same("stepped into twice, Spotify is read once, all six together", askedOf("well"),
+            ["well ", "well albums", "well artists", "well liked", "well playlists",
+                "well shows"]);
+        const before = Date.now();
         const recent = well.recentOf("spotify");
-        same("Recent, what plays now first", names(recent), ["Morning", "Two", "Liked Songs"]);
-        same("beside each, playing, then its kind and how long ago, Liked Songs only when",
-            sides(recent), ["playing", "album \u00b7 2 h ago", "2 h ago"]);
-        same("its note, who made it", recent[1].note, "Singer, Guest");
+        same("Recent, what plays now first", names(recent), ["Morning", "Two", "The Show"]);
+        same("beside each, playing, then how long ago", sides(recent),
+            ["playing", "2 h ago", "1 d ago"]);
+        same("each noting its kind, size and who made it, a show's in episodes", notes(recent),
+            ["playlist \u00b7 46 songs \u00b7 Joel", "album \u00b7 1 song \u00b7 Singer, Guest",
+                "show \u00b7 1,212 episodes \u00b7 A Publisher"]);
+        same("each keyed by what it is", recent[0].key, "spotify:context:spotify:playlist:p9");
+        expect("what plays now is played at this moment", recent[0].at >= before
+            && recent[0].at <= Date.now(), String(recent[0].at));
+        expect("the rest at when they played, newest first", Number.isFinite(recent[2].at)
+            && recent[0].at > recent[1].at && recent[1].at > recent[2].at,
+            JSON.stringify(recent.map(row => row.at)));
         Launcher.Playing.player.isPlaying = false;
         same("what plays now says paused as Spotify's player does",
             well.recentOf("spotify")[0].side, "paused");
         Launcher.Playing.player.isPlaying = true;
         const acts = well.programActs("spotify");
-        same("its acts, Liked Songs then Playlists", names(acts), ["Liked Songs", "Playlists"]);
-        same("Liked Songs says how many", acts[0].side, "1,234 songs");
-        same("Playlists says how many", acts[1].side, "2");
+        same("its insides, Liked Songs, then each list Joel keeps", names(acts),
+            ["Liked Songs", "Playlists", "Albums", "Artists", "Shows"]);
+        same("each counted, none while empty", sides(acts),
+            ["1,234 songs", "2", "1", "1", "none"]);
         const lists = acts[1].targets();
         same("every playlist inside", names(lists), ["Focus", "Road trip"]);
-        same("each beside how many songs it holds", sides(lists), ["42 songs", "1 song"]);
-        same("each its note, who made it", lists[0].note, "Joel");
+        same("each noting its size and who made it, its kind its list's", notes(lists),
+            ["42 songs \u00b7 Joel", "1 song \u00b7 Spotify"]);
+        same("an album its songs and artists", notes(acts[2].targets()),
+            ["10 songs \u00b7 Radiohead"]);
+        same("an artist only its name", acts[3].targets().map(row => `${row.name}|${row.note}`),
+            ["Artist|"]);
+        same("no shows, none inside", acts[4].targets(), []);
         const inside = recent[0].verbs();
         same("inside a row, Play, Open in Spotify, then Copy the Link", names(inside),
             ["Play", "Open in Spotify", "Copy the Link"]);
@@ -199,7 +222,7 @@ ShellRoot {
         same("Open in Spotify opens the client on it", Niri.spawned,
             ["spotify", "spotify:playlist:p9"]);
         recent[1].run();
-        waitFor("a play through the command", () => askedOf("well").length === 4, root.played);
+        waitFor("a play through the command", () => askedOf("well").length === 7, root.played);
     }
 
     function played() {
@@ -210,14 +233,14 @@ ShellRoot {
         well.recentOf("spotify")[1].run();
         same("with no Spotify running, Return opens the client on it", Niri.spawned,
             ["spotify", "spotify:album:a2"]);
-        same("and asks nothing", askedOf("well").length, 4);
+        same("and asks nothing", askedOf("well").length, 7);
         Launcher.Playing.players = [Launcher.Playing.player];
         shown.open = false;
         shown.open = true;
         well.programActs("spotify");
         same("opened again, it's read again", well.reading, true);
         waitFor("Spotify read again as the launcher opens again",
-            () => askedOf("well").length === 7, root.again);
+            () => askedOf("well").length === 13, root.again);
     }
 
     function again() {

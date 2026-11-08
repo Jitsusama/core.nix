@@ -5492,18 +5492,22 @@
     {
       "id": "spotify:context",
       "of": "program:spotify",
-      "name": "Playlist, Album or Artist",
+      "name": "Playlist, Album, Artist or Show",
       "glyph": "playing",
       "verb": "play",
       "said": {
         "playlist": "playlist",
         "album": "album",
         "artist": "artist",
+        "show": "show",
         "collection": "liked songs",
         "playing": "playing",
         "paused": "paused",
         "song": "1 song",
         "songs": "{count} songs",
+        "episode": "1 episode",
+        "episodes": "{count} episodes",
+        "none": "none",
         "signedOut": "signed out",
         "unreachable": "can't reach Spotify",
         "failed": "couldn't read Spotify"
@@ -5520,6 +5524,27 @@
       "id": "spotify:playlists",
       "of": "program:spotify",
       "name": "Playlists",
+      "verb": "more",
+      "glyph": "playing"
+    },
+    {
+      "id": "spotify:albums",
+      "of": "program:spotify",
+      "name": "Albums",
+      "verb": "more",
+      "glyph": "playing"
+    },
+    {
+      "id": "spotify:artists",
+      "of": "program:spotify",
+      "name": "Artists",
+      "verb": "more",
+      "glyph": "playing"
+    },
+    {
+      "id": "spotify:shows",
+      "of": "program:spotify",
+      "name": "Shows",
       "verb": "more",
       "glyph": "playing"
     },
@@ -5550,7 +5575,7 @@
     {
       "id": "verb:spotify:sign-in",
       "command": "open",
-      "in": "applications",
+      "in": "program:spotify",
       "name": "Sign In",
       "verb": "open",
       "glyph": "signIn"
@@ -7904,14 +7929,6 @@
     }
   },
   "meant": [
-    {
-      "word": "sign in",
-      "things": [
-        "verb:slack:sign-in",
-        "verb:spotify:sign-in"
-      ],
-      "why": "Slack and Spotify each sign in again inside their own program, never side by side."
-    },
     {
       "word": "devices",
       "things": [

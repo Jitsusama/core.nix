@@ -1468,9 +1468,11 @@
     clippy finds nothing in spotify-recent or its tests
   '';
   spotify-recent-reads-what-played = ''
-    spotify-recent lists what Spotify played lately one row a playlist, album or artist, nine at
-    most, refreshes a spent sign-in and writes it back in its own shape keeping its refresh token,
-    finds a device to play on, and says signed out, nowhere to play and out of reach apart
+    spotify-recent lists what Spotify played lately one row a playlist, album or show, each with
+    its size, nine at most, Liked Songs and artists left inside; walks Joel's playlists, albums,
+    artists and shows page after page; refreshes a spent sign-in only once, under a lock, and
+    writes it back 0600 in its own shape keeping its refresh token; finds a device to play on;
+    and says signed out, nowhere to play and out of reach apart
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
@@ -1770,8 +1772,9 @@
   '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
-    and holds its Recent, Liked Songs and Playlists, each played, opened and copied as it says,
-    its note saying when it's signed out or out of reach
+    and holds its Recent, newest first, each row timed and noting its kind and size, and Liked
+    Songs, Playlists, Albums, Artists and Shows, each counted, each played, opened and copied as
+    it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-lays-sessions-under-their-orchestrators = ''
     every list of pi sessions keeps one order of how they stand, and Agents lays each under the

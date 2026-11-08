@@ -48,6 +48,7 @@
         "album": {
           "uri": "spotify:album:a3",
           "name": "Three",
+          "total_tracks": 10,
           "artists": [{ "name": "Trio" }]
         }
       }
@@ -140,6 +141,48 @@
           "uri": "spotify:album:a6",
           "name": "Six",
           "artists": [{ "name": "Sextet" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T07:59:00.000Z",
+      "context": { "type": "album", "uri": "spotify:album:a7" },
+      "track": {
+        "uri": "spotify:track:t12",
+        "name": "Twelfth",
+        "album": {
+          "uri": "spotify:album:a7",
+          "name": "Seven",
+          "total_tracks": 7,
+          "artists": [{ "name": "Septet" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T07:58:00.000Z",
+      "context": { "type": "album", "uri": "spotify:album:a8" },
+      "track": {
+        "uri": "spotify:track:t13",
+        "name": "Thirteenth",
+        "album": {
+          "uri": "spotify:album:a8",
+          "name": "Eight",
+          "total_tracks": 8,
+          "artists": [{ "name": "Octet" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T07:57:00.000Z",
+      "context": { "type": "album", "uri": "spotify:album:a12" },
+      "track": {
+        "uri": "spotify:track:t14",
+        "name": "Fourteenth",
+        "album": {
+          "uri": "spotify:album:a12",
+          "name": "Twelve",
+          "total_tracks": 12,
+          "artists": [{ "name": "Band" }]
         }
       }
     },

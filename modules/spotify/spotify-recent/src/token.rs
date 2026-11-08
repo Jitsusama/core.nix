@@ -12,9 +12,9 @@
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 /// How long before it runs out an access token counts as spent, so one
@@ -100,15 +100,23 @@ pub fn read(path: &Path) -> Read {
         .map_or(Read::Missing, Read::Found)
 }
 
-/// Writes `token` to `path` whole or not at all: to a file beside it,
-/// with the old file's permissions, then over it, so spotify-player,
-/// reading it at any moment, finds either the old sign-in or the new.
+/// Writes `token` to `path` whole or not at all: to a file beside it, in
+/// the same folder so the rename can't cross filesystems, then over it,
+/// so spotify-player, reading it at any moment, finds either the old
+/// sign-in or the new. It's Joel's alone, 0600, whatever the old file
+/// was, since it signs in as him; the mode is set before a byte of the
+/// sign-in is written, so it's never readable by another for a moment.
 pub fn write(path: &Path, token: &SignIn) -> std::io::Result<()> {
     let text = serde_json::to_string(token).map_err(std::io::Error::other)?;
     let beside = beside(path, "writing");
-    let mode = fs::metadata(path).map_or(0o600, |kept| kept.permissions().mode());
-    let mut file = File::create(&beside)?;
-    file.set_permissions(fs::Permissions::from_mode(mode))?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&beside)?;
+    // A file left by a write that died keeps its old mode through open.
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     fs::rename(&beside, path)
@@ -215,9 +223,10 @@ mod tests {
         // The same fields in the same order, on one line, as rspotify
         // writes them, with whatever else the file held after them.
         assert_eq!(written, given);
+        // Joel's alone, though the file it replaced wasn't.
         assert_eq!(
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-            0o644
+            0o600
         );
         assert!(!beside(&path, "writing").exists());
         fs::remove_dir_all(&folder).unwrap();

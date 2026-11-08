@@ -1,20 +1,24 @@
-//! Says what Spotify played lately, Joel's playlists and how many songs he
-//! likes, and plays one, for Spotify's Recent and its acts in the launcher
-//! (modules/spotify/SpotifyProgram.qml).
+//! Says what Spotify played lately, what Joel keeps there and how many
+//! songs he likes, and plays one, for Spotify's Recent and its insides in
+//! the launcher (modules/spotify/SpotifyProgram.qml).
 //!
 //! ```text
 //! spotify-recent                what played lately, one line a context
 //! spotify-recent playlists      every playlist of Joel's
+//! spotify-recent albums         every album he saved
+//! spotify-recent artists        every artist he follows
+//! spotify-recent shows          every show he saved
 //! spotify-recent liked          how many songs he likes
-//! spotify-recent play URI       plays a playlist, album, artist or track
+//! spotify-recent play URI       plays a playlist, album, artist, show or track
 //! ```
 //!
-//! A line is a Spotify URI, its kind, its name, who made it and when it
-//! was last played, apart by tabs: what played lately is one line for each
-//! playlist, album or artist played from, a track played from nowhere
-//! Spotify names counting as its album, what plays now first, its time
-//! `playing` or `paused`, then newest first, nine at most. A playlist's
-//! last field is how many songs it holds.
+//! A line is a Spotify URI, its kind, its name, who made it, when it was
+//! last played and how many songs or episodes it holds, apart by tabs,
+//! each left empty where Spotify doesn't say. What played lately is one
+//! line for each playlist, album or show played from, a track played from
+//! nowhere Spotify names counting as its album, what plays now first, its
+//! time `playing` or `paused`, then newest first, nine at most. A line of
+//! a list says no time, being kept rather than played.
 //!
 //! It asks Spotify's Web API with spotify-player's sign-in, refreshing it
 //! once it's run out and writing it back as spotify-player keeps it
@@ -28,26 +32,31 @@
 //! `SPOTIFY_RECENT_TOKEN` stand in for Spotify's addresses and the
 //! sign-in's file, for the tests.
 
+mod library;
 mod recent;
 mod spotify;
 mod token;
 
+use library::Library;
 use recent::Row;
 use spotify::Spotify;
 use std::io::Write;
 use std::process::ExitCode;
 
 /// What it says when asked something it doesn't know: how to ask it.
-const USAGE: &str = "usage: spotify-recent [playlists | liked | play URI]";
+const USAGE: &str =
+    "usage: spotify-recent [playlists | albums | artists | shows | liked | play URI]";
 
 fn main() -> ExitCode {
     let asked: Vec<String> = std::env::args().skip(1).collect();
     let mut spotify = Spotify::from_environment();
     let said = match asked.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         [] => spotify.recent().map(|rows| lines(&rows)),
-        ["playlists"] => spotify.playlists().map(|rows| lines(&rows)),
         ["liked"] => spotify.liked().map(|count| format!("{count}\n")),
         ["play", uri] => spotify.play(uri).map(|()| String::new()),
+        [list] if let Some(library) = Library::named(list) => {
+            spotify.library(library).map(|rows| lines(&rows))
+        }
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(64);

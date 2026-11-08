@@ -1,14 +1,24 @@
 // Spotify's program in the launcher (Programs › Spotify), from Spotify's
-// Web API through spotify-recent (spotify-recent/src/main.rs): its Recent
-// (recentOf, which Applications.qml asks every provider that has it) is
-// the playlists, albums and artists it played from lately, nine at most,
-// what plays now first, saying "playing" or "paused" beside it as
-// Spotify's player stands, the rest their kind and how long ago, as
-// "playlist · 2 h ago", their note who made them. Return plays one, and
-// inside are Play, Open in Spotify, then Copy the Link, Copy last as
-// everywhere. Its own acts (programActs) are Liked Songs, saying how many,
-// which plays them the same way, and Playlists, every one of Joel's, each
-// the same row as Recent's and found inside by typing.
+// Web API through spotify-recent (spotify-recent/src/main.rs), held to
+// VKCF3Z's rulings. Its Recent (recentOf, which Applications.qml asks
+// every provider that has it) is the playlists, albums and shows it
+// played lately, each once, newest first, nine at most, what plays now
+// first: beside each, "playing" or "paused" as Spotify's player stands,
+// or how long ago it played, and as its note its kind and size, then who
+// made it, as "playlist · 46 songs · Joel". Each row gives its time as
+// `at`, in milliseconds, what plays now as this moment, so Recent.listed
+// can lay it among others newest first. Return plays one, and inside are
+// Play, Open in Spotify, then Copy the Link, Copy last as everywhere.
+// Liked Songs and an artist are never in Recent, each having its home
+// inside.
+//
+// Its insides one step in (programActs) are Liked Songs, saying how many,
+// which plays them as a row of Recent plays, then Playlists, Albums,
+// Artists and Shows, each saying how many it holds and holding every one
+// Joel keeps, each the same row as Recent's, its note its size and who
+// made it, found inside by typing. Each stands once it's been read, and
+// says none while it holds nothing, so none comes and goes between
+// openings.
 //
 // Return plays through the Web API (`spotify-recent play`) while a
 // Spotify runs, its client or spotify-player, rather than asking the
@@ -46,10 +56,12 @@ Provider {
     readonly property var clientCommand: settings.spotify ?? ["spotify"]
     readonly property var signInCommand: settings.signIn ?? []
 
-    // What was read last: what played lately, every playlist and how many
-    // songs are liked, or -1 before they're counted.
+    // What was read last: what played lately, each list Joel keeps by its
+    // name in spotify-recent's words (Spotify.js's LISTS), one not yet
+    // read absent, and how many songs are liked, or -1 before they're
+    // counted.
     property var recent: []
-    property var playlists: []
+    property var lists: ({})
     property int liked: -1
     // How Spotify stood as it was last read (Spotify.js's standing), or
     // "" before it's read.
@@ -61,6 +73,9 @@ Provider {
     // Whether a read this opening has yet to end, so nothing waits on a
     // read that never began.
     property bool reading: false
+    // How many reads an opening makes: what played lately, the liked
+    // songs' count and each list.
+    readonly property int reads: 2 + Spotify.LISTS.length
 
     readonly property var said: Words.of("spotify:context").said ?? {}
     readonly property string note: Spotify.note(stands, said)
@@ -86,7 +101,8 @@ Provider {
         reading = true;
         recentReader.start(recentCommand);
         likedReader.start(recentCommand.concat(["liked"]));
-        listsReader.start(recentCommand.concat(["playlists"]));
+        for (const reader of [playlistsReader, albumsReader, artistsReader, showsReader])
+            reader.start(recentCommand.concat([reader.list]));
     }
 
     // How Spotify stands once a read ended with `code`: the worst any
@@ -95,7 +111,7 @@ Provider {
     function heard(code) {
         ended = ended.concat([code]);
         stands = Spotify.worst(ended);
-        reading = ended.length < 3;
+        reading = ended.length < reads;
         changed();
     }
 
@@ -117,13 +133,16 @@ Provider {
         if (stands === "signedOut")
             return signInCommand.length === 0 ? [] : [signIn()];
         return (liked >= 0 ? [likedSongs()] : [])
-            .concat(playlists.length > 0 ? [listed()] : []);
+            .concat(Spotify.LISTS.filter(name => name in lists).map(name => listed(name)));
     }
 
     function recentOf(app) {
         if (app !== program || stands === "signedOut")
             return [];
-        return recent.map(record => row(record));
+        const now = Date.now();
+        return recent.map(record => Object.assign(row(record, provider.beside(record), true), {
+            at: Spotify.when(record, now)
+        }));
     }
 
     // Sign In, spotify-player's own sign-in in a terminal, which saves the
@@ -150,31 +169,36 @@ Provider {
             kind: "collection",
             name: Words.name("spotify:liked"),
             detail: "",
-            at: ""
-        }, Spotify.counted(liked, said.song ?? "", said.songs ?? ""));
+            at: "",
+            size: ""
+        }, Spotify.counted(liked, said.song ?? "", said.songs ?? ""), false);
     }
 
-    // Playlists, every one of Joel's, as he steps in.
-    function listed() {
-        const key = "spotify:playlists";
+    // One of the lists Joel keeps, by its name, every one inside, saying
+    // how many beside it, or none.
+    function listed(name) {
+        const key = `spotify:${name}`;
+        const held = lists[name];
         return thing({
             key: key,
             name: Words.name(key),
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "program",
-            side: String(playlists.length),
+            side: held.length > 0 ? Spotify.grouped(held.length) : said.none ?? "",
             ask: "which?",
             nested: true,
-            targets: () => provider.playlists.map(record => provider.row(record,
-                Spotify.counted(Number(record.at), provider.said.song ?? "",
-                    provider.said.songs ?? "")))
+            empty: said.none ?? "",
+            targets: () => (provider.lists[name] ?? []).map(record => provider.row(record, "",
+                false))
         });
     }
 
-    // One playlist, album, artist or Liked Songs, one row wherever it
-    // shows, keyed by its URI: beside it `side`, or as Recent says it.
-    function row(record, side) {
+    // One playlist, album, artist, show or Liked Songs, one row wherever
+    // it shows, keyed by its URI: beside it `side`, and as its note its
+    // size and who made it, after its kind where `kinded`, as Recent mixes
+    // kinds and a list holds one.
+    function row(record, side, kinded) {
         const play = () => provider.play(record.uri);
         const ours = record.kind === "collection";
         return thing({
@@ -187,8 +211,8 @@ Provider {
             verb: Words.verb("verb:spotify:play"),
             glyph: Words.glyph(ours ? "spotify:liked" : "spotify:context"),
             hue: "program",
-            side: side ?? provider.beside(record),
-            note: record.detail,
+            side: side,
+            note: Spotify.noted(record, kinded, said),
             later: true,
             run: play,
             verbs: () => provider.acts(record, play)
@@ -302,14 +326,45 @@ Provider {
         }
     }
 
-    Reader {
-        id: listsReader
+    // A list's reader, keeping what it read under the list's name, one of
+    // Spotify.js's LISTS.
+    component ListReader: Reader {
+        id: listReader
+
+        required property string list
 
         onDone: (code, text) => {
-            if (code === 0)
-                provider.playlists = Spotify.records(text);
+            if (code === 0) {
+                const kept = Object.assign({}, provider.lists);
+                kept[listReader.list] = Spotify.records(text);
+                provider.lists = kept;
+            }
             provider.heard(code);
         }
+    }
+
+    ListReader {
+        id: playlistsReader
+
+        list: "playlists"
+    }
+
+    ListReader {
+        id: albumsReader
+
+        list: "albums"
+    }
+
+    ListReader {
+        id: artistsReader
+
+        list: "artists"
+    }
+
+    ListReader {
+        id: showsReader
+
+        list: "shows"
     }
 
     // Playing, which falls back to the client when the API has nowhere to

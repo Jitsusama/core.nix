@@ -1,6 +1,7 @@
 //! Spotify's Web API, asked with spotify-player's sign-in, at addresses
 //! given rather than fixed, so the tests ask a stand-in on this machine.
 
+use crate::library::Library;
 use crate::recent::{self, LIKED, Row};
 use crate::token::{self, Read, SignIn};
 use jiff::Timestamp;
@@ -99,9 +100,10 @@ impl Spotify {
     }
 
     /// What Spotify played lately, a row a context, what it plays now
-    /// first (recent.rs says how).
+    /// first (recent.rs says how). Spotify leaves an episode playing out
+    /// of what it has now unless asked for episodes too.
     pub fn recent(&mut self) -> Result<Vec<Row>, Refused> {
-        let (status, player) = self.get("/me/player")?;
+        let (status, player) = self.get("/me/player?additional_types=episode")?;
         // 204 is Spotify having nothing playing anywhere.
         let player = if status == 200 { player } else { Value::Null };
         let recently = self.must("/me/player/recently-played?limit=50")?;
@@ -109,44 +111,39 @@ impl Spotify {
         recent::rows(&plays, |kind, uri| self.named(kind, uri))
     }
 
-    /// A playlist's, an artist's or an album's name and who made it, or
-    /// none where Spotify won't say.
-    fn named(&mut self, kind: &str, uri: &str) -> Result<Option<(String, String)>, Refused> {
+    /// A playlist's, an album's or a show's row, its name, who made it and
+    /// how many it holds, or none where Spotify won't say. A playlist is
+    /// asked for those fields alone, since whole it holds its first
+    /// hundred songs.
+    fn named(&mut self, kind: &str, uri: &str) -> Result<Option<Row>, Refused> {
         let id = uri.rsplit(':').next().unwrap_or_default();
-        let (asked, read): (String, fn(&Value) -> String) = match kind {
+        let (asked, read): (String, fn(&Value) -> Option<Row>) = match kind {
             "playlist" => (
-                format!("/playlists/{id}?fields=name,owner(display_name)"),
-                recent::owner,
+                format!("/playlists/{id}?fields=name,owner(display_name),items(total)"),
+                recent::playlist,
             ),
-            "artist" => (format!("/artists/{id}"), |_| String::new()),
-            "album" => (format!("/albums/{id}"), |album| {
-                album
-                    .get("artists")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|artist| artist.get("name")?.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }),
+            "album" => (format!("/albums/{id}"), recent::album),
+            "show" => (format!("/shows/{id}"), recent::show),
             _ => return Ok(None),
         };
-        let (status, said) = self.get(&asked)?;
+        let (status, mut said) = self.get(&asked)?;
         if status != 200 {
             return Ok(None);
         }
-        Ok(said
-            .get("name")
-            .and_then(Value::as_str)
-            .map(|name| (name.to_owned(), read(&said))))
+        // It's what was asked for, which a playlist asked by its fields
+        // doesn't say again.
+        if let Some(fields) = said.as_object_mut() {
+            fields.insert("uri".to_owned(), Value::from(uri));
+        }
+        Ok(read(&said))
     }
 
-    /// Every one of Joel's playlists, page after page.
-    pub fn playlists(&mut self) -> Result<Vec<Row>, Refused> {
+    /// Every row of one of Joel's lists, page after page.
+    pub fn library(&mut self, library: Library) -> Result<Vec<Row>, Refused> {
         let mut rows = Vec::new();
-        let mut next = Some("/me/playlists?limit=50".to_owned());
+        let mut next = Some(library.first().to_owned());
         while let Some(page) = next {
-            let (more, after) = recent::playlists(&self.must(&page)?);
+            let (more, after) = library.page(&self.must(&page)?);
             rows.extend(more);
             next = after;
         }

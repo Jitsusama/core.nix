@@ -12,14 +12,17 @@
 }:
 onLinux {
   # spotify-recent's tests run as it builds: what played lately is one row
-  # a playlist, album or artist, repeats dropped, a track from nowhere its
-  # album, what plays now first, nine at most, no tab in a name; a sign-in
-  # counts as run out a minute early, a refresh without a new refresh
-  # token keeps the old one, and the sign-in is written back in its own
-  # shape; and against a stand-in for Spotify, a spent sign-in is
-  # refreshed and kept before anything is asked, a play finds a device
-  # when none plays, and signed out, nowhere to play and out of reach are
-  # each said by their exit status.
+  # a playlist, album or show, each with its size, repeats dropped, a track
+  # from nowhere its album, Liked Songs and artists left inside, what
+  # plays now first, a show by its episode, nine at most, no tab in a
+  # name; each list Joel keeps is read a page at a time; a sign-in counts
+  # as run out a minute early, a refresh without a new refresh token keeps
+  # the old one, and the sign-in is written back 0600 in its own shape;
+  # and against a stand-in for Spotify, a spent sign-in is refreshed and
+  # kept before anything is asked, one another refreshed while it waited
+  # on the lock is taken as it is, a play finds a device when none plays,
+  # and signed out, nowhere to play and out of reach are each said by
+  # their exit status.
   spotify-recent-reads-what-played = pkgs.callPackage ./spotify-recent/package.nix { };
   # clippy finds nothing in it, its tests included.
   spotify-recent-passes-clippy = passesClippy "spotify-recent-passes-clippy" (
@@ -27,10 +30,12 @@ onLinux {
   );
 
   # Spotify's program in the launcher reads Spotify only as it's stepped
-  # into, once an opening, and holds its Recent, Liked Songs and Playlists,
-  # each played, opened and copied as it says, its note saying when it's
-  # signed out or out of reach (tests/spotify-program.qml), with
-  # spotify-recent, niri and what's playing stood in.
+  # into, once an opening, and holds its Recent, newest first, each row
+  # timed and noting its kind and size, and Liked Songs, Playlists,
+  # Albums, Artists and Shows, each counted, each played, opened and
+  # copied as it says, its note saying when it's signed out or out of
+  # reach (tests/spotify-program.qml), with spotify-recent, niri and
+  # what's playing stood in.
   the-launcher-plays-from-spotify =
     let
       qs = lib.getExe' graphical.pkgs.quickshell "qs";
