@@ -481,9 +481,12 @@ Provider {
         const done = WaitingOnYou.doneBy(each);
         if (done === null)
             return "";
+        // Sentences of the drawer's own, as words.json's `tells` holds them.
+        const tells = Words.of("on:waiting").tells ?? {};
         if (done.person)
-            return (Words.of("on:waiting").tells ?? {}).person ?? "";
-        return waitingSaid(done.check ? "check" : done.signal, { value: done.value ?? "" });
+            return tells.person ?? "";
+        const how = waitingSaid(done.check ? "check" : done.signal, { value: done.value ?? "" });
+        return how === "" ? "" : (tells.known ?? "").replace("{how}", how);
     }
 
     // What its side says: for one not ready, what it waits for, else how
