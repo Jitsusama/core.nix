@@ -992,10 +992,99 @@ fn raising(line: &str) -> String {
         )
     } else if line.contains("users.info?user=U8") {
         r#"{"ok": true, "user": {"id": "U8", "profile": {"real_name": "Grace Hopper"}}}"#
+    } else if line.contains("auth.test") {
+        r#"{"ok": true, "url": "https://ada.slack.com/"}"#
     } else {
         return wanting(line);
     };
     said.into()
+}
+
+/// Whether Slack gives #launcher's history, for `missing`.
+static LAUNCHER_ANSWERS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Slack with a direct message from Ada he's never opened, its history
+/// over two pages, and in #launcher a mention of him whose history Slack
+/// doesn't give until `LAUNCHER_ANSWERS`.
+fn missing(line: &str) -> String {
+    let said = if line.contains("client.counts") {
+        concat!(
+            r#"{"ok": true, "ims": [{"id": "D3", "has_unreads": true, "mention_count": 1,"#,
+            r#""latest": "1730100002.000100"}], "mpims": [],"#,
+            r#""channels": [{"id": "C2", "has_unreads": true, "mention_count": 1,"#,
+            r#""latest": "1730100003.000100", "last_read": "1730100000.000100"}]}"#
+        )
+    } else if line.contains("conversations.history?channel=D3") && line.contains("cursor=p2") {
+        concat!(
+            r#"{"ok": true, "has_more": false, "messages": ["#,
+            r#"{"ts": "1730100001.000100", "user": "U7", "text": "hello, new here"}]}"#
+        )
+    } else if line.contains("conversations.history?channel=D3") {
+        concat!(
+            r#"{"ok": true, "has_more": true, "messages": ["#,
+            r#"{"ts": "1730100002.000100", "user": "U7", "text": "are you there?"}],"#,
+            r#""response_metadata": {"next_cursor": "p2"}}"#
+        )
+    } else if line.contains("conversations.history?channel=C2") {
+        if !LAUNCHER_ANSWERS.load(std::sync::atomic::Ordering::SeqCst) {
+            return r#"{"ok": false, "error": "internal_error"}"#.into();
+        }
+        concat!(
+            r#"{"ok": true, "messages": ["#,
+            r#"{"ts": "1730100003.000100", "user": "U8", "text": "<@U0> can you look"}]}"#
+        )
+    } else {
+        return raising(line);
+    };
+    said.into()
+}
+
+#[test]
+fn the_messages_are_said_whole_only_once_every_history_wanted_was_read() {
+    let stand_in = StandIn::new(missing);
+    let path = credentials("unreads-missing");
+    let run = path.with_extension("missing");
+    let mut program = unreads(&stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
+    // Ada's two, from the conversation he's never opened, read over both
+    // pages of its history; #launcher's isn't given, so they aren't whole.
+    until("Ada's messages were never held", || {
+        listed(&run, "slack-message").len() == 2
+    });
+    let texts = |run: &std::path::Path| -> Vec<String> {
+        listed(run, "slack-message")
+            .iter()
+            .map(|one| one["text"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(texts(&run), ["are you there?", "hello, new here"]);
+    assert_eq!(
+        listed(&run, "slack-account"),
+        [serde_json::json!({"standing": "ok"})]
+    );
+    // A conversation never read has no mark to read on from, and none to
+    // say.
+    assert!(listed(&run, "slack-read").is_empty());
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains("conversations.history?channel=D3"))
+            .all(|heard| !heard.line.contains("oldest"))
+    );
+    LAUNCHER_ANSWERS.store(true, std::sync::atomic::Ordering::SeqCst);
+    until("the messages were never said whole", || {
+        listed(&run, "slack-account")
+            == [serde_json::json!({"standing": "ok", "messages": "whole"})]
+    });
+    assert_eq!(
+        texts(&run),
+        ["@someone can you look", "are you there?", "hello, new here"]
+    );
+    program.kill().unwrap();
+    program.wait().unwrap();
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    forget(&path);
 }
 
 #[test]
@@ -1015,8 +1104,13 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
         held[0],
         serde_json::json!({"channel": "C2", "ts": "1730100003.000100", "place": "#launcher",
             "who": "Grace Hopper", "first": "@someone can you look",
-            "text": "@someone can you look", "at": 1_730_100_003_000_u64,
-            "link": "slack://channel?team=T1&id=C2", "team": "T1"})
+            "mine": false, "text": "@someone can you look", "at": 1_730_100_003_000_u64,
+            "link": "https://ada.slack.com/archives/C2/p1730100003000100", "team": "T1"})
+    );
+    // Every history wanted was read, so they're all there are.
+    assert_eq!(
+        listed(&run, "slack-account"),
+        [serde_json::json!({"standing": "ok", "messages": "whole"})]
     );
     let said: Vec<(&str, &str)> = held[1..]
         .iter()
@@ -1089,9 +1183,10 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
         (
             asked("conversations.history?channel=D1"),
             asked("conversations.history?channel=C2"),
-            asked("users.info?user=U8")
+            asked("users.info?user=U8"),
+            asked("auth.test")
         ),
-        (1, 1, 1)
+        (1, 1, 1, 1)
     );
     assert!(
         stand_in

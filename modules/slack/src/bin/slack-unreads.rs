@@ -15,6 +15,8 @@
 //! conversation's history once its unreads change, and said done once
 //! Slack's read mark passes it (lib's `messages`), so nothing more is
 //! asked of Slack than once a round, and nothing while nothing comes.
+//! The account says when those held are all there are, so one missing
+//! after a restart is known read.
 //!
 //! While Slack refuses the sign-in, signing in again waits on Joel in
 //! Needs You, through WAITING, a file of what waits on him as each
@@ -92,13 +94,15 @@ fn main() {
             },
         );
         // The messages wanting Joel are kept through Slack refusing or out
-        // of reach, since none was seen read (lib's `daemon::records`).
+        // of reach, since none was seen read (lib's `daemon::records`), but
+        // not said whole, since what came meanwhile isn't known.
         let none = |state| Said {
             state,
             conversations: Vec::new(),
             recent: Vec::new(),
             messages: messages.raised(),
             marks: messages.marks(),
+            whole: false,
         };
         let said = match asked {
             Ok((conversations, recent)) => {
@@ -109,6 +113,7 @@ fn main() {
                     recent,
                     messages: messages.raised(),
                     marks: messages.marks(),
+                    whole: messages.whole(),
                 })
             }
             Err(Refused::SignedOut) => Some(none(State::SignedOut)),

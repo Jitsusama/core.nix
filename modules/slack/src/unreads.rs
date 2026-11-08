@@ -36,6 +36,9 @@ pub struct Said {
     pub messages: Vec<Raised>,
     /// Slack's read mark for each conversation holding one.
     pub marks: Vec<Mark>,
+    /// Whether `messages` holds every message wanting him, so one missing
+    /// from them was read (lib's `messages::Messages::whole`).
+    pub whole: bool,
 }
 
 /// How many conversations Slack's Recent holds, as every program's does,
@@ -106,8 +109,9 @@ pub struct Counted {
 pub struct Counts {
     pub unread: Vec<Counted>,
     pub recent: Vec<Counted>,
-    /// Each conversation's read mark, its `last_read`, by its id, for each
-    /// one that has been read.
+    /// Each conversation's read mark, its `last_read`, by its id, empty for
+    /// one never read, so one Slack no longer lists is told from one he
+    /// hasn't opened.
     pub read: BTreeMap<String, String>,
 }
 
@@ -169,8 +173,8 @@ pub fn counted(said: &Value) -> Result<Counts, Refused> {
     })
 }
 
-/// Each conversation's read mark, but one never read, whose `last_read` is
-/// all noughts or missing.
+/// Each conversation's read mark, empty for one never read, whose
+/// `last_read` is all noughts or missing.
 fn marks(said: &Value) -> BTreeMap<String, String> {
     listed(said, "ims")
         .chain(listed(said, "mpims"))
@@ -178,9 +182,8 @@ fn marks(said: &Value) -> BTreeMap<String, String> {
         .filter_map(|each| {
             let id = each.get("id").and_then(Value::as_str)?;
             let read = stamp(each, "last_read");
-            read.chars()
-                .any(|c| c.is_ascii_digit() && c != '0')
-                .then(|| (id.to_owned(), read.to_owned()))
+            let ever = read.chars().any(|c| c.is_ascii_digit() && c != '0');
+            Some((id.to_owned(), if ever { read } else { "" }.to_owned()))
         })
         .collect()
 }
@@ -517,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn each_conversation_read_has_its_read_mark_one_never_read_none() {
+    fn each_conversation_has_its_read_mark_one_never_read_an_empty_one() {
         let counts = counted(&counts()).unwrap();
         let marks: Vec<(&str, &str)> = counts
             .read
@@ -528,8 +531,13 @@ mod tests {
             marks,
             [
                 ("C1", "1730700000.000100"),
+                ("C2", ""),
+                ("C3", ""),
+                ("C4", ""),
+                ("C5", ""),
                 ("D1", "1730100000.000100"),
-                ("D2", "1730600000.000100")
+                ("D2", "1730600000.000100"),
+                ("G1", "")
             ]
         );
     }

@@ -10,7 +10,8 @@
 //! message wanting him, a `slack-message:<channel>:<ts>`, done once he's
 //! read it in Slack, and Slack's read mark for its conversation, a
 //! `slack-read:<channel>` (lib's `messages`); and how asking Slack
-//! stands, the one `slack-account:slack`. A record carries
+//! stands, the one `slack-account:slack`, whose `messages` says
+//! `whole` once every message wanting him is held. A record carries
 //! its thing under a field named for its kind, as Google's daemon's do,
 //! since a conversation has a `kind` of its own; and the timestamp it's
 //! ordered by rather than its place, so a new message changes its own
@@ -107,13 +108,19 @@ pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
             made.push(record("slack-read", &mark.channel, json!(mark)));
         }
     }
-    made.push(record(
-        "slack-account",
-        "slack",
-        json!({"standing": standing}),
-    ));
+    // Once every message wanting him is held, the account says so, and
+    // only then is one missing from them known read, as after a restart.
+    let mut account = json!({"standing": standing});
+    if said.is_some_and(|said| said.whole) {
+        account["messages"] = json!(WHOLE);
+    }
+    made.push(record("slack-account", "slack", account));
     made
 }
+
+/// What the account's `messages` says once every message wanting Joel is
+/// held.
+pub const WHOLE: &str = "whole";
 
 /// How asking Slack stands, as the source's word says it.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -599,6 +606,7 @@ mod tests {
             recent,
             messages: Vec::new(),
             marks: Vec::new(),
+            whole: false,
         }
     }
 
@@ -609,10 +617,13 @@ mod tests {
             ts: ts.to_owned(),
             place: "Ada".to_owned(),
             who: "Ada".to_owned(),
+            user: "U7".to_owned(),
+            named: true,
+            mine: false,
             first: "hi".to_owned(),
             text: "hi".to_owned(),
             at: 1_730_300_001_000,
-            link: "slack://channel?team=T1&id=D1".to_owned(),
+            link: "https://ada.slack.com/archives/D1/p1730300001000100".to_owned(),
             team: "T1".to_owned(),
             done,
         }
@@ -628,6 +639,19 @@ mod tests {
             .map(|(key, _)| key)
             .collect();
         assert_eq!(keys, ["slack-message:D1:1730300001.000100", ACCOUNT]);
+    }
+
+    #[test]
+    fn the_account_says_the_messages_are_whole_only_once_they_are() {
+        let mut said = ok(vec![], vec![]);
+        let account = |said: Option<&Said>| records(said).pop().unwrap().1["slack-account"].clone();
+        assert_eq!(account(Some(&said)), json!({"standing": "ok"}));
+        said.whole = true;
+        assert_eq!(
+            account(Some(&said)),
+            json!({"standing": "ok", "messages": "whole"})
+        );
+        assert_eq!(account(None), json!({"standing": "none"}));
     }
 
     #[test]
