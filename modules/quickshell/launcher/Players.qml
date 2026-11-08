@@ -250,8 +250,11 @@ Provider {
         return setting({
             key: `player:${player.dbusName}:speed`,
             name: Words.name("media:speed"),
+            // The range it offers, never the player's own, which mpv gives
+            // as 0.01× to 100×, speeds no one listens at.
             side: said("speeds", { speed: Players.speed(player.rate),
-                least: Players.speed(player.minRate), most: Players.speed(player.maxRate) }),
+                least: Players.speed(offered[0] ?? player.minRate),
+                most: Players.speed(offered[offered.length - 1] ?? player.maxRate) }),
             glyph: Theme.glyph.playSpeed
         }, () => offered.map(rate => choice("media:speed:choice", { speed: Players.speed(rate) },
             Math.abs(player.rate - rate) < 0.01, Theme.glyph.playSpeed,
