@@ -123,8 +123,8 @@ Scope {
     // they move once a scroll settles, not with every frame.
     property int settled: 0
     readonly property var inside: {
-        settled;
-        Niri.revision;
+        void settled;
+        void Niri.revision;
         const step = Theme.space.rung.frames;
         const edge = Theme.space.rung.screen;
         const corner = { right: edge, top: edge, width: root.width };

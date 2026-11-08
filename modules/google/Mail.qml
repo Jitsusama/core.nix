@@ -72,7 +72,7 @@ Singleton {
     // Mail's windows open now, by id; niri's revision says when a window
     // opens or closes.
     readonly property var windows: {
-        Niri.revision;
+        void Niri.revision;
         return Said.windows(Object.values(Niri.windows));
     }
     // The Mail windows open when mail was last opened, to close once its

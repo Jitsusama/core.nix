@@ -2631,7 +2631,7 @@ onLinux {
         })
         property var focused: 11
         property int revision: 0
-        readonly property var current: { revision; return focused; }
+        readonly property var current: { void revision; return focused; }
         function workspace(id) {
           return id === undefined ? Object.values(workspaces).find(one => one.is_focused) ?? null
             : workspaces[id] ?? null;
