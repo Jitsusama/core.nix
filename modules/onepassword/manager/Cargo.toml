@@ -1,0 +1,16 @@
+# 1Password as a password manager of Passwords (modules/passwords): its
+# items read through op and said on Passwords' line protocol, every hidden
+# detail's value taken off before it goes (src/lib.rs says how).
+[package]
+name = "onepassword-manager"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "passwords-1password"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"

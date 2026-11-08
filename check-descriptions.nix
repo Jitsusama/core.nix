@@ -1023,6 +1023,14 @@
   onepassword-answers-op = ''
     1Password's command-line tool, op, runs setgid in the onepassword-cli group, so the app answers it
   '';
+  onepassword-manager-passes-clippy = ''
+    clippy finds nothing in 1Password's manager for Passwords or its tests
+  '';
+  onepassword-manager-passes-no-secret-on = ''
+    1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
+    value and no password's history, reads a secret only for the one detail asked, and says
+    1Password's categories and kinds in Passwords' own words
+  '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
@@ -1049,6 +1057,21 @@
     a palette's row and field keep their words apart and inside them, however long, ending what
     doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
     ends and says all it has room for
+  '';
+  passwords-holds-no-secret = ''
+    the passwords daemon holds every entry each password manager lists without a secret, even one
+    given with its secrets on, gives a secret only to the client that asked to see it or to the
+    clipboard marked sensitive and cleared when its time is up, says a one-time code's period, says
+    a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and
+    refuses an ask or a kind it doesn't know
+  '';
+  passwords-passes-clippy = ''
+    clippy finds nothing in the passwords daemon or its tests
+  '';
+  passwords-runs-each-password-manager = ''
+    on a machine with 1Password, the passwords daemon runs 1Password's manager through the system's
+    op on the daemons' socket systemd holds, copies with wl-copy and writes no core dump, and the
+    launcher's Passwords knows 1Password's program
   '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five

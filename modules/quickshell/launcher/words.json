@@ -4805,6 +4805,14 @@
       "glyph": "signIn"
     },
     {
+      "id": "verb:passwords:let-in",
+      "command": "signin",
+      "in": "applications",
+      "name": "Let the Launcher In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
       "id": "verb:slack:search",
       "command": "search",
       "of": "program:slack",
