@@ -18,10 +18,10 @@ use serde_json::Value;
 /// went hears it went, and why.
 pub const KEPT: i64 = 12 * 60 * 60 * 1000;
 
-/// How a thing stopped wanting Joel.
+/// How a thing stopped wanting Joel, the way it went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum How {
+pub enum Went {
     /// Read in Gmail, or anywhere but here.
     ReadInGmail,
     /// Taken out of the inbox in Gmail.
@@ -44,7 +44,7 @@ pub enum How {
 /// the epoch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Done {
-    pub how: How,
+    pub how: Went,
     pub at: i64,
 }
 
@@ -52,9 +52,9 @@ pub struct Done {
 /// gives them, or none where it still wants him and was only pushed off
 /// the list by newer mail. Read is said before archived, since mail read
 /// and archived at once was read first.
-pub fn left(labels: Option<&Value>) -> Option<How> {
+pub fn left(labels: Option<&Value>) -> Option<Went> {
     let Some(labels) = labels else {
-        return Some(How::Gone);
+        return Some(Went::Gone);
     };
     let has = |label: &str| {
         labels
@@ -63,11 +63,11 @@ pub fn left(labels: Option<&Value>) -> Option<How> {
             .is_some_and(|all| all.iter().any(|one| one.as_str() == Some(label)))
     };
     if !has("UNREAD") {
-        Some(How::ReadInGmail)
+        Some(Went::ReadInGmail)
     } else if !has("INBOX") {
-        Some(How::ArchivedInGmail)
+        Some(Went::ArchivedInGmail)
     } else if !has("IMPORTANT") {
-        Some(How::Unimportant)
+        Some(Went::Unimportant)
     } else {
         None
     }
@@ -84,22 +84,22 @@ mod tests {
         let labels = |all: &[&str]| json!({ "labelIds": all });
         assert_eq!(
             left(Some(&labels(&["INBOX", "IMPORTANT"]))),
-            Some(How::ReadInGmail)
+            Some(Went::ReadInGmail)
         );
         assert_eq!(
             left(Some(&labels(&["IMPORTANT"]))),
-            Some(How::ReadInGmail),
+            Some(Went::ReadInGmail),
             "read and archived was read first"
         );
         assert_eq!(
             left(Some(&labels(&["UNREAD", "IMPORTANT"]))),
-            Some(How::ArchivedInGmail)
+            Some(Went::ArchivedInGmail)
         );
         assert_eq!(
             left(Some(&labels(&["UNREAD", "INBOX"]))),
-            Some(How::Unimportant)
+            Some(Went::Unimportant)
         );
-        assert_eq!(left(None), Some(How::Gone));
+        assert_eq!(left(None), Some(Went::Gone));
     }
 
     #[test]
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn done_is_told_by_how_and_when() {
         let done = Done {
-            how: How::ReadInGmail,
+            how: Went::ReadInGmail,
             at: 1,
         };
         assert_eq!(

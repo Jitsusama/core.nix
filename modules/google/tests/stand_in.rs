@@ -12,7 +12,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
-use google::done::How;
+use google::done::Went;
 use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted, Unsaved};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
@@ -1394,7 +1394,7 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     let done = state.finished[0].done.expect("it's done");
     assert_eq!(
         (state.finished[0].id.as_str(), done.how),
-        ("new", How::ReadInGmail)
+        ("new", Went::ReadInGmail)
     );
     assert_eq!(done.at, now().timestamp().as_millisecond());
     // He archives the other here: done too, archived here, the latest first.
@@ -1407,8 +1407,8 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     assert_eq!(
         how,
         [
-            ("old", Some(How::ArchivedHere)),
-            ("new", Some(How::ReadInGmail))
+            ("old", Some(Went::ArchivedHere)),
+            ("new", Some(Went::ReadInGmail))
         ]
     );
     // Half a day on, neither is told any more; the meeting has ended.
@@ -1416,7 +1416,7 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     let state = watch.look(&later).clone();
     assert!(state.finished.is_empty(), "{:?}", state.finished);
     let ended = state.meetings[0].done.expect("it ended");
-    assert_eq!(ended.how, How::Ended);
+    assert_eq!(ended.how, Went::Ended);
     assert_eq!(ended.at, state.meetings[0].end);
 }
 

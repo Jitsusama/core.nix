@@ -16,7 +16,7 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, MAKES_MEETINGS, Put, READS_MEETINGS, Refused};
 use crate::calendar::{self, Answer};
-use crate::done::{self, Done, How};
+use crate::done::{self, Done, Went};
 use crate::drive::{
     self, Document, Downloaded, Folder, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
 };
@@ -456,8 +456,8 @@ impl Watch {
                     let gone = self.state.mail.remove(at);
                     self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
                     let done = match how {
-                        Tidy::Read => How::ReadHere,
-                        Tidy::Archive => How::ArchivedHere,
+                        Tidy::Read => Went::ReadHere,
+                        Tidy::Archive => Went::ArchivedHere,
                     };
                     self.finish(gone.clone(), done, now.timestamp().as_millisecond());
                     if how == Tidy::Read {
@@ -520,7 +520,7 @@ impl Watch {
     }
 
     /// Holds mail as done, `how` and `at`, newest first, once.
-    fn finish(&mut self, mut mail: Mail, how: How, at: i64) {
+    fn finish(&mut self, mut mail: Mail, how: Went, at: i64) {
         mail.done = Some(Done { how, at });
         self.state.finished.retain(|was| was.id != mail.id);
         self.state.finished.insert(0, mail);
@@ -534,12 +534,12 @@ impl Watch {
             meeting.done = if meeting.answer == Some(Answer::No) {
                 let since = *declined.entry(meeting.id.clone()).or_insert(at);
                 Some(Done {
-                    how: How::Declined,
+                    how: Went::Declined,
                     at: since,
                 })
             } else if meeting.end <= at {
                 Some(Done {
-                    how: How::Ended,
+                    how: Went::Ended,
                     at: meeting.end,
                 })
             } else {
