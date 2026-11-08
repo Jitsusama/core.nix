@@ -24,6 +24,7 @@ import "Asking.js" as Asking
 import "Machine.js" as Machine
 import "Heat.js" as Heat
 import "Power.js" as Power
+import "Awake.js" as Awake
 import "Links.js" as Links
 import "Keyboards.js" as Keyboards
 import "KeyCounts.js" as KeyCounts
@@ -2947,6 +2948,55 @@ QtObject {
             ["", [{ id: "sleep:slept", value: "1 time" }]]);
         machine("sleep before the daemon answers", Power.sleepOf(null), null);
         machine("an error Linux names", Power.errorOf(-5), "EIO");
+
+        // What keeps the machine awake, from logind's part of sleep:main:
+        // a call holding idle off, a download holding sleep, Keep Awake's
+        // own two locks left out, two delays, one of them twice, and a
+        // sleep of six hours.
+        const awakeWords = { after: "{does} {lasted} after the screens go off",
+            at: "{does} at {time}", locks: "never \u00b7 it only locks",
+            locksCharging: "never on the charger \u00b7 it only locks", never: "never",
+            suspend: "suspends", hibernate: "hibernates" };
+        const awakeAt = 1_790_000_000_000;
+        const clock = at => `${(at - awakeAt) / 60_000} min`;
+        const logind = { idle: false, idle_since_ms: awakeAt - 600_000, preparing: false,
+            idle_action: "suspend", idle_action_ms: 300_000, blocked: ["idle", "sleep"],
+            delayed: ["sleep"], inhibitors: [
+                { what: ["idle"], who: "Google Chrome", why: "Playing video", mode: "block" },
+                { what: ["sleep", "idle"], who: "mycelium", why: "holding work",
+                    mode: "block" },
+                { what: ["idle"], who: "Keep Awake", why: "Kept awake from the launcher",
+                    mode: "block" },
+                { what: ["handle-lid-switch"], who: "Keep Awake", why: "", mode: "block" },
+                { what: ["sleep"], who: "NetworkManager", why: "NetworkManager needs to",
+                    mode: "delay" },
+                { what: ["sleep"], who: "swayidle", why: "Lock before sleep", mode: "delay" },
+                { what: ["sleep"], who: "swayidle", why: "Again", mode: "delay" }],
+            last_sleep: { began_at_ms: awakeAt - 7_200_000 - 21_780_000,
+                ended_at_ms: awakeAt - 7_200_000 } };
+        const told = plugged => ({ now: awakeAt, plugged, when: clock,
+            lasted: Interfaces.lasted });
+        machine("keep awake's drawer, others' locks first, its own left out",
+            Awake.facts(logind, awakeWords, told(false)), [
+            { id: "awake:idle-held",
+                value: "Google Chrome Playing video \u00b7 mycelium holding work" },
+            { id: "awake:sleep-held", value: "mycelium holding work" },
+            { id: "awake:idle-sleep", value: "suspends 5 min after the screens go off" },
+            { id: "awake:put-off", value: "NetworkManager \u00b7 swayidle" },
+            { id: "awake:slept", value: "-483 min \u00b7 6 h 3 min" }
+        ]);
+        const idleNow = Object.assign({}, logind, { idle: true, idle_since_ms: awakeAt - 60_000,
+            inhibitors: [], last_sleep: { began_at_ms: awakeAt, ended_at_ms: null } });
+        machine("an idle machine says when it sleeps, a sleep still going says nothing",
+            Awake.facts(idleNow, awakeWords, told(false)),
+            [{ id: "awake:idle-sleep", value: "suspends at 4 min" }]);
+        const idleSaid = (action, plugged) => Awake.facts({ idle_action: action,
+            idle_action_ms: 300_000 }, awakeWords, told(plugged))[0]?.value ?? "";
+        machine("idle sleep as logind is set", [idleSaid("lock", true), idleSaid("lock", false),
+            idleSaid("ignore", true), idleSaid("hibernate", false), idleSaid("halt", false),
+            idleSaid("", false)], ["never on the charger \u00b7 it only locks",
+            "never \u00b7 it only locks", "never", "hibernates 5 min after the screens go off",
+            "halt 5 min after the screens go off", ""]);
         machine("an error with no name kept", Power.errorOf(-71), "\u221271");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.

@@ -9,6 +9,8 @@ import Quickshell.Services.UPower
 import QtQuick
 import "Power.js" as Power
 import "Interfaces.js" as Interfaces
+import "Awake.js" as Awake
+import "Captured.js" as Captured
 
 Provider {
     id: provider
@@ -45,13 +47,52 @@ Provider {
     // stopped what keeps it so: kept, a shut lid goes on too wherever the
     // machine's on the charger (KeepAwake.qml).
     function awakeRow(kept, lidToo) {
-        return said("session:awake", kept ? "on" : "", {
+        return said("session:awake", kept ? "on" : "", Object.assign({
             side: !kept ? "" : lidToo ? "awake, lid shut too" : "awake while open",
             hue: "machine",
             stays: true,
             run: () => provider.keepAwake(!kept)
-        });
+        }, awakeFields()));
     }
+
+    // What Keep Awake's drawer says once logind has answered: who else
+    // holds its locks, when an idle machine sleeps, who puts sleep off and
+    // when it last slept (Awake.js). A switch has no drawer
+    // (Launcher.qml's drawerOf), but Keep Awake holds what logind says
+    // keeps the machine up or lets it sleep, so while it has figures to
+    // show it is a thing, its act still keeping awake or letting it sleep
+    // (VKCF3Z, 2026-11-08).
+    function awakeFields() {
+        const logind = sleepWatch.revision >= 0
+            ? sleepWatch.held["sleep:main"]?.logind ?? null : null;
+        if (!logind)
+            return {};
+        const words = Words.of("session:awake").said ?? {};
+        const now = Date.now();
+        const facts = Awake.facts(logind, words, {
+            now,
+            plugged: !UPower.onBattery,
+            when: at => Captured.taken(at, now, provider.days),
+            lasted: Interfaces.lasted
+        });
+        return {
+            thing: facts.length > 0,
+            drawer: {
+                eyebrow: words.eyebrow ?? "",
+                eyebrowNames: true,
+                title: Words.name("session:awake"),
+                facts: facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
+                body: ""
+            }
+        };
+    }
+
+    // The words for a day a file's row says (FileFacts.js), so Last Slept
+    // says its day as a thing taken does.
+    readonly property var days: ({
+        yesterday: (Words.of("file-chooser:changed").said ?? {}).yesterday,
+        date: (at, format) => Qt.formatDate(at, format)
+    })
 
     // Its row says so at once, until the services' files say so too
     // (launcher/Becoming.js).
@@ -423,15 +464,15 @@ Provider {
         }
     })
 
-    // Whether Sleep's row is listed, in Power or found by name, so the
-    // machine daemon is asked how sleep stands only while it can be seen:
-    // in the open launcher, or among the rows a terminal's show walked or
-    // listed (Launcher.qml's terminalSees), so a cold `launcher show` of
-    // Power has Sleep's figures.
+    // Whether Sleep's row or Keep Awake's is listed, in Power, at home or
+    // found by name, so the machine daemon is asked how sleep stands only
+    // while it can be seen: in the open launcher, or among the rows a
+    // terminal's show walked or listed (Launcher.qml's terminalSees), so a
+    // cold `launcher show` of Power has Sleep's figures.
     readonly property bool sleepShown: {
         if (launcher === null)
             return false;
-        const sleep = row => row?.key === "session:Suspend";
+        const sleep = row => row?.key === "session:Suspend" || row?.key === "session:awake";
         const terminal = launcher.terminalSees ?? { walked: [], listed: [] };
         return launcher.open && launcher.matches.some(sleep) || terminal.walked.some(sleep)
             || terminal.listed.some(sleep);

@@ -9673,7 +9673,51 @@
           "verb": "stop",
           "argument": "nokeepawake"
         }
+      },
+      "said": {
+        "eyebrow": "on this machine \u00b7 switch",
+        "after": "{does} {lasted} after the screens go off",
+        "at": "{does} at {time}",
+        "locks": "never \u00b7 it only locks",
+        "locksCharging": "never on the charger \u00b7 it only locks",
+        "never": "never",
+        "suspend": "suspends",
+        "hibernate": "hibernates",
+        "hybrid-sleep": "suspends and hibernates",
+        "suspend-then-hibernate": "suspends, then hibernates",
+        "poweroff": "powers off",
+        "sleep": "sleeps"
       }
+    },
+    {
+      "id": "awake:idle-held",
+      "in": "session:awake",
+      "name": "Idle Held By"
+    },
+    {
+      "id": "awake:sleep-held",
+      "in": "session:awake",
+      "name": "Sleep Held By"
+    },
+    {
+      "id": "awake:lid-held",
+      "in": "session:awake",
+      "name": "Lid Held By"
+    },
+    {
+      "id": "awake:idle-sleep",
+      "in": "session:awake",
+      "name": "Idle Sleep"
+    },
+    {
+      "id": "awake:put-off",
+      "in": "session:awake",
+      "name": "Sleep Put Off By"
+    },
+    {
+      "id": "awake:slept",
+      "in": "session:awake",
+      "name": "Last Slept"
     },
     {
       "id": "session:quiet",

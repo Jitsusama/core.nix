@@ -280,3 +280,28 @@ def test_sleep_that_failed_is_shot_at_each_scale(
             desktop.close_launcher()
     finally:
         stand_down(desktop, "/sys/power/suspend_stats")
+
+
+def test_keep_awake_held_by_another_is_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot Keep Awake while a call holds idle off, its drawer saying who, as logind does."""
+    desktop.as_account(
+        "systemd-run --user --unit=a-call-holds-idle systemd-inhibit --what=idle"
+        " --who=Tuple '--why=sharing the screen' sleep infinity"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            desktop.answer("keep awake")
+            desktop.launcher_until(
+                lambda shown: (
+                    (shown["selected"] or {}).get("name") == "Keep Awake"
+                    and drawer_says(shown, "Idle Held By")
+                    and drawer_says(shown, "Idle Sleep")
+                )
+            )
+            desktop.shoot(f"launcher-keep-awake-at-{scale.replace('.', '-')}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("systemctl --user stop a-call-holds-idle")
