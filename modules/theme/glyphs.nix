@@ -711,10 +711,10 @@ in
     console = "~";
     means = "the screen's warmth, leaning toward the room's light";
   };
-  # The moon, as the night sky's own is drawn, for the warmth that comes
-  # with sunset.
+  # A waning crescent moon, for the warmth that comes with sunset: the
+  # night sky's own moon with stars is the clear night's.
   nightLight = {
-    glyph = nerd "f0594";
+    glyph = nerd "f0f65";
     console = "c";
     means = "the night light, warming the screen from sunset to sunrise";
   };

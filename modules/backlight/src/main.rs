@@ -526,15 +526,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         note,
         noted: None,
         sees: false,
-        night: Nightly {
-            white: night_white,
-            on: true,
-            switch: night_switch,
-            whereabouts,
-            plan: None,
-            wants: WHITE,
-            due: Some(Instant::now()),
-        },
+        night: Nightly::new(night_white, night_switch, whereabouts),
         relay_down: None,
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
@@ -648,6 +640,22 @@ struct Nightly {
     plan: Option<Plan>,
     wants: u16,
     due: Option<Instant>,
+}
+
+impl Nightly {
+    /// On, as it starts until Joel's kept say is read, knowing no night yet,
+    /// and due to look at once.
+    fn new(white: u16, switch: PathBuf, whereabouts: PathBuf) -> Self {
+        Nightly {
+            white,
+            on: true,
+            switch,
+            whereabouts,
+            plan: None,
+            wants: WHITE,
+            due: Some(Instant::now()),
+        }
+    }
 }
 
 /// Milliseconds since 1970 began in UTC, by the wall clock, which the sun
