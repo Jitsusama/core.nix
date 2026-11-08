@@ -156,7 +156,7 @@ function offers(capabilities, said) {
 // kernel lists them, its `mode`, the partner's `accessory` mode,
 // `capabilities` (offers' input), its supply's `usbType` and `supply`
 // name, and the `revision` and `partnerRevision`.
-function portDrawer(known, number, named, said) {
+function portDrawer(known, named, said) {
     const fact = (id, value) => ({ label: named(`power:port:${id}`), value });
     const accessory = known.accessory ?? "";
     const partnerRevision = known.partnerRevision ?? "";

@@ -2110,7 +2110,7 @@ QtObject {
             capabilities: [{ volts: 5, amps: 3 }, { volts: 9, amps: 3 }, { volts: 15, amps: 3 },
                 { volts: 20, amps: 3 }],
             usbType: "C [PD] PD_PPS PD_DRP", supply: "ucsi-source-psy-USBC000:001"
-        }, number, portNamed, portWords);
+        }, portNamed, portWords);
         machine("a port's drawer", [portDrawn.eyebrow].concat(portDrawn.facts
             .map(fact => `${fact.label} ${fact.value}`)), ["on port 1 \u00b7 charger",
             "[power-role] sink", "[data-role] host", "[mode] USB Power Delivery",
@@ -2124,7 +2124,7 @@ QtObject {
                 { volts: 3.3, to: 21, amps: 2.25 }], portWords),
             "5 V at 3 A \u00b7 20 V at 4.5 A \u00b7 3.3 to 21 V at 2.25 A");
         machine("an audio accessory in an empty port", Power.portDrawer({ n: 2,
-            accessory: "audio", partnerRevision: "2.0" }, number, portNamed, portWords).facts
+            accessory: "audio", partnerRevision: "2.0" }, portNamed, portWords).facts
             .map(fact => fact.value), ["audio accessory", "2.0"]);
         machine("a port powering a phone", Power.port({ online: false, giving: true }, number,
             portStates), "powering what's plugged in");

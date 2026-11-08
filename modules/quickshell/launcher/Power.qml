@@ -227,7 +227,7 @@ Provider {
             return null;
         }
         return Object.assign({ title: named("port", "", { n }) }, Power.portDrawer(read,
-            provider.number, id => Words.name(id), Words.of("power:port:drawer").said));
+            id => Words.name(id), Words.of("power:port:drawer").said));
     }
 
     // A charger's source capabilities, as its partner's power delivery

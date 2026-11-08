@@ -365,10 +365,10 @@ const DOTTED = " \u00b7 ";
 // 2026-11-08).
 function valueLines(items, between, wide, width) {
     const ends = between.replace(TRAILING, "");
-    const kept = items.filter(item => item.said !== "");
+    const saying = items.filter(item => item.said !== "");
     const lines = [];
-    kept.forEach((item, at) => {
-        const closing = at === kept.length - 1 ? "" : ends;
+    saying.forEach((item, at) => {
+        const closing = at === saying.length - 1 ? "" : ends;
         const said = fitted(item, wide - width(closing), width);
         const last = lines.length - 1;
         if (last >= 0 && width(`${lines[last]}${between}${said}${closing}`) <= wide) {
@@ -388,16 +388,16 @@ function valueLines(items, between, wide, width) {
 // end to `tail`, "{count} more", saying how many went, "PDF \u00b7 HTML \u00b7
 // 87 more" (VKCF3Z, 2026-11-08); the tail alone when not one fits beside it.
 function valueLine(items, tail, wide, width) {
-    const kept = items.map(item => item.said).filter(said => said !== "");
+    const saying = items.map(item => item.said).filter(said => said !== "");
     const more = count => tail.replace("{count}", String(count));
-    for (let shown = kept.length; shown > 0; shown--) {
-        const gone = kept.length - shown;
-        const line = kept.slice(0, shown).concat(gone > 0 ? [more(gone)] : []).join(DOTTED);
+    for (let whole = saying.length; whole > 0; whole--) {
+        const gone = saying.length - whole;
+        const line = saying.slice(0, whole).concat(gone > 0 ? [more(gone)] : []).join(DOTTED);
         if (width(line) <= wide) {
             return [line];
         }
     }
-    return kept.length === 0 ? [] : [fitted({ said: more(kept.length) }, wide, width)];
+    return saying.length === 0 ? [] : [fitted({ said: more(saying.length) }, wide, width)];
 }
 
 // An item's words no wider than `room`: whole where they fit, else its
