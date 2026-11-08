@@ -108,11 +108,15 @@ Provider {
         return rows;
     }
 
-    // The internet, the place's head.
+    // The internet, the place's head. Each row here says no note on the
+    // cursor's row while its drawer is out, as the drawer says every part
+    // of it, so the row's side reads as its neighbours' do (VKCF3Z,
+    // 2026-11-08).
     function internetRow() {
         const said = Home.internetRow(model, now(), settings);
         return thingRow({
             thing: true,
+            noteInDrawer: true,
             what: "internet",
             key: "eero:internet",
             name: Words.name("eero:internet"),
@@ -201,6 +205,7 @@ Provider {
         const said = Home.nodeRow(node);
         return thingRow({
             thing: true,
+            noteInDrawer: true,
             what: "node",
             key: `eero:node:${node.id}`,
             name: said.name,
@@ -219,6 +224,7 @@ Provider {
         const said = Home.deviceRow(device, settings, model?.profiles ?? []);
         return thingRow({
             thing: true,
+            noteInDrawer: true,
             what: "eero device",
             key: `eero:device:${device.mac}`,
             name: said.name,
@@ -245,6 +251,7 @@ Provider {
         const said = Home.profileRow(model, profile);
         return thingRow({
             thing: true,
+            noteInDrawer: true,
             what: "profile",
             key: `eero:profile:${profile.id}`,
             name: said.name,

@@ -104,15 +104,14 @@ QtObject {
         // The head: the internet, how it stands and everything at a glance.
         expect("the internet's row", Home.internetRow(model, now), {
             name: "Internet",
-            side: "connected",
-            note: "Example ISP \u00b7 370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 on 5 Nov \u00b7 "
-                + "conferencing and gaming on \u00b7 1 outage in 30 days \u00b7 3 nodes online \u00b7 "
+            side: "connected \u00b7 370 Mb/s down",
+            note: "11.9 Mb/s up \u00b7 on 5 Nov \u00b7 conferencing and gaming on \u00b7 1 outage in 30 days \u00b7 3 nodes online \u00b7 "
                 + "15 devices on now"
         });
         const unkept = Object.assign({}, model, { internet: Object.assign({}, model.internet,
             { history: undefined }) });
         expect("eero's outages where no history is kept", Home.internetRow(unkept, now).note
-            .split(" \u00b7 ")[5], "no outages");
+            .split(" \u00b7 ")[3], "no outages");
         expect("the home network's state where it isn't connected",
             Home.internetRow(Object.assign({}, model, { internet: Object.assign({},
                 model.internet, { mesh: "degraded" }) }), now).note.split(" \u00b7 ")[0],
@@ -309,7 +308,7 @@ QtObject {
             ["serial", "SERIAL0003"],
             ["heard", "6 min ago"],
             ["backhaul", "Ethernet \u00b7 5 of 5 bars"],
-            ["devices", "2, all on Wi-Fi"],
+            ["devices", "all on Wi-Fi"],
             ["2.4 GHz", "02:00:00:00:00:0c"],
             ["port 1", "1.00 Gb/s of 1.00 Gb/s \u00b7 internet \u00b7 backhaul \u00b7 0 B in \u00b7 "
                 + "153 MB out"],
@@ -387,7 +386,13 @@ QtObject {
         ]);
         expect("the eyebrow of a node, what it is then its kind", [Drawers.node(model,
             node("2002"), now).eyebrow, Drawers.node(model, node("2002"), now).names],
-            ["eero Pro 6 \u00b7 node", true]);
+            ["on home \u00b7 node", true]);
+        expect("a node's devices on both", byId(Drawers.node(model, Object.assign({},
+            node("2002"), { devices: { all: 9, wifi: 6, ethernet: 3 } }), now)).devices.value,
+            "6 on Wi-Fi \u00b7 3 on Ethernet");
+        expect("a node with no devices", byId(Drawers.node(model, Object.assign({},
+            node("2002"), { devices: { all: 0, wifi: 0, ethernet: 0 } }), now)).devices,
+            undefined);
 
         // A device's drawer: each way's rate and how it's made, and the rest.
         const generic = Drawers.device(model, device("generic 2"), now);
@@ -397,7 +402,7 @@ QtObject {
             ["node", "Den \u00b7 eero Pro 6"],
             ["signal", "\u221237 dBm"],
             ["snr", "71 dB"],
-            ["score", "100% \u00b7 5 of 5 bars"],
+            ["score", "5 of 5 bars"],
             ["band", "5 GHz \u00b7 channel 52 \u00b7 5,260 MHz"],
             ["bssid", "02:00:00:00:00:02"],
             ["rx", "1.20 Gb/s \u00b7 MCS 11 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
@@ -465,8 +470,9 @@ QtObject {
         expect("a Wi-Fi 4 device's rate", value(older, "rx"),
             "72.2 Mb/s \u00b7 MCS 7 \u00b7 1 stream \u00b7 20 MHz \u00b7 400 ns guard \u00b7 Wi-Fi 4");
         expect("no rate up it never gave", older.tx, undefined);
-        expect("eero's score as a share", byId(Drawers.device(model, model.devices.find(one =>
-            one.mac === "02:00:00:00:00:05"), now)).score.value.split(" \u00b7 ")[0], "78%");
+        expect("eero's score as a share where it gives no bars", byId(Drawers.device(model,
+            Object.assign({}, model.devices.find(one => one.mac === "02:00:00:00:00:05"),
+            { bars: null }), now)).score.value, "78%");
         const inProfile = byId(Drawers.device(Object.assign({}, model, {
             profiles: [{ id: "3001", name: "profile 1", paused: true, devices: [] }]
         }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));

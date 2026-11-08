@@ -220,12 +220,14 @@ function optimized(on) {
 // port, its firmware, uptime and addresses, its light, and the day's
 // traffic through it. Its state is said only where it isn't online, which
 // its row says too, as the first fact. Its eyebrow is what it is, then
-// its kind: "eero Pro 6 \u00b7 node".
+// its kind, "on home \u00b7 node", as every drawer's here is where the
+// thing is; its model is Model's (VKCF3Z, 2026-11-08).
 function node(model, one, now, settings) {
     const devices = one.devices ?? {};
     const state = Home.stateOf(one);
     return {
-        eyebrow: joined([one.model, one.gateway ? "gateway node" : "node"]),
+        eyebrow: joined([known(model?.name) ? `on ${model.name}` : "",
+            one.gateway ? "gateway node" : "node"]),
         names: true,
         title: Home.nodeName(one),
         facts: kept([
@@ -293,22 +295,19 @@ function heartbeat(one, now) {
     return joined([Home.ago(one.last_heartbeat, now), one.heartbeat_ok === false ? "late" : ""]);
 }
 
-// How many devices are on a node, by how each is on, a part that's none
-// giving way: "9, all on Wi-Fi", or "9 \u00b7 6 on Wi-Fi \u00b7 3 on Ethernet".
+// How a node's devices are on, a part that's none giving way: "all on
+// Wi-Fi", or "6 on Wi-Fi \u00b7 3 on Ethernet". How many is its row's side,
+// so this doesn't say it again (VKCF3Z, 2026-11-08).
 function devicesCount(devices) {
-    if (!known(devices.all)) {
+    if (!known(devices.all) || devices.all === 0) {
         return "";
     }
     const wifi = devices.wifi ?? 0;
     const ethernet = devices.ethernet ?? 0;
-    if (devices.all > 0 && wifi === devices.all) {
-        return `${devices.all}, all on Wi-Fi`;
+    if (wifi === devices.all || ethernet === devices.all) {
+        return wifi === devices.all ? "all on Wi-Fi" : "all on Ethernet";
     }
-    if (devices.all > 0 && ethernet === devices.all) {
-        return `${devices.all}, all on Ethernet`;
-    }
-    return joined([String(devices.all), wifi > 0 ? `${wifi} on Wi-Fi` : "",
-        ethernet > 0 ? `${ethernet} on Ethernet` : ""]);
+    return joined([wifi > 0 ? `${wifi} on Wi-Fi` : "", ethernet > 0 ? `${ethernet} on Ethernet` : ""]);
 }
 
 // Each radio by band: its channel, width and devices; then how busy each
@@ -406,10 +405,11 @@ function device(model, one, now, asked) {
             fact("signal", Home.signalOf(one), { figure: History.signalSpark(one, seen.signal)
                 ?? (known(one.signal_dbm) ? stroke(Interfaces.level(one.signal_dbm)) : null) }),
             fact("snr", known(one.snr_db) ? `${one.snr_db} dB` : null, { figure: sparks.snr }),
-            // eero's score is a share, from nothing to all, said as a
-            // percentage as every other share here is.
-            fact("score", joined([known(one.score) ? `${Home.number(one.score * PERCENT, 0,
-                settings)}%` : "", known(one.bars) ? `${one.bars} of 5 bars` : ""])),
+            // eero's score says one thing: its bars, or where it gives
+            // none, its share, from nothing to all, as a percentage as
+            // every other share here is (VKCF3Z, 2026-11-08).
+            fact("score", known(one.bars) ? `${one.bars} of 5 bars` : known(one.score)
+                ? `${Home.number(one.score * PERCENT, 0, settings)}%` : null),
             fact("band", one.ethernet ? null : joined([Home.bandOf(one), known(one.frequency_mhz)
                 ? `${Home.number(one.frequency_mhz, 0, settings)} MHz` : ""])),
             fact("port", one.port ? joined([one.port.name, linkSpeed(one.port.mbps, settings)])
