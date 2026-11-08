@@ -13,10 +13,10 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::model::{
-    Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DevicePort, Dns, Event, Firmware, Guest,
-    HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Node, NodeCounts, NodeDevices,
-    NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate, Series, Speed, SpeedTest,
-    Thread, Usage,
+    Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DevicePort, Dns, Event, Filters,
+    Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Node, NodeCounts,
+    NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate, Series, Speed,
+    SpeedTest, Thread, Usage,
 };
 use crate::time;
 
@@ -43,6 +43,9 @@ pub struct Answers {
     pub node_usage: BTreeMap<String, Value>,
     /// `networks/<id>/profiles`.
     pub profiles: Value,
+    /// `networks/<id>/data_usage/profiles/<id>`, hourly over the last day,
+    /// by profile id.
+    pub profile_usage: BTreeMap<String, Value>,
     /// `networks/<id>/app_events`.
     pub events: Value,
 }
@@ -62,7 +65,7 @@ pub fn home_network(answers: &Answers, read: &str, cloud: Cloud) -> Option<HomeN
         internet: internet(answers),
         nodes: nodes(answers),
         devices: devices(&answers.devices),
-        profiles: profiles(&answers.profiles),
+        profiles: profiles(&answers.profiles, &answers.profile_usage),
         events: events(&answers.events),
         joins_and_leaves: Vec::new(),
         told: Vec::new(),
@@ -535,20 +538,60 @@ fn profile_id(profile: Option<&Value>) -> Option<String> {
     }
 }
 
-fn profiles(answer: &Value) -> Vec<Profile> {
+fn profiles(answer: &Value, usages: &BTreeMap<String, Value>) -> Vec<Profile> {
     list(answer, "")
         .filter_map(|profile| {
+            let id = id_of(&text(profile, "/url")?)?;
             Some(Profile {
-                id: id_of(&text(profile, "/url")?)?,
                 name: text(profile, "/name"),
                 state: text(profile, "/state/value"),
                 paused: flag(profile, "/paused"),
                 devices: list(profile, "/devices")
                     .filter_map(|d| text(d, "/mac"))
                     .collect(),
+                default: flag(profile, "/default"),
+                schedules: profile
+                    .pointer("/schedule")
+                    .and_then(Value::as_array)
+                    .map(Vec::len),
+                filters: filters(profile),
+                usage: usages.get(&id).and_then(usage),
+                id,
             })
         })
         .collect()
+}
+
+/// What a profile blocks. eero gives its content filters twice: the
+/// unified ones, every kind, and the older Secure ones, four of them, so
+/// a kind the unified ones don't say is taken from the older.
+fn filters(profile: &Value) -> Filters {
+    let policy = |kind: &str| {
+        flag(
+            profile,
+            &format!("/unified_content_filters/dns_policies/{kind}"),
+        )
+        .or_else(|| flag(profile, &format!("/premium_dns/dns_policies/{kind}")))
+    };
+    let premium = |at: &str| format!("/premium_dns/{at}");
+    Filters {
+        set: flag(profile, "/unified_content_filters/is_content_filters_set"),
+        gaming: policy("block_gaming_content"),
+        illegal: policy("block_illegal_content"),
+        messaging: policy("block_messaging_content"),
+        pornographic: policy("block_pornographic_content"),
+        social: policy("block_social_content"),
+        shopping: policy("block_shopping_content"),
+        streaming: policy("block_streaming_content"),
+        violent: policy("block_violent_content"),
+        safe_search: policy("safe_search_enabled"),
+        youtube_restricted: policy("youtube_restricted"),
+        ad_block: flag(profile, &premium("ad_block_settings/enabled")),
+        ad_block_network: flag(profile, &premium("ad_block_settings/enabled_for_network")),
+        blocked_sites: texts(profile, &premium("advanced_content_filters/blocked_list")),
+        allowed_sites: texts(profile, &premium("advanced_content_filters/allowed_list")),
+        blocked_apps: texts(profile, &premium("blocked_applications")),
+    }
 }
 
 fn events(answer: &Value) -> Vec<Event> {
@@ -716,6 +759,79 @@ mod tests {
             hall.ports[0].upstream,
             "the gateway's linked WAN port carries its backhaul"
         );
+    }
+
+    #[test]
+    fn a_profile_says_its_schedules_what_it_blocks_and_its_traffic() {
+        let first_usage = ("3001".to_owned(), contract("usage.profile.3001.json"));
+        let answers = Answers {
+            network: contract("network.json"),
+            profiles: contract("net.profiles.json"),
+            profile_usage: BTreeMap::from([first_usage]),
+            ..Answers::default()
+        };
+
+        let read = home_network(&answers, READ, answering()).unwrap();
+
+        let first = &read.profiles[0];
+        assert_eq!((first.default, first.schedules), (Some(false), Some(0)));
+        let filters = &first.filters;
+        assert_eq!(filters.set, Some(false));
+        assert_eq!(
+            (filters.gaming, filters.violent),
+            (Some(false), Some(false))
+        );
+        assert_eq!(filters.youtube_restricted, Some(false));
+        assert_eq!(
+            (filters.ad_block, filters.ad_block_network),
+            (Some(false), Some(false))
+        );
+        assert!(filters.blocked_sites.is_empty() && filters.blocked_apps.is_empty());
+        let usage = first.usage.as_ref().expect("profile 1's traffic was read");
+        assert_eq!(usage.download.hours.len(), 25);
+        assert_eq!(usage.upload.total_bytes, 0);
+        assert_eq!(
+            read.profiles[1].usage, None,
+            "profile 2's traffic wasn't read"
+        );
+    }
+
+    #[test]
+    fn a_kind_the_unified_filters_leave_out_is_the_older_filters_word() {
+        let profile = json!({
+            "premium_dns": {
+                "dns_policies": {
+                    "block_pornographic_content": true,
+                    "block_violent_content": true
+                },
+                "ad_block_settings": {"enabled": true, "enabled_for_network": false},
+                "advanced_content_filters": {"blocked_list": ["example.com"], "allowed_list": []},
+                "blocked_applications": ["tiktok"]
+            },
+            "unified_content_filters": {
+                "is_content_filters_set": true,
+                "dns_policies": {"block_gaming_content": true, "block_violent_content": false}
+            }
+        });
+
+        let filters = filters(&profile);
+
+        assert_eq!(filters.set, Some(true));
+        assert_eq!(filters.gaming, Some(true));
+        assert_eq!(
+            filters.pornographic,
+            Some(true),
+            "only the older filters say it"
+        );
+        assert_eq!(
+            filters.violent,
+            Some(false),
+            "the unified filters say it first"
+        );
+        assert_eq!(filters.shopping, None);
+        assert_eq!(filters.ad_block, Some(true));
+        assert_eq!(filters.blocked_sites, ["example.com"]);
+        assert_eq!(filters.blocked_apps, ["tiktok"]);
     }
 
     #[test]
