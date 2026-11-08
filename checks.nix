@@ -172,11 +172,19 @@ let
   clippyConfig = clippy.config;
 
   # Quickshell's own type files, which qmllint reads the shell against, with
-  # two of their faults corrected: the blur module doesn't say it depends on
-  # Quickshell, whose Region it names, and PanelWindow is marked uncreatable
+  # three of their faults corrected: the blur module doesn't say it depends
+  # on Quickshell, whose Region it names; PanelWindow is marked uncreatable
   # because Quickshell types it as the interface it makes a real window
-  # behind. The launcher's maths and key times sit beside them, as the
-  # machine's Quickshell finds them (modules/quickshell/nixos.nix).
+  # behind; and Qt 6.12's type registrar writes into a module's file an
+  # opaque stand-in, a value with no members, for each type the module
+  # names but doesn't declare, which qmllint reads in place of the real
+  # type. A window's screen and margins, an ObjectModel's values and a
+  # notice's actions had nothing to read, and a screen could never be null,
+  # so those stand-ins are taken out, as Qt 6.11 wrote the files: qmllint
+  # finds the types Quickshell's core declares, and the actions as a list of
+  # the module's own NotificationAction. The launcher's maths and key times
+  # sit beside them, as the machine's Quickshell finds them
+  # (modules/quickshell/nixos.nix).
   quickshellTypes = pkgs.runCommandLocal "quickshell-types" { } ''
     mkdir -p $out/lib/qt-6/qml
     cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
@@ -189,6 +197,24 @@ let
     substituteInPlace $out/lib/qt-6/qml/Quickshell/_Window/quickshell-window.qmltypes \
       --replace-fail 'exports: ["Quickshell._Window/PanelWindow 0.0"]
             isCreatable: false' 'exports: ["Quickshell._Window/PanelWindow 0.0"]'
+    # Takes a module's stand-in for a type out of its file.
+    unstand() {
+      substituteInPlace "$out/lib/qt-6/qml/Quickshell/$1" --replace-fail \
+        "    Component { isTypeOpaque: true; name: \"$2\"; accessSemantics: \"value\" }" ""
+    }
+    unstand _Window/quickshell-window.qmltypes Margins
+    unstand _Window/quickshell-window.qmltypes QuickshellScreenInfo
+    unstand Wayland/quickshell-wayland.qmltypes QuickshellScreenInfo
+    unstand Services/Mpris/quickshell-service-mpris.qmltypes UntypedObjectModel
+    unstand Services/Pipewire/quickshell-service-pipewire.qmltypes UntypedObjectModel
+    unstand Services/Notifications/quickshell-service-notifications.qmltypes UntypedObjectModel
+    substituteInPlace \
+      $out/lib/qt-6/qml/Quickshell/Services/Notifications/quickshell-service-notifications.qmltypes \
+      --replace-fail '    Component {
+            isTypeOpaque: true
+            name: "QList<qs::service::notifications::NotificationAction*>"
+            accessSemantics: "value"
+        }' ""
   '';
 
   # Lints the shell an offscreen check has laid out in its build folder, its
