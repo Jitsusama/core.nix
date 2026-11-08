@@ -38,6 +38,9 @@ const ZOXIDE_VERSION = 3;
 const BYTE = 256;
 const WORD = 4;
 const LONG = 8;
+// A path's bytes are said as %xx for decodeURIComponent to read as UTF-8.
+const HEX = 16;
+const HEX_DIGITS = 2;
 
 // A line of ~/.ssh/config: a keyword, then its value after spaces or an
 // equals sign; and what a Host line's names are told apart by.
@@ -305,13 +308,10 @@ function machineDrawer(one, state, words) {
     };
 }
 
-// The repositories fd finds under ~/src, each by the folder holding its
-// .git: those zoxide knows first, in its order, where a visit to a folder
-// inside one counts as the repository's, then the rest by path.
 // A little-endian number of `size` bytes at `at`.
 function numberAt(bytes, at, size) {
     let value = 0;
-    for (let index = size - 1; index >= 0; index--) {
+    for (let index = size - 1; index >= 0; index -= 1) {
         value = value * BYTE + bytes[at + index];
     }
     return value;
@@ -321,7 +321,7 @@ function numberAt(bytes, at, size) {
 // database as `od -An -v -tu1` prints it, a byte a number; nothing from
 // a database of another version or one cut short.
 function visits(printed) {
-    const bytes = String(printed ?? "").trim().split(/\s+/).filter(each => each !== "")
+    const bytes = String(printed ?? "").trim().split(SPACES).filter(each => each !== "")
         .map(Number);
     const seen = {};
     if (bytes.length < WORD + LONG || numberAt(bytes, 0, WORD) !== ZOXIDE_VERSION) {
@@ -329,14 +329,14 @@ function visits(printed) {
     }
     const count = numberAt(bytes, WORD, LONG);
     let at = WORD + LONG;
-    for (let index = 0; index < count; index++) {
+    for (let index = 0; index < count; index += 1) {
         const length = numberAt(bytes, at, LONG);
         const end = at + LONG + length + LONG + LONG;
         if (end > bytes.length) {
             return seen;
         }
         const encoded = bytes.slice(at + LONG, at + LONG + length)
-            .map(each => `%${each.toString(16).padStart(2, "0")}`).join("");
+            .map(each => `%${each.toString(HEX).padStart(HEX_DIGITS, "0")}`).join("");
         const when = numberAt(bytes, end - LONG, LONG);
         seen[decodeURIComponent(encoded)] = when * MILLISECONDS_A_SECOND;
         at = end;
@@ -344,13 +344,18 @@ function visits(printed) {
     return seen;
 }
 
+// A folder as Joel says it, from ~ where it's in his home.
+function fromHome(folder, home) {
+    const inHome = home !== "" && (folder === home || folder.startsWith(`${home}/`));
+    return inHome ? `~${folder.slice(home.length)}` : folder;
+}
+
 // What's said beside a repository: the folder holding it, said from ~,
-// where that isn't `src`, which every row would say again, then when
-// zoxide last saw it or a folder inside it.
-function repositorySide(path, src, seen, now, home) {
+// where that isn't `places.src`, which every row would say again, then
+// when zoxide last saw it or a folder inside it.
+function repositorySide(path, places, seen, now) {
     const parent = path.slice(0, path.lastIndexOf("/"));
-    const inHome = home !== "" && (parent === home || parent.startsWith(`${home}/`));
-    const folder = parent === src ? "" : (inHome ? `~${parent.slice(home.length)}` : parent);
+    const folder = parent === places.src ? "" : fromHome(parent, places.home);
     const last = Object.keys(seen ?? {})
         .filter(each => each === path || each.startsWith(`${path}/`))
         .reduce((most, each) => Math.max(most, seen[each]), 0);
@@ -358,6 +363,9 @@ function repositorySide(path, src, seen, now, home) {
         .join(" \u00b7 ");
 }
 
+// The repositories fd finds under ~/src, each by the folder holding its
+// .git: those zoxide knows first, in its order, where a visit to a folder
+// inside one counts as the repository's, then the rest by path.
 function repositories(found, visited) {
     const all = String(found ?? "").split("\n").map(line => line.replace(GIT, ""))
         .filter(path => path !== "");

@@ -282,8 +282,8 @@ Provider {
     // that isn't ~/src, which every row would say again (VKCF3Z).
     function repositoryRow(path) {
         const id = "verb:path:folder:window";
-        const side = Opens.repositorySide(path, provider.settings.src ?? "", provider.visits,
-            Date.now(), Files.home);
+        const side = Opens.repositorySide(path, { src: provider.settings.src ?? "",
+            home: Files.home }, provider.visits, Date.now());
         const sided = fields => thing(fields.what === "folder"
             ? Object.assign(fields, { side: side }) : fields);
         return Files.folder(path, sided, [provider.said(id, `${id}:${path}`, {

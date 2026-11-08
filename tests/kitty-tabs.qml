@@ -408,10 +408,12 @@ QtObject {
         // the folder holding it only where that isn't ~/src.
         const seen = { "/h/src/a": 1700000000000, "/h/src/a/docs": 1700003600000 };
         const later = 1700003600000 + 2 * 3600000;
-        check("a repository in ~/src", Opens.repositorySide("/h/src/a", "/h/src", seen, later, "/h"),
+        const places = { src: "/h/src", home: "/h" };
+        check("a repository in ~/src", Opens.repositorySide("/h/src/a", places, seen, later),
             "2 h ago");
-        check("one deeper, never seen", Opens.repositorySide("/h/src/work/b", "/h/src", seen, later,
-            "/h"), "~/src/work");
+        check("one deeper, never seen", Opens.repositorySide("/h/src/work/b", places, seen, later),
+            "~/src/work");
+        check("one outside home", Opens.repositorySide("/srv/c", places, seen, later), "/srv");
 
         for (const failure of failures)
             console.warn(failure);
