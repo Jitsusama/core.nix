@@ -139,7 +139,8 @@
     refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
     where it sits, its modes and its density to three figures, an off one only what it offers;
     the backlight daemon's files say whether the room sets the level and what it's on its way
-    to, or that no light is heard, and every point of its curve, dimmest first; and the facts
+    to past a gap too slight to move, the room's light with the lid shut or that none is heard,
+    and every point of its curve, dimmest first, kept where the daemon keeps it; and the facts
     that identify a thing end its drawer, marked, each said once
   '';
   a-timer-is-read-from-what-is-typed = ''

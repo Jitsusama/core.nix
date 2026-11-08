@@ -44,15 +44,18 @@ QtObject {
     }
 
     // What backlight-now says as #2333's daemon writes it: following the
-    // room, there or still stepping to what it asks; no light heard, where
-    // the Room Light says so; and nothing, for an empty file or one the
-    // daemon never writes. Then the curve, every point dimmest first, none
-    // for a file the daemon would refuse.
+    // room, there, resting a gap too slight to move, or still stepping to
+    // what it asks; the lid shut, where the room is still said; no light
+    // heard, where the Room Light says so; and nothing, for an empty file
+    // or one the daemon never writes. Then the curve, every point dimmest
+    // first and kept where the daemon keeps it, none for a file it would
+    // refuse.
     function backlight(check) {
         const lx = each => `${each} lx`;
         const there = Backlight.now("level\t0.380\nlux\t28\nasks\t0.380\nfollowing\tyes\n");
         check("the daemon's level, what the curve asks and whether it follows",
-            JSON.stringify(there) === JSON.stringify({ level: 0.38, asks: 0.38, following: true }),
+            JSON.stringify(there)
+                === JSON.stringify({ level: 0.38, lux: 28, asks: 0.38, following: true }),
             JSON.stringify(there));
         check("following the room, there", Backlight.follows(there, backlightSaid) === "the room"
             && Backlight.room(there, 28, backlightSaid, lx) === "28 lx",
@@ -61,10 +64,24 @@ QtObject {
         check("following the room, on its way",
             Backlight.follows(stepping, backlightSaid) === "the room \u00b7 on its way to 95%",
             Backlight.follows(stepping, backlightSaid));
+        // The panel's steps put the level a point or two from what's asked,
+        // under the daemon's 0.03, where it rests.
+        const resting = Backlight.now("level\t0.380\nlux\t28\nasks\t0.400\nfollowing\tyes\n");
+        check("a gap too slight to move is there",
+            Backlight.follows(resting, backlightSaid) === "the room",
+            Backlight.follows(resting, backlightSaid));
+        const shut = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tno\n");
+        check("the lid shut, the room still said",
+            Backlight.follows(shut, backlightSaid) === ""
+            && Backlight.room(shut, 30, backlightSaid, lx) === "30 lx"
+            && Backlight.room(shut, null, backlightSaid, lx) === "28 lx",
+            Backlight.room(shut, null, backlightSaid, lx));
         const unheard = Backlight.now("level\t0.600\nfollowing\tno\n");
-        check("no light heard, said where the room is", unheard?.asks === null
+        check("no light heard, said where nothing hears the room", unheard?.asks === null
+            && unheard?.lux === null
             && Backlight.follows(unheard, backlightSaid) === ""
-            && Backlight.room(unheard, 28, backlightSaid, lx) === "no light heard",
+            && Backlight.room(unheard, null, backlightSaid, lx) === "no light heard"
+            && Backlight.room(unheard, 0, backlightSaid, lx) === "0 lx",
             JSON.stringify(unheard));
         check("an empty file, or one with no following, says nothing", Backlight.now("") === null
             && Backlight.now("level\t0.600\nasks\t0.950\n") === null
@@ -77,9 +94,14 @@ QtObject {
         check("the curve, dimmest first",
             curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10000 lx", curve);
         check("a file the daemon would refuse is no curve",
-            ["6 0.377\nnot a point\n", "6 0.377 1\n", "1.2.3 0.5\n", ""]
+            ["6 0.377\nnot a point\n", "6 0.377 1\n", "1.2.3 0.5\n", "0x10 0.5\n", ""]
                 .every(text => Backlight.curve(text).length === 0),
-            JSON.stringify(Backlight.curve("1.2.3 0.5\n")));
+            JSON.stringify(Backlight.curve("0x10 0.5\n")));
+        const kept = Backlight.curve("-5 0.010\n100 1.500\n");
+        check("a point past the curve's bounds is kept where the daemon keeps it",
+            JSON.stringify(kept)
+                === JSON.stringify([{ lux: 0, level: 0.02 }, { lux: 100, level: 1 }]),
+            JSON.stringify(kept));
     }
 
     // The laptop's panel as niri says it: two modes, both preferred.

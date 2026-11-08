@@ -1431,13 +1431,14 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
 
 
 def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
-    """Hold the screen's plate to the lines hearing no light, then following the room.
+    """Hold the screen's plate to the lines with the lid shut, then following the room.
 
     The backlight daemon says what it settled, whole by a rename, in backlight-now, and keeps
     its curve in learned; the VM's stand-in backlight and sensor give it no real figures, so
-    both are written here as it writes them. Hearing no light, the Room Light says so and
-    Follows is gone; following the room on its way to what it asks, with a curve, it says
-    both, the Curve last of the light, every point dimmest first (VKCF3Z, 2026-11-08).
+    both are written here as it writes them. With the lid shut, Follows is gone and the Room
+    Light still says the stand-in sensor's live reading; following the room on its way to
+    what it asks, with a curve, it says both, the Curve last of the light, every point
+    dimmest first (VKCF3Z, 2026-11-08).
     """
     now = "/run/user/1000/backlight-now"
     learned = "~/.local/state/backlight/learned"
@@ -1465,15 +1466,15 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
 
     at = scale.replace(".", "-")
     desktop.as_account(f"rm -f {learned}")
-    settled("level\\t0.600\\nfollowing\\tno\\n")
+    settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tno\\n")
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
     desktop.launcher_until(shown_with(["Brightness", "Room Light"], "Follows"))
     drawer = plate_shown(desktop, scale)
     room = drawer["values"][drawer["facts"].index("Room Light")]
-    assert room == "no light heard", f"at {scale}: {drawer}"
-    desktop.shoot(f"launcher-plate-screen-no-light-at-{at}")
+    assert room.endswith(" lx"), f"at {scale}: {drawer}"
+    desktop.shoot(f"launcher-plate-screen-lid-shut-at-{at}")
     curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
     desktop.as_account(
         f"mkdir -p $(dirname {learned}) && printf '{curve}'"
