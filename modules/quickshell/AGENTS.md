@@ -77,6 +77,11 @@ machine, one path through each connection.
   its catalogue, `qs ipc call launcher list`, `run` and `runWith`, which
   walks the same rows Return takes by `launcher/Catalogue.js`'s rules, so
   pi-ask acts by what the launcher holds and gains whatever it gains.
+  What it shows is asked the same way, by `show`, walked by
+  `launcher/Showing.js`'s rules.
+- [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
+  place, row or drawer the launcher holds, as text or as JSON, from the
+  shell's `show`, so every integration has a command line at once.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.
@@ -153,6 +158,7 @@ another.
 [home]: home.nix
 [record]: record-window/
 [whereabouts]: whereabouts/
+[terminal]: in-a-terminal/
 [launcher]: launcher/
 [maths]: maths/
 [pieces]: pieces/

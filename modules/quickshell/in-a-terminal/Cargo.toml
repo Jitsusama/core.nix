@@ -1,0 +1,12 @@
+# `launcher`, the launcher in a terminal: any place, row or drawer the
+# running shell holds, printed as text or JSON (src/main.rs says how).
+[package]
+name = "launcher"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1.0"
+unicode-width = "0.2"

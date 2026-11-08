@@ -922,6 +922,25 @@ onLinux {
       touch $out
     '';
 
+  # What `launcher show` prints in a terminal is what the launcher holds:
+  # a step names its row, a miss the names nearest it, and a row and its
+  # drawer come as the words drawn, as tests/showing.qml holds
+  # launcher/Showing.js to it in Qt's own engine.
+  the-launcher-shows-a-terminal-what-it-holds =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-shows-a-terminal-what-it-holds" { } ''
+      cp ${../../tests/showing.qml} showing.qml
+      cp ${./launcher/Showing.js} Showing.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml showing.qml
+      touch $out
+    '';
+
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
   # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
@@ -4081,6 +4100,18 @@ onLinux {
   # clippy finds nothing in clock-follows, its tests included.
   clock-follows-passes-clippy = passesClippy "clock-follows-passes-clippy" (
     pkgs.callPackage ./clock-follows/package.nix { }
+  );
+
+  # launcher's tests run as it builds: what the shell shows is laid out to
+  # the terminal's width, a count and then a side giving way by whole
+  # items and a name cut only at a word, inked only where the terminal
+  # takes colour, and a miss said in the launcher's words.
+  launcher-fits-what-it-shows-to-the-terminal = pkgs.callPackage ./in-a-terminal/package.nix { };
+
+  # clippy finds nothing in launcher, the launcher in a terminal, its tests
+  # included.
+  launcher-passes-clippy = passesClippy "launcher-passes-clippy" (
+    pkgs.callPackage ./in-a-terminal/package.nix { }
   );
 
   # clippy finds nothing in timekeeping, its tests included.

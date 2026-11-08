@@ -269,6 +269,7 @@ let
     "launcher/Asking.js"
     "launcher/Catalogue.js"
     "launcher/Rank.js"
+    "launcher/Showing.js"
     "launcher/Pacing.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
@@ -858,6 +859,79 @@ let
         || exec qs ipc call launcher "$@"
     '';
   };
+
+  # How `launcher` (in-a-terminal/) inks a terminal: each role it draws in
+  # as a 24-bit escape, and as the terminal colour holding the role's
+  # pigment or near it (../theme/nearest.nix), or the terminal's own
+  # foreground where none is; each mark with its console stand-in; and the
+  # mark a failure wears.
+  terminalLook =
+    let
+      inherit (config.jitsusama.theme) terminal;
+      eight = [
+        "black"
+        "red"
+        "green"
+        "yellow"
+        "blue"
+        "magenta"
+        "cyan"
+        "white"
+      ];
+      sixteen = eight ++ map (name: "bright_${name}") eight;
+      slot =
+        role:
+        let
+          at = import ../theme/nearest.nix { inherit lib; } colours.${role} (
+            map (name: terminal.${name}) (sixteen ++ [ "foreground" ])
+          );
+        in
+        if at == null || at == 16 then "39" else toString (if at < 8 then 30 + at else 82 + at);
+      roles = [
+        "text"
+        "strong"
+        "muted"
+        "alert"
+        "warning"
+        "success"
+        "action"
+        "program"
+        "machine"
+        "person"
+        "voice"
+      ];
+    in
+    pkgs.writeText "launcher-look.json" (
+      builtins.toJSON {
+        roles = lib.genAttrs roles (role: {
+          truecolour = import ../theme/sgr.nix { inherit lib; } "38" colours.${role};
+          sixteen = slot role;
+        });
+        marks = lib.mapAttrsToList (_: mark: { inherit (mark) glyph console; }) marks;
+        failed = {
+          inherit (marks.failed) glyph console;
+        };
+      }
+    );
+
+  # `launcher`, the launcher in a terminal (in-a-terminal/): what it asks
+  # the shell through, how it inks and the words it says, from the
+  # launcher's own vocabulary.
+  launcherInATerminal =
+    let
+      program = lib.getExe (pkgs.callPackage ./in-a-terminal/package.nix { });
+    in
+    pkgs.runCommand "launcher"
+      {
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        meta.mainProgram = "launcher";
+      }
+      ''
+        makeWrapper ${program} $out/bin/launcher \
+          --set LAUNCHER_QS ${lib.getExe' pkgs.quickshell "qs"} \
+          --set LAUNCHER_LOOK ${terminalLook} \
+          --set LAUNCHER_WORDS ${pkgs.writeText "words.json" (builtins.toJSON launcher.words)}
+      '';
 
   # A pi session that has come to want Joel, said as a notice from pi
   # (Sessions.qml starts it once a want): its quest and what it wants, and
@@ -1715,6 +1789,7 @@ in
     # (launcher/Copies.qml).
     home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
+      launcherInATerminal
       launcherSay
       piWants
       pkgs.quickshell

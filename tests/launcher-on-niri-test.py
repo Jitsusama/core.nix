@@ -13,6 +13,7 @@ from __future__ import annotations
 import itertools
 import json
 import re
+import shlex
 import subprocess
 import time
 from datetime import timedelta
@@ -956,6 +957,50 @@ def test_returns_place_is_weighed_for_the_rows_whats_typed_lists_now(shell: Shel
         assert spare(typed_on) == spare(at_once), (at_once["keysRoom"], typed_on["keysRoom"])
     finally:
         shell.close(window)
+
+
+def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: Shell) -> None:
+    """`launcher show` is answered any place by the names its steps say, and a miss the nearest.
+
+    The shell walks from home by its own rows (Launcher.qml's shownToTerminal), each step a
+    name in any case or the start of only one (launcher/Showing.js, whose cases are
+    tests/showing.qml), so a terminal says what the launcher would, a thing's own acts apart
+    from its rows. The launcher stays closed: a terminal's asking never opens it.
+    """
+
+    def shown(*steps: str) -> Json:
+        # Asked as the program asks: each step after the mark, since qs takes no empty
+        # argument, and after `--`, since `show` is also qs ipc's own command otherwise.
+        path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+        return cast("Json", json.loads(shell.as_account(asked)))
+
+    home = shown()
+    names = [row["name"] for row in home["rows"]]
+    assert home["in"] == [], home
+    assert home["row"] is None, home
+    assert home["acts"] == [], home
+    assert "Machine" in names, names
+    machine = shown("machine")
+    assert machine["in"] == ["Machine"], machine
+    assert machine["row"]["holds"], machine["row"]
+    assert "Power" in [row["name"] for row in machine["rows"]], machine["rows"]
+    # A step's start names the one row it starts; each row's id is its path's.
+    power = shown("MACH", "pow")
+    assert power["in"] == ["Machine", "Power"], power
+    reboot = next(row for row in power["rows"] + power["acts"] if row["name"] == "Reboot")
+    assert reboot["id"].startswith("\u203a".join(power["path"]) + "\u203a"), reboot
+    assert reboot["verb"] == "reboot", reboot
+    # A thing's own acts are said apart from its rows, for `launcher do` (VKCF3Z),
+    # and only the row the path names says its drawer, never each row it lists.
+    grinning = shown("desktop", "emoji", "grinning face")
+    assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
+    assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
+    assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
+    # A miss says where, and the names it was nearest.
+    assert shown("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
+    assert shown("machine", "zebra")["in"] == ["Machine"]
+    assert not shell.showing()["open"]
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

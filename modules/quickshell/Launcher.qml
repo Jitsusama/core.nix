@@ -67,6 +67,7 @@ import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
+import "launcher/Showing.js" as Showing
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Becoming.js" as Becoming
@@ -1235,6 +1236,80 @@ Scope {
         else
             act.run();
         return { done: true, said: said };
+    }
+
+    // What a place or a row shows, asked from a terminal
+    // (launcher/Showing.js): walked from home as the catalogue walks, by
+    // every named row, figures among them, so a terminal says what the
+    // launcher would and nothing a provider doesn't. Gives where it is
+    // (`in`, its steps' names, and `path`, their steady ids), the row with
+    // its drawer (`row`, null at home) and the rows a step into it holds;
+    // or, where a step names nothing, that step (`missing`), the names it
+    // might have meant (`near`) and where it was looked for. A path is
+    // asked starting with a step's mark, since qs takes no empty argument,
+    // so home is that mark alone and an empty step is no step.
+    function shownToTerminal(path) {
+        cataloguing = true;
+        try {
+            return shownWalked(path);
+        } finally {
+            cataloguing = false;
+        }
+    }
+
+    function shownWalked(path) {
+        freshen();
+        const steps = String(path ?? "").split(catalogueStep).filter(said => said.trim() !== "");
+        let rows = home();
+        let things = true;
+        let among = true;
+        const trail = [];
+        for (const said of steps) {
+            const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
+                one => steadyId(one));
+            if (!found.row)
+                return { missing: said, near: found.near, in: trail.map(one => one.name) };
+            trail.push(found.row);
+            among = things;
+            rows = catalogueHolds(found.row, things);
+            things = collects({ row: found.row });
+        }
+        const ids = trail.map(one => steadyId(one));
+        // Only the row the path names says its drawer, since a listed row's
+        // would be built for every row a long place holds, for one show.
+        const entry = (one, at, drawn) => Showing.shaped(one, {
+            id: at.concat([steadyId(one)]).join(catalogueStep),
+            kind: Catalogue.kindOf(one),
+            verb: verbOf(one),
+            holds: showsMore(one),
+            drawer: drawn ? drawerOf(one) : null
+        });
+        const last = trail.length > 0 ? trail[trail.length - 1] : null;
+        // A thing's own acts, Return's act (an emoji's Copy) and its verbs, are
+        // what `launcher do` does rather than rows to read, so they're said
+        // apart (VKCF3Z, 2026-11-08); a place's or a collection's rows are
+        // its things.
+        const acting = last !== null && asThing(last, among) && !last.category
+            && !collects({ row: last });
+        const verbs = acting ? led(last, last.verbs?.() ?? []).map(one => steadyId(one)) : [];
+        const isAct = one => String(one.key ?? "").startsWith("return:")
+            || verbs.includes(steadyId(one));
+        const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
+        return {
+            in: trail.map(one => one.name),
+            path: ids,
+            row: last === null ? null : entry(last, ids.slice(0, -1), true),
+            rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, false)),
+            acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids, false))
+        };
+    }
+
+    // Whether a row holds more to show a step into, by what it is rather
+    // than by making what it holds, so a place's rows are said without
+    // asking each for its own, as a processor's would list every process.
+    function showsMore(row) {
+        return !!row.verbs || !!row.targets || !!row.nested || !!row.category || !!row.opens
+            || !!row.from || (partsOfRows[row.key] ?? []).length > 0;
     }
 
     // A row's parts as they're named inside it: "Theme" in Slack.
@@ -5842,6 +5917,14 @@ Scope {
         // The same, for an action that takes words, such as Talk.
         function runWith(id: string, words: string): string {
             return JSON.stringify(root.catalogueRun(id, words));
+        }
+
+        // What a place or a row shows, its drawer and the rows inside it,
+        // for `launcher show` in a terminal, as JSON: the path's steps
+        // joined by a "\u203a", each a row's name or its steady id, and
+        // none for home.
+        function show(path: string): string {
+            return JSON.stringify(root.shownToTerminal(path));
         }
 
         // Where every word on the card is drawn, for the check that nothing
