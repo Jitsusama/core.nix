@@ -87,9 +87,36 @@ pub fn span(secs: u64) -> String {
     }
 }
 
+/// Seconds until an age, as `span` says it, reads differently: a second
+/// while it's said to the second, then the rest of its smaller unit.
+pub fn changes_in(secs: u64) -> u64 {
+    let smaller = match secs {
+        0..3_600 => 1,
+        3_600..86_400 => 60,
+        86_400..31_536_000 => 3_600,
+        _ => 86_400,
+    };
+    smaller - secs % smaller
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_age_changes_when_its_smaller_unit_next_turns() {
+        assert_eq!(changes_in(0), 1);
+        assert_eq!(changes_in(1_195), 1);
+        assert_eq!(changes_in(3_600), 60);
+        assert_eq!(changes_in(55_897), 23);
+        assert_eq!(changes_in(2 * 86_400 + 59), 3_541);
+        assert_eq!(changes_in(6 * 365 * 86_400 + 1), 86_399);
+        for secs in [59, 3_599, 55_897, 86_399, 200_000] {
+            let next = secs + changes_in(secs);
+            assert_ne!(span(secs), span(next), "{secs} and {next}");
+            assert_eq!(span(secs), span(next - 1), "{secs} changes before {next}");
+        }
+    }
 
     #[test]
     fn a_span_is_said_in_its_two_largest_units() {

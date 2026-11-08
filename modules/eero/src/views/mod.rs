@@ -28,7 +28,7 @@ mod text;
 pub mod theme;
 mod traffic;
 
-pub use clock::Clock;
+pub use clock::{Clock, changes_in};
 pub use text::Ink;
 
 use crate::model::{CloudState, Device, HomeNetwork, Node, Profile};

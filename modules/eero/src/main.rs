@@ -12,6 +12,7 @@
 //! Usage:
 //!   eero sign-in <email or phone>   sign in once, typing the code eero sends
 //!   eero <view> [--json]            a view of the home network, below
+//!   eero watch <view> [--json]      the view, drawn again as it changes
 //!   eero speedtest                  start the eero's own speed test
 //!   eero sqm on|off                 optimize for conferencing and gaming, or not
 //!   eero daemon                     keep the home network for the shell
@@ -34,6 +35,7 @@ mod session;
 mod status;
 mod time;
 mod views;
+mod watch;
 
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::ExitCode;
@@ -41,8 +43,8 @@ use std::process::ExitCode;
 use cloud::Cloud;
 
 const USAGE: &str = concat!(
-    "usage: eero <view> [--json] | speedtest | sqm on|off | sign-in <email or phone> | ",
-    "daemon\n\n",
+    "usage: eero <view> [--json] | watch <view> [--json] | speedtest | sqm on|off |\n",
+    "       sign-in <email or phone> | daemon\n\n",
     "views: status, nodes, node <location|id>, mesh, devices, device <name|mac>, internet,\n",
     "       speeds, firmware, radio, traffic, profiles, profile <name|id>, events",
 );
@@ -65,6 +67,17 @@ fn main() -> ExitCode {
                     .write_all(page.as_bytes())
                     .map_err(|e| e.to_string())
             }),
+        ["watch"] => Err("name a view to watch: eero watch <view>".into()),
+        ["watch", view @ ..] => views::View::parse(view).and_then(|view| {
+            let terminal = io::stdout().is_terminal();
+            let how = watch::Watch {
+                view: &view,
+                json,
+                ink: &views::theme::ink(terminal),
+                terminal,
+            };
+            watch::watch(&how, &mut io::stdout().lock())
+        }),
         ["sign-in", login] => sign_in(login),
         ["speedtest"] => speedtest(),
         ["sqm", "on"] => conferencing(true),
