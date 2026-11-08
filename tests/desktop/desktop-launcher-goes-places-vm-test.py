@@ -50,6 +50,9 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
 
 
 HEAP = "/tmp/quickshell-heap.raw"
+# Throwaway: whether this run records under heaptrack, and the render loop it asks Qt for.
+TRACKED = False
+LOOP = "basic"
 
 
 def heaptrack_home(desktop: Desktop) -> str:
@@ -68,13 +71,17 @@ def test_aaa_the_shell_starts_under_heaptrack(desktop: Desktop) -> None:
     desktop.as_account(
         f"tr '\\0' '\\n' < /proc/{pid}/environ | grep -v -E '^(LD_PRELOAD|INVOCATION_ID)=' > /tmp/qs.env"
     )
-    drop_in = (
-        "[Service]\nEnvironmentFile=/tmp/qs.env\n"
+    tracking = (
         f"Environment=LD_PRELOAD={home}/lib/heaptrack/libheaptrack_preload.so\n"
         f"Environment=DUMP_HEAPTRACK_OUTPUT={HEAP}\n"
         # The QML JIT's code is anonymous memory, which heaptrack can't name a caller in.
         "Environment=QV4_FORCE_INTERPRETER=1\n"
-        f"ExecStart=\nExecStart={program} {arguments}\n"
+    )
+    drop_in = (
+        "[Service]\nEnvironmentFile=/tmp/qs.env\n"
+        + (tracking if TRACKED else "")
+        + (f"Environment=QSG_RENDER_LOOP={LOOP}\n" if LOOP else "")
+        + f"ExecStart=\nExecStart={program} {arguments}\n"
     )
     print("HEAP drop-in:\n" + drop_in)
     desktop.as_account(
@@ -1075,6 +1082,14 @@ def test_zzz_the_shells_memory_after_the_walk(desktop: Desktop) -> None:
     )
     by_name = desktop.as_account(f"awk {shlex.quote(script)} /proc/{pid}/smaps | sort -rn")
     print("HEAP by mapping:\n" + by_name)
+    threads = desktop.as_account(f"cat /proc/{pid}/task/*/comm | sort | uniq -c | sort -rn")
+    print(f"HEAP loop {LOOP or 'default'}, threads:\n" + threads)
+    if not TRACKED:
+        desktop.as_account(
+            "rm ~/.config/systemd/user/quickshell.service.d/heap.conf && "
+            "systemctl --user daemon-reload && systemctl --user restart quickshell"
+        )
+        return
     home = heaptrack_home(desktop)
     desktop.as_account("systemctl --user stop quickshell")
     desktop.machine.wait_until_succeeds(f"test -s {HEAP}", timeout=60)
