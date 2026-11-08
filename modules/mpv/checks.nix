@@ -47,6 +47,7 @@ onLinux {
         "Asking.js"
         "Numbers.js"
         "Applications.qml"
+        "Media.js"
         "Recents.qml"
         "Recent.js"
         "Ago.js"
@@ -90,6 +91,8 @@ onLinux {
       cp ${entry} share/applications/mpv.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../quickshell/Fuzzy.js} Fuzzy.js
+      cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${../quickshell/Music.js} Music.js
       cp ${../quickshell/Words.qml} Words.qml
       cp ${../quickshell/Files.qml} Files.qml
       cp ${../quickshell/FileFacts.js} FileFacts.js
