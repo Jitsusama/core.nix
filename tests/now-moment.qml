@@ -213,7 +213,7 @@ ShellRoot {
         expect("its plate names what GeoClue can't say from Wi-Fi, and why",
             plate.body.includes("no altitude, speed or heading"), plate.body);
         expect("a position within 26 km says a tenth of a degree",
-            plate.facts[2].value === "43.7\u00b0 N \u00b7 79.4\u00b0 W"
+            plate.facts[2].value === "12.3\u00b0 N \u00b7 98.8\u00b0 W"
                 && plate.facts[1].value === "within 26 km",
             JSON.stringify(plate.facts));
         expect("it's found by its name too, Now being its home",

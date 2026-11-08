@@ -4178,7 +4178,7 @@
         "found": "{within}, found through GeoClue",
         "knows": "GeoClue, {within}",
         "elsewhere": "it keeps {zone}, not the clock's {clock}",
-        "leftOut": "Found by the Wi-Fi networks in reach, GeoClue knows no altitude, speed or heading."
+        "leftOut": "Found from Wi-Fi, it has no altitude, speed or heading."
       }
     },
     {
@@ -6187,8 +6187,7 @@
         "unsynchronised": "not synchronised",
         "unkept": "nothing keeps the time",
         "day": "day {day}",
-        "byHand": "set by hand",
-        "within": "within {km} km"
+        "byHand": "set by hand"
       }
     },
     {

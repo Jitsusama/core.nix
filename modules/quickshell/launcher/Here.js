@@ -46,15 +46,19 @@ function coordinates(here, said) {
 // How near the laptop is to where it's said to be, to three significant
 // figures, rounded up, so it never claims nearer than it knows, in
 // whichever of metres and kilometres keeps it under a thousand: "within
-// 80 m", "within 1.01 km", "within 26 km", "within 1,200 km".
+// 80 m", "within 1.01 km", "within 26 km", "within 1,240 km".
 function within(metres, said, told) {
     const figured = (value) => {
         const whole = Math.max(1, Math.floor(Math.log10(Math.max(value, 1))) + 1);
-        const decimals = Math.max(0, FIGURES - whole);
-        const scale = TEN ** decimals;
-        const up = Math.ceil(value * scale - 1e-9) / scale;
+        // Past three whole digits, the rest round up to tens and hundreds.
+        const decimals = FIGURES - whole;
+        // Kept whole either side of the point, so a float never says
+        // 1,239.9999 for 1,240.
+        const up = decimals >= 0
+            ? Math.ceil(value * TEN ** decimals - 1e-9) / TEN ** decimals
+            : Math.ceil(value / TEN ** -decimals - 1e-9) * TEN ** -decimals;
         // Trailing zeros say nothing more: 26.0 is 26.
-        const kept = Math.min(decimals, (String(up).split(".")[1] ?? "").length);
+        const kept = Math.max(0, Math.min(decimals, (String(up).split(".")[1] ?? "").length));
         return { value: up, text: told.number(up, kept) };
     };
     const near = figured(metres);

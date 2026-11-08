@@ -1656,8 +1656,8 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
     when = int(desktop.machine.succeed("date +%s").strip()) - 720
     here = {
         "v": 2,
-        "latitude": 43.6748,
-        "longitude": -79.3794,
+        "latitude": 12.3457,
+        "longitude": -98.7654,
         "accuracy": 26000,
         "when": when,
         "place": "Lighthouse, Ontario",

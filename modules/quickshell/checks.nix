@@ -1858,7 +1858,7 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
-      echo '{"v":2,"latitude":43.6748,"longitude":-79.3794,"accuracy":26000,'\
+      echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
       '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto",'\
       '"country":"Canada"}' \
         > $XDG_RUNTIME_DIR/whereabouts.json

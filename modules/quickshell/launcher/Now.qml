@@ -338,7 +338,7 @@ Provider {
         const starts = String(meeting?.side ?? "").match(/\d{1,2}:\d\d/);
         const here = Location.here;
         const how = !here ? "" : here.hand === true ? said("byHand")
-            : said("within").replace("{km}", String(Math.ceil(here.accuracy / 1000)));
+            : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
         // how far off it was at the last poll, signed, as Time says it.
         const time = source("time");
