@@ -248,9 +248,9 @@ Provider {
         onLoadFailed: provider.warmth = null
     }
 
-    // The level the backlight daemon last settled, the room it heard, what
-    // its curve asks for that room and whether it follows it, as it writes
-    // them each time a step ends or a pick is heard (Backlight.js), or null
+    // The level the backlight daemon last settled, what its curve asks for
+    // the room it heard and whether it follows the room, as it writes them
+    // each time a step ends or a pick is heard (Backlight.js), or null
     // where no daemon says: no file, or an empty one, as it leaves when it
     // stops. sysfs's brightness can't be watched, so this is what moves the
     // drawer with each step the daemon takes.
@@ -266,10 +266,10 @@ Provider {
         onLoadFailed: provider.settled = null
     }
 
-    // The points the daemon's curve has learned from Joel's picks, dimmest
-    // first, where it keeps them.
-    property var learned: []
-    onLearnedChanged: changed()
+    // The daemon's curve, dimmest first, where it keeps it: its standard
+    // points with each of Joel's picks learned into them.
+    property var curve: []
+    onCurveChanged: changed()
 
     FileView {
         path: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}`
@@ -277,8 +277,8 @@ Provider {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: provider.learned = Backlight.learned(text())
-        onLoadFailed: provider.learned = []
+        onLoaded: provider.curve = Backlight.curve(text())
+        onLoadFailed: provider.curve = []
     }
 
     // The Warmth, a switch: Return turns its following the room off or
@@ -549,21 +549,19 @@ Provider {
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
-            // The room as the daemon heard it when it settled the level,
-            // or as the sensor says it where no daemon does.
-            const heard = settled?.lux ?? (askRoom() ? room : null);
-            if (inTheRoom(output) && heard !== null)
-                facts.push({ label: partName("room"), value: lux(heard) });
-            // What sets the level, then what the curve has learned, which
-            // moves only with a pick (VKCF3Z, 2026-11-08).
-            const fill = (key, values) => Object.keys(values).reduce((words, name) =>
-                words.replace(`{${name}}`, values[name]), partSaid("", key));
-            const follows = inTheRoom(output) ? Backlight.follows(settled, fill) : "";
+            // The room as the sensor hears it now, which moves before the
+            // level does, and is asked only for the screen it lights; or
+            // that no light is heard, where the daemon follows nothing.
+            const said = (key, values) => Backlight.fill(partSaid("", key), values);
+            const heard = inTheRoom(output) ? Backlight.room(settled,
+                askRoom() ? room : null, said, each => lux(each)) : "";
+            if (heard !== "")
+                facts.push({ label: partName("room"), value: heard });
+            // What sets the level, the Warmth, then the curve, which moves
+            // only with a pick, so goes last of the light (VKCF3Z, 2026-11-08).
+            const follows = inTheRoom(output) ? Backlight.follows(settled, said) : "";
             if (follows !== "")
                 facts.push({ label: partName("follows"), value: follows });
-            if (inTheRoom(output) && learned.length > 0)
-                facts.push({ label: partName("learned"),
-                    value: Backlight.learnedSaid(learned, fill, each => lux(each)) });
             if (inTheRoom(output) && warmth !== null)
                 facts.push({
                     label: partName("warmth"),
@@ -571,6 +569,9 @@ Provider {
                         settings.point)} K`,
                         partSaid("", warmth.followsTheRoom ? "following" : "own-white")])
                 });
+            if (inTheRoom(output) && curve.length > 0)
+                facts.push({ label: partName("curve"),
+                    value: Backlight.curveSaid(curve, said, each => lux(each)) });
         }
         const edid = Plate.facts(factRows(output));
         const physical = edid.some(fact => fact.label === partName("size")) ? ""

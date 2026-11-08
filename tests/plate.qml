@@ -1,14 +1,14 @@
 // How a thing's drawer says its parts, and what a screen's says of what
 // niri gives, run in Qt's own JavaScript engine, the one the shell runs it
 // in. The `a-things-drawer-says-its-parts` check copies
-// modules/quickshell/launcher/Plate.js and Screens.js beside this file and
+// modules/quickshell/launcher/Plate.js, Screens.js and Backlight.js beside this file and
 // runs `qml -platform offscreen plate.qml`. A part's name is a fact's
 // label and what it says the value, a level's bar a stroke after it; an
 // act or a choice isn't said; a holder of figures is opened in place; and a
 // screen says the mode it runs with every digit niri has, where it sits,
 // what it offers and how fine it is, an off one only the last two. The
 // backlight daemon's files are read as Backlight.js reads them: what sets
-// the level, and what its curve has learned, dimmest first.
+// the level, the room or why nothing does, and its curve, dimmest first.
 import QtQuick
 import "Backlight.js" as Backlight
 import "Plate.js" as Plate
@@ -38,34 +38,48 @@ QtObject {
     })
 
     // The backlight's words as the vocabulary gives them, filled.
-    function backlightSaid(key, fill) {
-        const words = ({ "the-room": "the room", "your-pick": "your pick",
-            asks: "the room asks {share}", at: "{share} at {lux}" })[key] ?? key;
-        return Object.keys(fill).reduce((said, name) => said.replace(`{${name}}`, fill[name]),
-            words);
+    function backlightSaid(key, values) {
+        return Backlight.fill(({ "the-room": "the room", "on-its-way": "on its way to {share}",
+            "no-light": "no light heard", at: "{share} at {lux}" })[key] ?? key, values);
     }
 
-    // What backlight-now says, following the room, then holding a pick;
-    // an empty file, as the daemon leaves it when it stops, says nothing;
-    // and the learned points, dimmest first, a line it would refuse left out.
+    // What backlight-now says as #2333's daemon writes it: following the
+    // room, there or still stepping to what it asks; no light heard, where
+    // the Room Light says so; and nothing, for an empty file or one the
+    // daemon never writes. Then the curve, every point dimmest first, none
+    // for a file the daemon would refuse.
     function backlight(check) {
-        const following = Backlight.now("level\t0.380\nlux\t28\nasks\t0.380\nfollowing\tyes\n");
-        check("the daemon's level, its room and what the curve asks",
-            JSON.stringify(following) === JSON.stringify({ level: 0.38, lux: 28, asks: 0.38,
-                following: true }), JSON.stringify(following));
-        check("following the room", Backlight.follows(following, backlightSaid) === "the room",
-            Backlight.follows(following, backlightSaid));
-        const picked = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tno\n");
-        check("a pick holding, and what the room asks",
-            Backlight.follows(picked, backlightSaid) === "your pick \u00b7 the room asks 95%",
-            Backlight.follows(picked, backlightSaid));
-        check("an empty file says nothing", Backlight.now("") === null
-            && Backlight.follows(null, backlightSaid) === "", JSON.stringify(Backlight.now("")));
-        const points = Backlight.learned("28 0.950\n6 0.377\nnot a point\n10000 1.000\n");
-        const learned = Backlight.learnedSaid(points, backlightSaid, lux => `${lux} lx`);
-        check("the learned points, dimmest first",
-            learned === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10000 lx", learned);
-        check("nothing learned, nothing said", Backlight.learned("").length === 0, "some");
+        const lx = each => `${each} lx`;
+        const there = Backlight.now("level\t0.380\nlux\t28\nasks\t0.380\nfollowing\tyes\n");
+        check("the daemon's level, what the curve asks and whether it follows",
+            JSON.stringify(there) === JSON.stringify({ level: 0.38, asks: 0.38, following: true }),
+            JSON.stringify(there));
+        check("following the room, there", Backlight.follows(there, backlightSaid) === "the room"
+            && Backlight.room(there, 28, backlightSaid, lx) === "28 lx",
+            Backlight.follows(there, backlightSaid));
+        const stepping = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tyes\n");
+        check("following the room, on its way",
+            Backlight.follows(stepping, backlightSaid) === "the room \u00b7 on its way to 95%",
+            Backlight.follows(stepping, backlightSaid));
+        const unheard = Backlight.now("level\t0.600\nfollowing\tno\n");
+        check("no light heard, said where the room is", unheard?.asks === null
+            && Backlight.follows(unheard, backlightSaid) === ""
+            && Backlight.room(unheard, 28, backlightSaid, lx) === "no light heard",
+            JSON.stringify(unheard));
+        check("an empty file, or one with no following, says nothing", Backlight.now("") === null
+            && Backlight.now("level\t0.600\nasks\t0.950\n") === null
+            && Backlight.follows(null, backlightSaid) === ""
+            && Backlight.room(null, 28, backlightSaid, lx) === "28 lx"
+            && Backlight.room(null, null, backlightSaid, lx) === "",
+            JSON.stringify(Backlight.now("level\t0.600\nasks\t0.950\n")));
+        const points = Backlight.curve("# the curve\n28 0.950\n\n6 0.377\n10000 1.000\n");
+        const curve = Backlight.curveSaid(points, backlightSaid, lx);
+        check("the curve, dimmest first",
+            curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10000 lx", curve);
+        check("a file the daemon would refuse is no curve",
+            ["6 0.377\nnot a point\n", "6 0.377 1\n", "1.2.3 0.5\n", ""]
+                .every(text => Backlight.curve(text).length === 0),
+            JSON.stringify(Backlight.curve("1.2.3 0.5\n")));
     }
 
     // The laptop's panel as niri says it: two modes, both preferred.

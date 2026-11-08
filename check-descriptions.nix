@@ -138,8 +138,9 @@
     place and a level's bar a stroke; a screen's says whether its mode is preferred or custom, its
     refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
     where it sits, its modes and its density to three figures, an off one only what it offers;
-    and the backlight daemon's files say whether the room or a pick sets the level, what the room
-    asks, and each learned point, dimmest first
+    the backlight daemon's files say whether the room sets the level and what it's on its way
+    to, or that no light is heard, and every point of its curve, dimmest first; and the facts
+    that identify a thing end its drawer, marked, each said once
   '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span

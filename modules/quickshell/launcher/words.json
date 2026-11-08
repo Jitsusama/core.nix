@@ -6693,8 +6693,8 @@
         "own-white": "the screen's own white",
         "steps": "{now} of {most} steps",
         "the-room": "the room",
-        "your-pick": "your pick",
-        "asks": "the room asks {share}",
+        "on-its-way": "on its way to {share}",
+        "no-light": "no light heard",
         "at": "{share} at {lux}"
       }
     },
@@ -6849,9 +6849,9 @@
       "name": "Follows"
     },
     {
-      "id": "displays:learned",
+      "id": "displays:curve",
       "in": "displays",
-      "name": "Learned"
+      "name": "Curve"
     },
     {
       "id": "displays:input",

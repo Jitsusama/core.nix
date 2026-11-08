@@ -1335,7 +1335,7 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             """Say whether the drawer is out, holding this plate's first fact, its facts laid.
 
             A busy VM has reported a plate out before its facts were placed, all on one line,
-            and a fact that arrives late, as Learned does when the backlight daemon writes its
+            and a fact that arrives late, as Curve does when the backlight daemon writes its
             curve, lays them out again; so the plate is waited for laid, on the pitch, every
             name whole and one way, rather than held to it in a later snapshot.
             """
@@ -1431,55 +1431,62 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
 
 
 def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
-    """Hold the screen's plate to the lines holding a pick, then following the room.
+    """Hold the screen's plate to the lines hearing no light, then following the room.
 
     The backlight daemon says what it settled, whole by a rename, in backlight-now, and keeps
-    what it learned in learned; the VM's stand-in backlight and sensor give it no real figures,
-    so both are written here as it writes them. Holding a pick it has learned nothing yet, so
-    the plate says Follows and no Learned; following the room with three points learned, it says
-    both, every point dimmest first (VKCF3Z, 2026-11-08).
+    its curve in learned; the VM's stand-in backlight and sensor give it no real figures, so
+    both are written here as it writes them. Hearing no light, the Room Light says so and
+    Follows is gone; following the room on its way to what it asks, with a curve, it says
+    both, the Curve last of the light, every point dimmest first (VKCF3Z, 2026-11-08).
     """
     now = "/run/user/1000/backlight-now"
     learned = "~/.local/state/backlight/learned"
 
-    def settled(level: str, asks: str, following: str) -> None:
+    def settled(said: str) -> None:
         """Say what the daemon settled, as it does."""
-        said = f"level\\t{level}\\nlux\\t28\\nasks\\t{asks}\\nfollowing\\t{following}\\n"
         desktop.as_account(f"printf '{said}' > {now}.writing && mv {now}.writing {now}")
 
     def shown_with(labels: list[str], missing: str) -> Callable[[Json], bool]:
-        """Give a test that the plate is out, saying these facts and not the one missing."""
-        return lambda shown: (
-            shown["drawer"]["out"] is True
-            and all(label in shown["drawer"]["facts"] for label in labels)
-            and missing not in shown["drawer"]["facts"]
-        )
+        """Give a test that the plate is out and laid, saying these and not the one missing."""
+
+        def laid(shown: Json) -> bool:  # As launcher_until calls it.
+            """Say whether the plate says these facts, laid on the pitch, whole, one way."""
+            drawer = shown["drawer"]
+            return (
+                drawer["out"] is True
+                and all(label in drawer["facts"] for label in labels)
+                and missing not in drawer["facts"]
+                and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+                and drawer["labelsWhole"] is True
+                and drawer["laidOneWay"] is True
+            )
+
+        return laid
 
     at = scale.replace(".", "-")
     desktop.as_account(f"rm -f {learned}")
-    settled("0.600", "0.950", "no")
+    settled("level\\t0.600\\nfollowing\\tno\\n")
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
-    desktop.launcher_until(shown_with(["Brightness", "Follows"], "Learned"))
+    desktop.launcher_until(shown_with(["Brightness", "Room Light"], "Follows"))
     drawer = plate_shown(desktop, scale)
-    assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
-    assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
-    desktop.shoot(f"launcher-plate-screen-picked-at-{at}")
+    room = drawer["values"][drawer["facts"].index("Room Light")]
+    assert room == "no light heard", f"at {scale}: {drawer}"
+    desktop.shoot(f"launcher-plate-screen-no-light-at-{at}")
+    curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
     desktop.as_account(
-        f"mkdir -p $(dirname {learned}) && printf '6 0.377\\n28 0.950\\n10000 1.000\\n'"
+        f"mkdir -p $(dirname {learned}) && printf '{curve}'"
         f" > {learned}.writing && mv {learned}.writing {learned}"
     )
-    settled("0.950", "0.950", "yes")
-    desktop.launcher_until(shown_with(["Brightness", "Follows", "Learned"], ""))
+    settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tyes\\n")
+    desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve"], ""))
     drawer = plate_shown(desktop, scale)
     facts = drawer["facts"]
-    assert facts.index("Follows") + 1 == facts.index("Learned"), f"at {scale}: {drawer}"
-    assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
-        f"at {scale} the screen's facts are off the pitch: {drawer}"
+    assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
+    assert drawer["values"][facts.index("Follows")] == "the room \u00b7 on its way to 95%", (
+        f"at {scale}: {drawer}"
     )
-    assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
-    assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
     desktop.shoot(f"launcher-plate-screen-following-at-{at}")
     desktop.close_launcher()
     desktop.as_account(f"rm -f {now} {learned}")
