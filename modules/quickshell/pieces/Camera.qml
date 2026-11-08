@@ -69,6 +69,13 @@ Piece {
     // Quickshell's JavaScript has no flatMap.
     readonly property var programs: [...new Set(reading.reduce((all, camera) => all.concat(camera.programs), []))]
 
+    // The camera in use's drawer, or the first camera's while none is, as
+    // Cameras draws it (launcher/Now.qml's borrowed).
+    drawnBy: names.length === 0 ? null : {
+        place: "cameras",
+        key: `camera:${names.find(name => (held[name] ?? []).length > 0) ?? names[0]}`
+    }
+
     present: names.length > 0
     active: programs.length > 0
     kind: "onAir"
