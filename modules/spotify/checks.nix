@@ -70,6 +70,7 @@ onLinux {
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../quickshell/Fuzzy.js} Fuzzy.js
+      cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
       cp ${../quickshell/Words.qml} Words.qml
       cp ${../quickshell/launcher/words.json} launcher/words.json
       cp ${../quickshell/launcher/Provider.qml} launcher/Provider.qml
