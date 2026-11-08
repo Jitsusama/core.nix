@@ -8,6 +8,74 @@
 // chip's. Machine.qml says the figures.
 .pragma library
 
+// A measure keeps three significant digits, its trailing zeros too, and
+// takes the next unit past 999 (docs/design.md, Set, not styled): "915
+// MB", "1.52 GB", "4.70 GHz". Every amount of bytes, memory's and a
+// disk's alike, is in the decimal units the files and Programs already
+// use, converted from bytes, so one page never mixes two families
+// (VKCF3Z, 2026-11-07).
+const SIGNIFICANT = 3;
+const STEP = 1000;
+// Past this a figure rounds to four digits, so it takes the next unit.
+const ROUNDS_UP = 999.5;
+const BYTES = ["B", "kB", "MB", "GB", "TB", "PB"];
+
+// A figure to three significant digits: "915", "1.52", "0.04".
+function digits(value) {
+    const size = Math.abs(value);
+    if (size === 0) {
+        return "0";
+    }
+    const whole = Math.floor(Math.log10(size)) + 1;
+    return value.toFixed(Math.max(0, SIGNIFICANT - whole));
+}
+
+// A figure in the units it's counted in, stepping a thousand at a time
+// from the first: bytes in whole bytes below a kilobyte.
+function measure(value, units) {
+    let scaled = value;
+    let at = 0;
+    while (Math.abs(scaled) >= ROUNDS_UP && at < units.length - 1) {
+        scaled /= STEP;
+        at += 1;
+    }
+    // A figure can round up to a thousand once scaled, as 999.7 kB does.
+    let said = at === 0 && units === BYTES ? String(Math.round(scaled)) : digits(scaled);
+    if (Number(said) >= STEP && at < units.length - 1) {
+        said = digits(scaled / STEP);
+        at += 1;
+    }
+    return `${said} ${units[at]}`;
+}
+
+function bytes(count) {
+    return measure(count, BYTES);
+}
+
+function rate(count) {
+    return `${bytes(count)}/s`;
+}
+
+// A clock, from the kilohertz the kernel counts it in.
+function hertz(khz) {
+    return measure(khz * STEP, ["Hz", "kHz", "MHz", "GHz"]);
+}
+
+// Two rates that run opposite ways, each saying which it is, or "none"
+// while both are still (VKCF3Z, 2026-11-07).
+function both(inward, outward) {
+    if (!inward && !outward) {
+        return "none";
+    }
+    return `${rate(inward ?? 0)} in \u00b7 ${rate(outward ?? 0)} out`;
+}
+
+// A note's items, joined with dots, those empty or at zero given way.
+function items(parts) {
+    return parts.filter(part => part !== "" && part !== null && part !== undefined)
+        .join(" \u00b7 ");
+}
+
 // The ranges a CPU list is written in: "0-3,8".
 const RANGE = /^(\d+)(?:-(\d+))?$/;
 
@@ -186,15 +254,14 @@ function warnings(critical) {
     return critical.map(bit => WARNINGS[bit] ?? String(bit));
 }
 
-// The NPU's clock, as its driver counts it in megahertz and a note says it
-// in gigahertz to two places at most: "at 1.4 GHz of 2.05 GHz", or
-// "resting" while it's powered down.
+// The NPU's clock, as its driver counts it in megahertz: "at 1.40 GHz of
+// 2.05 GHz", or "resting" while it's powered down.
 const MEGAHERTZ = 1000;
-const CLOCK_PLACES = 2;
 
 function npuClock(npu) {
-    const ghz = mhz => String(Number((mhz / MEGAHERTZ).toFixed(CLOCK_PLACES)));
-    return npu.clock_mhz > 0 ? `at ${ghz(npu.clock_mhz)} GHz of ${ghz(npu.max_mhz)} GHz` : "resting";
+    return npu.clock_mhz > 0
+        ? `at ${hertz(npu.clock_mhz * MEGAHERTZ)} of ${hertz(npu.max_mhz * MEGAHERTZ)}`
+        : "resting";
 }
 
 // The machine's disk, of the disk records: the biggest, as a laptop's one

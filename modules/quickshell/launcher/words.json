@@ -632,9 +632,9 @@
       ],
       "said": {
         "side": "{pct}% held up",
-        "note": "of the last ten seconds, something waited for memory; everything did {full}%",
-        "both": "something waited \u00b7 everything did",
-        "some": "something waited"
+        "note": "something waited for memory",
+        "pair": "{some}% something waited \u00b7 {full}% everything",
+        "some": "{some}% something waited"
       }
     },
     {
@@ -768,7 +768,7 @@
       "in": "machine:memory",
       "name": "Faults",
       "said": {
-        "note": "pages programs reached for; {major} read from the disk"
+        "note": "{major} from the disk"
       }
     },
     {
@@ -776,8 +776,7 @@
       "in": "machine:memory",
       "name": "Swapping",
       "said": {
-        "note": "in \u00b7 out",
-        "compressed": "in \u00b7 out; compressed {in} \u00b7 {out}"
+        "compressed": "compressed {both}"
       }
     },
     {
@@ -840,10 +839,7 @@
     {
       "id": "machine:cpu:spent",
       "in": "machine:cpu",
-      "name": "Time Spent",
-      "said": {
-        "note": "busy, and where its time went"
-      }
+      "name": "Time Spent"
     },
     {
       "id": "machine:cpu:spent-user",
@@ -907,8 +903,7 @@
       "name": "Pressure",
       "said": {
         "side": "{pct}% held up",
-        "note": "of the last ten seconds, something waited for a processor",
-        "some": "something waited"
+        "note": "something waited for a processor"
       }
     },
     {
@@ -931,7 +926,8 @@
       "in": "machine:cpu",
       "name": "Running",
       "said": {
-        "note": "tasks running now; {blocked} waiting on a disk, of {tasks}"
+        "blocked": "{blocked} waiting on a disk",
+        "tasks": "of {tasks} tasks"
       }
     },
     {
@@ -944,7 +940,7 @@
       "in": "machine:cpu",
       "name": "Interrupts",
       "said": {
-        "note": "from devices, and {deferred} put off"
+        "note": "{deferred} put off"
       }
     },
     {
@@ -1099,7 +1095,7 @@
       "in": "machine:cpu:model",
       "name": "Family",
       "said": {
-        "note": "family \u00b7 model \u00b7 stepping, as it says them"
+        "side": "family {family} \u00b7 model {model} \u00b7 stepping {stepping}"
       }
     },
     {
@@ -1200,8 +1196,8 @@
         "uptime"
       ],
       "parts": [
-        "machine:uptime:asleep",
         "machine:uptime:idle",
+        "machine:uptime:asleep",
         "machine:uptime:started",
         "machine:uptime:kernel"
       ]
@@ -1232,6 +1228,16 @@
       "id": "machine:uptime:kernel",
       "in": "machine:uptime",
       "name": "Kernel"
+    },
+    {
+      "id": "machine:uptime:release",
+      "in": "machine:uptime:kernel",
+      "name": "Release"
+    },
+    {
+      "id": "machine:uptime:build",
+      "in": "machine:uptime:kernel",
+      "name": "Build"
     },
     {
       "id": "machine:disk",
@@ -1368,9 +1374,8 @@
         "disk speed"
       ],
       "said": {
-        "iops": "{n} requests",
-        "merged": "{n} merged",
-        "total": "{total} since it started"
+        "iops": "{n} requests/s",
+        "merged": "{n} merged/s"
       }
     },
     {
@@ -1437,7 +1442,8 @@
       "in": "machine:disk",
       "name": "Queue",
       "said": {
-        "note": "requests in flight; {queued} on average, of {depth} it takes"
+        "queued": "{queued} on average",
+        "depth": "{depth} at most"
       }
     },
     {
@@ -1446,9 +1452,7 @@
       "name": "Pressure",
       "said": {
         "side": "{pct}% held up",
-        "note": "of the last ten seconds, something waited on a disk; everything did {full}%",
-        "both": "something waited \u00b7 everything did",
-        "some": "something waited"
+        "note": "something waited on a disk"
       }
     },
     {
@@ -1550,7 +1554,8 @@
       "in": "machine:disk:health",
       "name": "Too Hot For",
       "said": {
-        "note": "past {warning}, and {criticalFor} past {critical}"
+        "warning": "past {warning}",
+        "critical": "{lasted} past {critical}"
       }
     },
     {
@@ -1618,14 +1623,17 @@
     {
       "id": "machine:disk:block",
       "in": "machine:disk:model",
-      "name": "Block Size"
+      "name": "Block Size",
+      "said": {
+        "both": "{logical} B logical \u00b7 {physical} B physical"
+      }
     },
     {
       "id": "machine:disk:scheduler",
       "in": "machine:disk:model",
       "name": "Scheduler",
       "said": {
-        "of": "of {all}"
+        "also": "also {all}"
       }
     },
     {

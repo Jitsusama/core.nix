@@ -278,36 +278,28 @@ Provider {
         return Numbers.format(value, places, settings.group, settings.point);
     }
 
-    function gib(bytes) {
-        return `${number(bytes / 1073741824, 1)} GiB`;
-    }
-
-    // Bytes in binary units, as memory and caches are counted.
-    function binary(count) {
-        const units = [[1073741824, "GiB"], [1048576, "MiB"], [1024, "KiB"]];
-        const unit = units.find(each => count >= each[0]);
-        if (!unit)
-            return `${Math.round(count)} B`;
-        const scaled = count / unit[0];
-        return `${number(scaled, scaled < 10 && scaled % 1 !== 0 ? 1 : 0)} ${unit[1]}`;
+    // A measure as Machine.js writes it, with the machine's own point.
+    function pointed(said) {
+        return settings.point ? said.split(".").join(settings.point) : said;
     }
 
     function percent(part) {
         return `${Math.round(part * 100)}%`;
     }
 
-    // Bytes in decimal units, as a disk's maker counts them.
+    // Bytes, memory's and a disk's alike, in decimal units to three
+    // significant digits (Machine.js's bytes).
     function bytes(count) {
-        const units = [[1e12, "TB"], [1e9, "GB"], [1e6, "MB"], [1e3, "kB"]];
-        const unit = units.find(each => count >= each[0]);
-        if (!unit)
-            return `${Math.round(count)} B`;
-        const scaled = count / unit[0];
-        return `${number(scaled, scaled < 10 ? 1 : 0)} ${unit[1]}`;
+        return pointed(Machine.bytes(count));
     }
 
     function rate(count) {
-        return `${bytes(count)}/s`;
+        return pointed(Machine.rate(count));
+    }
+
+    // Two rates running opposite ways, each named, or none.
+    function both(inward, outward) {
+        return pointed(Machine.both(inward, outward));
     }
 
     // A count a second, whole once it's past ten.
@@ -320,11 +312,11 @@ Provider {
     }
 
     function ghz(khz) {
-        return `${number(khz / 1e6, 1)} GHz`;
+        return pointed(Machine.hertz(khz));
     }
 
     function ms(value) {
-        return `${number(value, value < 10 ? 2 : 0)} ms`;
+        return `${pointed(Machine.digits(value))} ms`;
     }
 
     // A long time, as Interfaces says one: "3 days, 2 hours".
@@ -355,21 +347,25 @@ Provider {
     function pressured(id, pressure, full) {
         const some = pressure.some;
         const warn = some.avg10_pct >= 10;
-        const both = (window, name) => figure({
+        // Each window says which share is which, everything's giving way
+        // where it's none.
+        const shares = window => full && pressure.full
+            ? says("memory:pressure", "pair", { some: number(some[window], 0),
+                full: number(pressure.full[window], 0) })
+            : says("memory:pressure", "some", { some: number(some[window], 0) });
+        const each = (window, name) => figure({
             name: named(`${id}-${name}`),
-            side: full && pressure.full ? `${number(some[window], 0)}% \u00b7 ${number(
-                pressure.full[window], 0)}%` : `${number(some[window], 0)}%`,
-            graph: bar(some[window] / 100, some[window] >= 10),
-            note: full && pressure.full ? says(id, "both") : says(id, "some")
+            side: full && pressure.full && pressure.full[window] > 0 ? shares(window)
+                : says("memory:pressure", "some", { some: number(some[window], 0) }),
+            graph: bar(some[window] / 100, some[window] >= 10)
         });
         return holderRow({
             name: named(id),
             side: says(id, "side", { pct: number(some.avg10_pct, 0) }),
             graph: bar(some.avg10_pct / 100, warn),
             glyph: Words.glyph(`machine:${id.split(":")[0]}`),
-            note: full && pressure.full ? says(id, "note", { full: number(pressure.full.avg10_pct,
-                0) }) : says(id, "note")
-        }, () => [both("avg10_pct", "10"), both("avg60_pct", "60"), both("avg300_pct", "300")]);
+            note: says(id, "note")
+        }, () => [each("avg10_pct", "10"), each("avg60_pct", "60"), each("avg300_pct", "300")]);
     }
 
     // A thing's parts in the order its words list them (VKCF3Z, 2026-11-07:
@@ -464,11 +460,9 @@ Provider {
             name: named("cpu:core", { n: core.n }),
             side: percent(core.busy_ratio ?? 0),
             graph: bar(core.busy_ratio ?? 0),
-            note: [core.kind === "efficient" ? "an efficient core"
-                : core.kind ? `a ${core.kind} core` : "",
-                core.clock_khz > 0 ? `at ${ghz(core.clock_khz)}` : "",
-                typeof core.temperature_c === "number" ? degrees(core.temperature_c) : ""]
-                .filter(part => part !== "").join(", ")
+            note: Machine.items([core.kind ?? "",
+                core.clock_khz > 0 ? ghz(core.clock_khz) : "",
+                typeof core.temperature_c === "number" ? degrees(core.temperature_c) : ""])
         }))), figure({
             name: named("cpu:maxed"),
             side: Machine.maxed(loads),
@@ -481,7 +475,7 @@ Provider {
                 side: percent(p.busy_ratio),
                 graph: bar(p.busy_ratio),
                 glyph: chip,
-                note: says("cpu:spent", "note")
+                note: ""
             }, () => spent.map(each => figure({
                 name: named(`cpu:spent-${each.id}`),
                 side: percent(each.share),
@@ -559,7 +553,9 @@ Provider {
             rows.push(figure({
                 name: named("cpu:running"),
                 side: `${p.running}`,
-                note: says("cpu:running", "note", { blocked: p.blocked ?? 0, tasks: p.tasks ?? 0 })
+                note: Machine.items([p.blocked > 0 ? says("cpu:running", "blocked", {
+                    blocked: p.blocked }) : "", p.tasks > 0 ? says("cpu:running", "tasks", {
+                    tasks: number(p.tasks, 0) }) : ""])
             }));
         if (typeof p.switches_per_s === "number")
             rows.push(figure({
@@ -571,7 +567,8 @@ Provider {
             rows.push(figure({
                 name: named("cpu:interrupts"),
                 side: often(p.interrupts_per_s),
-                note: says("cpu:interrupts", "note", { deferred: often(p.softirqs_per_s ?? 0) })
+                note: p.softirqs_per_s > 0 ? says("cpu:interrupts", "note", {
+                    deferred: often(p.softirqs_per_s) }) : ""
             }));
         if (typeof p.forks_per_s === "number")
             rows.push(figure({
@@ -596,7 +593,7 @@ Provider {
                 name: named("cpu:kinds"),
                 side: present.map(kind => inKind(kind).length).join(" \u00b7 "),
                 glyph: chip,
-                note: present.map(kind => `${inKind(kind).length} ${kind}`).join(", ")
+                note: Machine.items(present)
             }, () => present.map(kind => {
                 const members = inKind(kind);
                 const clocks = members.map(core => core.clock_khz ?? 0).filter(clock => clock > 0);
@@ -685,9 +682,8 @@ Provider {
         if (typeof p.family === "number")
             rows.push(leaf({
                 name: named("cpu:family"),
-                side: [p.family, p.model_number, p.stepping].filter(n => typeof n === "number")
-                    .join(" \u00b7 "),
-                note: says("cpu:family", "note")
+                side: says("cpu:family", "side", { family: p.family,
+                    model: p.model_number ?? "", stepping: p.stepping ?? "" })
             }));
         if (p.microcode)
             rows.push(leaf({ name: named("cpu:microcode"), side: p.microcode }));
@@ -695,7 +691,7 @@ Provider {
         if (caches.length > 0)
             rows.push(holderRow({
                 name: named("cpu:caches"),
-                side: binary(caches.reduce((all, cache) => all + (cache.size_b ?? 0) * cache.count, 0)),
+                side: bytes(caches.reduce((all, cache) => all + (cache.size_b ?? 0) * cache.count, 0)),
                 glyph: Words.glyph(kinds.cpu),
                 note: says("cpu:caches", "note")
             }, () => caches.map(cache => figure({
@@ -703,13 +699,13 @@ Provider {
                     level: cache.level,
                     type: says("cpu:cache", cache.type) || cache.type
                 }),
-                side: cache.count > 1 ? `${binary(cache.size_b)} \u00d7 ${cache.count}`
-                    : binary(cache.size_b),
-                note: [cache.shared_by > 1 ? says("cpu:cache", "shared", { n: cache.shared_by })
-                    : says("cpu:cache", "own"), Machine.cores(cache.cpus ?? []),
+                side: cache.count > 1 ? `${bytes(cache.size_b)} \u00d7 ${cache.count}`
+                    : bytes(cache.size_b),
+                note: Machine.items([cache.shared_by > 1
+                    ? says("cpu:cache", "shared", { n: cache.shared_by }) : says("cpu:cache", "own"),
+                    Machine.cores(cache.cpus ?? []),
                     cache.ways ? says("cpu:cache", "ways", { ways: cache.ways }) : "",
-                    cache.line_b ? says("cpu:cache", "line", { line: cache.line_b }) : ""]
-                    .filter(part => part !== "").join(", ")
+                    cache.line_b ? says("cpu:cache", "line", { line: cache.line_b }) : ""])
             }))));
         return rows;
     }
@@ -721,7 +717,7 @@ Provider {
         if (!m || !(m.total_b > 0))
             return unheld("memory");
         return fresh({
-            headline: `${gib(m.used_b)} used, ${percent(m.used_b / m.total_b)}`,
+            headline: `${bytes(m.used_b)} used, ${percent(m.used_b / m.total_b)}`,
             graph: bar(m.used_b / m.total_b),
             glyph: Words.glyph(kinds.memory),
             title: Words.name(kinds.memory),
@@ -736,24 +732,24 @@ Provider {
         const chip = Words.glyph(kinds.memory);
         const rows = [figure({
             name: named("memory:used"),
-            side: `${gib(m.used_b)} of ${gib(m.total_b)}`,
+            side: `${bytes(m.used_b)} of ${bytes(m.total_b)}`,
             graph: bar(m.used_b / m.total_b),
-            note: `${gib(m.available_b)} available`
+            note: `${bytes(m.available_b)} available`
         })];
         if (m.pressure?.some)
             rows.push(pressured("memory:pressure", m.pressure, true));
         if (info.SwapTotal > 0)
             rows.push(figure({
                 name: named("memory:swap"),
-                side: `${gib(info.SwapTotal - info.SwapFree)} of ${gib(info.SwapTotal)}`,
+                side: `${bytes(info.SwapTotal - info.SwapFree)} of ${bytes(info.SwapTotal)}`,
                 graph: bar((info.SwapTotal - info.SwapFree) / info.SwapTotal),
                 note: info.SwapCached > 0 ? says("memory:swap", "cached", {
-                    cached: binary(info.SwapCached) }) : ""
+                    cached: bytes(info.SwapCached) }) : ""
             }));
         if (info.Cached !== undefined)
             rows.push(figure({
                 name: named("memory:cached"),
-                side: gib(info.Cached),
+                side: bytes(info.Cached),
                 graph: bar(info.Cached / m.total_b),
                 note: "files kept in memory, given up when it's wanted"
             }));
@@ -762,24 +758,24 @@ Provider {
         if (held.length > 0)
             rows.push(holderRow({
                 name: named("memory:held"),
-                side: `${named(`memory:held-${held[0].id}`)} ${gib(held[0].bytes)}`,
+                side: `${named(`memory:held-${held[0].id}`)} ${bytes(held[0].bytes)}`,
                 glyph: chip,
                 note: says("memory:held", "note")
             }, () => held.map(part => figure({
                 name: named(`memory:held-${part.id}`),
-                side: binary(part.bytes),
+                side: bytes(part.bytes),
                 graph: bar(part.bytes / m.total_b),
                 note: says(`memory:held-${part.id}`, "note")
             })).concat(zswap ? [figure({
                 name: named("memory:held-compressed"),
-                side: says("memory:held-compressed", "side", { stored: binary(zswap.stored),
-                    pool: binary(zswap.pool) }),
+                side: says("memory:held-compressed", "side", { stored: bytes(zswap.stored),
+                    pool: bytes(zswap.pool) }),
                 graph: bar(zswap.pool / m.total_b),
                 note: says("memory:held-compressed", "note", { ratio: number(zswap.ratio, 1) })
             })] : []).concat(info.AnonHugePages > 0 || (m.huge_pages?.HugePages_Total ?? 0) > 0
                 ? [figure({
                     name: named("memory:held-huge"),
-                    side: binary((info.AnonHugePages ?? 0) + (info.Hugetlb ?? 0)),
+                    side: bytes((info.AnonHugePages ?? 0) + (info.Hugetlb ?? 0)),
                     note: says("memory:held-huge", "note", {
                         reserved: m.huge_pages?.HugePages_Total ?? 0 })
                 })] : [])));
@@ -796,23 +792,25 @@ Provider {
         if (typeof m.paged_in_b_per_s === "number")
             rows.push(figure({
                 name: named("memory:paging"),
-                side: `${rate(m.paged_in_b_per_s)} \u00b7 ${rate(m.paged_out_b_per_s ?? 0)}`,
+                side: both(m.paged_in_b_per_s, m.paged_out_b_per_s),
                 note: says("memory:paging", "note")
             }));
         if (typeof m.faults_per_s === "number")
             rows.push(figure({
                 name: named("memory:faults"),
                 side: often(m.faults_per_s),
-                note: says("memory:faults", "note", { major: often(m.major_faults_per_s ?? 0) })
+                note: m.major_faults_per_s > 0 ? says("memory:faults", "note", {
+                    major: often(m.major_faults_per_s) }) : ""
             }));
         if (typeof m.swapped_in_b_per_s === "number")
             rows.push(figure({
                 name: named("memory:swapping"),
-                side: `${rate(m.swapped_in_b_per_s)} \u00b7 ${rate(m.swapped_out_b_per_s ?? 0)}`,
-                note: typeof m.compressed_in_b_per_s === "number"
+                side: both(m.swapped_in_b_per_s, m.swapped_out_b_per_s),
+                // What zswap took and gave back, said only while it moves.
+                note: m.compressed_in_b_per_s > 0 || m.compressed_out_b_per_s > 0
                     ? says("memory:swapping", "compressed", {
-                        in: rate(m.compressed_in_b_per_s), out: rate(m.compressed_out_b_per_s ?? 0) })
-                    : says("memory:swapping", "note")
+                        both: both(m.compressed_in_b_per_s, m.compressed_out_b_per_s) })
+                    : ""
             }));
         if (typeof m.oom_kills === "number")
             rows.push(figure({
@@ -825,13 +823,13 @@ Provider {
         if (holders && holders.length > 0)
             rows.push(holderRow({
                 name: named("memory:using"),
-                side: `${holders[0].name} ${gib(holders[0].resident_b)}`,
+                side: `${holders[0].name} ${bytes(holders[0].resident_b)}`,
                 glyph: chip,
                 note: "each program's processes together"
             }, () => holders.map((each, at) => figure({
                 key: ranked("memory", at),
                 name: each.name,
-                side: gib(each.resident_b),
+                side: bytes(each.resident_b),
                 graph: bar(each.resident_b / m.total_b),
                 note: each.processes > 1 ? `${each.processes} processes` : ""
             }))));
@@ -846,18 +844,17 @@ Provider {
                 name: one.count > 1 ? `${one.count} \u00d7 ${one.size || one.type}`
                     : one.size || one.type,
                 side: one.speed !== "" ? `${one.type} at ${one.speed}` : one.type,
-                note: [one.manufacturer !== "" ? `by ${one.manufacturer}` : "",
-                    one.part, one.locators.join(", ")].filter(part => part !== "").join(", ")
+                note: Machine.items([one.manufacturer !== "" ? `by ${one.manufacturer}` : "",
+                    one.part, one.locators.join(" \u00b7 ")])
             });
             rows.push(holderRow({
                 name: named("memory:type"),
                 side: type,
                 copy: type,
                 glyph: chip,
-                note: [count > 0 && first.size !== "" && modules.length === 1
+                note: Machine.items([count > 0 && first.size !== "" && modules.length === 1
                     ? `${count} ${count === 1 ? "module" : "modules"} of ${first.size}` : "",
-                    first.manufacturer !== "" ? `by ${first.manufacturer}` : ""]
-                    .filter(part => part !== "").join(", ")
+                    first.manufacturer !== "" ? `by ${first.manufacturer}` : ""])
             }, () => modules.map(each)));
         }
         // Every count the kernel keeps of its memory, by its own name, so
@@ -873,7 +870,7 @@ Provider {
             }, () => counted.map(name => figure({
                 key: `machine:memory:count:${name}`,
                 name: name,
-                side: binary(info[name])
+                side: bytes(info[name])
             })).concat(Object.keys(m.huge_pages ?? {}).map(name => figure({
                 key: `machine:memory:count:${name}`,
                 name: name,
@@ -1152,10 +1149,12 @@ Provider {
             return rows;
         const when = since(disk);
         const floor = 1e6;
-        const iops = (count, merged, total) => [says("disk:speed", "iops", { n: often(count ?? 0) }),
-            typeof merged === "number" ? says("disk:speed", "merged", { n: often(merged) }) : "",
-            typeof total === "number" ? says("disk:speed", "total", { total: bytes(total) }) : ""]
-            .filter(part => part !== "").join(", ");
+        // Each kind's requests and those merged into others, each a
+        // second, a part at zero giving way (VKCF3Z, 2026-11-07).
+        const count = n => number(n, n < 10 ? 1 : 0);
+        const iops = (requests, merged) => Machine.items([requests > 0
+            ? says("disk:speed", "iops", { n: count(requests) }) : "",
+            merged > 0 ? says("disk:speed", "merged", { n: count(merged) }) : ""]);
         rows.push(holderRow({
             name: named("disk:speed"),
             side: rate((disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0)),
@@ -1166,16 +1165,16 @@ Provider {
             name: named("disk:reading"),
             side: rate(disk.read_b_per_s ?? 0),
             graph: spark(series.read ?? [], floor),
-            note: iops(disk.reads_per_s, disk.read_merges_per_s, disk.read_b)
+            note: iops(disk.reads_per_s, disk.read_merges_per_s)
         }), figure({
             name: named("disk:writing"),
             side: rate(disk.written_b_per_s ?? 0),
             graph: spark(series.write ?? [], floor),
-            note: iops(disk.writes_per_s, disk.write_merges_per_s, disk.written_b)
+            note: iops(disk.writes_per_s, disk.write_merges_per_s)
         }), figure({
             name: named("disk:discarding"),
             side: rate(disk.discarded_b_per_s ?? 0),
-            note: iops(disk.discards_per_s, null, disk.discarded_b)
+            note: iops(disk.discards_per_s, 0)
         }), figure({
             name: named("disk:flushing"),
             side: often(disk.flushes_per_s ?? 0),
@@ -1194,8 +1193,7 @@ Provider {
             name: named("disk:latency"),
             side: typeof disk.latency_ms === "number" ? ms(disk.latency_ms) : "idle",
             glyph: chip,
-            note: typeof disk.latency_ms === "number" ? "for each request, on average"
-                : "nothing asked of it"
+            note: typeof disk.latency_ms === "number" ? "each request, on average" : ""
         }, () => latencies.map(([id, value]) => figure({
             name: named(`disk:latency-${id}`),
             side: typeof value === "number" ? ms(value) : "idle",
@@ -1205,10 +1203,10 @@ Provider {
             rows.push(figure({
                 name: named("disk:queue"),
                 side: `${disk.in_flight}`,
-                note: says("disk:queue", "note", {
-                    queued: number(disk.queued ?? 0, 1),
-                    depth: disk.queue_depth ?? 0
-                })
+                note: Machine.items([disk.queued > 0 ? says("disk:queue", "queued", {
+                    queued: pointed(Machine.digits(disk.queued)) }) : "",
+                    disk.queue_depth > 0 ? says("disk:queue", "depth", {
+                        depth: disk.queue_depth }) : ""])
             }));
         if (disk.pressure?.some)
             rows.push(pressured("disk:pressure", disk.pressure, true));
@@ -1227,19 +1225,19 @@ Provider {
                 name: named("disk:file-systems"),
                 side: `${systems.length}`,
                 glyph: chip,
-                note: systems.map(fs => fs.mount).join(", ")
+                note: Machine.items(systems.map(fs => fs.mount))
             }, () => systems.map(fs => figure({
                 key: `machine:disk:file-system:${fs.mount}`,
                 name: fs.mount,
                 side: fs.size_b > 0 ? says("disk:file-systems", "room", {
                     free: bytes(fs.available_b), size: bytes(fs.size_b) }) : fs.type,
                 graph: fs.size_b > 0 ? bar(1 - fs.available_b / fs.size_b) : undefined,
-                note: [fs.type, fs.device, fs.free_b > fs.available_b
+                note: Machine.items([fs.type, fs.free_b > fs.available_b
                     ? says("disk:file-systems", "reserved", {
                         reserved: bytes(fs.free_b - fs.available_b) }) : "",
                     fs.files > 0 ? says("disk:file-systems", "files", {
-                        free: number(fs.files_free, 0), files: number(fs.files, 0) }) : ""]
-                    .filter(part => part !== "").join(", ")
+                        free: number(fs.files_free, 0), files: number(fs.files, 0) }) : "",
+                    fs.device])
             }))));
         if (disk.model)
             rows.push(holderRow({
@@ -1311,16 +1309,18 @@ Provider {
                 rows.push(figure({
                     name: named("disk:too-hot"),
                     side: lasted((smart.warning_temp_time + (smart.critical_temp_time ?? 0)) * 60),
-                    note: says("disk:too-hot", "note", {
-                        warning: smart.wctemp ? degrees(smart.wctemp - 273.15) : "",
-                        critical: smart.cctemp ? degrees(smart.cctemp - 273.15) : "",
-                        criticalFor: lasted((smart.critical_temp_time ?? 0) * 60)
-                    })
+                    // Its thresholds are in kelvin, as NVMe counts them.
+                    note: Machine.items([smart.wctemp ? says("disk:too-hot", "warning", {
+                        warning: degrees(smart.wctemp - 273.15) }) : "",
+                        smart.cctemp && smart.critical_temp_time > 0
+                            ? says("disk:too-hot", "critical", {
+                                critical: degrees(smart.cctemp - 273.15),
+                                lasted: lasted(smart.critical_temp_time * 60) }) : ""])
                 }));
             rows.push(figure({
                 name: named("disk:warnings"),
                 side: warned.length > 0
-                    ? warned.map(id => says("disk:warnings", id) || id).join(", ")
+                    ? Machine.items(warned.map(id => says("disk:warnings", id) || id))
                     : says("disk:warnings", "none"),
                 note: says("disk:warnings", "note")
             }));
@@ -1343,8 +1343,8 @@ Provider {
             rows.push(figure({
                 name: named("disk:kind"),
                 side: says("disk:kind", disk.rotational ? "spinning" : "solid"),
-                note: [disk.transport ?? "", disk.removable ? says("disk:kind", "removable")
-                    : says("disk:kind", "fixed")].filter(part => part !== "").join(", ")
+                note: Machine.items([disk.transport ?? "", disk.removable
+                    ? says("disk:kind", "removable") : says("disk:kind", "fixed")])
             }));
         if (disk.link)
             rows.push(figure({
@@ -1361,7 +1361,8 @@ Provider {
             rows.push(figure({
                 name: named("disk:block"),
                 side: disk.physical_block_b && disk.physical_block_b !== disk.logical_block_b
-                    ? `${disk.logical_block_b} B \u00b7 ${disk.physical_block_b} B`
+                    ? says("disk:block", "both", { logical: disk.logical_block_b,
+                        physical: disk.physical_block_b })
                     : `${disk.logical_block_b} B`
             }));
         if (disk.scheduler)
@@ -1369,7 +1370,8 @@ Provider {
                 name: named("disk:scheduler"),
                 side: disk.scheduler,
                 note: (disk.schedulers ?? []).length > 1
-                    ? says("disk:scheduler", "of", { all: disk.schedulers.join(", ") }) : ""
+                    ? says("disk:scheduler", "also", { all: Machine.items(disk.schedulers
+                        .filter(one => one !== disk.scheduler)) }) : ""
             }));
         return rows;
     }
@@ -1407,16 +1409,10 @@ Provider {
         }, () => bootParts(boot, seconds));
     }
 
+    // Idle first, as what moves most; Asleep after, since it moves least
+    // (VKCF3Z, 2026-11-07); then when it started and its kernel.
     function bootParts(boot, seconds) {
         const rows = [];
-        if (typeof boot.asleep_s === "number")
-            rows.push(figure({
-                name: named("uptime:asleep"),
-                side: boot.asleep_s > 0 ? lasted(boot.asleep_s) : says("uptime:asleep", "never"),
-                graph: seconds > 0 ? bar(boot.asleep_s / seconds) : undefined,
-                note: seconds > 0 ? says("uptime:asleep", "note", {
-                    share: percent(boot.asleep_s / seconds) }) : ""
-            }));
         if (typeof boot.idle_ratio === "number")
             rows.push(figure({
                 name: named("uptime:idle"),
@@ -1424,13 +1420,28 @@ Provider {
                 graph: bar(boot.idle_ratio),
                 note: says("uptime:idle", "note")
             }));
+        if (typeof boot.asleep_s === "number")
+            rows.push(figure({
+                name: named("uptime:asleep"),
+                side: boot.asleep_s > 0 ? lasted(boot.asleep_s) : says("uptime:asleep", "never"),
+                graph: seconds > 0 ? bar(boot.asleep_s / seconds) : undefined,
+                note: seconds > 0 && boot.asleep_s > 0 ? says("uptime:asleep", "note", {
+                    share: percent(boot.asleep_s / seconds) }) : ""
+            }));
         rows.push(leaf({
             name: named("uptime:started"),
             side: Qt.formatDateTime(new Date(boot.booted_at_s * 1000), "ddd d MMM, HH:mm")
         }));
+        // Its build is too long for a note, so it's a step in.
         if (boot.kernel)
-            rows.push(leaf({ name: named("uptime:kernel"), side: boot.kernel,
-                note: boot.kernel_build ?? "" }));
+            rows.push(boot.kernel_build ? holderRow({
+                name: named("uptime:kernel"),
+                side: boot.kernel,
+                copy: boot.kernel,
+                glyph: Words.glyph(kinds.cpu)
+            }, () => [leaf({ name: named("uptime:release"), side: boot.kernel }),
+                leaf({ name: named("uptime:build"), side: boot.kernel_build })])
+                : leaf({ name: named("uptime:kernel"), side: boot.kernel }));
         return rows;
     }
 

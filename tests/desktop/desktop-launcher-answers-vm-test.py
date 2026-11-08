@@ -683,7 +683,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
     # The memory, and the programs holding most of it, read once it's
     # asked.
     desktop.answer("memory")
-    desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    desktop.launcher_until(lambda shown: "B used" in (shown["selected"] or {}).get("name", ""))
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"Used", "Cached", "Using It"} <= set(shown["rows"]))
     desktop.close_launcher()

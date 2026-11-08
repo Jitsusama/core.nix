@@ -891,10 +891,25 @@ QtObject {
         machine("what kept it from resting, as a note says it", ["display", "internal",
             "novel"].map(by => Machine.keeper(by).said), ["the display engine",
             "the processor's own power controller", "novel"]);
-        // The NPU's clock said in gigahertz to two places at most, and
-        // "resting" while it's powered down.
+        // The NPU's clock to three significant digits, and "resting"
+        // while it's powered down.
         machine("the NPU's clock", Machine.npuClock({ clock_mhz: 1400, max_mhz: 2050 }),
-            "at 1.4 GHz of 2.05 GHz");
+            "at 1.40 GHz of 2.05 GHz");
+        // Bytes in decimal units to three significant digits, each
+        // converted from bytes, stepping up past 999, whole below a kB.
+        machine("bytes, each converted", [873 * 1048576, 6.4 * 1048576, 1.52e9, 873, 0, 999.7e3,
+            4096].map(Machine.bytes), ["915 MB", "6.71 MB", "1.52 GB", "873 B", "0 B",
+            "1.00 MB", "4.10 kB"]);
+        machine("a rate", Machine.rate(12000), "12.0 kB/s");
+        machine("a clock from kilohertz", [4700000, 400000].map(Machine.hertz),
+            ["4.70 GHz", "400 MHz"]);
+        machine("three significant digits", [0.04, 1.234, 12.34, 123.4].map(Machine.digits),
+            ["0.0400", "1.23", "12.3", "123"]);
+        // Two rates say which is which, and none while both are still.
+        machine("rates both ways", Machine.both(12000, 0), "12.0 kB/s in \u00b7 0 B/s out");
+        machine("rates both still", Machine.both(0, 0), "none");
+        machine("a note's items, the empty given way", Machine.items(["btrfs", "", null, "dm-0"]),
+            "btrfs \u00b7 dm-0");
         machine("the NPU resting", Machine.npuClock({ clock_mhz: 0, max_mhz: 2050 }), "resting");
         machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
             .length, 5);

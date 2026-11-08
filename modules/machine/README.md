@@ -47,7 +47,7 @@ units, or named here as left out with the reason.
 |                 | every field of `/proc/meminfo`, huge pages   | Every Count, by the kernel's own names    |
 |                 | each module the firmware lists               | Type                                      |
 | `disk:<name>`   | read, written, discarded a second, requests  | Speed, its parts                          |
-|                 | merged requests, bytes since boot            | Reading's and Writing's notes             |
+|                 | merged requests a second                     | Reading's and Writing's notes             |
 |                 | flushes a second                             | Speed's Flushing                          |
 |                 | busy, latency of each kind of request        | Busy, Latency                             |
 |                 | in flight, queued on average, queue depth    | Queue                                     |
@@ -62,7 +62,7 @@ units, or named here as left out with the reason.
 |                 | time past warning and critical heat          | Health's Too Hot For                      |
 |                 | critical warnings, when it was asked         | Health's Warnings, its note               |
 | `boot:<id>`     | when it started, time asleep, idle share     | Uptime, Asleep, Idle, Started             |
-|                 | kernel release and build                     | Kernel                                    |
+|                 | kernel release and build                     | Kernel, its Release and Build             |
 | `using:cpu:N`   | each program's share, its processes          | Processor's Using It                      |
 | `using:memory:N`| each program's resident memory, processes    | Memory's Using It                         |
 
@@ -87,6 +87,9 @@ units, or named here as left out with the reason.
   are whole on a laptop's disk, so it's always none, and the state says
   only that the controller is live.
 - **Host read and write commands.** UDisks doesn't give them.
+- **Bytes each kind of request moved since boot.** Health's Read and
+  Written give the disk's whole life, which is what lasts; since boot,
+  a note had no room for them beside the rates.
 - **The boot's id.** Nothing is done with it.
 
 [main]: src/main.rs
