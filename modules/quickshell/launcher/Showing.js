@@ -13,6 +13,12 @@ function plain(text) {
     return String(text ?? "").toLowerCase().replace(/[-_\s]+/g, " ").trim();
 }
 
+// How many names a miss offers at most.
+const NEAREST = 3;
+
+// What share of the typed letters a near name may be apart by: a third.
+const LEEWAY = 3;
+
 // The row a step names among `rows`: the one whose steady id it is
 // (`idOf`), else whose name it is, else the only one whose name starts
 // with it. Gives { row }, or { near }, the names it might have meant,
@@ -37,12 +43,6 @@ function step(rows, said, idOf) {
     }
     return { near: nearest(named.map(row => row.name), wanted) };
 }
-
-// How many names a miss offers at most.
-const NEAREST = 3;
-
-// What share of the typed letters a near name may be apart by: a third.
-const LEEWAY = 3;
 
 function unique(names) {
     return names.filter((name, at) => names.indexOf(name) === at);

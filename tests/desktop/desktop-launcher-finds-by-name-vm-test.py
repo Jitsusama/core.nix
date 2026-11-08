@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
@@ -1577,6 +1578,37 @@ def test_spotify_signed_out_offers_sign_in_and_says_so(desktop: Desktop) -> None
         lambda shown: (shown["selected"] or {}).get("note") == "signed out",
     )
     desktop.close_launcher()
+
+
+def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Desktop) -> None:
+    """`launcher` in a terminal says a place as the running shell answers, and a miss on stderr.
+
+    What the shell answers is tests/launcher-on-niri-test.py's, and how it's laid out
+    in-a-terminal's own tests'; here the program the account is given reaches the shell the
+    session runs. The gallery keeps it in kitty at Joel's scales.
+    """
+    machine = desktop.machine
+    shown = json.loads(desktop.as_account("launcher show machine --json"))
+    assert shown["in"] == ["Machine"], shown
+    assert "Disk" in [row["name"] for row in shown["rows"]], shown
+    status, said = machine.execute(desktop.in_session("launcher show mahcine 2>&1 >/dev/null"))
+    assert status == 1, (status, said)
+    assert "did you mean Machine?" in said, said
+    if not desktop.values["photographs"]:
+        return
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        for asked, picture in [
+            ("launcher show", "terminal-home"),
+            ("launcher show machine disk", "terminal-disk"),
+            ("launcher show mahcine", "terminal-miss"),
+        ]:
+            window = desktop.opened(
+                picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
+            )
+            desktop.photograph(f"{picture}-at-{scale}")
+            desktop.close(window)
+    desktop.as_account("niri msg output winit scale 1")
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:

@@ -1245,7 +1245,7 @@ Scope {
     // its drawer (`row`, null at home) and the rows a step into it holds;
     // or, where a step names nothing, that step (`missing`), the names it
     // might have meant (`near`) and where it was looked for.
-    function shown(path) {
+    function shownToTerminal(path) {
         cataloguing = true;
         try {
             return shownWalked(path);
@@ -5899,7 +5899,7 @@ Scope {
         // joined by a "\u203a", each a row's name or its steady id, and
         // none for home.
         function show(path: string): string {
-            return JSON.stringify(root.shown(path));
+            return JSON.stringify(root.shownToTerminal(path));
         }
 
         // Where every word on the card is drawn, for the check that nothing

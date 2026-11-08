@@ -98,14 +98,13 @@ pub fn shown(shown: &Value, look: &Look, room: Room, words: &Words) -> String {
         .map(|rows| rows.iter().collect())
         .unwrap_or_default();
     if let Some(row) = shown.get("row").filter(|row| row.is_object()) {
-        match row.get("drawer").filter(|drawer| drawer.is_object()) {
-            Some(drawer) => blocks.extend(drawn(drawer, row, look, room, words)),
-            None => {
-                blocks.push(vec![head(shown, look)]);
-                // A row holding nothing says itself, its side among it.
-                if rows.is_empty() {
-                    blocks.push(listed(&[row], look, room));
-                }
+        if let Some(drawer) = row.get("drawer").filter(|drawer| drawer.is_object()) {
+            blocks.extend(drawn(drawer, row, look, room, words));
+        } else {
+            blocks.push(vec![head(shown, look)]);
+            // A row holding nothing says itself, its side among it.
+            if rows.is_empty() {
+                blocks.push(listed(&[row], look, room));
             }
         }
     }
@@ -134,7 +133,7 @@ fn head(shown: &Value, look: &Look) -> String {
         .unwrap_or_default();
     match steps.split_last() {
         None => String::new(),
-        Some((last, before)) if before.is_empty() => look.title(last),
+        Some((last, [])) => look.title(last),
         Some((last, before)) => {
             format!(
                 "{}{}",
@@ -239,7 +238,7 @@ fn facts_laid(facts: &[Value], look: &Look, room: Room, words: &Words) -> Vec<Ve
         .collect()
 }
 
-fn push(blocks: &mut Vec<Vec<String>>, line: String) {
+fn push(blocks: &mut [Vec<String>], line: String) {
     if let Some(block) = blocks.last_mut() {
         block.push(line);
     }

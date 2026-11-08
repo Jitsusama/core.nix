@@ -3982,6 +3982,12 @@ onLinux {
     pkgs.callPackage ./clock-follows/package.nix { }
   );
 
+  # launcher's tests run as it builds: what the shell shows is laid out to
+  # the terminal's width, a count and then a side giving way by whole
+  # items and a name cut only at a word, inked only where the terminal
+  # takes colour, and a miss said in the launcher's words.
+  launcher-fits-what-it-shows-to-the-terminal = pkgs.callPackage ./in-a-terminal/package.nix { };
+
   # clippy finds nothing in launcher, the launcher in a terminal, its tests
   # included.
   launcher-passes-clippy = passesClippy "launcher-passes-clippy" (
