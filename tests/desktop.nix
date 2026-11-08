@@ -74,6 +74,13 @@ let
     "launcher-goes-places"
     "looks"
   ];
+  # The areas whose launcher has WARP, as a machine whose system installs
+  # warp-cli does: where its looks are shot, and where a terminal is shown
+  # it through `launcher show`.
+  standsInForWarp = builtins.elem area [
+    "looks"
+    "launcher-finds-by-name"
+  ];
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -951,10 +958,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           enable = lib.mkForce true;
           fwupdmgr = lib.mkForce "${standInFwupdmgr}";
         };
-        # WARP's warp-cli isn't in the VM, so where its looks are shot a
-        # stand-in answers with what the test writes, as the contract's files
-        # say it (warp-cli-stand-in.sh), the real warp reading it.
-        jitsusama.quickshell.launcher.providers.warp = lib.mkIf (area == "looks") {
+        # WARP's warp-cli isn't in the VM, so where WARP is shown a stand-in
+        # answers with what the test writes, as the contract's files say it
+        # (warp-cli-stand-in.sh), the real warp reading it.
+        jitsusama.quickshell.launcher.providers.warp = lib.mkIf standsInForWarp {
           enable = lib.mkForce true;
           warpCli = lib.mkForce (
             toString (
@@ -1127,10 +1134,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # BlueZ's emulator, for the looks area to hear a device in Nearby
           # by: two controllers of the machine's own, each seen as Buds, so
           # whichever the launcher looks from hears the other. Only there, so
-          # no other area's test moves with it. WARP's contract is there too,
-          # for the stand-in warp-cli to answer with.
+          # no other area's test moves with it.
           // pkgs.lib.optionalAttrs (area == "looks") {
             btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
+          }
+          # WARP's contract, for the stand-in warp-cli to answer with, only
+          # where WARP is shown.
+          // pkgs.lib.optionalAttrs standsInForWarp {
             warp_contract = "${../modules/warp/contract}";
           }
         )

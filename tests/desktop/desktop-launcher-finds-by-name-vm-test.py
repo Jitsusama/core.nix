@@ -1587,7 +1587,8 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
 
     What the shell answers is tests/launcher-on-niri-test.py's, and how it's laid out
     in-a-terminal's own tests'; here the program the account is given reaches the shell the
-    session runs. The gallery keeps it in kitty at Joel's scales.
+    session runs, WARP's place and drawer among what it says, read from the stand-in
+    warp-cli. The gallery keeps it in kitty at Joel's scales.
     """
     machine = desktop.machine
     shown = json.loads(desktop.as_account("launcher show machine --json"))
@@ -1617,25 +1618,67 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     assert status == 0, (status, said)
     desktop.launcher_until(lambda shown: shown["open"])
     desktop.close_launcher()
-    if not desktop.values["shots"]:
-        return
-    for scale in ("1.5", "2"):
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        for asked, picture in [
-            ("launcher show", "terminal-home"),
-            # Screens, which niri answers at once, where Disk waits on the
-            # machine's daemon in the VM.
-            ("launcher show desktop screens", "terminal-screens"),
-            ("launcher show mahcine", "terminal-miss"),
-            ("launcher show desktop screens --drawers", "terminal-drawers"),
-            ("launcher do machine power reboot", "terminal-asks"),
-        ]:
-            window = desktop.opened(
-                picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
-            )
-            desktop.shoot(f"{picture}-at-{scale.replace('.', '-')}")
-            desktop.close(window)
-    desktop.as_account("niri msg output winit scale 1")
+    contract = desktop.values["warp_contract"]
+    desktop.as_account(
+        "mkdir -p ~/warp-cli && for asked in status tunnel-stats settings dns-stats; do"
+        f" install -m 644 {contract}/$asked.json ~/warp-cli/$asked.json; done"
+    )
+    try:
+        a_terminal_is_shown_warp(desktop)
+        if not desktop.values["shots"]:
+            return
+        for scale in ("1.5", "2"):
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            for asked, picture in [
+                ("launcher show", "terminal-home"),
+                # Screens, which niri answers at once, where Disk waits on the
+                # machine's daemon in the VM.
+                ("launcher show desktop screens", "terminal-screens"),
+                ("launcher show mahcine", "terminal-miss"),
+                ("launcher show desktop screens --drawers", "terminal-drawers"),
+                ("launcher do machine power reboot", "terminal-asks"),
+                ("launcher show network warp", "terminal-warp"),
+                ("launcher show network warp round trip", "terminal-warp-round-trip"),
+            ]:
+                window = desktop.opened(
+                    picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
+                )
+                desktop.shoot(f"{picture}-at-{scale.replace('.', '-')}")
+                desktop.close(window)
+        desktop.as_account("niri msg output winit scale 1")
+    finally:
+        desktop.as_account("rm -rf ~/warp-cli")
+
+
+def a_terminal_is_shown_warp(desktop: Desktop) -> None:
+    """Hold `launcher show network warp` to WARP's state and Health, as text and as JSON.
+
+    A terminal's ask is answered at once, so the first says WARP is still asking, and the next
+    says what warp printed for it (Warp.qml); once two reads are in, Round Trip's drawer says
+    whose figures they are, as VKCF3Z ruled.
+    """
+    machine = desktop.machine
+    asking = dt.timedelta(seconds=30)
+    machine.wait_until_succeeds(
+        desktop.in_session("launcher show network warp --json | grep -q connected"),
+        timeout=asking,
+    )
+    warp = json.loads(desktop.as_account("launcher show network warp --json"))
+    assert warp["in"] == ["Network", "WARP"], warp
+    assert warp["row"]["side"].startswith("connected"), warp["row"]
+    health = next(row for row in warp["rows"] if row["name"] == "Health")
+    assert health["side"] == "healthy", health
+    said = desktop.as_account("launcher show network warp")
+    assert "connected" in said, said
+    assert re.search(r"Health\s+healthy", said), said
+    machine.wait_until_succeeds(
+        desktop.in_session("launcher show network warp round trip --json | grep -q eyebrow"),
+        timeout=asking,
+    )
+    trip = json.loads(desktop.as_account("launcher show network warp round trip --json"))
+    assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
+    said = desktop.as_account("launcher show network warp round trip")
+    assert "via WARP \u00b7 tunnel" in said, said
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:
