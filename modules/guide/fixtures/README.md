@@ -42,6 +42,22 @@ disk (a LUKS2 volume formatted with a random key, each key enrolled with
 on the stick in core's `vm-guide-installs`, its disk `/dev/vda` and the
 stick `/dev/sda`.
 
+## In a Disk Image
+
+`asahi-disk-image/` is what sfdisk 2.42 printed for a 1 TB image file
+with 4096-byte sectors, laid out on 2026-11-08 as Asahi's installer leaves
+an Apple silicon Mac given "UEFI environment only": the Mac's own three
+partitions at the sizes a MacBook Air M2 has them, its macOS container
+shrunk, and Asahi's APFS stub and EFI system partition after it, before
+free space and the recovery container at the end. No Mac here had run
+the installer yet, so the image stands in for one; the image's path is
+now `/dev/nvme0n1`, the Mac's disk.
+
+| File                 | Command                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `sfdisk-before.json` | `sfdisk --sector-size 4096 --json`, as Asahi's installer leaves it |
+| `sfdisk-after.json`  | the same once a partition named `system` was added in its free space and the EFI system partition named `system-boot`, by sfdisk itself |
+
 ## In a TPM Simulator
 
 `tpm-simulator/` holds `ssh-tpm-keygen.tpm` and its `.pub`, a key ssh-tpm-keygen

@@ -11,4 +11,5 @@ pub mod keyfile;
 pub mod luks;
 pub mod pcrlock;
 pub mod sbctl;
+pub mod table;
 pub mod tpm;

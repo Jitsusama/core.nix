@@ -1512,6 +1512,10 @@
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
     and nothing once ZZ closes it, clearing what a killed one left
   '';
+  the-apple-silicon-stick-evaluates = ''
+    the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
+    evaluates
+  '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
     s after the shell goes unless it comes back
@@ -2571,6 +2575,14 @@
     the greeter signs in and out, not waiting on the account's setup; greetd leaves its console
     in graphics, and tuigreet, after the greeter falls over, finds it in text again, even after
     a compositor that fell over before taking the screen
+  '';
+  vm-guide-installs-beside-another-system = ''
+    the guide installs a machine with no TPM and no Secure Boot onto a disk laid out as Asahi's
+    installer leaves a Mac, confirming only its own partition and running no Secure Boot step:
+    it makes the machine's partition in the free space and names Asahi's boot partition for it,
+    every other partition the same byte for byte and every other table entry unchanged, Asahi's
+    files kept beside systemd-boot; the machine boots by a YubiKey's PIN, its guide with nothing
+    to seal, and its disk opens by the recovery words alone
   '';
   vm-guide-installs = ''
     the guide, driven by its keys, holding the machine awake and drawing over what writes on its

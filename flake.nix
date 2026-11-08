@@ -138,6 +138,18 @@
           { nixpkgs.hostPlatform = "x86_64-linux"; }
         ];
       };
+      # The same, for an Apple silicon Mac.
+      appleSiliconStick = nixpkgs.lib.nixosSystem {
+        modules = [
+          self.nixosModules.guide-stick
+          self.nixosModules.guide-stick-apple-silicon
+        ];
+      };
+      # Each stick by the system of the machines it installs.
+      sticks = {
+        x86_64-linux = stick;
+        aarch64-linux = appleSiliconStick;
+      };
     in
     {
       homeModules = {
@@ -374,6 +386,9 @@
           inherit (self) nixosModules;
           inherit nixpkgs;
         };
+        guide-stick-apple-silicon = moduleFrom ./modules/guide/stick-apple-silicon.nix {
+          inherit nixos-apple-silicon;
+        };
 
         apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
           inherit nixos-apple-silicon;
@@ -395,6 +410,9 @@
         };
       };
 
+      # The stick for an Apple silicon Mac, which a cache can hold as well.
+      packages.aarch64-linux.stick = appleSiliconStick.config.system.build.image;
+
       # The guide as a Mac runs it, to write a stick and nothing else.
       packages.aarch64-darwin.guide =
         nixpkgs.legacyPackages.aarch64-darwin.callPackage ./modules/guide/package.nix
@@ -414,18 +432,20 @@
           account ? null,
           # The system the stick is written from: an x86-64 Linux machine,
           # or a Mac, as aarch64-darwin. The stick and what it installs are
-          # x86-64 Linux either way, so a Mac takes them from a cache or an
-          # x86-64 Linux builder (docs/recovering.md says why not its own).
+          # the machine's own system either way, so a Mac takes them from a
+          # cache or a Linux builder (docs/recovering.md says why not its own).
           host ? "x86_64-linux",
         }:
         let
-          linux = nixpkgs.legacyPackages.x86_64-linux;
+          system = config.nixpkgs.hostPlatform.system;
+          linux = nixpkgs.legacyPackages.${system};
           pkgs = nixpkgs.legacyPackages.${host};
           guide = pkgs.callPackage ./modules/guide/package.nix { };
           payload = linux.callPackage ./modules/guide/payload.nix { } {
             inherit config yubikeys account;
           };
-          image = "${stick.config.system.build.image}/${stick.config.image.filePath}";
+          stick' = sticks.${system} or (throw "core.nix has no stick for ${system}");
+          image = "${stick'.config.system.build.image}/${stick'.config.image.filePath}";
         in
         pkgs.runCommand "guide-${config.networking.hostName}"
           {
