@@ -527,17 +527,17 @@ fn a_timer_coming_due_is_heard_once_and_quietly_during_a_call() {
     let folder = folder("aloud");
     let bus = Bus::new(&folder);
     let (connection, server) = bus.serve();
-    let played = folder.join("played");
+    let record = folder.join("record");
     let calling = folder.join("calling");
     let player = folder.join("player");
     let call = folder.join("call");
-    stand_in(&player, &format!("echo \"$*\" >> '{}'", played.display()));
+    stand_in(&player, &format!("echo \"$*\" >> '{}'", record.display()));
     stand_in(&call, &format!("test -e '{}'", calling.display()));
     let sound = folder.join("ding.wav");
     let running = Running::heard(&folder, &bus, &[&player, &sound, &call]);
     let mut client = running.client();
     let heard = || {
-        std::fs::read_to_string(&played)
+        std::fs::read_to_string(&record)
             .unwrap_or_default()
             .lines()
             .map(str::to_owned)

@@ -101,11 +101,11 @@ struct Shared {
     /// What the notices thread is to say or take back.
     notices: Mutex<Sender<Tell>>,
     /// How a timer coming due is heard, when it's heard at all.
-    sound: Option<Arc<Sound>>,
+    aloud: Option<Arc<Aloud>>,
 }
 
 /// What plays a ring aloud, and what says whether to play it quietly.
-struct Sound {
+struct Aloud {
     player: PathBuf,
     sound: PathBuf,
     call: PathBuf,
@@ -128,9 +128,9 @@ fn main() {
     let (Some(socket), Some(kept), Some(words)) = (args.next(), args.next(), args.next()) else {
         usage();
     };
-    let sound = match (args.next(), args.next(), args.next(), args.next()) {
+    let aloud = match (args.next(), args.next(), args.next(), args.next()) {
         (None, None, None, None) => None,
-        (Some(player), Some(sound), Some(call), None) => Some(Arc::new(Sound {
+        (Some(player), Some(sound), Some(call), None) => Some(Arc::new(Aloud {
             player: PathBuf::from(player),
             sound: PathBuf::from(sound),
             call: PathBuf::from(call),
@@ -180,7 +180,7 @@ fn main() {
         }),
         wake,
         notices: Mutex::new(tell),
-        sound,
+        aloud,
     });
     {
         // What ended while the daemon was down rings now, late, and every
@@ -360,7 +360,7 @@ fn keep_time(shared: &Shared, clock: &OwnedFd) {
 /// thread of its own, since asking whether a call is on takes a couple of
 /// seconds and no notice waits on it.
 fn aloud(shared: &Shared) {
-    let Some(sound) = shared.sound.clone() else {
+    let Some(sound) = shared.aloud.clone() else {
         return;
     };
     std::thread::spawn(move || {
