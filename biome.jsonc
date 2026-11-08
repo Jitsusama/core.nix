@@ -86,7 +86,7 @@
       // A test's numbers are its example's, read where they're used, and
       // its strings are selectors and stand-ins' sources, which read to the
       // secrets rule as random, never a secret.
-      "includes": ["tests/**/*.mjs"],
+      "includes": ["**/tests/**/*.mjs"],
       "linter": {
         "rules": {
           "style": { "noMagicNumbers": "off" },
