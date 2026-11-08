@@ -1277,7 +1277,8 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
     The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
     A node's, a device's and a profile's plates lay their facts out one way, every name and value
-    whole, at both of Joel's scales.
+    whole, at both of Joel's scales. WARP, beside it in Network, is shot at each scale too, so the
+    looks test keeps to twenty subtests.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session('test -s "$XDG_RUNTIME_DIR/eero/home-network.json"'),
@@ -1313,6 +1314,7 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         devices_plates_lie_on_the_lines(desktop, scale)
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
         the_screens_plate_says_what_sets_it(desktop, scale)
+        warp_stands_in_network(desktop, scale)
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
@@ -1608,62 +1610,57 @@ def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
     )
 
 
-def test_warp_stands_in_network_and_says_when_degraded_or_not_answering_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
-    """Shoot WARP in Network and a step in, then degraded and not answering, at each scale.
+def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
+    """Shoot WARP in Network and a step in, then degraded and not answering, at this scale.
 
     The shell runs the real warp against the stand-in warp-cli, answering with the contract's
     made-up files (modules/warp/contract), which warp's own tests read too. What each part says
     is tests/answers.qml's to prove; these are for the design's look at Joel's scales (VKCF3Z,
     2026-11-08).
     """
+    at = scale.replace(".", "-")
     connected = [(f"{asked}.json", f"{asked}.json") for asked in WARP_QUESTIONS]
     try:
-        for scale in at_each_scale:
-            at = scale.replace(".", "-")
-            at_scale(desktop, scale)
-            warp_answers(desktop, *connected)
-            desktop.as_account("rm -f ~/warp-cli/status.error.json")
-            desktop.answer("network")
-            desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Network")
-            desktop.step_in()
-            desktop.launcher_until(
-                lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 connected")
-            )
-            desktop.down_to("WARP")
-            desktop.shoot(f"launcher-warp-in-network-at-{at}")
-            desktop.step_in()
-            desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
-            desktop.shoot(f"launcher-warp-at-{at}")
-            # WARP finds the network degraded, which its Health says a step in, and its
-            # row in Network, in the warning colour.
-            warp_answers(desktop, ("status.degraded.json", "status.json"))
-            desktop.launcher_until(
-                lambda shown: reading(shown, "Health ").startswith("Health \u00b7 degraded")
-            )
-            # Selected, so its row says what WARP measured.
-            desktop.down_to("Health")
-            desktop.shoot(f"launcher-warp-degraded-at-{at}")
-            desktop.step_out()
-            desktop.launcher_until(
-                lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 degraded")
-            )
-            desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
-            # Its service gone, WARP says so in its place, and why in the foot.
-            desktop.as_account("rm -f ~/warp-cli/status.json")
-            warp_answers(desktop, ("daemon-down.json", "status.error.json"))
-            desktop.launcher_until(
-                lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
-            )
-            desktop.shoot(f"launcher-warp-not-answering-in-network-at-{at}")
-            desktop.close_launcher()
-            desktop.answer("vpn")
-            desktop.launcher_until(
-                lambda shown: (shown["selected"] or {}).get("name") == "not answering"
-            )
-            desktop.shoot(f"launcher-warp-not-answering-at-{at}")
-            desktop.close_launcher()
+        warp_answers(desktop, *connected)
+        desktop.answer("network")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Network")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 connected")
+        )
+        desktop.down_to("WARP")
+        desktop.shoot(f"launcher-warp-in-network-at-{at}")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
+        desktop.shoot(f"launcher-warp-at-{at}")
+        # WARP finds the network degraded, which its Health says a step in, and its
+        # row in Network, in the warning colour.
+        warp_answers(desktop, ("status.degraded.json", "status.json"))
+        desktop.launcher_until(
+            lambda shown: reading(shown, "Health ").startswith("Health \u00b7 degraded")
+        )
+        # Selected, so its row says what WARP measured.
+        desktop.down_to("Health")
+        desktop.shoot(f"launcher-warp-degraded-at-{at}")
+        desktop.step_out()
+        desktop.launcher_until(
+            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 degraded")
+        )
+        desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
+        # Its service gone, WARP says so in its place, and why beside it.
+        desktop.as_account("rm -f ~/warp-cli/status.json")
+        warp_answers(desktop, ("daemon-down.json", "status.error.json"))
+        desktop.launcher_until(
+            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
+        )
+        desktop.shoot(f"launcher-warp-not-answering-in-network-at-{at}")
+        desktop.close_launcher()
+        desktop.answer("vpn")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "not answering"
+        )
+        desktop.shoot(f"launcher-warp-not-answering-at-{at}")
+        desktop.close_launcher()
     finally:
         desktop.as_account("rm -rf ~/warp-cli")
 
