@@ -930,6 +930,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       services.journald.settings.Journal.MaxLevelConsole = lib.mkIf (area == "keeps-pace") (
         lib.mkForce "warning"
       );
+      # The workstation's daemon collects garbage while under 24 GiB is free
+      # (modules/nix-daemon), and this machine's store is 2 GiB of tmpfs over
+      # the builder's, where only the system's own closure is registered. So
+      # the first store operation at boot collected every other path the tests
+      # reach, the stand-in keyboard and the tests' values among them, and
+      # systemd-run found no keyboard to start. Before Nix 2.34.9 a daemon's
+      # connection ended without waiting, and took the collection with it;
+      # now it waits for the collection to finish. The area loads the CPU,
+      # not the disk, so the daemon here never collects.
+      nix.settings.min-free = lib.mkIf (area == "keeps-pace") (lib.mkForce 0);
     };
 
   tests = ./desktop/desktop-${area}-vm-test.py;
