@@ -19,7 +19,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.3, at 7.3.3, the release `package.nix` names in
+- **The series:** 7.3, at 7.3.1, the release `package.nix` names in
   `stable`, while the pinned nixpkgs has only 7.2. nixpkgs's 7.2 package
   builds it, since the two build the same way, and `stable` stops applying
   once nixpkgs's release is as new. 7.3 holds every fix the XPS 14 took
