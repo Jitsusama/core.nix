@@ -2012,6 +2012,12 @@
     its row says how many and the first one's name, none while empty and an ellipsis while waiting,
     and a source's lines are read with their times apart, the shared list's by each program
   '';
+  for-you-narrows-by-kind-and-source = ''
+    For You's :filter keeps the items of a kind (do, look or try) and of a source, by its id in any
+    case, both where two words are given, refuses a word that's neither or a second of one with
+    Vim's E475, names the source then the kind for the head, and Tab offers only the kinds and
+    sources that would keep something, each with how many
+  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
