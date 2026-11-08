@@ -2576,6 +2576,14 @@
     in graphics, and tuigreet, after the greeter falls over, finds it in text again, even after
     a compositor that fell over before taking the screen
   '';
+  vm-guide-installs-beside-another-system = ''
+    the guide installs a machine with no TPM and no Secure Boot onto a disk laid out as Asahi's
+    installer leaves a Mac, confirming only its own partition and running no Secure Boot step:
+    it makes the machine's partition in the free space and names Asahi's boot partition for it,
+    every other partition the same byte for byte and every other table entry unchanged, Asahi's
+    files kept beside systemd-boot; the machine boots by a YubiKey's PIN, its guide with nothing
+    to seal, then by the recovery words with no key plugged in
+  '';
   vm-guide-installs = ''
     the guide, driven by its keys, holding the machine awake and drawing over what writes on its
     screen, installs a machine from its stick: two keys and a recovery key of seven words, shown
