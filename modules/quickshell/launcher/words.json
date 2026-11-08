@@ -466,7 +466,11 @@
       "noun": "spend",
       "glyph": "agent",
       "ask": "which?",
-      "empty": "Nothing spent yet."
+      "empty": "Nothing spent yet.",
+      "said": {
+        "unread": "not read yet",
+        "window": "window"
+      }
     },
     {
       "id": "spend:copy",
@@ -478,6 +482,56 @@
       "in": "spend",
       "name": "It's Expected",
       "verb": "expect"
+    },
+    {
+      "id": "spend:standing",
+      "in": "spend",
+      "name": "Standing"
+    },
+    {
+      "id": "spend:warns",
+      "in": "spend",
+      "name": "Warns"
+    },
+    {
+      "id": "spend:resets",
+      "in": "spend",
+      "name": "Resets"
+    },
+    {
+      "id": "spend:read",
+      "in": "spend",
+      "name": "Read By"
+    },
+    {
+      "id": "spend:state",
+      "in": "spend",
+      "name": "Feed Says"
+    },
+    {
+      "id": "spend:spent",
+      "in": "spend",
+      "name": "Spent"
+    },
+    {
+      "id": "spend:worth",
+      "in": "spend",
+      "name": "Worth at List"
+    },
+    {
+      "id": "spend:providers",
+      "in": "spend",
+      "name": "Providers"
+    },
+    {
+      "id": "spend:reading",
+      "in": "spend",
+      "name": "Feed"
+    },
+    {
+      "id": "agents:budget",
+      "in": "agents",
+      "name": "Budget"
     },
     {
       "id": "jobs",

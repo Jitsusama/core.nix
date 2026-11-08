@@ -2177,8 +2177,9 @@
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
-    into each figure's parts, hide amounts while sharing, and answer reports by their words; the
-    tokens piece is there only while the watch's tokens warn, with its acts for a running session
+    into each figure's parts, hide amounts while sharing, and answer reports by their words; a
+    budget's row and a window's open a drawer of every fact budgets.json holds of it; the tokens
+    piece is there only while the watch's tokens warn, with its acts for a running session
   '';
   the-shell-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks

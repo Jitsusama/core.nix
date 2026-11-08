@@ -1433,8 +1433,8 @@ onLinux {
     touch $out
   '';
 
-  # The AI spend piece, the tokens piece and the launcher's collection read
-  # what spend-watch writes, from a day of a session's turns on two models,
+  # The AI spend piece, the tokens piece, the launcher's collection and its
+  # budgets' drawers read what spend-watch writes, from a day of a session's turns on two models,
   # and the states tests/spend.qml writes by hand, through Quickshell
   # itself, with niri, do not disturb, the shortcuts and the sessions stood
   # in for.
@@ -1469,6 +1469,7 @@ onLinux {
       ${lib.getExe watch} --config config.json import
       ${lib.getExe watch} --config config.json show > runtime/written/status.json
       ${lib.getExe watch} --config config.json show collection > runtime/written/collection.json
+      ${lib.getExe watch} --config config.json budgets --json > runtime/written/budgets.json
       cp ${./pieces/Piece.qml} Piece.qml
       cp ${./pieces/Spend.qml} Spend.qml
       cp ${./pieces/Tokens.qml} Tokens.qml
@@ -1480,6 +1481,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Spend.qml} launcher/Spend.qml
+      cp ${./launcher/BudgetDrawer.js} launcher/BudgetDrawer.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json

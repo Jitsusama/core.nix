@@ -94,10 +94,26 @@ pub struct Allowance {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
     /// Its standing in its own unit, and how near it is, as a share.
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub standing: String,
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nearest: Option<f64>,
+    /// Each of its facts as a person reads them, for the launcher's
+    /// drawer, which formats nothing itself.
+    pub said: AllowanceSaid,
+}
+
+/// An allowance's facts in words, each empty where it isn't known: how
+/// long its window is, where it warns in its own unit, when it resets,
+/// whose reading it is and when that was taken, and what its feed says of
+/// it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct AllowanceSaid {
+    pub window: String,
+    pub warns: String,
+    pub resets: String,
+    pub read: String,
+    pub state: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -123,9 +139,20 @@ pub struct Budget {
     pub nearest: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health: Option<String>,
-    /// What it is, in a few words, for the collection's row.
-    #[serde(skip)]
+    /// What it is, in a few words, as its row says it.
     pub words: String,
+    /// Its facts in words, for the launcher's drawer.
+    pub said: BudgetSaid,
+}
+
+/// A budget's facts in words, each empty where there's nothing to say:
+/// what it spent over each period, what a plan's turns were worth at list
+/// over each, and how its feeds read.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct BudgetSaid {
+    pub spent: String,
+    pub worth: String,
+    pub reading: String,
 }
 
 /// One session's spend and the budget it draws on, when asked for.
@@ -280,6 +307,21 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
         (None, Some(value)) => format!("{} at list this month", value["this month"].shown),
         (None, None) => format!("{} this month", spent["this month"].shown),
     };
+    let health = health(picture, &picture.budgets, name);
+    let fresh = month_in_week(spans);
+    // A plan's turns are billed nothing but its price, so what they were
+    // worth at list says its use and its spend says nothing.
+    let said = BudgetSaid {
+        spent: if value.is_some() {
+            String::new()
+        } else {
+            periods(&spent, fresh)
+        },
+        worth: value
+            .as_ref()
+            .map_or_else(String::new, |value| periods(value, fresh)),
+        reading: health.as_deref().map_or_else(String::new, reading),
+    };
     Budget {
         name: name.to_owned(),
         label: declared.map_or_else(|| name.to_owned(), |budget| budget.label.clone()),
@@ -289,13 +331,62 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
         undeclared: declared.is_none(),
         providers: declared.map_or_else(Vec::new, |budget| budget.providers.clone()),
         nearest: allowances.iter().find_map(|allowance| allowance.nearest),
-        health: health(picture, &picture.budgets, name),
+        health,
         words: words(declared),
         spent,
         value,
         allowances,
         standing,
+        said,
     }
+}
+
+/// Whether this month began within the last 7 days, so all of it lies
+/// inside them.
+fn month_in_week(spans: &Spans) -> bool {
+    let first = |period: &str| {
+        spans
+            .iter()
+            .find(|(name, _, _)| *name == period)
+            .map(|(_, (from, _), _)| *from)
+    };
+    matches!((first("this month"), first("7 days")), (Some(month), Some(week)) if month >= week)
+}
+
+/// Some amounts over each period, as one line: "$12 today \u{b7} $80 in
+/// 7 days \u{b7} $140 this month". When the month began within the 7
+/// days and they say the same, the 7 days add nothing, so only the
+/// month is said (VKCF3Z, 2026-11-07).
+fn periods(amounts: &BTreeMap<String, Amount>, month_in_week: bool) -> String {
+    let shown = |period: &str| amounts.get(period).map(|amount| amount.shown.as_str());
+    let redundant =
+        month_in_week && shown("7 days").is_some() && shown("7 days") == shown("this month");
+    PERIODS
+        .iter()
+        .filter(|period| !(redundant && **period == "7 days"))
+        .filter_map(|period| {
+            let amount = amounts.get(*period)?;
+            Some(match *period {
+                "7 days" => format!("{} in 7 days", amount.shown),
+                _ => format!("{} {period}", amount.shown),
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
+/// How a budget's feeds read, as its drawer says it; nothing for one
+/// whose only feed is optional and not signed in for, since nothing's
+/// wrong with it.
+fn reading(health: &str) -> String {
+    match health {
+        "fine" => "reading fine",
+        "stalled" => "stalled",
+        "signed-out" => "signed out",
+        "error" => "can't be read",
+        _ => "",
+    }
+    .into()
 }
 
 /// What a budget is, in a few words: whose money and what kind. An
@@ -333,7 +424,7 @@ fn allowances(
         .caps
         .iter()
         .filter(|view| view.budget == name)
-        .map(|view| allowance(config, view))
+        .map(|view| allowance(picture, config, view))
         .collect();
     let unread = declared
         .into_iter()
@@ -355,13 +446,18 @@ fn allowances(
             at: None,
             standing: String::new(),
             nearest: None,
+            said: AllowanceSaid {
+                window: window_length(declared.window_hours),
+                warns: warns(declared.unit, declared.allowance, declared.warn),
+                ..AllowanceSaid::default()
+            },
         })
         .collect::<Vec<_>>();
     allowances.extend(unread);
     allowances
 }
 
-fn allowance(config: &Config, view: &CapView) -> Allowance {
+fn allowance(picture: &Picture, config: &Config, view: &CapView) -> Allowance {
     let cap = &view.cap;
     // Its name is its feed's, or its window's for one of the watch's own;
     // its figure says the window short ("62% of 5 h"), whatever it's named.
@@ -384,6 +480,22 @@ fn allowance(config: &Config, view: &CapView) -> Allowance {
         .find(|feed| feed.name == cap.feed)
         .map_or_else(|| cap.feed.clone(), |feed| feed.label.clone());
     let share = cap.unit == Unit::Share;
+    let clock = |at: f64| picture.zone.clock(at, picture.now);
+    let said = AllowanceSaid {
+        window: window_length(cap.window_hours),
+        warns: warns(cap.unit, cap.allowance, cap.warn),
+        resets: view.resets.map_or_else(String::new, clock),
+        read: if fed {
+            format!("{from} at {}", clock(cap.at))
+        } else {
+            String::new()
+        },
+        state: if fed {
+            stands(&cap.state)
+        } else {
+            String::new()
+        },
+    };
     Allowance {
         name: cap.name.clone(),
         label,
@@ -399,7 +511,43 @@ fn allowance(config: &Config, view: &CapView) -> Allowance {
         at: fed.then(|| crate::time::rfc3339(cap.at)),
         standing,
         nearest,
+        said,
     }
+}
+
+/// How long a window is, as a person says it: "5 hours", "a day", "a
+/// week".
+fn window_length(hours: u32) -> String {
+    match hours {
+        1 => "an hour".into(),
+        24 => "a day".into(),
+        168 => "a week".into(),
+        hours if hours % 168 == 0 => format!("{} weeks", hours / 168),
+        hours if hours % 24 == 0 => format!("{} days", hours / 24),
+        hours => format!("{hours} hours"),
+    }
+}
+
+/// Where an allowance warns, in its own unit, so one in dollars never
+/// reads as a share: "at $36,000", or "at 90%" of a share. One in
+/// dollars with no amount warns at nothing it can say.
+fn warns(unit: Unit, allowance: Option<f64>, warn: f64) -> String {
+    match (unit, allowance) {
+        (Unit::Share, _) => format!("at {}", percent(warn)),
+        (Unit::Dollars, Some(allowance)) => format!("at {}", whole(allowance * warn)),
+        (Unit::Dollars, None) => String::new(),
+    }
+}
+
+/// What a feed says of its allowance, where it says more than that it's
+/// within it, which its standing already shows.
+fn stands(state: &str) -> String {
+    match state {
+        "notified" => "warned",
+        "refused" => "refusing requests",
+        _ => "",
+    }
+    .into()
 }
 
 /// How the sources of the feeds for a budget are: the first that isn't
@@ -627,6 +775,88 @@ mod tests {
         assert!(json["budgets"][0]["allowances"][0].get("spent").is_none());
         assert_eq!(json["budgets"][0]["kind"], "plan");
         assert_eq!(json["budgets"][0]["providers"][0], "claude-code");
+    }
+
+    // Each allowance says every fact it holds in words for the launcher's
+    // drawer, in its own unit, and each budget what it spent, what a
+    // plan's turns were worth and how its feeds read, so the shell
+    // formats nothing.
+    #[test]
+    fn every_fact_is_said_in_words() {
+        let json = serde_json::to_value(standing_now(None)).unwrap();
+        let claude = &json["budgets"][0];
+        let five = &claude["allowances"][0];
+        assert_eq!(five["standing"], "62% of 5 h");
+        assert_eq!(five["nearest"], 0.62);
+        assert_eq!(
+            five["said"],
+            serde_json::json!({
+                "window": "5 hours", "warns": "at 80%", "resets": "16:20",
+                "read": "Claude at 14:20", "state": ""
+            })
+        );
+        // The week has no reading yet, so no standing, but it still says
+        // its window and where it warns.
+        let week = &claude["allowances"][1];
+        assert!(week.get("standing").is_none() && week.get("nearest").is_none());
+        assert_eq!(week["said"]["window"], "a week");
+        assert_eq!(week["said"]["warns"], "at 80%");
+        assert_eq!(
+            claude["said"]["worth"],
+            "$84 today \u{b7} $84 in 7 days \u{b7} $84 this month"
+        );
+        assert_eq!(claude["said"]["spent"], "");
+        assert_eq!(claude["said"]["reading"], "");
+        // The watch counts the proxy's week itself, so nobody read it.
+        let proxy = &json["budgets"][1];
+        assert_eq!(proxy["words"], "the employer's money");
+        assert_eq!(proxy["allowances"][0]["said"]["warns"], "at $36,000");
+        assert_eq!(proxy["allowances"][0]["said"]["read"], "");
+        assert_eq!(
+            proxy["said"]["spent"],
+            "$18,400 today \u{b7} $18,400 in 7 days \u{b7} $18,400 this month"
+        );
+        assert_eq!(proxy["said"]["worth"], "");
+    }
+
+    // A feed's state and a source's health read as words, saying nothing
+    // where all's as it should be; a dollar allowance with no amount
+    // warns at nothing it can say.
+    #[test]
+    fn states_read_as_words() {
+        assert_eq!(stands("ok"), "");
+        assert_eq!(stands("notified"), "warned");
+        assert_eq!(stands("refused"), "refusing requests");
+        assert_eq!(reading("fine"), "reading fine");
+        assert_eq!(reading("signed-out"), "signed out");
+        assert_eq!(reading("optional"), "");
+        assert_eq!(warns(Unit::Dollars, None, 0.9), "");
+        assert_eq!(window_length(48), "2 days");
+        assert_eq!(window_length(336), "2 weeks");
+    }
+
+    // The 7 days are left out only where they add nothing: the month
+    // began within them and they say the same amount.
+    #[test]
+    fn the_week_goes_where_it_is_the_month() {
+        let amounts = |week: f64| {
+            [("today", 12.0), ("7 days", week), ("this month", 80.0)]
+                .into_iter()
+                .map(|(period, dollars)| (period.to_owned(), Amount::of(dollars, false)))
+                .collect::<BTreeMap<_, _>>()
+        };
+        assert_eq!(
+            periods(&amounts(80.0), true),
+            "$12 today \u{b7} $80 this month"
+        );
+        assert_eq!(
+            periods(&amounts(80.0), false),
+            "$12 today \u{b7} $80 in 7 days \u{b7} $80 this month"
+        );
+        assert_eq!(
+            periods(&amounts(60.0), true),
+            "$12 today \u{b7} $60 in 7 days \u{b7} $80 this month"
+        );
     }
 
     // A session's spend is one amount, all of it, under the budget it

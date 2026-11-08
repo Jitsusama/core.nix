@@ -275,6 +275,7 @@ let
     "launcher/Recents.js"
     "launcher/SessionRow.js"
     "launcher/SessionDrawer.js"
+    "launcher/BudgetDrawer.js"
     "launcher/Trials.js"
     "launcher/Traces.js"
     "launcher/Emoji.js"

@@ -622,7 +622,11 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         [one] => allowance_reset(picture, one),
         _ => String::new(),
     };
-    made.note = joined(&[&budget.words, default, &resets]);
+    // A note gives way from its end, so it's written most needed first:
+    // whether it's the default, what Joel acts on, and when its one
+    // window resets, before whose money it is, which its drawer's eyebrow
+    // says too (VKCF3Z, 2026-11-08).
+    made.note = joined(&[default, &resets, &budget.words]);
     AGENT.clone_into(&mut made.mark);
     let nearest = budget
         .allowances
@@ -653,7 +657,9 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
                 if !read {
                     row.copy = format!("{name} has no reading yet, so there's nothing to copy");
                 }
-                row.note = allowance_reset(picture, allowance);
+                // A window's row says its standing alone: when it resets
+                // is its drawer's, so no fact there repeats the row
+                // (VKCF3Z, 2026-11-08).
                 row.role = allowance_role(Some(allowance)).into();
                 CLOCK.clone_into(&mut row.mark);
                 opens_record(picture, &budget.name, allowance, &mut row);
@@ -1669,7 +1675,7 @@ mod tests {
         // A window no feed reads yet is named for its length.
         assert_eq!(windows, [("Five Hours", "85%"), ("Week", "not read yet")]);
         assert!(plan.rows[1].copy.contains("nothing to copy"));
-        assert_eq!(plan.rows[0].note, "resets 16:20");
+        assert_eq!(plan.rows[0].note, "");
         assert!(depth(&collected.now) <= 3);
     }
 

@@ -48,7 +48,9 @@ function about(works, titles) {
 // step alone, and nothing where it has none; what it needs Joel for (its
 // want, then its quest's Needs You items, `said.needs`); what it landed
 // last (`said.landed`); what it's spent today (an orchestrator's whole
-// orchestration, then its own and its sessions'); its figures
+// orchestration, then its own and its sessions'); the budget it drew on
+// last and how that stands (`said.budget`, BudgetDrawer.js), after the
+// spend it's part of; its figures
 // (`said.figures`, SessionRow.figures); what rebuilding its context cost;
 // its quest, how that stands said only where it isn't active; its
 // machine; and what its quest is about, as words (VKCF3Z, 2026-11-07).
@@ -63,7 +65,8 @@ function drawer(title, presence, said) {
         ["last-landing", said.landed ?? ""],
         ["spent", said.spent ?? ""],
         ["own", said.own ?? ""],
-        ["under", said.under ?? ""]
+        ["under", said.under ?? ""],
+        ["budget", said.budget ?? ""]
     ];
     // Its own spend today carries its hours as Graph's spark (`said.hours`,
     // spend-watch's): an orchestrator's Its Own, any other's Spent Today.
