@@ -171,9 +171,9 @@ fn machine(root: &Path) {
          3 1 259:1 / /mnt/boot rw - vfat /dev/nvme0n1p1 rw\n\
          4 1 7:0 / /mnt/loop rw - ext4 /dev/loop0 rw\n",
     );
-    process(root, 1, "systemd", 10, 100);
-    process(root, 2, ".kitty-wrapped", 50, 1000);
-    process(root, 3, ".kitty-wrapped", 30, 500);
+    process(root, 1, 0, "systemd", 10, 100);
+    process(root, 2, 1, ".kitty-wrapped", 50, 1000);
+    process(root, 3, 2, ".kitty-wrapped", 30, 500);
 }
 
 /// The processors' counters, `busy` ticks of `all` on each core.
@@ -203,13 +203,13 @@ fn disk_stat(root: &Path, reads: u64, sectors: u64) {
     .unwrap();
 }
 
-fn process(root: &Path, pid: u32, name: &str, ticks: u64, pages: u64) {
+fn process(root: &Path, pid: u32, parent: u32, name: &str, ticks: u64, pages: u64) {
     let folder = root.join(format!("proc/{pid}"));
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(
         folder.join("stat"),
         format!(
-            "{pid} ({name}) S 1 1 1 0 -1 0 0 0 0 0 {ticks} 0 0 0 20 0 1 0 100 1000 {pages} 0\n"
+            "{pid} ({name}) S {parent} 1 1 0 -1 0 0 0 0 0 {ticks} 0 0 0 20 0 1 0 100 1000 {pages} 0\n"
         ),
     )
     .unwrap();
@@ -473,6 +473,43 @@ fn programs_are_ranked_by_their_share_and_their_memory() {
     let held = record(records, "using:memory:1");
     assert_eq!(held["name"], "kitty");
     assert_eq!(held["resident_b"].as_u64().unwrap() % 1500, 0, "1500 pages");
+}
+
+#[test]
+fn a_tree_is_watched_by_its_pid_and_counts_what_it_started() {
+    let running = Running::new("tree");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "t", "ask": "watch", "keys": ["tree:2", "tree:99"]}));
+    let records = &said["records"];
+    assert_eq!(
+        records.as_array().unwrap().len(),
+        1,
+        "no process 99: {records}"
+    );
+    let tree = record(records, "tree:2");
+    assert_eq!(tree["name"], "kitty");
+    assert_eq!(
+        tree["processes"],
+        json!(2),
+        "kitty and the kitty it started"
+    );
+    assert_eq!(
+        tree["share_ratio"],
+        json!(0.04),
+        "80 of 2000 ticks since boot"
+    );
+    // A shell started under the second kitty joins the first's tree.
+    process(&running.root(), 4, 3, "zsh", 40, 100);
+    let tree = loop {
+        let tree = client.changed("tree:2");
+        if tree["processes"] == json!(3) {
+            break tree;
+        }
+    };
+    assert_eq!(tree["threads"], json!(3));
+    assert_eq!(tree["resident_b"].as_u64().unwrap() % 1600, 0, "1600 pages");
+    std::fs::remove_dir_all(running.root().join("proc/2")).unwrap();
+    assert_eq!(client.gone(), [json!("tree:2")]);
 }
 
 #[test]

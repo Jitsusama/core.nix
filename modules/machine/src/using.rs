@@ -17,10 +17,14 @@ pub const TOP: usize = 8;
 const NAME_KEPT: usize = 15;
 const WRAPPED: &str = "-wrapped";
 /// The fields of a process's stat after its name: its state is the
-/// first, its user and system time the 12th and 13th, its resident
+/// first, its parent the 2nd, its user and system time the 12th and
+/// 13th, its threads the 18th, when it started the 20th, its resident
 /// pages the 22nd.
+const PARENT: usize = 1;
 const USER_TIME: usize = 11;
 const SYSTEM_TIME: usize = 12;
+const THREADS: usize = 17;
+const STARTED: usize = 19;
 const RESIDENT: usize = 21;
 
 /// A program by the name it's known by: Nix runs a wrapped program as
@@ -44,13 +48,19 @@ pub fn program(name: &str) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Process {
     pub name: String,
+    pub parent: u32,
+    /// When it started, in ticks since boot, which tells it from a later
+    /// process given its pid again.
+    pub started: u64,
     pub ticks: u64,
+    pub threads: u64,
     pub resident_pages: u64,
 }
 
 /// One read of every process, and the whole machine's ticks then.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Counters {
+    pub at_ms: u64,
     pub ticks: u64,
     pub processes: BTreeMap<u32, Process>,
 }
@@ -65,12 +75,15 @@ fn process(line: &str) -> Option<Process> {
     let at = |i: usize| fields.get(i).and_then(|f| f.parse::<u64>().ok());
     Some(Process {
         name,
+        parent: u32::try_from(at(PARENT)?).ok()?,
+        started: at(STARTED)?,
         ticks: at(USER_TIME)? + at(SYSTEM_TIME)?,
+        threads: at(THREADS)?,
         resident_pages: at(RESIDENT)?,
     })
 }
 
-pub fn counters(root: &Root) -> Counters {
+pub fn counters(root: &Root, at_ms: u64) -> Counters {
     let stat = root.read("/proc/stat").unwrap_or_default();
     let ticks = stat
         .lines()
@@ -88,7 +101,11 @@ pub fn counters(root: &Root) -> Counters {
         .filter_map(|name| name.parse::<u32>().ok())
         .filter_map(|pid| Some((pid, process(&root.read(&format!("/proc/{pid}/stat"))?)?)))
         .collect();
-    Counters { ticks, processes }
+    Counters {
+        at_ms,
+        ticks,
+        processes,
+    }
 }
 
 /// The most of each, by name, at most [`TOP`], none at nothing.
@@ -176,6 +193,9 @@ mod tests {
             "42 (Web (Content)) S 1 42 42 0 -1 4194560 0 0 0 0 30 12 0 0 20 0 1 0 100 1000 250 0";
         let read = process(line).unwrap();
         assert_eq!(read.name, "Web (Content)");
+        assert_eq!(read.parent, 1);
+        assert_eq!(read.started, 100);
+        assert_eq!(read.threads, 1);
         assert_eq!(read.ticks, 42);
         assert_eq!(read.resident_pages, 250);
     }
