@@ -4806,7 +4806,7 @@
     },
     {
       "id": "verb:passwords:let-in",
-      "command": "let-in",
+      "command": "signin",
       "in": "applications",
       "name": "Let the Launcher In",
       "verb": "open",
