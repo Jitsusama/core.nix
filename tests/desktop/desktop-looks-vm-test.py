@@ -1305,7 +1305,7 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
     for collection, typed, kind, leading in [
         ("sound", "speakers", "output", ["State", "Volume"]),
         ("sound", "microphone", "input", ["State", "Gain"]),
-        ("displays", "", "monitor", ["Brightness"]),
+        ("displays", "", "screen", ["Brightness"]),
     ]:
         first = leading[-1]
         desktop.launcher_until(lambda shown: not shown["open"])

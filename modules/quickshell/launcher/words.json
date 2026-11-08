@@ -6208,7 +6208,7 @@
       "empty": "No screens.",
       "said": {
         "built-in": "built in",
-        "monitor": "monitor",
+        "screen": "screen",
         "following": "following the room",
         "own-white": "the screen's own white",
         "steps": "{now} of {most} steps"

@@ -504,7 +504,7 @@ Provider {
             : Screens.physical(output);
         return {
             eyebrow: Plate.runs([output.name, partSaid("", builtIn(output) ? "built-in"
-                : "monitor")]),
+                : "screen")]),
             eyebrowNames: true,
             title: named(output),
             facts: facts.concat(Screens.facts(output, {

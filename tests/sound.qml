@@ -146,7 +146,10 @@ ShellRoot {
         // The graph moves the format the card already says, so it isn't
         // said again.
         expect("its state, its parts, the kernel's, then what it's known by",
-            labels === "State, Volume, Resolution, Playing, Graph ID, ALSA Device, Priority", said);
+            labels === "State, Volume, Resolution, Playing, Priority, ALSA Device, Graph ID", said);
+        expect("what identifies it is marked so, its Graph ID last", plate.facts
+            .filter(fact => fact.identifies).map(fact => fact.label).join(", ")
+            === "ALSA Device, Graph ID", said);
         expect("its state is pipewire's word", plate.facts[0].value === "running", said);
         expect("its volume says its decibels, its share being its row's",
             volume?.value === Sounds.decibels(0.5), volume?.value);
@@ -175,7 +178,7 @@ ShellRoot {
             && sound.drawerOf(card).facts[0].value === "suspended", formats(card));
         sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
         expect("what it's known by is as the server says it",
-            said.endsWith("Graph ID=52; ALSA Device=hw:PCH,1; Priority=1000"), said);
+            said.endsWith("Priority=1000; ALSA Device=hw:PCH,1; Graph ID=52"), said);
         card.audio.muted = true;
         expect("a muted one doesn't say so again, nor its level", !sound.drawerOf(card).facts
             .some(fact => fact.label === "Muted" || fact.label === "Level"), said);
