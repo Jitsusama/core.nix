@@ -7,15 +7,17 @@
 // command line's menu, and the hints the foot keeps. Apart from the shell,
 // so tests/notice-list.qml can hold it in Qt's own engine.
 .pragma library
+.import "launcher/Order.js" as Order
 
 // How many lines show at once, and how far the view keeps from the cursor,
 // as Joel's scrolloff of 4, which Vim holds to half the lines in view.
 const room = 8;
 const scrolloff = 4;
 
-// The cards' ids, the newest first, by when each arrived.
+// The cards' ids, the newest first, by when each arrived, as every stream
+// keeps them, those arriving together in the order they came.
 function ordered(ids, arrived) {
-    return ids.slice().sort((a, b) => (arrived[b] ?? 0) - (arrived[a] ?? 0));
+    return Order.sorted(ids, Order.stream(id => arrived[id] ?? 0));
 }
 
 // The first line in view, from the one before, so the cursor stays as far

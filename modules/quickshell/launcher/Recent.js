@@ -6,6 +6,7 @@
 // all laid out by this. Apart from the views, so tests/recent.qml can hold
 // it in Qt's own engine.
 .pragma library
+.import "Order.js" as Order
 
 // Nine, so 1 to 9 pick one, and since the last ten things held most of what
 // people went back to (Tauscher and Greenberg).
@@ -34,11 +35,11 @@ function listed(sources, shown, most) {
             (Number.isFinite(one.at) ? dated : undated).push(one);
         }
     }
-    // Array.prototype.sort is stable, so things done at the same moment keep
-    // their sources' order.
-    dated.sort((a, b) => b.at - a.at);
+    // Recent is a stream, and things done at the same moment keep their
+    // sources' order.
+    const newest = Order.sorted(dated, Order.stream(one => one.at));
     const rows = [];
-    for (const one of dated.concat(undated)) {
+    for (const one of newest.concat(undated)) {
         if (rows.length >= (most ?? MOST)) {
             break;
         }

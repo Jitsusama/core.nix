@@ -970,6 +970,7 @@ onLinux {
       cp ${../../tests/recent.qml} recent.qml
       cp ${./launcher/Recent.js} Recent.js
       cp ${./launcher/Recents.js} Recents.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -2583,6 +2584,7 @@ onLinux {
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
       cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
@@ -3607,6 +3609,8 @@ onLinux {
     pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
       cp ${../../tests/notice-list.qml} notice-list.qml
       cp ${./NoticeList.js} NoticeList.js
+      mkdir launcher
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Changes.js} Changes.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

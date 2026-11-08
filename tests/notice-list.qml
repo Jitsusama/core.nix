@@ -1,7 +1,8 @@
 // The held notices as a quickfix list, worked out in Qt's own JavaScript
 // engine, the one the shell runs it in. The `the-notices-are-a-quickfix-list`
-// check copies modules/quickshell/NoticeList.js beside this file and runs
-// `qml -platform offscreen notice-list.qml`.
+// check copies modules/quickshell/NoticeList.js and Changes.js beside this
+// file, and launcher/Order.js into launcher/ as NoticeList.js imports it, and
+// runs `qml -platform offscreen notice-list.qml`.
 import QtQuick
 import "NoticeList.js" as List
 import "Changes.js" as Changes
@@ -26,6 +27,10 @@ QtObject {
 
         holds("the newest is line 1", List.ordered([1, 2, 3], { 1: 10, 2: 30, 3: 20 }),
             [2, 3, 1]);
+        holds("those arriving together keep the order they came in",
+            List.ordered([4, 1, 3, 2], { 1: 20, 2: 20, 3: 10, 4: 20 }), [4, 1, 2, 3]);
+        holds("one with no arrival goes last", List.ordered([1, 2, 3], { 1: 10, 3: 20 }),
+            [3, 1, 2]);
 
         holds("a list that fits never scrolls", List.viewTop(0, 5, 6), 0);
         holds("the view keeps three from the cursor, half of eight", List.viewTop(0, 5, 20), 1);
