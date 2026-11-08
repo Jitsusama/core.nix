@@ -168,6 +168,7 @@ class StandIn:
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
         monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
         monkeypatch.delenv("STAND_IN_QUARANTINE", raising=False)
+        monkeypatch.delenv("DIRENV_DIR", raising=False)
 
     def ran(self) -> dict[str, object] | None:
         """Give how the driver was run, or None if it wasn't."""
@@ -375,6 +376,47 @@ def test_a_check_main_quarantines_fails_saying_so_and_blocking_nothing(
     ) in said
     assert "vm-desktop-y failed" not in said
     assert stand_in.ran() is None
+
+
+@pytest.mark.usefixtures("stand_in")
+@pytest.mark.parametrize("status", [75, 69, 255])
+def test_a_run_that_never_ran_is_never_excused_by_a_quarantine(
+    tool: Tool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
+) -> None:
+    # As when no builder was lent, between 01:30 and 04:15 on 8 November:
+    # nothing ran, so nothing failed that a quarantine could excuse.
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", str(status))
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == status
+
+
+def test_a_shell_loaded_for_another_tree_is_refused_rather_than_this_folder_tested(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # As `direnv exec TREE run-subtests` from the main checkout, which loads
+    # the tree's shell and stays where it is: on 8 November runs meant for
+    # branches tested main and kept their passes at main's commit.
+    main, branch = tmp_path / "main", tmp_path / "branch"
+    main.mkdir()
+    (branch / "modules").mkdir(parents=True)
+    monkeypatch.setenv("DIRENV_DIR", f"-{branch}")
+    monkeypatch.chdir(main)
+
+    with pytest.raises(SystemExit):
+        tool.main(["--there", "vm-desktop-x", "launcher"])
+    assert stand_in.asked() is None
+    assert f"cd to {branch}" in capsys.readouterr().err
+
+    assert tool.main(["--there", "--flake", str(main), "vm-desktop-x", "launcher"]) == 0
+    monkeypatch.chdir(branch / "modules")
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
 
 
 def test_without_a_list_on_main_a_failure_fails_the_run(
