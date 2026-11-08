@@ -52,6 +52,11 @@
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
 //!
+//! With `--orchestrators`, a window holding a session others report to,
+//! as the mesh's presence folder there says, keeps a memory floor and is
+//! the last systemd-oomd ends, and every other pi gives way first to the
+//! kernel's OOM killer, as `src/keep.rs` says why and how.
+//!
 //! Terminals sit in each `--under` slice: Joel's apps' and, apart from
 //! them, the agents' sessions'.
 //!
@@ -61,8 +66,9 @@
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
-//!        [--revive jobs.slice]
+//!        [--revive jobs.slice] [--orchestrators DIR]
 
+mod keep;
 mod low;
 mod oom;
 mod quests;
@@ -97,6 +103,7 @@ struct Settings {
     low_weight: u64,
     weigh: Vec<String>,
     revive: Option<String>,
+    orchestrators: Option<PathBuf>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -583,6 +590,75 @@ fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
     }
 }
 
+/// Keeps each window holding an orchestrator, as `dir`'s presences name
+/// them, gives back each that no longer holds one, and puts each pi at
+/// the adjustment it wants. A failure is said once, and tried again on
+/// the next look.
+fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, keeping: &mut keep::Keeping) {
+    let Ok(boot) = fs::read_to_string("/proc/sys/kernel/random/boot_id") else {
+        return;
+    };
+    let proc = Path::new("/proc");
+    let orchestrators = keep::orchestrators(&keep::read(dir), boot.trim(), |pid| {
+        proc.join(pid.to_string()).exists()
+    });
+    let mut warned = keeping.failed;
+    let windows: Vec<(String, bool)> = under
+        .iter()
+        .flat_map(|slice| homes(slice, prefixes))
+        .filter_map(|scope| {
+            let unit = scope.file_name()?.to_str()?.to_owned();
+            let pis: Vec<u32> = samples(&scope)
+                .into_iter()
+                .filter(|sample| sample.comm == "pi")
+                .map(|sample| sample.pid)
+                .collect();
+            for &pid in &pis {
+                keep::adjust(
+                    proc,
+                    pid,
+                    keep::adjustment(pid, &orchestrators),
+                    &mut warned,
+                );
+            }
+            Some((unit, pis.iter().any(|pid| orchestrators.contains(pid))))
+        })
+        .collect();
+    keeping.failed = warned;
+    keeping.keep_only(
+        &windows
+            .iter()
+            .map(|(unit, _)| unit.clone())
+            .collect::<Vec<_>>(),
+    );
+    for (unit, keep) in keeping.changes(&windows) {
+        match Command::new("busctl")
+            .args(keep::keep_call(&unit, keep))
+            .stdout(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                keeping.done(&unit, keep);
+                let says = if keep { "Kept" } else { "Gave back" };
+                eprintln!("{says} {unit}, an orchestrator's window.");
+            }
+            Ok(output) => {
+                if !std::mem::replace(&mut keeping.failed, true) {
+                    eprintln!(
+                        "Couldn't keep {unit}: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut keeping.failed, true) {
+                    eprintln!("Couldn't run busctl to keep {unit}: {error}");
+                }
+            }
+        }
+    }
+}
+
 /// Gives each piece of work in one split cgroup a scope of its own, in
 /// its quest's slice when its slice is sorted by quest. A tree that left
 /// before its scope began is no loss; anything else is said once.
@@ -793,6 +869,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         low_weight: 10,
         weigh: Vec::new(),
         revive: None,
+        orchestrators: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
@@ -808,6 +885,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--background" => settings.background = Some(PathBuf::from(value()?)),
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
+            "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
             }
@@ -915,6 +993,7 @@ fn run() -> Result<(), String> {
         .collect();
     let watch = settings.background.as_deref().and_then(watch_marks);
     let mut weighing = low::Weighing::default();
+    let mut keeping = keep::Keeping::default();
     loop {
         match (&watch, &settings.background) {
             (Some(watch), Some(dir)) => {
@@ -959,6 +1038,9 @@ fn run() -> Result<(), String> {
             split(&root, &manager, cgroup, holder, by_quest, &mut warned);
         }
         if pass.is_multiple_of(real_time::EVERY) {
+            if let Some(dir) = &settings.orchestrators {
+                keep_windows(&under, &windows, dir, &mut keeping);
+            }
             for cgroup in &settings.no_real_time {
                 real_time::take(&root.join(cgroup), &mut warned);
                 let work = real_time::processes_under(&root.join(cgroup));
@@ -998,6 +1080,7 @@ mod tests {
             low_weight: 10,
             weigh: Vec::new(),
             revive: None,
+            orchestrators: None,
         }
     }
 
