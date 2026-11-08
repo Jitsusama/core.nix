@@ -43,8 +43,7 @@ def ruff_patterns(ruff: Path) -> list[str]:
 def names_one(pattern: str, paths: list[str], *, by_name: bool) -> bool:
     """Whether a pattern matches any path, or any file's name where a tool reads it so."""
     return any(
-        fnmatchcase(path, pattern)
-        or (by_name and fnmatchcase(PurePosixPath(path).name, pattern))
+        fnmatchcase(path, pattern) or (by_name and fnmatchcase(PurePosixPath(path).name, pattern))
         for path in paths
     )
 

@@ -1015,9 +1015,7 @@ gather (
       # so only a file added, moved or removed runs it again.
       every-pattern-names-a-file =
         let
-          paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ./. file)) (
-            lib.fileset.toList ./.
-          );
+          paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ./. file)) (lib.fileset.toList ./.);
         in
         pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
           ${lib.getExe pkgs.python3} ${./tests/every-pattern-names-a-file.py} \
