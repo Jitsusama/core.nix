@@ -1602,6 +1602,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
             ("launcher show", "terminal-home"),
             ("launcher show machine disk", "terminal-disk"),
             ("launcher show mahcine", "terminal-miss"),
+            ("launcher show machine disk --drawers", "terminal-drawers"),
         ]:
             window = desktop.opened(
                 picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"

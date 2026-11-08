@@ -4267,8 +4267,8 @@ onLinux {
       }
       ''
         export HOME=$PWD
-        launcher completion zsh > _launcher
-        zsh -f ${./in-a-terminal/tests/launcher-completion.zsh} $PWD/_launcher
+        launcher completion zsh > completion.zsh
+        zsh -f ${./in-a-terminal/tests/launcher-completion.zsh} $PWD/completion.zsh
         touch $out
       '';
 
