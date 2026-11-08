@@ -35,10 +35,12 @@ moment it is missed, not at the next card.
 The watch runs outside every session, so it outlives the one keeping the
 cycle fast: [cadence][5] writes the hour's card to
 `~/.local/state/cadence/card.txt` every five minutes, asks that session
-once about each missed target or overdue card, and asks the steward above
-it when the session doesn't answer within twenty minutes or is gone for
-ten. `jitsusama.cadence.watcher` and `jitsusama.cadence.steward` name
-them by their mesh addresses; with neither, it writes the card alone.
+once about each missed target, and asks the steward above it when the
+session doesn't answer within twenty minutes or is gone for ten. When no
+card has gone for 65 minutes, cadence sends the steward its own rather
+than ask, since asking waits on the session's turn.
+`jitsusama.cadence.watcher` and `jitsusama.cadence.steward` name them by
+their mesh addresses; with neither, it writes the card alone.
 
 It keeps the sessions up too. Given `jitsusama.cadence.revive.restart`,
 the words that start a session, each tick first starts again every

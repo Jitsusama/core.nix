@@ -5,7 +5,7 @@
 //! the runs nix-offload sent, the net's round, the machine's pressure and
 //! memory), writes the last hour's card to `card.txt` in its state folder,
 //! and asks the watcher, by its mesh address, a question for each target
-//! newly missed and for a card overdue. When the watcher leaves a question
+//! newly missed. A card overdue it sends the steward itself. When the watcher leaves a question
 //! unanswered for twenty minutes, or is gone for ten, it asks the steward
 //! above it instead, once. Given no watcher, it writes the card alone.
 //!
@@ -124,7 +124,8 @@ fn run(args: &Args) -> io::Result<()> {
         }
     }
     let snapshot = gather(&folder, &state_home, &mesh, args, now)?;
-    write_whole(&folder.join("card.txt"), &card::card(&snapshot, clock))?;
+    let card = card::card(&snapshot, clock);
+    write_whole(&folder.join("card.txt"), &card)?;
 
     let (Some(watcher), Some(steward)) = (&args.watcher, &args.steward) else {
         return Ok(());
@@ -151,6 +152,14 @@ fn run(args: &Args) -> io::Result<()> {
         if let Some(key) = &question.key {
             state.asked_as(key, &message.id, now, &question.text);
         }
+    }
+    if watch::card_due(&snapshot, &state) {
+        let text = format!(
+            "{card}Sent by cadence, as the session keeping the cycle fast sent none this hour; \
+             tokens, sessions and the top bottleneck come with its next."
+        );
+        mesh.send(&message(steward, "fyi", text))?;
+        state.carded = Some(now);
     }
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
 }
