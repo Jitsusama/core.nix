@@ -4893,6 +4893,15 @@
       "glyph": "bluetooth"
     },
     {
+      "id": "verb:on:timers:show",
+      "command": "edit",
+      "argument": "Timers",
+      "in": "on",
+      "name": "Show in Timers",
+      "verb": "show",
+      "glyph": "timer"
+    },
+    {
       "id": "verb:on:muted:unmute",
       "command": "set",
       "argument": "nomute",

@@ -571,6 +571,7 @@ Provider {
                 : piece.actions[0].verb ?? piece.actions[0].name.toLowerCase(),
             name: piece.title,
             side: piece.value,
+            counts: piece.counts ?? undefined,
             note: piece.context,
             glyph: Theme.glyph[piece.markGlyph || fact.entry.mark],
             hue: Marks.tone(piece),

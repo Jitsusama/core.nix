@@ -113,7 +113,9 @@
     of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
     a span is said in its largest units, timers are listed rung first, then by what each has
     left, and the stopwatch's count runs while it runs, reads to the tenth rounded down, and lists
-    its laps newest first, each its own stretch
+    its laps newest first, each its own stretch; a timer's side says its time left, paused or
+    when it rang, and Now holds timers while any runs, is paused or has rung, or the stopwatch
+    runs, told by the one listed first and naming them in that order, the stopwatch last
   '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked

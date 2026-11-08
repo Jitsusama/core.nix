@@ -1650,7 +1650,7 @@ def shoot_the_timers(desktop: Desktop) -> None:
     """Shoot Timers holding one running, one paused and one rung, at Joel's two scales.
 
     The stopwatch, listed last, is set going and lapped twice first, and its laps are shot from
-    inside it.
+    inside it. Then Now is shot with one rung, with none rung, and with only paused ones.
     """
     machine = desktop.machine
     listed = len(TIMERS_SHOWN) + 1
@@ -1708,6 +1708,7 @@ def shoot_the_timers(desktop: Desktop) -> None:
         desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
+    shoot_now_through_the_timers(desktop, listed)
     desktop.as_account("systemctl --user stop timers.service")
     desktop.as_account(f"rm -f {TIMERS_KEPT}")
     desktop.as_account("qs ipc call notices putAway || true")
@@ -1781,6 +1782,52 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
         lambda shown: {"System \u00b7 machine", "Port \u00b7 switch0"} <= set(reads(shown))
     )
     desktop.close_launcher()
+
+
+def shoot_now_through_the_timers(desktop: Desktop, listed: int) -> None:
+    """Shoot Now with one timer rung, then with that one ended, then with only paused ones."""
+    machine = desktop.machine
+    shoot_now_holding_timers(desktop, "rung")
+    # Eggs ended, by the keys that carry End, leaves them running.
+    pick_a_timer(desktop, "Eggs")
+    machine.send_chars("dd")
+    desktop.launcher_until(lambda shown: len(shown["rows"]) == listed - 1)
+    desktop.close_launcher()
+    shoot_now_holding_timers(desktop, "running")
+    # Bread paused and the stopwatch stopped leave only what's paused.
+    pick_a_timer(desktop, "Bread")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("side")).startswith("paused")
+    )
+    desktop.close_launcher()
+    pick_a_timer(desktop, "Stopwatch")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("note")).startswith("stopped")
+    )
+    desktop.close_launcher()
+    shoot_now_holding_timers(desktop, "paused")
+
+
+def pick_a_timer(desktop: Desktop, name: str) -> None:
+    """Open Timers afresh and stand on the one named, in normal, for a key to act on it."""
+    desktop.as_account("qs ipc call launcher collection timers")
+    desktop.launcher_ready()
+    desktop.type_in(name.lower(), selecting=name)
+    desktop.normal()
+
+
+def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
+    """Shoot Now with its Timers row, and the margin with its mark, at Joel's two scales."""
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: "Timers" in shown["rows"])
+        desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
 
 
 # A binding that throws or assigns the wrong type only warns, and

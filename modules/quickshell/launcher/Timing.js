@@ -174,6 +174,29 @@ function said(span, units) {
     return words.length > 0 ? words.join(" ") : `0 ${units.seconds}`;
 }
 
+// A time of day as the launcher says one, "20:42".
+function timeOfDay(at) {
+    const day = new Date(at);
+    const two = number => String(number).padStart(2, "0");
+    return `${two(day.getHours())}:${two(day.getMinutes())}`;
+}
+
+// What a timer says at its right at `now`, in `words`, its own: the
+// time left, held and said so while paused, or when it rang, so every
+// row says how it stands (VKCF3Z, 2026-11-07), in Timers and Now alike.
+function side(record, now, words) {
+    const counting = clock(left(record, now));
+    switch (record.state) {
+    case "running":
+        return counting;
+    case "paused":
+        return (words.pausedSide ?? "").replace("{left}", counting);
+    default:
+        return ((record.late ? words.late : words.rung) ?? "").replace("{clock}",
+            timeOfDay(record.rang));
+    }
+}
+
 // How timers stand in the list, rung first, since they want Joel.
 const RANKS = { rung: 0, running: 1, paused: 2 };
 
@@ -209,6 +232,25 @@ function tenths(span) {
     const two = number => String(number).padStart(2, "0");
     const shown = `${two(seconds % SECONDS)}.${all % TENTHS}`;
     return hours > 0 ? `${hours}:${two(minutes)}:${shown}` : `${minutes}:${shown}`;
+}
+
+// What Now says of the timers and the stopwatch at `now`
+// (pieces/Timers.qml): whether any is on, a timer running, paused or
+// rung, so none is forgotten, or the stopwatch running; whether one has
+// rung; the timer its side tells of, the first as Timers lists them,
+// so one rung, else the soonest to ring, else the paused one with least
+// left, or null where the stopwatch alone runs; and what it names, the
+// timers in that order and the running stopwatch last (VKCF3Z,
+// 2026-11-08).
+function onNow(timers, watch, now) {
+    const listed = ordered(timers, now);
+    const counting = watch?.state === "running";
+    return {
+        on: listed.length > 0 || counting,
+        rung: listed.some(record => record.state === "rung"),
+        first: listed[0] ?? null,
+        named: counting ? listed.concat([watch]) : listed
+    };
 }
 
 // The stopwatch's laps, newest first, each { number, lap, at }: its

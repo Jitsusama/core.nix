@@ -30,6 +30,11 @@ Item {
     property bool present: true
     property bool active: false
     property string value: ""
+    // Its value as it runs on by itself, given the time, for one that
+    // counts faster than it's made again, as the stopwatch does to the
+    // tenth: Now's row draws it afresh (Launcher.qml's counts). Null for
+    // one whose value says it.
+    property var counts: null
     property string role: "text"
     // The theme's glyph its value is read by at a glance, by name, or none,
     // and what a glance needs said after it: the least that tells Joel
@@ -109,6 +114,7 @@ Item {
             present: true,
             active: false,
             value: "",
+            counts: null,
             role: "text",
             sign: "",
             glance: "",

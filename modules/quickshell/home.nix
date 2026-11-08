@@ -620,6 +620,7 @@ let
     pi = ./pieces/Pi.qml;
     recording = ./pieces/Recording.qml;
     playing = ./pieces/Playing.qml;
+    timers = ./pieces/Timers.qml;
   };
 
   overview = pieces.drawn config.jitsusama.quickshell.overview.pieces;
@@ -1633,6 +1634,15 @@ in
         # The cameras whose holders the machine names, as v4l2loopback
         # writes them under /run/camera-holders.
         holders = lib.attrNames (osConfig.jitsusama.v4l2loopback.holders or { });
+      };
+      # A timer running, paused or rung, or the stopwatch running, wearing
+      # the mark Timers' place wears (VKCF3Z, 2026-11-08).
+      timers = {
+        order = 92;
+        source = "timers";
+        label = "timers";
+        tier = "when";
+        mark = "timer";
       };
       # The least of them, since music never needs Joel.
       playing = {
