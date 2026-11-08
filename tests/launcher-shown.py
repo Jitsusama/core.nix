@@ -58,6 +58,8 @@ OTHER_SENSE = {
     "verb:drive:open": "opening in Google Drive, as Google names its file store",
     "file-chooser:lines": "how many lines of text a picked file holds, not a connection",
     "heat:critical": "the temperature a part's sensor calls critical, not a disk's band",
+    "machine:cpu:pressure": "how long work waits for the processor, as the kernel measures it",
+    "machine:disk:pressure": "how long work waits on the disk, as the kernel measures it",
     "machine:memory:pressure": "memory pressure, as the kernel measures it, not a disk's band",
     "power:limit": "a battery's charge limit, not an allowance",
     "on:waiting:history": "what For You has resolved, not the disk guard's ledger",
