@@ -22,8 +22,11 @@
 # is written. The desktop entries were read again whenever anything changed
 # in a folder above the ones holding them, as the home folder does with
 # every hidden file written, so desktop-entries-heard-only-when-theirs.patch
-# hears a folder above only for the entry leading down to them. All five
-# are laid over the machine's packages, so the shell, the greeter and the
+# hears a folder above only for the entry leading down to them. A sound
+# node said neither what pipewire says it's doing nor the format it moves
+# audio in, which a device's drawer shows, so
+# pipewire-node-state-and-format.patch reads both from the node's info and
+# its Format param, which opens no stream. All six are laid over the machine's packages, so the shell, the greeter and the
 # lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
@@ -94,6 +97,7 @@ in
           ./fileview-quiet.patch
           ./fileview-watch-nearest.patch
           ./ipc-replies-whole.patch
+          ./pipewire-node-state-and-format.patch
         ];
         qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
           "--prefix"
