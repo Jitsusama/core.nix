@@ -15,9 +15,13 @@
 //! gives, critical so it stays until put away, with Again among its acts.
 //! Putting the card away ends the timer; Again sets it going afresh. While
 //! no notifications server answers, as while the shell starts again, the
-//! notice waits and is said once one does.
+//! notice waits and is said once one does. Each notice is kept on its
+//! timer with the server that took it, so a daemon started again still
+//! knows its card, and a card lost with a server that went, as the
+//! shell's does on a switch, is said again to the one that takes its place.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Write};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
@@ -33,7 +37,9 @@ use rustix::time::{
     timerfd_settime,
 };
 use serde_json::{Value, json};
-use timers::{Ask, Held, KIND, Refusal, Standing, Timer, VERSION, Words, ask, error, now};
+use timers::{
+    Ask, Held, KIND, Notice, Refusal, Standing, Timer, VERSION, Words, ask, error, now, unsaid,
+};
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::Value as Variant;
 use zbus::{MatchRule, message};
@@ -48,6 +54,8 @@ const PATIENCE: Duration = Duration::from_secs(2);
 
 const NOTIFICATIONS: &str = "org.freedesktop.Notifications";
 const NOTIFICATIONS_PATH: &str = "/org/freedesktop/Notifications";
+const BUS: &str = "org.freedesktop.DBus";
+const BUS_PATH: &str = "/org/freedesktop/DBus";
 
 /// The act a notice carries to set its timer going again.
 const AGAIN_ACT: &str = "again";
@@ -68,8 +76,6 @@ struct Daemon {
     held: Held,
     kept: PathBuf,
     watches: Vec<Watch>,
-    /// The notice shown for each rung timer, by the id the server gave it.
-    notices: HashMap<u32, String>,
     since: u64,
 }
 
@@ -83,10 +89,10 @@ struct Shared {
 
 /// What the notices thread does.
 enum Tell {
-    /// Rings the timer with this key, unless it has rung already.
+    /// Rings the timer with this key, unless its ring is up already.
     Ring(String),
-    /// Takes back the notice with this id.
-    Withdraw(u32),
+    /// Takes back this notice, should its server still be there.
+    Withdraw(Notice),
 }
 
 fn main() {
@@ -134,15 +140,14 @@ fn main() {
             held: Held::read(&kept),
             kept,
             watches: Vec::new(),
-            notices: HashMap::new(),
             since: now(),
         }),
         wake,
         notices: Mutex::new(tell),
     });
     {
-        // What ended while the daemon was down rings now, late, and what
-        // rang but was never said is said.
+        // What ended while the daemon was down rings now, late; it's said,
+        // with every ring not up, once the notifications server is reached.
         let mut daemon = lock(&shared);
         let rung = daemon.held.due(now());
         let changed: Vec<Value> = rung
@@ -150,9 +155,6 @@ fn main() {
             .filter_map(|key| daemon.held.get(key).map(Timer::json))
             .collect();
         changes(&shared, &mut daemon, &changed, &[]);
-        for key in daemon.held.untold() {
-            say(&shared, Tell::Ring(key));
-        }
     }
     {
         let shared = Arc::clone(&shared);
@@ -310,21 +312,19 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
         }
         if connection.is_none() {
             connection = connect(shared);
+            if connection.is_some() {
+                // Every rung timer, since what was said before may have
+                // gone with a server; each says itself again only where
+                // it isn't up.
+                waiting.extend(rung(shared).into_iter().map(Tell::Ring));
+            }
         }
         let Some(bus) = &connection else { continue };
         let mut still = Vec::new();
         for tell in waiting.drain(..) {
             let done = match &tell {
                 Tell::Ring(key) => ring(shared, bus, words, key),
-                Tell::Withdraw(id) => bus
-                    .call_method(
-                        Some(NOTIFICATIONS),
-                        NOTIFICATIONS_PATH,
-                        Some(NOTIFICATIONS),
-                        "CloseNotification",
-                        id,
-                    )
-                    .map(|_| ()),
+                Tell::Withdraw(notice) => withdrawn(bus, notice),
             };
             if let Err(why) = done {
                 eprintln!("<4>the notifications server didn't answer: {why}");
@@ -335,26 +335,74 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
     }
 }
 
-/// The session bus, with a thread hearing what Joel does with each notice.
+/// The session bus, with threads hearing what Joel does with each notice
+/// and whether another notifications server takes the place of the last.
 fn connect(shared: &Arc<Shared>) -> Option<Connection> {
     let bus = zbus::blocking::connection::Builder::session()
         .and_then(|builder| builder.method_timeout(PATIENCE).build())
         .map_err(|why| eprintln!("<4>couldn't reach the session bus: {why}"))
         .ok()?;
-    let heard = bus.clone();
-    let shared = Arc::clone(shared);
-    std::thread::spawn(move || hear(&shared, &heard));
+    {
+        let heard = bus.clone();
+        let shared = Arc::clone(shared);
+        std::thread::spawn(move || hear(&shared, &heard));
+    }
+    {
+        let heard = bus.clone();
+        let shared = Arc::clone(shared);
+        std::thread::spawn(move || follow(&shared, &heard));
+    }
     Some(bus)
 }
 
-/// Says one rung timer's notice, once.
+/// The keys of every rung timer.
+fn rung(shared: &Shared) -> Vec<String> {
+    lock(shared)
+        .held
+        .timers
+        .iter()
+        .filter(|timer| matches!(timer.standing, Standing::Rung { .. }))
+        .map(|timer| timer.key.clone())
+        .collect()
+}
+
+/// The bus name of the notifications server there is now.
+fn server(bus: &Connection) -> zbus::Result<String> {
+    bus.call_method(
+        Some(BUS),
+        BUS_PATH,
+        Some(BUS),
+        "GetNameOwner",
+        &NOTIFICATIONS,
+    )?
+    .body()
+    .deserialize()
+}
+
+/// Takes a notice back, from the server that gave it alone, since its id
+/// may name another notice on a server after it.
+fn withdrawn(bus: &Connection, notice: &Notice) -> zbus::Result<()> {
+    if server(bus).ok().as_deref() != Some(notice.server.as_str()) {
+        return Ok(());
+    }
+    bus.call_method(
+        Some(NOTIFICATIONS),
+        NOTIFICATIONS_PATH,
+        Some(NOTIFICATIONS),
+        "CloseNotification",
+        &notice.id,
+    )
+    .map(|_| ())
+}
+
+/// Says one rung timer's notice to the notifications server there is now,
+/// unless it's up there already.
 fn ring(shared: &Shared, bus: &Connection, words: &Words, key: &str) -> zbus::Result<()> {
+    let server = server(bus)?;
     let (summary, body) = {
         let daemon = lock(shared);
         match daemon.held.get(key) {
-            Some(timer) if matches!(timer.standing, Standing::Rung { .. }) && !timer.told => {
-                words.notice(timer)
-            }
+            Some(timer) if unsaid(timer, &server) => words.notice(timer),
             _ => return Ok(()),
         }
     };
@@ -381,20 +429,58 @@ fn ring(shared: &Shared, bus: &Connection, words: &Words, key: &str) -> zbus::Re
     let id: u32 = reply.body().deserialize()?;
     let mut daemon = lock(shared);
     let ringing = daemon.held.timers.iter_mut().find(|timer| timer.key == key);
+    let notice = Notice { id, server };
     if let Some(timer) = ringing
         && matches!(timer.standing, Standing::Rung { .. })
     {
-        timer.told = true;
-        daemon.notices.insert(id, key.to_owned());
+        timer.notice = Some(notice);
         if let Err(why) = daemon.held.write(&daemon.kept) {
             eprintln!("<3>couldn't keep the timers: {why}");
         }
     } else {
         // Ended or started again while it was being said.
         drop(daemon);
-        say(shared, Tell::Withdraw(id));
+        say(shared, Tell::Withdraw(notice));
     }
     Ok(())
+}
+
+/// Hears the notifications server change hands until the bus goes: one
+/// that takes its place has none of the last one's cards, so every rung
+/// timer is said to it.
+fn follow(shared: &Shared, bus: &Connection) {
+    let rule = || -> zbus::Result<MatchRule<'static>> {
+        Ok(MatchRule::builder()
+            .msg_type(message::Type::Signal)
+            .sender(BUS)?
+            .interface(BUS)?
+            .member("NameOwnerChanged")?
+            .add_arg(NOTIFICATIONS)?
+            .build())
+    };
+    let Ok(rule) = rule() else {
+        return;
+    };
+    let Ok(messages) = MessageIterator::for_match_rule(rule, bus, None) else {
+        return;
+    };
+    for message in messages {
+        let Ok(message) = message else { break };
+        let Ok((_, _, owner)) = message.body().deserialize::<(String, String, String)>() else {
+            continue;
+        };
+        if owner.is_empty() {
+            continue;
+        }
+        let mut said = String::new();
+        for key in rung(shared) {
+            let _ = write!(said, " {key}");
+            say(shared, Tell::Ring(key));
+        }
+        if !said.is_empty() {
+            eprintln!("<6>{owner} took the notices, so these are said again:{said}");
+        }
+    }
 }
 
 /// Hears each notice's act and its closing until the bus goes: Again sets
@@ -417,17 +503,25 @@ fn hear(shared: &Shared, bus: &Connection) {
         let Ok(message) = message else { break };
         let header = message.header();
         let member = header.member().map(|member| member.as_str().to_owned());
+        // Which server said it, since a notice's id is only its own.
+        let sender = header
+            .sender()
+            .map(|sender| sender.as_str().to_owned())
+            .unwrap_or_default();
         match member.as_deref() {
             Some("ActionInvoked") => {
                 let Ok((id, act)) = message.body().deserialize::<(u32, String)>() else {
                     continue;
                 };
                 let mut daemon = lock(shared);
-                let Some(key) = daemon.notices.get(&id).cloned() else {
+                let Some(key) = daemon
+                    .held
+                    .noticed(id, &sender)
+                    .map(|timer| timer.key.clone())
+                else {
                     continue;
                 };
                 if act == AGAIN_ACT {
-                    daemon.notices.remove(&id);
                     let changed: Vec<Value> = daemon
                         .held
                         .again(&key, now())
@@ -442,14 +536,16 @@ fn hear(shared: &Shared, bus: &Connection) {
                     continue;
                 };
                 let mut daemon = lock(shared);
-                let Some(key) = daemon.notices.remove(&id) else {
+                // Only Joel putting a rung one's card away ends it; taken
+                // back or let go any other way, it stays rung.
+                let Some(key) = daemon
+                    .held
+                    .noticed(id, &sender)
+                    .map(|timer| timer.key.clone())
+                else {
                     continue;
                 };
-                let rung = daemon
-                    .held
-                    .get(&key)
-                    .is_some_and(|timer| matches!(timer.standing, Standing::Rung { .. }));
-                if why == DISMISSED && rung && daemon.held.end(&key).is_ok() {
+                if why == DISMISSED && daemon.held.end(&key).is_ok() {
                     changes(shared, &mut daemon, &[], &[key]);
                 }
             }
@@ -533,18 +629,20 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             changed(shared, &mut daemon, &id, resumed)
         }
         Ask::Again { id, key } => {
-            withdraw(shared, &mut daemon, &key);
+            let shown = notice(&daemon, &key);
             let again = daemon.held.again(&key, at).map(Timer::json);
+            withdraw(shared, shown, again.is_ok());
             changed(shared, &mut daemon, &id, again)
         }
         Ask::Add { id, key, span } => {
-            withdraw(shared, &mut daemon, &key);
+            let shown = notice(&daemon, &key);
             let added = daemon.held.add(&key, span, at).map(Timer::json);
+            withdraw(shared, shown, added.is_ok());
             changed(shared, &mut daemon, &id, added)
         }
         Ask::End { id, key } => match daemon.held.end(&key) {
-            Ok(_) => {
-                withdraw(shared, &mut daemon, &key);
+            Ok(ended) => {
+                withdraw(shared, ended.notice, true);
                 let gone = [key];
                 changes(shared, &mut daemon, &[], &gone);
                 json!({"id": id, "gone": gone})
@@ -578,16 +676,16 @@ fn changed(
     }
 }
 
-/// Takes back a timer's notice, should it have one up.
-fn withdraw(shared: &Shared, daemon: &mut Daemon, key: &str) {
-    let shown: Vec<u32> = daemon
-        .notices
-        .iter()
-        .filter(|(_, held)| held.as_str() == key)
-        .map(|(id, _)| *id)
-        .collect();
-    for id in shown {
-        daemon.notices.remove(&id);
-        say(shared, Tell::Withdraw(id));
+/// A timer's notice, should it have one up.
+fn notice(daemon: &Daemon, key: &str) -> Option<Notice> {
+    daemon.held.get(key).and_then(|timer| timer.notice.clone())
+}
+
+/// Takes back a timer's notice once what was asked of it was done.
+fn withdraw(shared: &Shared, shown: Option<Notice>, done: bool) {
+    if let Some(notice) = shown
+        && done
+    {
+        say(shared, Tell::Withdraw(notice));
     }
 }

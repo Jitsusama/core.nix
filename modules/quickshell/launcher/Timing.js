@@ -25,16 +25,20 @@ const UNITS = [
 const NUMBER = /^(\d+(?:\.\d+)?)\s*/;
 // A clock's span, "1:30" as minutes and seconds or "1:02:03" with hours.
 const CLOCK = /^(\d+):([0-5]\d)(?::([0-5]\d))?(?=\s|$)/;
+// A number run into a colon that no clock reads, as "1:75".
+const NOT_A_CLOCK = /^\d+:\S*/;
 // What may follow a unit: nothing, a space or the next number.
 const AFTER_UNIT = /^[\s\d]/;
 const SPACES = /\s+/;
 
 // A clock's span, { span, rest }, or null where `text` doesn't start
-// with one.
+// with one. One no clock reads, as "1:75", is a span of nothing, so the
+// answer says it's unfit rather than starting a minute named ":75".
 function clockAt(text) {
     const matched = CLOCK.exec(text);
     if (!matched) {
-        return null;
+        const unread = NOT_A_CLOCK.exec(text);
+        return unread ? { span: 0, rest: text.slice(unread[0].length).trim() } : null;
     }
     const [whole, first, second, third] = matched;
     const span = third === undefined
@@ -43,10 +47,11 @@ function clockAt(text) {
     return { span, rest: text.slice(whole.length).trim() };
 }
 
-// One number and its unit from the start of `text`, { span, rest, unit },
-// or null where it doesn't start with one. A unit runs into nothing after
-// it but a space or the next number, so "10 mice" is a name, not ten
-// minutes.
+// One number and its unit from the start of `text`, { span, rest, size },
+// or null where it doesn't start with one; `size` is its unit's, or null
+// for a bare number, which is minutes. A unit runs into nothing after it
+// but a space or the next number, so in "10 mussels" the m is the name's
+// and the number is bare.
 function partAt(text) {
     const number = NUMBER.exec(text);
     if (!number) {
@@ -56,14 +61,10 @@ function partAt(text) {
     const unit = UNITS.find(([words]) => words.test(after));
     const word = unit ? unit[0].exec(after)[0] : "";
     const ended = after.slice(word.length);
-    if (unit && ended !== "" && !AFTER_UNIT.test(ended)) {
-        return null;
+    if (!unit || (ended !== "" && !AFTER_UNIT.test(ended))) {
+        return { span: Number(number[1]) * MINUTE, rest: after.trim(), size: null };
     }
-    return {
-        span: Number(number[1]) * (unit ? unit[1] : MINUTE),
-        rest: ended.trim(),
-        unit: unit !== undefined
-    };
+    return { span: Number(number[1]) * unit[1], rest: ended.trim(), size: unit[1] };
 }
 
 // A span read from the start of `text`, { span, rest }, or null where it
@@ -76,22 +77,24 @@ function spanAt(text) {
     }
     let span = 0;
     let rest = text;
-    let any = false;
+    let last;
     for (;;) {
         const part = partAt(rest);
-        // A bare number only begins a span: "1h 30" is ninety minutes,
-        // but the "2" of "10m 2 eggs" is the name's.
-        if (part === null || (any && !part.unit)) {
+        // A bare number begins a span, or ends one after hours, as it's
+        // said aloud: "1h 30" is ninety minutes, but the "2" of "10m 2
+        // eggs" is the name's.
+        const bare = part !== null && part.size === null;
+        if (part === null || (last !== undefined && bare && last !== HOUR)) {
             break;
         }
         span += part.span;
         rest = part.rest;
-        any = true;
-        if (!part.unit) {
+        last = part.size;
+        if (bare) {
             break;
         }
     }
-    return any ? { span: Math.round(span), rest } : null;
+    return last === undefined ? null : { span: Math.round(span), rest };
 }
 
 // The span after a name: the last words that read as one whole, as

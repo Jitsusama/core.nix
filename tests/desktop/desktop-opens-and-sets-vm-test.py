@@ -1670,7 +1670,9 @@ def timers_photographed(desktop: Desktop) -> None:
     desktop.type_in("tea", selecting="Tea")
     desktop.normal()
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: "paused" in str((shown["selected"] or {}).get("note")))
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("side")).startswith("paused")
+    )
     desktop.close_launcher()
     for scale in ("1.5", "2"):
         desktop.as_account(f"niri msg output winit scale {scale}")

@@ -4819,11 +4819,10 @@
       "glyph": "timer",
       "said": {
         "running": "of {span} \u00b7 ends {clock}",
-        "paused": "paused \u00b7 of {span}",
-        "held": "paused",
+        "paused": "of {span}",
+        "pausedSide": "paused \u00b7 {left}",
         "rung": "rang {clock}",
         "late": "rang late, {clock}",
-        "done": "done",
         "start": "Start {name}, a {span} Timer",
         "startUnnamed": "Start a {span} Timer",
         "unfit": "A timer counts more than nothing and a week at most.",
@@ -4856,7 +4855,7 @@
       "id": "verb:timer:again",
       "in": "timer",
       "name": "Start Again",
-      "verb": "start",
+      "verb": "start again",
       "glyph": "timer"
     },
     {

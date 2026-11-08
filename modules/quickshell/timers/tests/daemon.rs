@@ -3,8 +3,9 @@
 //! as a critical notice once its end passes; the notice's Again sets it
 //! going afresh and putting it away ends it; ending one rung takes its
 //! notice back; a ring with no server to take it is said once one comes;
-//! what's kept outlasts the daemon, one that ended meanwhile ringing late
-//! as it starts again; and an ask it can't do is refused.
+//! a ring lost with its server is said to the one after it; what's kept
+//! outlasts the daemon, its notices with it, one that ended meanwhile
+//! ringing late as it starts again; and an ask it can't do is refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -370,7 +371,7 @@ fn a_ring_with_no_server_to_take_it_is_said_once_one_comes() {
 fn what_is_kept_outlasts_the_daemon_and_one_ended_meanwhile_rings_late() {
     let folder = folder("kept");
     let bus = Bus::new(&folder);
-    let (_connection, server) = bus.serve();
+    let (connection, server) = bus.serve();
     let running = Running::start(&folder, &bus);
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "start", "span": 3_600_000, "name": "bread"}));
@@ -398,18 +399,66 @@ fn what_is_kept_outlasts_the_daemon_and_one_ended_meanwhile_rings_late() {
     assert_eq!(records[2]["late"], true);
     waits_for(|| server.shown.lock().unwrap().len() == 1);
     assert_eq!(server.shown.lock().unwrap()[0].body, "6 s timer, rang late");
-    // Said once, so a daemon started again after it rang says it no more,
-    // once it has kept that it said it: one stopped between the two says
-    // it again, as a notice once too often beats one never said.
-    waits_for(|| std::fs::read_to_string(&kept).is_ok_and(|text| text.contains(r#""told":true"#)));
+    // Said once, so a daemon started again after it rang says it no more
+    // to the same server, once it has kept that it said it: one stopped
+    // between the two says it again, as a notice once too often beats one
+    // never said.
+    waits_for(|| std::fs::read_to_string(&kept).is_ok_and(|text| text.contains(r#""notice":"#)));
     running.stop();
     let running = Running::start(&folder, &bus);
     let mut client = running.client();
-    client.ask(&json!({"id": "hello", "ask": "hello", "version": 1}));
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
     let started = client.ask(&json!({"id": 5, "ask": "start", "span": 100}));
     assert_eq!(started["records"][0]["key"], "timer:4");
     waits_for(|| server.shown.lock().unwrap().len() == 2);
     assert_eq!(server.shown.lock().unwrap()[1].summary, "Timer");
+    // The card said before it started again is still its own: put away,
+    // it ends its timer.
+    signal(&connection, "NotificationClosed", &(1u32, 2u32));
+    let ended = loop {
+        let change = client.change();
+        if change["gone"] != json!([]) {
+            break change;
+        }
+    };
+    assert_eq!(ended["gone"], json!(["timer:3"]));
+    running.stop();
+}
+
+#[test]
+fn a_ring_lost_with_its_server_is_said_to_the_one_after_it() {
+    let folder = folder("handed");
+    let bus = Bus::new(&folder);
+    let (connection, first) = bus.serve();
+    let running = Running::start(&folder, &bus);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
+    waits_for(|| first.shown.lock().unwrap().len() == 1);
+    // The shell starts again, as on a switch: its cards go with it, and
+    // the one after it hears the ring anew.
+    drop(connection);
+    let (handed, second) = bus.serve();
+    waits_for(|| second.shown.lock().unwrap().len() == 1);
+    assert_eq!(second.shown.lock().unwrap()[0].summary, "Tea");
+    // The same while the daemon itself is down, as when a switch starts
+    // both again.
+    running.stop();
+    drop(handed);
+    let (connection, third) = bus.serve();
+    let running = Running::start(&folder, &bus);
+    waits_for(|| third.shown.lock().unwrap().len() == 1);
+    // Putting it away on the server it's on now still ends it.
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
+    signal(&connection, "NotificationClosed", &(1u32, 2u32));
+    let ended = loop {
+        let change = client.change();
+        if change["gone"] != json!([]) {
+            break change;
+        }
+    };
+    assert_eq!(ended["gone"], json!(["timer:1"]));
+    assert_eq!(first.shown.lock().unwrap().len(), 1);
     running.stop();
 }
 

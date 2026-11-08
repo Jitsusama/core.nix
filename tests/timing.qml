@@ -1,5 +1,5 @@
 // What Timers works out, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `timers-read-what-is-typed` check copies
+// shell runs it in. The `a-timer-is-read-from-what-is-typed` check copies
 // modules/quickshell/launcher/Timing.js beside this file and runs
 // `qml -platform offscreen timing.qml`: a span and a name are read from
 // what's typed after "timer" in every way Joel might type them, the time
@@ -53,6 +53,19 @@ QtObject {
         check(failures, "a name keeps its case and its words", read("10m Green Tea"),
             [10 * minute, "Green Tea", false]);
         check(failures, "a unit running into a word is a name", read("tea 10 mice"), null);
+        // A name that starts as a unit does leaves the number bare, in
+        // minutes (Y2YBTS's review of #2238).
+        check(failures, "a name starting as seconds do", read("10 soup"),
+            [10 * minute, "soup", false]);
+        check(failures, "a name starting as hours do", read("5 hot dogs"),
+            [5 * minute, "hot dogs", false]);
+        check(failures, "a name starting as minutes do", read("10 mussels"),
+            [10 * minute, "mussels", false]);
+        check(failures, "a bare number after hours is minutes", read("1h 30"),
+            [90 * minute, "", false]);
+        check(failures, "but after minutes it's the name's", read("10m 2 eggs"),
+            [10 * minute, "2 eggs", false]);
+        check(failures, "a clock past its minutes is unfit", read("1:75"), [0, "", true]);
         check(failures, "no span", read("tea"), null);
         check(failures, "nothing typed", read(""), null);
         check(failures, "nothing is unfit", read("0m"), [0, "", true]);

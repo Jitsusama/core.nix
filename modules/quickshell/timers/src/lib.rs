@@ -57,10 +57,20 @@ pub struct Timer {
     pub set: u64,
     #[serde(flatten)]
     pub standing: Standing,
-    /// Whether its ring has been said as a notice, so a daemon started
-    /// again says it once, and one that rang while it was down says it.
-    #[serde(default)]
-    pub told: bool,
+    /// The notice its ring was said as, while it's rung and said, kept
+    /// with it so a daemon started again still knows its card, and one
+    /// said to a notifications server that's since gone is said again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<Notice>,
+}
+
+/// A rung timer's notice: its id, and the bus name of the notifications
+/// server that gave it, since an id means nothing to another server, as
+/// the shell's after it starts again.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notice {
+    pub id: u32,
+    pub server: String,
 }
 
 impl Timer {
@@ -167,7 +177,7 @@ impl Held {
             span,
             set: now,
             standing: Standing::Running { ends: now + span },
-            told: false,
+            notice: None,
         });
         Ok(&self.timers[self.timers.len() - 1])
     }
@@ -201,7 +211,7 @@ impl Held {
         timer.standing = Standing::Running {
             ends: now + timer.span,
         };
-        timer.told = false;
+        timer.notice = None;
         Ok(timer)
     }
 
@@ -218,7 +228,7 @@ impl Held {
             Standing::Paused { left } => Standing::Paused { left: left + more },
             Standing::Rung { .. } => {
                 timer.set = now;
-                timer.told = false;
+                timer.notice = None;
                 timer.span = 0;
                 Standing::Running { ends: now + more }
             }
@@ -248,7 +258,7 @@ impl Held {
                     rang: now,
                     late: now - ends > LATE,
                 };
-                timer.told = false;
+                timer.notice = None;
                 rung.push(timer.key.clone());
             }
         }
@@ -266,14 +276,34 @@ impl Held {
             .min()
     }
 
-    /// Those rung and not yet said as a notice.
-    pub fn untold(&self) -> Vec<String> {
+    /// Those rung and not said as a notice to `server`, the notifications
+    /// server there is now: never said, or said to one that's gone.
+    pub fn unsaid(&self, server: &str) -> Vec<String> {
         self.timers
             .iter()
-            .filter(|timer| matches!(timer.standing, Standing::Rung { .. }) && !timer.told)
+            .filter(|timer| unsaid(timer, server))
             .map(|timer| timer.key.clone())
             .collect()
     }
+
+    /// The timer whose notice `server` gave as `id`.
+    pub fn noticed(&self, id: u32, server: &str) -> Option<&Timer> {
+        self.timers.iter().find(|timer| {
+            timer
+                .notice
+                .as_ref()
+                .is_some_and(|notice| notice.id == id && notice.server == server)
+        })
+    }
+}
+
+/// Whether a timer is rung and not said as a notice to `server`.
+pub fn unsaid(timer: &Timer, server: &str) -> bool {
+    matches!(timer.standing, Standing::Rung { .. })
+        && timer
+            .notice
+            .as_ref()
+            .is_none_or(|notice| notice.server != server)
 }
 
 /// A span a timer can count: more than nothing and a week at most.
@@ -597,7 +627,16 @@ mod tests {
                 late: true
             }
         );
-        assert_eq!(held.untold(), vec!["timer:1", "timer:2"]);
+        assert_eq!(held.unsaid(":1.4"), vec!["timer:1", "timer:2"]);
+        held.timers[0].notice = Some(Notice {
+            id: 7,
+            server: ":1.4".to_owned(),
+        });
+        assert_eq!(held.unsaid(":1.4"), vec!["timer:2"]);
+        // Said to a server that's gone, it's unsaid to the one after it.
+        assert_eq!(held.unsaid(":1.9"), vec!["timer:1", "timer:2"]);
+        assert_eq!(held.noticed(7, ":1.4").unwrap().key, "timer:1");
+        assert_eq!(held.noticed(7, ":1.9"), None);
         assert_eq!(held.next_end(), None);
     }
 
@@ -606,11 +645,14 @@ mod tests {
         let mut held = Held::default();
         held.start("tea", MINUTE, 0).unwrap();
         held.due(MINUTE);
-        held.timers[0].told = true;
+        held.timers[0].notice = Some(Notice {
+            id: 7,
+            server: ":1.4".to_owned(),
+        });
         let again = held.again("timer:1", 5 * MINUTE).unwrap();
         assert_eq!(again.standing, Standing::Running { ends: 6 * MINUTE });
         assert_eq!(again.set, 5 * MINUTE);
-        assert!(!again.told);
+        assert_eq!(again.notice, None);
     }
 
     #[test]

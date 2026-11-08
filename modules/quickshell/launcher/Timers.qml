@@ -60,9 +60,25 @@ Provider {
         return name.charAt(0).toUpperCase() + name.slice(1);
     }
 
-    // What it says beside its name, now.
+    // What it says at its right, now, where every row says how it stands,
+    // so it's read on every row: the time left, held and said so while
+    // paused, or when it rang (VKCF3Z, 2026-11-07).
     function side(record, now) {
-        return record.state === "rung" ? said.done ?? "" : Timing.clock(Timing.left(record, now));
+        const left = Timing.clock(Timing.left(record, now));
+        switch (record.state) {
+        case "running":
+            return left;
+        case "paused":
+            return (said.pausedSide ?? "").replace("{left}", left);
+        default:
+            return rang(record);
+        }
+    }
+
+    // When a rung one rang, and that it was late.
+    function rang(record) {
+        return ((record.late ? said.late : said.rung) ?? "").replace("{clock}",
+            clockAt(record.rang));
     }
 
     // What it says below, now: what it counts and when it ends, that it's
@@ -76,8 +92,8 @@ Provider {
         case "paused":
             return (said.paused ?? "").replace("{span}", span);
         default:
-            return ((record.late ? said.late : said.rung) ?? "").replace("{clock}",
-                clockAt(record.rang));
+            // Its side says it all.
+            return "";
         }
     }
 
@@ -125,12 +141,10 @@ Provider {
             key: record.key,
             name: named(record),
             glyph: Words.glyph("timer"),
-            // A clock's hue, as Time's rows wear, and an alert's once rung.
-            hue: record.state === "rung" ? "alert" : "action",
+            // A clock's hue on its mark, as Time's rows wear, muted while
+            // it's paused, and an alert's once rung.
+            hue: { rung: "alert", paused: "muted" }[record.state] ?? "action",
             side: side(record, now),
-            // Said after the name, muted, so a paused one reads apart from
-            // one counting on every row, not only the cursor's.
-            count: record.state === "paused" ? said.held ?? "" : "",
             note: note(record, now),
             at: record.set,
             record: record,
