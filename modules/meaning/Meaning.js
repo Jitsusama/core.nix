@@ -149,8 +149,9 @@ function placesOf(spot) {
 // so it says where it is as when typed; a note gives way from its end, so
 // how it was found always stays.
 // A meaning lands on the part rather than the place it lives in (VKCF3Z,
-// 2026-11-08): a spot found stands where the first place on its trail was
-// found, every other place on it found goes, and none is added after it.
+// 2026-11-08): a spot found stands where the first of its places
+// (`placesOf`) was found, every other one found goes, and none is added
+// after it, while the category it's listed under stays.
 function rows(records, keyed, shown, how) {
     const found = [];
     const taken = new Set(shown);
