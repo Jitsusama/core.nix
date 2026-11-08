@@ -92,7 +92,7 @@ QtObject {
             { label: "[volume]", value: "64%" },
             { label: "[shuffle]", value: "off" },
             { label: "[loop]", value: "playlist" },
-            { label: "[rate]", value: "1\u00d7 \u00b7 0.5\u00d7 to 2\u00d7" },
+            { label: "[speed]", value: "1\u00d7 \u00b7 0.5\u00d7 to 2\u00d7" },
             { label: "[artist]", value: "Nightwish" },
             { label: "[album]", value: "Century Child" },
             { label: "[album-artist]", value: "Tarja Turunen" },

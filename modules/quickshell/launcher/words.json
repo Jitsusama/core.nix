@@ -6853,9 +6853,9 @@
       "name": "Loop"
     },
     {
-      "id": "program:media:rate",
+      "id": "program:media:speed",
       "in": "program:media",
-      "name": "Rate"
+      "name": "Speed"
     },
     {
       "id": "program:media:fullscreen",

@@ -8,7 +8,7 @@
 // plays and what it is ("on Spotify · track"), never how it stands, which
 // the row's side says; the track as the title; its art under that; then
 // the facts, what moves most first (where in the track, the volume, shuffle,
-// loop and rate), then what describes it (artist, album, album artist,
+// loop and speed), then what describes it (artist, album, album artist,
 // track and disc, genre, rating), and what identifies it last (its link
 // and the player's bus name); the track's words, its lyrics, when it gives
 // them. A fact the player doesn't support or doesn't say is left out, never
@@ -117,7 +117,7 @@ function facts(player, said) {
             ? percent(Number(player.volume) || 0) : "" },
         { id: "shuffle", value: shuffle },
         { id: "loop", value: loop },
-        { id: "rate", value: rates(player, said) },
+        { id: "speed", value: rates(player, said) },
         { id: "fullscreen", value: player.canSetFullscreen === true
             ? player.fullscreen ? said.on : said.off : "" },
         { id: "artist", value: artist },
