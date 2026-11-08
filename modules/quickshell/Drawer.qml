@@ -350,7 +350,7 @@ Floating {
     // to report: the eyebrow's and the middle of its line, the title's first
     // and last lines',
     // each fact's first line's, the words' first line's, and the top of a
-    // preview and its lines' baselines. Worked out
+    // preview, its end and its lines' baselines. Worked out
     // only when asked, since nothing drawn depends on them.
     function baselines() {
         const contentTop = Theme.border + drawer.viewTop - view.contentY;
@@ -368,6 +368,8 @@ Floating {
             titleLast: titleText.visible ? flowed(titleText)
                 + (titleText.lineCount - 1) * drawer.titleLeading : null,
             preview: previewBox.visible ? contentTop + flow.y + previewBox.y : null,
+            previewEnd: previewBox.visible ? contentTop + flow.y + previewBox.y
+                + previewBox.height : null,
             previewLines: previewLines.visible ? Array.from({ length: previewRows.count },
                 (_, at) => {
                     const line = previewRows.itemAt(at);
