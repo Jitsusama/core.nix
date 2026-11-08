@@ -107,17 +107,20 @@ function speed(rate) {
 }
 
 // The file a track's address names, as a person reads it, or "" where it's
-// no file.
-const FILE = /^file:\/\/.*\/([^/]+)$/u;
+// no file. Read without a pattern: Qt's engine matched a top-level one
+// only the first time the shell asked, and "" ever after, so two players
+// on one track were never told apart.
+const FILE = "file://";
 function fileOf(address) {
-    const found = FILE.exec(String(address ?? ""));
-    if (!found) {
+    const given = String(address ?? "");
+    const last = given.slice(given.lastIndexOf("/") + 1);
+    if (!given.startsWith(FILE) || last === "") {
         return "";
     }
     try {
-        return decodeURIComponent(found[1]);
+        return decodeURIComponent(last);
     } catch (_malformed) {
-        return found[1];
+        return last;
     }
 }
 
