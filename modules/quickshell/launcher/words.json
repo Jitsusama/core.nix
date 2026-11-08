@@ -2090,6 +2090,21 @@
       "name": "Warmth"
     },
     {
+      "id": "light:desk:output",
+      "in": "light",
+      "name": "Output"
+    },
+    {
+      "id": "light:desk:node",
+      "in": "light",
+      "name": "Node"
+    },
+    {
+      "id": "light:desk:serial",
+      "in": "light",
+      "name": "Serial"
+    },
+    {
       "id": "light:desk:level",
       "in": "light:desk:brightness",
       "name": "Brightness to {n}%",

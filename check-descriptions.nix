@@ -1803,8 +1803,8 @@
     emoji are found by name and meaning, best first
   '';
   the-launcher-finds-the-desk-light = ''
-    the launcher says how the desk light is lit and sets its brightness, warmth and power through
-    litra, and the bar hears changes but not a camera putting it out
+    the launcher says how the desk light is lit, its drawer its lumens, node and serial, sets its
+    brightness, warmth and power through litra, and the bar hears changes but not a camera
   '';
   the-launcher-finds-the-keyboards-keys = ''
     a key is found by what it types, and shown where it is, and the board's Layer and Lights hold
@@ -1958,8 +1958,8 @@
     the switch reads dark, or none was lit, doubts it otherwise, and reads the hinge's buffer
   '';
   the-litra-follows-the-cameras = ''
-    `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
-    by a whole file naming a program
+    `litra` finds the lights by their ids, speaks their reports, says each one's lumens, name and
+    serial, and counts a camera streaming only by a whole file naming a program
   '';
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run

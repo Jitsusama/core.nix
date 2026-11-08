@@ -1,7 +1,8 @@
 // Drives the desk light (modules/quickshell/DeskLight.qml) and the
 // launcher's answers for it (launcher/Light.qml) through Quickshell itself,
 // over a stand-in litra that keeps a light's state and says each change on
-// its watch, as the real one does. The answer says how the light is lit;
+// its watch, as the real one does. The answer says how the light is lit,
+// and its drawer the light's name, its lumens, its node and its serial;
 // "desk light 60", "desk light 4000 k", "desk light off" and "warmer" set
 // it through litra; its answer holds its Brightness and Warmth, each a
 // setting whose choices step it or set a level; the bar is told of a change
@@ -120,6 +121,14 @@ ShellRoot {
         expect("its parts", told.rows.map(row => `${row.name} ${row.side}`).join(", ")
             === "Brightness 40%, Warmth 4000 K, Turn It Off ",
             JSON.stringify(told.rows.map(row => [row.name, row.side])));
+        // Its drawer: the light by its own name, then its output in lumens,
+        // its node and its serial, never the warmth the answer says.
+        const drawer = told.thing === true ? told.drawer() : null;
+        expect("its drawer", drawer !== null && drawer.eyebrow === "Desk Light"
+            && drawer.title === "Litra Glow stand-in"
+            && drawer.facts.map(fact => `${fact.label}=${fact.value}`).join("; ")
+                === "Output=112 lm; Node=/dev/hidraw1; Serial=stand-in",
+            JSON.stringify(drawer));
         expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);
         expect("nothing told the bar at first", root.brightened === 0 && root.warmed === 0,

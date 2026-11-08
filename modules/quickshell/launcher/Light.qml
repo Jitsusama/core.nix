@@ -226,7 +226,31 @@ Provider {
         return {
             headline: `the desk light is ${deskLit()}`,
             rows: deskParts(),
-            note: "a camera lights it"
+            note: "a camera lights it",
+            thing: true,
+            drawer: () => provider.deskDrawer()
+        };
+    }
+
+    // The desk light's drawer: the light by the name it gives itself, then
+    // what its answer doesn't say. Its output is in lumens, the light's own
+    // units, where the answer says a share; its warmth is the answer's, so
+    // it isn't said again; its node and serial come last, as identifiers
+    // do in every drawer.
+    function deskDrawer(light = DeskLight.light) {
+        if (light === null)
+            return null;
+        const own = String(light.name ?? "").trim();
+        const facts = [
+            ["output", light.lumens === undefined ? "" : `${light.lumens} lm`],
+            ["node", String(light.node ?? "")],
+            ["serial", String(light.serial ?? "")]
+        ].filter(([, value]) => value !== "")
+            .map(([id, value]) => ({ label: Words.name(`light:desk:${id}`), value: value }));
+        return {
+            eyebrow: own === "" ? "" : Words.name("light"),
+            title: own === "" ? Words.name("light") : own,
+            facts: facts
         };
     }
 

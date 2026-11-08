@@ -608,6 +608,9 @@ Scope {
         now: true,
         stays: answer.stays ?? false,
         thing: answer.thing ?? false,
+        // An answer that's a thing with more to say than its words, as the
+        // desk light's is, gives its drawer as any thing's row does.
+        drawer: answer.drawer,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
