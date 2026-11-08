@@ -373,9 +373,16 @@ pub fn pass(
     kept: &mut crate::picture::Kept,
     now: f64,
 ) -> Result<status::Status, String> {
-    let picture = Picture::read_keeping(history, config, now, kept)?;
+    let mut picture = Picture::read_keeping(history, config, now, kept)?;
     let raised = crate::detect::all_keeping(&picture, history, config, &mut kept.minutes)?;
     let findings = crate::findings::settle(history, &raised, now)?;
+    let standing = crate::standing::standing(&picture, config, None);
+    // Keeping what was said over an allowance is best effort too: the
+    // figures are written whether or not it could be.
+    match crate::over::keep(history, &picture, &standing, &findings, &config.reports()) {
+        Ok(crossings) => picture.crossings = crossings,
+        Err(error) => eprintln!("keeping what was said over an allowance: {error}"),
+    }
     let live = crate::tokens::Rate::Live;
     let inputs = crate::tokens::read(history, &picture.budgets, now, live)?.map(|mut inputs| {
         if let Some(feed) = config
@@ -399,7 +406,7 @@ pub fn pass(
         &config.runtime()?,
         &shown,
         &crate::collection::collection(&picture, &findings, config),
-        Some(&crate::standing::standing(&picture, config, None)),
+        Some(&standing),
     )?;
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.

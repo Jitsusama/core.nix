@@ -629,6 +629,9 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         .iter()
         .find(|allowance| allowance.nearest.is_some());
     made.role = allowance_role(nearest).into();
+    if let [one] = budget.allowances.as_slice() {
+        opens_record(picture, &budget.name, one, &mut made);
+    }
     if budget.allowances.len() > 1 {
         made.rows = budget
             .allowances
@@ -653,11 +656,33 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
                 row.note = allowance_reset(picture, allowance);
                 row.role = allowance_role(Some(allowance)).into();
                 CLOCK.clone_into(&mut row.mark);
+                opens_record(picture, &budget.name, allowance, &mut row);
                 row
             })
             .collect();
     }
     made
+}
+
+/// While an allowance is over, Return on its row opens what every source
+/// said as it went over, so where to read it is where it's seen.
+fn opens_record(
+    picture: &Picture,
+    budget: &str,
+    allowance: &crate::standing::Allowance,
+    row: &mut Line,
+) {
+    if let Some(crossing) = picture
+        .crossings
+        .iter()
+        .find(|crossing| crossing.budget == budget && crossing.allowance == allowance.name)
+    {
+        row.run = Some(vec![
+            "xdg-open".into(),
+            crossing.path.to_string_lossy().into_owned(),
+        ]);
+        row.verb = "open".into();
+    }
 }
 
 /// When an allowance resets, as its footer says it.
@@ -687,10 +712,9 @@ fn allowance_role(allowance: Option<&crate::standing::Allowance>) -> &'static st
     let Some(allowance) = allowance else {
         return "text";
     };
-    let near = allowance.nearest.unwrap_or(0.0);
-    if near >= 1.0 || allowance.state.as_deref() == Some("refused") {
+    if crate::standing::over(allowance) {
         "alert"
-    } else if near >= allowance.warn {
+    } else if allowance.nearest.unwrap_or(0.0) >= allowance.warn {
         "warning"
     } else {
         "text"
