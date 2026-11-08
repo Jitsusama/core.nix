@@ -209,7 +209,7 @@ def miscased(vocabulary: Entry) -> list[str]:
         out.extend(
             f"{entry['id']}'s {field} {state[field]!r} isn't in Title Case."
             for state in [entry, *entry.get("states", {}).values()]
-            for field in ("name", "part", "sure")
+            for field in ("name", "part", "sure", "asked")
             if state.get(field) and not titled(state[field])
         )
         empty = entry.get("empty", "")
@@ -273,7 +273,7 @@ def shown(entry: Entry) -> list[tuple[str, str]]:
     """Give every string of a thing Joel reads, in any state, with what it is."""
     said: list[tuple[str, str]] = []
     for state in [entry, *entry.get("states", {}).values()]:
-        said.extend((key, state[key]) for key in ("name", "empty", "sure", "ask")
+        said.extend((key, state[key]) for key in ("name", "empty", "sure", "asked", "ask")
                     if isinstance(state.get(key), str))  # fmt: skip
         words = state.get("said", {})
         said.extend(("said", word) for word in

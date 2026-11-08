@@ -1057,8 +1057,9 @@ def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell
 
     The shell walks the steps as `show` does (Launcher.qml's doneFromTerminal), and an act the
     line would ask about, or that ends something, isn't done until the terminal says it's sure:
-    its answer is the launcher's own question, naming what the act is of. A place opens in the
-    launcher, as the catalogue's run opens one.
+    its answer is the launcher's own question, in the act's own words and what it closes, never
+    the place's name joined to the act's. A place opens in the launcher, as the catalogue's run
+    opens one.
     """
 
     def done(*steps: str) -> Json:
@@ -1068,8 +1069,8 @@ def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell
 
     reboot = done("machine", "power", "reboot")
     assert reboot["in"] == ["Machine", "Power", "Reboot"], reboot
-    assert reboot["asks"].startswith("Reboot"), reboot
-    assert reboot["asks"].endswith("(y/n)"), reboot
+    closing = r"(, Closing (the Window|\d+ Windows))?"
+    assert re.fullmatch(rf"Reboot the Machine{closing}\? \(y/n\)", reboot["asks"]), reboot
     assert not shell.showing()["open"]
     assert done("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
     machine = done("machine")

@@ -8194,7 +8194,8 @@
       "term": "Machine/log out",
       "verb": "log out",
       "glyph": "logout",
-      "sure": "Log Out Now"
+      "sure": "Log Out Now",
+      "asked": "Log Out of the Desktop"
     },
     {
       "id": "session:Reboot",
@@ -8204,7 +8205,8 @@
       "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
-      "sure": "Reboot Now"
+      "sure": "Reboot Now",
+      "asked": "Reboot the Machine"
     },
     {
       "id": "session:Power Off",
@@ -8214,7 +8216,8 @@
       "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
-      "sure": "Power Off Now"
+      "sure": "Power Off Now",
+      "asked": "Power Off the Machine"
     },
     {
       "id": "wifi:radio",

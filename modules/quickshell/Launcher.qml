@@ -1362,9 +1362,9 @@ Scope {
         const asking = CommandBinding.asking({ command: commandNamed(act).command }, [act],
             { all: 1, bang: false }, Options.commands ?? {});
         if (!sure && (asking.ask !== "" || Catalogue.disruptive(target) || actEnds(target))) {
-            const of = holder ?? target;
+            const of = askedOfHolder(holder, target);
             return {
-                asks: Confirm.question([{ ends: act.ends || verbOf(act),
+                asks: Confirm.question([{ ends: act.ends || verbOf(act), asked: askedOf(act),
                     name: act.askedAs || of.name, kind: kindOf(of), leaves: act.leaves ?? "" }],
                     Words.field.operators ?? {}),
                 in: names
@@ -2119,6 +2119,22 @@ Scope {
     // report's verb) reads this, so they never disagree.
     function returnOf(row) {
         return row?.returns ?? row;
+    }
+
+    // An act's own words for its ask, where it has them (Confirm.question),
+    // as Reboot's "Reboot the Machine, Closing 12 Windows", read as it's
+    // asked, since what it closes changes.
+    function askedOf(act) {
+        const asked = typeof act?.asked === "function" ? act.asked() : act?.asked;
+        return typeof asked === "string" ? asked : "";
+    }
+
+    // What an act asked from its own row is an act of, for its ask: the
+    // thing holding it, as Disconnect's is the Keychron, but never a place,
+    // so Power's Reboot asks of itself rather than "Reboot Power" (VKCF3Z,
+    // 2026-11-08).
+    function askedOfHolder(holder, act) {
+        return holder && Catalogue.kindOf(holder) !== "place" ? holder : act;
     }
 
     // The command a row is named by (Catalogue.js's named), from its words
@@ -3899,9 +3915,10 @@ Scope {
             // The ask says the act's own verb, never the line's command,
             // and for an act the cursor is on, what it's an act of.
             const of = one => one.act === one.thing && held.length > 0
-                ? held[held.length - 1].row : one.thing;
+                ? askedOfHolder(held[held.length - 1].row, one.thing) : one.thing;
             const question = asked.ask === "some" ? fill(words.some)
                 : Confirm.questionParts(found.map(one => ({ ends: one.act.ends || verbOf(one.act),
+                    asked: askedOf(one.act),
                     name: one.act.askedAs || (of(one)?.name ?? ""), kind: kindOf(of(one)),
                     leaves: one.act.leaves ?? "" })),
                     Words.field.operators ?? {});
@@ -5618,6 +5635,7 @@ Scope {
         }
         const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
+            asked: askedOf(ending.action),
             name: ending.action.askedAs || (rowAt(ending.at)?.name ?? ""),
             kind: kindOf(rowAt(ending.at)),
             leaves: ending.action.leaves ?? "" }));

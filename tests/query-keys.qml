@@ -272,6 +272,12 @@ QtObject {
         holds("and one whose name begins with its verb by its name alone",
             Confirm.question([{ ends: "forget", name: "Forget the Clipboard" }], asking),
             "Forget the Clipboard? (y/n)");
+        // An act with words of its own is asked in them, its thing and
+        // what it ends, never the place it's in (VKCF3Z, 2026-11-08).
+        holds("and one with its own words in them whole",
+            Confirm.question([{ ends: "reboot", name: "Power", kind: "place",
+                asked: "Reboot the Machine, Closing 12 Windows" }], asking),
+            "Reboot the Machine, Closing 12 Windows? (y/n)");
         holds("and one that says what it leaves says so before y/n, as a sentence",
             Confirm.question([Object.assign({ leaves: "its worktree stays." },
                 closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");
