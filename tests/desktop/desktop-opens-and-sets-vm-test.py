@@ -1708,7 +1708,7 @@ def shoot_the_timers(desktop: Desktop) -> None:
         desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
-    shoot_now_through_the_timers(desktop, listed)
+    shoot_now_through_the_timers(desktop)
     desktop.as_account("systemctl --user stop timers.service")
     desktop.as_account(f"rm -f {TIMERS_KEPT}")
     desktop.as_account("qs ipc call notices putAway || true")
@@ -1784,7 +1784,7 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     desktop.close_launcher()
 
 
-def shoot_now_through_the_timers(desktop: Desktop, listed: int) -> None:
+def shoot_now_through_the_timers(desktop: Desktop) -> None:
     """Shoot Now with one timer rung, then with that one ended, then with only paused ones."""
     machine = desktop.machine
     shoot_now_holding_timers(desktop, "rung")
@@ -1794,7 +1794,8 @@ def shoot_now_through_the_timers(desktop: Desktop, listed: int) -> None:
     machine.send_chars("dd")
     desktop.launcher_until(lambda shown: shown["question"] == "End Eggs? (y/n)")
     machine.send_chars("y")
-    desktop.launcher_until(lambda shown: len(shown["rows"]) == listed - 1)
+    # An ended row stays, drawn as gone, until the launcher closes.
+    desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
     desktop.close_launcher()
     shoot_now_holding_timers(desktop, "running")
     # Bread paused and the stopwatch stopped leave only what's paused.
