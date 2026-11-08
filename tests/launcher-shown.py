@@ -33,7 +33,18 @@ if TYPE_CHECKING:
 
 # Fields a row shows as they're written.
 SHOWN = (
-    "name", "noun", "what", "ask", "empty", "said", "sure", "asked", "part", "verb", "form", "says"
+    "name",
+    "noun",
+    "what",
+    "ask",
+    "empty",
+    "said",
+    "sure",
+    "asked",
+    "part",
+    "verb",
+    "form",
+    "says",
 )
 
 # Things whose word means something the glossary doesn't replace.
