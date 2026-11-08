@@ -93,7 +93,10 @@ function internet(model, now, settings) {
             fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
                 Home.when(net.speed_test?.at, now)])),
             fact("nodes", Home.nodesSaid(net.nodes)),
-            fact("devices", known(net.devices) ? `${net.devices} eero counts` : ""),
+            // eero's count is every device it knows, on now or not, so the
+            // ones on now are said beside it.
+            fact("devices", joined([known(net.devices) ? `${net.devices} known` : "",
+                `${(model.devices ?? []).length} on now`])),
             fact("outages", outages(net.outages)),
             fact("isp", joined([net.isp, known(net.asn) ? `AS${net.asn}` : ""])),
             fact("mesh", net.mesh),

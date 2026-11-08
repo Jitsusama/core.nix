@@ -192,7 +192,7 @@ QtObject {
             ["power-saving", "off"],
             ["outages", "none recorded"],
             ["nodes", "3 nodes online"],
-            ["devices", "24 eero counts"],
+            ["devices", "24 known \u00b7 15 on now"],
             ["firmware", "v7.17.4-5 \u00b7 up to date"],
             ["updates", "at 02:00 \u00b7 last 07:19"],
             ["traffic", "167 GB down \u00b7 73 GB up"],
