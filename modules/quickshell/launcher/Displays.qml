@@ -42,6 +42,7 @@ import Quickshell.Io
 import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Backlight.js" as Backlight
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
@@ -247,6 +248,42 @@ Provider {
         onLoadFailed: provider.warmth = null
     }
 
+    // The level the backlight daemon last settled, what its curve asks for
+    // the room it heard and whether it follows the room, as it writes them
+    // each time a step ends or a pick is heard (Backlight.js), or null
+    // where no daemon says: no file, or an empty one, as it leaves when it
+    // stops. sysfs's brightness can't be watched, so this is what moves the
+    // drawer with each step the daemon takes.
+    property var settled: null
+    onSettledChanged: {
+        readLight();
+        changed();
+    }
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-now`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.settled = Backlight.now(text())
+        onLoadFailed: provider.settled = null
+    }
+
+    // The daemon's curve, dimmest first, where it keeps it: its standard
+    // points with each of Joel's picks learned into them.
+    property var curve: []
+    onCurveChanged: changed()
+
+    FileView {
+        path: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}`
+            + "/backlight/learned"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.curve = Backlight.curve(text())
+        onLoadFailed: provider.curve = []
+    }
+
     // The Warmth, a switch: Return turns its following the room off or
     // back on, the launcher staying to show it change.
     function warmthRow(output) {
@@ -359,7 +396,8 @@ Provider {
     // sysfs or asking the sensor writes state the binding reads, a loop; so
     // they read only this and `room`, which are asked for here, each second
     // while the launcher is open, from the moment it opens, since the
-    // Brightness and Room Light answers are found through those rows too.
+    // Brightness and Room Light answers are found through those rows too,
+    // and as the daemon says it stepped.
     property var light: null
     onLightChanged: changed()
 
@@ -515,8 +553,19 @@ Provider {
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
-            if (inTheRoom(output) && room !== null)
-                facts.push({ label: partName("room"), value: lux(room) });
+            // The room as the sensor hears it now, which moves before the
+            // level does, and is asked only for the screen it lights; or
+            // that no light is heard, where the daemon follows nothing.
+            const said = (key, values) => Backlight.fill(partSaid("", key), values);
+            const heard = inTheRoom(output) ? Backlight.room(settled, room, said,
+                each => lux(each)) : "";
+            if (heard !== "")
+                facts.push({ label: partName("room"), value: heard });
+            // What sets the level, the Warmth, then the curve, which moves
+            // only with a pick, so goes last of the light (VKCF3Z, 2026-11-08).
+            const follows = inTheRoom(output) ? Backlight.follows(settled, said) : "";
+            if (follows !== "")
+                facts.push({ label: partName("follows"), value: follows });
             if (inTheRoom(output) && warmth !== null)
                 facts.push({
                     label: partName("warmth"),
@@ -524,6 +573,9 @@ Provider {
                         settings.point)} K`,
                         partSaid("", warmth.followsTheRoom ? "following" : "own-white")])
                 });
+            if (inTheRoom(output) && curve.length > 0)
+                facts.push({ label: partName("curve"),
+                    value: Backlight.curveSaid(curve, said, each => lux(each)) });
         }
         const edid = Plate.facts(factRows(output));
         const physical = edid.some(fact => fact.label === partName("size")) ? ""
@@ -533,11 +585,13 @@ Provider {
                 : "screen")]),
             eyebrowNames: true,
             title: named(output),
-            facts: facts.concat(Screens.facts(output, {
+            // Its serial, from niri or the EDID, identifies it, so ends it.
+            facts: Plate.identified(facts.concat(Screens.facts(output, {
                 named: id => provider.partName(id),
                 said: (id, key) => provider.partSaid(id, key),
                 turned: transform => provider.turnedSaid(transform)
-            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }])
+            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }]),
+                [partName("serial")])
         };
     }
 
