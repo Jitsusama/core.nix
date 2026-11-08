@@ -112,7 +112,7 @@ function internet(model, now, settings) {
                 dns.ipv6_mode ? `IPv6 ${dns.ipv6_mode}` : ""])),
             fact("ipv6", onOff(net.ipv6)),
         ]), switches(net), History.joinsAndLeaves(model, now),
-            happened(model?.events ?? [], now)),
+            happened(History.timeline(model), now)),
     };
 }
 
@@ -131,8 +131,8 @@ function about(event, one) {
     return String(event.text ?? "").startsWith(`${Home.nameOf(one)} `);
 }
 
-// What happened, newest first, each by when, as eero's activity list says
-// it.
+// What happened, newest first, each by when, in the words eero's activity
+// list or the daemon's notice said it.
 function happened(events, now) {
     if (events.length === 0) {
         return [];

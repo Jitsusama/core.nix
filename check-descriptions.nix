@@ -1722,7 +1722,8 @@
   the-home-network-says-each-figure = ''
     the Home Network place lists the gateway node first and each node after the one it hangs
     from, its devices under it, and says every figure the eero contract places in the internet's,
-    a node's and a device's drawer, each in its own unit, none eero didn't give
+    a node's, a device's and a profile's drawer, each in its own unit, none eero didn't give, the
+    internet's timeline setting each notice the daemon told among eero's events, newest first
   '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware

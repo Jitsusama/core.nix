@@ -6,7 +6,7 @@
 // the record beside this file, and runs `qml home-network.qml` in UTC. Each
 // case names what's asked and what has to come back: the rows' order,
 // what each row says, and every figure the eero contract places in the
-// internet's, a node's and a device's drawer
+// internet's, a node's, a device's and a profile's drawer
 // (modules/eero/contract/README.md).
 import QtQuick
 import "HomeNetwork.js" as Home
@@ -478,7 +478,8 @@ QtObject {
         }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));
         expect("a device's profile", value(inProfile, "profile"), "profile 1 \u00b7 paused");
 
-        // What happened, newest first, in the internet's drawer, and each
+        // What happened, newest first, in the internet's drawer, with each
+        // notice the daemon told set among eero's events, and each
         // device's own in its.
         const events = Drawers.internet(model, now).facts;
         const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
@@ -486,7 +487,21 @@ QtObject {
             { label: "22:42", value: "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52." },
             { label: "22:42", value: "tablet 1 disconnected from Study eero Pro 6." }
         ]);
-        expect("every event", timeline.length, 5);
+        expect("every event and every notice", timeline.length, 10);
+        expect("a notice by when it was told, then what it said", timeline.slice(5, 7), [
+            { label: "07:24", value: "The nodes updated to v7.17.4-5. From v7.17.3-9." },
+            { label: "yesterday 16:21",
+                value: "A firmware update is waiting. "
+                    + "eero updates the nodes to v7.17.4-5 at 02:00." }
+        ]);
+        expect("the oldest last", timeline[9], { label: "3 Nov 03:12",
+            value: "The internet is out. Nothing past the home network answers this machine." });
+        const quiet = Drawers.internet(Object.assign({}, model, { events: [], told: [{
+            at: "2026-11-07T07:24:13Z", summary: "The internet is back", body: "" }] }), now)
+            .facts;
+        expect("a notice with nothing more to say is its summary",
+            quiet[quiet.findIndex(fact => fact.heading === "events") + 1].value,
+            "The internet is back");
         const tablet = Drawers.device(model, device("tablet 1"), now).facts;
         expect("a device's own events", tablet.slice(tablet.findIndex(fact =>
             fact.heading === "events") + 1).map(fact => fact.value), [
