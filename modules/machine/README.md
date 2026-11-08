@@ -102,7 +102,8 @@ units, or named here as left out with the reason.
 |                 | maker, model, technology, made, temperature  | Power's Model, Made, Temperature          |
 |                 | serial                                       | Power's Model's drawer, Serial            |
 |                 | a port's volts, amps, those offered, USB types | Power's Charger, each port and its drawer |
-|                 | a port's roles, mode, revisions, partner     | each port's drawer                        |
+|                 | a port's roles, mode, power delivery revision | each port's drawer                       |
+|                 | what's plugged in: its revision, accessory, offers | each port's drawer, Partner, Offers |
 |                 | UPower's state, times, rate                  | Power's headline, Drawing                 |
 | `sleep:main`    | mode, those offered, the ways Linux can sleep | Sleep's side, Other Modes, Ways to Sleep |
 |                 | successes, the last failed step and its count | Slept, Sleep's note                      |
@@ -166,6 +167,9 @@ units, or named here as left out with the reason.
 - **A supply's present and online flags, scope and status for a
   battery.** They say which supply is the machine's battery and whether
   something's plugged in, which Power's rows say in their words.
+- **A port's USB-C revision.** It says which revision of USB-C the port
+  was built to, the same for every port of a machine, where the power
+  delivery revisions beside it say how each charger talks to it.
 - **A thermal zone's policy and mode.** They say how Linux is set to
   manage the zone, the same for every zone, and nothing Joel acts on.
 - **fwupd's devices with no name.** They're pins it keeps for its own

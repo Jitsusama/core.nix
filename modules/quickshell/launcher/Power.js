@@ -290,9 +290,9 @@ function doing(record, lasted) {
 // as it counts them, or from its charge at its design voltage where it
 // counts charge, as UPower works it out. Each null where it can't be.
 function energyOf(record) {
-    const volts = record.min_design_volts ?? null;
+    const designed = record.min_design_volts ?? null;
     const of = (wh, ah) => record[wh] ?? (record[ah] !== null && record[ah] !== undefined
-        && volts !== null ? record[ah] * volts : null);
+        && designed !== null ? record[ah] * designed : null);
     return {
         now: of("energy_wh", "charge_ah"),
         full: of("energy_full_wh", "charge_full_ah"),

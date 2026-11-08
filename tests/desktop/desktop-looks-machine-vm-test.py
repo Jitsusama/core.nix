@@ -232,7 +232,7 @@ def test_a_usb_c_charger_is_shot_at_each_scale(desktop: Desktop, at_each_scale: 
             at_scale(desktop, scale)
             followed(desktop, "charger", lambda shown: shown["rows"][:1] == ["Charger"])
             desktop.step_in()
-            desktop.launcher_until(lambda shown: drawer_says(shown, "Offered"))
+            desktop.launcher_until(lambda shown: drawer_says(shown, "Protocols"))
             desktop.shoot(f"launcher-power-usb-c-at-{scale.replace('.', '-')}")
             desktop.close_launcher()
     finally:

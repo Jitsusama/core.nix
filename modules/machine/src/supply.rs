@@ -50,6 +50,47 @@ fn writable(root: &Root, folder: &str, file: &str) -> Option<bool> {
     Some(unsafe { libc::access(path.as_ptr(), libc::W_OK) } == 0)
 }
 
+/// A figure the kernel gives in thousandths with its unit, as "5000mV"
+/// or "3000mA", in whole units.
+fn thousandths(root: &Root, path: &str) -> Option<Value> {
+    let said = root.said(path)?;
+    let digits: String = said.chars().take_while(char::is_ascii_digit).collect();
+    let value: u32 = digits.parse().ok()?;
+    Some(rounded(f64::from(value) / 1000.0, 3))
+}
+
+/// What a charger plugged into a port offers, as its power delivery
+/// folder lists them, in the order the kernel numbers them: a fixed
+/// supply's volts and amps, or a programmable one's from its least to its
+/// most volts (`to_volts`, null for a fixed one). A battery's or a
+/// variable supply's offer is said as fixed, by its most volts.
+fn offers(root: &Root, folder: &str) -> Vec<Value> {
+    let mut named: Vec<(u32, String)> = root
+        .names(folder)
+        .into_iter()
+        .filter_map(|name| Some((name.split(':').next()?.parse().ok()?, name)))
+        .collect();
+    named.sort();
+    named
+        .iter()
+        .filter_map(|(_, name)| {
+            let at = |file: &str| thousandths(root, &format!("{folder}/{name}/{file}"));
+            if name.ends_with(":programmable_supply") {
+                return Some(json!({
+                    "volts": at("minimum_voltage")?,
+                    "to_volts": at("maximum_voltage"),
+                    "amps": at("maximum_current"),
+                }));
+            }
+            Some(json!({
+                "volts": at("voltage").or_else(|| at("maximum_voltage"))?,
+                "to_volts": null,
+                "amps": at("maximum_current"),
+            }))
+        })
+        .collect()
+}
+
 /// A USB-C port's roles, by its supply's number (`USBC000:001` is the
 /// kernel's typec port0), and what's plugged into it.
 fn port(root: &Root, name: &str) -> Value {
@@ -73,6 +114,7 @@ fn port(root: &Root, name: &str) -> Value {
             "power_delivery": at("supports_usb_power_delivery").map(|yes| yes == "yes"),
             "power_delivery_revision": at("usb_power_delivery_revision").filter(|r| r != "0.0"),
             "accessory": at("accessory_mode").filter(|mode| mode != "none"),
+            "source_capabilities": offers(root, &format!("{partner}/usb_power_delivery/source-capabilities")),
         })
     });
     json!({

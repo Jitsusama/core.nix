@@ -609,6 +609,29 @@ fn power(root: &Path) {
         "/sys/class/typec/port0-partner/supports_usb_power_delivery",
         "yes\n",
     );
+    let offered = "/sys/class/typec/port0-partner/usb_power_delivery/source-capabilities";
+    write(&format!("{offered}/1:fixed_supply/voltage"), "5000mV\n");
+    write(
+        &format!("{offered}/1:fixed_supply/maximum_current"),
+        "3000mA\n",
+    );
+    write(
+        &format!("{offered}/10:programmable_supply/minimum_voltage"),
+        "3300mV\n",
+    );
+    write(
+        &format!("{offered}/10:programmable_supply/maximum_voltage"),
+        "21000mV\n",
+    );
+    write(
+        &format!("{offered}/10:programmable_supply/maximum_current"),
+        "5000mA\n",
+    );
+    write(&format!("{offered}/2:fixed_supply/voltage"), "20000mV\n");
+    write(
+        &format!("{offered}/2:fixed_supply/maximum_current"),
+        "2250mA\n",
+    );
     write("/sys/power/mem_sleep", "[s2idle]\n");
     write("/sys/power/suspend_stats/success", "7\n");
     write("/sys/power/suspend_stats/fail", "2\n");
@@ -645,6 +668,15 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
     assert_eq!(port["typec"]["power_role"], "sink");
     assert_eq!(port["typec"]["power_delivery_revision"], "3.0");
     assert_eq!(port["typec"]["partner"]["power_delivery"], json!(true));
+    assert_eq!(
+        port["typec"]["partner"]["source_capabilities"],
+        json!([
+            {"volts": 5.0, "to_volts": null, "amps": 3.0},
+            {"volts": 20.0, "to_volts": null, "amps": 2.25},
+            {"volts": 3.3, "to_volts": 21.0, "amps": 5.0}
+        ]),
+        "in the kernel's order, 10 after 2"
+    );
     let sleep = record(records, "sleep:main");
     assert_eq!(sleep["mode"], "s2idle");
     assert_eq!(sleep["successes"], json!(7));
