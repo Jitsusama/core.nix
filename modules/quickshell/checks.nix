@@ -1920,6 +1920,7 @@ onLinux {
       notices = singleton "Notices.qml" ''
         property var history: []
         function markRead(ids) {}
+        function seen() {}
       '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in

@@ -1073,10 +1073,17 @@ Provider {
 
     // The unread notices' row: how many to read, and from whom. Return
     // steps in to each, the row it is in Notices, then Mark Them Read.
+    // Listing them counts them seen, as opening Notices does, so the
+    // margin no longer says any were missed; after the listing, so the
+    // history isn't changed while it's read.
     function desktopRow(note, forYou) {
         const said = Words.of("on:waiting:desktop").said ?? {};
         const ids = unreadNotices.map(notice => notice.id);
-        const inside = () => (source("notices")?.rowsOf(ids) ?? []).concat([thing({
+        const inside = () => {
+            Qt.callLater(() => Notices.seen());
+            return listed();
+        };
+        const listed = () => (source("notices")?.rowsOf(ids) ?? []).concat([thing({
             key: "verb:on:waiting:desktop:read",
             verb: Words.verb("verb:on:waiting:desktop:read"),
             name: Words.name("verb:on:waiting:desktop:read"),
@@ -1097,7 +1104,7 @@ Provider {
             note: note,
             nested: true,
             verbs: inside,
-            targets: inside,
+            targets: listed,
             run: () => provider.launcher?.enter(row)
         });
         return row;
