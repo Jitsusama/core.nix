@@ -601,9 +601,9 @@ The rest follows from the ladder:
 - **Held room at the far end.** A place that keeps the widest room it's needed
   keeps it after its cluster's last item, never between items, so every gap is
   its rung. Return's slack sits inside its own place, between the dot that
-  joins it and its key, so as the selection moves and Return's words change,
-  nothing before the dot moves and every hint keeps its rung (VKCF3Z,
-  2026-11-08).
+  joins it and its key, so the dots run evenly a rung from each hint, and as
+  the selection moves and Return's words change, nothing before the dot moves
+  (VKCF3Z, 2026-11-08).
 - **Rows tile, as Vim's lines do** (Joel, 2026-11-06: "rows in the launcher
   should have padding instead of margins"): a row is a band with its room
   inside it, and bands meet with no gap. A one-line band is 48, its line

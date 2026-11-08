@@ -1817,10 +1817,11 @@ Scope {
             const best = found[0];
             const noun = source.collection.noun;
             // What it belongs to leads, as a session ranked flat says whom
-            // it's under, the depth that showed it gone (Agents.qml).
-            const counted = found.length > 1 ? `${found.length - 1} more ${noun}` : noun;
+            // it's under, the depth that showed it gone (Agents.qml), and its
+            // noun only where no kind says it (Rank.gatheredSide).
             const gathered = Object.assign({}, best, {
-                side: [best.belongs ?? "", counted].filter(part => part !== "").join(" \u00b7 "),
+                side: Rank.gatheredSide(best.belongs ?? "", found.length, noun,
+                    kindOf(best) !== ""),
                 chip: noun,
                 title: source.collection.title,
                 ask: source.collection.ask,

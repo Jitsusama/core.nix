@@ -1089,17 +1089,18 @@ ShellRoot {
             for (const [from, to, rung] of rungs)
                 expect(`the keys' ${from} and ${to} stand ${rung} apart`,
                     Math.abs(gap(from, to) - rung) < 1, said(hints));
-            // The dot before Return goes with Return, its held room before
-            // the dot rather than after it, since a dot with bare room on
-            // one side only reads as belonging to nothing (VKCF3Z,
-            // 2026-11-06).
+            // The dot before Return stands at its held place's left edge,
+            // a mark from the hint before it as every dot is, and the room
+            // held for Return's longest words sits inside its place, between
+            // the dot and its key, so the dots run evenly and nothing left
+            // of Return moves as its words change (VKCF3Z, 2026-11-08).
             const held = drawn(heldHints, []).sort((a, b) => a.from - b.from);
             const heldAt = text => held.find(t => t.text === text);
-            expect("the dot before Return stands a mark from it",
-                Math.abs(heldAt("\u21b5")?.from - heldAt("\u00b7")?.to
+            expect("the dot before Return stands a mark from the hint before it",
+                Math.abs(heldAt("\u00b7")?.from - heldAt("choose")?.to
                     - Theme.space.rung.mark) < 1, said(held));
-            expect("and Return's held room stands before the dot",
-                heldAt("\u00b7")?.from - heldAt("choose")?.to > 2 * Theme.space.rung.mark,
+            expect("and Return's held room stands between the dot and its key",
+                heldAt("\u21b5")?.from - heldAt("\u00b7")?.to > 2 * Theme.space.rung.mark,
                 said(held));
             expect("a key and its word are measured as they're drawn",
                 Math.abs(footHints.advance("Space ?", "keys")

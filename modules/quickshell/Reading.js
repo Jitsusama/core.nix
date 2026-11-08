@@ -271,6 +271,17 @@ function wholeItemsFromEnd(words, room, width) {
     return items.join(ITEMS_APART);
 }
 
+// A drawer's eyebrow as it's drawn in `room`: one given as items
+// (`eyebrowItems`) gives way by whole items, those it keeps least first,
+// a path from its middle; any other gives way as a note does, by whole
+// items from its end. Neither is ever cut inside a word, as an ellipsis
+// at its end cut "IN ~/PICTURES/SCREENS\u2026" (VKCF3Z, 2026-11-08).
+function eyebrowOf(drawer, room, width) {
+    const items = drawer?.eyebrowItems ?? [];
+    return items.length > 0 ? wholeItems(items, room, width)
+        : wholeItemsFromEnd(String(drawer?.eyebrow ?? ""), room, width);
+}
+
 // Words cut at each whole word but the last, longest first, an ellipsis
 // after each.
 function wordCuts(words) {
