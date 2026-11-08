@@ -37,7 +37,9 @@ pub enum Answer {
 /// not answering, with what qs said where it said anything.
 pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
     let mut child = Command::new(qs)
-        .args(["ipc", "call", "launcher", "show", &path(steps)])
+        // After `--`, since qs 0.3.1 refuses a call's argument as one it
+        // didn't expect wherever it reads its options otherwise.
+        .args(["ipc", "call", "--", "launcher", "show", &path(steps)])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -87,7 +89,12 @@ pub fn path(steps: &[String]) -> String {
     if steps.is_empty() {
         return STEP.to_string();
     }
-    steps.iter().map(|step| format!("{STEP}{step}")).collect()
+    let mut path = String::new();
+    for step in steps {
+        path.push_str(STEP);
+        path.push_str(step);
+    }
+    path
 }
 
 /// What the shell's printed answer says, or None where it isn't one:

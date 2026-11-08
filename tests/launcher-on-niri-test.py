@@ -969,9 +969,11 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     """
 
     def shown(*steps: str) -> Json:
-        # Each step after the mark, as the program asks: qs takes no empty argument.
+        # Asked as the program asks: each step after the mark, since qs takes no empty
+        # argument, and after `--`, since qs 0.3.1 refuses one given with its -p otherwise.
         path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
-        return cast("Json", json.loads(shell.as_account(shell.ipc("show", path))))
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+        return cast("Json", json.loads(shell.as_account(asked)))
 
     home = shown()
     names = [row["name"] for row in home["rows"]]
