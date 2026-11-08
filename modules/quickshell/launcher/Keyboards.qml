@@ -249,7 +249,7 @@ Provider {
         const words = Words.of("keyboards").said;
         const board = Keyboards.zsa(device) ? "ergodox" : Keyboards.builtIn(device) ? "laptop"
             : "";
-        const tally = board === "" ? null : KeyCounts.board(counts, board);
+        const tally = board === "" ? null : KeyCounts.board(counts, board, Shortcuts.faces);
         const title = provider.named(device);
         const named = id => provider.partNamed("keyboards", id);
         return Keyboards.drawer(Object.assign({

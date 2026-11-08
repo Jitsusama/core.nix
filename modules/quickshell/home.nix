@@ -324,6 +324,14 @@ let
   # pressed.
   wholeKeys = [ "f23" ];
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
+  # Each key's face by the key map's spelling of it, its xkb name in lower
+  # case, and the three it spells otherwise: the one table a chord's keys
+  # and a keyboard's most pressed are drawn from (Shortcuts.qml's faces).
+  spelledFaces = lib.mapAttrs' (name: lib.nameValuePair (lib.toLower name)) keyFaces // {
+    enter = keyFaces.Return;
+    pageup = keyFaces.Page_Up;
+    pagedown = keyFaces.Page_Down;
+  };
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
   # as the desktop's are: a key with a face wears it, a letter is a capital,
@@ -340,11 +348,6 @@ let
   stepFaces =
     keys:
     let
-      faces = lib.mapAttrs' (name: lib.nameValuePair (lib.toLower name)) keyFaces // {
-        enter = keyFaces.Return;
-        pageup = keyFaces.Page_Up;
-        pagedown = keyFaces.Page_Down;
-      };
       key = if lib.hasSuffix "++" keys then "+" else lib.last (lib.splitString "+" keys);
       held = lib.init (lib.splitString "+" (lib.removeSuffix "+" keys));
       pressed = if lib.elem key wholeKeys then [ key ] else held ++ [ key ];
@@ -353,7 +356,7 @@ let
         {
           wide = false;
         }
-        // (faces.${word} or {
+        // (spelledFaces.${word} or {
           text =
             if lib.stringLength word == 1 then
               lib.toUpper word
@@ -1874,6 +1877,9 @@ in
               readonly property var actions: ${builtins.toJSON actions}
               // Every layer's shortcuts, top to bottom, each with its glyph.
               readonly property var layers: ${builtins.toJSON shortcutLayers}
+              // Each key's face, { text, wide }, by the key map's lower-case
+              // xkb name for it, as every chord here is drawn.
+              readonly property var faces: ${builtins.toJSON spelledFaces}
           }
         '';
         "quickshell/Theme.qml".text = ''

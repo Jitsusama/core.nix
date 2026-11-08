@@ -21,6 +21,10 @@
   Escape.text = "Esc";
   Page_Up.text = "PgUp";
   Page_Down.text = "PgDn";
+  # The locks by the names their keycaps print, never xkb's Caps_Lock.
+  Caps_Lock.text = "Caps Lock";
+  Num_Lock.text = "Num Lock";
+  Scroll_Lock.text = "Scroll Lock";
   Minus.text = "-";
   Equal.text = "=";
   Slash.text = "/";
