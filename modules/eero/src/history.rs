@@ -1041,7 +1041,7 @@ mod tests {
             .record(&fewer, AT + WATCHED_GAP_S + 1, true)
             .unwrap();
 
-        assert!(moves(&history).is_empty());
+        assert_eq!(moves(&history), Vec::<String>::new());
     }
 
     #[test]
@@ -1105,8 +1105,8 @@ mod tests {
         history.draw(&mut model, AT).unwrap();
 
         assert_eq!(model.devices[0].history, DeviceHistory::default());
-        assert!(model.devices[0].roams.is_empty());
-        assert!(model.joins_and_leaves.is_empty());
+        assert_eq!(model.devices[0].roams, Vec::<Roam>::new());
+        assert_eq!(model.joins_and_leaves, Vec::<JoinOrLeave>::new());
     }
 
     #[test]
