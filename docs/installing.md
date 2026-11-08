@@ -174,13 +174,11 @@ the disk to it.
 
 ## 6. Bind the Disk to the TPM and a PIN
 
-Turn the YubiKey's OTP off first. Touched when nothing has asked for it, the
-YubiKey types a one-time password and presses Enter, which at the disk prompt
-submits it as a PIN. FIDO2 and the smart card keep working:
-
-```sh
-ykman config usb --disable OTP
-```
+A YubiKey touched when nothing has asked for it types a one-time password
+and presses Enter, which at the disk prompt would be submitted as a PIN. The
+machine refuses a YubiKey's keyboard from the initrd on
+(`modules/yubikey/types-nothing.rules`), so a touch types nothing, and
+FIDO2 and the smart card keep working; the key itself needs no setting.
 
 ```sh
 disk=/dev/disk/by-partlabel/system
