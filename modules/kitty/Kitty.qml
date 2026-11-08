@@ -375,8 +375,11 @@ Provider {
     function glyphOf(pane) {
         if (pane.runs.machine !== "")
             return Words.glyph("kitty:machine");
-        const own = provider.programGlyphs[pane.runs.program] !== undefined;
-        return provider.programGlyph(own ? pane.runs.program : "kitty");
+        // One the table doesn't know wears the theme's program mark, so
+        // that answer means it has none of its own.
+        const own = provider.programGlyph(pane.runs.program);
+        const unknown = provider.launcher?.marks?.program ?? "";
+        return own !== unknown ? own : provider.programGlyph("kitty");
     }
 
     // Where a tab is: its place in its OS window's bar, then niri's place
