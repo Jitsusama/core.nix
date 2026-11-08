@@ -17,6 +17,10 @@ Piece {
     // A node's audio arrives a moment after the node, once it's bound.
     readonly property PwNodeAudio audio: node ? node.audio : null
 
+    // The microphone's own drawer, as Sound draws its row (launcher/Now.qml's
+    // borrowed): none while Sound's rows draw none.
+    drawnBy: node ? { place: "sound", key: `sound:${node.name}` } : null
+
     present: node !== null
     active: audio !== null && audio.muted
     value: "yes"
