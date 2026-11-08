@@ -233,6 +233,7 @@
       "id": "agents:recent",
       "in": "agents",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
       "glyph": "recent",
       "empty": "Nothing yet.",
