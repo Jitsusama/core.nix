@@ -133,9 +133,15 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
         lambda shown: shown["question"].startswith("Leave ") and shown["takesAnswer"]
     )
     machine.send_chars("y")
+    # The margin is laid out again as the launcher closes, and goes from
+    # niri's layers for a moment while the call's still on, so Tuple asked
+    # to leave is what's waited on, and the call's mark going after it.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -qx 'call leave' {TUPLE_ASKED}"),
+        timeout=timedelta(seconds=15),
+    )
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))
     machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))
-    desktop.as_account(f"grep -qx 'call leave' {TUPLE_ASKED}")
 
 
 def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(
