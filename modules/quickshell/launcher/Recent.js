@@ -57,7 +57,8 @@ const ROOM = 40;
 // the room its note has: at its side how many, its words' `none` while it
 // holds nothing, and an ellipsis while it's still waiting, so the row
 // stands in its place from the first and never arrives late at the
-// bottom; as its note, the names, as many whole as fit, then how many
+// bottom; as its note, drawn after its name as what a row holds is
+// (a row's `count`), the names, as many whole as fit, then how many
 // more by its words' `more` ("Wikipedia, Kayak", "Wikipedia and 8
 // more"; VKCF3Z, 2026-11-07). The first is always named, cut by the row
 // where it's longer than the room.

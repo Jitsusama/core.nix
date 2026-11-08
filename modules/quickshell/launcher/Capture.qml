@@ -331,10 +331,10 @@ Provider {
             glyph: Words.glyph("capture:recent"),
             hue: "program",
             // How many at its right, where a row's figure stands (VKCF3Z,
-            // 2026-11-05: one place for each kind of fact), and the newest
-            // one's name as its note, as every Recent says.
+            // 2026-11-05: one place for each kind of fact), and their names
+            // after its own, as every Recent says.
             side: stands.side,
-            note: stands.note,
+            count: stands.note,
             ask: "which?",
             empty: Words.of("capture:recent").empty
         }), () => provider.taken.map(path => provider.takenRow(path, ""))), {

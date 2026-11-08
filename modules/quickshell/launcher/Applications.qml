@@ -706,7 +706,7 @@ Provider {
         return [said("program:recent", "", {
             hue: "program",
             side: stands.side,
-            note: stands.note,
+            count: stands.note,
             ask: "which?",
             nested: true,
             empty: waiting ? "\u2026" : words.empty,
