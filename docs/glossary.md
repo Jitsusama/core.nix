@@ -259,8 +259,10 @@ or a copy, can be opened, copied or forgotten.
 | Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
-| capture | taking a picture or a recording of the screen | | |
+| capture | taking a screenshot or a recording of the screen, or a photo or a video with the camera, and the place holding them | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
+| recording | a video Joel takes of the screen, of all of it, a window or a region | | |
+| photo | a picture Joel takes with the camera | | |
 | screenshot text | the words in a screenshot, read on the machine as it's taken, so it's found by them and they can be copied | OCR | `screen-text` |
 | location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` program |
 | here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
