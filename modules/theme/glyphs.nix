@@ -1544,13 +1544,15 @@ in
     glyph = nerd "f0020";
     console = "T";
     means = "a timer, counting down to when it rings";
-    # The alarm clock: its two bells clear of its face, and the hands cut
-    # out of the face, reading three o'clock.
+    # The alarm clock the Timers place wears, drawn in outline as the other
+    # marks are: its face a ring, its hands at three o'clock inside it, and
+    # its two bells bands clear of the face (VKCF3Z, 2026-11-08).
     drawn = drawing [
-      "M0 2.6A2.6 2.6 0 0 1 2.6 0V2.6Z"
-      "M9.4 0A2.6 2.6 0 0 1 12 2.6H9.4Z"
+      "M0 2.6A2.6 2.6 0 0 1 2.6 0V1.5A1.1 1.1 0 0 0 1.5 2.6Z"
+      "M9.4 0A2.6 2.6 0 0 1 12 2.6H10.5A1.1 1.1 0 0 0 9.4 1.5Z"
       "M1 7A5 5 0 1 0 11 7A5 5 0 1 0 1 7Z"
-      "M5.4 4H6.6V6.4H8.5V7.6H5.4Z"
+      "M2.5 7A3.5 3.5 0 1 0 9.5 7A3.5 3.5 0 1 0 2.5 7Z"
+      "M5.4 4.6H6.6V6.4H8.4V7.6H5.4Z"
     ];
   };
   # The filled stopwatch, since duration's outline is only how long
