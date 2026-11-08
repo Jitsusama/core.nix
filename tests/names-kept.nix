@@ -26,6 +26,5 @@
 
   # Names waiting on a rename, each with the quest that owns it.
   waiting = {
-    "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
   };
 }

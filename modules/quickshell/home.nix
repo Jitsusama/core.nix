@@ -896,6 +896,12 @@ in
       [ "jitsusama" "quickshell" "overview" "pieces" ]
       [ "jitsusama" "quickshell" "margin" "pieces" ]
     )
+    # The option's first name said quiet, a word the glossary replaces with
+    # Do not disturb; a machine setting it still reaches the new one.
+    (lib.mkRenamedOptionModule
+      [ "jitsusama" "quickshell" "quiet" "whileSharing" ]
+      [ "jitsusama" "quickshell" "doNotDisturb" "whileSharing" ]
+    )
     # Machine's answers are what the machine daemon holds.
     ../machine/home.nix
   ];
@@ -995,7 +1001,7 @@ in
     '';
   };
 
-  options.jitsusama.quickshell.quiet.whileSharing = lib.mkOption {
+  options.jitsusama.quickshell.doNotDisturb.whileSharing = lib.mkOption {
     type = lib.types.bool;
     default = true;
     description = ''
@@ -1805,7 +1811,7 @@ in
 
           // The shell's own choices, from jitsusama.quickshell.
           Singleton {
-              readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
+              readonly property var doNotDisturb: ${object config.jitsusama.quickshell.doNotDisturb}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
               // How the launcher's caret blinks, in milliseconds.
               readonly property var caret: ${object config.jitsusama.quickshell.caret}
