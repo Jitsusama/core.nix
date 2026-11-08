@@ -1481,13 +1481,11 @@ onLinux {
       touch $out
     '';
 
-  # The orchestrators' talks (tests/talks.qml), over 120 inboxes with 120
-  # sessions running, two inboxes holding talks: only those are read, and
-  # focus moving makes no reader again, so the shell's folder readers, and
-  # with them its file watchers, stay as many, counted by their threads'
-  # name rather than every thread, which the reloads an opening sets off
-  # can add to for a while.
-  the-launcher-reads-talks-boundedly =
+  # The talks Agents shows (tests/talks.qml), heard from a stand-in for the
+  # realm's node serving each talk as a record of its lines: by its
+  # session's address, newest first, moved on by each line told, one made
+  # since heard and one let go gone, with no file of the talks read here.
+  the-launcher-hears-talks-from-the-node =
     let
       niri = singleton "Niri.qml" ''
         property int revision: 0
@@ -1497,9 +1495,9 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         readonly property string home: Quickshell.env("HOME")
         readonly property string state: Quickshell.env("PWD") + "/state"
-        readonly property string inboxes: state + "/steer"
-        property var running: Array.from({ length: 120 },
-          (_, at) => ({ address: "A" + String(at).padStart(3, "0") }))
+        readonly property string nodePath: Quickshell.env("XDG_RUNTIME_DIR")
+          + "/mycelium/harbour.sock"
+        property var running: [{ address: "A003" }, { address: "A117" }]
         property var parked: []
         property var present: ({})
         function asks(session) { return false; }
@@ -1510,14 +1508,9 @@ onLinux {
       '';
       waiting = singleton "WaitingOnYou.qml" "readonly property var standing: ({})";
       jobs = singleton "Jobs.qml" "readonly property var jobs: []";
-      delivered = words: ''{"stage":"delivered","at":"2026-10-29T10:00:00Z","text":"${words}"}'';
     in
-    pkgs.runCommandLocal "the-launcher-reads-talks-boundedly" { } ''
+    pkgs.runCommandLocal "the-launcher-hears-talks-from-the-node" { } ''
       mkdir -p launcher state/quest-workflow
-      for at in $(seq -w 0 119); do mkdir -p state/steer/A$at; done
-      mkdir state/steer/A003/replies state/steer/A117/replies
-      echo '${delivered "wrap up the release"}' > state/steer/A003/replies/t-1.jsonl
-      echo '${delivered "check the lights"}' > state/steer/A117/replies/t-2.jsonl
       echo '{"orchestrators":[{"address":"A003","quest":"QEST-A","title":"A"}]}' \
         > state/quest-workflow/orchestrators.json
       echo '{"quests":[]}' > state/quest-workflow/quests.json
@@ -1531,12 +1524,13 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${jobs} Jobs.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

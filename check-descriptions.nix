@@ -806,7 +806,8 @@
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its quests, the sessions to
-    restore and its runs of subagents and reviews, from the realm's own folders, and the home
+    restore, its runs of subagents and reviews and the talks in its steer inboxes, from the
+    realm's own folders, and the home
     realm's alone the machine's waiting, verdicts and queue, the queue's jobs and the queue whole
     from the login's runtime folder, each keyed as the launcher reads it; and each node restarts
     when what it serves changes, since it reads that only as it starts
@@ -1664,14 +1665,13 @@
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
   '';
-  the-launcher-reads-talks-boundedly = ''
-    the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
-    moving among 120 sessions makes no reader again: the shell's folder readers, each a thread
-    of Qt's own, stay as many
-  '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
     run or what it waits for, its quest and memory, and goes to its session or copies its name
+  '';
+  the-launcher-hears-talks-from-the-node = ''
+    Agents hears each talk from the node by its session's address, newest first, moves it on as
+    its session writes a line, hears one made since and lets one go, reading no talk's file
   '';
   the-launcher-finds-the-runs = ''
     the launcher lists the day's fleets and councils, running first, with progress or cost and time,

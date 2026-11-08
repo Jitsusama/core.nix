@@ -295,7 +295,7 @@ in
 
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's quests, restore list and runs from that realm's folders, the machine's waiting, verdicts and queue aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
+      "A realm's node doesn't serve its realm's quests, restore list, runs and talks from that realm's folders, the machine's waiting, verdicts and queue aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
       (
         let
           state = "/home/someone/.local/state";
@@ -317,6 +317,7 @@ in
             records = "runs";
             key = "id";
           };
+          talk.talks = "${state}/pi/agentic-harness.pi/steer";
           waiting = {
             folder = "${state}/mission/waiting";
             records = "items";
@@ -356,6 +357,7 @@ in
               records = "runs";
               key = "id";
             };
+            talk.talks = "${state}/pi/agentic-harness.pi/realms/other/steer";
           }
         && lib.hasSuffix "--serves /home/someone/.config/mycelium/serves-other.json" otherNode
         && !(apart.xdg.configFile ? "mycelium/serves-home.json")

@@ -1952,15 +1952,17 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders of what waits on Joel, of the harness's index of quests, and
-    # of its runs, which the mycelium node serves WaitingOnYou.qml and
-    # launcher/Runs.qml: the node watches a folder made after it starts
+    # folders of what waits on Joel, of the harness's index of quests, of
+    # its runs, and of its steer inboxes, whose talks the mycelium node
+    # serves, as it does the rest, to WaitingOnYou.qml and launcher/Runs.qml
+    # and Orchestrators.qml: the node watches a folder made after it starts
     # only once a minute has passed.
     systemd.user.tmpfiles.rules = [
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/runs - - - -"
+      "d ${config.xdg.stateHome}/pi/agentic-harness.pi/steer - - - -"
       "d ${config.xdg.stateHome}/mission - - - -"
       "d ${config.xdg.stateHome}/mission/waiting - - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow - - - -"
