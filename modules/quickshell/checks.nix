@@ -2013,7 +2013,8 @@ onLinux {
           said() {
             printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"lumens":%s,"kelvin":%s,%s}]\n' \
               "$on" "$percent" "$((20 + 230 * percent / 100))" "$kelvin" \
-              '"name":"Litra Glow stand-in","serial":"stand-in"' >> "$feed"
+              '"dimmest":20,"brightest":250,"name":"Litra Glow stand-in","serial":"stand-in"' \
+              >> "$feed"
           }
           case "$1" in
             watch)

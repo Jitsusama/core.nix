@@ -10,6 +10,7 @@
 // keyboard's light the keyboard's (Keyboards.qml).
 import qs
 import QtQuick
+import "Numbers.js" as Numbers
 
 Provider {
     id: provider
@@ -135,7 +136,7 @@ Provider {
         const warmth = setting({
             key: "light:desk:warmth",
             name: Words.name("light:desk:warmth"),
-            side: `${light.kelvin} K`,
+            side: kelvins(light.kelvin),
             glyph: Theme.glyph.lamp,
             graph: level(DeskLight.coolest - light.kelvin, span)
         }, () => provider.warmthChoices());
@@ -214,10 +215,20 @@ Provider {
         DeskLight.warm(kelvin);
     }
 
-    // How the desk light is lit, in a few words.
+    // A warmth as the theme says a figure, grouped by thousands.
+    function kelvins(kelvin) {
+        return `${Numbers.format(kelvin, 0)} K`;
+    }
+
+    // How the desk light is lit, in a few words, set apart by a dot.
     function deskLit() {
         const light = DeskLight.light;
-        return light.on ? `${light.percent}%, ${light.kelvin} K` : "off";
+        return light.on ? `${light.percent}% \u00b7 ${kelvins(light.kelvin)}` : "off";
+    }
+
+    // A word the desk light's drawer says, as the vocabulary has it.
+    function said(id) {
+        return Words.of("light")?.said?.[id] ?? "";
     }
 
     function deskTold() {
@@ -232,23 +243,30 @@ Provider {
         };
     }
 
-    // The desk light's drawer: the light by the name it gives itself, then
-    // what its answer doesn't say. Its output is in lumens, the light's own
-    // units, where the answer says a share; its warmth is the answer's, so
+    // The desk light's drawer: where it's plugged in and what it is, the
+    // light by the name it gives itself, then what its answer doesn't say.
+    // Its output is in lumens, the light's own units, of the range it
+    // gives where it gives one, a second figure beside the answer's share
+    // of that range (VKCF3Z, 2026-11-08); its warmth is the answer's, so
     // it isn't said again; its node and serial come last, as identifiers
-    // do in every drawer.
+    // do in every drawer. litra speaks only to lights on USB.
     function deskDrawer(light = DeskLight.light) {
         if (light === null)
             return null;
         const own = String(light.name ?? "").trim();
+        const lumens = each => `${Numbers.format(each, 0)} lm`;
+        const range = light.dimmest === undefined || light.brightest === undefined ? ""
+            : said("of").replace("{least}", Numbers.format(light.dimmest, 0))
+                .replace("{most}", lumens(light.brightest));
         const facts = [
-            ["output", light.lumens === undefined ? "" : `${light.lumens} lm`],
+            ["output", light.lumens === undefined ? ""
+                : [lumens(light.lumens), range].filter(part => part !== "").join(" \u00b7 ")],
             ["node", String(light.node ?? "")],
             ["serial", String(light.serial ?? "")]
         ].filter(([, value]) => value !== "")
             .map(([id, value]) => ({ label: Words.name(`light:desk:${id}`), value: value }));
         return {
-            eyebrow: own === "" ? "" : Words.name("light"),
+            eyebrow: [said("usb"), said("plate")].join(" \u00b7 "),
             title: own === "" ? Words.name("light") : own,
             facts: facts
         };
@@ -267,7 +285,7 @@ Provider {
             headline: `set the desk light to ${Math.min(100, Number(share))}%`,
             run: () => provider.brighten(Number(share))
         } : {
-            headline: `set the desk light to ${kelvin} K`,
+            headline: `set the desk light to ${kelvins(Number(kelvin))}`,
             run: () => provider.warm(Number(kelvin))
         };
         return Object.assign(done, {
@@ -285,7 +303,7 @@ Provider {
         const kelvin = DeskLight.light.kelvin + (way === "warmer" ? -warmthStep : warmthStep);
         const kept = Math.max(DeskLight.warmest, Math.min(DeskLight.coolest, kelvin));
         return {
-            headline: `make the desk light ${way}, ${kept} K`,
+            headline: `make the desk light ${way} \u00b7 ${kelvins(kept)}`,
             verb: Words.command("command:desk").verb,
             run: () => provider.warm(kept),
             stays: true,

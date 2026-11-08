@@ -129,11 +129,14 @@ fn lights(sys: &Path, dev: &Path) -> Vec<PathBuf> {
 
 /// What a light says of itself when it's plugged in, by the HID device
 /// behind its node: its name ("Logitech Litra Glow") and its serial, each
-/// empty where it gives none.
+/// empty where it gives none, and whether it's a Glow, whose range in
+/// lumens this knows. A Beam's is wider, 30 to 400, and this maps it as a
+/// Glow's, so it says no range for one rather than a wrong one.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct About {
     name: String,
     serial: String,
+    glow: bool,
 }
 
 fn about(sys: &Path, node: &Path) -> About {
@@ -152,6 +155,7 @@ fn about(sys: &Path, node: &Path) -> About {
     About {
         name: field("HID_NAME"),
         serial: field("HID_UNIQ"),
+        glow: text.lines().any(|line| line == LIGHTS[0]),
     }
 }
 
@@ -384,8 +388,13 @@ fn json<'a>(lights: impl IntoIterator<Item = (&'a Path, &'a State, &'a About)>) 
         .into_iter()
         .filter_map(|(node, state, about)| {
             let (on, units, kelvin) = (state.on?, state.units?, state.kelvin?);
+            let range = if about.glow {
+                format!(r#","dimmest":{DIMMEST},"brightest":{BRIGHTEST}"#)
+            } else {
+                String::new()
+            };
             Some(format!(
-                r#"{{"node":{},"on":{on},"percent":{},"lumens":{units},"kelvin":{kelvin},"name":{},"serial":{}}}"#,
+                r#"{{"node":{},"on":{on},"percent":{},"lumens":{units}{range},"kelvin":{kelvin},"name":{},"serial":{}}}"#,
                 quoted(&node.display().to_string()),
                 percent(units),
                 quoted(&about.name),
@@ -879,6 +888,7 @@ mod tests {
             About {
                 name: "Logitech Litra Glow".to_owned(),
                 serial: "2213FE40".to_owned(),
+                glow: true,
             }
         );
         node(&root, "hidraw2", "0003:0000046D:0000C901");
@@ -1035,6 +1045,7 @@ mod tests {
         let glow = About {
             name: "Logitech Litra Glow".to_owned(),
             serial: "2213FE40".to_owned(),
+            glow: true,
         };
         let unknown = About::default();
         assert_eq!(json([]), "[]");
@@ -1043,7 +1054,7 @@ mod tests {
                 (Path::new("/dev/hidraw1"), &whole, &glow),
                 (Path::new("/dev/hidraw4"), &partial, &glow),
             ]),
-            r#"[{"node":"/dev/hidraw1","on":false,"percent":17,"lumens":59,"kelvin":5000,"name":"Logitech Litra Glow","serial":"2213FE40"}]"#
+            r#"[{"node":"/dev/hidraw1","on":false,"percent":17,"lumens":59,"dimmest":20,"brightest":250,"kelvin":5000,"name":"Logitech Litra Glow","serial":"2213FE40"}]"#
         );
         assert_eq!(
             json([

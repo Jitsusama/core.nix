@@ -2077,7 +2077,12 @@
       "answers": [
         "desk light",
         "warmth"
-      ]
+      ],
+      "said": {
+        "usb": "on USB",
+        "plate": "desk light",
+        "of": "of {least} to {most}"
+      }
     },
     {
       "id": "light:desk:brightness",
