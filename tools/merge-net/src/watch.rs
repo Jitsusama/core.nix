@@ -5,10 +5,11 @@
 //! A test fails for real when it fails twice at the same commit, which is
 //! the same input. One that fails and then passes is flaky: it goes on the
 //! quarantine list with the PR of the newest merge that moved it, and not
-//! the whole system with it, as its owner, and nothing is reverted for it, nor for a quarantined test that fails. A run the
-//! builder never took (`nix-offload` exits 75) is tried again later, and is
-//! no failure, and so is one stopped before it ended, for running too long
-//! or going silent: twice at a commit, and the test is left there with a
+//! the whole system with it, as its owner, and nothing is reverted for
+//! it, nor for a quarantined test that fails. A run the builder never took
+//! (`nix-offload` exits 75), or whose builder couldn't fetch the commit's
+//! source, is tried again later, and is no failure, and so is one stopped
+//! before it ended, for running too long or going silent: twice at a commit, and the test is left there with a
 //! finding, blaming no merge. A test that passed at a commit never runs
 //! there again.
 //!
