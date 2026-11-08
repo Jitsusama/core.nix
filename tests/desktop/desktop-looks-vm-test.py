@@ -2803,7 +2803,9 @@ def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
 # open layout to the laptop's own in place, the margin lets its layer's mark go, and the
 # launcher neither finds its keys nor lists it among the keyboards; Super+K then shows the
 # laptop's, and plugging it back in turns the open card to the board's again (VKCF3Z,
-# 2026-11-07).
+# 2026-11-07). With it back, its drawer and the others' are photographed
+# (players_and_boards_drawn), here rather than in a subtest of their own, since the board is
+# already plugged in and the file keeps to twenty.
 
 
 def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
@@ -2845,6 +2847,7 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
         with desktop.told("gone keyboard"):
             desktop.as_account("qs ipc call keyboard toggle")
         assert ERGODOX in keyboards_listed(desktop, scale, "back")
+        players_and_boards_drawn(desktop, at_each_scale)
     finally:
         desktop.machine.succeed("systemctl stop ergodox || true")
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")
@@ -2854,10 +2857,8 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
 # "every integration has an insanely high bar of nerdiness and integration"), each where the
 # thing is and what it is above, and are photographed at each of Joel's scales for the design's
 # look: mpv's Media, playing and paused, the ErgoDox and the laptop's own board.
-def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
-    """A program's Media and each keyboard open a drawer saying where it is and what it is."""
+def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
+    """Photograph mpv's Media and each keyboard's drawer, with the ErgoDox plugged in."""
     machine = desktop.machine
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
@@ -2904,8 +2905,7 @@ def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
         desktop.close_launcher()
 
     try:
-        plug_in_the_ergodox(desktop)
-        for scale in at_each_scale:
+        for scale in scales:
             at_scale(desktop, scale)
             at = scale.replace(".", "-")
             media(f"launcher-media-drawer-playing-at-{at}", "playing")
@@ -2920,5 +2920,3 @@ def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
             )
     finally:
         desktop.as_account("systemctl --user stop player || true")
-        machine.succeed("systemctl stop ergodox || true")
-        desktop.as_account("rm -f $XDG_RUNTIME_DIR/keyboard-layer")
