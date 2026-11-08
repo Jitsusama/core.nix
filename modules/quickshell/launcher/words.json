@@ -5393,11 +5393,6 @@
       }
     },
     {
-      "id": "notices:category",
-      "in": "notices",
-      "name": "Kind"
-    },
-    {
       "id": "wifi",
       "once": ["Wireless", "WLAN"],
       "name": "Wi-Fi",

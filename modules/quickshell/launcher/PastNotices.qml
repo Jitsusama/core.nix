@@ -166,8 +166,9 @@ Provider {
         if (notice.urgency)
             out.push({ label: Words.name("notices:urgency"),
                 value: Words.name("notices:urgency", notice.urgency) });
-        if (notice.category)
-            out.push({ label: Words.name("notices:category"), value: notice.category });
+        // Its kind is no fact: it comes as the eyebrow's last word once its
+        // words are named, never the spec's raw category (VKCF3Z,
+        // 2026-11-08), so the record keeps it until then.
         return out;
     }
 
