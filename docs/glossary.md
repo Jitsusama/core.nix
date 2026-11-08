@@ -280,6 +280,8 @@ off.
 | machine | one computer | host, computer | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | processor | what runs every program | CPU | |
+| model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
+| version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
 | graphics | the processor's part that draws what the screens show | | the GPU, Xe |
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
@@ -326,6 +328,9 @@ off.
 | Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
 | volume | how loud a device or a program plays, as a share of its full level | | |
 | microphone | what the machine hears with: built in, a headset's or plugged in, chosen in Sound | | |
+| card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
+| profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
+| level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
@@ -374,6 +379,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
 | traffic | how much data the home network, a node or a device moved, by hour | data usage | `usage`, `data_usage` |
 | profile | a group of devices eero lets through or holds off together | | `profiles` |
+| light | a node's status light, on or off and how bright | | eero's `led_on`, `led_brightness` |
+| mode | how the gateway node gets its address: lent by the internet provider's server, set by hand, or through a sign-in | | eero's `lease.mode` |
 
 ## Disk
 
@@ -384,6 +391,7 @@ now, and keep or stop keeping a folder.
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | disk | the machine's storage | drive, SSD, storage | NVMe; `jitsusama.disk`, from disko |
+| spare | the share of a disk's reserve blocks left, which it puts in place of worn ones | | SMART's `avail_spare` |
 | boot partition | the disk's small first part, which the firmware starts from | ESP | `/boot` |
 | filesystem | how a disk's room is kept as files | | Btrfs, a subvolume |
 | snapshot | a filesystem's copy kept from a moment, which the guard may clear | | a Btrfs snapshot |

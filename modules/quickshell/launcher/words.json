@@ -738,6 +738,7 @@
       "id": "machine:cpu:model",
       "in": "machine:cpu",
       "name": "Model",
+      "term": "Machine/model",
       "answers": [
         "processor model"
       ]
@@ -980,7 +981,8 @@
     {
       "id": "machine:disk:spare",
       "in": "machine:disk:health",
-      "name": "Spare"
+      "name": "Spare",
+      "term": "Disk/spare"
     },
     {
       "id": "machine:disk:written",
@@ -1006,6 +1008,7 @@
       "id": "machine:disk:model",
       "in": "machine:disk",
       "name": "Model",
+      "term": "Machine/model",
       "answers": [
         "disk model"
       ]
@@ -1162,7 +1165,8 @@
     {
       "id": "power:model",
       "in": "power",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "power:made",
@@ -1390,7 +1394,8 @@
     {
       "id": "firmware:version",
       "in": "firmware",
-      "name": "Version"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "firmware:vendor",
@@ -1858,7 +1863,8 @@
     {
       "id": "keyboards:model",
       "in": "keyboards",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "eero",
@@ -1995,7 +2001,8 @@
     {
       "id": "eero:internet:mode",
       "in": "eero:internet",
-      "name": "Mode"
+      "name": "Mode",
+      "term": "Network/mode"
     },
     {
       "id": "eero:internet:dns",
@@ -2141,7 +2148,8 @@
     {
       "id": "eero:node:model",
       "in": "eero:node",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "eero:node:serial",
@@ -2244,7 +2252,8 @@
     {
       "id": "eero:node:light",
       "in": "eero:node",
-      "name": "Light"
+      "name": "Light",
+      "term": "Network/light"
     },
     {
       "id": "eero:node:power",
@@ -3510,7 +3519,8 @@
     {
       "id": "sound:level",
       "in": "sound",
-      "name": "Level"
+      "name": "Level",
+      "term": "Machine/level"
     },
     {
       "id": "sound:volume",
@@ -3576,7 +3586,8 @@
     {
       "id": "sound:card",
       "in": "sound",
-      "name": "Card"
+      "name": "Card",
+      "term": "Machine/card"
     },
     {
       "id": "sound:amplifiers",
@@ -3631,7 +3642,8 @@
     {
       "id": "sound:profile",
       "in": "sound",
-      "name": "Profile"
+      "name": "Profile",
+      "term": "Machine/profile"
     },
     {
       "id": "sound:rate",
@@ -5260,7 +5272,8 @@
     {
       "id": "displays:model",
       "in": "displays",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "displays:made",
@@ -6285,12 +6298,14 @@
     {
       "id": "bluetooth:version",
       "in": "bluetooth",
-      "name": "Version"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "bluetooth:chip",
       "in": "bluetooth",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "verb:bluetooth-trust",
