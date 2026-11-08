@@ -67,6 +67,8 @@ const THOUSANDS = /\B(?=(\d{3})+(?!\d))/g;
 const TRAILING_ZEROS = /\.?0+$/;
 // The places a number has, unless the caller asks for others.
 const PLACES = 10;
+// The digits a measured figure is said to (VKCF3Z, 2026-11-07).
+const SIGNIFICANT = 3;
 // What a place is divided by for its last two digits.
 const HUNDREDS = 100;
 // The teens, 11th to 13th, which end in "th" whatever their last digit.
@@ -90,6 +92,23 @@ function format(value, decimals, group, point) {
     const [whole, fraction] = fixed.split(".");
     const grouped = whole.replace(THOUSANDS, group ?? ",");
     return sign + grouped + (fraction ? (point ?? ".") + fraction : "");
+}
+
+// A measured figure to three significant digits, its zeros kept so each
+// says as much as the next: 28.47 as "28.5", 5.2 as "5.20", 0 as "0". One
+// past three whole digits is rounded and grouped: 1234 as "1,230".
+function significant(value, group, point) {
+    const rounded = Number(Number(value).toPrecision(SIGNIFICANT));
+    if (rounded === 0) {
+        return "0";
+    }
+    const places = Math.max(0, SIGNIFICANT - 1 - Math.floor(Math.log10(Math.abs(rounded))));
+    const said = format(rounded, places, group, point);
+    if (places === 0) {
+        return said;
+    }
+    const [whole, fraction] = said.split(point ?? ".");
+    return `${whole}${point ?? "."}${(fraction ?? "").padEnd(places, "0")}`;
 }
 
 // A place in a line as it's said: 1 as "1st", 12 as "12th", 22 as "22nd".

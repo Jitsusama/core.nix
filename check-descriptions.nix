@@ -140,7 +140,8 @@
     where it sits, its modes and its density to three figures, an off one only what it offers;
     the backlight daemon's files say whether the room sets the level and what it's on its way
     to past a gap too slight to move, the room's light with the lid shut or that none is heard,
-    and every point of its curve, dimmest first, kept where the daemon keeps it; and the facts
+    measured to three digits in lx or klx, and every point of its curve, dimmest first, kept
+    where the daemon keeps it, its lux every digit in the same units; and the facts
     that identify a thing end its drawer, marked, each said once
   '';
   a-timer-is-read-from-what-is-typed = ''

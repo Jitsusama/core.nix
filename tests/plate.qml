@@ -1,14 +1,16 @@
 // How a thing's drawer says its parts, and what a screen's says of what
 // niri gives, run in Qt's own JavaScript engine, the one the shell runs it
 // in. The `a-things-drawer-says-its-parts` check copies
-// modules/quickshell/launcher/Plate.js, Screens.js and Backlight.js beside this file and
-// runs `qml -platform offscreen plate.qml`. A part's name is a fact's
-// label and what it says the value, a level's bar a stroke after it; an
-// act or a choice isn't said; a holder of figures is opened in place; and a
-// screen says the mode it runs with every digit niri has, where it sits,
-// what it offers and how fine it is, an off one only the last two. The
-// backlight daemon's files are read as Backlight.js reads them: what sets
-// the level, the room or why nothing does, and its curve, dimmest first.
+// modules/quickshell/launcher/Plate.js, Screens.js, Backlight.js and
+// Numbers.js beside this file and runs `qml -platform offscreen plate.qml`.
+// A part's name is a fact's label and what it says the value, a level's
+// bar a stroke after it; an act or a choice isn't said; a holder of
+// figures is opened in place; and a screen says the mode it runs with
+// every digit niri has, where it sits, what it offers and how fine it is,
+// an off one only the last two. The backlight daemon's files are read as
+// Backlight.js reads them: what sets the level, the room or why nothing
+// does, and its curve, dimmest first;
+// the room's light measured to three digits, the curve's lux every digit.
 import QtQuick
 import "Backlight.js" as Backlight
 import "Plate.js" as Plate
@@ -90,9 +92,17 @@ QtObject {
             && Backlight.room(null, null, backlightSaid, lx) === "",
             JSON.stringify(Backlight.now("level\t0.600\nasks\t0.950\n")));
         const points = Backlight.curve("# the curve\n28 0.950\n\n6 0.377\n10000 1.000\n");
-        const curve = Backlight.curveSaid(points, backlightSaid, lx);
+        const curve = Backlight.curveSaid(points, backlightSaid, each => Backlight.chosen(each));
         check("the curve, dimmest first",
-            curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10000 lx", curve);
+            curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10 klx", curve);
+        const readings = [0, 5.2, 28.47, 999.4, 999.6, 1235, 40000]
+            .map(each => Backlight.reading(each)).join("; ");
+        check("the room's light measured to three digits, zeros kept", readings
+            === "0 lx; 5.20 lx; 28.5 lx; 999 lx; 1.00 klx; 1.24 klx; 40.0 klx", readings);
+        const chosen = [0, 50, 400, 1234, 1500, 2000]
+            .map(each => Backlight.chosen(each)).join("; ");
+        check("a curve's lux every digit, none added, in a reading's units", chosen
+            === "0 lx; 50 lx; 400 lx; 1.234 klx; 1.5 klx; 2 klx", chosen);
         check("a file the daemon would refuse is no curve",
             ["6 0.377\nnot a point\n", "6 0.377 1\n", "1.2.3 0.5\n", "0x10 0.5\n", ""]
                 .every(text => Backlight.curve(text).length === 0),

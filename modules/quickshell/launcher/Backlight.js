@@ -5,6 +5,7 @@
 // points, from its learned file. Displays.qml reads the files and draws
 // the screen's drawer.
 .pragma library
+.import "Numbers.js" as Numbers
 .import "Plate.js" as Plate
 
 // A fact a line, its name, a tab and its value, as the daemon writes them.
@@ -25,6 +26,13 @@ const PERCENT = 100;
 // The daemon moves the level only for a gap this wide or wider
 // (steer.rs's SLIGHT), so a narrower one is where it rests.
 const SLIGHT = 0.03;
+// Lux are said in lux, and from a thousand in klx, a thousand each; a
+// reading from where its three digits round to a thousand, so 999.6 reads
+// "1.00 klx" rather than "1,000 lx".
+const LUX = "lx";
+const KILOLUX = "klx";
+const KILO = 1000;
+const ROUNDS_TO_KILO = 999.5;
 
 // The level as a share of the whole, rounded as Brightness says it.
 function share(level) {
@@ -118,6 +126,23 @@ function room(settled, heard, said, lux) {
         return "";
     }
     return settled.lux !== null ? lux(settled.lux) : said("no-light", {});
+}
+
+// The room's light as it's measured, to three significant digits with
+// its zeros kept: "28.5 lx", "5.20 lx", "1.24 klx" (VKCF3Z, 2026-11-08).
+function reading(lux, group, point) {
+    return lux >= ROUNDS_TO_KILO
+        ? `${Numbers.significant(lux / KILO, group, point)} ${KILOLUX}`
+        : `${Numbers.significant(lux, group, point)} ${LUX}`;
+}
+
+// A curve's lux, a point the daemon chose rather than one it measured, so
+// a name: every digit and none added, in a reading's units so the two
+// compare: "50 lx", "2 klx", "1.5 klx" (VKCF3Z, 2026-11-08).
+function chosen(lux, group, point) {
+    return lux >= KILO
+        ? `${Numbers.format(lux / KILO, undefined, group, point)} ${KILOLUX}`
+        : `${Numbers.format(lux, undefined, group, point)} ${LUX}`;
 }
 
 // Each of the curve's points as its share at its lux, a run apart,
