@@ -251,6 +251,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |
 | `src/words.rs`            | the sentences the status file carries for the desktop     |
 | `tests/guard/`            | the scenarios, one file per module                       |
+| `tests/*.sh`              | the check of `merged-on-github.sh`, over a stand-in gh   |
 
 ## Working on It
 

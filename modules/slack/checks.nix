@@ -71,7 +71,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "slack-waits-in-its-place" { } ''
-      cp ${../../tests/slack.qml} slack.qml
+      cp ${./tests/slack.qml} slack.qml
       cp ${./Slack.js} Slack.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
@@ -87,7 +87,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "slack-says-only-whats-current" { } ''
-      cp ${../../tests/slack-unreads.qml} slack-unreads.qml
+      cp ${./tests/slack-unreads.qml} slack-unreads.qml
       cp ${./SlackUnreads.js} SlackUnreads.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

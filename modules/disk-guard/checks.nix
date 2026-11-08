@@ -142,12 +142,12 @@
     let
       gh = pkgs.writeShellApplication {
         name = "gh";
-        text = builtins.readFile ../../tests/stand-in-gh.sh;
+        text = builtins.readFile ./tests/stand-in-gh.sh;
       };
       merged = pkgs.callPackage ./merged-on-github.nix { inherit gh; };
     in
     pkgs.runCommandLocal "disk-guard-asks-github-what-merged" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/disk-guard-asks-github-what-merged.sh} ${lib.getExe merged}
+      ${lib.getExe pkgs.bash} ${./tests/disk-guard-asks-github-what-merged.sh} ${lib.getExe merged}
       touch $out
     '';
 

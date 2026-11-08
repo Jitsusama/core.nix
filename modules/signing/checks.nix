@@ -98,8 +98,8 @@ in
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/signing-program.sh} ${./sign.sh} \
-          ${../../tests/empty-signature.sig}
+        ${lib.getExe pkgs.bash} ${./tests/signing-program.sh} ${./sign.sh} \
+          ${./tests/empty-signature.sig}
         touch $out
       '';
 }

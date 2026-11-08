@@ -14,7 +14,8 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      ./tests
+      # The stand-in alone: the QML cases beside it aren't the crate's.
+      ./tests/stand_in.rs
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
