@@ -36,16 +36,24 @@
 //! program starts again, at its own white, the room's warmth is set again.
 //! Joel says whether it follows the room through the session's bus
 //! (switch.rs), and his say is kept in `$XDG_STATE_HOME/backlight/warmth`.
-//! Where the warmth stands, and whether it follows, is written to
-//! `$XDG_RUNTIME_DIR/backlight-warmth` for the shell's Warmth part, once a
-//! sensor sees the light's colour, so the part shows only where it means
-//! something. The daemon's stop leaves `{}` there, which shows no part.
+//! From sunset to sunrise where the laptop is, the night light warms the
+//! built-in panel too, whatever its sensor sees (night.rs), through the
+//! same program; where it is comes from whereabouts'
+//! `$XDG_RUNTIME_DIR/whereabouts.json`, looked at again within the hour,
+//! and Joel's say over it is kept in `$XDG_STATE_HOME/backlight/night`.
+//! Where the warmth stands, whether it follows the room, whether a sensor
+//! sees colour, and the night light's white, sunset and sunrise are written
+//! to `$XDG_RUNTIME_DIR/backlight-warmth` for the shell's Warmth, on every
+//! machine with a panel to warm. The daemon's stop leaves `{}` there, which
+//! shows no Warmth.
 //! Every call to wl-gammarelay-rs is given a moment to answer (ask.rs), so
 //! the warmth never holds the brightness, the keys or the lid.
 //!
-//! Usage: backlight <standard curve>. The standard curve is where learning
-//! starts, a point to a line: the lux, a space and the share of the brightest.
-//! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
+//! Usage: backlight <standard curve> [night white]. The standard curve is
+//! where learning starts, a point to a line: the lux, a space and the share
+//! of the brightest. What it learns is kept in
+//! `$XDG_STATE_HOME/backlight/learned`. The night white is the night light's
+//! warmth in kelvin, 4000 unless it's given.
 //!
 //! Usage: backlight --keeps-the-open-level <saver>, as root. It keeps the
 //! panel's saved level current while the lid is open (keep.rs), running the
@@ -60,8 +68,13 @@ mod keep;
 mod keyboard;
 mod light;
 mod monitor;
+mod night;
 mod screen;
 mod steer;
+// The sun's reckoning the launcher's calendars use, one file for both, so
+// the night falls here when Date says the day ends.
+#[path = "../../quickshell/timekeeping/src/sun.rs"]
+mod sun;
 mod switch;
 mod uevent;
 mod warmth;
@@ -74,7 +87,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, ExitCode};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::io::unix::AsyncFd;
 use tokio::sync::watch;
@@ -88,6 +101,7 @@ use follow::{Follow, Keys};
 use keyboard::Keyboard;
 use light::{Heard, Readings, Sensor};
 use monitor::Monitors;
+use night::{Place, Plan};
 use screen::Screen;
 use warmth::{WHITE, Warmth};
 
@@ -347,6 +361,19 @@ fn look_for_warmth(warm: &mut Option<Readings>, backlight: &mut Backlight) {
     }
 }
 
+/// Whether Joel's say kept in a file is on, as switch.rs reads it; on
+/// while nothing is kept yet, or what's kept can't be read.
+fn kept_say(path: &Path) -> bool {
+    match fs::read_to_string(path) {
+        Ok(text) => switch::says(&text),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+        Err(error) => {
+            eprintln!("<4>can't read {}: {error}", path.display());
+            true
+        }
+    }
+}
+
 /// The keyboard's light and its level, where there is one to set.
 fn keyboard() -> Option<(Keys, Keyboard)> {
     match Keyboard::find(Path::new("/sys/class/leds")) {
@@ -414,12 +441,44 @@ async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The night white the command line gives, after the standard curve, or
+/// the night light's own.
+fn night_white() -> Result<u16, String> {
+    let Some(said) = env::args().nth(2) else {
+        return Ok(NIGHT_WHITE);
+    };
+    said.parse::<u16>()
+        .ok()
+        .filter(|kelvin| (1000..=WHITE).contains(kelvin))
+        .ok_or_else(|| format!("{said} is no night white between 1000 and {WHITE} K"))
+}
+
+/// What learning goes on from: the curve kept in `learned`, and that it's
+/// Joel's, or the standard curve while none is kept or what's kept holds
+/// none.
+fn learned_curve(standard: Curve, learned: &Path) -> io::Result<(Curve, bool)> {
+    match fs::read_to_string(learned) {
+        Ok(text) => Ok(if let Some(curve) = Curve::read(&text) {
+            (curve, true)
+        } else {
+            eprintln!(
+                "<4>{} holds no curve, so learning starts again",
+                learned.display()
+            );
+            (standard, false)
+        }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok((standard, false)),
+        Err(error) => Err(error),
+    }
+}
+
 async fn run() -> Result<(), Box<dyn Error>> {
     let standard = env::args_os()
         .nth(1)
-        .ok_or("usage: backlight <standard curve>")?;
+        .ok_or("usage: backlight <standard curve> [night white]")?;
     let standard = Curve::read(&fs::read_to_string(&standard)?)
         .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
+    let night_white = night_white()?;
 
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to set");
@@ -429,29 +488,18 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let kept = xdg("XDG_STATE_HOME", ".local/state")?.join("backlight");
     fs::create_dir_all(&kept)?;
     let learned = kept.join("learned");
-    let (curve, knows_joel) = match fs::read_to_string(&learned) {
-        Ok(text) => {
-            if let Some(curve) = Curve::read(&text) {
-                (curve, true)
-            } else {
-                eprintln!(
-                    "<4>{} holds no curve, so learning starts again",
-                    learned.display()
-                );
-                (standard, false)
-            }
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => (standard, false),
-        Err(error) => return Err(error.into()),
-    };
+    let (curve, knows_joel) = learned_curve(standard, &learned)?;
     let switch = kept.join("warmth");
+    let night_switch = kept.join("night");
     // Beside the runtime folder's other files rather than in a folder of
     // its own, which the shell could start watching before it existed.
     let runtime = env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .ok_or("XDG_RUNTIME_DIR isn't set")?;
     let chosen = runtime.join("backlight-chosen");
+    let now_file = runtime.join("backlight-now");
     let note = runtime.join("backlight-warmth");
+    let whereabouts = runtime.join("whereabouts.json");
 
     let bus = Connection::system().await?;
     let session = SessionProxy::new(&bus).await?;
@@ -468,6 +516,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         follow: Follow::new(curve, knows_joel),
         learned,
         chosen,
+        now_file,
+        level_said: None,
         seen,
         wrote: None,
         keyboard: keyboard(),
@@ -476,9 +526,19 @@ async fn run() -> Result<(), Box<dyn Error>> {
         note,
         noted: None,
         sees: false,
+        night: Nightly {
+            white: night_white,
+            on: true,
+            switch: night_switch,
+            whereabouts,
+            plan: None,
+            wants: WHITE,
+            due: Some(Instant::now()),
+        },
+        relay_down: None,
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
-    let (_switch_bus, mut said) = backlight.serve_switch().await;
+    let (_switch_bus, mut said, mut said_night) = backlight.serve_switch().await;
     // Heard before they're looked for, so a sensor set up between isn't
     // missed.
     let mut sensors = hear_sensors();
@@ -511,6 +571,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             kelvin = light(&mut warm) => backlight.warmed(kelvin?),
             shut = lid_moved(&mut lid) => backlight.lid(shut?),
             follows = switched(&mut said) => backlight.switched(follows),
+            on = switched(&mut said_night) => backlight.night_switched(on),
             again = relay_started(&mut started) => if again {
                 backlight.relay_started();
             },
@@ -541,6 +602,10 @@ struct Backlight<'a> {
     follow: Follow,
     learned: PathBuf,
     chosen: PathBuf,
+    /// Where the shell is told the level each time it settles, and what it
+    /// was last told.
+    now_file: PathBuf,
+    level_said: Option<String>,
     /// The brightness last read, in steps.
     seen: u32,
     /// The brightness this daemon last set, in steps.
@@ -552,11 +617,47 @@ struct Backlight<'a> {
     /// Where Joel's say over the warmth is kept.
     switch: PathBuf,
     /// Where the shell is told how the warmth stands, and what it was last
-    /// told: the warmth, and whether it follows the room.
+    /// told.
     note: PathBuf,
-    noted: Option<(u16, bool)>,
+    noted: Option<String>,
     /// Whether a sensor sees the light's colour.
     sees: bool,
+    /// The night light.
+    night: Nightly,
+    /// Until when what sets the warmth is let be, after it couldn't.
+    relay_down: Option<Instant>,
+}
+
+/// How long what sets the warmth is let be after it couldn't, unless it
+/// starts again by itself sooner.
+const RELAY_RESTS: Duration = Duration::from_mins(10);
+
+/// The night light's white unless the command line gives another: GNOME's
+/// Night Light's, gentle enough that code's colours still read (VKCF3Z,
+/// 2026-11-08).
+const NIGHT_WHITE: u16 = 4000;
+
+/// The night light: its white, whether Joel has it on and where that's
+/// kept, where whereabouts says the laptop is, what it wants now, and when
+/// to look again.
+struct Nightly {
+    white: u16,
+    on: bool,
+    switch: PathBuf,
+    whereabouts: PathBuf,
+    plan: Option<Plan>,
+    wants: u16,
+    due: Option<Instant>,
+}
+
+/// Milliseconds since 1970 began in UTC, by the wall clock, which the sun
+/// keeps to.
+fn wall() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|since| i64::try_from(since.as_millis()).ok())
+        .unwrap_or_default()
 }
 
 impl Backlight<'_> {
@@ -584,30 +685,93 @@ impl Backlight<'_> {
 
     /// Serves Joel's say over the warmth, where there's a warmth to set,
     /// starting from what he last said. Gives the bus it's served on and
-    /// what he says through it.
-    async fn serve_switch(&mut self) -> (Option<Connection>, Option<watch::Receiver<bool>>) {
+    /// what he says through it: whether it follows the room, and whether
+    /// the night light is on.
+    async fn serve_switch(
+        &mut self,
+    ) -> (
+        Option<Connection>,
+        Option<watch::Receiver<bool>>,
+        Option<watch::Receiver<bool>>,
+    ) {
         if self.warmth.is_none() {
-            return (None, None);
+            return (None, None, None);
         }
-        let follows = match fs::read_to_string(&self.switch) {
-            Ok(text) => switch::says(&text),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => true,
-            Err(error) => {
-                eprintln!("<4>can't read {}: {error}", self.switch.display());
-                true
-            }
-        };
+        let follows = kept_say(&self.switch);
         if !follows {
             eprintln!("<6>the screen keeps its own white, as Joel said");
         }
+        self.night.on = kept_say(&self.night.switch);
+        if !self.night.on {
+            eprintln!("<6>the night light is off, as Joel said");
+        }
         self.warm(|warmth, now| warmth.follow_the_room(follows, now));
-        match switch::serve(follows).await {
-            Ok((bus, said)) => (Some(bus), Some(said)),
+        match switch::serve(follows, self.night.on).await {
+            Ok((bus, said)) => (Some(bus), Some(said.follows), Some(said.night)),
             Err(error) => {
                 eprintln!("<4>can't take Joel's say over the screen's warmth: {error}");
-                (None, None)
+                (None, None, None)
             }
         }
+    }
+
+    /// Joel said whether the night light is on: it's kept, and the night
+    /// is looked at again at once.
+    fn night_switched(&mut self, on: bool) {
+        if self.night.on == on {
+            return;
+        }
+        self.night.on = on;
+        if on {
+            eprintln!("<6>the night light is on, as Joel said");
+        } else {
+            eprintln!("<6>the night light is off, as Joel said");
+        }
+        if let Err(error) = write_whole(&self.night.switch, switch::kept(on)) {
+            eprintln!("<4>can't keep Joel's say over the night light: {error}");
+        }
+        self.look_at_night();
+    }
+
+    /// What the night light wants now, where whereabouts says the laptop
+    /// is, given to the warmth, with when to look again; with no place
+    /// known, or the light off, it wants the screen's own white.
+    fn look_at_night(&mut self) {
+        let place = fs::read_to_string(&self.night.whereabouts)
+            .ok()
+            .and_then(|text| Place::read(&text));
+        let now = wall();
+        let plan = place.map(|place| night::plan(now, place, self.night.white));
+        if plan.is_some() != self.night.plan.is_some() {
+            if plan.is_some() {
+                eprintln!("<6>the night light follows the sun where the laptop is");
+            } else {
+                eprintln!("<5>the night light waits to know where the laptop is");
+            }
+        }
+        self.night.plan = plan;
+        let next = plan.map_or(now + night::EASE * 2, |plan| plan.next);
+        let wait = u64::try_from(next - now).unwrap_or_default();
+        self.night.due = Some(Instant::now() + Duration::from_millis(wait));
+        let kelvin = match plan {
+            Some(plan) if self.night.on => plan.kelvin,
+            _ => WHITE,
+        };
+        // Said as the evening's ease begins and the morning's ends, rather
+        // than for each of its fifty steps.
+        if (kelvin < WHITE) != (self.night.wants < WHITE) {
+            if kelvin < WHITE {
+                eprintln!("<6>the night light warms the screen toward {} K", self.night.white);
+            } else {
+                eprintln!("<6>the night light gives the screen back its own white");
+            }
+        }
+        self.night.wants = kelvin;
+        if let Some((warmth, _)) = &mut self.warmth {
+            warmth.night(kelvin, Instant::now());
+        }
+        // Said even when the warmth holds, since the night's times moved.
+        self.say_warmth();
     }
 
     /// Joel said whether the warmth follows the room: it's kept, and the
@@ -631,20 +795,40 @@ impl Backlight<'_> {
         self.warm(|warmth, now| warmth.follow_the_room(follows, now));
     }
 
-    /// Tells the shell how the warmth stands, when that changed, once a
-    /// sensor sees the light's colour.
+    /// Tells the shell how the warmth stands, when that changed: the
+    /// warmth, whether it follows the room, whether a sensor sees colour
+    /// and the room's colour it last heard, and the night light, on or off, its white, and the sunset and sunrise
+    /// of the night under way or the next, or null for both while where
+    /// the laptop is isn't known.
     fn say_warmth(&mut self) {
         let Some((warmth, _)) = &self.warmth else {
             return;
         };
-        let stands = (warmth.stands(), warmth.follows());
-        if !self.sees || self.noted == Some(stands) {
+        let (sunset, sunrise) = self
+            .night
+            .plan
+            .and_then(|plan| plan.night)
+            .map_or(("null".into(), "null".into()), |night| {
+                (night.sunset.to_string(), night.sunrise.to_string())
+            });
+        let room = warmth
+            .room_white()
+            .map_or_else(|| "null".into(), |kelvin| kelvin.to_string());
+        let text = format!(
+            "{{\"kelvin\": {}, \"followsTheRoom\": {}, \"seesColour\": {}, \"roomWhite\": {room}, \
+             \"nightLight\": {}, \"nightWhite\": {}, \"sunset\": {sunset}, \
+             \"sunrise\": {sunrise}}}\n",
+            warmth.stands(),
+            warmth.follows(),
+            self.sees,
+            self.night.on,
+            self.night.white,
+        );
+        if self.noted.as_deref() == Some(text.as_str()) {
             return;
         }
-        let (kelvin, follows) = stands;
-        let text = format!("{{\"kelvin\": {kelvin}, \"followsTheRoom\": {follows}}}\n");
         match write_whole(&self.note, &text) {
-            Ok(()) => self.noted = Some(stands),
+            Ok(()) => self.noted = Some(text),
             Err(error) => eprintln!("<4>can't tell the shell the screen's warmth: {error}"),
         }
     }
@@ -654,6 +838,7 @@ impl Backlight<'_> {
         if self.warmth.is_some() {
             eprintln!("<6>the screens' warmth started again at {WHITE} K");
         }
+        self.relay_down = None;
         self.warm(Warmth::reset);
     }
 
@@ -673,6 +858,9 @@ impl Backlight<'_> {
 
     /// Takes the next step of the warmth's glide, once it's due.
     async fn warmth_step(&mut self, now: Instant) {
+        if self.relay_down.is_some_and(|until| now < until) {
+            return;
+        }
         let Some((warmth, relay)) = &mut self.warmth else {
             return;
         };
@@ -680,16 +868,22 @@ impl Backlight<'_> {
             return;
         };
         let relay: &RelayProxy = relay;
-        match ask::twice(ask::MOMENT, || relay.set_temperature(kelvin)).await {
-            Some(Ok(())) => warmth.set(kelvin, now),
-            Some(Err(error)) => {
-                eprintln!("<4>can't set the screens' warmth: {error}");
-                warmth.abandon();
+        let refused = match ask::twice(ask::MOMENT, || relay.set_temperature(kelvin)).await {
+            Some(Ok(())) => {
+                warmth.set(kelvin, now);
+                None
             }
-            None => {
-                eprintln!("<4>can't set the screens' warmth: wl-gammarelay-rs didn't answer");
-                warmth.abandon();
-            }
+            Some(Err(error)) => Some(error.to_string()),
+            None => Some("wl-gammarelay-rs didn't answer".to_owned()),
+        };
+        // Where the compositor can't hold gamma, every one of the night's
+        // fifty steps would ask again and fail: what sets the warmth is let
+        // be until it starts again by itself, or a while has passed, since
+        // nothing but a set starts it on the bus.
+        if let Some(why) = refused {
+            eprintln!("<4>can't set the screens' warmth, so it's let be a while: {why}");
+            warmth.abandon();
+            self.relay_down = Some(now + RELAY_RESTS);
         }
     }
 
@@ -757,6 +951,7 @@ impl Backlight<'_> {
         } else {
             eprintln!("<6>the lid is open");
         }
+        self.say_level(self.screen.level_of(self.seen));
     }
 
     /// The brightness was written. Unless this daemon wrote it, Joel picked
@@ -784,6 +979,28 @@ impl Backlight<'_> {
         if let Err(error) = write_whole(&self.chosen, &format!("{level:.3}\n")) {
             eprintln!("<4>can't tell the shell about the pick: {error}");
         }
+        self.say_level(level);
+    }
+
+    /// Tells the shell the level the screen settled at, the light it was
+    /// heard in, what the curve asks for that light, and whether the screen
+    /// follows the light now, a fact a line, its name and its value apart
+    /// by a tab, as the desk's facts are (`$XDG_RUNTIME_DIR/backlight-now`,
+    /// read by Screens' Brightness).
+    fn say_level(&mut self, level: f64) {
+        let heard = self.follow.lux().map_or_else(String::new, |lux| {
+            let asks = self.follow.curve().level_at(lux);
+            format!("lux\t{lux:.0}\nasks\t{asks:.3}\n")
+        });
+        let following = if self.follow.following() { "yes" } else { "no" };
+        let text = format!("level\t{level:.3}\n{heard}following\t{following}\n");
+        if self.level_said.as_deref() == Some(text.as_str()) {
+            return;
+        }
+        match write_whole(&self.now_file, &text) {
+            Ok(()) => self.level_said = Some(text),
+            Err(error) => eprintln!("<4>can't tell the shell the screen's level: {error}"),
+        }
     }
 
     /// Keeps what the curve has learned, for the next time the daemon starts.
@@ -797,7 +1014,13 @@ impl Backlight<'_> {
     fn wake(&self) -> Option<Instant> {
         let keys = self.keyboard.as_ref().and_then(|(keys, _)| keys.wake());
         let warmth = self.warmth.as_ref().and_then(|(warmth, _)| warmth.wake());
-        [self.follow.wake(Instant::now()), keys, warmth]
+        // A glide waits on what sets the warmth while it's let be.
+        let warmth = match self.relay_down {
+            Some(until) => warmth.map(|due| due.max(until)),
+            None => warmth,
+        };
+        let night = self.warmth.as_ref().and(self.night.due);
+        [self.follow.wake(Instant::now()), keys, warmth, night]
             .into_iter()
             .flatten()
             .min()
@@ -807,6 +1030,9 @@ impl Backlight<'_> {
     /// step of the move under way.
     async fn step(&mut self) {
         let now = Instant::now();
+        if self.warmth.is_some() && self.night.due.is_some_and(|due| due <= now) {
+            self.look_at_night();
+        }
         self.keyboard_step(now).await;
         self.warmth_step(now).await;
         let from = self.screen.level_of(self.seen);
@@ -848,6 +1074,11 @@ impl Backlight<'_> {
         {
             eprintln!("<4>can't set the backlight: {error}");
             self.follow.abandon();
+            return;
+        }
+        // The move's last step is where the level settles.
+        if !self.follow.moving() {
+            self.say_level(self.screen.level_of(steps));
         }
     }
 }

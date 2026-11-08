@@ -22,7 +22,7 @@ use icu_locale::Locale;
 use serde::{Deserialize, Serialize};
 use zlink::introspect::CustomType;
 
-use crate::sun::{self, Sunset};
+use crate::sun::{self, Crossing};
 
 /// Which calendar a date is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, CustomType)]
@@ -173,7 +173,7 @@ fn sunset(iso: Date<Iso>, latitude: f64, longitude: f64) -> Option<i64> {
     let year = iso.year().extended_year();
     let month = u32::from(iso.month().ordinal);
     let date = u32::from(iso.day_of_month().0);
-    let Sunset::At(minutes) = sun::sets(year, month, date, latitude, longitude) else {
+    let Crossing::At(minutes) = sun::crosses(year, month, date, latitude, longitude, false) else {
         return None;
     };
     let days = iso.to_rata_die() - EPOCH;

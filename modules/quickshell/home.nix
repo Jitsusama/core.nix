@@ -268,6 +268,7 @@ let
     "launcher/Zones.js"
     "launcher/Moment.js"
     "launcher/Keeping.js"
+    "launcher/Warmth.js"
     "launcher/Ago.js"
     "launcher/Timing.js"
     "launcher/Colours.js"

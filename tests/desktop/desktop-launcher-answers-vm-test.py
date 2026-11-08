@@ -1444,9 +1444,10 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
 
 
 def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: Desktop) -> None:
-    """The screen's warmth follows its Brightness, says how it stands, and Return switches it.
+    """The screen's warmth follows its Brightness, says what holds it, and its switches switch.
 
-    :set warmth? says how it stands and :set warmth switches it too.
+    Inside are the Night Light and Follow the Room, each switched by Return, then the room's
+    white and the night's; :set nightlight and :set warmth say and switch them too.
     """
     machine = desktop.machine
     note = "/run/user/1000/backlight-warmth"
@@ -1456,27 +1457,42 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
         text = json.dumps(said)
         desktop.as_account(f"echo '{text}' > {note}.writing && mv {note}.writing {note}")
 
-    def warmth_selected(side: str, verb: str, footer: str) -> Callable[[Json], bool]:
-        """Give a test that the Warmth is selected, standing as said."""
+    def selected(name: str, side: str, verb: str) -> Callable[[Json], bool]:
+        """Give a test that a row is selected, standing as said."""
         return lambda shown: (
-            (shown["selected"] or {}).get("name") == "Warmth"
-            and (
-                shown["selected"]["side"],
-                shown["selected"]["verb"],
-                shown["footer"],
-            )
-            == (side, verb, footer)
+            (shown["selected"] or {}).get("name") == name
+            and (shown["selected"]["side"], shown["selected"]["verb"]) == (side, verb)
         )
 
-    # The backlight daemon warms nothing here, so its file is said for it.
-    warmth({"kelvin": 5200, "followsTheRoom": True})
+    # The backlight daemon warms nothing here, so its file is said for it: a night under way,
+    # begun an hour ago and ending in ten, and a sensor that sees the room's colour.
+    now = int(machine.succeed("date +%s").strip())
+    sunrise = now + 10 * 3600
+    clock = desktop.as_account(f"date -d @{sunrise} +%H:%M").strip()
+    night = {
+        "kelvin": 4000,
+        "followsTheRoom": True,
+        "seesColour": True,
+        "roomWhite": 3200,
+        "nightLight": True,
+        "nightWhite": 4000,
+        "sunset": (now - 3600) * 1000,
+        "sunrise": sunrise * 1000,
+    }
+    warmth(night)
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][1:3] == ["Brightness", "Warmth"])
     desktop.down_to("Warmth")
-    desktop.launcher_until(warmth_selected("on", "off", "5200 K, following the room"))
+    desktop.launcher_until(selected("Warmth", "4,000 K", "more"))
+    assert desktop.showing()["selected"]["note"] == f"night light until {clock}", desktop.showing()[
+        "selected"
+    ]
     desktop.shoot("launcher-warmth")
+    inside = ["Night Light", "Follow the Room", "Room's White", "Sunrise", "Sunset"]
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
     # Return tells the daemon over the session's bus, which is heard here.
     desktop.as_account(
         "systemd-run --user --collect --quiet --unit=warmth-heard -- sh -c "
@@ -1486,14 +1502,26 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
         desktop.in_session("systemctl --user is-active warmth-heard"),
         timeout=dt.timedelta(seconds=10),
     )
+    desktop.down_to("Night Light")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        "grep -q FollowsTheRoom /tmp/warmth-heard && grep -q 'BOOLEAN false' /tmp/warmth-heard",
+        "grep -q NightLight /tmp/warmth-heard && grep -q 'BOOLEAN false' /tmp/warmth-heard",
         timeout=dt.timedelta(seconds=10),
     )
     # It stays to show the change, which comes as the daemon says it.
-    warmth({"kelvin": 6500, "followsTheRoom": False})
-    desktop.launcher_until(warmth_selected("off", "on", "6500 K, the screen's own white"))
+    warmth(night | {"kelvin": 5000, "nightLight": False})
+    desktop.launcher_until(selected("Night Light", "off", "on"))
+    machine.send_chars(":set nightlight?\n")
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "nonightlight"
+    )
+    desktop.down_to("Follow the Room")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "grep -q FollowsTheRoom /tmp/warmth-heard", timeout=dt.timedelta(seconds=10)
+    )
+    warmth(night | {"kelvin": 6500, "followsTheRoom": False, "nightLight": False})
+    desktop.launcher_until(selected("Follow the Room", "off", "on"))
     # :set warmth? says so as the row does, and :set warmth tells the daemon as Return does.
     machine.send_chars(":set warmth?\n")
     desktop.launcher_until(

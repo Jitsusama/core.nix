@@ -1250,6 +1250,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         desktop.shoot(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+        warmth_shown(desktop, scale)
 
 
 def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
@@ -1491,6 +1492,63 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
     desktop.shoot(f"launcher-plate-screen-following-at-{at}")
     desktop.close_launcher()
     desktop.as_account(f"rm -f {now} {learned}")
+
+
+def warmth_shown(desktop: Desktop, scale: str) -> None:
+    """See the screen's Warmth say what holds it by night and by day, inside and on its plate."""
+    note = "/run/user/1000/backlight-warmth"
+    now = int(desktop.machine.succeed("date +%s").strip()) * 1000
+    hour = 3_600_000
+    # As the backlight daemon says it, whole by a rename: a night under way, then the same
+    # night still to come, as at noon.
+    night = {
+        "kelvin": 4000,
+        "followsTheRoom": True,
+        "seesColour": True,
+        "roomWhite": 3200,
+        "nightLight": True,
+        "nightWhite": 4000,
+        "sunset": now - hour,
+        "sunrise": now + 10 * hour,
+    }
+    day = night | {"kelvin": 6500, "sunset": now + 5 * hour, "sunrise": now + 19 * hour}
+
+    def warmth_plated(shown: Json, kelvin: str) -> bool:
+        """Say whether the Warmth is selected at this kelvin, its plate out."""
+        return bool(
+            (shown["selected"] or {}).get("side") == kelvin
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "Warmth"
+        )
+
+    def said(warmth: dict[str, Any]) -> None:
+        """Say how the warmth stands as the backlight daemon does, whole, by a rename."""
+        text = shlex.quote(json.dumps(warmth))
+        desktop.as_account(f"printf %s {text} > {note}.writing && mv {note}.writing {note}")
+
+    named = scale.replace(".", "-")
+    try:
+        for when, warmth, kelvin in (("night", night, "4,000 K"), ("day", day, "6,500 K")):
+            said(warmth)
+            desktop.as_account("qs ipc call launcher collection displays")
+            desktop.launcher_ready()
+            desktop.follow()
+            desktop.launcher_until(lambda shown: "Warmth" in shown["rows"])
+            desktop.down_to("Warmth")
+            desktop.launcher_until(partial(warmth_plated, kelvin=kelvin))
+            # The plate is held to the lines, as every plate is; its facts' order is
+            # answers.qml's to hold.
+            drawer = plate_shown(desktop, scale)
+            assert drawer["eyebrowNames"] is True, drawer
+            desktop.shoot(f"launcher-warmth-{when}-at-{named}")
+            desktop.follow()
+            desktop.launcher_until(
+                lambda shown: shown["rows"][:2] == ["Night Light", "Follow the Room"]
+            )
+            desktop.shoot(f"launcher-warmth-{when}-inside-at-{named}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account(f"echo '{{}}' > {note}")
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(

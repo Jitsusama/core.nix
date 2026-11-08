@@ -1,17 +1,22 @@
-//! When the sun sets on a day, where it's asked from, for the calendars
-//! whose day begins then: the Hebrew and the Islamic. It's NOAA's own
+//! When the sun rises and sets on a day, where it's asked from: for the
+//! calendars whose day begins at sunset, the Hebrew and the Islamic, and
+//! for the backlight daemon's night light, which warms the screen from
+//! sunset to sunrise (modules/backlight/src/night.rs, which takes this file
+//! as its own module, so one reckoning serves both). It's NOAA's own
 //! reckoning, the one behind its solar calculator, from Meeus's
 //! Astronomical Algorithms: the sun's place to a hundredth of a degree,
-//! and the sun set once its centre is 0.833 degrees below the horizon,
-//! for the half degree the air bends its light up and its own radius.
+//! and the sun risen or set while its centre is 0.833 degrees below the
+//! horizon, for the half degree the air bends its light up and its own
+//! radius.
 
 use std::f64::consts::PI;
 
-/// When the sun sets on a day, or why it doesn't.
+/// When the sun crosses the horizon on a day, or why it doesn't.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Sunset {
+pub enum Crossing {
     /// This many minutes after the day's midnight in UTC, which may be
-    /// past 1440 where the sun sets after midnight in Greenwich.
+    /// past 1440 where the sun sets after midnight in Greenwich, or below
+    /// zero where it rises before.
     At(f64),
     /// The sun is up the whole day: a summer's day far enough north or
     /// south.
@@ -29,27 +34,36 @@ const SET: f64 = 90.833;
 pub const DAY: f64 = 1440.0;
 const DEGREE: f64 = 4.0;
 
-/// When the sun sets on a civil day at a place, in degrees north and east.
-/// It's reckoned from noon there, then again where it sets, since the
-/// sun's place moves over the afternoon; three times sets it to well
-/// under a minute.
-pub fn sets(year: i32, month: u32, day: u32, latitude: f64, longitude: f64) -> Sunset {
+/// When the sun rises, or else sets, on a civil day at a place, in degrees
+/// north and east. It's reckoned from noon there, then again where it
+/// crosses, since the sun's place moves over the day; three times sets it
+/// to well under a minute. Rising is the same hour angle before noon as
+/// setting is after it.
+pub fn crosses(
+    year: i32,
+    month: u32,
+    day: u32,
+    latitude: f64,
+    longitude: f64,
+    rising: bool,
+) -> Crossing {
     let midnight = julian_midnight(year, month, day);
     let noon = DAY / 2.0 - DEGREE * longitude;
+    let side = if rising { -1.0 } else { 1.0 };
     let mut minutes = noon;
     for _ in 0..3 {
         let sun = Sun::at(midnight + minutes / DAY);
         let hour = radians(SET).cos() / (radians(latitude).cos() * radians(sun.declination).cos())
             - radians(latitude).tan() * radians(sun.declination).tan();
         if hour < -1.0 {
-            return Sunset::Never;
+            return Crossing::Never;
         }
         if hour > 1.0 {
-            return Sunset::Unrisen;
+            return Crossing::Unrisen;
         }
-        minutes = noon - sun.equation_of_time + DEGREE * degrees(hour.acos());
+        minutes = noon - sun.equation_of_time + side * DEGREE * degrees(hour.acos());
     }
-    Sunset::At(minutes)
+    Crossing::At(minutes)
 }
 
 /// The Julian day at a civil day's midnight in UTC, by Meeus's chapter 7.
@@ -143,7 +157,7 @@ mod tests {
         (latitude, longitude): (f64, f64),
         table: f64,
     ) {
-        let Sunset::At(reckoned) = sets(year, month, day, latitude, longitude) else {
+        let Crossing::At(reckoned) = crosses(year, month, day, latitude, longitude, false) else {
             panic!("no sunset on {year}-{month}-{day} at {latitude}, {longitude}");
         };
         assert!(
@@ -171,7 +185,34 @@ mod tests {
     #[test]
     fn where_the_sun_neither_sets_nor_rises_it_says_which() {
         // The tables leave both days without a sunset.
-        assert_eq!(sets(2026, 6, 21, TROMSO.0, TROMSO.1), Sunset::Never);
-        assert_eq!(sets(2026, 12, 21, TROMSO.0, TROMSO.1), Sunset::Unrisen);
+        let (latitude, longitude) = TROMSO;
+        for rising in [false, true] {
+            let summer = crosses(2026, 6, 21, latitude, longitude, rising);
+            let winter = crosses(2026, 12, 21, latitude, longitude, rising);
+            assert_eq!(summer, Crossing::Never);
+            assert_eq!(winter, Crossing::Unrisen);
+        }
+    }
+
+    fn rises_within_a_minute_of(
+        (year, month, day): (i32, u32, u32),
+        (latitude, longitude): (f64, f64),
+        table: f64,
+    ) {
+        let Crossing::At(reckoned) = crosses(year, month, day, latitude, longitude, true) else {
+            panic!("no sunrise on {year}-{month}-{day} at {latitude}, {longitude}");
+        };
+        assert!(
+            (reckoned - table).abs() <= 1.0,
+            "{year}-{month}-{day} at {latitude}, {longitude}: {reckoned:.1} against {table}"
+        );
+    }
+
+    #[test]
+    fn the_sun_rises_when_the_tables_say_in_summer_and_winter() {
+        // 04:43 in British Summer Time, and 08:03 in Greenwich's own, as
+        // NOAA's solar calculator gives them.
+        rises_within_a_minute_of((2026, 6, 21), GREENWICH, minutes(3, 43));
+        rises_within_a_minute_of((2026, 12, 21), GREENWICH, minutes(8, 3));
     }
 }

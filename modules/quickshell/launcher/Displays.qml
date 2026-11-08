@@ -31,11 +31,15 @@
 // and shown once it's come. While its answer shows, it's asked again once
 // a second, never more, so the screen following the room moves as it does.
 //
-// Where the backlight daemon warms the built-in screen toward the room's
-// light, it says how that stands in a file (modules/backlight), and the
-// Warmth follows the Brightness there: on or off, its note the warmth and
-// whether it follows the room, and Return switching it, which the daemon
-// is told over the session's bus and keeps. "screen warmth" asks it.
+// The backlight daemon warms the built-in screen at night from sunset to
+// sunrise, and toward the room's light where its sensor sees colour, and
+// says how that stands in a file (modules/backlight), so the Warmth
+// follows the Brightness on every machine with a panel to warm: its side
+// the warmth now, its note what holds it, and Return stepping into the
+// Night Light and Follow the Room switches, which the daemon is told over
+// the session's bus and keeps, then the room's white, the night's sunset
+// and sunrise and its white (Warmth.js; VKCF3Z, 2026-11-08). "screen
+// warmth" asks it.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -48,6 +52,7 @@ import "Order.js" as Order
 import "Plate.js" as Plate
 import "Power.js" as Power
 import "Screens.js" as Screens
+import "Warmth.js" as Warmth
 
 Provider {
     id: provider
@@ -60,8 +65,8 @@ Provider {
     property var outputs: ({})
 
     // :set brightness=60 sets the screen as its Brightness row does, on a
-    // machine with a backlight, and :set nowarmth gives it its own white as
-    // its Warmth row does, where the backlight daemon warms it. :set
+    // machine with a backlight, and :set nowarmth gives it its own white by
+    // day as Warmth's Follow the Room does, where a sensor sees colour. :set
     // noscreens turns every screen off, as Turn Every Screen Off does; they
     // are on whenever the launcher can be seen, so screens alone does
     // nothing.
@@ -87,6 +92,17 @@ Provider {
             }
         }
     }, warmth === null ? {} : {
+        // :set nightlight and nonightlight turn the night light on and off,
+        // as its switch in Warmth does.
+        nightlight: {
+            kind: "switch",
+            now: () => provider.warmth?.nightLight ?? false,
+            set: to => {
+                provider.nightLight(to);
+                return "";
+            }
+        }
+    }, warmth === null || !warmth.seesColour ? {} : {
         warmth: {
             kind: "switch",
             now: () => provider.warmth?.followsTheRoom ?? false,
@@ -234,9 +250,7 @@ Provider {
     onWarmthChanged: changed()
 
     function warmed(text) {
-        const said = parsed(text);
-        return typeof said.kelvin === "number" && typeof said.followsTheRoom === "boolean"
-            ? said : null;
+        return Warmth.read(parsed(text));
     }
 
     FileView {
@@ -284,28 +298,78 @@ Provider {
         onLoadFailed: provider.curve = []
     }
 
-    // The Warmth, a switch: Return turns its following the room off or
-    // back on, the launcher staying to show it change.
-    function warmthRow(output) {
-        const follows = warmth.followsTheRoom;
-        const stands = follows ? `${warmth.kelvin} K, following the room`
-            : `${warmth.kelvin} K, the screen's own white`;
+    // How Warmth says a time and a kelvin: by the clock, and with its
+    // thousands grouped (VKCF3Z, 2026-11-08: "4,000 K").
+    readonly property var warmthTold: ({
+        clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
+        kelvin: value => `${Numbers.format(value, 0, settings.group ?? ",",
+            settings.point ?? ".")} K`
+    })
+    readonly property var warmthSaid: Words.of("displays:warmth").said ?? {}
+
+    // A switch of Warmth's, in its words' state, so the : line says its
+    // command: Return turns it off or back on, the launcher staying to
+    // show it change.
+    function warmthSwitch(output, id, on, run) {
         return thing({
-            key: `displays:${output.name}:warmth`,
-            // Its words, which its key never walks back to, in its state,
-            // so the : line says :set nowarmth or warmth.
-            wordsId: "displays:warmth",
-            wordState: follows ? "" : "off",
-            name: partName("warmth"),
-            verb: Words.verb("displays:warmth", follows ? "" : "off"),
-            glyph: Theme.glyph.warmth,
+            key: `displays:${output.name}:${id}`,
+            wordsId: `displays:${id}`,
+            wordState: on ? "" : "off",
+            name: Words.name(`displays:${id}`),
+            verb: Words.verb(`displays:${id}`, on ? "" : "off"),
+            glyph: Words.glyph(`displays:${id}`),
             hue: "machine",
-            side: follows ? "on" : "off",
-            said: stands,
-            note: stands,
+            side: on ? "on" : "off",
             stays: true,
-            run: () => provider.followTheRoom(!follows)
+            run: () => run(!on)
         });
+    }
+
+    // The Warmth, a thing: its side the warmth now, its note what holds
+    // it, and Return stepping into the Night Light, Follow the Room where
+    // a sensor sees colour, then its figures, which its plate shows too,
+    // under where it's set and what it warms (VKCF3Z, 2026-11-08).
+    function warmthRow(output) {
+        const now = Date.now();
+        const figures = Warmth.figures(warmth, now, warmthSaid, warmthTold);
+        const name = partName("warmth");
+        return thingRow({
+            key: `displays:${output.name}:warmth`,
+            name: name,
+            glyph: Theme.glyph.warmth,
+            side: warmthTold.kelvin(warmth.kelvin),
+            note: Warmth.note(warmth, now, warmthSaid, warmthTold),
+            thing: true,
+            // Where it's set, then what it warms, which gives way first
+            // where the plate is narrow (VKCF3Z: where, then kind).
+            drawer: () => ({
+                eyebrow: [warmthSaid.via, warmthSaid.screen].join(" \u00b7 "),
+                eyebrowItems: [{ said: warmthSaid.via ?? "", keep: 2 },
+                    { said: warmthSaid.screen ?? "", keep: 1 }],
+                eyebrowNames: true,
+                title: name,
+                facts: figures.map(figure => ({
+                    label: Words.name(`displays:warmth:${figure.id}`),
+                    value: figure.side
+                }))
+            })
+        }, () => [warmthSwitch(output, "night-light", warmth.nightLight,
+            on => provider.nightLight(on))]
+            .concat(warmth.seesColour ? [warmthSwitch(output, "follow-room",
+                warmth.followsTheRoom, follows => provider.followTheRoom(follows))] : [])
+            .concat(figures.map(figure => copyRow({
+                name: Words.name(`displays:warmth:${figure.id}`),
+                side: figure.side,
+                copy: figure.side,
+                glyph: ""
+            }))));
+    }
+
+    // Tells the backlight daemon whether the night light is on.
+    function nightLight(on) {
+        Niri.spawn(["busctl", "--user", "set-property", "io.jitsusama.Backlight",
+            "/io/jitsusama/Backlight", "io.jitsusama.Backlight", "NightLight", "b",
+            on ? "true" : "false"]);
     }
 
     // Tells the backlight daemon whether the screen follows the room.

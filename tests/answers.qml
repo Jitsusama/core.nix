@@ -17,6 +17,7 @@ import "Units.js" as Units
 import "Zones.js" as Zones
 import "Moment.js" as Moment
 import "Keeping.js" as Keeping
+import "Warmth.js" as Warmth
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
@@ -569,6 +570,29 @@ QtObject {
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
                 "why:tooFewSamples": "too few samples yet" }
         };
+        // A night in Toronto's November as the daemon says it, the clock
+        // given as hours and minutes in local time and a kelvin bare, so
+        // the cases read the same wherever they run.
+        const local = (year, month, day, hour, minute) =>
+            new Date(year, month - 1, day, hour, minute).getTime();
+        const WarmthCases = {
+            night: { kelvin: 4000, followsTheRoom: true, seesColour: true, roomWhite: 3200,
+                nightLight: true, nightWhite: 4000, sunset: local(2026, 11, 8, 16, 59),
+                sunrise: local(2026, 11, 9, 7, 4) },
+            evening: local(2026, 11, 8, 21, 0),
+            noon: local(2026, 11, 8, 12, 0),
+            said: { until: "night light until {time}", from: "night light from {time}",
+                waits: "night light waits for where you are", following: "following the room",
+                own: "the screen's own white", tomorrow: "tomorrow", yesterday: "yesterday" },
+            told: {
+                clock: at => {
+                    const moment = new Date(at);
+                    const two = value => String(value).padStart(2, "0");
+                    return `${two(moment.getHours())}:${two(moment.getMinutes())}`;
+                },
+                kelvin: value => `${value} K`
+            }
+        };
         const evening = at("2026-11-04T22:00");
         const day = new Date(2026, 10, 4);
         const moon = Moment.moon(evening);
@@ -639,7 +663,39 @@ QtObject {
                 chosen: { why: "tooFewSamples" } }, KeepingCases.servers),
                 "set aside: too few samples yet"],
             ["a server too variable", Keeping.standing({ standing: "tooVariable", reach: 255 },
-                KeepingCases.servers), "set aside: too variable"]
+                KeepingCases.servers), "set aside: too variable"],
+            // The screen's Warmth, from what the backlight daemon says: what
+            // holds it, by night, by day, waiting for a place, or the room;
+            // and its figures, the room's white where a sensor sees it, then
+            // the night's, a day said only when it isn't today (VKCF3Z,
+            // 2026-11-08).
+            ["nothing warming the screen", Warmth.read({}), null],
+            ["a daemon before the night light", quoted(Warmth.read({ kelvin: 6500,
+                followsTheRoom: true })), quoted({ kelvin: 6500, followsTheRoom: true,
+                seesColour: false, roomWhite: null, nightLight: false, nightWhite: null,
+                sunset: null, sunrise: null })],
+            ["by night", Warmth.note(WarmthCases.night, WarmthCases.evening, WarmthCases.said,
+                WarmthCases.told), "night light until 07:04"],
+            ["by day", Warmth.note(WarmthCases.night, WarmthCases.noon, WarmthCases.said,
+                WarmthCases.told), "night light from 16:59"],
+            ["waiting for a place", Warmth.note(Object.assign({}, WarmthCases.night,
+                { sunset: null, sunrise: null }), WarmthCases.noon, WarmthCases.said,
+                WarmthCases.told), "night light waits for where you are"],
+            ["following the room", Warmth.note(Object.assign({}, WarmthCases.night,
+                { nightLight: false }), WarmthCases.evening, WarmthCases.said, WarmthCases.told),
+                "following the room"],
+            ["the screen's own white", Warmth.note(Object.assign({}, WarmthCases.night,
+                { nightLight: false, seesColour: false }), WarmthCases.evening,
+                WarmthCases.said, WarmthCases.told), "the screen's own white"],
+            ["its figures by night", quoted(Warmth.figures(WarmthCases.night,
+                WarmthCases.evening, WarmthCases.said, WarmthCases.told)), quoted([
+                { id: "room", side: "3200 K" },
+                { id: "sunrise", side: "07:04 \u00b7 tomorrow" },
+                { id: "sunset", side: "16:59" }, { id: "night", side: "4000 K" }])],
+            ["by day, the sunset comes first, and no room's white without a sensor",
+                Warmth.figures(Object.assign({}, WarmthCases.night, { seesColour: false }),
+                    WarmthCases.noon, WarmthCases.said, WarmthCases.told)
+                    .map(figure => figure.id).join(" "), "sunset sunrise night"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;
