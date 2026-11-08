@@ -85,6 +85,58 @@ QtObject {
         check(failures, "darkening one beside another lit doesn't",
             Screens.ways(hp, [panel, hp], true).map(way => way.waits), [false, false]);
 
+        // The : line's :setl power and :setl unplugged, each a way offered
+        // above or nothing done in its place.
+        const way = (output, outputs, each, option, on) =>
+            Screens.wayTo(output, outputs, each, { option, on })?.asks ?? null;
+        check(failures, ':setl nopower darkens a screen by name',
+            way(hp, [panel, hp], true, "power", false),
+            { Action: { PowerOffMonitor: { output: "DP-2" } } });
+        check(failures, ':setl power lights a dark one',
+            way(darkHp, [panel, darkHp], true, "power", true),
+            { Action: { PowerOnMonitor: { output: "DP-2" } } });
+        check(failures, ':setl unplugged takes it out of niri\'s outputs',
+            way(hp, [panel, hp], true, "unplugged", true),
+            { Output: { output: "DP-2", action: "Off" } });
+        check(failures, 'and on an older niri too',
+            way(hp, [panel, hp], false, "unplugged", true),
+            { Output: { output: "DP-2", action: "Off" } });
+        check(failures, ':setl nounplugged puts an unplugged one back',
+            way(pulled, [panel, pulled], true, "unplugged", false),
+            { Output: { output: "DP-2", action: "On" } });
+        check(failures, 'but never lights a dark one',
+            way(darkHp, [panel, darkHp], true, "unplugged", false), null);
+        check(failures, 'the last lit screen is never unplugged',
+            way(panel, [panel, darkHp], true, "unplugged", true), null);
+        check(failures, 'nor powered on again while lit',
+            way(panel, [panel, darkHp], true, "power", true), null);
+        check(failures, 'what each option says now',
+            [hp, darkHp, pulled].map(one => [Screens.optionNow(one, "power"),
+                Screens.optionNow(one, "unplugged")]),
+            [[true, false], [false, false], [false, true]]);
+        // What the line says where it does nothing: what's true where the
+        // screen is already as asked, as Vim's :set does, and a refused
+        // act's "not {done} \u00b7 {why}" where the way isn't offered
+        // (VKCF3Z, 2026-11-08).
+        const told = (output, outputs, each, option, on) =>
+            Screens.toldOf(output, outputs, each, { option, on });
+        check(failures, 'a lit screen powered on is on',
+            told(panel, [panel, hp], true, "power", true), "isOn");
+        check(failures, 'a dark one powered off is dark',
+            told(darkHp, [panel, darkHp], true, "power", false), "isDark");
+        check(failures, 'an unplugged one powered off is unplugged',
+            told(pulled, [panel, pulled], true, "power", false), "isUnplugged");
+        check(failures, 'a dark one put back is plugged in',
+            told(darkHp, [panel, darkHp], true, "unplugged", false), "isPluggedIn");
+        check(failures, 'an unplugged one unplugged is unplugged',
+            told(pulled, [panel, pulled], true, "unplugged", true), "isUnplugged");
+        check(failures, 'the last lit screen is not unplugged',
+            told(panel, [panel, darkHp], true, "unplugged", true), "notUnplugged");
+        check(failures, 'nor turned off on an older niri',
+            told(panel, [panel, pulled], false, "power", false), "notOff");
+        check(failures, 'and a way offered says nothing',
+            told(hp, [panel, hp], true, "power", false), "");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

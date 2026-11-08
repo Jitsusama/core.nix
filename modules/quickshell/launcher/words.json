@@ -7311,7 +7311,15 @@
         "the-room": "the room",
         "on-its-way": "on its way to {share}",
         "no-light": "no light heard",
-        "at": "{share} at {lux}"
+        "at": "{share} at {lux}",
+        "dark": "dark",
+        "hubOn": "hub on",
+        "isOn": "{name} is on",
+        "isDark": "{name} is dark",
+        "isUnplugged": "{name} is unplugged",
+        "isPluggedIn": "{name} is plugged in",
+        "notUnplugged": "{name} not unplugged \u00b7 the last lit screen",
+        "notOff": "{name} not turned off \u00b7 the last lit screen"
       }
     },
     {
@@ -7409,6 +7417,36 @@
       "glyph": "displayOff",
       "said": {
         "note": "a key wakes them \u00b7 hubs stay on"
+      }
+    },
+    {
+      "id": "verb:display-on",
+      "command": "setlocal",
+      "argument": "power",
+      "in": "displays",
+      "name": "Turn It On",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:display-off",
+      "command": "setlocal",
+      "argument": "nopower",
+      "in": "displays",
+      "name": "Turn It Off",
+      "glyph": "displayOff",
+      "said": {
+        "wakes": "a key wakes it"
+      }
+    },
+    {
+      "id": "verb:display-unplug",
+      "command": "setlocal",
+      "argument": "unplugged",
+      "in": "displays",
+      "name": "Unplug It",
+      "glyph": "disconnect",
+      "said": {
+        "moves": "its windows move to the other screens"
       }
     },
     {
