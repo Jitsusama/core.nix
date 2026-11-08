@@ -21,5 +21,6 @@ keeps no older `boot.bin`, so a stage 2 that fails to start is replaced
 from macOS, which still starts from Apple's boot picker.
 
 Both files follow nixos-apple-silicon's `boot-m1n1` module and
-`uboot-asahi` package, which are MIT. U-Boot stays at Asahi's tag
+`uboot-asahi` package, which are MIT, under the notice in
+`../LICENSE.nixos-apple-silicon`. U-Boot stays at Asahi's tag
 `asahi-v2026.07-2`.

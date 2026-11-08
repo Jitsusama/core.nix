@@ -6,7 +6,9 @@
 # and core's own boot chain (boot/), with the firmware for
 # Wi-Fi, Bluetooth and the camera taken from macOS by Asahi's installer.
 # It has no TPM and no Secure Boot a Linux system can use. docs/hardware.md
-# says what works and what's left.
+# says what works and what's left. What kernel/ and boot/ take from
+# nixos-apple-silicon comes under its MIT notice,
+# LICENSE.nixos-apple-silicon.
 { nixos-apple-silicon, hibernate }:
 { ... }:
 {
