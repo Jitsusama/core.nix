@@ -79,7 +79,7 @@ def test_a_tuple_call_shows_in_the_margin_while_it_lasts(desktop: Desktop) -> No
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     with desktop.told("drawn margin"):
         desktop.tuple_streams(in_a_tuple_call(desktop, 0))
-    desktop.photograph("margin-call")
+    desktop.shoot("margin-call")
     desktop.tuple_streams(None)
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
@@ -109,7 +109,7 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.close_launcher()
     with desktop.told("shows card Someone joined the call"):
         desktop.tuple_streams(call | {"participants": [A_GUEST]})
-    desktop.photograph("notice-joined")
+    desktop.shoot("notice-joined")
     with desktop.told("shows card Someone left the call"):
         desktop.tuple_streams(call)
     # Its card goes by itself after ten seconds, which a busy host spends
@@ -117,7 +117,7 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     machine.succeed(offered.format("leave"))
-    desktop.photograph("notice-alone")
+    desktop.shoot("notice-alone")
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
     # stream says the call's over. :e Notices opens the history on its
     # first row, the newest notice, whose offers are commands from normal
@@ -155,7 +155,7 @@ def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(
         desktop.tuple_said("received incoming call: a caller")
     machine.succeed(offered)
     # The ring's card says it, so the margin's phone waits for it to go.
-    desktop.photograph("notice-ringing")
+    desktop.shoot("notice-ringing")
     # The caller gives up: the ring's notice goes, and a missed call stays.
     desktop.tuple_said("Caller.cpp:985|invalidating call")
     machine.wait_until_fails(offered, timeout=timedelta(seconds=10))
@@ -244,7 +244,7 @@ def test_tuples_windows_find_their_places_the_face_in_a_corner_a_shared_screen_w
     tuple_view = tuple_opens("tuple-screen")
     assert not tuple_view["is_floating"], tuple_view
     assert tuple_view["layout"]["window_size"][0] >= span["width"] * NEARLY_ALL, tuple_view
-    desktop.photograph("tuple-windows")
+    desktop.shoot("tuple-windows")
     desktop.as_account("pkill -f '[t]uple-window'")
     desktop.as_account(
         f"niri msg action close-window --id {desktop.window_titled('at work')['id']}"

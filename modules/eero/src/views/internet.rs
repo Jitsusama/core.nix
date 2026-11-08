@@ -73,8 +73,8 @@ fn well(said: Option<&str>) -> Line {
 /// its addresses and how it has them.
 fn way_out(net: &Internet) -> Facts<'static> {
     let isp = match net.isp_up {
-        Some(true) => vec![plain("ISP up")],
-        Some(false) => vec![run(&marks().failed, Role::Alert), plain(" ISP down")],
+        Some(true) => vec![plain("provider up")],
+        Some(false) => vec![run(&marks().failed, Role::Alert), plain(" provider down")],
         None => unknown(),
     };
     let acronymed = |word: Option<&str>| maybe(word, |word| vec![plain(acronym(word))]);
@@ -88,7 +88,7 @@ fn way_out(net: &Internet) -> Facts<'static> {
             ]),
         ),
         (
-            "ISP",
+            "provider",
             facts(vec![
                 said(net.isp.as_deref()),
                 maybe(net.asn, |asn| vec![plain(format!("AS{asn}"))]),
@@ -187,6 +187,14 @@ fn counts<'a>(net: &Internet, clock: &Clock, ink: &Ink) -> Vec<(&'a str, Facts<'
     let counts = &net.nodes;
     let number =
         |value: Option<u32>, word: &str| maybe(value, |n| vec![plain(format!("{n} {word}"))]);
+    // A part that's none gives way, as docs/design.md has counts do.
+    let any = |value: Option<u32>, word: &str| {
+        if value == Some(0) {
+            Vec::new()
+        } else {
+            number(value, word)
+        }
+    };
     let outages: Facts = if net.outages.is_empty() {
         vec![("recorded", vec![plain("none")])]
     } else {
@@ -198,19 +206,19 @@ fn counts<'a>(net: &Internet, clock: &Clock, ink: &Ink) -> Vec<(&'a str, Facts<'
     };
     vec![
         (
-            "what eero counts",
+            "counted",
             vec![
                 (
                     "nodes",
                     facts(vec![
                         number(counts.online, "online"),
-                        number(counts.offline, "offline"),
-                        number(counts.pending, "pending"),
+                        any(counts.offline, "offline"),
+                        any(counts.pending, "pending"),
                     ]),
                 ),
                 (
                     "devices",
-                    maybe(net.devices, |n| vec![plain(n.to_string())]),
+                    maybe(net.devices, |n| vec![plain(format!("{n} known"))]),
                 ),
             ],
         ),

@@ -16,7 +16,8 @@
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
 //! It goes only to a builder already standing, and evaluates on this
-//! machine only with `--here`.
+//! machine only with `--here`. Any other run no builder took runs here only
+//! while the machine's CPU is idle, or with `--here`.
 //! `changed-checks keep-main` does that for each head of origin's main, once
 //! it has stood two minutes, where runs are sent (`keep.rs` says why).
 //!
@@ -249,6 +250,18 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     }
     if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
+    }
+    // A run no builder took evaluates beside the person's work, at several
+    // gigabytes, so it does only while the machine is idle unless asked.
+    if pressure::waits_for_idle(
+        options.here || env::var_os(HERE).is_some(),
+        pressure::cpu_busy(),
+    ) {
+        return Err(
+            "no builder took the run and this machine is busy, so run it again in a few \
+             minutes; --here runs it here anyway"
+                .to_owned(),
+        );
     }
     // A base kept ahead of time is never worth evaluating beside the
     // person's work, at about 20 GB, unless asked to.

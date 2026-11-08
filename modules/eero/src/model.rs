@@ -4,6 +4,13 @@
 //! Every figure is one eero gives, in the unit its key names; one eero
 //! leaves out is `None`, never a guess. Times are RFC 3339 in UTC, as
 //! eero's own are once their offsets are read.
+//!
+//! What eero gives only as it stands now, the daemon keeps (history.rs),
+//! so the model also carries each figure that moves over the last hour,
+//! as a series: a sample a read, oldest first, each series's lists as long
+//! as its `at`, so a figure is found by its sample's place in them. A key
+//! for what the history holds defaults to empty, so a model written
+//! before there was one still reads.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,6 +28,10 @@ pub struct HomeNetwork {
     pub profiles: Vec<Profile>,
     /// The app's activity list, newest first.
     pub events: Vec<Event>,
+    /// The devices that joined or left the home network in the last day,
+    /// newest first, at the read that saw it, at most 50.
+    #[serde(default)]
+    pub joins_and_leaves: Vec<JoinOrLeave>,
 }
 
 /// Whether eero's cloud is answering, and since when it's been so.
@@ -73,7 +84,8 @@ pub struct Internet {
     pub wireless_mode: Option<String>,
     pub mlo_mode: Option<String>,
     pub speed_test: SpeedTest,
-    /// Every speed test eero kept, newest first.
+    /// Every speed test eero kept, and those the history kept from the
+    /// last 30 days that eero has since dropped, newest first.
     pub speed_tests: Vec<SpeedTest>,
     pub firmware: Firmware,
     pub thread: Thread,
@@ -88,6 +100,79 @@ pub struct Internet {
     /// The devices eero counts.
     pub devices: Option<u32>,
     pub usage: Option<Usage>,
+    /// This machine's own last look at the internet, which goes on while
+    /// eero's cloud can't be reached.
+    #[serde(default)]
+    pub probe: Option<Probe>,
+    /// What the history keeps of the internet.
+    #[serde(default)]
+    pub history: InternetHistory,
+}
+
+/// This machine's own look at the internet (probe.rs), taken with every
+/// read of the network and every 10 seconds while eero's cloud can't be
+/// reached: TCP connects timed, since a ping needs root, and a DNS query
+/// of its own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Probe {
+    pub at: String,
+    /// Whether this machine was on the home network, so that what it saw
+    /// was the home network's internet: the gateway node is timed only
+    /// then, and an outage recorded.
+    pub home: bool,
+    /// A connect to the gateway node.
+    pub gateway_ms: Option<f64>,
+    /// The quicker connect of two public resolvers'.
+    pub internet_ms: Option<f64>,
+    /// The gateway node resolving a name.
+    pub dns_ms: Option<f64>,
+    /// Whether either public resolver took the connection.
+    pub reachable: bool,
+}
+
+/// What the history keeps of the internet.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InternetHistory {
+    /// This machine's looks over the last hour, a sample a look, oldest
+    /// first.
+    pub probes: ProbeHistory,
+    /// Every outage of the last 30 days, newest first.
+    pub outages: Vec<Outage>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProbeHistory {
+    pub at: Vec<String>,
+    pub gateway_ms: Vec<Option<f64>>,
+    pub internet_ms: Vec<Option<f64>>,
+    pub dns_ms: Vec<Option<f64>>,
+    pub reachable: Vec<bool>,
+}
+
+/// The internet out, as eero recorded it or this machine's probe saw it
+/// from the home network.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Outage {
+    pub seen_by: OutageSeenBy,
+    /// Seen by the probe, the first look that found the internet out.
+    /// eero's record says when, in a shape no outage has shown yet, so
+    /// one eero records gives `null`, and its record as eero wrote it.
+    pub start: Option<String>,
+    /// Seen by the probe, the first look that found it back, `null`
+    /// while it lasts; when nothing looked for over 10 minutes before
+    /// that, the last look that found it out, since when it came back
+    /// isn't known.
+    pub end: Option<String>,
+    pub eero: Option<Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OutageSeenBy {
+    Eero,
+    Probe,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -194,6 +279,17 @@ pub struct Node {
     pub light: Option<Light>,
     pub power: Option<String>,
     pub usage: Option<Usage>,
+    /// Its backhaul's bars over the last hour.
+    #[serde(default)]
+    pub history: NodeHistory,
+}
+
+/// A node's backhaul over the last hour, a sample a read, oldest first.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NodeHistory {
+    pub at: Vec<String>,
+    pub bars: Vec<Option<u8>>,
 }
 
 /// How a node reaches the one before it.
@@ -236,6 +332,21 @@ pub struct Radio {
     pub busy_pct: Option<u8>,
     pub devices: Option<u32>,
     pub bssid: Option<String>,
+    /// Its channel, how busy and its power over the last hour.
+    #[serde(default)]
+    pub history: RadioHistory,
+}
+
+/// A radio over the last hour, a sample a read, oldest first: a channel
+/// changing within one is the radio moving off a busy or radar-struck
+/// one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RadioHistory {
+    pub at: Vec<String>,
+    pub channel: Vec<Option<u16>>,
+    pub busy_pct: Vec<Option<u8>>,
+    pub power_dbm: Vec<Option<i16>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,6 +373,10 @@ pub struct Light {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
     pub mac: String,
+    /// Whether it's the machine the daemon runs on: one of that machine's
+    /// own hardware addresses is this one (`read::mark_this_machine`).
+    #[serde(default)]
+    pub this_machine: bool,
     pub name: Option<String>,
     pub nickname: Option<String>,
     pub hostname: Option<String>,
@@ -308,6 +423,62 @@ pub struct Device {
     pub profile: Option<String>,
     pub paused: Option<bool>,
     pub blocked: Option<bool>,
+    /// Its signal, rates and speed over the last hour.
+    #[serde(default)]
+    pub history: DeviceHistory,
+    /// Each time it moved to another node or band in the last day, newest
+    /// first, at most 20.
+    #[serde(default)]
+    pub roams: Vec<Roam>,
+}
+
+/// A device's link over the last hour, a sample a read, oldest first:
+/// `null` where eero gave no figure at that read.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DeviceHistory {
+    pub at: Vec<String>,
+    pub signal_dbm: Vec<Option<i16>>,
+    pub snr_db: Vec<Option<u16>>,
+    /// The rates it receives and sends at.
+    pub rx_mbps: Vec<Option<f64>>,
+    pub tx_mbps: Vec<Option<f64>>,
+    /// Its speed each way.
+    pub down_mbps: Vec<Option<f64>>,
+    pub up_mbps: Vec<Option<f64>>,
+}
+
+/// A device moving to another node or band, at the read that saw it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Roam {
+    pub at: String,
+    /// The ids of the nodes it left and went to, either the same when
+    /// it only changed band.
+    pub from_node: Option<String>,
+    pub node: Option<String>,
+    pub from_band: Option<String>,
+    pub band: Option<String>,
+}
+
+/// A device joining or leaving the home network, at the read that saw it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JoinOrLeave {
+    pub at: String,
+    pub kind: JoinOrLeaveKind,
+    pub mac: String,
+    /// Its name when last seen, since one that left is no longer among
+    /// the devices.
+    pub name: Option<String>,
+    /// The node and band it joined on, or left from.
+    pub node: Option<String>,
+    pub band: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JoinOrLeaveKind {
+    Joined,
+    Left,
 }
 
 /// A link rate, and how the radio makes it.

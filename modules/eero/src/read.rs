@@ -4,7 +4,8 @@
 //! A figure missing from an answer, or an answer not yet read, is `None`
 //! in the model rather than a guess, so a field eero drops costs one figure.
 //! The reads come in at different cadences, so each part of the record is
-//! drawn from whichever answer is newest for it.
+//! drawn from whichever answer is newest for it. What the history keeps is
+//! left empty here, for history.rs to draw.
 
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -12,9 +13,10 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::model::{
-    Backhaul, BackhaulKind, Cloud, Device, DevicePort, Dns, Event, Firmware, Guest, HomeNetwork,
-    Hour, Internet, Lease, Light, Node, NodeCounts, NodeDevices, Packets, Port, Profile, Radio,
-    Rate, Series, Speed, SpeedTest, Thread, Usage,
+    Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DevicePort, Dns, Event, Firmware, Guest,
+    HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Node, NodeCounts, NodeDevices,
+    NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate, Series, Speed, SpeedTest,
+    Thread, Usage,
 };
 use crate::time;
 
@@ -62,6 +64,7 @@ pub fn home_network(answers: &Answers, read: &str, cloud: Cloud) -> Option<HomeN
         devices: devices(&answers.devices),
         profiles: profiles(&answers.profiles),
         events: events(&answers.events),
+        joins_and_leaves: Vec::new(),
     })
 }
 
@@ -151,6 +154,8 @@ fn internet(answers: &Answers) -> Internet {
         },
         devices: number(n, "/clients/count"),
         usage: usage(&answers.usage),
+        probe: None,
+        history: InternetHistory::default(),
     }
 }
 
@@ -242,6 +247,7 @@ fn node(record: &Value, answers: &Answers) -> Option<Node> {
         light: light(record),
         power: text(record, "/power_info/power_source"),
         usage: answers.node_usage.get(&id).and_then(usage),
+        history: NodeHistory::default(),
         id,
     })
 }
@@ -304,6 +310,7 @@ fn radios(record: &Value) -> Vec<Radio> {
                 bssid: list(record, "/bssids_with_bands")
                     .find(|b| text(b, "/band").as_deref() == Some(key))
                     .and_then(|b| text(b, "/ethernet_address")),
+                history: RadioHistory::default(),
             }
         })
         .collect()
@@ -357,6 +364,17 @@ fn light(record: &Value) -> Option<Light> {
 }
 
 /// The devices on now, by node, the strongest signal first.
+/// Marks the device that's this machine, the one whose hardware address
+/// is among `own`, this machine's, so the shell and the CLI can put it
+/// first. It's matched by address rather than by the Wi-Fi link's BSSID,
+/// so a machine on Ethernet is found too, and the address is the one the
+/// interface has now, which is what eero sees even when it's private.
+pub fn mark_this_machine(model: &mut HomeNetwork, own: &[String]) {
+    for device in &mut model.devices {
+        device.this_machine = own.iter().any(|mac| mac.eq_ignore_ascii_case(&device.mac));
+    }
+}
+
 fn devices(answer: &Value) -> Vec<Device> {
     let mut devices: Vec<Device> = list(answer, "")
         .filter(|record| flag(record, "/connected") == Some(true))
@@ -375,6 +393,7 @@ fn device(record: &Value) -> Option<Device> {
     let frequency_mhz = number(link, "/frequency");
     Some(Device {
         mac: text(record, "/mac")?,
+        this_machine: false,
         name: text(record, "/display_name"),
         nickname: text(record, "/nickname"),
         hostname: text(record, "/hostname"),
@@ -432,6 +451,8 @@ fn device(record: &Value) -> Option<Device> {
         profile: profile_id(record.get("profile")),
         paused: flag(record, "/paused"),
         blocked: flag(record, "/blacklisted"),
+        history: DeviceHistory::default(),
+        roams: Vec::new(),
     })
 }
 
@@ -609,52 +630,19 @@ fn signed<T: TryFrom<i64>>(value: &Value, at: &str) -> Option<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::golden::{MODEL, differences};
-    use crate::model::CloudState;
+    use crate::golden::{MODEL, READ, answering, contract, contract_answers, differences, history};
     use serde_json::json;
 
-    /// The `data` of a contract file.
-    fn contract(file: &str) -> Value {
-        let path = format!("{}/contract/{file}", env!("CARGO_MANIFEST_DIR"));
-        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-        let answer: Value = serde_json::from_str(&text).unwrap();
-        answer["data"].clone()
-    }
-
-    fn by_node(file: impl Fn(&str) -> String) -> BTreeMap<String, Value> {
-        ["2001", "2002", "2003"]
-            .into_iter()
-            .map(|id| (id.to_owned(), contract(&file(id))))
-            .collect()
-    }
-
-    fn contract_answers() -> Answers {
-        Answers {
-            network: contract("network.json"),
-            devices: contract("net.devices.json"),
-            connections: by_node(|id| format!("eero.{id}.connections.json")),
-            speed_tests: contract("net.speedtest.json"),
-            thread: contract("net.thread.json"),
-            outages: contract("net.cellular_backup_events.json"),
-            usage: contract("usage.json"),
-            node_usage: by_node(|id| format!("usage.eero.{id}.json")),
-            profiles: contract("net.profiles.json"),
-            events: contract("net.app_events.json"),
-        }
-    }
-
-    fn answering() -> Cloud {
-        Cloud {
-            state: CloudState::Answering,
-            since: "2026-11-07T22:54:43Z".into(),
-            reason: None,
-        }
-    }
-
     #[test]
-    fn the_contract_reads_into_the_model() {
-        let read = home_network(&contract_answers(), "2026-11-07T22:54:43Z", answering())
-            .expect("the network was read");
+    fn the_contract_and_its_history_read_into_the_model() {
+        let mut read =
+            home_network(&contract_answers(), READ, answering()).expect("the network was read");
+        // The model is the one the daemon keeps on the machine that's the
+        // first laptop, so the views have this machine to put first.
+        mark_this_machine(&mut read, &["02:00:00:00:00:0e".to_owned()]);
+        history()
+            .draw(&mut read, time::to_unix(READ).unwrap())
+            .unwrap();
 
         let out = differences(
             &serde_json::to_value(read).unwrap(),
@@ -666,6 +654,32 @@ mod tests {
             "differs from home-network.json:\n{}",
             out.join("\n")
         );
+    }
+
+    #[test]
+    fn this_machine_is_the_device_with_one_of_its_addresses() {
+        let mut read =
+            home_network(&contract_answers(), READ, answering()).expect("the network was read");
+
+        mark_this_machine(
+            &mut read,
+            &[
+                "02:00:00:00:00:99".to_owned(),
+                "02:00:00:00:00:0E".to_owned(),
+            ],
+        );
+
+        let here: Vec<&str> = read
+            .devices
+            .iter()
+            .filter(|device| device.this_machine)
+            .map(|device| device.mac.as_str())
+            .collect();
+        assert_eq!(here, ["02:00:00:00:00:0e"]);
+
+        mark_this_machine(&mut read, &[]);
+
+        assert!(read.devices.iter().all(|device| !device.this_machine));
     }
 
     #[test]

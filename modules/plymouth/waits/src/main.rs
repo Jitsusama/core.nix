@@ -4,9 +4,12 @@
 //! or shutdown that stalled showed its words and nothing else. This follows
 //! systemd's jobs over its private socket, which is there from the first
 //! moment to the last, and once a job has run a few seconds (jobs.rs) sends
-//! Plymouth `waiting:` and the unit's description, the words systemd's own
-//! console uses for it; `waiting:` alone once nothing is slow. The theme
-//! says it in its own words.
+//! Plymouth `waiting:` and what kind of thing it waits on, `session` for a
+//! person's session and `other` for anything else; `waiting:` alone once
+//! nothing is slow. The theme says it in its own words, since a unit's
+//! description is written for whoever reads systemd's console, not for the
+//! person at the screen. The unit's name and description go to the journal,
+//! for whoever looks into why it was slow.
 //!
 //! It ends when Plymouth quits after a boot, and with everything else at a
 //! shutdown. Started while the system is up with no splash to tell, as
@@ -112,7 +115,8 @@ fn watch() -> Result<(), Box<dyn Error>> {
                 }
                 Next::Name(unit) => {
                     asked = true;
-                    tell(&format!("waiting:{}", described(&bus, &unit)));
+                    eprintln!("<6>waiting on {unit} ({})", described(&bus, &unit));
+                    tell(&format!("waiting:{}", kind(&unit)));
                 }
                 Next::Clear => tell("waiting:"),
                 Next::Nothing => break,
@@ -209,6 +213,19 @@ fn running(bus: &Channel, id: u32) -> Option<bool> {
     Some(step == "running")
 }
 
+/// What kind of thing a unit is, as the theme says it: a person's session,
+/// which is their user manager or a login's scope, or anything else.
+fn kind(unit: &str) -> &'static str {
+    // A unit's name is case-sensitive, as systemd matches it.
+    let session = unit
+        .strip_suffix(".service")
+        .is_some_and(|name| name.starts_with("user@"))
+        || unit
+            .strip_suffix(".scope")
+            .is_some_and(|name| name.starts_with("session-"));
+    if session { "session" } else { "other" }
+}
+
 /// A unit's description, or its name where it has none.
 fn described(bus: &Channel, unit: &str) -> String {
     ask(bus, ROOT, MANAGER, "GetUnit", |call| call.append1(unit))
@@ -299,6 +316,20 @@ mod tests {
         assert_eq!(message[2] as usize, message.len() - 3);
         assert!(message.len() - 3 <= 255);
         assert!(std::str::from_utf8(&message[3..message.len() - 1]).is_ok());
+    }
+
+    #[test]
+    fn a_session_is_told_apart_from_anything_else() {
+        assert_eq!(kind("user@1000.service"), "session");
+        assert_eq!(kind("session-2.scope"), "session");
+        for unit in [
+            "docker.service",
+            "user-runtime-dir@1000.service",
+            "home.mount",
+            "user@1000.slice",
+        ] {
+            assert_eq!(kind(unit), "other", "{unit}");
+        }
     }
 
     #[test]

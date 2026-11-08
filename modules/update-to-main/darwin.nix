@@ -32,9 +32,11 @@ in
       socket = "/var/run/update-to-main.sock";
       ended = "/var/run/update-to-main.last.json";
       profile = "/nix/var/nix/profiles/system";
-      # A Mac boots no NixOS system, and says its power through pmset.
+      # A Mac boots no NixOS system, says its power through pmset, and
+      # keeps no CPU pressure, so nothing it builds elsewhere builds here.
       booted = "/var/empty";
       power_supplies = "/var/empty";
+      cpu_pressure = "/var/empty";
       tools = {
         nix = "${nixBin}/nix";
         nix_env = "${nixBin}/nix-env";

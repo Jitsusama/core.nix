@@ -29,9 +29,11 @@ mod cloud;
 mod daemon;
 #[cfg(test)]
 mod golden;
+mod history;
 mod listeners;
 mod live;
 mod model;
+mod probe;
 mod read;
 mod schedule;
 mod session;

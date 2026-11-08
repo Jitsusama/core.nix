@@ -62,7 +62,7 @@ def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     # Its room is measured as it's said and its ink as it's drawn, so they
     # may round apart by a pixel.
     assert abs(time["width"] - time["inked"]) <= 1, f"the time keeps more room: {time}"
-    desktop.photograph("launcher")
+    desktop.shoot("launcher")
     machine.send_key("ret")
     # The first window opened can take as long as the first GTK one.
     machine.wait_until_succeeds(
@@ -163,7 +163,7 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("tuesday", selecting="Notes for Tuesday")
-    desktop.photograph("launcher-window")
+    desktop.shoot("launcher-window")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
@@ -230,7 +230,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     # The window used last is chosen as it opens, and this one isn't
     # there to choose.
     tab_to("", scratch[-1])
-    desktop.photograph("launcher-windows")
+    desktop.shoot("launcher-windows")
     went("Scratch 25")
     tab_to("", "Notes for Tuesday")
     went("Notes for Tuesday")
@@ -284,14 +284,14 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
         desktop.type_in(verb)
 
     into_notes("copy")
-    desktop.photograph("launcher-verbs")
+    desktop.shoot("launcher-verbs")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert desktop.as_account("wl-paste --no-newline") == "Notes for Tuesday"
 
     into_notes("move")
     desktop.step_in("ret")
-    desktop.photograph("launcher-target")
+    desktop.shoot("launcher-target")
     # The step ends in normal, where Return moves it to the workspace.
     machine.send_key("ret")
 
@@ -888,12 +888,12 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # What the layer holds follows its name, and how many keys stand at its right.
     desktop_row = desktop.showing()["things"][0]["reads"]
     assert re.fullmatch(r"Desktop \u00b7 Windows, Columns \u00b7 \d+", desktop_row), desktop_row
-    desktop.photograph("launcher-shortcut-layers")
+    desktop.shoot("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
     desktop.follow()
     groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
     desktop.launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
-    desktop.photograph("launcher-shortcut-groups")
+    desktop.shoot("launcher-shortcut-groups")
     # What's typed there finds a group by its name, before every chord in
     # the layer that its words start, flat; a group as big as Workspaces
     # holds groups of its own, then what none of them takes.
@@ -913,7 +913,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"] and shown["rows"] == layers)
     # At the top, what's typed finds a chord in any layer, flat.
     desktop.type_in("paste")
-    desktop.photograph("launcher-shortcuts")
+    desktop.shoot("launcher-shortcuts")
     for _ in "paste":
         machine.send_key("backspace")
     # Each field cleared before the next is typed, or a busy shell takes
@@ -928,7 +928,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     assert not below["selected"]["chord"].startswith("3 "), below["selected"]
     assert "3 fingers up" in below["footer"], below["footer"]
     assert below["rows"].count("Go to the workspace below") == 1, below["rows"]
-    desktop.photograph("launcher-swipes")
+    desktop.shoot("launcher-swipes")
     for _ in swipe:
         machine.send_key("backspace")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
@@ -974,7 +974,7 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
     assert desktop.showing()["path"] == ["Shortcuts", "Terminal"]
     assert desktop.showing()["rows"][:2] == ["Tabs", "Tab Numbers"]
-    desktop.photograph("launcher-shortcuts-over-kitty")
+    desktop.shoot("launcher-shortcuts-over-kitty")
     # Return steps into a group, and - back out to the
     # layers, the terminal's first and selected, saying it's the window's,
     # and the desktop's next.

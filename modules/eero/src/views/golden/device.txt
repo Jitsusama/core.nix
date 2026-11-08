@@ -11,10 +11,10 @@ node         Study · Wi-Fi
 network      home · WPA2 · subnet main · guest no
 radio        5 GHz · channel 149 · 5,745 MHz · BSSID 02:00:00:00:00:09
 signal       −57 dBm · SNR 51 dB · score 1.000 · 5 of 5 bars
-rx           1200.9 Mbit/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6
-tx           1200.9 Mbit/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6
+rx           1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6
+tx           1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6
 retries      0 % · idle 0 ms
 packets      rx 31,747,180 · tx 52,879,944 · all 84,627,124 · tx retries 3,315 · rx drops 0
 per million  tx retransmitted 32 · tx failed 2,967 · rx dropped 0
-speed        down 11.5 Mbit/s · up 9.9 Mbit/s
+speed        down 11.5 Mb/s · up 9.86 Mb/s
 profile      – · paused no · blocked –

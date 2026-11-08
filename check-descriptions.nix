@@ -414,13 +414,17 @@
     clippy finds nothing in eero or its tests
   '';
   eero-reads-what-eero-says = ''
-    eero draws the home network from every answer in its contract exactly as home-network.json
-    holds it, its times in UTC and a read not yet made as unknown, and tells eero failing, refusing
-    and a session aged past refreshing apart; its daemon reads the network every 30 seconds while
-    anyone listens and every 5 minutes otherwise and the rest at their own paces, keeps the last
-    figures when eero can't be reached, saying since when and why, and writes each listener the
-    model on joining and on every change; and it sends the conferencing setting as a bare boolean,
-    counted taken only once eero reads it back; every view's page matches its golden one, saying
+    eero draws the home network from every answer in its contract and a short history exactly as
+    home-network.json holds it, its times in UTC and a read not yet made as unknown, and tells eero
+    failing, refusing and a session aged past refreshing apart; its daemon reads the network every
+    30 seconds while anyone listens and every 5 minutes otherwise and the rest at their own paces,
+    keeps the last figures when eero can't be reached, saying since when and why, and writes each
+    listener the model on joining and on every change; it keeps 30 days of what moves, a sample at
+    most every 25 seconds, and a coming, going or roam only between reads 10 minutes apart at
+    most, and draws the last hour's series into a model a busy hour keeps under 350 kB; it times
+    its own look at the internet, the gateway node only from home, and an outage from the first
+    look out to the first back; and it sends the conferencing setting as a bare boolean, counted
+    taken only once eero reads it back; every view's page matches its golden one, saying
     when eero isn't answering or the reading is old, colouring only on a terminal, each view's JSON
     is the record's own slice, and a watch draws its view again from each model the socket writes
   '';
@@ -591,9 +595,6 @@
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
   '';
-  icon-marks-past-the-basic-plane = ''
-    an icon mark past U+FFFF reaches the shell whole
-  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows
@@ -742,6 +743,9 @@
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
+  '';
+  marks-past-the-basic-plane = ''
+    a mark past U+FFFF reaches the shell whole
   '';
   memory-modules-passes-clippy = ''
     clippy finds nothing in memory-modules or its tests
@@ -1023,6 +1027,14 @@
   onepassword-answers-op = ''
     1Password's command-line tool, op, runs setgid in the onepassword-cli group, so the app answers it
   '';
+  onepassword-manager-passes-clippy = ''
+    clippy finds nothing in 1Password's manager for Passwords or its tests
+  '';
+  onepassword-manager-passes-no-secret-on = ''
+    1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
+    value and no password's history, reads a secret only for the one detail asked, and says
+    1Password's categories and kinds in Passwords' own words
+  '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
@@ -1040,15 +1052,20 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
-  palette-graphs-draw-in-braille = ''
-    a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the
-    right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
-    figure wears no glyph
+  passwords-holds-no-secret = ''
+    the passwords daemon holds every entry each password manager lists without a secret, even one
+    given with its secrets on, gives a secret only to the client that asked to see it or to the
+    clipboard marked sensitive and cleared when its time is up, says a one-time code's period, says
+    a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and
+    refuses an ask or a kind it doesn't know
   '';
-  palette-rows-keep-their-words-apart = ''
-    a palette's row and field keep their words apart and inside them, however long, ending what
-    doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
-    ends and says all it has room for
+  passwords-passes-clippy = ''
+    clippy finds nothing in the passwords daemon or its tests
+  '';
+  passwords-runs-each-password-manager = ''
+    on a machine with 1Password, the passwords daemon runs 1Password's manager through the system's
+    op on the daemons' socket systemd holds, copies with wl-copy and writes no core dump, and the
+    launcher's Passwords knows 1Password's program
   '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five
@@ -1591,6 +1608,11 @@
     the guide's development shell holds the QEMU with canokey its VM tests boot under, so the
     shell's root keeps it from being collected and compiled again
   '';
+  the-home-network-says-each-figure = ''
+    the Home Network place lists the gateway node first and each node after the one it hangs
+    from, its devices under it, and says every figure the eero contract places in the internet's,
+    a node's and a device's drawer, each in its own unit, none eero didn't give
+  '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
@@ -1717,6 +1739,11 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
+  recent-means-one-thing = ''
+    Recent lists at most nine things, newest first across its sources, each once where it's
+    newest, none already shown above it, an undated source after the dated in its own order, and
+    its row says how many and the first one's name, none while empty and an ellipsis while waiting
+  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
@@ -1798,6 +1825,16 @@
     it, a void above a list's first row is told from a list scrolled down, and the whole is sent
     in OTLP's JSON mapping
   '';
+  the-launchers-graphs-draw-in-braille = ''
+    a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the
+    right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
+    figure wears no glyph
+  '';
+  the-launchers-rows-keep-their-words-apart = ''
+    a launcher row and field keep their words apart and inside them, however long, ending what
+    doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
+    ends and says all it has room for
+  '';
   the-lid-shuts-when-the-hinge-agrees = ''
     lid-hinge believes a shut switch once the hinge last read nearly shut, a light sensor lit at
     the switch reads dark, or none was lit, doubts it otherwise, and reads the hinge's buffer
@@ -1817,8 +1854,8 @@
     the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
     once looked at, list the processes once
   '';
-  the-margins-glyphs-stand-level = ''
-    every glyph in the margin stands one height on the gap's middle line, read from the right by
+  the-margins-marks-stand-level = ''
+    every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
     waits for its card, and a wait shows once the same one lasts; each stands in a square cell the
     gap's size with the same room all round, and What's on points at the row the keys are on
@@ -1938,6 +1975,11 @@
     action and copy, the (y/n) ask once before what can't be put back, and yG or dG over 400 rows
     within half a key's 4 ms
   '';
+  the-sandboxes-door-trusts-no-one = ''
+    the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and
+    takes its caller as untrusted, so a sandbox passed it rather than the daemon's socket can't
+    make itself root
+  '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
     saver, so a shutdown with the lid shut loses nothing set since
@@ -2049,6 +2091,14 @@
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
   '';
+  the-shutdown-names-the-running-generation = ''
+    a shutdown's splash names the newest generation that is the running system, a specialisation's
+    included, and none for a system never made one
+  '';
+  the-shutdown-splash-finds-its-serif = ''
+    the serif the splash sets its words in is among the system's fonts, where a shutdown's splash
+    looks for it
+  '';
   the-sign-in-consoles-wear-the-theme = ''
     the sign-in consoles are kmscon in the account's mono face, its padding and terminal colours,
     doubled on the XPS 14, and Ctrl+Shift+plus zooms
@@ -2072,7 +2122,7 @@
     places by its capitals measured at each scale
   '';
   the-splash-reads-the-generation-from-the-entry = ''
-    the splash is told the generation only from an entry whose name carries one
+    the boot's splash is told the generation only from an entry whose name carries one
   '';
   the-splash-stays-until-niri-draws = ''
     the splash lets go of the screen as greetd starts, keeping the GPU open, and quits ten seconds
@@ -2284,10 +2334,10 @@
   vm-boot-says-it-wakes-from-hibernation = ''
     the graphical role, hibernated to a swap file on btrfs inside LUKS and started from its
     image with the passphrase typed at the theme's ask, shows the theme's words for a restore
-    on the first, middle and last photographs taken while the kernel reads the image; on each
+    on the first, middle and last shots taken while the kernel reads the image; on each
     of two screens of different sizes, shows the theme's empty track once every program is
     frozen, then core's kernel filling it as it reads, its bar exactly on the track, partly
-    filled in some photograph, never going back and full once the image is read; comes back
+    filled in some shot, never going back and full once the image is read; comes back
     with what it held in memory, and its hook says how long the restore took after the disk
     opened
   '';

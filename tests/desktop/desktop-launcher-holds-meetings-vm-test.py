@@ -95,7 +95,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)
-    desktop.photograph("launcher-calendar-typed")
+    desktop.shoot("launcher-calendar-typed")
     desktop.close_launcher()
     # In Programs, where nothing is listed under it, it names its next, the time and the name
     # apart.
@@ -113,7 +113,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
             is not None
         )
     )
-    desktop.photograph("launcher-calendar-in-programs")
+    desktop.shoot("launcher-calendar-in-programs")
     desktop.close_launcher()
 
 
@@ -162,7 +162,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
             and shown["drawer"]["drawn"] == "Design Review"
         )
     )
-    desktop.photograph("launcher-meeting-drawer")
+    desktop.shoot("launcher-meeting-drawer")
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
     machine.wait_until_succeeds(

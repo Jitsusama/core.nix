@@ -35,6 +35,10 @@ pub struct Presence {
     pub quest: Option<String>,
     #[serde(default)]
     pub title: String,
+    /// The groups it hears, an orchestrator's among them as
+    /// `#orchestration/<its address>`.
+    #[serde(default)]
+    pub groups: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -266,6 +270,7 @@ mod tests {
             orchestrated_by: None,
             quest: None,
             title: String::new(),
+            groups: vec![],
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {

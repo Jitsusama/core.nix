@@ -89,7 +89,7 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("keep awake")
-    desktop.photograph("launcher-keep-awake")
+    desktop.shoot("launcher-keep-awake")
     # Keeping it awake changes something, so Return would stay; Ctrl+]
     # then Return does it and closes.
     desktop.follow()
@@ -112,7 +112,7 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.photograph("launcher-home-awake")
+    desktop.shoot("launcher-home-awake")
     desktop.type_in("let it sleep")
     # Return from the find lands on it, since it changes how things stand, and a second does it.
     desktop.land()
@@ -175,12 +175,12 @@ def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_
             "echo chrome > /run/camera-holders/.camera"
             " && mv /run/camera-holders/.camera /run/camera-holders/camera"
         )
-    desktop.photograph("notice-camera")
+    desktop.shoot("notice-camera")
     # A card or a mark: once the card goes, the glyph shows, on air, so
     # strong, and the card wasn't missed, since the glyph says it.
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.reported("sets margin ", margin_sets(("camera", "onAir", "strong")), since)
-    desktop.photograph("margin-camera")
+    desktop.shoot("margin-camera")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("camera")
@@ -245,7 +245,7 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
                 "now": now,
                 "title": title,
                 "value": "resets 14:00",
-                # As spend-watch words it (tokens.rs), so the photographs
+                # As spend-watch words it (tokens.rs), so the shots
                 # read as Joel's card will.
                 "context": "at $300 an hour · 92% used",
                 "quiet": {"title": title, "value": "resets 14:00", "context": ""},
@@ -259,14 +259,14 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
     since = desktop.mark()
     with desktop.told("shows card Tokens Run Out in About 40 Min"):
         watch_says("Tokens Run Out in About 40 Min", "hour", now=False)
-    desktop.photograph("notice-tokens")
+    desktop.shoot("notice-tokens")
     # A minute on, the same card says so in place.
     with desktop.told("rewords Tokens Run Out in About 39 Min"):
         watch_says("Tokens Run Out in About 39 Min", "hour", now=False)
     # A level lower raises the same card again, urgent.
     with desktop.told("raises Tokens Run Out in About 14 Min"):
         watch_says("Tokens Run Out in About 14 Min", "minutes", now=True)
-    desktop.photograph("notice-tokens-minutes")
+    desktop.shoot("notice-tokens-minutes")
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)}"
@@ -313,7 +313,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     desktop.reported("sets margin ", margin_points("awake"), since)
     # Settled, as Joel sees it.
     desktop.held_still()
-    desktop.photograph("launcher-whats-on")
+    desktop.shoot("launcher-whats-on")
     since = desktop.mark()
     desktop.close_launcher()
     desktop.reported("sets margin ", margin_points(""), since)
@@ -367,7 +367,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     with desktop.told("held Held back"):
         desktop.as_account("notify-send 'Held back' 'until it ends'")
     machine.fail(desktop.in_session(NOTICES))
-    desktop.photograph("margin-quiet")
+    desktop.shoot("margin-quiet")
     # Its row ends it, and Ctrl+] offers the rest, what's held last:
     # An Hour More comes first only when it ends by itself.
     now_down_to(desktop, "Do Not Disturb")
@@ -376,7 +376,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
-    desktop.photograph("launcher-held")
+    desktop.shoot("launcher-held")
     desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")
     # From the find, Return lands on it, since it changes how things stand, and a second does it.
@@ -398,7 +398,7 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
         desktop.as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
-    desktop.photograph("margin-waiting")
+    desktop.shoot("margin-waiting")
     # Now opens on Needs You, its first row, however much the notices
     # want Joel; they're reached by moving down to them.
     machine.send_key("meta_l-o")
@@ -423,7 +423,7 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     assert today["reads"].startswith(f"Date \u00b7 {date}"), today
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
-    desktop.photograph("launcher-from-margin")
+    desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
     # Opening them counted them seen, so nothing's waiting.
@@ -443,7 +443,7 @@ def forgets_then_brings_back(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["operated"].endswith("1 done \u00b7 u brings it back")
     )
-    desktop.photograph("launcher-notice-done")
+    desktop.shoot("launcher-notice-done")
     assert "d forget" not in desktop.showing()["selected"]["told"], desktop.showing()
     with desktop.told("undid 1"):
         desktop.machine.send_chars("u")
@@ -492,7 +492,7 @@ def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Deskto
         lag_says("", "", 0)
     lag_says("memory", "apps", LAG_LASTS + 10)
     desktop.reported("sets margin ", margin_sets(("lag", "leftOn", "muted")), since)
-    desktop.photograph("margin-lag")
+    desktop.shoot("margin-lag")
     # Over, it goes.
     lag_says("", "", 0)
     desktop.reported("holds margin", lambda rest: "lag" not in rest.split(), since)
@@ -514,7 +514,7 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
     )
-    desktop.photograph("margin-muted")
+    desktop.shoot("margin-muted")
     # In Now it's the Muted switch, named for whose and saying yes
     # (docs/design.md: "A switch is one row that keeps its name as it
     # flips"), never an Unmute It act.
@@ -556,16 +556,16 @@ def test_dictation_says_what_its_doing_and_when_it_heard_nothing(desktop: Deskto
     desktop.as_account("dictation toggle")
     desktop.reported("says dictation listening", lambda rest: rest == "", since)
     desktop.wait_for_surface("dictation")
-    desktop.photograph("dictation-listening")
+    desktop.shoot("dictation-listening")
     # Typing shows once it lasts, and a press meanwhile says it's still
     # writing; the stand-in types for five seconds.
     desktop.as_account("dictation toggle")
     desktop.reported("says dictation typing", lambda rest: rest == "", since)
     desktop.as_account("dictation toggle")
     desktop.reported("says dictation still writing", lambda rest: rest == "", since)
-    desktop.photograph("dictation-still-writing")
+    desktop.shoot("dictation-still-writing")
     desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
-    desktop.photograph("dictation-heard-nothing")
+    desktop.shoot("dictation-heard-nothing")
     machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=10))
 
 
@@ -617,7 +617,7 @@ def test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is(
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     # A track that starts by itself shows its card a moment, which
-    # goes before the margin is photographed.
+    # goes before the margin is shot.
     with desktop.told("drawn notifications"), desktop.told("drawn margin"):
         desktop.as_account(
             "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
@@ -626,11 +626,11 @@ def test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is(
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
     )
-    desktop.photograph("margin-playing")
+    desktop.shoot("margin-playing")
     # The play key pauses it, and the card says what was paused.
     with desktop.told("drawn notifications"):
         desktop.as_account("qs ipc call music toggle")
-    desktop.photograph("music-card")
+    desktop.shoot("music-card")
     # Paused, nothing's playing, so the margin goes; the card goes by itself.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
@@ -643,7 +643,7 @@ def test_caps_lock_shows_in_the_margin_while_its_on(desktop: Desktop) -> None:
     machine.send_key("caps_lock")
     machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=timedelta(seconds=10))
     desktop.wait_for_surface("margin")
-    desktop.photograph("margin-capitals")
+    desktop.shoot("margin-capitals")
     machine.send_key("caps_lock")
     machine.wait_until_succeeds(f"grep -qx 0 {CAPITALS}", timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))

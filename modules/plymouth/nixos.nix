@@ -341,6 +341,15 @@ let
     forced = "ending what wouldn't stop";
     leftovers = "waiting on the last programs";
   };
+  # The words a slow job is said in, by the kind ./waits sends and whether
+  # the machine is starting or stopping. A unit's own description is
+  # written for systemd's console, so it goes to the journal instead.
+  waitings = {
+    "session start" = "waiting on your session to start";
+    "session stop" = "waiting on your session to close";
+    "other start" = "waiting on something to start";
+    "other stop" = "waiting on something to stop";
+  };
 
   # What's booting, small at the bottom left.
   about =
@@ -349,7 +358,7 @@ let
       inherit (config.boot.kernelPackages.kernel) version;
     in
     "NixOS ${release}  ·  Linux ${version}";
-  # The generation after it, which only the boot knows: the line with the
+  # The generation after it, which only the machine knows: the line with the
   # word that comes before the number, and each digit, which the script puts
   # together as it's told the number. The face is monospaced, so a digit
   # sits a digit's width from the one before, as one line would have it.
@@ -371,6 +380,11 @@ let
       lib.mapAttrsToList (key: text: ''
         stages["${key}"] = "${text}";
       '') stages
+    );
+    waits = lib.concatStrings (
+      lib.mapAttrsToList (key: text: ''
+        waits["${key}"] = "${text}";
+      '') waitings
     );
     # Measured as the pictures are drawn, and put in as they are.
     measured = null;
@@ -476,6 +490,30 @@ let
       ${plymouth} update --status="generation:$number"
     fi
   '';
+
+  # Tells a shutdown's splash the generation that's running, which the
+  # restart boots, rather than the one the boot loader started days ago:
+  # the newest of the profile's links that is /run/current-system, itself or
+  # as one of its specialisations. A system switched to without being made a
+  # generation, as `switch-to-configuration test` leaves it, says nothing.
+  tellsRunning = plymouth: ''
+    running=$(readlink -f /run/current-system)
+    number=
+    for link in /nix/var/nix/profiles/system-*-link; do
+      found=''${link##*/system-}
+      found=''${found%-link}
+      case $found in "" | *[!0-9]*) continue ;; esac
+      for system in "$link" "$link"/specialisation/*; do
+        if [ "$(readlink -f "$system")" = "$running" ] \
+          && { [ -z "$number" ] || [ "$found" -gt "$number" ]; }; then
+          number=$found
+        fi
+      done
+    done
+    if [ -n "$number" ]; then
+      ${plymouth} update --status="generation:$number"
+    fi
+  '';
 in
 {
   config = lib.mkIf (theme != null) {
@@ -505,10 +543,16 @@ in
       # status sent before the splash is made, as the generation is when
       # the graphics card comes late, reached nothing and was lost, so the
       # second (statuses-kept.patch) keeps each for a splash made later.
+      # A laptop's panel under a shut lid still reads as connected, so the
+      # splash laid itself out and chose its size for it beside a monitor;
+      # the third (shut-panel-left-out.patch) leaves it out while another
+      # screen is there, reading the lid from ACPI's button module, loaded
+      # in the initrd below.
       package = pkgs.plymouth.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
           ./frame-timer.patch
           ./statuses-kept.patch
+          ./shut-panel-left-out.patch
         ];
       });
       theme = "jitsusama";
@@ -521,11 +565,19 @@ in
         DeviceScale=1
       '';
     };
+    # The initrd's fontconfig has only the face above, but a shutdown's
+    # splash is started from the system, whose fontconfig is the machine's:
+    # without the cut there, what the shutdown says fell back to a sans.
+    fonts.packages = [ serifText ];
+
     # systemd writes a line for each unit to the console unless told
     # otherwise, and the first woke the console over the firmware's logo,
     # so its lines showed until the GPU's own screen came for Plymouth, 1.8 s
     # later, and again as a shutdown began. A failure is still written.
     boot.kernelParams = [ "systemd.show_status=error" ];
+    # The lid's state, which shut-panel-left-out.patch reads, is ACPI's
+    # button module's, a module of its own in the kernels here.
+    boot.initrd.kernelModules = [ "button" ];
 
     # The kernel stops every program before it reads a hibernation's image
     # back, Plymouth with them, so the screen keeps the last frame drawn until
@@ -608,9 +660,10 @@ in
         # From the switch to the disk's system until Plymouth quits, and
         # from a shutdown's start to its end. It needs nothing started
         # first, and stays out of the way of every other unit's order.
-        # A shutdown's splash is a new one, so it's told the generation again.
+        # A shutdown's splash is a new one, so it's told the generation
+        # again: the one running, which the restart boots.
         plymouth-generation = {
-          description = "Tell Plymouth the generation the boot loader started";
+          description = "Tell Plymouth the generation that's running";
           wantedBy = [
             "halt.target"
             "kexec.target"
@@ -620,7 +673,7 @@ in
           after = map (unit: "${unit}.service") shutdowns;
           unitConfig.DefaultDependencies = false;
           serviceConfig.Type = "oneshot";
-          script = tellsGeneration (lib.getExe' config.boot.plymouth.package "plymouth");
+          script = tellsRunning (lib.getExe' config.boot.plymouth.package "plymouth");
         };
 
         plymouth-waits = {

@@ -6,6 +6,7 @@
   holds,
   lib,
   onLinux,
+  passesClippy,
   pkgs,
   ...
 }:
@@ -73,4 +74,14 @@ onLinux {
     holds "onepassword-answers-op"
       "1Password's command-line tool isn't setgid in the onepassword-cli group, so the app won't answer it."
       (op.group or null == "onepassword-cli" && op.setgid or false && !(op.setuid or false));
+
+  # 1Password's manager for Passwords tests itself as it builds, against
+  # op's own JSON: an entry carries no secret op gives, a password's
+  # history included, a secret is read only for the detail asked, and
+  # 1Password's words become Passwords' own.
+  onepassword-manager-passes-no-secret-on = pkgs.callPackage ./manager/package.nix { };
+  # clippy finds nothing in 1Password's manager, its tests included.
+  onepassword-manager-passes-clippy = passesClippy "onepassword-manager-passes-clippy" (
+    pkgs.callPackage ./manager/package.nix { }
+  );
 }

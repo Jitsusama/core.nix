@@ -472,6 +472,11 @@ in
           # reclaims for itself until the OOM killer ends one.
           "--revive"
           "jobs.slice"
+          # A window holding a session others report to, as the harness's
+          # mesh says, keeps a memory floor and is the last systemd-oomd
+          # ends, and every other pi gives way first to the OOM killer.
+          "--orchestrators"
+          "%h/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
         ];
         Restart = "on-failure";
         RestartSec = 5;

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Runs inside cage: opens a long markdown file in the reader, presses
 # Neovim's keys through wtype and reads where each took the view from the
-# reader's key log (READER_KEYS_LOG), photographs the top of the page once
+# reader's key log (READER_KEYS_LOG), shoots the top of the page once
 # its heading is drawn, and closes it with :q. cage doesn't pass on how this
 # ended, so it leaves ./passed once every key did what it should.
 #

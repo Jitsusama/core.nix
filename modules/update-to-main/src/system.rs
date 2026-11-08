@@ -253,13 +253,13 @@ fn here(
     let Some(here) = &config.here else {
         return Err(apart);
     };
-    let busy = match load() {
-        Some(load) if load < here.below_load => None,
-        Some(load) => Some(format!(
-            "the load here is {load:.1}, not below {}",
-            here.below_load
+    let busy = match cpu_pressure(&config.cpu_pressure) {
+        Some(waited) if waited < here.busy_at => None,
+        Some(waited) => Some(format!(
+            "CPU pressure here is {waited:.1}%, not below {}%",
+            here.busy_at
         )),
-        None => Some("the load here can't be read".to_owned()),
+        None => Some("CPU pressure here can't be read".to_owned()),
     };
     if let Some(busy) = busy {
         return Err(Failure {
@@ -277,13 +277,19 @@ fn here(
     told(local, what, pieces)
 }
 
-/// The machine's load averaged over the last minute, when it can be read.
-fn load() -> Option<f64> {
-    let mut loads = [0.0_f64; 1];
-    // SAFETY: getloadavg writes at most as many samples as it's given room
-    // for, here one.
-    let read = unsafe { libc::getloadavg(loads.as_mut_ptr(), 1) };
-    (read == 1).then_some(loads[0])
+/// The share of the last minute that some runnable task waited for a CPU,
+/// from Linux's `some ... avg60=` line, when it can be read. This rather
+/// than the load average, which counts every runnable task and every one
+/// waiting on a disk: on 7 November, with a hundred sessions open, it
+/// held at 34 to 38 all evening, so the one small piece no builder took
+/// waited rather than build. changed-checks gates on the same line.
+fn cpu_pressure(file: &Path) -> Option<f64> {
+    let text = fs::read_to_string(file).ok()?;
+    let some = text.lines().find(|line| line.starts_with("some "))?;
+    some.split_whitespace()
+        .find_map(|field| field.strip_prefix("avg60="))?
+        .parse()
+        .ok()
 }
 
 /// The derivations a dry run says it would build, by their paths.

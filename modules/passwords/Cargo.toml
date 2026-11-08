@@ -1,0 +1,14 @@
+# Joel's passwords, held ready for the shell and the command line: one
+# resident program that runs each password manager as a child and answers
+# over a socket in the shell's daemon interface, and the `passwords`
+# command that asks it (src/main.rs says how).
+[package]
+name = "passwords"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

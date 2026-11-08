@@ -2,10 +2,10 @@
 //! device`, one device with every figure eero has for it.
 
 use super::clock::Clock;
-use super::figures::{count, figure, maybe, rate, said, signed, speed, unknown, words, yes};
+use super::figures::{count, figure, maybe, rate, said, signed, unknown, words, yes};
 use super::marks::marks;
 use super::text::{Align, Line, Page, Table, muted, plain, strong};
-use super::{counted, device_name, facts, head, labelled, location, titled, when};
+use super::{counted, device_name, facts, head, labelled, location, on_node, titled, when};
 use crate::model::{Device, HomeNetwork, Rate};
 
 #[derive(serde::Serialize)]
@@ -53,11 +53,7 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
     }
     let mut first = true;
     for id in groups {
-        let on: Vec<&Device> = model
-            .devices
-            .iter()
-            .filter(|d| d.node.as_deref() == id)
-            .collect();
+        let on = on_node(model, id);
         if on.is_empty() {
             continue;
         }
@@ -137,8 +133,8 @@ pub fn row(table: &mut Table, node: Option<Line>, device: &Device) {
         maybe(tx.and_then(|rate| rate.mbps), rate),
         number(tx.and_then(|rate| rate.mcs)),
         number(tx.and_then(|rate| rate.streams)),
-        maybe(device.speed.down_mbps, speed),
-        maybe(device.speed.up_mbps, speed),
+        maybe(device.speed.down_mbps, rate),
+        maybe(device.speed.up_mbps, rate),
         said(device.address.as_deref()),
     ]);
     table.row(cells);
@@ -263,7 +259,7 @@ fn link_facts(device: &Device) -> Vec<(&'static str, Line)> {
             device.port.as_ref().map_or_else(unknown, |port| {
                 facts(vec![
                     labelled("port", said(port.name.as_deref())),
-                    maybe(port.mbps, |mbps| figure(count(mbps.into()), "Mbit/s")),
+                    maybe(port.mbps, |mbps| rate(mbps.into())),
                 ])
             }),
         ));
@@ -353,8 +349,8 @@ fn carried(model: &HomeNetwork, device: &Device) -> Vec<(&'static str, Line)> {
         (
             "speed",
             facts(vec![
-                labelled("down", maybe(device.speed.down_mbps, speed)),
-                labelled("up", maybe(device.speed.up_mbps, speed)),
+                labelled("down", maybe(device.speed.down_mbps, rate)),
+                labelled("up", maybe(device.speed.up_mbps, rate)),
             ]),
         ),
         (

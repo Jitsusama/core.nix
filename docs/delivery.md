@@ -44,9 +44,12 @@ their mesh addresses; with neither, it writes the card alone.
 
 It keeps the sessions up too. Given `jitsusama.cadence.revive.restart`,
 the words that start a session, each tick first starts again every
-orchestrator and every session of the steward's whose pi died, on its own
-log, puts its window back and tells the steward. A session that quit
-cleanly, or whose quest is done, stays down, and so does one a boot
+orchestrator and every orchestrator's session whose pi died, on its own
+log, puts its window back and tells the steward. An orchestrator is one
+named, or one with none above it that hears its own `#orchestration/`
+group or that another session names, gone or running. A session whose pi
+ended on purpose, by quitting or by a signal such as `mesh_end`'s,
+as pi's own record of the session says, or whose quest is done, stays down, and so does one a boot
 ended, its pi last running in an earlier boot: Joel reopens those when he
 asks. On 2026-11-07 a harness
 install killed 22 sessions as they reloaded between 01:09 and 01:52, and

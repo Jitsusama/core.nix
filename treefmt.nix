@@ -16,7 +16,7 @@
       python.jeepney
       # The noise-cancelled microphone's export, and the stand-in it loads.
       python.numpy
-      # The desktop test reads its photographs with Pillow.
+      # The desktop test reads its shots with Pillow.
       python.pillow
       # The desktop test's window named as Tuple's.
       python.xlib

@@ -757,7 +757,10 @@ it share a column.
 **Chords are drawn key by key:** a key's own glyph where a proper one exists
 (⇧, ↵ and the arrows), its name where none does (Super, Ctrl, Alt, Esc,
 Tab, Space), and a letter as itself, joined by + with the same room on each
-side, all muted, even on the selected row. Super is named, since the NixOS
+side, all muted, even on the selected row. A chord is spaced the same
+wherever it's drawn, in a row, the foot or a drawer's last line ("17 more
+· Ctrl + W l"), by one piece that draws every chord, never as a string
+typed out (VKCF3Z, 2026-11-07). Super is named, since the NixOS
 mark at Note's size reads as a gear (Joel's shot of 2026-11-06 read "⚙ +
 0"), and a chord's figures take Monaspace's slashed zero (`cv01`), in
 chords, the foot's keys and the key list alone, so Super + O never reads as
@@ -1241,7 +1244,15 @@ works the same way everywhere.
   Quest, how that stands said only where it isn't active; its Machine;
   and Working On last, as words, without the title the drawer already
   says (VKCF3Z, 2026-11-07). A row's note says no title again either,
-  and gives way at a whole word, never a letter and an ellipsis. Its figures go by
+  and gives way at a whole word, never a letter and an ellipsis. Agents
+  is a place with sources, as Passwords is (Joel, 2026-11-07: "password
+  management should be a universal concern with 1password being a
+  particular implementation. same with agents"): a session's source is
+  named only while two or more are on the machine, first in its note and
+  never in its name, its glyph the agent's mark whatever runs it; its
+  drawer's eyebrow always says it; typing a source's name finds its
+  sessions; and an act its source can't do is absent, never dimmed.
+  Its figures go by
   OpenTelemetry's gen_ai names: Context ("142k of 200k") and Last Turn
   first, then Model, Turns Today, Tokens and Cache, today's only on the
   day the harness counts them; none is money, so sharing hides none.
@@ -1408,8 +1419,15 @@ works the same way everywhere.
   volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
   Disturb, Keep Awake, the power profile, the desk light, a keyboard's
   light or layer, a program's playing) keeps it open, and its row says
-  the new state at once. Going into one lists its acts, led by Return's
-  own, which there does it and closes, so
+  the new state at once (Joel, 2026-11-07), before the system confirms
+  it. A refusal, or no answer in 5 s, puts the row back and says so in
+  the foot until the next key, naming the act that didn't happen and
+  why: "Home-5G not disconnected · not connected", or "Home-5G not
+  disconnected yet · no answer", the yet saying it may still come.
+  The failure's mark and what didn't happen are in alert and the why
+  muted, and short of room the why gives way from its end. Going into
+  one lists its acts, led by Return's own, which there does it and
+  closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"). **An act that ends or takes away
   never runs on Return**, from any mode: Disconnect It, Forget It, Close
@@ -1568,8 +1586,10 @@ works the same way everywhere.
   picture, a notice's whole words, a mail, a meeting's details) shows
   beside the card's right side, a floating surface like the card, top
   aligned and as tall as it, 12 (m) from it. It's set as a plate, a small
-  page about the selected thing (look 3): an eyebrow saying when or
-  where, at Label, a notice's sender by the name its card signs it with;
+  page about the selected thing (look 3): an eyebrow saying where and
+  then what kind of thing it is, as Type says, at Label while every word
+  is ours and in Note as written once one is the world's, a notice's
+  sender by the name its card signs it with;
   the thing's name at Title, strong; its facts as a name at Note and a
   figure at Figure, the names whole and the
   figures on one edge 24 (xl) beyond the longest, a figure wrapping with
@@ -1580,8 +1600,14 @@ works the same way everywhere.
   list (VKCF3Z, 2026-11-07); a fact that's a sentence stands under its
   name as a paragraph and doesn't decide which. A figure's spark or meter
   draws in its text's ink on a muted track, in warning only past its
-  limit's warn, as Context's past 80%. A fact still being read a fixed
-  placeholder, and none that only says the name again; then its words,
+  limit's warn, as Context's past 80%. The facts run from what moves
+  most, through what describes the thing, to its identifiers last in the
+  Name face (a node, a bus name, a model's code), so the first screen
+  holds what he came for (VKCF3Z, 2026-11-07). A fact still being read a
+  fixed placeholder, and none that only says again the name, or what the
+  row's side or note already says: a speaker's row saying "volume 100%"
+  leaves its Volume fact "0 dB", and a fact equal in every part says it
+  once ("stereo · balanced"); then its words,
   a notice's in the serif upright its card reads them in; then its picture. Its
   text is as far from its frame as the card's (the inset, l and the
   hairline) on every side, its foot included, so it ends at the last
@@ -1722,7 +1748,7 @@ works the same way everywhere.
   what its sender offers, Read, one switch saying yes or no, Forget It, and
   Copy What It Said last. Held, a card's acts are commands, never a row
   stepped into: the cursor card names what its sender offers under its
-  sender, ":reply \u00b7 :play", and : puts them first in the menu, after
+  sender, ":reply · :play", and : puts them first in the menu, after
   Return's going to it; d, :forg and yy do the rest. A
   notice on screen waits while Joel's away, thirty seconds with nothing
   typed or moved (`notices.away`), whatever keeps the screen awake, so one
@@ -2641,6 +2667,7 @@ by them isn't done.
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | What's on: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | What's on: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; What's on says how long and who with |
 | AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's glyph while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and Ctrl+] going into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
+| The home network                          | eero, Quickshell         | both           | nothing | nothing yet: an outage or a node offline will want the margin and a notice | Network › Home Network: the internet as its head (how it stands, its internet provider, the last speed test and when, conferencing and gaming, outages, the nodes by state, the devices eero counts), each node after the one its backhaul hangs from with its devices under it, strongest first, then the profiles; each a thing whose plate holds every figure eero's contract places there, sparked where a history is kept, and whose step in lists them as rows Return copies | Run a Speed Test (:speedtest, Return twice) and Optimize for Conferencing and Gaming (:set sqm), both started through niri as the eero program; every node, device and profile found by its name, a device by its hardware address, hostname or address too | a row's note gives way at a whole word from its end; a plate lays its facts beside their names while all fit, else each under its name; a figure eero didn't give is left out, never guessed |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, then git's notation: * not staged, + staged, ? untracked, together, then ↑N ahead and ↓N behind, together, and nothing when clean and in step; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph; what gives way goes without a trace; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
@@ -2671,6 +2698,18 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A shutdown says what it waits on plainly, in the serif, and names the
+  generation running** (2026-11-07, from Joel's photographs of a restart).
+  The restart's screen read "waiting on User Manager for UID 1000" in a
+  sans, under a foot naming the generation booted days before rather than
+  the one running, which the restart boots. A slow job is now said by its
+  kind in our words: "waiting on your session to close" for a person's
+  session, "waiting on something to stop" for anything else, and to start
+  at a boot; the unit's name goes to the journal, for whoever looks. A
+  shutdown's splash starts from the system, whose fonts lacked the serif's
+  cut, so the cut joins them. The foot at a shutdown names the newest
+  generation that is the running system; a boot keeps the entry it chose.
 
 - **kitty draws every letter at its own size** (2026-11-04, from the m
   of "limit" drawn visibly smaller in the terminal at 1.5). Texture
@@ -2809,7 +2848,8 @@ What each studio round settled, newest first, with the reason.
   shutting down and nothing more, and a restart's screen froze when its last
   stage began. Once a job has run three seconds, the line under those words
   names it, in the body face and in the description systemd gives it:
-  waiting on Docker Application Container Engine. One is named at a time,
+  waiting on Docker Application Container Engine (since 7 November, in our
+  words rather than systemd's, above). One is named at a time,
   the longest running, until it ends, so the line never flits; a job that
   ends in time is never named, so a calm boot shows nothing new. A
   shutdown's last stage says what it's doing in the theme's words, sent as

@@ -257,6 +257,84 @@ function stubbed(said) {
     return said.length > 0 && said.every((server) => server.startsWith("127.0.0.5"));
 }
 
+// The kinds of error a cable counts each way, by the file in its
+// statistics/ folder, in the order they're told: what came in broken, then
+// what couldn't go out. Each total (rx_errors, tx_errors) counts them all,
+// as the kernel's drivers keep them.
+const ERRORS_IN = [
+    ["damaged", "rx_crc_errors"],
+    ["misaligned", "rx_frame_errors"],
+    ["wrong-length", "rx_length_errors"],
+    ["overrun", "rx_over_errors"],
+    ["missed", "rx_missed_errors"],
+    ["queue-in", "rx_fifo_errors"],
+];
+const ERRORS_OUT = [
+    ["aborted", "tx_aborted_errors"],
+    ["no-link", "tx_carrier_errors"],
+    ["queue-out", "tx_fifo_errors"],
+    ["heartbeat", "tx_heartbeat_errors"],
+    ["late", "tx_window_errors"],
+    ["collisions", "collisions"],
+];
+const WHOLE = /^\d+$/;
+const MEGA = 1000;
+const TENS = 10;
+
+// A whole count a sysfs file says, or null where it says none or can't be
+// read, as a link that's down can't.
+function counted(text) {
+    const said = String(text ?? "").trim();
+    return WHOLE.test(said) ? Number(said) : null;
+}
+
+// A cable's link as its folder in /sys/class/net says it, `read` giving a
+// file's text by its name there, or "": how it stands, from its carrier;
+// its speed in Mb/s and its duplex, null where the driver doesn't know
+// them; how many times its link was lost since the card started; and its
+// errors, each way in all, the kinds it had in their order, each
+// { id, count, way }, and what it set aside each way, which aren't errors.
+function cable(read) {
+    const carrier = String(read("carrier")).trim();
+    const speed = counted(read("speed"));
+    const duplex = String(read("duplex")).trim();
+    const stat = (file) => counted(read(`statistics/${file}`));
+    const kinds = ERRORS_IN.map(([id, file]) => ({ id, count: stat(file), way: "in" }))
+        .concat(ERRORS_OUT.map(([id, file]) => ({ id, count: stat(file), way: "out" })))
+        .filter((each) => each.count !== null && each.count > 0);
+    let stands = "off";
+    if (carrier === "1") {
+        stands = "up";
+    } else if (carrier === "0") {
+        stands = "no link";
+    }
+    return {
+        state: stands,
+        speed: speed !== null && speed > 0 ? speed : null,
+        duplex: duplex === "full" || duplex === "half" ? duplex : null,
+        lost: counted(read("carrier_down_count")),
+        errors: {
+            in: stat("rx_errors"),
+            out: stat("tx_errors"),
+            kinds,
+            droppedIn: stat("rx_dropped"),
+            droppedOut: stat("tx_dropped"),
+        },
+    };
+}
+
+// A link's rate, given in Mb/s, in its own units: "100 Mb/s", "1 Gb/s",
+// "2.5 Gb/s". `number` writes a figure to so many places, as the
+// launcher's settings group and point it.
+function linkRate(mbps, number) {
+    if (mbps < MEGA) {
+        return `${number(mbps, 0)} Mb/s`;
+    }
+    const gbps = mbps / MEGA;
+    const whole = Math.round(gbps * TENS) % TENS === 0;
+    return `${number(gbps, whole ? 0 : 1)} Gb/s`;
+}
+
 // What a hardware address's kernel says of where it came from
 // (addr_assign_type): the card's own, made up at random, taken from another
 // device, or set by software.

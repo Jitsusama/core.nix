@@ -4,7 +4,7 @@
 
 use super::clock::{self, Clock, span};
 use super::devices;
-use super::figures::{bytes, count, figure, maybe, radio, said, signed, switch, unknown};
+use super::figures::{bytes, figure, maybe, radio, rate, said, signed, switch, unknown};
 use super::graph::{bar, spark};
 use super::marks::marks;
 use super::text::{Align, Ink, Line, Page, Role, Table, muted, plain, run, strong};
@@ -198,11 +198,7 @@ pub fn one(model: &HomeNetwork, node: &Node, clock: &Clock, ink: &Ink) -> Page {
     page.line(vec![strong("ports")]);
     page.extend(ports(node).lines(2));
 
-    let on: Vec<_> = model
-        .devices
-        .iter()
-        .filter(|device| device.node.as_deref() == Some(node.id.as_str()))
-        .collect();
+    let on = super::on_node(model, Some(node.id.as_str()));
     page.blank();
     page.line(vec![
         strong("devices"),
@@ -318,7 +314,7 @@ fn ports(node: &Node) -> Table {
     ]);
     table.header(&["port", "link", "speed", "best", "rx", "tx", ""]);
     for port in &node.ports {
-        let mbit = |value: Option<u32>| maybe(value, |mbps| figure(count(mbps.into()), "Mbit/s"));
+        let mbit = |value: Option<u32>| maybe(value, |mbps| rate(mbps.into()));
         let mut linked = vec![plain(if port.linked { "linked" } else { "no link" })];
         // A link slower than its port can go is a cable or a far end worth
         // a look.

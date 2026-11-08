@@ -136,7 +136,7 @@ def test_the_wallpaper_stands_behind_the_workspaces(desktop: Desktop) -> None:
     desktop.machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q microphone"), timeout=SAYING
     )
-    desktop.photograph("workspace")
+    desktop.shoot("workspace")
 
 
 def test_the_desktop_says_it_prefers_dark(desktop: Desktop) -> None:
@@ -384,4 +384,4 @@ def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> Non
         "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
     )
     assert log.strip() == "", f"Quickshell warned of a scene: {log}"
-    desktop.photograph("desktop")
+    desktop.shoot("desktop")

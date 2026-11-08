@@ -1,10 +1,10 @@
 # shellcheck shell=bash
 # Runs inside cage: opens a markdown file in inlyne with the account's
-# settings, photographs the page once it's drawn and still, and closes it.
+# settings, shoots the page once it's drawn and still, and closes it.
 # inlyne logs a line after every frame it draws (its settings' debug
-# metrics, and INLYNE_LOG), so the photograph waits for the frames to stop
+# metrics, and INLYNE_LOG), so the shot waits for the frames to stop
 # rather than for a time. cage doesn't pass on how this ended, so it
-# leaves `<photo>.read` once it has the photograph.
+# leaves `<photo>.read` once it has the shot.
 #
 # Keys aren't pressed: inlyne's window library reads a Wayland key by its
 # code, and wtype's virtual keyboard puts every key on codes of its own,

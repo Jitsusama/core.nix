@@ -354,7 +354,7 @@ Scope {
         }
 
         // Where the front card is drawn, as a fraction of the screen across
-        // and down, for a test to click on it, since no photograph says
+        // and down, for a test to click on it, since no shot says
         // where a card without a coloured mark is; and what it's signed,
         // the glyph it wears and that glyph's hue.
         function front(): string {

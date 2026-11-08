@@ -184,6 +184,12 @@ const VM_DIR: &str = "/run/nix-offload-vm";
 /// The folder of the lender whose builder takes what the first can't,
 /// when one runs, as `serve --dir` it with `--only-there`.
 const MORE_DIR: &str = "/run/nix-offload-more";
+
+/// The second lender's folder, [`MORE_DIR`] unless `NIX_OFFLOAD_MORE_DIR`
+/// names another, as tests do.
+fn more_dir() -> PathBuf {
+    env::var_os("NIX_OFFLOAD_MORE_DIR").map_or_else(|| PathBuf::from(MORE_DIR), PathBuf::from)
+}
 /// The folder of the lender whose builder takes the VM tests past the
 /// first VM builder's room, when one runs, as `serve --dir` it with
 /// `--only-there`.
@@ -490,8 +496,7 @@ fn there(arguments: &[String]) -> ExitCode {
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a
     // lender runs to make one.
-    let more_dir =
-        env::var_os("NIX_OFFLOAD_MORE_DIR").map_or_else(|| PathBuf::from(MORE_DIR), PathBuf::from);
+    let more_dir = more_dir();
     let first_dir = dir;
     let left_dir = match &left {
         Some(_) if there::lends(&more_dir) => more_than(&first_dir, &more_dir, &scratch),
@@ -500,8 +505,9 @@ fn there(arguments: &[String]) -> ExitCode {
     let mut parts: Vec<(&PathBuf, Option<there::Asked>)> = vm_dirs.iter().zip(vm_parts).collect();
     parts.push((&left_dir, left));
     // A VM builder past the first that doesn't come leaves its tests to
-    // the first.
+    // the first; the first and second lent builders stand in for each other.
     let fallbacks: Vec<(&PathBuf, &PathBuf)> = std::iter::once((&more_dir, &first_dir))
+        .chain(there::lends(&more_dir).then_some((&first_dir, &more_dir)))
         .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
         .collect();
     let vm_dirs: Vec<&PathBuf> = vm_dirs.iter().collect();
@@ -781,7 +787,23 @@ fn sent(
         );
     }
     let stood = asked.elapsed().as_secs();
-    let again = |since| there::stood_again(dir, waiting, since);
+    // A builder lost mid-run goes to the one beside it while that one
+    // stands, rather than waiting for its own: a tunnel that died at 20:51
+    // on 7 November left builds waiting 8 minutes for the next builder.
+    // VM tests wait for their own lender, as above. Within the outage's
+    // `longest` only, so two lost builders never hand a run back and
+    // forth for good.
+    let beside = fallbacks
+        .iter()
+        .find(|(from, _)| from.as_path() == dir)
+        .map(|(_, to)| to.as_path())
+        .filter(|_| !vm);
+    let again = |since: std::time::Instant| {
+        beside
+            .filter(|_| since.elapsed() < waiting.longest)
+            .and_then(standing)
+            .or_else(|| there::stood_again(dir, waiting, since))
+    };
     let ran = there::run(
         part,
         store.as_deref(),
@@ -873,8 +895,9 @@ impl Kept {
 }
 
 /// The lender's folder a build goes to: `more`, the second's, while the
-/// first's builder is full, as `there::to_second` decides, else `first`.
-/// A build waits for the first while none stands, as it always has.
+/// first's builder is full or doesn't answer, as `there::to_second`
+/// decides, else `first`. A build waits for the first while none stands,
+/// as it always has.
 fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
     let Some(stands) = standing(first) else {
         return first.to_owned();
@@ -893,6 +916,10 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
                 "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its CPUs, \
                  so this goes to a second"
             );
+            more.to_owned()
+        }
+        None if there::to_second(None, &second()) => {
+            eprintln!("nix-offload: the lent builder didn't answer, so this goes to a second");
             more.to_owned()
         }
         _ => first.to_owned(),
@@ -1040,9 +1067,21 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         scratch: &scratch,
         waiting,
     };
-    let finished = sent.somewhere(arguments, &dir, vm_apart);
+    let more_dir = more_dir();
+    let finished = sent.somewhere(arguments, [&dir, &more_dir], vm_apart);
     forget();
     let Some(finished) = finished else {
+        // While a lender runs, this machine is one that sends its work
+        // away, and an evaluation here holds about 5 GB beside the
+        // person's work: on 7 November a tunnel that died had every run
+        // evaluate here for 8 minutes. So none runs here unasked.
+        if there::lends(&dir) || there::lends(&more_dir) {
+            eprintln!(
+                "nix-offload: no builder or evaluator answered, and a lender runs, so nothing \
+                 was evaluated here; changed-checks --here runs it on this machine"
+            );
+            return ExitCode::from(changed::UNBUILT);
+        }
         return not_taken("no builder or evaluator answered");
     };
     if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
@@ -1089,10 +1128,48 @@ impl Sent<'_> {
         changed::sending(self.source.clone(), arguments, self.told)
     }
 
+    /// The run on the lent builder a store names, or none when there's no
+    /// store or ssh couldn't reach it. With `vm_apart`, VM tests go to a
+    /// builder of their own.
+    fn lent_to(
+        &self,
+        arguments: &[String],
+        vm_apart: bool,
+        store: Option<String>,
+    ) -> Option<Finished> {
+        let wanted = changed::wanted(arguments);
+        let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
+        if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
+            let apart = Apart {
+                lent: &lent,
+                sent: self,
+                system,
+            };
+            return apart.changed(arguments);
+        }
+        // What it names is read as it's passed on, so a run that passed
+        // is kept with it.
+        let sending = self.sending(arguments);
+        match there::teed_on(&lent, &sending, self.scratch, "ssh") {
+            Ok((ran, printed)) if ran.status != there::UNREACHED => {
+                Some(Finished::of(ran.status, Some(printed)))
+            }
+            _ => {
+                eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
+                None
+            }
+        }
+    }
+
     /// Where `there --changed` runs, in its order, or none when nowhere
     /// did. With `vm_apart`, VM tests go to a builder of their own, as any
     /// `there` sends them.
-    fn somewhere(&self, arguments: &[String], dir: &Path, vm_apart: bool) -> Option<Finished> {
+    fn somewhere(
+        &self,
+        arguments: &[String],
+        [dir, more]: [&Path; 2],
+        vm_apart: bool,
+    ) -> Option<Finished> {
         let Self {
             source,
             folder,
@@ -1100,34 +1177,34 @@ impl Sent<'_> {
             ..
         } = *self;
         let wanted = changed::wanted(arguments);
-        let on_builder = |store: Option<String>| {
-            let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
-            if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
-                let apart = Apart {
-                    lent: &lent,
-                    sent: self,
-                    system,
-                };
-                return apart.changed(arguments);
+        let on_builder = |store: Option<String>| self.lent_to(arguments, vm_apart, store);
+        // The second lent builder stands in for the first, so one whose
+        // tunnel died never leaves the run to an evaluator or this machine
+        // while the other stands.
+        for lender in [dir, more] {
+            if let Some(finished) = on_builder(standing(lender)) {
+                return Some(finished);
             }
-            // What it names is read as it's passed on, so a run that passed
-            // is kept with it.
-            let sending = self.sending(arguments);
-            match there::teed_on(&lent, &sending, scratch, "ssh") {
-                Ok((ran, printed)) if ran.status != there::UNREACHED => {
-                    Some(Finished::of(ran.status, Some(printed)))
-                }
-                _ => {
-                    eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
-                    None
+        }
+        // While a lender runs, a run its builders didn't answer waits for
+        // one to stand again, for up to `waiting.longest`, rather than going
+        // to an evaluator: on 7 November the evaluator, 8 cores, held 56
+        // evaluations from runs whose lent builder's tunnel had dropped,
+        // and printed nothing for half an hour.
+        if let Some(lender) = [dir, more].into_iter().find(|lender| there::lends(lender)) {
+            eprintln!(
+                "nix-offload: no lent builder answered, so this waits for one to stand again, \
+                 for up to {} minutes",
+                self.waiting.longest.as_secs().div_ceil(60)
+            );
+            let since = std::time::Instant::now();
+            while let Some(store) = there::stood_again(lender, self.waiting, since) {
+                let again = on_builder(Some(store)).or_else(|| on_builder(standing(more)));
+                if again.is_some() {
+                    return again;
                 }
             }
-        };
-        let store = fs::read_to_string(dir.join("store"))
-            .ok()
-            .filter(|store| !store.trim().is_empty());
-        if let Some(finished) = on_builder(store) {
-            return Some(finished);
+            return on_builder(standing(more));
         }
         // An evaluator only names; what it names is built as any `there`
         // build is, since a machine that evaluates well may build slowly.
@@ -1192,8 +1269,9 @@ impl Sent<'_> {
             });
             return Some(Finished::of(status, Some(printed)));
         }
-        // Asked for and waited on, as any `there` waits, while a lender runs.
-        on_builder(there::waited(dir, self.waiting))
+        // Asked for and waited on, as any `there` waits, while a lender
+        // runs, then the second once more, which may have stood meanwhile.
+        on_builder(there::waited(dir, self.waiting)).or_else(|| on_builder(standing(more)))
     }
 }
 

@@ -2,7 +2,7 @@
 
 Here the launcher finds what Joel types: each thing once, by every name it had, emoji in
 their place, a category and a step by their words, and the field's keys. What it answers with
-no machine is tests/launcher-on-niri-test.py's, on a nested niri in seconds; only its photographs
+no machine is tests/launcher-on-niri-test.py's, on a nested niri in seconds; only its shots
 are here.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
@@ -174,10 +174,10 @@ def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
     # key; q says how to close and closes nothing; the find and the battery stay.
     machine.send_chars("z")
     desktop.launcher_until(lambda shown: shown["saying"] == ["z not here"])
-    desktop.photograph("launcher-not-here")
+    desktop.shoot("launcher-not-here")
     machine.send_chars("q")
     desktop.launcher_until(lambda shown: shown["saying"] == ["q does nothing", ":q closes"])
-    desktop.photograph("launcher-q-does-nothing")
+    desktop.shoot("launcher-q-does-nothing")
     machine.send_chars("j")
     desktop.launcher_until(lambda shown: shown["saying"] == [])
     machine.send_chars("k")
@@ -407,9 +407,9 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     machine.send_key("meta_l-e")
     desktop.launcher_ready()
     desktop.type_in("smiling")
-    desktop.photograph("launcher-emoji")
+    desktop.shoot("launcher-emoji")
     desktop.type_in(" cat")
-    desktop.photograph("launcher-emoji-all")
+    desktop.shoot("launcher-emoji-all")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # The grinning cat with smiling eyes, first among the smiling cats.
@@ -473,7 +473,7 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     ip = "ip \u27e8address or network\u27e9"
     assert held.index("Address") < held.index("Speed") < held.index(ip), held
     assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
-    desktop.photograph("launcher-category")
+    desktop.shoot("launcher-category")
     desktop.type_in("add", selecting="Address")
     # In normal, - steps out at once, the word put back.
     desktop.step_out()
@@ -490,7 +490,7 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     desktop.launcher_ready()
     machine.send_chars("network ")
     desktop.launcher_until(lambda shown: shown["held"] == ["network"] and ip in shown["rows"])
-    desktop.photograph("launcher-commands")
+    desktop.shoot("launcher-commands")
     desktop.type_in("ip", selecting="ip \u27e8address or network\u27e9")
     machine.send_key("ctrl-y")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ip ")
@@ -622,10 +622,10 @@ def walk_the_gutter(desktop: Desktop) -> None:
     numbered(["1", "1"], relative=True)
     machine.send_chars(" ul")
     numbered(["1", "2", "3"], relative=False)
-    desktop.photograph("launcher-gutter-absolute")
+    desktop.shoot("launcher-gutter-absolute")
     machine.send_chars(" ul")
     numbered(["1", "1", "2"], relative=True)
-    desktop.photograph("launcher-gutter")
+    desktop.shoot("launcher-gutter")
     # The find narrows the list, which normal says after it, in the field: how many it found,
     # the gutter and the status line saying where the cursor is.
     count = desktop.showing()["count"]
@@ -1425,31 +1425,29 @@ def test_a_question_is_asked_on_return_and_answered_where_it_was_typed(desktop: 
     close()
 
 
-def photograph_the_calendars(desktop: Desktop) -> None:
-    """Photograph each calendar's plate in its own script, its names whole and on one line.
+def shoot_the_calendars(desktop: Desktop) -> None:
+    """Shoot each calendar's plate in its own script, its names whole and on one line.
 
     Its title is in the script's cut beside the serif and its figures in the one beside the mono.
     Seen from nowhere, the Hebrew and Islamic say their day begins at sunset; seen from
-    Greenwich, the Hebrew says at what time, photographed again.
+    Greenwich, the Hebrew says at what time, shot again.
     """
     for calendar in ["Chinese", "Japanese", "Hebrew", "Islamic"]:
-        photograph_a_calendar(desktop, calendar, f"launcher-date-{calendar.lower()}")
+        shoot_a_calendar(desktop, calendar, f"launcher-date-{calendar.lower()}")
     fix = "$XDG_RUNTIME_DIR/whereabouts.json"
     said = {"v": 2, "latitude": 51.4769, "longitude": -0.0005, "accuracy": 3000, "when": 1,
             "place": None, "zone": None}  # fmt: skip
     desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
     try:
-        photograph_a_calendar(desktop, "Hebrew", "launcher-date-hebrew-sunset", timed=True)
+        shoot_a_calendar(desktop, "Hebrew", "launcher-date-hebrew-sunset", timed=True)
     finally:
         desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
 
 
-def photograph_a_calendar(
-    desktop: Desktop, calendar: str, picture: str, *, timed: bool = False
-) -> None:
-    """Photograph one calendar's plate once it's drawn, its names whole and on one line.
+def shoot_a_calendar(desktop: Desktop, calendar: str, picture: str, *, timed: bool = False) -> None:
+    """Shoot one calendar's plate once it's drawn, its names whole and on one line.
 
-    Timed, it's photographed once the plate says at what time its day begins.
+    Timed, it's shot once the plate says at what time its day begins.
     """
 
     def drawn(shown: Json) -> bool:
@@ -1474,17 +1472,17 @@ def photograph_a_calendar(
     assert drawer["labelsWhole"], f"a {calendar} fact's name is broken: {drawer}"
     assert drawer["besideOnOneLine"], f"a {calendar} value wraps beside its name: {drawer}"
     assert drawer["digitsStandAsFigures"], f"{calendar} digits stand smaller: {drawer}"
-    desktop.photograph(picture)
+    desktop.shoot(picture)
     desktop.close_launcher()
 
 
-def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
-    """The launcher's answers are photographed for the gallery, and only there.
+def test_the_answers_are_shot_for_the_gallery(desktop: Desktop) -> None:
+    """The launcher's answers are shot for the gallery, and only there.
 
     What they answer is tests/launcher-on-niri-test.py's to prove, in seconds on a nested niri; a
     person still looks at how each is drawn on the laptop's screen, so the gallery keeps them.
     """
-    if not desktop.values["photographs"]:
+    if not desktop.values["shots"]:
         return
     for typed, picture in [
         ("date", "launcher-date"),
@@ -1496,7 +1494,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
     ]:
         desktop.answer(typed)
         desktop.launcher_until(lambda shown: bool(shown["rows"]))
-        desktop.photograph(picture)
+        desktop.shoot(picture)
         desktop.close_launcher()
     # Inside the time here and the date, whose parts are the clock's and the
     # calendar's, each a step in.
@@ -1508,9 +1506,9 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         desktop.follow()
         # Each wait ends before the loop moves on, so it reads this pass's part.
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
-        desktop.photograph(picture)
+        desktop.shoot(picture)
         desktop.close_launcher()
-    photograph_the_calendars(desktop)
+    shoot_the_calendars(desktop)
     # How chrony keeps the clock, once it keeps it by the VM's own time server: inside Clock,
     # and inside Servers with the chosen one's plate out beside it.
     desktop.machine.wait_until_succeeds(
@@ -1542,7 +1540,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
             assert drawer["labelsWhole"], f"a fact's name is broken: {drawer}"
             assert drawer["besideOnOneLine"], f"a value wraps beside its name: {drawer}"
             assert drawer["valuesWhole"], f"a fact's value breaks a word: {drawer}"
-        desktop.photograph(picture)
+        desktop.shoot(picture)
         desktop.close_launcher()
     # The time here counts each second while it's shown, and a tick never moves the
     # selection or changes the card's size: UTC stays selected, among as many rows.

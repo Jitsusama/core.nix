@@ -32,6 +32,15 @@ mod traffic;
 pub use clock::{Clock, changes_in};
 pub use text::Ink;
 
+/// A rate given in Mb/s as plain text, as every view sets one, for a line
+/// outside the views: 76.8 Mb/s, 1.20 Gb/s.
+pub fn rate(mbps: f64) -> String {
+    figures::rate(mbps)
+        .into_iter()
+        .map(|run| run.text)
+        .collect()
+}
+
 use crate::model::{CloudState, Device, HomeNetwork, Node, Profile};
 use figures::joined;
 use marks::marks;
@@ -234,6 +243,18 @@ fn location<'a>(model: &'a HomeNetwork, id: Option<&'a str>) -> &'a str {
 }
 
 /// A device's name, the one eero shows, or its hardware address.
+/// The devices on the node `id` names, this machine first and the rest as
+/// eero orders them, so this machine is found where it hangs.
+fn on_node<'a>(model: &'a HomeNetwork, id: Option<&str>) -> Vec<&'a Device> {
+    let mut on: Vec<&Device> = model
+        .devices
+        .iter()
+        .filter(|device| device.node.as_deref() == id)
+        .collect();
+    on.sort_by_key(|device| !device.this_machine);
+    on
+}
+
 fn device_name(device: &Device) -> &str {
     device
         .name
@@ -336,7 +357,7 @@ fn titled(model: &HomeNetwork, about: Option<String>) -> Line {
 
 /// A line of facts joined by the separator.
 fn facts(parts: Vec<Line>) -> Line {
-    joined(parts)
+    joined(parts.into_iter().filter(|part| !part.is_empty()).collect())
 }
 
 /// A figure after the muted word saying what it is.

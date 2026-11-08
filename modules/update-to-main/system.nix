@@ -123,12 +123,23 @@ in
               default = 4;
               description = "How many cores each may use.";
             };
-            belowLoad = mkOption {
+            busyAt = mkOption {
               type = types.numbers.positive;
+              default = 15;
               description = ''
-                The minute's load average they build under; at it or above,
-                or when it can't be read, the update fails and the machine
-                stays as it is.
+                The share of the last minute, in percent, that some runnable
+                task waited for a CPU, at or above which they wait: the
+                update fails and the machine stays as it is. Where that
+                can't be read, as on a Mac, they always wait.
+              '';
+            };
+            belowLoad = mkOption {
+              type = types.nullOr types.numbers.positive;
+              default = null;
+              description = ''
+                Read no longer: `busyAt` gates on CPU pressure instead of the
+                load average, which with many sessions open stayed over any
+                useful bound. Taken away once no machine sets it.
               '';
             };
           };
@@ -136,7 +147,7 @@ in
       );
       default = null;
       example = {
-        belowLoad = 30;
+        busyAt = 15;
       };
       description = ''
         When set, pieces built elsewhere that their builders don't build,
@@ -350,6 +361,10 @@ in
   };
 
   config = {
+    warnings = lib.optional (cfg.here != null && cfg.here.belowLoad != null) ''
+      jitsusama.update-to-main.here.belowLoad is read no longer; here.busyAt
+      gates on CPU pressure instead, so drop it.
+    '';
     assertions = [
       {
         assertion = cfg.hosted == null || (cfg.signers.ssh == [ ] && cfg.signers.openpgp == [ ]);
@@ -411,7 +426,7 @@ in
                 {
                   max_jobs = cfg.here.maxJobs;
                   inherit (cfg.here) cores;
-                  below_load = cfg.here.belowLoad;
+                  busy_at = cfg.here.busyAt;
                 };
             refuse_while = cfg.refuseWhile;
             holds =

@@ -55,6 +55,22 @@
   # than without it, since the daemon answers a build's syncfs as done too.
   without-syncfs-refuses-only-syncfs = pkgs.callPackage ./without-syncfs/package.nix { };
 
+  # The door sandboxes are given in place of the daemon's socket answers as
+  # Nix's daemon and takes its caller as untrusted, run as its unit runs it.
+  # A Nix that renames a flag or a feature it needs leaves the door shut, or
+  # worse, open to a trusted caller, and nothing else would say so.
+  the-sandboxes-door-trusts-no-one =
+    let
+      inherit (workstation.config.systemd.user) services;
+    in
+    pkgs.runCommandLocal "the-sandboxes-door-trusts-no-one" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/the-sandboxes-door-trusts-no-one.sh} \
+        ${lib.getExe' pkgs.systemd "systemd-socket-activate"} \
+        ${lib.getExe' workstation.config.nix.package "nix"} \
+        ${services."nix-untrusted@".serviceConfig.ExecStart}
+      touch $out
+    '';
+
   # clippy finds nothing in without-syncfs, its tests included.
   without-syncfs-passes-clippy = passesClippy "without-syncfs-passes-clippy" (
     pkgs.callPackage ./without-syncfs/package.nix { }

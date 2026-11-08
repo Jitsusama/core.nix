@@ -1184,8 +1184,12 @@ Floating {
     // report when asked.
     function valuesWhole() {
         return drawnRows().every(row => !row.known || unbroken(row.modelData.value).split(" ")
-            .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide));
+            .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide
+                && !breaksAtItsHyphen.test(word)));
     }
+    // A hyphen inside a word, "Wi-Fi" or "v7.17.4-5", that a line may still
+    // break after, leaving "Wi-" at a line's end and "Fi" alone on the next.
+    readonly property var breaksAtItsHyphen: /[A-Za-z0-9]-(?!\u2060)[A-Za-z0-9]/
     // Whether every value beside its name takes one line there, so the
     // facts are each beside or under and never a mix, for the launcher
     // to report when asked.
@@ -1223,9 +1227,13 @@ Floating {
             .some(thing => (thing?.lines ?? 1) > 1);
     }
     // A number and its unit kept on one line, so "8 s" never leaves its s
-    // alone on the next (VKCF3Z, 2026-11-03).
+    // alone on the next (VKCF3Z, 2026-11-03), and a word with a hyphen in it
+    // kept whole, a word joiner after its hyphen, so "Wi-Fi" never leaves
+    // its Fi alone on the next. The joiner draws nothing, and only what's
+    // drawn carries it: what Return copies is the value as it was given.
     function unbroken(words) {
-        return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
+        return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0")
+            .replace(/([A-Za-z0-9])-(?=[A-Za-z0-9])/g, "$1-\u2060");
     }
     // A value made of items, "38 s \u00b7 4.1k out \u00b7 0.9 s first token",
     // wraps between them, never inside one, the dot ending the line it

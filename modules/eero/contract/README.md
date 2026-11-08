@@ -94,7 +94,7 @@ nodes' urls, so the mesh is joined by name.
 | ------ | ----- | ----- |
 | `display_name`, `nickname`, `hostname` | what it's called, and by whom | place, device, `devices` |
 | `device_type`, `manufacturer`, `inferred_make`, `inferred_model` | what it is | place (its mark), device, `devices` |
-| `mac`, `is_private`, `eui64` | its hardware address, and whether that's a private one | device, `device` |
+| `mac`, `is_private`, `eui64` | its hardware address, and whether that's a private one; this machine is the device with one of its own | device, `device`; this machine first in the place and `status` |
 | `ip`, `ips`, `ipv4`, `ipv6_addresses` | its addresses | place, device, `device` |
 | `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever | place, device, `devices` |
 | `connection_type`, `wireless`, `source.{location,model,is_gateway}` | Ethernet or Wi-Fi, and through which node | place (under its node), device |

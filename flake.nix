@@ -197,10 +197,11 @@
         nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         noise-cancelled = ./modules/noise-cancelled/home.nix;
-        onepassword = ./modules/onepassword/home.nix;
+        onepassword = moduleFrom ./modules/onepassword/home.nix { inherit (self.homeModules) passwords; };
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
+        passwords = moduleFrom ./modules/passwords/home.nix { inherit (self.homeModules) quickshell; };
         pi = ./modules/pi/home.nix;
         people = moduleFrom ./modules/people/home.nix { inherit (self.homeModules) quickshell; };
         pi-packages = ./modules/pi-packages/home.nix;

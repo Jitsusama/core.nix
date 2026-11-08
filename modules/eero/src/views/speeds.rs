@@ -2,7 +2,7 @@
 //! spark over them, oldest to newest, and its lowest, mean and highest.
 
 use super::clock::{self, Clock};
-use super::figures::{figure, maybe, unknown};
+use super::figures::{maybe, rate, unknown};
 use super::graph::spark;
 use super::text::{Align, Ink, Line, Page, Table, muted, plain};
 use super::{counted, head, titled};
@@ -26,7 +26,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
 }
 
 fn mbit(mbps: f64) -> Line {
-    figure(format!("{mbps:.2}"), "Mbit/s")
+    rate(mbps)
 }
 
 pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {

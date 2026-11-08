@@ -1,0 +1,122 @@
+Leaves a laptop's own panel out of the splash while its lid is shut and
+another screen is there, for plymouth's DRM renderer. The panel under a
+shut lid is dark, but it still reads as connected, so the script splash
+laid itself out in the rectangle both screens show and chose its size
+by the panel's height: a monitor beside a 1504-row panel got the splash
+at one to one. The panel now counts as unplugged, as a desktop leaves
+it, and its controller is turned off, so the kernel's restore bar, laid
+out from every screen with a picture, agrees with the splash. A panel
+alone is kept, since it's the only screen once the lid opens.
+
+--- a/src/plugins/renderers/drm/plugin.c
++++ b/src/plugins/renderers/drm/plugin.c
+@@ -29,6 +29,7 @@
+ #include <assert.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <glob.h>
+ #include <signal.h>
+ #include <string.h>
+ #include <stdbool.h>
+@@ -1368,6 +1369,89 @@
+         ply_renderer_head_remove_connector (backend, head, output->connector_id);
+ }
+ 
++/* Whether a lid ACPI reports reads closed. */
++static bool
++lid_is_shut (void)
++{
++        glob_t lids;
++        bool shut = false;
++        size_t i;
++
++        if (glob ("/proc/acpi/button/lid/*/state", 0, NULL, &lids) != 0)
++                return false;
++
++        for (i = 0; i < lids.gl_pathc && !shut; i++) {
++                char state[64] = "";
++                FILE *file = fopen (lids.gl_pathv[i], "r");
++
++                if (file == NULL)
++                        continue;
++                if (fgets (state, sizeof(state), file) != NULL && strstr (state, "closed") != NULL)
++                        shut = true;
++                fclose (file);
++        }
++
++        globfree (&lids);
++        return shut;
++}
++
++static bool
++is_builtin_panel (const ply_output_t *output)
++{
++        return output->connector_type == DRM_MODE_CONNECTOR_LVDS ||
++               output->connector_type == DRM_MODE_CONNECTOR_eDP ||
++               output->connector_type == DRM_MODE_CONNECTOR_DSI;
++}
++
++/* A laptop's own panel under a shut lid is dark, and laying the splash out
++ * for it as well as for the monitor beside it sizes the splash for the
++ * panel. So while the lid is shut it counts as unplugged, as a desktop
++ * leaves it, but only while another screen is there, since a panel alone
++ * is the only screen the splash has once the lid opens. Its controller is
++ * turned off too, unless another screen shares it, so the kernel's restore
++ * bar (core's hibernate-progress.patch), which lays itself out from every
++ * screen showing a picture, is laid out for the screens the splash is.
++ */
++static void
++leave_out_a_shut_panel (ply_renderer_backend_t *backend,
++                        ply_output_t           *outputs,
++                        int                     outputs_len)
++{
++        bool another = false;
++        int i, j;
++
++        for (i = 0; i < outputs_len; i++) {
++                if (outputs[i].connected && !is_builtin_panel (&outputs[i]))
++                        another = true;
++        }
++
++        if (!another || !lid_is_shut ())
++                return;
++
++        for (i = 0; i < outputs_len; i++) {
++                if (outputs[i].connected && is_builtin_panel (&outputs[i])) {
++                        uint32_t connector_id = outputs[i].connector_id;
++                        uint32_t controller_id = outputs[i].controller_id;
++                        bool shared = false;
++
++                        ply_trace ("connector %u is a panel under a shut lid, leaving it out",
++                                   connector_id);
++                        for (j = 0; j < outputs_len; j++) {
++                                if (j != i && outputs[j].connected &&
++                                    outputs[j].controller_id == controller_id)
++                                        shared = true;
++                        }
++                        if (controller_id && !shared &&
++                            drmModeSetCrtc (backend->device_fd, controller_id, 0, 0, 0,
++                                            NULL, 0, NULL) != 0)
++                                ply_trace ("couldn't turn controller %u off: %m", controller_id);
++                        /* As get_output_info leaves a disconnected one. */
++                        memset (&outputs[i], 0, sizeof(outputs[i]));
++                        outputs[i].connector_id = connector_id;
++                }
++        }
++}
++
+ /* Check if an output has changed since we last enumerated it; and if
+  * it has changed remove it from the head it is part of.
+  */
+@@ -1455,7 +1539,11 @@
+                         free (outputs);
+                         return false;
+                 }
++        }
+ 
++        leave_out_a_shut_panel (backend, outputs, outputs_len);
++
++        for (i = 0; i < outputs_len; i++) {
+                 if (check_if_output_has_changed (backend, &outputs[i]))
+                         changed = true;
+ 

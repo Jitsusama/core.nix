@@ -1128,6 +1128,19 @@ command = "retry"
 short = "retr"
 kinds = ["list"]
 
+# The eero measuring the most the internet carries each way: Run a Speed
+# Test. It fills the internet for most of a minute, as a call would feel,
+# so it starts something, and Return puts it on the command line, where a
+# second Return runs it. :spe is Neovim's :spellgood, so its short form is
+# :spee.
+[acts.speedtest]
+starts = true
+command = "speedtest"
+short = "spee"
+kinds = ["list"]
+changes = true
+guarded = true
+
 # The next track, or with ! the one before: Next Track, Next, Previous
 # Track and Previous, since :next and :previous are Vim's.
 [acts.skip]

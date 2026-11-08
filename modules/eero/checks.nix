@@ -9,13 +9,16 @@
 # eero seals its session with systemd's credential service, and builds only
 # on Linux.
 onLinux {
-  # eero's tests run as it builds: the contract's answers read into exactly
-  # the model home-network.json holds, a read not yet made reads as unknown,
-  # eero failing, refusing and a session aged past refreshing are told apart,
-  # each part of the home network is read at its own pace and faster while
-  # someone listens, an outage keeps the last figures and says since when
-  # and why, a listener on the socket is written the model on joining and on
-  # every change, the status line says what eero said and nothing it didn't,
+  # eero's tests run as it builds: the contract's answers and a short
+  # history read into exactly the model home-network.json holds, a read not
+  # yet made reads as unknown, eero failing, refusing and a session aged
+  # past refreshing are told apart, each part of the home network is read
+  # at its own pace and faster while someone listens, an outage keeps the
+  # last figures and says since when and why, a listener on the socket is
+  # written the model on joining and on every change, the history keeps
+  # and draws what moves in a database of its own in memory or a temporary
+  # folder, the look at the internet is timed against listeners on this
+  # machine and its outages drawn from sequences of looks, the status line says what eero said and nothing it didn't,
   # and the conferencing setting is sent as eero takes it and counted only
   # once read back. Every view's page is held to a golden one drawn from
   # home-network.json (src/views/golden/), its figures lined up by their

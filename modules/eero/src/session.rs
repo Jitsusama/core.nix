@@ -17,11 +17,17 @@ const SEALED_AS: &str = "eero-session";
 /// Where the sealed token is kept: the account's state, since it's neither
 /// config nor cache, and losing it means signing in again.
 pub fn file() -> io::Result<PathBuf> {
+    Ok(folder()?.join("session.cred"))
+}
+
+/// eero's folder in the account's state, which the session and the
+/// history share.
+pub fn folder() -> io::Result<PathBuf> {
     let state = std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
         .ok_or_else(|| io::Error::other("neither XDG_STATE_HOME nor HOME is set"))?;
-    Ok(state.join("eero/session.cred"))
+    Ok(state.join("eero"))
 }
 
 /// The token, opened from its sealed file.

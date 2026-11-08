@@ -2,6 +2,7 @@
 //! straight from eero's answer, since the record may not hold it yet.
 
 use crate::api::Network;
+use crate::views::rate;
 
 /// A network's line for a person.
 pub fn line(network: &Network, devices: Option<usize>) -> String {
@@ -15,9 +16,10 @@ pub fn line(network: &Network, devices: Option<usize>) -> String {
         .into(),
     );
     if let (Some(down), Some(up)) = (network.down_mbps, network.up_mbps) {
+        let (down, up) = (rate(down), rate(up));
         parts.push(match &network.tested {
-            Some(tested) => format!("down {down:.1} up {up:.1} Mbit/s (tested {})", when(tested)),
-            None => format!("down {down:.1} up {up:.1} Mbit/s"),
+            Some(tested) => format!("down {down} up {up} (tested {})", when(tested)),
+            None => format!("down {down} up {up}"),
         });
     }
     if let Some(on) = network.sqm {
@@ -61,7 +63,7 @@ mod tests {
     fn a_line_says_what_a_person_wants_first() {
         assert_eq!(
             line(&home(), Some(14)),
-            "home  online  down 76.8 up 12.4 Mbit/s (tested 2026-10-25 18:00)  \
+            "home  online  down 76.8 Mb/s up 12.4 Mb/s (tested 2026-10-25 18:00)  \
              conferencing off  14 devices"
         );
     }

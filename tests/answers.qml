@@ -1216,6 +1216,45 @@ QtObject {
             Interfaces.stubbed(Interfaces.servers("nameserver 127.0.0.53\n")), true);
         machine("name servers of their own", Interfaces.stubbed(["127.0.2.2"]), false);
 
+        // A cable's link as its folder in /sys/class/net says it, each
+        // file's text as read, newline and all.
+        const cableSys = {
+            speed: "1000\n", duplex: "full\n", carrier: "1\n",
+            carrier_down_count: "3\n", carrier_up_count: "4\n",
+            "statistics/rx_errors": "12\n", "statistics/rx_crc_errors": "11\n",
+            "statistics/rx_frame_errors": "1\n", "statistics/rx_length_errors": "0\n",
+            "statistics/rx_over_errors": "0\n", "statistics/rx_missed_errors": "0\n",
+            "statistics/rx_fifo_errors": "0\n", "statistics/tx_errors": "2\n",
+            "statistics/tx_aborted_errors": "0\n", "statistics/tx_carrier_errors": "2\n",
+            "statistics/tx_fifo_errors": "0\n", "statistics/tx_heartbeat_errors": "0\n",
+            "statistics/tx_window_errors": "0\n", "statistics/collisions": "0\n",
+            "statistics/rx_dropped": "40\n", "statistics/tx_dropped": "0\n"
+        };
+        const cable = Interfaces.cable(name => cableSys[name] ?? "");
+        machine("a cable's speed and duplex", [cable.speed, cable.duplex], [1000, "full"]);
+        machine("how a cable stands, from its carrier", [cable.state,
+            Interfaces.cable(name => name === "carrier" ? "0\n" : "").state,
+            Interfaces.cable(() => "").state], ["up", "no link", "off"]);
+        machine("how often a cable's link was lost", cable.lost, 3);
+        machine("a cable's errors each way", [cable.errors.in, cable.errors.out], [12, 2]);
+        machine("only the kinds of error it had, in order",
+            cable.errors.kinds.map(kind => [kind.id, kind.count]),
+            [["damaged", 11], ["misaligned", 1], ["no-link", 2]]);
+        machine("what a cable set aside each way", [cable.errors.droppedIn,
+            cable.errors.droppedOut], [40, 0]);
+        // A driver that doesn't know the speed says -1, and one that doesn't
+        // know the duplex says so; a link that's down can't be read at all.
+        const unknownCable = Interfaces.cable(name => ({ speed: "-1\n",
+            duplex: "unknown\n" })[name] ?? "");
+        machine("a speed and duplex nobody knows", [unknownCable.speed, unknownCable.duplex,
+            unknownCable.lost, unknownCable.errors.in], [null, null, null, null]);
+        machine("a half-duplex cable", Interfaces.cable(name => name === "duplex" ? "half" : "")
+            .duplex, "half");
+        const linkRates = [10, 100, 1000, 2500, 10000].map(mbps => Interfaces.linkRate(mbps,
+            (value, places) => value.toFixed(places)));
+        machine("a link's rate in its own units", linkRates,
+            ["10 Mb/s", "100 Mb/s", "1 Gb/s", "2.5 Gb/s", "10 Gb/s"]);
+
         // A Wi-Fi card's link as iw reads it.
         const networkIw = "@@ link\nConnected to 02:00:00:00:02:00 (on wlp0s20f3)\n"
             + "\tSSID: Lantern\n\tfreq: 5745.0\n\tsignal: -43 dBm\n"

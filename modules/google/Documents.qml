@@ -23,6 +23,12 @@ Provider {
         return kind === "" ? [] : things.filter(row => row.kind === kind);
     }
 
+    // Whether a program's Recent is this one's to give, so it stands while
+    // Drive hasn't answered or holds none of its kind.
+    function keepsRecentOf(program) {
+        return Drive.kindOf(program) !== "";
+    }
+
     // Google Drive as a place in the launcher's picker (Drive.qml).
     function chooserPlaces(chooser) {
         return Drive.chooserPlaces(chooser, provider);

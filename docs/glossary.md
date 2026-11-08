@@ -93,8 +93,10 @@ the queue and conclude.
 | brief | a quest's document asking someone for something: audience, ask, background, recommendation | | `BRIF-` ids |
 | report | a quest's document on what happened, its outcomes and lessons | | |
 | landing | what a session finished and handed Joel: a merged change, a built plan or a hand-off, at its ref, with a line saying what to try | | presence `landings` |
+| Landed | the group of landings in Agents, named for its state as Unread and Recent are | | `agents:landed` |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
+| carry | moving a quest's work and its session to another machine | | `carry` |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
@@ -164,7 +166,7 @@ the queue and conclude.
 What Joel runs, and the terminal he types commands into, and the mail,
 meetings and calls he has through them. A
 program can be opened, opened below, given a new window and quit. A meeting
-can be joined or seen, and an invitation answered yes, maybe or no; mail can
+can be joined or shown in Calendar, and an invitation answered yes, maybe or no; mail can
 be read, marked unread and archived.
 
 | Word | Means | Not | In code |
@@ -190,7 +192,6 @@ be read, marked unread and archived.
 | summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when | | `summary.md` |
 | noise cancelled | a microphone's voice with the sounds around it taken out on the machine, offered as a microphone of its own named for it | noise suppression, denoised | `noise-cancelled` |
 | join | going into a meeting's call, or a call another sends | | |
-| see | looking at a meeting's details in the launcher: when, its call, who's going | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
 
@@ -229,6 +230,11 @@ or a copy, can be opened, copied or forgotten.
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `overview.pieces` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
 | card | the one frame the launcher, held notices and a notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
+| drawer | the card's continuation out of its right side, a plate about the selected row: what it has beyond its one line | | `Drawer.qml`, a row's `drawer` |
+| plate | a small page about one thing: its eyebrow, name, facts, preview and description | | |
+| eyebrow | a plate's first line, above its name, saying where the thing is and then its kind, never its state | | a drawer's `eyebrow` |
+| fact | one label and its value on a plate, such as a network's signal | | a drawer's `facts` |
+| preview | a picture or a file's first lines, right under the name on its plate | | a drawer's `preview`, `FileFacts.js` |
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
@@ -237,7 +243,8 @@ or a copy, can be opened, copied or forgotten.
 | field | the line at the top of every place: the find line, or the command line in its place | | |
 | back | going up one place, to the row he was on, with h, - or Backspace | | the `out` act |
 | action | what a row can do: the same set for every row of its kind | verb | |
-| go to | the action moving to something already open, such as a window or a session, a row named Go To with where at its side | | |
+| go to | the action moving to something open on the desktop, a window or a tab such as a session's, and nothing else; a row named Go To with where at its side | | |
+| show | the action opening a place or a program on one thing in it, such as Show in Bluetooth or Show in Calendar, and the one word for looking at what a row holds | see | |
 | open | the action starting something, such as a program or a file | | |
 | turn on | the action starting a setting, a radio or a light | | |
 | turn off | the action stopping a setting, a radio or a light | | |
@@ -307,6 +314,7 @@ off.
 | hinge | the lid's angle from the keyboard, as a sensor in the laptop reads it | | IIO's `hinge` |
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
 | Bluetooth | the radio that reaches headphones, keyboards and mice, and the place listing every device it reaches, to pair and connect | | BlueZ |
+| Nearby | the Bluetooth devices heard but not paired | | |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
@@ -321,13 +329,14 @@ off.
 
 ## Network
 
-How the machine reaches out: Wi-Fi, Ethernet, a VPN and tethering. A network
-can be connected, signed in to and forgotten; Wi-Fi's radio can be turned off.
+How the machine reaches out: Wi-Fi, Ethernet, a VPN and tethering, and the
+home network it reaches out through at home. A network can be connected,
+signed in to and forgotten; Wi-Fi's radio can be turned off.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | connection | the network link out of the machine | line, uplink | |
-| speed | how fast the connection carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
+| speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
 | address | an address the machine has on a network | network address, IP | `networks` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
 | Ethernet | the network through a cable | wired | |
@@ -336,6 +345,22 @@ can be connected, signed in to and forgotten; Wi-Fi's radio can be turned off.
 | VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.vpns` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
+| home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
+| node | one eero of the home network | satellite, router, extender | `eeros` |
+| gateway node | the node the internet comes in through | base station, primary node | `gateway` |
+| backhaul | how a node reaches the node before it, over Ethernet or Wi-Fi | mesh link, backbone | |
+| device | a thing on the home network, as eero lists it | client, station | `clients` |
+| internet | the home network's way out, through its gateway node | WAN, ISP connection | |
+| internet provider | who carries the internet to the home network, as eero names it | carrier | `isp` |
+| outage | a time the internet was down | downtime | |
+| radio | a Wi-Fi transmitter on one band: the machine's card's, or one of a node's | | |
+| band | the frequencies a radio uses: 2.4, 5 or 6 GHz | frequency band | |
+| channel | the slice of a band a radio uses, with its width | | |
+| signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
+| rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
+| speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
+| traffic | how much data the home network, a node or a device moved, by hour | data usage | `usage`, `data_usage` |
+| profile | a group of devices eero lets through or holds off together | | `profiles` |
 
 ## Disk
 
@@ -376,7 +401,8 @@ shortcuts are listed inside it.
 | map | the keyboard's layout, shown on screen | | `KeyboardMap.qml` |
 | release | letting go of a layer locked on, back to the one beneath | | |
 | light | the keyboard's own light | backlight | |
-| shortcut | keys pressed together that do one thing | binding, bind | niri's `binds` |
+| chord | the keys pressed to reach something, drawn key by key, such as Super + O or Ctrl + W l | | |
+| shortcut | a chord and the one thing it does, as Shortcuts lists them | binding, bind | niri's `binds` |
 | key language | the one set of keys every surface of ours speaks, Vim's as Joel's Neovim has it | | `modules/keys/language.toml` |
 | act | one thing the key language's keys do, named once, as down or close | | `acts.<name>` |
 | surface | a program of ours keys act on, of one or more kinds: field, list, page or player | | `jitsusama.surfaces` |

@@ -194,6 +194,7 @@ impl StandIn {
             .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
+            .env("CHANGED_CHECKS_CPU_PRESSURE", self.folder.join("cpu"))
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -500,12 +501,26 @@ fn it_runs_here_when_asked_to_when_its_base_is_its_own_or_when_nowhere_took_it()
     let ran = stand_in.run(&["--system", "x86_64-linux", "--base", "topic"]);
     assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
 
-    // Nowhere took it, so it runs here after all.
+    // Nowhere took it, so it runs here after all, while the machine is idle.
     fs::write(stand_in.path("changed-exit"), "75").expect("written");
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert!(stand_in.path("changed").exists(), "it was offered first");
     assert_eq!(text(&ran.stdout), named);
+
+    // Busy, it waits to be run again rather than evaluate beside the
+    // person's work, unless told to run here.
+    fs::write(
+        stand_in.path("cpu"),
+        "some avg10=70.00 avg60=64.00 avg300=60.00 total=1\n",
+    )
+    .expect("written");
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(!ran.status.success(), "{}", text(&ran.stderr));
+    assert!(text(&ran.stderr).contains("busy"), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout), "");
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--here"]);
+    assert_eq!(text(&ran.stdout), named, "{}", text(&ran.stderr));
 }
 
 #[test]

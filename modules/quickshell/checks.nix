@@ -936,6 +936,23 @@ onLinux {
       touch $out
     '';
 
+  # Recent means one thing in every place it stands: the last nine things,
+  # newest first, each once, never what's open, as tests/recent.qml holds
+  # launcher/Recent.js to it in Qt's own engine.
+  recent-means-one-thing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "recent-means-one-thing" { } ''
+      cp ${../../tests/recent.qml} recent.qml
+      cp ${./launcher/Recent.js} Recent.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml recent.qml
+      touch $out
+    '';
+
   # A row an act asked a daemon to change is drawn as it will be until its
   # source agrees, as tests/becoming.qml holds launcher/Becoming.js to it in
   # Qt's own engine.
@@ -1135,6 +1152,30 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml:${mathsModules} timeout 300 ${qt}/bin/qml maths-speed.qml
+      touch $out
+    '';
+
+  # The launcher's Home Network place says the home network as the eero
+  # daemon's record has it: the rows' order, what each row says, and every
+  # figure the eero contract places in the internet's, a node's and a
+  # device's drawer, as tests/home-network.qml says, in Qt's own engine.
+  the-home-network-says-each-figure =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-home-network-says-each-figure" { } ''
+      cp ${../../tests/home-network.qml} home-network.qml
+      cp ${./launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
+      cp ${./launcher/Numbers.js} Numbers.js
+      cp ${./launcher/Interfaces.js} Interfaces.js
+      cp ${./launcher/Machine.js} Machine.js
+      cp ${../eero/home-network.json} home-network.json
+      export QML_XHR_ALLOW_FILE_READ=1 TZ=UTC
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml home-network.qml
       touch $out
     '';
 
@@ -2121,6 +2162,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Recents.qml} launcher/Recents.qml
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./launcher/Ago.js} launcher/Ago.js
@@ -2398,6 +2440,7 @@ onLinux {
       cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/windows.qml} shell.qml
@@ -2802,11 +2845,11 @@ onLinux {
   # when it says it warns; rows' graphs stand in one column, and a figure
   # wears no glyph, as tests/graphs.qml draws them through Quickshell in the
   # theme's own face and sizes, at a panel's width.
-  palette-graphs-draw-in-braille =
+  the-launchers-graphs-draw-in-braille =
     let
       machine = graphical.config;
     in
-    pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
+    pkgs.runCommandLocal "the-launchers-graphs-draw-in-braille" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
       cp ${./Ground.qml} Ground.qml
@@ -2883,7 +2926,7 @@ onLinux {
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
   # sizes, at a panel's width.
-  palette-rows-keep-their-words-apart =
+  the-launchers-rows-keep-their-words-apart =
     let
       machine = graphical.config;
       lights = pkgs.writeText "Lights.qml" ''
@@ -2893,7 +2936,7 @@ onLinux {
         Singleton { property bool caps: false }
       '';
     in
-    pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
+    pkgs.runCommandLocal "the-launchers-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
       cp ${./Ground.qml} Ground.qml
@@ -3188,11 +3231,11 @@ onLinux {
   # line, however tall its font draws it, and they line up from the corner
   # by how much each asks, in the colour that says so, as tests/marks.qml
   # holds them.
-  the-margins-glyphs-stand-level =
+  the-margins-marks-stand-level =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-margins-glyphs-stand-level" { } ''
+    pkgs.runCommandLocal "the-margins-marks-stand-level" { } ''
       cp ${../../tests/marks.qml} marks.qml
       cp ${./Marks.js} Marks.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

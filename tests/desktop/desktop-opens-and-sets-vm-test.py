@@ -46,7 +46,7 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
     for output in ["stand-in-headphones", "stand-in-speakers"]:
         desktop.as_account("qs ipc call launcher collection sound")
         desktop.launcher_ready()
-        desktop.photograph(f"launcher-sound-{output}")
+        desktop.shoot(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
         # Return steps in, as on every device, its use first, and in normal,
@@ -178,7 +178,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     # Nothing plays, so the Level reads silent, and no program is listed.
     desktop.launcher_until(sound_reads("Level", "silent"))
     assert "Playing" not in desktop.showing()["rows"]
-    desktop.photograph("launcher-sound-output-parts")
+    desktop.shoot("launcher-sound-output-parts")
     # Return on Volume, past Muted and the Level, steps into its choices,
     # each level saying its decibels in the footer.
     desktop.next_row()
@@ -188,7 +188,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(lambda shown: shown["footer"].endswith(" dB"))
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Louder", "Quieter"])
-    desktop.photograph("launcher-sound-volume")
+    desktop.shoot("launcher-sound-volume")
     desktop.type_in("50", selecting="Volume to 50%")
     desktop.launcher_until(lambda shown: "-18.1 dB" in shown["footer"])
     desktop.land()
@@ -211,7 +211,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
             shown["open"] and sound_selected("Muted")(shown) and sound_reads("Muted", "yes")(shown)
         )
     )
-    desktop.photograph("launcher-sound-muted")
+    desktop.shoot("launcher-sound-muted")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -228,7 +228,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Level", "%"))
     desktop.launcher_until(sound_reads("Muted", "no"))
     desktop.launcher_until(sound_reads("Recording", "nothing"))
-    desktop.photograph("launcher-sound-input-parts")
+    desktop.shoot("launcher-sound-input-parts")
     desktop.close_launcher()
     listening = f"/home/{desktop.account}/listening.wav"
     desktop.as_account(
@@ -254,7 +254,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.follow()
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Muted", "Louder", "Quieter"])
-    desktop.photograph("launcher-sound-recording")
+    desktop.shoot("launcher-sound-recording")
     desktop.launcher_until(sound_selected("Muted"))
     machine.send_key("ret")
     hushed = f"wpctl get-volume {recording} | grep -q MUTED"
@@ -398,12 +398,12 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     # l on the program holds Media and Sound, each saying
     # how it stands.
     controls()
-    desktop.photograph("launcher-program-parts")
+    desktop.shoot("launcher-program-parts")
     desktop.launcher_until(reads("Media", "playing"))
     desktop.launcher_until(reads("Sound", "100%"))
     desktop.type_in("media", selecting="Media")
     desktop.follow()
-    desktop.photograph("launcher-program-media")
+    desktop.shoot("launcher-program-media")
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["Pause", "Next", "Previous", "First tone"]
     )
@@ -436,7 +436,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     # and keeps it until the next one, which is PipeWire's and Quickshell's
     # to mend, not the launcher's.
     controls("Sound")
-    desktop.photograph("launcher-program-sound")
+    desktop.shoot("launcher-program-sound")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Muted", "Louder", "Quieter", "Volume"])
     desktop.launcher_until(reads("Volume", "100%"))
     press("Quieter", then="now 95%")
@@ -728,7 +728,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
                 == ["Scale", "Refresh", "Resolution", "Rotation", "Colour Depth", "EDID"]
             )
         )
-        desktop.photograph("launcher-displays")
+        desktop.shoot("launcher-displays")
         percent = round(wanted * 100)
         if inside:
             desktop.type_in("scale", selecting="Scale")
@@ -1084,7 +1084,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
-    desktop.photograph("launcher-wifi")
+    desktop.shoot("launcher-wifi")
     desktop.type_in("lant", selecting="Lantern")
     # Never joined, it asks for its password, which a wrong one doesn't
     # satisfy; the launcher stays to say so.
@@ -1112,7 +1112,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
     desktop.step_in("ret")
     desktop.type_in("not the password")
-    desktop.photograph("launcher-wifi-password")
+    desktop.shoot("launcher-wifi-password")
     with desktop.told("refused wifi Lantern", timeout=timedelta(seconds=60)):
         machine.send_key("ret")
     # wifid writes its journal after it answers, so the shell can hear the
@@ -1121,7 +1121,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         'journalctl -u wifid | grep -q "couldn\'t join Lantern: WrongPassword"',
         timeout=timedelta(seconds=10),
     )
-    desktop.photograph("launcher-wifi-refused")
+    desktop.shoot("launcher-wifi-refused")
     machine.succeed(desktop.in_session(LAUNCHER_OPEN))
     desktop.type_in("glowing in the dark")
     machine.send_key("ret")
@@ -1159,7 +1159,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.photograph("launcher-sign-in")
+    desktop.shoot("launcher-sign-in")
     desktop.type_in("sign in", selecting="Sign in to Lantern")
     machine.send_key("ret")
     # The window is GTK and WebKit started cold, drawn in software,
@@ -1178,7 +1178,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     focused = 'niri msg --json focused-window | grep -qF \'"app_id":"io.jitsusama.WifiSignIn"\''
     machine.wait_until_succeeds(desktop.in_session(focused), timeout=SIGNING_IN)
     desktop.held_still(timedelta(seconds=20))
-    desktop.photograph("sign-in", timeout=timedelta(seconds=20))
+    desktop.shoot("sign-in", timeout=timedelta(seconds=20))
     # Its one button signs in, and the window closes as Lantern lets
     # the machine through, its notice taken back with it.
     with desktop.told("withdrew sign-in Lantern", timeout=timedelta(seconds=60)):
@@ -1215,7 +1215,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     shown = desktop.showing()
     assert (shown["returned"]["act"], shown["command"]["line"]) == ("lined", "disconnect"), shown
     assert "disconnect Disconnect It" in shown["command"]["menu"], shown["command"]
-    desktop.photograph("launcher-lined")
+    desktop.shoot("launcher-lined")
     # Let go of, back on the find, and from normal too Return only writes the line, while
     # the row and the foot name d, which carries it at once.
     machine.send_key("esc")
@@ -1260,7 +1260,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("radius.office.test")
     desktop.step_in("ret")
     desktop.type_in("hunter22")
-    desktop.photograph("launcher-wifi-account")
+    desktop.shoot("launcher-wifi-account")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=timedelta(seconds=60)
@@ -1315,7 +1315,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
-    desktop.photograph("launcher-wifi-detail")
+    desktop.shoot("launcher-wifi-detail")
     # The Speed holds each way and the retries, Return into it.
     desktop.type_in("speed", selecting="Speed")
     desktop.follow()
@@ -1330,7 +1330,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("access", selecting="Access Points")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1", "Copy"])
-    desktop.photograph("launcher-wifi-points")
+    desktop.shoot("launcher-wifi-points")
     desktop.step_in("ret")
     desktop.type_in("hardware", selecting="Hardware Address")
     assert desktop.showing()["selected"]["side"] == "02:00:00:00:02:00"
@@ -1488,7 +1488,7 @@ def puts_wi_fi_off_back_unanswered(desktop: Desktop) -> None:
                 and shown["keysRoom"]["place"] == shown["keysRoom"]["placeSays"]
             )
         )
-        desktop.photograph("launcher-wifi-unanswered")
+        desktop.shoot("launcher-wifi-unanswered")
     finally:
         machine.succeed(WIFID_WOKEN)
     # wifid, woken, does what it was asked, and the row says what it did.
@@ -1531,7 +1531,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.type_in("mtu", selecting="MTU")
     side = desktop.showing()["selected"]["side"]
     assert re.fullmatch(r"[\d,]+ bytes", side), side
-    desktop.photograph("launcher-addresses-wifi")
+    desktop.shoot("launcher-addresses-wifi")
     desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi"
@@ -1552,6 +1552,54 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     assert "Hardware Address" not in desktop.showing()["rows"], desktop.showing()
     desktop.close_launcher()
     machine.succeed("ip link delete tailscale0")
+
+
+def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
+    """A cable says how its link is doing, as it changes."""
+    machine = desktop.machine
+    # tests/desktop.nix gives this area a cable, cable0, at a gigabit.
+    machine.wait_until_succeeds(
+        "ip -4 address show cable0 | grep -q 'inet 10.9.0'", timeout=timedelta(seconds=60)
+    )
+    desktop.answer("address")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: any(row.startswith("Ethernet") for row in shown["rows"]))
+    # The kernel's name finds it, never shown, and Return opens its parts,
+    # its link among them, as its card reads it.
+    desktop.type_in("cable0", selecting="Ethernet")
+    desktop.step_in("ret")
+
+    def reads(shown: Json) -> list[str]:
+        return [thing["reads"] for thing in shown["things"]]
+
+    def lost(times: int) -> str:
+        return f"Link Lost \u00b7 {({0: 'never', 1: 'once'}).get(times, f'{times} times')}"
+
+    # However often the card's link went at its start, as the kernel counts.
+    before = int(machine.succeed("cat /sys/class/net/cable0/carrier_down_count"))
+    link = ["Speed \u00b7 1 Gb/s", "Duplex \u00b7 full", lost(before), "Errors \u00b7 none"]
+    desktop.launcher_until(lambda shown: set(link) <= set(reads(shown)))
+    desktop.shoot("launcher-addresses-ethernet")
+    # Unplugged and plugged in again, it says so while it's shown, as its
+    # card counts it.
+    machine.send_monitor_command("set_link cable off")
+    desktop.launcher_until(
+        lambda shown: "State \u00b7 up, nothing at the other end" in reads(shown),
+        timeout=timedelta(seconds=10),
+    )
+    machine.send_monitor_command("set_link cable on")
+    desktop.launcher_until(
+        lambda shown: {lost(before + 1), "State \u00b7 up"} <= set(reads(shown)),
+        timeout=timedelta(seconds=10),
+    )
+    # Its errors a step in: none either way, and what was set aside.
+    desktop.type_in("errors", selecting="Errors")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["In", "Out", "Dropped In", "Dropped Out"]
+    )
+    assert reads(desktop.showing())[:2] == ["In \u00b7 none", "Out \u00b7 none"]
+    desktop.close_launcher()
 
 
 # A binding that throws or assigns the wrong type only warns, and

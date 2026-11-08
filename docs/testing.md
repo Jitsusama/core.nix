@@ -88,7 +88,9 @@ each evaluation holds gigabytes and several cores beside the person's
 work: on 2026-10-30 every session changing core evaluated its own, a
 steady part of a load of 92 to 96. `nix-offload there --changed` sends
 the tree to the lent builder, which runs the commit's own changed-checks
-and builds what it names, or else to the first machine in
+and builds what it names, or to the second lent builder when the first
+doesn't answer, waiting for one to stand again while a lender runs, or
+else, with none running, to the first machine in
 `jitsusama.nix-offload.evaluators` that answers and takes the
 repository's GitHub owner, which only evaluates, and what it names is
 built as any `there` build is. The far side keeps
@@ -96,7 +98,14 @@ each base's derivations as a run here would. A `--base` goes with the
 run as its merge base's commit, which the far side has from origin's
 main. `--here` runs it on this machine, as does a base whose merge base
 origin's main doesn't hold, a change to a tracked file not yet
-committed, since the far side checks a commit, or nowhere taking it.
+committed, since the far side checks a commit, or nowhere taking it
+while no lender runs. While one runs and nothing takes the run, it ends
+saying so, rather than evaluating here. With none running and nowhere
+taking it, a run without `--here` runs here only while CPU pressure over
+a minute is under 15%, and otherwise fails saying to run it again; the
+net tries its round again two minutes later. On 2026-11-07, with no
+builder answering, the net's evaluations and a session's ran here at up
+to 6.3 GB each, and held CPU pressure near 70% with Joel at the machine.
 
 A check that passed at a commit isn't built again there, wherever it would
 go: each builder nix-offload lends starts with an empty store, so a check
@@ -345,9 +354,9 @@ login. It lives in [`tests/vm/guide/secure-boot.nix`][4].
 ### What Changed on Screen
 
 Each area of the desktop test has a gallery, `vm-desktop-<area>.gallery`,
-the same test photographing every state it puts the desktop in, each once
+the same test shooting every state it puts the desktop in, each once
 the screen holds still, and keeping the pictures in its result. The area
-itself takes none, since proving a change needs none and each photograph
+itself takes none, since proving a change needs none and each shot
 waits for the screen to hold still; a subtest that measures the screen uses
 `settled_screen`, which the gallery keeps as a picture too. No check
 compares them with stored ones: a stored picture would fail on every change

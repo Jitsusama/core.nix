@@ -9,8 +9,12 @@
 # change to whoever listens on $XDG_RUNTIME_DIR/eero/socket. It reads each
 # part as often as its figures move, the network every 30 seconds while the
 # shell listens and every five minutes when nothing does (src/schedule.rs
-# says each pace). It's background work, a few small requests over the
-# internet, so it runs in background.slice, behind everything Joel uses.
+# says each pace). It keeps 30 days of what moves in history.sqlite beside
+# the session, in the folder `eero sign-in` made, so the unit needs no
+# state folder of its own, and times its own look at the internet with
+# plain connects, which need no privilege. It's background work, a few
+# small requests over the internet, so it runs in background.slice, behind
+# everything Joel uses.
 #
 # The views (`eero status`, `eero nodes`, `eero devices` and the rest) read
 # that record, and `eero watch <view>` draws one again as the daemon tells
