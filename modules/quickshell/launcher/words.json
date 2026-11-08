@@ -3448,6 +3448,7 @@
     {
       "id": "sound",
       "name": "Sound",
+      "term": "Machine/Sound",
       "noun": "devices",
       "what": "sound",
       "glyph": "volume",
@@ -5335,6 +5336,7 @@
       "id": "capture:recent",
       "in": "capture",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
       "glyph": "recent",
       "empty": "Nothing yet.",
@@ -5619,6 +5621,7 @@
       "id": "person:recent",
       "in": "people",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
       "glyph": "recent",
       "empty": "Nothing yet.",
@@ -6919,6 +6922,7 @@
       "id": "program:sound",
       "in": "applications",
       "name": "Sound",
+      "term": "Machine/Sound",
       "verb": "more",
       "glyph": "volume",
       "said": {
@@ -6970,6 +6974,7 @@
       "id": "program:microphone",
       "in": "program:sound",
       "name": "Microphone",
+      "term": "Machine/microphone",
       "verb": "more",
       "states": {
         "muted": {
@@ -6989,6 +6994,7 @@
       "id": "program:recent",
       "in": "applications",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
       "glyph": "recent",
       "empty": "Nothing yet.",
