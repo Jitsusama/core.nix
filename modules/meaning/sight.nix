@@ -1,6 +1,6 @@
 # Google's siglip2-base-patch16-224 (Apache-2.0), as onnx-community
 # exported its two towers at sixteen bits, with its tokenizer, at the
-# revision measured on optimus's NPU: the picture tower takes a median
+# revision measured on an Intel NPU: the picture tower takes a median
 # 19 ms a picture at 224 pixels a side, the text tower 11.5 ms for what's
 # typed at 64 tokens, each about 7 ms of CPU time. Their eight-bit text
 # tower runs there too, but lands every picture 0.03 to 0.06 further from
