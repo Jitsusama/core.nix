@@ -189,7 +189,9 @@ QtObject {
             said: {
                 eyebrow: "on this desktop \u00b7 do not disturb",
                 one: "1 notice",
-                many: "{count} notices",
+                many: "{count} notices"
+            },
+            tells: {
                 kept: "Turned on by hand.",
                 shared: "On while the screen is shared."
             }

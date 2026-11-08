@@ -27,7 +27,11 @@ Piece {
         since: Quiet.began > 0 ? Qt.formatDateTime(new Date(Quiet.began), "HH:mm") : "",
         held: piece.held,
         kept: Quiet.kept
-    }, { named: id => Words.name(id), said: Words.of("on:quiet").said }))
+    }, {
+        named: id => Words.name(id),
+        said: Words.of("on:quiet").said,
+        tells: Words.of("on:quiet").tells
+    }))
     hint: `Do Not Disturb ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{

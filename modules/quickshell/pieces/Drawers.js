@@ -153,10 +153,10 @@ function recording(length, what, told) {
 }
 
 // Do not disturb: since when, how many notices it has held, and why it's
-// on, as its words. Until when is the row's own side, so it isn't said
-// again.
+// on, as its words: its figures in told.said and its sentences in
+// told.tells. Until when is the row's own side, so it isn't said again.
 function quiet(state, told) {
-    const { named, said } = told;
+    const { named, said, tells } = told;
     const held = state.held === 1 ? said.one : filled(said.many, { count: state.held });
     return {
         eyebrow: said.eyebrow,
@@ -164,6 +164,6 @@ function quiet(state, told) {
             fact(named, "on:quiet:since", state.since),
             fact(named, "on:quiet:held", held)
         ]),
-        body: state.kept ? said.kept : said.shared
+        body: state.kept ? tells.kept : tells.shared
     };
 }
