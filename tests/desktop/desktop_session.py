@@ -1212,6 +1212,43 @@ def lighthouse_listed(desktop: Desktop) -> None:
     )
 
 
+def listed_quest(quest: str, title: str, kind: str = "quest", **fields: object) -> Json:
+    """Give a quest as the harness's lists hold it, open and driving unless `fields` say not.
+
+    Its kind is said twice, as the harness says it, since the node puts its own over `kind`.
+    """
+    return {
+        "id": quest,
+        "address": quest[-6:],
+        "title": title,
+        "kind": kind,
+        "quest.kind": kind,
+        "status": "active",
+        "priority": "driving",
+        "rank": 1,
+        "documents": [],
+        "sessions": [],
+        "start": "/home/jitsusama",
+        "updated": "2026-10-22T09:00:00.000Z",
+        **fields,
+    }
+
+
+def quests_listed(desktop: Desktop, quests: list[Json], ended: list[Json] | None = None) -> None:
+    """Write the harness's lists of open and ended quests, each whole by rename, as it does.
+
+    The realm's node serves both, and the launcher's quests are what it serves.
+    """
+    workflow = f"{HARNESS}/quest-workflow"
+    desktop.as_account(
+        f"mkdir -p {workflow}"
+        f" && echo {shlex.quote(json.dumps({'quests': quests}))} > {workflow}/.q"
+        f" && mv {workflow}/.q {workflow}/quests.json"
+        f" && echo {shlex.quote(json.dumps({'quests': ended or []}))} > {workflow}/.e"
+        f" && mv {workflow}/.e {workflow}/ended.json"
+    )
+
+
 def started_apart(desktop: Desktop, since: str, said: str) -> list[float]:
     """Give the seconds between each journal line of the shell's saying `said`, since a mark.
 

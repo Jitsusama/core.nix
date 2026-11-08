@@ -34,11 +34,10 @@ import "Waiting.js" as Waiting
 Singleton {
     id: root
 
-    // Where the harness keeps its state and its quests, by the XDG base
-    // directories, as it finds them.
+    // Where the harness keeps its state, by the XDG base directories, as it
+    // finds them.
     readonly property string home: Quickshell.env("HOME")
     readonly property string state: `${Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`}/pi/agentic-harness.pi`
-    readonly property string quests: `${Quickshell.env("XDG_DATA_HOME") || `${home}/.local/share`}/pi/agentic-harness.pi/quest-workflow/quests`
 
     // Each session running: its window or null, its address, its quest's
     // title and its folder as its record says them (named()), its record,

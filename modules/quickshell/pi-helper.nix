@@ -1,8 +1,7 @@
 # What the shell reads through a helper of its own, each a single Rust
 # file on the standard library alone, so it builds with rustc and no
-# crates, and its tests run as it builds: pi-quests (quests.rs), every
-# quest in pi's store, and tuple-people (../tuple/people.rs), Tuple's
-# contacts.
+# crates, and its tests run as it builds: tuple-people
+# (../tuple/people.rs), Tuple's contacts.
 {
   runCommandCC,
   rustc,

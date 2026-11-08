@@ -1420,9 +1420,10 @@ onLinux {
       touch $out
     '';
 
-  # The launcher's quests find pi's quests in a store written here, as the
-  # real pi-quests reads it (tests/quests-store.sh), and open pi on one or
-  # go to its session (tests/quests.qml), with niri and pi's sessions stood
+  # The launcher's quests find pi's quests in the harness's two lists, open
+  # and ended, as a stand-in for the realm's node serves them, and open pi
+  # on one or go to its session (tests/quests.qml), with niri and pi's
+  # sessions stood
   # in.
   the-launcher-finds-the-quests =
     let
@@ -1434,7 +1435,8 @@ onLinux {
       '';
       sessions = singleton "Sessions.qml" ''
         readonly property string home: Quickshell.env("HOME")
-        readonly property string quests: Quickshell.env("QUESTS")
+        readonly property string nodePath: Quickshell.env("XDG_RUNTIME_DIR")
+          + "/mycelium/harbour.sock"
         property var running: []
         property var parked: []
         function isOf(session) { return `window:''${session.window.id}`; }
@@ -1452,14 +1454,9 @@ onLinux {
         property var startedOn: null
         function startOn(on, quest, folder) { startedOn = [on, quest, folder]; }
       '';
-      quests = pkgs.callPackage ./pi-helper.nix {
-        name = "pi-quests";
-        source = ./quests.rs;
-      };
     in
     pkgs.runCommandLocal "the-launcher-finds-the-quests" { } ''
       mkdir launcher
-      ${lib.getExe pkgs.bash} ${../../tests/quests-store.sh} $PWD
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -1469,12 +1466,13 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       # At home here, so a folder here reads from ~.
-      export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
-      mkdir -m 700 $XDG_RUNTIME_DIR
+      export HOME=$PWD
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

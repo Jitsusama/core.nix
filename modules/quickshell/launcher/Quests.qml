@@ -1,6 +1,6 @@
-// pi's quests, a collection: every quest in the store, as pi-quests reads
-// them (quests.rs), asked again each time the launcher opens, since pi
-// changes them as it works and reading them all takes milliseconds. The
+// pi's quests, a collection: every quest in the store, as the realm's
+// mycelium node serves the two lists the harness keeps of them, the open
+// ones and the ended ones, each heard as the harness writes it. The
 // open ones are all of it with nothing typed, the one driving first, as
 // the quest workflow ranks them; a concluded or retired one comes as
 // typing finds it, after the open ones that match as well. Each wears its
@@ -10,10 +10,10 @@
 // first paragraph below the rows, for what it's about.
 // Return goes to that session's window, or opens pi on it in a new
 // terminal, autoloaded as the harness's spawn does, in the folder the
-// harness would pick (quests.rs); the right arrow steps into what's known
+// harness picks and its lists say; the right arrow steps into what's known
 // of it, each fact a row Return copies.
 import qs
-import Quickshell.Io
+import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -25,10 +25,60 @@ Provider {
 
     collection: Words.collection("quests")
 
-    // As pi-quests wrote them, or none before it first answers, and the
-    // text they were read from, so the same text read again changes nothing.
-    property var quests: []
-    property string written: ""
+    // The open quests and the ended ones, as the node serves each list, or
+    // none while it hasn't answered.
+    readonly property var openKind: openLink.item
+    readonly property var endedKind: endedLink.item
+    LazyLoader {
+        id: openLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "quest"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+    LazyLoader {
+        id: endedLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "ended-quest"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+
+    // A quest as its record says it, without what the node adds: its key,
+    // when it was heard, which moves for every quest each time a list is
+    // written, and the node's own kind, which stands over the quest's, so
+    // the harness says that again as quest.kind. A quest in both lists, as
+    // it ends or reopens, is the open one until both are written.
+    readonly property var quests: {
+        openKind?.revision;
+        endedKind?.revision;
+        const seen = new Set();
+        const all = [];
+        const records = Object.values(openKind?.held ?? {})
+            .concat(Object.values(endedKind?.held ?? {}));
+        for (const record of records) {
+            if (seen.has(record.id))
+                continue;
+            seen.add(record.id);
+            const quest = {};
+            for (const field of Object.keys(record)) {
+                if (!["key", "heard", "kind", "quest.kind", "start"].includes(field))
+                    quest[field] = record[field];
+            }
+            quest.kind = record["quest.kind"] ?? "quest";
+            quest.folder = record.start ?? Sessions.home;
+            all.push(quest);
+        }
+        return all;
+    }
 
     // The status glyph each status wears.
     readonly property var marks: ({
@@ -65,11 +115,11 @@ Provider {
     readonly property var loaded: JSON.parse(holding)
 
     // Each quest's row as last made, by its id, with what it was made from:
-    // its record and the session that has it loaded. pi-quests' text
-    // differs once any quest is written, so every quest's row was made
-    // again at each change, about 824 on Joel's shell (2026-11-03); a row
-    // is now kept while nothing it says changed. A plain object, so keeping
-    // one notifies nothing.
+    // its record and the session that has it loaded. The quests are all
+    // told again each time the harness writes a list of them, and every
+    // quest's row was once made again at each change, about 824 on Joel's
+    // shell (2026-11-03); a row is now kept while nothing it says changed.
+    // A plain object, so keeping one notifies nothing.
     readonly property var kept: ({})
 
     // Open first, by priority and then rank; the rest, last touched first.
@@ -103,9 +153,10 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
-    // A day as a clock's calendar says it, with its year when it isn't this one.
+    // A day as a clock's calendar says it, with its year when it isn't this
+    // one, from a date or a time, as the harness writes either.
     function day(updated) {
-        const when = new Date(`${updated}T12:00:00`);
+        const when = new Date(`${String(updated).slice(0, 10)}T12:00:00`);
         if (isNaN(when))
             return "";
         const thisYear = when.getFullYear() === new Date().getFullYear();
@@ -336,46 +387,14 @@ Provider {
             .filter(part => part !== "").join(", ");
     }
 
-    Process {
-        id: reading
-        command: ["pi-quests", Sessions.quests]
-        stdout: StdioCollector {
-            id: collected
-
-            onStreamFinished: {
-                const text = collected.text;
-                if (text === provider.written)
-                    return;
-                try {
-                    const said = JSON.parse(text);
-                    if (Array.isArray(said)) {
-                        provider.written = text;
-                        provider.quests = said;
-                    }
-                } catch (error) {
-                    // Half a file, or none: what was read before stands.
-                }
-            }
-        }
-    }
-
-    function look() {
-        reading.running = true;
-    }
-
     Connections {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open) {
-                provider.look();
+            if (provider.launcher.open)
                 Sessions.lookAround();
-            }
         }
     }
 
-    Component.onCompleted: {
-        look();
-        Sessions.lookAround();
-    }
+    Component.onCompleted: Sessions.lookAround()
 }

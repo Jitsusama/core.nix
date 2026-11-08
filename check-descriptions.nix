@@ -805,12 +805,12 @@
     them
   '';
   mycelium-serves-the-harness-files = ''
-    each realm's node serves the harness's files of that realm, its quests, the sessions to
-    restore, its runs of subagents and reviews and the talks in its steer inboxes, from the
-    realm's own folders, and the home
-    realm's alone the machine's waiting, verdicts and queue, the queue's jobs and the queue whole
-    from the login's runtime folder, each keyed as the launcher reads it; and each node restarts
-    when what it serves changes, since it reads that only as it starts
+    each realm's node serves the harness's files of that realm, its open and ended quests, the
+    sessions to restore, its runs of subagents and reviews and the talks in its steer inboxes,
+    from the realm's own folders, and the home realm's alone the machine's waiting, verdicts and
+    queue, the queue's jobs and the queue whole from the login's runtime folder, each keyed as
+    the launcher reads it; and each node restarts when what it serves changes, since it reads
+    that only as it starts
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
@@ -1662,8 +1662,9 @@
     them with its facts in the drawer and the time where they are, and never asks Tuple itself
   '';
   the-launcher-finds-the-quests = ''
-    the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
-    its tree or goes to its session, and sees one made while it was shut
+    the launcher reads the open and ended quests the node serves, each with its own kind rather
+    than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
+    in the folder the harness names or goes to its session, and sees one made since
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last

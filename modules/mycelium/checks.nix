@@ -295,7 +295,7 @@ in
 
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's quests, restore list, runs and talks from that realm's folders, the machine's waiting, verdicts and queue aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
+      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs and talks from that realm's folders, the machine's waiting, verdicts and queue aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
       (
         let
           state = "/home/someone/.local/state";
@@ -304,6 +304,11 @@ in
         serves "home" == {
           quest = {
             file = "${state}/pi/agentic-harness.pi/quest-workflow/quests.json";
+            records = "quests";
+            key = "id";
+          };
+          ended-quest = {
+            file = "${state}/pi/agentic-harness.pi/quest-workflow/ended.json";
             records = "quests";
             key = "id";
           };
@@ -344,6 +349,11 @@ in
           serves "other" == {
             quest = {
               file = "${state}/pi/agentic-harness.pi/realms/other/quest-workflow/quests.json";
+              records = "quests";
+              key = "id";
+            };
+            ended-quest = {
+              file = "${state}/pi/agentic-harness.pi/realms/other/quest-workflow/ended.json";
               records = "quests";
               key = "id";
             };

@@ -1785,7 +1785,6 @@ BUILDER = {
 # A quest nothing orchestrates and no session has, whose step in offers to orchestrate it.
 UNSTARTED = "Chart the harbour"
 WORKFLOW = "~/.local/state/pi/agentic-harness.pi/quest-workflow"
-UNSTARTED_QUEST = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HARBOR"
 
 
 def window_of(address: str, title: str) -> str:
@@ -1834,20 +1833,20 @@ def closed_listed(desktop: Desktop) -> None:
             for address, short, title, _ in CLOSED
         ]
     }  # fmt: skip
-    index = {
-        "quests": [
-            {"id": f"QEST-20261022-{address}", "title": title,
-             "resume": {"id": f"01a1-{address.lower()}", "cwd": "/home/jitsusama", "at": at}}
-            for address, _, title, at in CLOSED
-        ]
-    }  # fmt: skip
+    quests = [
+        desktop_session.listed_quest(
+            f"QEST-20261022-{address}",
+            title,
+            priority="active",
+            resume={"id": f"01a1-{address.lower()}", "cwd": "/home/jitsusama", "at": at},
+        )
+        for address, _, title, at in CLOSED
+    ]
+    unstarted = desktop_session.listed_quest("QEST-20261022-HARBOR", UNSTARTED, priority="queued")
+    desktop_session.quests_listed(desktop, [*quests, unstarted])
     desktop.as_account(
-        f"mkdir -p {WORKFLOW} {UNSTARTED_QUEST}"
-        f" && echo '{json.dumps(index)}' > {WORKFLOW}/.q && mv {WORKFLOW}/.q {WORKFLOW}/quests.json"
-        f" && echo '{json.dumps(listed)}' > {WORKFLOW}/.o"
+        f"echo '{json.dumps(listed)}' > {WORKFLOW}/.o"
         f" && mv {WORKFLOW}/.o {WORKFLOW}/orchestrators.json"
-        " && printf '%s\\n' '---' 'id: QEST-20261022-HARBOR' 'kind: quest' 'status: active'"
-        f" 'priority: queued' 'rank: 1' '---' '# {UNSTARTED}' > {UNSTARTED_QUEST}/README.md"
     )
 
 
@@ -1859,7 +1858,7 @@ def unorchestrated(desktop: Desktop) -> None:
         desktop.as_account(f"rm -f {desktop_session.PI_PRESENCE}/{address.lower()}.json")
     desktop.as_account(
         "rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json"
-        f" {WORKFLOW}/orchestrators.json {WORKFLOW}/quests.json && rm -rf {UNSTARTED_QUEST}"
+        f" {WORKFLOW}/orchestrators.json {WORKFLOW}/quests.json {WORKFLOW}/ended.json"
     )
     desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 

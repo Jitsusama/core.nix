@@ -23,7 +23,6 @@ onLinux {
         ../lid-hinge/lid-hinge.rs
         ../mic-mute-light/mic-mute-light.rs
         ../quickshell/keyboard-lights.rs
-        ../quickshell/quests.rs
         ../touchpad/click-strength.rs
         ../tuple/people.rs
       ];
