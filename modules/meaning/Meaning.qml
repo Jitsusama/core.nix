@@ -200,8 +200,10 @@ Provider {
         }
 
         function onChoicesChanged(): void {
-            if (provider.launcher.open)
-                settled.restart();
+            // Started, never restarted, so a page changing faster than it
+            // settles (Machine, Sound's meter) is still told every 500 ms.
+            if (provider.launcher.open && !settled.running)
+                settled.start();
         }
     }
 

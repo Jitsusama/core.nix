@@ -28,7 +28,8 @@
 //! each PICTURE is to WORDS, alike. MODELS is the folder
 //! modules/meaning/models.nix makes for bge, SIGHT the one it makes for
 //! SigLIP 2. `MEANING_DEVICE` names the device, the NPU unless it says
-//! otherwise, falling back to the CPU, and `MEANING_CACHE` where
+//! otherwise, falling back to the CPU for words but never for looking at
+//! pictures, and `MEANING_CACHE` where
 //! `OpenVINO` keeps what it compiles.
 
 mod known;
@@ -107,15 +108,17 @@ fn wanted() -> String {
     std::env::var("MEANING_DEVICE").unwrap_or_else(|_| "NPU".to_owned())
 }
 
-/// What `load` makes on the device wanted, or on the CPU when that one
-/// can't take it, as on a machine with no NPU, with the device it's on.
+/// What `load` makes on the device wanted, or, where it `falls_back`, on
+/// the CPU when that one can't take it, as on a machine with no NPU, with
+/// the device it's on.
 fn on_device<T>(
     core: &Core,
+    falls_back: bool,
     load: impl Fn(&Core, &str) -> Result<T, String>,
 ) -> Result<(T, String), String> {
     let device = wanted();
     match load(core, &device) {
-        Err(why) if device != "CPU" => {
+        Err(why) if falls_back && device != "CPU" => {
             eprintln!("meaning: on the CPU, since the {device} wouldn't: {why}");
             Ok((load(core, "CPU")?, "CPU".to_owned()))
         }
@@ -135,8 +138,19 @@ fn timed<T>(
     what: &str,
     load: impl Fn(&Core, &str) -> Result<T, String>,
 ) -> Result<(T, String), String> {
+    timed_on(core, what, true, load)
+}
+
+/// Loads with `load` as `timed` does, on the CPU too only where it
+/// `falls_back`.
+fn timed_on<T>(
+    core: &Core,
+    what: &str,
+    falls_back: bool,
+    load: impl Fn(&Core, &str) -> Result<T, String>,
+) -> Result<(T, String), String> {
     let began = Instant::now();
-    let (made, device) = on_device(core, load)?;
+    let (made, device) = on_device(core, falls_back, load)?;
     eprintln!(
         "meaning: {what} loaded on the {device} in {} ms",
         began.elapsed().as_millis()
@@ -224,10 +238,14 @@ impl Models {
     }
 
     /// SigLIP's vision tower, for the pictures.
+    /// SigLIP's vision tower, only on the device wanted, never the CPU
+    /// in its place: looking through every picture there would take the
+    /// processor from Joel's work in the background, where a search's few
+    /// words don't.
     fn looks(&mut self) -> Result<&mut Looks, String> {
         if self.looks.is_none() {
             let folder = self.sight()?;
-            let (looks, _) = timed(self.core()?, "SigLIP's looks", |core, device| {
+            let (looks, _) = timed_on(self.core()?, "SigLIP's looks", false, |core, device| {
                 Looks::load(core, &folder, device)
             })?;
             self.looks = Some(looks);
@@ -428,7 +446,20 @@ fn embed(
 fn look(known: &Shared<Known>, models: &mut Models, path: &Path, key: &str, pass: &mut Pass) {
     // Read before the tower's asked for, so a picture that can't be read
     // loads nothing.
-    let seen = Picture::read(path).and_then(|picture| models.looks()?.look(&picture));
+    let seen = match Picture::read(path) {
+        Ok(picture) => match models.looks() {
+            Ok(looks) => looks.look(&picture),
+            Err(why) => {
+                // Not the picture's fault, so none is kept as showing
+                // nothing; pictures aren't looked at, nor searched, until
+                // the daemon starts again.
+                eprintln!("meaning: pictures aren't looked at here: {why}");
+                known.lock().looks = None;
+                return;
+            }
+        },
+        Err(why) => Err(why),
+    };
     let mut held = known.lock();
     let Some(looks) = held.looks.as_mut() else {
         return;
