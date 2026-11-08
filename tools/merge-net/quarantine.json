@@ -12,5 +12,12 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 85a12fcab559",
     "test": "vm-desktop-starts-clean"
+  },
+  {
+    "at": 1794177146,
+    "commit": "d93007684e2f6b0c65a0771c9fa14190b17834e2",
+    "owner_pr": 2299,
+    "reason": "broke at d93007684e2f, fixed forward rather than reverted",
+    "test": "vm-desktop-looks"
   }
 ]
