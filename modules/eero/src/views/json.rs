@@ -6,7 +6,7 @@
 
 use serde::Serialize;
 
-use crate::model::{Cloud, HomeNetwork};
+use crate::model::{Cloud, Device, HomeNetwork};
 
 /// A view's figures after the record's head.
 #[derive(Serialize)]
@@ -29,4 +29,13 @@ pub fn slice<T: Serialize>(model: &HomeNetwork, figures: T) -> Result<String, St
     let mut text = serde_json::to_string_pretty(&slice).map_err(|e| e.to_string())?;
     text.push('\n');
     Ok(text)
+}
+
+/// The devices on now that something wants.
+pub fn on(model: &HomeNetwork, wanted: impl Fn(&Device) -> bool) -> Vec<&Device> {
+    model
+        .devices
+        .iter()
+        .filter(|device| wanted(device))
+        .collect()
 }

@@ -10,6 +10,7 @@ use super::text::{Line, Role, run};
 /// Every graph is this many characters, two readings to each.
 pub const WIDE: usize = 10;
 const SLOTS: usize = WIDE * 2;
+const SLOTS_F64: f64 = 20.0;
 
 /// A column of braille dots filled from the bottom, for the left and the
 /// right of a cell.
@@ -73,6 +74,25 @@ pub fn spark(values: &[f64], coloured: bool) -> Line {
     line
 }
 
+/// A level from nothing to whole, filling from the left; one that warns
+/// takes the warning's ink.
+pub fn bar(level: f64, coloured: bool, warns: bool) -> Line {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "0 to 20"
+    )]
+    let filled = (level.clamp(0.0, 1.0) * SLOTS_F64).round() as usize;
+    let role = if warns { Role::Warning } else { Role::Muted };
+    (0..WIDE)
+        .map(|cell| match filled.saturating_sub(cell * 2).min(2) {
+            2 => run(FULL.to_string(), role),
+            1 => run(dots(4, 0).to_string(), role),
+            _ => run(track(coloured).to_string(), Role::Track),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +122,13 @@ mod tests {
                 .map(|r| r.text.as_str())
                 .collect::<String>()
         );
+    }
+
+    #[test]
+    fn a_bar_fills_from_the_left_over_a_track_that_shows_on_a_terminal() {
+        assert_eq!(said(&bar(0.45, false, false)), "⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀");
+        assert_eq!(said(&bar(0.45, true, false)), "⣿⣿⣿⣿⡇⣿⣿⣿⣿⣿");
+        assert_eq!(bar(0.45, true, false)[5].role, Role::Track);
+        assert_eq!(bar(0.97, true, true)[0].role, Role::Warning);
     }
 }

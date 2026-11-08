@@ -16,6 +16,9 @@ mod graph;
 mod home;
 mod json;
 mod marks;
+mod mesh;
+mod nodes;
+mod radio;
 mod speeds;
 mod text;
 pub mod theme;
@@ -117,6 +120,10 @@ impl View {
 pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Result<String, String> {
     let page = match view {
         View::Status => home::page(model, clock),
+        View::Nodes => nodes::all(model, clock),
+        View::Node(name) => nodes::one(model, find_node(model, name)?, clock, ink),
+        View::Mesh => mesh::page(model, clock),
+        View::Radio => radio::page(model, clock, ink),
         View::Devices => devices::all(model, clock),
         View::Device(name) => devices::one(model, find_device(model, name)?, clock),
         View::Speeds => speeds::page(model, clock, ink),
@@ -130,6 +137,10 @@ pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Resul
 pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
     match view {
         View::Status => home::json(model),
+        View::Nodes => nodes::all_json(model),
+        View::Node(name) => nodes::one_json(model, find_node(model, name)?),
+        View::Mesh => mesh::json(model),
+        View::Radio => radio::json(model),
         View::Devices => devices::all_json(model),
         View::Device(name) => devices::one_json(model, find_device(model, name)?),
         View::Speeds => speeds::json(model),
@@ -225,6 +236,17 @@ fn listed(names: &[&str]) -> String {
         [one] => (*one).into(),
         [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
+}
+
+fn find_node<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Node, String> {
+    model
+        .nodes
+        .iter()
+        .find(|node| node.id == name || node_name(node).eq_ignore_ascii_case(name))
+        .ok_or_else(|| {
+            let names: Vec<&str> = model.nodes.iter().map(node_name).collect();
+            format!("no node is called {name}; the nodes are {}", listed(&names))
+        })
 }
 
 fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, String> {

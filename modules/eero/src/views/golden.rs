@@ -94,6 +94,15 @@ golden! {
     a_device_over_ethernet_shows_its_port:
         troubled, View::Device("printer 1".into()) => "device-ethernet.txt";
     speeds_lists_every_test_with_a_spark: model, View::Speeds => "speeds.txt";
+    nodes_lists_every_node: model, View::Nodes => "nodes.txt";
+    nodes_marks_one_offline: troubled, View::Nodes => "nodes-troubled.txt";
+    a_node_holds_its_radios_ports_and_devices:
+        model, View::Node("Study".into()) => "node-study.txt";
+    the_gateway_holds_its_linked_ports: model, View::Node("2003".into()) => "node-hall.txt";
+    a_port_under_its_best_and_a_busy_radio_are_marked:
+        troubled, View::Node("Hall".into()) => "node-troubled.txt";
+    the_mesh_is_a_tree_from_the_gateway: model, View::Mesh => "mesh.txt";
+    radio_sets_every_nodes_radios_side_by_side: model, View::Radio => "radio.txt";
 }
 
 /// The views a terminal's colours are tried on, and those that fit a
@@ -101,11 +110,16 @@ golden! {
 /// figure eero has side by side, which a terminal narrower than them wraps
 /// rather than cuts.
 fn coloured() -> Vec<View> {
-    vec![View::Status, View::Devices, View::Speeds]
+    vec![
+        View::Status,
+        View::Devices,
+        View::Speeds,
+        View::Node("Hall".into()),
+    ]
 }
 
 fn narrow() -> Vec<View> {
-    vec![View::Status, View::Speeds]
+    vec![View::Status, View::Speeds, View::Mesh]
 }
 
 /// The record with something wrong in each place a view marks it: a node
@@ -188,6 +202,20 @@ fn signed_out_says_how_to_sign_in() {
     assert!(
         said.ends_with("sign in with eero sign-in <email or phone>"),
         "{page}"
+    );
+}
+
+#[test]
+fn an_unknown_node_names_the_nodes_there_are() {
+    let refused = text(
+        &View::Node("Attic".into()),
+        &model(),
+        &soon(),
+        &Ink::plain(),
+    );
+    assert_eq!(
+        refused.unwrap_err(),
+        "no node is called Attic; the nodes are Hall, Study and Den"
     );
 }
 
@@ -294,5 +322,30 @@ fn the_speeds_slice_holds_every_test() {
     assert_eq!(
         speeds["speed_tests"],
         serde_json::to_value(&net.speed_tests).unwrap()
+    );
+}
+
+#[test]
+fn the_node_slices_hold_each_node_whole_and_the_mesh_and_radios_their_part() {
+    let model = model();
+    assert_eq!(
+        slice(&View::Nodes)["nodes"],
+        serde_json::to_value(&model.nodes).unwrap()
+    );
+    let study = slice(&View::Node("Study".into()));
+    assert_eq!(
+        study["node"],
+        serde_json::to_value(&model.nodes[1]).unwrap()
+    );
+    assert_eq!(study["devices"].as_array().unwrap().len(), 9);
+    let mesh = slice(&View::Mesh);
+    assert_eq!(
+        mesh["nodes"][1]["backhaul"],
+        serde_json::to_value(&model.nodes[1].backhaul).unwrap()
+    );
+    let radio = slice(&View::Radio);
+    assert_eq!(
+        radio["nodes"][2]["radios"],
+        serde_json::to_value(&model.nodes[2].radios).unwrap()
     );
 }

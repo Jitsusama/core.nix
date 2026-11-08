@@ -45,6 +45,17 @@ pub fn signed(value: i64) -> String {
     }
 }
 
+/// Bytes in the powers of ten networks count in: 167.1 GB.
+pub fn bytes(value: u64) -> Line {
+    const UNITS: [(f64, &str); 4] = [(1e12, "TB"), (1e9, "GB"), (1e6, "MB"), (1e3, "kB")];
+    #[expect(clippy::cast_precision_loss, reason = "a size shown to a tenth")]
+    let size = value as f64;
+    UNITS.iter().find(|(scale, _)| size >= *scale).map_or_else(
+        || figure(count(value), "B"),
+        |(scale, unit)| figure(format!("{:.1}", size / scale), unit),
+    )
+}
+
 /// How fast data moves, in the unit that keeps it readable: 11.5 Mbit/s,
 /// 145.4 kbit/s, 98 bit/s.
 pub fn speed(mbps: f64) -> Line {
@@ -83,6 +94,16 @@ pub fn words(kind: &str) -> String {
     kind.replace('_', " ")
 }
 
+/// eero's name for a radio, set as a unit is: 5.8GHz is 5.8 GHz.
+pub fn radio(said: &str) -> String {
+    said.find(|c: char| c.is_ascii_alphabetic())
+        .filter(|at| *at > 0 && !said[..*at].ends_with(' '))
+        .map_or_else(
+            || said.to_owned(),
+            |at| format!("{} {}", &said[..at], &said[at..]),
+        )
+}
+
 /// Several figures on one line, a muted dot between each.
 pub fn joined(parts: Vec<Line>) -> Line {
     let mut line = Vec::new();
@@ -105,6 +126,9 @@ mod tests {
 
     #[test]
     fn a_figure_is_sized_to_the_unit_people_read_it_in() {
+        assert_eq!(text(&bytes(167_091_577_600)), "167.1 GB");
+        assert_eq!(text(&bytes(3_680_059)), "3.7 MB");
+        assert_eq!(text(&bytes(999)), "999 B");
         assert_eq!(text(&speed(11.452_299)), "11.5 Mbit/s");
         assert_eq!(text(&speed(0.145_383_8)), "145.4 kbit/s");
         assert_eq!(text(&speed(0.000_098_2)), "98 bit/s");
@@ -116,6 +140,8 @@ mod tests {
         assert_eq!(count(6_072_645), "6,072,645");
         assert_eq!(count(735), "735");
         assert_eq!(signed(-48), "\u{2212}48");
+        assert_eq!(radio("5.8GHz"), "5.8 GHz");
+        assert_eq!(radio("5 GHz"), "5 GHz");
         assert_eq!(words("laptop_computer"), "laptop computer");
     }
 }
