@@ -366,6 +366,18 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
         given_to(folder.path()),
         "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n"
     );
+    // Each step before the build says what it does, since a fresh
+    // builder given 104 derivations on 8 November took 15 minutes over
+    // them while the run said nothing at all.
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("copying 1 derivation up to the lent builder nix-offload, which lacks it"),
+        "{said}"
+    );
+    assert!(
+        said.contains("asking the lent builder nix-offload what it would build of it"),
+        "{said}"
+    );
 
     // One that can't be copied up isn't built anywhere unasked.
     fs::write(folder.path().join("nix-status"), "1").unwrap();
@@ -393,6 +405,14 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
         "not built there"
     );
     // With no closure to ask about, it tried copying them whole.
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "copying the derivations up to the lent builder nix-offload with all they're \
+             built from, since what it lacks is unknown"
+        ),
+        "{said}"
+    );
     assert_eq!(
         fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
         format!(

@@ -648,12 +648,29 @@ fn derivations_up(
     let mut copying = Command::new(nix);
     match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
-        Some(lacking) => copying
-            .args(["copy", "--no-recursive", "--to", &lent.store])
-            .args(lacking),
-        None => copying
-            .args(["copy", "--to", &lent.store, "--derivation"])
-            .args(paths),
+        Some(lacking) => {
+            let (count, them) = match lacking.len() {
+                1 => ("1 derivation".to_owned(), "it"),
+                count => (format!("{count} derivations"), "them"),
+            };
+            eprintln!(
+                "nix-offload: copying {count} up to the lent builder {}, which lacks {them}",
+                lent.host
+            );
+            copying
+                .args(["copy", "--no-recursive", "--to", &lent.store])
+                .args(lacking)
+        }
+        None => {
+            eprintln!(
+                "nix-offload: copying the derivations up to the lent builder {} with all \
+                 they're built from, since what it lacks is unknown",
+                lent.host
+            );
+            copying
+                .args(["copy", "--to", &lent.store, "--derivation"])
+                .args(paths)
+        }
     };
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let copied = copying
@@ -754,6 +771,13 @@ const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
 /// itself, as it would for a build. The builder's account is one its daemon trusts, so they go
 /// unsigned. When any of it fails, the builder builds them, as before.
 fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) {
+    // Said before it's asked, since a fresh builder asks its caches about
+    // every path the build takes, which can run for minutes.
+    eprintln!(
+        "nix-offload: asking the lent builder {} what it would build of {}",
+        lent.host,
+        if paths.len() == 1 { "it" } else { "them" }
+    );
     let Some(planned) = answered(lent, PLANS, paths, scratch, ssh).map(|said| held::planned(&said))
     else {
         return;
