@@ -31,7 +31,8 @@ to keep, and the model carries it as a `history` beside the figure: the
 last hour as a series, one list a figure beside its `at`, a sample a
 read, oldest first, so a spark reads one list. Its golden answer is the
 contract read through a short history `src/golden.rs` builds: six reads
-five minutes apart, a roam, a join, a leave and an outage the probe saw.
+five minutes apart, a roam, a join, a leave and an outage the probe saw,
+on a machine that's the first laptop.
 
 - `read`, `cloud`: when eero last answered, and whether it's answering,
   unreachable or signed out.
@@ -45,7 +46,9 @@ five minutes apart, a roam, a join, a leave and an outage the probe saw.
   channel, width, power, how busy and its devices, each port's speed,
   and the day's traffic; the last hour of its bars, and of each radio's
   channel, how busy and power.
-- `devices[]`: each device on now, by `mac`, its `node`, band, channel,
+- `devices[]`: each device on now, by `mac`, whether it's
+  `this_machine` (one of the daemon's machine's own hardware addresses
+  is its), its `node`, band, channel,
   signal, SNR, each direction's rate with its MCS, streams, width, guard
   interval and Wi-Fi generation, retries, packets, and its speed now;
   the last hour of its signal, SNR, rates and speed, and its `roams` to

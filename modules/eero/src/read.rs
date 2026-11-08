@@ -364,6 +364,17 @@ fn light(record: &Value) -> Option<Light> {
 }
 
 /// The devices on now, by node, the strongest signal first.
+/// Marks the device that's this machine, the one whose hardware address
+/// is among `own`, this machine's, so the shell and the CLI can put it
+/// first. It's matched by address rather than by the Wi-Fi link's BSSID,
+/// so a machine on Ethernet is found too, and the address is the one the
+/// interface has now, which is what eero sees even when it's private.
+pub fn mark_this_machine(model: &mut HomeNetwork, own: &[String]) {
+    for device in &mut model.devices {
+        device.this_machine = own.iter().any(|mac| mac.eq_ignore_ascii_case(&device.mac));
+    }
+}
+
 fn devices(answer: &Value) -> Vec<Device> {
     let mut devices: Vec<Device> = list(answer, "")
         .filter(|record| flag(record, "/connected") == Some(true))
@@ -382,6 +393,7 @@ fn device(record: &Value) -> Option<Device> {
     let frequency_mhz = number(link, "/frequency");
     Some(Device {
         mac: text(record, "/mac")?,
+        this_machine: false,
         name: text(record, "/display_name"),
         nickname: text(record, "/nickname"),
         hostname: text(record, "/hostname"),
@@ -625,6 +637,9 @@ mod tests {
     fn the_contract_and_its_history_read_into_the_model() {
         let mut read =
             home_network(&contract_answers(), READ, answering()).expect("the network was read");
+        // The model is the one the daemon keeps on the machine that's the
+        // first laptop, so the views have this machine to put first.
+        mark_this_machine(&mut read, &["02:00:00:00:00:0e".to_owned()]);
         history()
             .draw(&mut read, time::to_unix(READ).unwrap())
             .unwrap();
@@ -639,6 +654,32 @@ mod tests {
             "differs from home-network.json:\n{}",
             out.join("\n")
         );
+    }
+
+    #[test]
+    fn this_machine_is_the_device_with_one_of_its_addresses() {
+        let mut read =
+            home_network(&contract_answers(), READ, answering()).expect("the network was read");
+
+        mark_this_machine(
+            &mut read,
+            &[
+                "02:00:00:00:00:99".to_owned(),
+                "02:00:00:00:00:0E".to_owned(),
+            ],
+        );
+
+        let here: Vec<&str> = read
+            .devices
+            .iter()
+            .filter(|device| device.this_machine)
+            .map(|device| device.mac.as_str())
+            .collect();
+        assert_eq!(here, ["02:00:00:00:00:0e"]);
+
+        mark_this_machine(&mut read, &[]);
+
+        assert!(read.devices.iter().all(|device| !device.this_machine));
     }
 
     #[test]
