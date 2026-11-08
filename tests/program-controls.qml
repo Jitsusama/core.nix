@@ -582,7 +582,8 @@ ShellRoot {
             same("what's playing says by whom", played[3].side, "The Testers");
             same("as a figure", played[3].figure, true);
             same("Next keeps the launcher", played[1].stays, true);
-            same("saying what's on", played[1].state(), "Song of the test, The Testers");
+            same("saying what's on", played[1].state(),
+                "Song of the test \u00b7 The Testers");
             played[1].run();
             played[2].run();
             same("Next and Previous reach its player", `${player.nexts} ${player.previouses}`,
