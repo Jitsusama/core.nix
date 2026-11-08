@@ -469,7 +469,7 @@ mod tests {
         assert!(known.next().is_none());
         shot(&shots, "old.png", 4);
         known.came(&old);
-        assert_eq!(looked_at(&mut known), [old.clone()]);
+        assert_eq!(looked_at(&mut known), std::slice::from_ref(&old));
         known.went(&new);
         assert_eq!(known.looks.as_ref().unwrap().len(), 1);
     }

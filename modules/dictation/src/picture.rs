@@ -157,7 +157,7 @@ impl Picture {
     /// Pillow's bilinear resize makes it: each pixel a tent-weighted mix of
     /// those it covers, widened by how far the picture shrinks, so a
     /// screenshot many times wider is averaged rather than sampled. That
-    /// is how the models that look at pictures were trained (`SigLIP`'s
+    /// is how the models that look at pictures were trained (SigLIP's
     /// processor resizes with Pillow), so a picture means to them here
     /// what it meant there.
     pub fn resized(&self, width: usize, height: usize) -> Vec<f32> {

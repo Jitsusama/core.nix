@@ -14,6 +14,7 @@ doc-valid-idents = [
   "NVMe",
   "OpenVINO",
   "PipeWire",
+  "SigLIP",
   "SplitMix64",
   "UDisks2",
   "UPower",

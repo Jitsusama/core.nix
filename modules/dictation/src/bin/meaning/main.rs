@@ -356,7 +356,7 @@ fn work(known: &Shared<Known>, woken: &Receiver<()>, models: &mut Models) -> Res
                 }
                 match job {
                     Job::Embed(text) => embed(known, models, &text, &mut pass)?,
-                    Job::Look(path, key) => look(known, models, &path, &key, &mut pass)?,
+                    Job::Look(path, key) => look(known, models, &path, &key, &mut pass),
                     Job::Query(_) => {}
                 }
             }
@@ -423,20 +423,15 @@ fn embed(
     Ok(())
 }
 
-/// Looks at a picture and keeps what it looks like.
-fn look(
-    known: &Shared<Known>,
-    models: &mut Models,
-    path: &Path,
-    key: &str,
-    pass: &mut Pass,
-) -> Result<(), String> {
+/// Looks at a picture and keeps what it looks like; one that can't be
+/// read or looked at is kept as showing nothing.
+fn look(known: &Shared<Known>, models: &mut Models, path: &Path, key: &str, pass: &mut Pass) {
     // Read before the tower's asked for, so a picture that can't be read
     // loads nothing.
     let seen = Picture::read(path).and_then(|picture| models.looks()?.look(&picture));
     let mut held = known.lock();
     let Some(looks) = held.looks.as_mut() else {
-        return Ok(());
+        return;
     };
     match seen {
         Ok(look) => {
@@ -453,7 +448,6 @@ fn look(
             looks.put(key, vec![0.0; text::WIDTH]);
         }
     }
-    Ok(())
 }
 
 /// The lines given, or those read when none are.
