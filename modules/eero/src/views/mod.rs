@@ -12,8 +12,10 @@
 mod clock;
 mod devices;
 mod figures;
+mod firmware;
 mod graph;
 mod home;
+mod internet;
 mod json;
 mod marks;
 mod mesh;
@@ -22,6 +24,7 @@ mod radio;
 mod speeds;
 mod text;
 pub mod theme;
+mod traffic;
 
 pub use clock::Clock;
 pub use text::Ink;
@@ -49,7 +52,7 @@ pub enum View {
     Speeds,
     Firmware,
     Radio,
-    Usage,
+    Traffic,
     Profiles,
     Profile(String),
     Events,
@@ -71,7 +74,10 @@ pub const VIEWS: [(&str, &str); 14] = [
     ("speeds", "each speed test eero kept"),
     ("firmware", "what runs, what's next and when it updates"),
     ("radio", "every node's radios, band by band"),
-    ("usage", "bytes by hour, for the home network and each node"),
+    (
+        "traffic",
+        "bytes by hour, for the home network and each node",
+    ),
     ("profiles", "each profile and its devices"),
     ("profile", "one profile: its devices, on now or not"),
     ("events", "what happened, newest first"),
@@ -99,7 +105,7 @@ impl View {
             ["speeds"] => Self::Speeds,
             ["firmware"] => Self::Firmware,
             ["radio"] => Self::Radio,
-            ["usage"] => Self::Usage,
+            ["traffic"] => Self::Traffic,
             ["profiles"] => Self::Profiles,
             ["profile", rest @ ..] if rest.len() <= 1 => {
                 one("profile", "name|id", rest.first(), Self::Profile)?
@@ -127,6 +133,9 @@ pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Resul
         View::Devices => devices::all(model, clock),
         View::Device(name) => devices::one(model, find_device(model, name)?, clock),
         View::Speeds => speeds::page(model, clock, ink),
+        View::Internet => internet::page(model, clock, ink),
+        View::Firmware => firmware::page(model, clock),
+        View::Traffic => traffic::page(model, clock, ink),
         _ => return Err(unbuilt(view)),
     };
     Ok(ink.page(&page))
@@ -144,6 +153,9 @@ pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
         View::Devices => devices::all_json(model),
         View::Device(name) => devices::one_json(model, find_device(model, name)?),
         View::Speeds => speeds::json(model),
+        View::Internet => internet::json(model),
+        View::Firmware => firmware::json(model),
+        View::Traffic => traffic::json(model),
         _ => Err(unbuilt(view)),
     }
 }

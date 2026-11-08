@@ -1,0 +1,13 @@
+home · firmware · read 1 min 7 s ago
+
+running         v7.17.4-5
+next            v7.17.4-5
+update waiting  no
+can update now  no
+updates at      02:00, the network's time
+last started    2026-11-07 02:19, 15 h 36 min ago
+
+node   firmware   update  support ends
+Hall   v7.17.4-5  none    –
+Study  v7.17.4-5  none    –
+Den    v7.17.4-5  none    –

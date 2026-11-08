@@ -17,7 +17,7 @@
 //!   eero daemon                     keep the home network for the shell
 //!
 //! The views: status, nodes, node <location|id>, mesh, devices,
-//! device <name|mac>, internet, speeds, firmware, radio, usage, profiles,
+//! device <name|mac>, internet, speeds, firmware, radio, traffic, profiles,
 //! profile <name|id> and events.
 
 mod api;
@@ -44,7 +44,7 @@ const USAGE: &str = concat!(
     "usage: eero <view> [--json] | speedtest | sqm on|off | sign-in <email or phone> | ",
     "daemon\n\n",
     "views: status, nodes, node <location|id>, mesh, devices, device <name|mac>, internet,\n",
-    "       speeds, firmware, radio, usage, profiles, profile <name|id>, events",
+    "       speeds, firmware, radio, traffic, profiles, profile <name|id>, events",
 );
 
 fn main() -> ExitCode {

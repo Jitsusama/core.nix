@@ -12,7 +12,7 @@ joined           2020-11-13 16:47, 5 y 360 d ago
 light            on · 100 %
 power            –
 devices          2 · 2 Wi-Fi · 0 Ethernet
-usage            150.2 MB down  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   10.1 MB up  ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
+traffic          150.2 MB down  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   10.1 MB up  ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
 
 radios
   band        channel   width   power  busy              devices  BSSID

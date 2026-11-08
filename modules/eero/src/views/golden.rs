@@ -103,10 +103,15 @@ golden! {
         troubled, View::Node("Hall".into()) => "node-troubled.txt";
     the_mesh_is_a_tree_from_the_gateway: model, View::Mesh => "mesh.txt";
     radio_sets_every_nodes_radios_side_by_side: model, View::Radio => "radio.txt";
+    internet_holds_every_setting_in_sections: model, View::Internet => "internet.txt";
+    internet_marks_the_way_out_down: troubled, View::Internet => "internet-troubled.txt";
+    firmware_lists_each_nodes_own: model, View::Firmware => "firmware.txt";
+    firmware_marks_an_update_waiting: troubled, View::Firmware => "firmware-troubled.txt";
+    traffic_sets_every_hour_by_node: model, View::Traffic => "traffic.txt";
 }
 
 /// The views a terminal's colours are tried on, and those that fit a
-/// hundred columns: the devices, node, radio and usage tables set every
+/// hundred columns: the devices, node, radio and traffic tables set every
 /// figure eero has side by side, which a terminal narrower than them wraps
 /// rather than cuts.
 fn coloured() -> Vec<View> {
@@ -115,11 +120,20 @@ fn coloured() -> Vec<View> {
         View::Devices,
         View::Speeds,
         View::Node("Hall".into()),
+        View::Internet,
+        View::Firmware,
+        View::Traffic,
     ]
 }
 
 fn narrow() -> Vec<View> {
-    vec![View::Status, View::Speeds, View::Mesh]
+    vec![
+        View::Status,
+        View::Speeds,
+        View::Mesh,
+        View::Internet,
+        View::Firmware,
+    ]
 }
 
 /// The record with something wrong in each place a view marks it: a node
@@ -322,6 +336,33 @@ fn the_speeds_slice_holds_every_test() {
     assert_eq!(
         speeds["speed_tests"],
         serde_json::to_value(&net.speed_tests).unwrap()
+    );
+}
+
+#[test]
+fn the_internet_firmware_and_traffic_slices_hold_their_part() {
+    let model = model();
+    assert_eq!(
+        slice(&View::Internet)["internet"],
+        serde_json::to_value(&model.internet).unwrap()
+    );
+    let firmware = slice(&View::Firmware);
+    assert_eq!(
+        firmware["firmware"],
+        serde_json::to_value(&model.internet.firmware).unwrap()
+    );
+    assert_eq!(
+        firmware["nodes"][1]["firmware"],
+        serde_json::to_value(&model.nodes[1].firmware).unwrap()
+    );
+    let traffic = slice(&View::Traffic);
+    assert_eq!(
+        traffic["usage"],
+        serde_json::to_value(&model.internet.usage).unwrap()
+    );
+    assert_eq!(
+        traffic["nodes"][0]["usage"],
+        serde_json::to_value(&model.nodes[0].usage).unwrap()
     );
 }
 

@@ -46,6 +46,16 @@ impl Clock {
     pub fn minute(&self, at: Timestamp) -> String {
         self.local(at, "%Y-%m-%d %H:%M")
     }
+
+    /// The day: 2026-11-05.
+    pub fn day(&self, at: Timestamp) -> String {
+        self.local(at, "%Y-%m-%d")
+    }
+
+    /// The hour: 17:00.
+    pub fn hour(&self, at: Timestamp) -> String {
+        self.local(at, "%H:%M")
+    }
 }
 
 /// A length of time in its two largest units: 37 s, 19 min 55 s,

@@ -156,8 +156,9 @@ fn firmware(node: &Node) -> Line {
     line
 }
 
-/// A day's usage, each way: its total and its spark.
-pub fn usage(usage: Option<&Usage>, ink: &Ink) -> Line {
+/// A day's traffic, each way: its total and its spark. The record keeps
+/// it as eero names it, usage.
+pub fn traffic(usage: Option<&Usage>, ink: &Ink) -> Line {
     let Some(usage) = usage else { return unknown() };
     let way = |series: &crate::model::Series, word: &str| {
         let mut line = bytes(series.total_bytes);
@@ -216,7 +217,7 @@ pub fn one(model: &HomeNetwork, node: &Node, clock: &Clock, ink: &Ink) -> Page {
 }
 
 /// A node's own figures: its state, backhaul, names, addresses, firmware,
-/// age, light and power, devices and the day's usage.
+/// age, light and power, devices and the day's traffic.
 fn about(node: &Node, clock: &Clock, ink: &Ink) -> Vec<(&'static str, Line)> {
     let at = |stamp: Option<&str>| when(stamp, clock);
     let mut addresses: Vec<Line> = node.address.iter().map(|a| vec![plain(a)]).collect();
@@ -299,7 +300,7 @@ fn about(node: &Node, clock: &Clock, ink: &Ink) -> Vec<(&'static str, Line)> {
                 }),
             ]),
         ),
-        ("usage", usage(node.usage.as_ref(), ink)),
+        ("traffic", traffic(node.usage.as_ref(), ink)),
     ]
 }
 

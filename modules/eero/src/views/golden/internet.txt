@@ -1,0 +1,60 @@
+home · internet · read 1 min 7 s ago
+
+state            connected · ISP up · mesh connected
+ISP              Example ISP · AS64496
+public address   203.0.113.1 · double NAT no
+gateway address  10.0.0.1
+WAN              DHCP
+lease            DHCP · 203.0.113.1 · mask 255.255.254.0 · router 203.0.113.2
+mode             NAT
+DHCP             automatic
+IPv6             off
+
+DNS
+  mode       automatic
+  servers    203.0.113.3 · 203.0.113.4
+  caching    off
+  IPv6 mode  automatic
+
+settings
+  SQM                     on
+  UPnP                    on
+  NAT port randomization  off
+  band steering           on
+  WPA3                    off
+  Wi-Fi mode              default
+  MLO mode                disabled
+  DDNS                    off
+  backup internet         on
+  power saving            off
+
+firmware
+  running         v7.17.4-5
+  next            v7.17.4-5
+  update waiting  no
+  can update now  no
+  updates at      02:00, the network's time
+  last started    2026-11-07 02:19, 15 h 36 min ago
+
+Thread
+  state    off
+  name     name 56
+  channel  25
+
+guest network
+  state  off
+  name   name 49
+
+what eero counts
+  nodes    3 online · 0 offline · 0 pending
+  devices  24
+
+speed test
+  last  369.86 Mbit/s down · 11.93 Mbit/s up · 2026-11-05 05:52, 2 d 12 h ago
+  kept  15 tests: eero speeds
+
+traffic
+  last day  167.1 GB down  ⣿⣷⣶⣴⣴⣶⣼⣷⣦⣶   72.7 GB up  ⣷⣿⣤⣄⣀⣠⣼⣷⣿⣷
+
+outages
+  recorded  none
