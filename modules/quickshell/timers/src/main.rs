@@ -128,7 +128,7 @@ fn main() {
     let (Some(socket), Some(kept), Some(words)) = (args.next(), args.next(), args.next()) else {
         usage();
     };
-    let aloud = match (args.next(), args.next(), args.next(), args.next()) {
+    let sound = match (args.next(), args.next(), args.next(), args.next()) {
         (None, None, None, None) => None,
         (Some(player), Some(sound), Some(call), None) => Some(Arc::new(Aloud {
             player: PathBuf::from(player),
@@ -180,7 +180,7 @@ fn main() {
         }),
         wake,
         notices: Mutex::new(tell),
-        aloud,
+        aloud: sound,
     });
     {
         // What ended while the daemon was down rings now, late, and every
