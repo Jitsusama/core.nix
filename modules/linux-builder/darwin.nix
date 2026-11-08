@@ -44,6 +44,23 @@ let
           memorySize = cfg.memory;
           diskSize = cfg.disk;
         };
+        # The guest's clock stops while the Mac sleeps, and nothing set it
+        # again soon: on 8 November a build ran 2.8 hours behind its own
+        # files, and make looped 80 minutes on "Clock skew detected". So
+        # chrony asks each minute and steps any error past a second at any
+        # time, which the module's own option can't say, rather than slew
+        # hours away over days. The guest's real-time clock is the Mac's
+        # passed through, so chrony doesn't trim it.
+        services.chrony = {
+          enable = true;
+          servers = [ ];
+          makestep.enable = false;
+          enableRTCTrimming = false;
+          extraConfig = ''
+            pool pool.ntp.org iburst maxpoll 6
+            makestep 1 -1
+          '';
+        };
       }
       (lib.mkIf (cfg.features != [ ]) {
         # Added to what the guest's Nix already offers, so it builds a piece
