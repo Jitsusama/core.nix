@@ -12,7 +12,8 @@ onLinux {
   # that names a program, never one half-written, and never while the
   # screen is locked. Its watch takes in the
   # light's buttons and anybody's answers, asks after anybody's command,
-  # and says in JSON only the lights that have said everything.
+  # and says in JSON only the lights that have said everything, each with
+  # its lumens and the name and serial its HID device gives.
   the-litra-follows-the-cameras =
     pkgs.runCommandCC "the-litra-follows-the-cameras" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
