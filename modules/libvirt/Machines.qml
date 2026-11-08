@@ -4,8 +4,9 @@
 // state at the right, in words.json's words. Return steps in to what can
 // be done to it in that state (Machines.js's acts), then every figure
 // dominfo gives as a row Return copies; its drawer shows the same
-// figures, the plate's eyebrow saying which connection it's on. The
-// program's row says below it how many are in each state.
+// figures, the plate's eyebrow saying which connection it's on, and its
+// words name each figure dominfo left out and why. The program's row
+// says below it how many are in each state.
 //
 // The program is the module's own hidden desktop entry (home.nix), whose
 // Return steps in rather than starting virt-manager's manager, which the
@@ -16,9 +17,9 @@
 // asking the session's connection wakes the account's virtqemud through
 // its socket, which quits two minutes after its last client, so it's
 // asked only while Joel looks. While the launcher is open and a connection
-// holds a machine, `virsh event` follows it, and each change it hears is
-// read whole. The system's connection is read with -r, its read-only
-// socket, which polkit never asks about.
+// holds a machine, `virsh event --loop --event lifecycle` follows it, and
+// each change it hears is read whole. The system's connection is read
+// with -r, its read-only socket, which polkit never asks about.
 //
 // Starting, resuming, powering off and forcing off a session machine run
 // virsh on its connection, the row showing what it becomes at once; one on
@@ -27,7 +28,7 @@
 // close the launcher first, so the password prompt takes the keys. Force
 // It Off ends what the machine was doing, so Return writes :forceoff on
 // the command line and asks once before it runs, as every ending does
-// (Words.ending). Open Its Console opens the machine's screen in
+// (Words.ending). Open the Console opens the machine's screen in
 // virt-manager, through niri.
 pragma ComponentBehavior: Bound
 import qs
@@ -132,8 +133,16 @@ Provider {
     }
 
     // The plate: which connection it's on, its name, every figure dominfo
-    // gave, and on the system's, that changing it asks for his password.
+    // gave, then on the system's, that changing it asks for his password,
+    // and each figure dominfo left out, named with why, so a plate short
+    // of a figure never reads as one that forgot it (docs/design.md, As
+    // Deep as the Deepest).
     function drawerOf(one) {
+        const missing = Machines.leftOut(one, said);
+        const named = ids => Machines.together(ids.map(id => Words.name(`vm:${id}`)),
+            said.and ?? "");
+        const why = (ids, words) => ids.length > 0 && words
+            ? words.replace("{figures}", named(ids)) : "";
         return {
             eyebrow: one.system ? said.inSystem : said.session,
             title: one.name,
@@ -141,7 +150,8 @@ Provider {
                 label: Words.name(`vm:${figure.id}`),
                 value: figure.value
             })),
-            body: one.system ? tells.system ?? "" : ""
+            body: [one.system ? tells.system ?? "" : "", why(missing.stopped, tells.stopped),
+                why(missing.unsaid, tells.unsaid)].filter(words => words !== "").join(" ")
         };
     }
 
@@ -337,16 +347,18 @@ Provider {
                 return;
             }
             asking = true;
-            lister.ask(reading.concat(["list", "--all", "--uuid"]));
+            lister.ask(reading.concat(["list", "--all", "--name"]));
         }
 
+        // Each machine named, described in one batch, so virsh connects once
+        // for them all.
         function listed(code, out) {
-            const uuids = Machines.listed(out);
-            if (code !== 0 || uuids.length === 0) {
+            const names = Machines.listed(out);
+            if (code !== 0 || names.length === 0) {
                 found([]);
                 return;
             }
-            describer.ask(reading.concat([uuids.map(uuid => `dominfo ${uuid}`).join("; ")]));
+            describer.ask(reading.concat([Machines.describing(names)]));
         }
 
         // What it found, read for this opening only if it's still open.

@@ -9,7 +9,8 @@
 # Return would start its manager, and its name says the name the glossary
 # replaces with VM. This one hides itself, so nothing lists it but the
 # launcher, and only while Machines.qml says a machine exists, its Return
-# stepping in to them. Its keywords still find it by what it was called.
+# stepping in to them. Its one keyword is the name the glossary replaces,
+# which still finds it, and no implementation's name is typed for it.
 {
   lib,
   options,
@@ -48,7 +49,7 @@ in
       Type=Application
       Name=VMs
       Comment=Computers run as programs on this one
-      Keywords=virtual machine;virtual machines;libvirt;QEMU;KVM;guest;virt-manager;
+      Keywords=virtual machine;virtual machines;
       Exec=${lib.getExe' pkgs.virt-manager "virt-manager"}
       Icon=virt-manager
       NoDisplay=true

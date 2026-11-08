@@ -1,6 +1,8 @@
 // What virsh says of the VMs, as Programs › VMs shows it, run in Qt's own
-// JavaScript engine, the one the shell runs it in: a list of names or
-// UUIDs read one a line, blank lines left out; dominfo read for every
+// JavaScript engine, the one the shell runs it in: a list of names read
+// one a line, blank lines left out and a name's own spaces kept; the one
+// batch asking dominfo of them all, every name read back whole by virsh's
+// command line however it's spelled; dominfo read for every
 // figure it gives, a running machine's and one shut off, one with no limit
 // on its memory and one with messages and a security label, several in one
 // batch, one virsh couldn't find left out and a label it doesn't know
@@ -8,7 +10,8 @@
 // word, every word words.json having one, and one it doesn't know as
 // unknown; what can be done in each state, in order, and what virsh is
 // told for each; the figures a drawer shows in their order and units, a
-// figure dominfo left out left out; the order and count Programs shows;
+// figure dominfo left out left out and named by why; the order and count
+// Programs shows;
 // an event read as a change; and virsh's error read as the foot says it.
 // The `vms-read-as-virsh-says` check copies Machines.js and the launcher's
 // words beside this file and runs `qml -platform offscreen machines.qml`.
@@ -50,9 +53,16 @@ QtObject {
         check("a list, one a line", Machines.listed("web\ndb\n\n"), ["web", "db"]);
         check("an empty list", Machines.listed("\n"), []);
         check("nothing at all", Machines.listed(""), []);
-        check("a list of UUIDs",
-            Machines.listed("3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10\n\n"),
-            ["3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10"]);
+        check("a name's own spaces kept", Machines.listed(" spaced \n\n"), [" spaced "]);
+        check("a line of spaces is no name", Machines.listed("web\n  \n"), ["web"]);
+        check("one asked", Machines.describing(["web"]), "dominfo --domain web");
+        check("several asked in one batch", Machines.describing(["web", "db2"]),
+            "dominfo --domain web; dominfo --domain db2");
+        check("a name virsh's line would split, quote or end, kept whole",
+            Machines.describing(["build box", "it's; \"odd\""]),
+            "dominfo --domain build\\ box; dominfo --domain it\\'s\\;\\ \\\"odd\\\"");
+        check("a name starting with a hyphen kept a name", Machines.quoted("-h"), "\\-h");
+        check("nothing asked of no machine", Machines.describing([]), "");
 
         // As virsh 12.7 writes them, with LC_ALL=C.
         const running = [
@@ -175,27 +185,49 @@ QtObject {
         check("power off foretells nothing", Machines.becomes("power-off"), "");
 
         const kept = "\u00a0";
+        // What moves most first, then what describes it, its identifiers last.
         check("a running machine's figures", Machines.figures(web, said), [
-            { id: "processors", value: "4" },
-            { id: "memory", value: `2${kept}GiB` },
-            { id: "most-memory", value: `4${kept}GiB` },
             { id: "processor-time", value: `12${kept}min 34${kept}s` },
+            { id: "memory", value: `2${kept}GiB` },
+            { id: "processors", value: "4" },
+            { id: "most-memory", value: `4${kept}GiB` },
             { id: "autostart", value: said.no },
             { id: "persistent", value: said.yes },
             { id: "managed-save", value: said.no },
             { id: "os-type", value: "hvm" },
-            { id: "id", value: "3" },
-            { id: "uuid", value: uuid },
             { id: "security-model", value: "apparmor" },
             { id: "security-doi", value: "0" },
             { id: "security-label", value: web.securityLabel },
-            { id: "messages", value: "tainted: custom-monitor; tainted: host-cpu" }
+            { id: "messages", value: "tainted: custom-monitor; tainted: host-cpu" },
+            { id: "id", value: "3" },
+            { id: "uuid", value: uuid }
         ]);
+        check("a running machine that gave every figure lacks none",
+            Machines.leftOut(web, said), { stopped: [], unsaid: [] });
         check("one shut off leaves out what it gave none of",
             Machines.figures(box, said).map(one => one.id),
-            ["processors", "memory", "most-memory", "autostart", "persistent", "os-type",
-                "uuid", "security-model", "security-doi"]);
+            ["memory", "processors", "most-memory", "autostart", "persistent", "os-type",
+                "security-model", "security-doi", "uuid"]);
         check("no limit said", Machines.figures(box, said)[2].value, said.noLimit);
+        // Its model is none, so it has no label to lack; what libvirt
+        // couldn't tell is named apart from what only a running one has.
+        check("one shut off names what it left out, by why", Machines.leftOut(box, said),
+            { stopped: ["processor-time", "id"], unsaid: ["managed-save"] });
+        const confined = Machines.described(off.replace("model: none", "model: apparmor"))[0];
+        check("one shut off under a model lacks its label too",
+            Machines.leftOut(confined, said).stopped, ["processor-time", "security-label", "id"]);
+        const quiet = Machines.described(running.replace(/CPU time:.*\n/, ""))[0];
+        check("one running that didn't say a figure lacks it as unknown",
+            Machines.leftOut(quiet, said), { stopped: [], unsaid: ["processor-time"] });
+        check("one name said alone", Machines.together(["ID"], said.and), "ID");
+        check("two names said together", Machines.together(["Processor Time", "ID"], said.and),
+            `Processor Time ${said.and} ID`);
+        check("three names said as a list",
+            Machines.together(["Processor Time", "Security Label", "ID"], said.and),
+            `Processor Time, Security Label ${said.and} ID`);
+        check("no names said as nothing", Machines.together([], said.and), "");
+        check("each reason has its words", [vm.tells.stopped, vm.tells.unsaid]
+            .every(words => typeof words === "string" && words.includes("{figures}")), true);
         check("each figure has a name", Machines.figures(web, said)
             .filter(one => !vm.parts.includes(`vm:${one.id}`)), []);
         check("half a GiB", Machines.memory(524288), `512${kept}MiB`);

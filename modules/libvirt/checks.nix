@@ -60,8 +60,9 @@
         && !(bare ? jitsusama.quickshell.launcher.providers)
       );
 
-  # How Programs › VMs reads what virsh says, its lists, every figure
-  # dominfo gives, each state's word, what can be done in each state and
+  # How Programs › VMs reads what virsh says, its lists, the one batch
+  # asking dominfo of every name, every figure dominfo gives and why any
+  # is missing, each state's word, what can be done in each state and
   # what virsh is told for it, the order and count it shows, and an event
   # heard, are Machines.js's, run in Qt's own engine over the launcher's
   # own words (tests/machines.qml).

@@ -1,6 +1,7 @@
 // What virsh says of the VMs on a connection, as Machines.qml reads it
-// and Programs › VMs shows it: the machines a list names, every figure
-// dominfo gives for each, the word for each state, what can be done in
+// and Programs › VMs shows it: the machines a list names, the batch that
+// describes them, every figure dominfo gives for each and why any it
+// leaves out is missing, the word for each state, what can be done in
 // each state, and the order and count Programs shows them in. Kept apart
 // from the QML so Qt's own engine runs it (tests/machines.qml).
 //
@@ -31,12 +32,30 @@ const KIB = /^(\d+) KiB$/;
 const SECONDS = /^([\d.]+)s$/;
 const INDENTED = /^\s/;
 
-// The machines `virsh list --all --name` or `--uuid` names, one a line,
-// the blank line virsh ends the list with left out. A name can hold any
-// character but a slash, so Machines.qml lists UUIDs and reads each
-// name from dominfo, where no space around it is lost.
+// The machines `virsh list --all --name` names, one a line, the blank line
+// virsh ends the list with left out. libvirt refuses a name holding a
+// newline, so a line is a whole name, and it's kept as it is, since a
+// space at either end is part of it.
 function listed(text) {
-    return String(text ?? "").split("\n").map(line => line.trim()).filter(line => line !== "");
+    return String(text ?? "").split("\n").filter(line => line.trim() !== "");
+}
+
+// Every character but a letter or a digit, which virsh's own command line
+// would read as a quote, a space or the semicolon between commands.
+const SPECIAL = /[^A-Za-z0-9]/g;
+
+// A name as virsh's command line reads it back whole: each character that
+// could mean something there behind a backslash, which virsh takes as the
+// character itself. Given after --domain, a name starting with a hyphen
+// is still read as the name rather than an option.
+function quoted(name) {
+    return String(name).replace(SPECIAL, character => `\\${character}`);
+}
+
+// The one line that asks dominfo of every machine named, so virsh connects
+// once for them all: "dominfo --domain web; dominfo --domain build\ box".
+function describing(names) {
+    return names.map(name => `dominfo --domain ${quoted(name)}`).join("; ");
 }
 
 // A machine before dominfo has said anything of it: every figure unknown.
@@ -350,32 +369,78 @@ function yesOrNo(value, said) {
     return value ? said.yes ?? "yes" : said.no ?? "no";
 }
 
-// Every figure dominfo gave for a machine, each { id, value }, its id
-// words.json's `vm:<id>` naming it, in the order they're asked after:
-// what it's given to run with, then whether it starts by itself and keeps
-// its definition and a saved state, then what names it, then how it's
-// kept apart from the machine. Its name is the plate's title and its
-// state the row's side, so neither is said again. A figure dominfo left
-// out, as its processor time and Id while it's off, or its security
-// label where the read-only connection can't ask for one, is left out.
-function figures(machine, said) {
+// Every figure dominfo can give for a machine, each [id, value], its id
+// words.json's `vm:<id>` naming it, "" where it gave none, in the order a
+// plate runs (docs/design.md, the drawer): what moves most, its processor
+// time and memory in use, then what it's given to run with, whether it
+// starts by itself and keeps its definition and a saved state, what it
+// runs and how it's kept apart from the machine, and what names it last.
+// Its name is the plate's title and its state the row's side, so neither
+// is said again.
+function everyFigure(machine, said) {
     const words = said ?? {};
     const most = machine.noLimit ? words.noLimit ?? "no limit" : memory(machine.mostMemory);
-    const all = [
-        ["processors", machine.processors === null ? "" : String(machine.processors)],
-        ["memory", memory(machine.memory)],
-        ["most-memory", most],
+    return [
         ["processor-time", duration(machine.processorTime)],
+        ["memory", memory(machine.memory)],
+        ["processors", machine.processors === null ? "" : String(machine.processors)],
+        ["most-memory", most],
         ["autostart", yesOrNo(machine.autostart, words)],
         ["persistent", yesOrNo(machine.persistent, words)],
         ["managed-save", yesOrNo(machine.managedSave, words)],
         ["os-type", machine.osType],
-        ["id", machine.id === null ? "" : String(machine.id)],
-        ["uuid", machine.uuid],
         ["security-model", machine.securityModel],
         ["security-doi", machine.securityDoi],
         ["security-label", machine.securityLabel],
-        ["messages", machine.messages.join("; ")]
+        ["messages", machine.messages.join("; ")],
+        ["id", machine.id === null ? "" : String(machine.id)],
+        ["uuid", machine.uuid]
     ];
-    return all.filter(one => one[1] !== "").map(one => ({ id: one[0], value: one[1] }));
+}
+
+// Every figure dominfo gave for a machine, each { id, value }, in the
+// plate's order. One it left out is left out, never guessed, and named by
+// leftOut instead.
+function figures(machine, said) {
+    return everyFigure(machine, said).filter(one => one[1] !== "")
+        .map(one => ({ id: one[0], value: one[1] }));
+}
+
+// The figures only a running machine has: its Id, the processor time it's
+// used and the label its security model gave this run, all of which
+// libvirt gives up as it stops.
+const WHILE_RUNNING = ["processor-time", "security-label", "id"];
+
+// The figures that are a machine's own whether or not it runs, which
+// dominfo leaves out only where libvirt couldn't tell: an Autostart of
+// "no autostart", a Managed save of "unknown". A DOI and a label come
+// only with a security model, and messages only when there's something
+// to say, so none of those is missing when it's absent.
+const ALWAYS = ["processors", "memory", "most-memory", "autostart", "persistent",
+    "managed-save", "os-type", "uuid"];
+
+// The figures dominfo left out of a machine, by why, each a list of ids in
+// the plate's order: `stopped`, those only a running machine has, while
+// it's not running, and `unsaid`, those libvirt couldn't tell. A label is
+// missing only where a model would give one, so a machine whose model is
+// none, or that has none, never lacks it.
+function leftOut(machine, said) {
+    const off = stateOf(machine.state) === "off";
+    const labelled = machine.securityModel !== "" && machine.securityModel !== "none";
+    const missing = everyFigure(machine, said).filter(one => one[1] === "").map(one => one[0]);
+    return {
+        stopped: missing.filter(id => off && WHILE_RUNNING.includes(id)
+            && (id !== "security-label" || labelled)),
+        unsaid: missing.filter(id => ALWAYS.includes(id)
+            || (!off && WHILE_RUNNING.includes(id) && (id !== "security-label" || labelled)))
+    };
+}
+
+// Names said as one list, "Processor Time, Security Label and ID", the
+// last two joined by the launcher's word for and.
+function together(names, and) {
+    if (names.length < 2) {
+        return names.join("");
+    }
+    return `${names.slice(0, -1).join(", ")} ${and} ${names[names.length - 1]}`;
 }

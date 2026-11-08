@@ -2909,9 +2909,10 @@
     gets none of it
   '';
   vms-read-as-virsh-says = ''
-    virsh's lists and every figure dominfo gives are read, each state is said in the launcher's
-    words, each state offers its own acts and tells virsh its own command, and the VMs are
-    ordered and counted as Programs shows them
+    virsh's lists and every figure dominfo gives are read, every name asked of dominfo in one
+    batch and read back whole however it's spelled, each figure it left out named with why, each
+    state is said in the launcher's words, each state offers its own acts and tells virsh its own
+    command, and the VMs are ordered and counted as Programs shows them
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

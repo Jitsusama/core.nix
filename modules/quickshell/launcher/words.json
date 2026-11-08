@@ -6970,15 +6970,18 @@
         "reading": "\u2026",
         "count": "{count} {state}",
         "system": "system",
-        "session": "VM in your session",
-        "inSystem": "VM in the system",
+        "session": "your VM",
+        "inSystem": "the system's VM",
         "password": "asks for your password",
         "yes": "yes",
         "no": "no",
-        "noLimit": "no limit"
+        "noLimit": "no limit",
+        "and": "and"
       },
       "tells": {
-        "system": "It runs in the system, so starting it, powering it off, forcing it off or opening its console asks for your password."
+        "system": "It runs in the system, so starting it, powering it off, forcing it off or opening its console asks for your password.",
+        "stopped": "Known only while it runs: {figures}.",
+        "unsaid": "Not known for it: {figures}."
       }
     },
     {
@@ -7055,7 +7058,7 @@
       "id": "verb:vm:console",
       "command": "open",
       "in": "vm",
-      "name": "Open Its Console",
+      "name": "Open the Console",
       "verb": "open",
       "glyph": "display"
     },
