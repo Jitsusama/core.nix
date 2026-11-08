@@ -90,6 +90,8 @@ let
   timePort = 11123;
   # The hardware address of opens-and-sets' cable, which names it cable0.
   cableAddress = "52:54:00:0c:ab:1e";
+  # And of the switch at that cable's other end, which names it switch0.
+  switchAddress = "52:54:00:0c:ab:1f";
   timeStandIn = pkgs.replaceVars ./desktop/stand-in-time.conf { port = toString timePort; };
 
   # Text views and file lists draw on the theme's dark background, which
@@ -604,10 +606,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # A cable of its own, as the laptop's dock gives it: a card that
         # says it agreed on a gigabit, full duplex, on a network of its own
         # that hands out an address, and whose carrier QEMU's monitor drops
-        # and brings back with set_link.
+        # and brings back with set_link. A hub joins it to that network and
+        # to a second card, the switch at its other end, which says what it
+        # is over LLDP.
         ++ lib.optionals (area == "opens-and-sets") [
-          "-netdev user,id=cable,net=10.9.0.0/24,restrict=on"
+          "-netdev user,id=cablenet,net=10.9.0.0/24,restrict=on"
+          "-netdev hubport,id=cablenetport,hubid=9,netdev=cablenet"
+          "-netdev hubport,id=cable,hubid=9"
           "-device virtio-net-pci,netdev=cable,id=cable,mac=${cableAddress},speed=1000,duplex=full"
+          "-netdev hubport,id=switch,hubid=9"
+          "-device virtio-net-pci,netdev=switch,id=switch,mac=${switchAddress}"
         ];
       };
       # It takes an address from its network, but no route or name server,
@@ -617,8 +625,26 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           matchConfig.MACAddress = cableAddress;
           linkConfig.Name = "cable0";
         };
+        links."10-switch" = {
+          matchConfig.MACAddress = switchAddress;
+          linkConfig.Name = "switch0";
+        };
+        # The switch only says what it is, and takes no address.
+        networks."10-switch" = {
+          matchConfig.Name = "switch0";
+          networkConfig = {
+            EmitLLDP = "nearest-bridge";
+            LLDP = false;
+            LinkLocalAddressing = "no";
+            IPv6AcceptRA = false;
+          };
+          linkConfig.RequiredForOnline = "no";
+        };
         networks."10-cable" = {
           matchConfig.Name = "cable0";
+          # A station's LLDP is heard too, not only a router's, since the
+          # switch here is this machine's own second card.
+          networkConfig.LLDP = true;
           networkConfig.DHCP = "ipv4";
           dhcpV4Config = {
             UseRoutes = false;

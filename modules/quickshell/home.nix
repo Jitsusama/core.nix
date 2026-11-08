@@ -239,6 +239,7 @@ let
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Interfaces.js"
+    "launcher/Networkd.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
     "launcher/Numbers.js"
