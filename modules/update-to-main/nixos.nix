@@ -72,11 +72,11 @@ in
       # minutes after a switch.
       {
         command = [
-          (pkgs.writeShellScript "update-to-main-shutting-down" ''
+          "${pkgs.writeShellScript "update-to-main-shutting-down" ''
             ${lib.getExe' config.systemd.package "systemctl"} list-jobs --no-legend \
               | ${lib.getExe pkgs.gnugrep} -qE \
                 ' (shutdown|reboot|poweroff|halt|kexec|soft-reboot)\.target '
-          '')
+          ''}"
         ];
         why = "the machine is shutting down";
       }
