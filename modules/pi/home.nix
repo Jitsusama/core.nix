@@ -302,12 +302,18 @@ in
       "e /tmp/jiti - - - 2d"
     ];
 
-    home.packages = lib.optional (!onClaude) piClaude ++ [
-      (import ./ask.nix {
-        inherit pkgs lib piClaude;
-        inherit (config.jitsusama.pi) ask;
-      })
-    ];
+    # landrun fences a session's commands with Landlock when it starts with
+    # PI_SANDBOX=strict, as one reading a stranger's text should; without it
+    # such a session runs no command at all. Nothing runs under it otherwise.
+    home.packages =
+      lib.optional (!onClaude) piClaude
+      ++ [
+        (import ./ask.nix {
+          inherit pkgs lib piClaude;
+          inherit (config.jitsusama.pi) ask;
+        })
+      ]
+      ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.landrun;
 
     # On the Claude plan every pi starts on it: the provider is one of the
     # extensions pi finds by itself, so the package list pi keeps is left
