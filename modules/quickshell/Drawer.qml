@@ -2066,7 +2066,8 @@ Floating {
                             // at, a long one breaking onto the pitch: one
                             // given as items (`valueItems`, `between`) on
                             // the lines DrawerPage.valueLines lays them on,
-                            // its `value` still what's copied.
+                            // or with a `tail` on the one line valueLine
+                            // gives way on, its `value` still what's copied.
                             PageText {
                                 id: value
                                 sought: drawer.washing
@@ -2076,6 +2077,11 @@ Floating {
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
                                 plain: !fact.known ? "\u2026"
+                                    : fact.modelData.valueItems && fact.modelData.tail
+                                    ? Page.valueLine(fact.modelData.valueItems,
+                                        fact.modelData.tail, fact.valueWide,
+                                        text => drawer.faceOf(fact.modelData).advanceWidth(text))
+                                        .join("\n")
                                     : fact.modelData.valueItems
                                     ? Page.valueLines(fact.modelData.valueItems,
                                         fact.modelData.between ?? " \u00b7 ", fact.valueWide,

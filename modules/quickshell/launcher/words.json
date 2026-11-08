@@ -8083,10 +8083,9 @@
       "glyph": "program",
       "said": {
         "on": "on {places}",
-        "and": "and",
+        "workspaces": "on {count} workspaces",
         "program": "program",
-        "kind": "1 kind",
-        "kinds": "{count} kinds"
+        "more": "{count} more"
       }
     },
     {

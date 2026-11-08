@@ -350,6 +350,8 @@ function moved(act, count, page) {
 // The space a line's joiner leaves at a line's end, which goes, since Qt's
 // engine has no trimEnd.
 const TRAILING = /\s+$/u;
+// What a dotted list's items run on.
+const DOTTED = " \u00b7 ";
 
 // A value given as items, each `{ said, path }`, as lines no wider than
 // `wide` by `width(text)`: as many items to a line as fit, `between` them
@@ -379,6 +381,23 @@ function valueLines(items, between, wide, width) {
         }
     });
     return lines;
+}
+
+// A list alone in a value, as its one line no wider than `wide`: every
+// item a dot apart where they fit, else whole items giving way from the
+// end to `tail`, "{count} more", saying how many went, "PDF \u00b7 HTML \u00b7
+// 87 more" (VKCF3Z, 2026-11-08); the tail alone when not one fits beside it.
+function valueLine(items, tail, wide, width) {
+    const kept = items.map(item => item.said).filter(said => said !== "");
+    const more = count => tail.replace("{count}", String(count));
+    for (let shown = kept.length; shown > 0; shown--) {
+        const gone = kept.length - shown;
+        const line = kept.slice(0, shown).concat(gone > 0 ? [more(gone)] : []).join(DOTTED);
+        if (width(line) <= wide) {
+            return [line];
+        }
+    }
+    return kept.length === 0 ? [] : [fitted({ said: more(kept.length) }, wide, width)];
 }
 
 // An item's words no wider than `room`: whole where they fit, else its

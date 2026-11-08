@@ -569,13 +569,14 @@ ShellRoot {
             applications.readDesktop("tester");
             const described = program("tester").drawer();
             same("a program's drawer says where and what it is",
-                `${described.eyebrow}: ${described.title}`, "on 1 and 2 \u00b7 program: Tester");
+                `${described.eyebrow}: ${described.title}`,
+                "on 2 workspaces \u00b7 program: Tester");
             same("what it plays, then opens, then how it starts",
                 described.facts.map(fact => fact.label).join(", "),
                 "Playing, Opens, Handles, Categories, Command, Desktop ID");
-            same("what it opens, from its desktop file", described.facts[1].value,
-                "1 kind \u00b7 HTML");
-            same("its categories, as words", described.facts[3].value, "Office, Text Editor");
+            same("what it opens, from its desktop file", described.facts[1].value, "HTML");
+            same("its categories, as words", described.facts[3].value,
+                "Office \u00b7 Text Editor");
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");

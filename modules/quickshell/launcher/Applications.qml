@@ -448,6 +448,7 @@ Provider {
         return Program.drawer({
             name: entry.name,
             usage: Program.usage(treesOf(pids)),
+            asking: pids.length > 0,
             places: (running[entry.id] ?? [])
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),

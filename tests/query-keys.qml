@@ -1036,6 +1036,19 @@ QtObject {
         ];
         for (const [what, items, between, wide, want] of cases)
             holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
+        // A list alone in a value, on one line, giving way to a tail.
+        const kinds = ["PDF", "HTML", "PNG", "JPEG"].map(said => ({ said }));
+        const lines = [
+            ["a list that fits is every item a dot apart", kinds, 300,
+                ["PDF \u00b7 HTML \u00b7 PNG \u00b7 JPEG"]],
+            ["one that doesn't gives way by whole items from its end to the tail", kinds, 200,
+                ["PDF \u00b7 HTML \u00b7 2 more"]],
+            ["where not one item fits beside it, the tail alone", kinds, 60, ["4 more"]],
+            ["nothing to list is no line", [], 200, []]
+        ];
+        for (const [what, items, wide, want] of lines)
+            holds(`a drawer's list: ${what}`, Page.valueLine(items, "{count} more", wide, width),
+                want);
     }
 
     // How tall a drawer's preview stands, on a pitch of 24 with groups 20
