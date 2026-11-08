@@ -122,14 +122,16 @@ ShellRoot {
             === "Brightness 40%, Warmth 4,000 K, Turn It Off ",
             JSON.stringify(told.rows.map(row => [row.name, row.side])));
         // Its drawer: where it is and what, the light by its own name, then
-        // its output in lumens of its range, its node and its serial, never
-        // the warmth the answer says.
+        // its output in lumens of its range, its HID device and its serial,
+        // marked as identifiers, never the warmth the answer says.
         const drawer = told.thing === true ? told.drawer() : null;
         expect("its drawer", drawer !== null && drawer.eyebrow === "on USB \u00b7 desk light"
             && drawer.title === "Litra Glow stand-in"
             && drawer.facts.map(fact => `${fact.label}=${fact.value}`).join("; ")
                 === "Output=112 lm \u00b7 of 20 to 250 lm; HID Device=/dev/hidraw1; Serial=stand-in",
             JSON.stringify(drawer));
+        expect("what identifies it", drawer?.facts.filter(fact => fact.identifies)
+            .map(fact => fact.label).join(", ") === "HID Device, Serial", JSON.stringify(drawer));
         expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);
         expect("nothing told the bar at first", root.brightened === 0 && root.warmed === 0,

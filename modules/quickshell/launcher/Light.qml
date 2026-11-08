@@ -248,8 +248,9 @@ Provider {
     // Its output is in lumens, the light's own units, of the range it
     // gives where it gives one, a second figure beside the answer's share
     // of that range (VKCF3Z, 2026-11-08); its warmth is the answer's, so
-    // it isn't said again; its HID device and serial come last, as identifiers
-    // do in every drawer. litra speaks only to lights on USB.
+    // it isn't said again; its HID device and serial come last, marked as
+    // identifiers (`identifies`), as they are in every drawer. litra speaks
+    // only to lights on USB.
     function deskDrawer(light = DeskLight.light) {
         if (light === null)
             return null;
@@ -260,11 +261,13 @@ Provider {
                 .replace("{most}", lumens(light.brightest));
         const facts = [
             ["output", light.lumens === undefined ? ""
-                : [lumens(light.lumens), range].filter(part => part !== "").join(" \u00b7 ")],
-            ["hid-device", String(light.node ?? "")],
-            ["serial", String(light.serial ?? "")]
+                : [lumens(light.lumens), range].filter(part => part !== "").join(" \u00b7 "), false],
+            ["hid-device", String(light.node ?? ""), true],
+            ["serial", String(light.serial ?? ""), true]
         ].filter(([, value]) => value !== "")
-            .map(([id, value]) => ({ label: Words.name(`light:desk:${id}`), value: value }));
+            .map(([id, value, identifies]) => ({
+                label: Words.name(`light:desk:${id}`), value: value, identifies: identifies
+            }));
         return {
             eyebrow: [said("usb"), said("plate")].join(" \u00b7 "),
             title: own === "" ? Words.name("light") : own,
