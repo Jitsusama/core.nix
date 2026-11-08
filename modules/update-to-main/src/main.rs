@@ -92,6 +92,7 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
     let mut follower = Follower::default();
     let mut unread = None;
+    let mut unanswered = None;
     let mut seen = None;
     loop {
         let config = match Config::read(file) {
@@ -118,11 +119,23 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
                         .map(|(name, commit)| format!("{name}@{}", &commit[..commit.len().min(12)]))
                         .collect();
                     println!("asking at {}", at.join(" "));
-                    let ending = ask::ask(&config.socket, &mut |l| println!("{}", l.json()))
-                        .unwrap_or_else(|e| Line::Refused {
-                            commit: None,
-                            why: format!("{}: {e}", config.socket.display()),
-                        });
+                    // Said like an answer's own ending, since otherwise an
+                    // ask that never reached the daemon leaves no trace;
+                    // once until it changes, since it's asked every minute.
+                    let ending = match ask::ask(&config.socket, &mut |l| println!("{}", l.json())) {
+                        Ok(ending) => {
+                            unanswered = None;
+                            ending
+                        }
+                        Err(e) => {
+                            let line = ask::unanswered(&config.socket, &e);
+                            if unanswered.as_ref() != Some(&line) {
+                                println!("{}", line.json());
+                                unanswered = Some(line.clone());
+                            }
+                            line
+                        }
+                    };
                     let ended = fs::read_to_string(&config.ended).unwrap_or_default();
                     if let Some(why) = follower.asked(heads, &ending, &ended, Instant::now()) {
                         println!("stopped until someone asks by hand: {why}");
@@ -148,7 +161,9 @@ fn asked(socket: &Path) -> ExitCode {
         Ok(Line::Refused { .. }) => ExitCode::from(2),
         Ok(_) => ExitCode::from(3),
         Err(e) => {
-            eprintln!("update-to-main: {}: {e}", socket.display());
+            if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
+                eprintln!("update-to-main: {why}");
+            }
             ExitCode::from(3)
         }
     }
