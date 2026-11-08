@@ -450,7 +450,7 @@ Provider {
     // figures each a fact and what the kernel says of its card, and the
     // Format the graph moves its audio in where the card's doesn't say it;
     // and last
-    // what it's known by: its node's id, as wpctl takes it, the ALSA
+    // what it's known by: its PipeWire ID, as wpctl takes it, the ALSA
     // device it opens, as aplay -D takes it, the priority that picks the
     // one in use, and a USB card's ids. Whether it's Muted is its row's
     // to say, so it isn't said again. Its Level is left out, since reading
@@ -505,7 +505,7 @@ Provider {
         const format = graph === "" || (card && Sounds.sameFormat(graph, card)) ? []
             : [{ label: Words.name(card ? "sound:graph-format" : "sound:format"), value: graph }];
         const known = [
-            ["node", String(node.id ?? "")],
+            ["pipewire-id", String(node.id ?? "")],
             ["alsa-device", String(properties["api.alsa.path"] ?? "")],
             ["priority", String(properties["priority.session"] ?? "")]
         ].filter(([, value]) => value !== "")

@@ -1298,14 +1298,16 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
     """Hold the speakers', the microphone's and the screen's plates to the lines, as a server's.
 
     Each says which way it goes or what it is over its name, then its parts, what moves most
-    first, laid one way, every name whole (VKCF3Z, 2026-11-07). The stand-in backlight lights
-    the one screen, so its Brightness leads.
+    first, laid one way, every name whole (VKCF3Z, 2026-11-07). A sound device's State, as
+    pipewire says it, leads its level (VKCF3Z, 2026-11-08); the stand-in backlight lights the
+    one screen, so its Brightness leads.
     """
-    for collection, typed, kind, first in [
-        ("sound", "speakers", "output", "Volume"),
-        ("sound", "microphone", "input", "Gain"),
-        ("displays", "", "monitor", "Brightness"),
+    for collection, typed, kind, leading in [
+        ("sound", "speakers", "output", ["State", "Volume"]),
+        ("sound", "microphone", "input", ["State", "Gain"]),
+        ("displays", "", "monitor", ["Brightness"]),
     ]:
+        first = leading[-1]
         desktop.launcher_until(lambda shown: not shown["open"])
         desktop.as_account(f"qs ipc call launcher collection {collection}")
         desktop.launcher_ready()
@@ -1328,7 +1330,9 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         desktop.launcher_until(plated)
         drawer = plate_shown(desktop, scale)
         assert str(drawer["eyebrow"]).lower().endswith(kind), f"at {scale}: {drawer}"
-        assert drawer["facts"][0] == first, f"at {scale} {typed or kind} leads wrong: {drawer}"
+        assert drawer["facts"][: len(leading)] == leading, (
+            f"at {scale} {typed or kind} leads wrong: {drawer}"
+        )
         assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
             f"at {scale} {typed or kind}'s facts are off the pitch: {drawer}"
         )

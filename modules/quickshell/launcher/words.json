@@ -4528,9 +4528,9 @@
       "term": "Machine/firmware"
     },
     {
-      "id": "sound:node",
+      "id": "sound:pipewire-id",
       "in": "sound",
-      "name": "Node"
+      "name": "PipeWire ID"
     },
     {
       "id": "sound:alsa-device",
