@@ -1166,38 +1166,36 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
     );
     // Each conversation's history was read once, as its unreads came,
     // however often Slack was asked how they stood.
-    let asked = |what: &str| {
-        stand_in
-            .heard()
-            .iter()
-            .filter(|heard| heard.line.contains(what))
-            .count()
-    };
-    let rounds = asked("client.counts");
+    let rounds = times(&stand_in, "client.counts");
     until("Slack wasn't asked again", || {
-        asked("client.counts") >= rounds + 3
+        times(&stand_in, "client.counts") >= rounds + 3
     });
     program.kill().unwrap();
     program.wait().unwrap();
-    assert_eq!(
-        (
-            asked("conversations.history?channel=D1"),
-            asked("conversations.history?channel=C2"),
-            asked("users.info?user=U8"),
-            asked("auth.test")
-        ),
-        (1, 1, 1, 1)
-    );
+    let asked = [
+        "conversations.history?channel=D1",
+        "conversations.history?channel=C2",
+        "users.info?user=U8",
+        "auth.test",
+    ]
+    .map(|what| times(&stand_in, what));
+    assert_eq!(asked, [1, 1, 1, 1]);
+    let heard = stand_in.heard();
     assert!(
-        stand_in
-            .heard()
-            .iter()
-            .all(|heard| heard.line.starts_with("GET /api/")),
-        "{:?}",
-        stand_in.heard()
+        heard.iter().all(|one| one.line.starts_with("GET /api/")),
+        "{heard:?}"
     );
     let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
+}
+
+/// How many times the stand-in was asked something its line holds.
+fn times(stand_in: &StandIn, what: &str) -> usize {
+    stand_in
+        .heard()
+        .iter()
+        .filter(|heard| heard.line.contains(what))
+        .count()
 }
 
 #[test]
