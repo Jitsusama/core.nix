@@ -144,9 +144,7 @@ impl Running {
     }
 
     fn reads(&self) -> usize {
-        std::fs::read_to_string(self.path("lists/reads"))
-            .map(|text| text.lines().count())
-            .unwrap_or(0)
+        std::fs::read_to_string(self.path("lists/reads")).map_or(0, |text| text.lines().count())
     }
 
     fn client(&self) -> Client {

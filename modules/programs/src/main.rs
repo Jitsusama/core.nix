@@ -571,12 +571,12 @@ fn notice(shared: &Arc<Shared>, notify: &Notify, folders: &HashMap<i32, Heard>) 
             return;
         };
         let mut entries = false;
-        let mut changed = HashSet::new();
+        let mut lists = HashSet::new();
         for (watch, name) in changes {
             match folders.get(&watch) {
                 Some(Heard::Entries) => entries = true,
                 Some(Heard::Files(files)) => {
-                    changed.extend(
+                    lists.extend(
                         files
                             .iter()
                             .filter(|(file, _)| *file == name)
@@ -589,7 +589,7 @@ fn notice(shared: &Arc<Shared>, notify: &Notify, folders: &HashMap<i32, Heard>) 
         if entries {
             entries_changed(shared);
         }
-        for at in changed {
+        for at in lists {
             let watching = {
                 let mut daemon = lock(&shared.daemon);
                 daemon.stale[at] = true;
