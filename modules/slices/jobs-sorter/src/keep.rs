@@ -343,7 +343,7 @@ mod tests {
             "one never kept and holding none is left"
         );
         keeping.done("a", true);
-        assert!(keeping.changes(&windows).is_empty());
+        assert_eq!(keeping.changes(&windows), Vec::<(String, bool)>::new());
         assert_eq!(
             keeping.changes(&[("a".to_owned(), false)]),
             [("a".to_owned(), false)]
