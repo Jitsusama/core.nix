@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
 from datetime import timedelta
@@ -1135,6 +1136,65 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         for window in (kestrel, plover):
             if listed(window["title"]) is not None:
                 shell.close(window)
+
+
+def reading(shown: Json, start: str) -> str:
+    """Give how the first row starting so reads whole, or nothing."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    return next((read for read in reads if read.startswith(start)), "")
+
+
+def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
+    shell: Shell,
+) -> None:
+    """WARP says how its link stands in Network, its figures a step in, and a service down.
+
+    The shell runs the real warp, given the check's stand-in for warp-cli, which answers with
+    the contract's files as they're written here (tests/warp-cli-stand-in.sh).
+    """
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    for question in ("status", "tunnel-stats", "settings", "dns-stats"):
+        shutil.copyfile(contract / f"{question}.json", said / f"{question}.json")
+    try:
+        # Network holds it after Speed, saying how its link stands.
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.send_chars("network ")
+        stands = "WARP \u00b7 connected \u00b7 127 ms \u00b7 answer"
+        shell.launcher_until(lambda shown: reading(shown, "WARP") == stands)
+        rows = shell.showing()["rows"]
+        assert rows.index("WARP") == rows.index("Speed") + 1, rows
+        shell.close_launcher()
+        # Asked by its word, each figure is a part a step in, in its own unit.
+        shell.answer("warp")
+        shell.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "connected \u00b7 127 ms"
+        )
+        shell.step_in()
+        parts = ["State", "Health", "Latency", "Loss", "Protocol", "Colo", "Sent", "Received"]
+        # An answer's parts end with its own Copy, as every answer's do.
+        shell.launcher_until(lambda shown: shown["rows"] == [*parts, "Copy"])
+        reads = [str(thing["reads"]) for thing in shell.showing()["things"]]
+        assert reads[2:4] == [
+            "Latency \u00b7 127 ms",
+            "Loss \u00b7 1.24%",
+        ], reads
+        assert reads[5:8] == [
+            "Colo \u00b7 YYZ",
+            "Sent \u00b7 9.3 GB",
+            "Received \u00b7 10 GB",
+        ], reads
+        shell.close_launcher()
+        # Its service gone, WARP says so in its place, as "vpn" asks it too.
+        (said / "status.json").unlink()
+        shutil.copyfile(contract / "daemon-down.json", said / "status.error.json")
+        shell.answer("vpn")
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "not answering")
+        shell.close_launcher()
+    finally:
+        shutil.rmtree(said)
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

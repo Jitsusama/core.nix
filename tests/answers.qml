@@ -31,6 +31,7 @@ import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
 import "Firmware.js" as Firmware
+import "Warp.js" as Warp
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "WifiLink.js" as WifiLink
@@ -2188,6 +2189,68 @@ QtObject {
         machine("daylight", Power.roomLevel(10000), 1);
         machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
             0.5);
+
+        // WARP, from the record warp prints (modules/warp/warp.json), the
+        // same one its own tests read warp-cli's answers into.
+        const warping = new XMLHttpRequest();
+        warping.open("GET", Qt.resolvedUrl("warp.json"), false);
+        warping.send();
+        const warp = JSON.parse(warping.responseText);
+        const fixed = (value, places) => value.toFixed(places);
+        const linked = Warp.told(warp, fixed);
+        machine("WARP connected, as its row says it", linked && [linked.headline, linked.warns],
+            ["connected \u00b7 127 ms", false]);
+        machine("WARP's parts", linked && linked.parts, [
+            { id: "state", side: "connected", note: "", copy: "connected", warns: false },
+            { id: "health", side: "healthy", note: "", copy: "healthy", warns: false },
+            { id: "latency", side: "127 ms", note: "as WARP estimates it", copy: "127",
+                warns: false },
+            { id: "loss", side: "1.24%", note: "as WARP estimates it", copy: "0.012355098",
+                warns: false },
+            { id: "protocol", side: "MASQUE", note: "HTTPS via UDP",
+                copy: "MASQUE (HTTPS via UDP)", warns: false },
+            { id: "colo", side: "YYZ", note: "metal 0a1b2c", copy: "YYZ", warns: false },
+            { id: "sent", side: "9.3 GB", note: "through the tunnel", copy: "9257621853",
+                warns: false },
+            { id: "received", side: "10 GB", note: "through the tunnel", copy: "10242929366",
+                warns: false }
+        ]);
+        const degraded = Warp.told(Object.assign({}, warp, { status: { state: "Connected",
+            reason: "NetworkDegraded", reason_figures: { loss_percent: 5.3708224, rtt_ms: 170 } } }),
+        fixed);
+        machine("WARP degraded, as its row says it", degraded && [degraded.headline, degraded.warns],
+            ["degraded \u00b7 127 ms", true]);
+        machine("WARP's health degraded, with what it measured",
+            degraded && degraded.parts.find(part => part.id === "health"),
+            { id: "health", side: "degraded", note: "5.37% loss, 170 ms round trip, as WARP measured it",
+                copy: "degraded", warns: true });
+        const down = Warp.told({ status: { state: "Disconnected", reason: "Manual",
+            reason_figures: null }, tunnel: null, settings: null, dns: null }, fixed);
+        machine("WARP disconnected, its tunnel unknown", down && [down.headline, down.parts], [
+            "disconnected",
+            [{ id: "state", side: "disconnected", note: "manual", copy: "disconnected",
+                warns: false }]
+        ]);
+        const connecting = Warp.told({ status: { state: "Connecting",
+            reason: "PerformingHappyEyeballs", reason_figures: null }, tunnel: null }, fixed);
+        machine("WARP connecting, saying why", connecting && connecting.parts[0].note,
+            "performing happy eyeballs");
+        const thin = Warp.told(Object.assign({}, warp, { tunnel: { on: true, latency_ms: null,
+            loss_fraction: null, protocol: "WireGuard", edge: null, sent_bytes: null,
+            received_bytes: null } }), fixed);
+        machine("a tunnel figure warp didn't give is left out",
+            thin && thin.parts.map(part => part.id), ["state", "health", "protocol"]);
+        machine("WARP's service not answering", Warp.failed({ error: "not-answering",
+            said: "No such file or directory (os error 2)" }), { headline: "not answering",
+            warns: true, note: "WARP's service didn't answer: No such file or directory (os error 2)" });
+        machine("warp-cli saying what warp can't read", Warp.failed({ error: "unreadable",
+            said: "warp-cli status said InvalidAccountType: Invalid account type." }),
+        { headline: "unreadable", warns: true,
+            note: "warp-cli status said InvalidAccountType: Invalid account type." });
+        machine("no warp-cli, so no WARP", Warp.failed({ error: "not-installed", said: "warp-cli" }),
+            null);
+        machine("warp-cli's words as said", Warp.spoken("NetworkHealthy"), "network healthy");
+        machine("bytes under a kilobyte", Warp.bytes(999, fixed), "999 B");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

@@ -98,7 +98,8 @@
         "ethernet",
         "eero",
         "networks",
-        "traffic"
+        "traffic",
+        "warp"
       ],
       "commands": [
         "command:ip",
@@ -1850,6 +1851,57 @@
       "id": "traffic:connections",
       "in": "traffic",
       "name": "Connections"
+    },
+    {
+      "id": "warp",
+      "name": "WARP",
+      "term": "Network/WARP",
+      "question": "warp",
+      "glyph": "tunnel",
+      "answers": [
+        "warp",
+        "vpn"
+      ]
+    },
+    {
+      "id": "warp:state",
+      "in": "warp",
+      "name": "State"
+    },
+    {
+      "id": "warp:health",
+      "in": "warp",
+      "name": "Health"
+    },
+    {
+      "id": "warp:latency",
+      "in": "warp",
+      "name": "Latency"
+    },
+    {
+      "id": "warp:loss",
+      "in": "warp",
+      "name": "Loss"
+    },
+    {
+      "id": "warp:protocol",
+      "in": "warp",
+      "name": "Protocol"
+    },
+    {
+      "id": "warp:colo",
+      "in": "warp",
+      "name": "Colo"
+    },
+    {
+      "id": "warp:sent",
+      "in": "warp",
+      "name": "Sent"
+    },
+    {
+      "id": "warp:received",
+      "in": "warp",
+      "name": "Received"
     },
     {
       "id": "power:charger",

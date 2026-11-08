@@ -1874,7 +1874,8 @@
   '';
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
-    figures and its parts' heat answer
+    figures and its parts' heat answer, and WARP says how its link stands from the record warp
+    prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
@@ -1905,6 +1906,8 @@
     rows above it change, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
+    WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
+    after Speed, its figures a step in, and its service not answering;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';
