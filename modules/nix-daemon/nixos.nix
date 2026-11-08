@@ -95,10 +95,29 @@
 # kernel. A container needs a range of user ids of its own, which a build
 # asking for the uid-range feature gets once the daemon allocates build users
 # itself rather than taking nixbld's.
-{ pkgs, ... }:
+#
+# The daemon trusts whoever its trusted-users name by their uid, and a trusted
+# user can change its substituters, turn its sandbox off, or add a path to the
+# store unsigned, which makes it root. A sandbox that hands an agent the
+# daemon's socket hands it root with it, since the agent keeps Joel's uid. So
+# every account also gets a door of its own, nix-untrusted.sock in its runtime
+# folder, where a daemon of its own takes each connection as an untrusted
+# user's and passes on only what such a user may ask. Builds, evaluations and
+# fetches from the configured caches work through it as before; a setting only
+# trusted users may change is refused with a warning. The experimental
+# features are what Nix 2.34 asks for `nix daemon`, --force-untrusted and
+# --process-ops, named here so the door opens whatever nix.conf says.
+{ config, pkgs, ... }:
 let
   gib = 1024 * 1024 * 1024;
   vmFirst = pkgs.callPackage ./vm-first/package.nix { };
+  untrusted = builtins.concatStringsSep " " [
+    "${config.nix.package}/bin/nix"
+    "--extra-experimental-features nix-command"
+    "--extra-experimental-features daemon-trust-override"
+    "--extra-experimental-features mounted-ssh-store"
+    "daemon --stdio --force-untrusted --process-ops"
+  ];
 in
 {
   nix.daemonCPUSchedPolicy = "idle";
@@ -180,6 +199,26 @@ in
       ProtectSystem = "strict";
       MemoryDenyWriteExecute = true;
       SystemCallArchitectures = "native";
+    };
+  };
+
+  systemd.user.sockets.nix-untrusted = {
+    description = "The Nix daemon's door for sandboxes, which trusts no one";
+    wantedBy = [ "sockets.target" ];
+    listenStreams = [ "%t/nix-untrusted.sock" ];
+    socketConfig = {
+      Accept = true;
+      SocketMode = "0600";
+    };
+  };
+
+  systemd.user.services."nix-untrusted@" = {
+    description = "The Nix daemon, for one untrusted connection";
+    serviceConfig = {
+      ExecStart = untrusted;
+      StandardInput = "socket";
+      StandardOutput = "socket";
+      StandardError = "journal";
     };
   };
 }
