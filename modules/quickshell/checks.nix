@@ -464,10 +464,14 @@ onLinux {
       # Quickshell finds a folder's files as a module by its path; qmllint
       # needs a qmldir saying so (tests/qmldir.sh).
       ${lib.getExe pkgs.bash} ${../../tests/qmldir.sh} qs
+      # Each file is named by its real, whole path, as Qt 6.12's qmllint
+      # names a qmldir's entries: named any other way, the file it lints and
+      # the qmldir's entry are two types to it, the first never told it's a
+      # singleton.
       ${qt}/bin/qmllint --ignore-settings --max-warnings 0 \
         -I ${quickshellTypes}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
         --unresolved-type disable --signal-handler-parameters disable \
-        $(find qs -name '*.qml' | sort)
+        $(find "$(pwd -P)/qs" -name '*.qml' | sort)
       touch $out
     '';
 
