@@ -1,5 +1,0 @@
-# The shell's files that still name a space by its step rather than by the
-# rung it sits between, by path under modules/, which space-is-set-by-rung
-# lets through. Each surface moved to the rungs takes its file off, and the
-# check fails on a file listed here that no longer needs to be, so the list
-# only shrinks; a new file names rungs from the start, never listed here.

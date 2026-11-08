@@ -474,7 +474,7 @@
   every-card-is-the-one-card = ''
     the launcher, the held notices and a notice take their frame from the one card and stand their
     ink on its content, never drawing a frame, reading the inset or tinting a row's ground
-    themselves, but those listed as not yet on it, and none is listed that no longer needs to be
+    themselves
   '';
   every-check-says-what-it-proves = ''
     every check says here what it proves, and every description here names a check
@@ -1535,8 +1535,7 @@
   '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the
-    rung of the space ladder it sits between, the beat or a level's pitch, but those listed as
-    not yet moved, and none is listed that no longer needs to be
+    rung of the space ladder it sits between, the beat or a level's pitch
   '';
   speaker-amps-have-every-dai-named = ''
     the XPS 14's SoundWire machine driver names only DAIs its amplifiers register
@@ -2382,9 +2381,8 @@
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
-    from a level of the theme's type, but those listed as not yet moved, and none is listed that
-    no longer needs to be; nor does the reader's page or its foot say a size, a weight, a
-    tracking or an axis of their own in the Typst they set
+    from a level of the theme's type; nor does the reader's page or its foot say a size, a
+    weight, a tracking or an axis of their own in the Typst they set
   '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
