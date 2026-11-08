@@ -8,7 +8,9 @@
 // variably, the logical size and place it takes on the desktop, how
 // it's turned, the modes it offers and the one it prefers, how fine its
 // pixels are and its serial. Its size, whole refresh and scale are its
-// row's to say, so they aren't said again (VKCF3Z, 2026-11-07).
+// row's to say, so they aren't said again (VKCF3Z, 2026-11-07). It also
+// says how each screen stands and the ways that turn it off or on, apart
+// from drawing (tests/screens.qml).
 // Displays.qml reads niri and lays the plate, the light and what the
 // EDID says around these.
 
@@ -109,4 +111,12 @@ function facts(output, words, settings) {
 function physical(output) {
     const [wide, high] = output.physical_size ?? [0, 0];
     return wide > 0 && high > 0 ? `${size(wide, high)} mm` : "";
+}
+
+function standing(_output) {
+    return "";
+}
+
+function ways(_output, _outputs, _each) {
+    return [];
 }

@@ -2120,6 +2120,11 @@
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
     typical key under five milliseconds
   '';
+  the-launcher-turns-each-screen-off = ''
+    where niri powers one output off by name, Turn It Off darkens a screen and Unplug It follows
+    while another is lit, the last lit one darkening only after the key that asked comes up, a
+    dark screen turning on by name; an older niri only unplugs, keeping the last screen on
+  '';
   the-launcher-traces-each-opening = ''
     each opening of the launcher is a trace whose steps, backs, acts and searches are spans under
     it, a void above a list's first row is told from a list scrolled down, and the whole is sent
