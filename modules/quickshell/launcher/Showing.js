@@ -6,6 +6,7 @@
 // walks its own rows by these rules; tests/showing.qml holds them in Qt's
 // own engine.
 .pragma library
+.import "Order.js" as Order
 
 // How a step and a name are compared: in any case, a hyphen or an
 // underscore as a space, so `start-a-session` names Start a Session.
@@ -60,7 +61,7 @@ function nearest(names, wanted) {
     return unique(names)
         .map(name => ({ name, apart: apartAtStart(plain(name), wanted) }))
         .filter(one => one.apart <= most)
-        .sort((one, other) => one.apart - other.apart || one.name.localeCompare(other.name))
+        .sort(Order.then(Order.smaller(one => one.apart), Order.byName(one => one.name)))
         .slice(0, NEAREST)
         .map(one => one.name);
 }

@@ -929,6 +929,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-shows-a-terminal-what-it-holds" { } ''
       cp ${../../tests/showing.qml} showing.qml
       cp ${./launcher/Showing.js} Showing.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
