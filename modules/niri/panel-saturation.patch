@@ -1,0 +1,379 @@
+tty: show a laptop's own panel more or less colourful than sRGB
+
+niri sends sRGB to a panel as it is, which on a panel whose primaries
+are sRGB's is accurate and, beside a phone or the vivid profile a
+laptop's own system ships with, looks washed out. A laptop's panel can
+now be shown more colourful, in the display engine: its degamma curve
+takes the colours to light, its colour matrix moves each away from the
+grey of its own luminance, after any hold to sRGB, and its gamma curve
+encodes them again, at no cost to drawing. Greys and white stay as
+they were.
+
+NIRI_PANEL_SATURATION in niri's environment sets it as niri starts,
+from 0 to 2 with 1 as it is, so a config written for this niri still
+parses in one without the patch. The SetPanelSaturation action changes
+it while niri runs, for choosing it by eye; it's IPC alone, marked
+knuffel(skip), so the config can't name it. Other screens are left as
+they are.
+
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index 1e8d068..78e54e8 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -106,6 +106,8 @@ pub enum Action {
+     Suspend,
+     PowerOffMonitors,
+     PowerOnMonitors,
++    #[knuffel(skip)]
++    SetPanelSaturation(f64),
+     ToggleDebugTint,
+     DebugToggleOpaqueRegions,
+     DebugToggleDamage,
+@@ -404,6 +406,9 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::Quit { skip_confirmation } => Self::Quit(skip_confirmation),
+             niri_ipc::Action::PowerOffMonitors {} => Self::PowerOffMonitors,
+             niri_ipc::Action::PowerOnMonitors {} => Self::PowerOnMonitors,
++            niri_ipc::Action::SetPanelSaturation { saturation } => {
++                Self::SetPanelSaturation(saturation)
++            }
+             niri_ipc::Action::Spawn { command } => Self::Spawn(command),
+             niri_ipc::Action::SpawnSh { command } => Self::SpawnSh(command),
+             niri_ipc::Action::DoScreenTransition { delay_ms } => Self::DoScreenTransition(delay_ms),
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 18a1706..e82b441 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -202,6 +202,19 @@ pub enum Action {
+     PowerOffMonitors {},
+     /// Power on all monitors via DPMS.
+     PowerOnMonitors {},
++    /// Show a laptop's own panel more or less colourful than sRGB.
++    ///
++    /// One shows its colours as they are, more than one more vividly, and less towards grey, from
++    /// 0 to 2. It lasts until niri stops; `NIRI_PANEL_SATURATION` sets it as niri starts.
++    #[cfg_attr(
++        feature = "clap",
++        clap(about = "Show a laptop's own panel more or less colourful than sRGB")
++    )]
++    SetPanelSaturation {
++        /// How colourful, from 0 to 2, where 1 is as it is.
++        #[cfg_attr(feature = "clap", arg())]
++        saturation: f64,
++    },
+     /// Spawn a command.
+     Spawn {
+         /// Command to spawn.
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 1739ef8..98cb5de 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -103,6 +103,9 @@ pub struct Tty {
+     // Whether the debug tinting is enabled.
+     debug_tint: bool,
+     ipc_outputs: Arc<Mutex<IpcOutputMap>>,
++    // How much more colourful than sRGB a laptop's own panel shows its colours: from
++    // NIRI_PANEL_SATURATION at start, and changed by the SetPanelSaturation action.
++    panel_saturation: f64,
+ }
+ 
+ pub type TtyRenderer<'render> = MultiRenderer<
+@@ -407,6 +410,9 @@ struct GammaProps {
+     colour: Option<ColourProps>,
+     /// Whether the screen's config asks to hold it to sRGB.
+     srgb_wanted: bool,
++    /// How much more colourful than sRGB the screen shows its colours, one
++    /// for as they are (gamut.rs's `saturate`).
++    saturation: f64,
+     /// The matrix from sRGB to the screen's primaries, from its EDID, while
+     /// the screen is held to sRGB: none when it isn't, or its primaries are
+     /// sRGB's already, or its EDID gives none.
+@@ -422,7 +428,7 @@ struct ColourProps {
+     ctm: property::Handle,
+     degamma_blob: Option<NonZeroU64>,
+     ctm_blob: Option<NonZeroU64>,
+-    /// The sRGB matrix the degamma curve and colour matrix were last set for,
++    /// The screen matrix the degamma curve and colour matrix were last set for,
+     /// none for neither: none at all until they're first set.
+     set_for: Option<Option<gamut::Matrix>>,
+ }
+@@ -531,6 +537,7 @@ impl Tty {
+             dmabuf_global: None,
+             update_output_config_on_resume: false,
+             debug_tint: false,
++            panel_saturation: panel_saturation_asked(),
+             ipc_outputs: Arc::new(Mutex::new(HashMap::new())),
+         })
+     }
+@@ -1360,16 +1367,24 @@ impl Tty {
+             .ok();
+ 
+         // Reset gamma in case it was set before, holding the screen to sRGB
+-        // if its config asks.
++        // if its config asks, and saturating a laptop's panel as asked.
++        let saturation = if is_laptop_panel(&connector_name) {
++            self.panel_saturation
++        } else {
++            1.
++        };
+         let res = if let Some(gamma_props) = &mut gamma_props {
+-            gamma_props.set_gamma(&device.drm, None).and_then(|()| {
+-                gamma_props.hold_to_srgb(
+-                    &device.drm,
+-                    connector.handle(),
+-                    &connector_name,
+-                    config.srgb_gamut,
+-                )
+-            })
++            gamma_props
++                .set_gamma(&device.drm, None)
++                .and_then(|()| {
++                    gamma_props.hold_to_srgb(
++                        &device.drm,
++                        connector.handle(),
++                        &connector_name,
++                        config.srgb_gamut,
++                    )
++                })
++                .and_then(|()| gamma_props.saturate(&device.drm, &connector_name, saturation))
+         } else {
+             if config.srgb_gamut {
+                 warn!("output {connector_name:?}: can't hold it to sRGB without a GAMMA_LUT");
+@@ -2405,6 +2420,18 @@ impl Tty {
+         !self.config.borrow().debug.keep_laptop_panel_on_when_lid_is_closed
+     }
+ 
++    /// Shows a laptop's own panel `saturation` times as colourful as sRGB,
++    /// from now on: at once while the session is active, and otherwise as it
++    /// resumes.
++    pub fn set_panel_saturation(&mut self, niri: &mut Niri, saturation: f64) {
++        if !gamut::SATURATION.contains(&saturation) {
++            warn!("a panel's saturation goes from 0 to 2, so {saturation} is refused");
++            return;
++        }
++        self.panel_saturation = saturation;
++        self.on_output_config_changed(niri);
++    }
++
+     pub fn on_output_config_changed(&mut self, niri: &mut Niri) {
+         let _span = tracy_client::span!("Tty::on_output_config_changed");
+ 
+@@ -2482,6 +2509,18 @@ impl Tty {
+                             surface.name.connector
+                         );
+                     }
++                    if is_laptop_panel(&surface.name.connector) {
++                        if let Err(err) = gamma_props.saturate(
++                            &device.drm,
++                            &surface.name.connector,
++                            self.panel_saturation,
++                        ) {
++                            warn!(
++                                "output {:?}: error changing its saturation: {err:?}",
++                                surface.name.connector
++                            );
++                        }
++                    }
+                 }
+ 
+                 let vrr_enabled = surface.compositor.vrr_enabled();
+@@ -2705,6 +2744,7 @@ impl GammaProps {
+             previous_blob: None,
+             colour,
+             srgb_wanted: false,
++            saturation: 1.,
+             srgb: None,
+             client_ramp: None,
+         })
+@@ -2748,14 +2788,38 @@ impl GammaProps {
+         self.apply(device)
+     }
+ 
++    /// Shows the screen's colours `saturation` times as colourful as they
++    /// are, in the display engine beside any hold to sRGB.
++    fn saturate(
++        &mut self,
++        device: &DrmDevice,
++        connector_name: &str,
++        saturation: f64,
++    ) -> anyhow::Result<()> {
++        if saturation == self.saturation {
++            return Ok(());
++        }
++        self.saturation = saturation;
++        if self.colour.is_none() {
++            warn!(
++                "output {connector_name:?}: can't change its saturation, \
++                 since its CRTC has no DEGAMMA_LUT and CTM"
++            );
++            return Ok(());
++        }
++        info!("output {connector_name:?}: showing its colours at saturation {saturation}");
++        self.apply(device)
++    }
++
+     /// Sends the CRTC its gamma curve, and its degamma curve and colour
+     /// matrix: sRGB's curves and the matrix while the screen is held to
+-    /// sRGB, with a client's ramp after them, and otherwise the client's
+-    /// ramp alone, or nothing.
++    /// sRGB or saturated, with a client's ramp after them, and otherwise the
++    /// client's ramp alone, or nothing.
+     fn apply(&mut self, device: &DrmDevice) -> anyhow::Result<()> {
+-        let srgb = self.srgb.filter(|_| self.colour.is_some());
++        let wanted =
++            gamut::screen_matrix(self.srgb, self.saturation).filter(|_| self.colour.is_some());
+ 
+-        let ramp = match (srgb, &self.client_ramp) {
++        let ramp = match (wanted, &self.client_ramp) {
+             (None, None) => None,
+             (None, Some(ramp)) => {
+                 let gamma_size = self
+@@ -2794,9 +2858,9 @@ impl GammaProps {
+         if let Some(colour) = self
+             .colour
+             .as_ref()
+-            .filter(|colour| gamut::colour_changes(colour.set_for, srgb))
++            .filter(|colour| gamut::colour_changes(colour.set_for, wanted))
+         {
+-            let made = if let Some(matrix) = srgb {
++            let made = if let Some(matrix) = wanted {
+                 let size = get_drm_property(device, self.crtc, colour.degamma_lut_size)
+                     .context("missing DEGAMMA_LUT_SIZE property")?;
+                 let data = gamut::degamma(size as usize)
+@@ -2839,7 +2903,7 @@ impl GammaProps {
+         if let (Some(colour), Some((degamma, ctm))) = (&mut self.colour, colour_blobs) {
+             replace_blob(device, &mut colour.degamma_blob, degamma);
+             replace_blob(device, &mut colour.ctm_blob, ctm);
+-            colour.set_for = Some(srgb);
++            colour.set_for = Some(wanted);
+         }
+ 
+         Ok(())
+@@ -3498,6 +3562,23 @@ impl<'a> ConnectorProperties<'a> {
+     }
+ }
+ 
++/// How much more colourful than sRGB a laptop's own panel shows its colours,
++/// asked for through `NIRI_PANEL_SATURATION`, read at start, so a config
++/// written for this niri still parses in one without the patch: one, as they
++/// are, when it's unset or isn't a number from none to two.
++fn panel_saturation_asked() -> f64 {
++    let Some(asked) = std::env::var_os("NIRI_PANEL_SATURATION") else {
++        return 1.;
++    };
++    match asked.to_str().and_then(|asked| asked.trim().parse::<f64>().ok()) {
++        Some(saturation) if gamut::SATURATION.contains(&saturation) => saturation,
++        _ => {
++            warn!("NIRI_PANEL_SATURATION={asked:?} isn't a saturation from 0 to 2, so it's left at 1");
++            1.
++        }
++    }
++}
++
+ /// Whether a screen whose EDID says it takes either RGB range is sent full
+ /// range. Asked for through `NIRI_FULL_RANGE_WHEN_SELECTABLE=1`, read at start,
+ /// so a config written for this niri still parses in one without the patch.
+diff --git a/src/backend/tty/gamut.rs b/src/backend/tty/gamut.rs
+index 5216ce6..bf39c68 100644
+--- a/src/backend/tty/gamut.rs
++++ b/src/backend/tty/gamut.rs
+@@ -118,6 +118,39 @@ pub fn changes_nothing(matrix: &Matrix) -> bool {
+     })
+ }
+ 
++/// The most a panel's colours may be saturated, or the least: past twice, a
++/// matrix sends every strong colour to full and hues shift with it, and below
++/// none it would invert them.
++pub const SATURATION: std::ops::RangeInclusive<f64> = 0.0..=2.0;
++
++/// sRGB's luminance from its linear red, green and blue (ITU-R BT.709), which
++/// a change of saturation keeps, so greys and white stay as they were.
++const SRGB_LUMINANCE: [f64; 3] = [0.2126, 0.7152, 0.0722];
++
++/// The matrix scaling linear sRGB's colourfulness by `saturation` about its
++/// grey of the same luminance: one changes nothing, more than one moves each
++/// colour away from grey, as a panel shown more vividly does, and less moves
++/// it towards grey.
++pub fn saturate(saturation: f64) -> Matrix {
++    std::array::from_fn(|row| {
++        std::array::from_fn(|column| {
++            let own = if row == column { saturation } else { 0. };
++            own + (1. - saturation) * SRGB_LUMINANCE[column]
++        })
++    })
++}
++
++/// The matrix the display engine is sent: sRGB's colours saturated, then
++/// taken to the screen's primaries where it is held to sRGB, or none when
++/// together they would change nothing anybody could see.
++pub fn screen_matrix(srgb: Option<Matrix>, saturation: f64) -> Option<Matrix> {
++    let identity: Matrix = std::array::from_fn(|row| {
++        std::array::from_fn(|column| if row == column { 1. } else { 0. })
++    });
++    let matrix = multiply(&srgb.unwrap_or(identity), &saturate(saturation));
++    (!changes_nothing(&matrix)).then_some(matrix)
++}
++
+ fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
+     std::array::from_fn(|row| {
+         std::array::from_fn(|column| (0..3).map(|k| a[row][k] * b[k][column]).sum())
+@@ -417,6 +450,44 @@ mod tests {
+         assert!(gamma[..1024].windows(2).all(|pair| pair[0] <= pair[1]));
+     }
+ 
++    #[test]
++    fn saturation_keeps_every_grey() {
++        for saturation in [0., 0.5, 1.25, 2.] {
++            let matrix = saturate(saturation);
++            for row in matrix {
++                assert!(close(row.iter().sum(), 1., 1e-12), "{row:?}");
++            }
++        }
++    }
++
++    #[test]
++    fn more_saturation_moves_a_colour_from_grey() {
++        let red = multiply_vector(&saturate(1.25), [1., 0., 0.]);
++        let grey = SRGB_LUMINANCE[0];
++        assert!(red[0] > 1. && red[1] < 0. && red[2] < 0., "{red:?}");
++        let luminance: f64 = (0..3).map(|k| red[k] * SRGB_LUMINANCE[k]).sum();
++        assert!(close(luminance, grey, 1e-12), "{luminance}");
++    }
++
++    #[test]
++    fn an_srgb_screen_unsaturated_is_sent_no_matrix() {
++        assert_eq!(screen_matrix(None, 1.), None);
++        assert!(screen_matrix(None, 1.25).is_some());
++    }
++
++    #[test]
++    fn saturation_comes_before_the_screens_primaries() {
++        let srgb = PANEL.srgb_to_screen().unwrap();
++        let both = screen_matrix(Some(srgb), 1.25).unwrap();
++        let want = multiply(&srgb, &saturate(1.25));
++        for row in 0..3 {
++            for column in 0..3 {
++                assert!(close(both[row][column], want[row][column], 1e-12));
++            }
++        }
++        assert_eq!(screen_matrix(Some(srgb), 1.), Some(srgb));
++    }
++
+     #[test]
+     fn a_clients_ramp_follows_the_encoding() {
+         // A night light: full red, three quarters green, half blue.
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index df8ebb1..1ef3a78 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -686,6 +686,11 @@ impl State {
+             Action::PowerOnMonitors => {
+                 self.niri.activate_monitors(&mut self.backend);
+             }
++            Action::SetPanelSaturation(saturation) => {
++                if let Some(tty) = self.backend.tty_checked() {
++                    tty.set_panel_saturation(&mut self.niri, saturation);
++                }
++            }
+             Action::ToggleDebugTint => {
+                 self.backend.toggle_debug_tint();
+                 self.niri.queue_redraw_all();

@@ -170,6 +170,32 @@ in
         '';
       };
 
+  options.jitsusama.niri.panelSaturation = lib.mkOption {
+    type = lib.types.numbers.between 0.0 2.0;
+    default = 1.0;
+    example = 1.25;
+    description = ''
+      How much more colourful than sRGB a laptop's own panel shows its
+      colours, in the display engine (nixos.nix's panel-saturation.patch):
+      1 as they are, more for a panel that looks washed out beside the vivid
+      profile its own system ships with, less towards grey. Other screens
+      are left as they are. `niri msg action set-panel-saturation` tries a
+      value until niri stops, for choosing one by eye.
+    '';
+  };
+
+  # Asked through the environment, as full range is, since niri refuses a
+  # whole config holding a setting it doesn't know, and the niri running
+  # through a switch is the one from before it.
+  config.xdg.configFile."systemd/user/niri.service.d/panel-saturation.conf" =
+    lib.mkIf (config.jitsusama.niri.panelSaturation != 1 && pkgs.stdenv.hostPlatform.isLinux)
+      {
+        text = ''
+          [Service]
+          Environment=NIRI_PANEL_SATURATION=${toString config.jitsusama.niri.panelSaturation}
+        '';
+      };
+
   # The touchscreen's swipes, which niri does itself (nixos.nix's patch), as
   # the touchpad's: three fingers move the columns and the workspaces the way
   # the content moves under them, four up open the overview and four down

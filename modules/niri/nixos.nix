@@ -144,6 +144,14 @@
     # (on-demand-when-asked.patch) gives them to a mapped surface as it
     # turns on-demand, the newest to ask having them, and back to the one
     # that asked before as it lets go, until a click gives a window them.
+    #
+    # A laptop panel whose primaries are sRGB's shows niri's sRGB
+    # accurately, which beside the vivid profile its own system ships with
+    # looked washed out. The patch (panel-saturation.patch, made on
+    # srgb-gamut.patch and the rest) shows a laptop's own panel more
+    # colourful through the same degamma curve, colour matrix and gamma
+    # curve, as much as NIRI_PANEL_SATURATION says, which home.nix sets from
+    # jitsusama.niri.panelSaturation; an IPC-only action changes it live.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -173,6 +181,7 @@
         ./opens-next-window-on.patch
         ./opens-next-window-as-column.patch
         ./on-demand-when-asked.patch
+        ./panel-saturation.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

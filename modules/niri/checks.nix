@@ -110,6 +110,29 @@ onLinux {
         && lib.hasInfix "Environment=NIRI_FULL_RANGE_WHEN_SELECTABLE=1" unit.text
       );
 
+  # niri's unit asks for a laptop panel's saturation by the name
+  # panel-saturation.patch reads, only on a machine that sets one, so the ask
+  # isn't lost to a rename on either side.
+  niri-is-asked-for-panel-saturation =
+    let
+      unit =
+        home:
+        (home.xdg.configFile."systemd/user/niri.service.d/panel-saturation.conf" or { text = ""; }).text;
+      vivid = account (
+        graphical.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.niri.panelSaturation = 1.25; } ];
+        }
+      );
+      patch = builtins.readFile ./panel-saturation.patch;
+    in
+    holds "niri-is-asked-for-panel-saturation"
+      "niri's unit doesn't ask for the panel's saturation a machine sets, asks on one that sets none, or asks by a name panel-saturation.patch doesn't read."
+      (
+        lib.hasInfix ''var_os("NIRI_PANEL_SATURATION")'' patch
+        && lib.hasInfix "Environment=NIRI_PANEL_SATURATION=1.25" (unit vivid)
+        && unit (account graphical) == ""
+      );
+
   # niri reads its settings again in place when a switch changes them, and
   # refuses all of them for one it doesn't know. The niri running through a
   # switch is the one the machine booted, from before the switch, so a
@@ -121,13 +144,16 @@ onLinux {
   # action marked knuffel(skip), and a field of it, which IPC alone takes
   # and the config can't name, so the config a niri before it reads is the
   # same; such a niri refuses the action, and the shell moves the window
-  # after, as it did before.
+  # after, as it did before. panel-saturation.patch adds the same kind of
+  # action, SetPanelSaturation, and asks for its value through the
+  # environment.
   niri-patches-add-no-settings =
     let
       kept = [
         "srgb-gamut.patch"
         "opens-next-window-on.patch"
         "opens-next-window-as-column.patch"
+        "panel-saturation.patch"
       ];
       patches = lib.filter (
         patch: !lib.elem (baseNameOf (toString patch)) kept
