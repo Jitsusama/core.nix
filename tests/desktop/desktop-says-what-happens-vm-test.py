@@ -190,7 +190,11 @@ class InTheDrawer:
 
     TITLE = "Deploy log"
     LINES = 40
+    FIRST = "line 1 of the deploy went by"
     LAST = f"line {LINES} of the deploy went by"
+    # More lines than its facts take between its title and its words: Arrived, Left and
+    # Urgency, each a name and a value, a value wrapped included.
+    FACT_LINES = 12
 
     def __init__(self, desktop: Desktop) -> None:
         """Send the notice, and open the launcher on its row."""
@@ -281,6 +285,21 @@ class InTheDrawer:
         )
         return cast("Json", self.drawer()["cursor"])
 
+    def to_the_words(self) -> int:
+        """Move the cursor down past its title and its facts to the log's first line.
+
+        A j that crosses from a fact into the words keeps the cursor where it is across, in
+        another face, so a letter counted along a line is only the same letter among the log's
+        own lines. Gives the line it stands on.
+        """
+        for _ in range(self.FACT_LINES):
+            cursor = self.drawer()["cursor"]
+            if str(cursor["says"]).startswith(self.FIRST):
+                return int(cursor["line"])
+            self.until("j", one_below(int(cursor["line"])))
+        message = f"the log's first line is past its facts: {self.drawer()}"
+        raise AssertionError(message)
+
     def back(self, keys: str) -> None:
         """Press the keys, and wait for the keys back on the rows, the selection unmoved."""
         self.pressed_until(
@@ -290,6 +309,11 @@ class InTheDrawer:
         assert shown["open"], shown
         assert shown["selected"]["name"] == self.rows["selected"]["name"], shown
         assert shown["drawer"]["cursor"] is None, shown["drawer"]
+
+
+def one_below(line: int) -> Callable[[Json], bool]:
+    """Say whether the drawer's cursor stands on the line below this one."""
+    return lambda drawer: bool(drawer["cursor"]["line"] == line + 1)
 
 
 def held(drawer: Json) -> bool:
@@ -403,11 +427,14 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         desktop.close_launcher()
         desktop.as_account(f"niri msg output winit scale {scale}")
         page.open()
-        at = into_in_sight(desktop, page, scale)
+        into_in_sight(desktop, page, scale)
         named = scale.replace(".", "-")
         desktop.shoot(f"launcher-drawer-keys-at-{named}")
+        # Down among the log's lines, below its facts, where a letter along one is the same
+        # letter along the next.
+        words = page.to_the_words()
 
-        def five_down(drawer: Json, below: int = int(at["line"]) + 5) -> bool:
+        def five_down(drawer: Json, below: int = words + 5) -> bool:
             return bool(drawer["cursor"]["line"] == below)
 
         down = page.until("5 j", five_down)
@@ -766,16 +793,17 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     back = page.drawer()
     assert back["cursor"]["line"] == title, back
     assert back["cursor"]["letter"] == 0, back
-    # Lines below the title, so what's copied holds no "log" to be found ahead of the notice
-    # when the launcher next looks for its title.
+    # Lines below the title and its facts, so what's copied holds no "log" to be found ahead
+    # of the notice when the launcher next looks for its title.
     # V grounds whole lines, each one band across the measure and a mark past each side, that
     # meets the next.
-    lines = page.until("j shift-v j", chose("lines", 2))["chosen"]
+    words = page.to_the_words()
+    lines = page.until("shift-v j", chose("lines", 2))["chosen"]
     measure = lines["measure"] + 2 * MARK
     assert [(band["x"], band["width"]) for band in lines["bands"]] == [(-MARK, measure)] * 2, lines
     upper, lower = lines["bands"]
     assert upper["top"] + upper["height"] == lower["top"], lines
-    page.until("o", lambda drawer: drawer["cursor"]["line"] == title + 1)
+    page.until("o", lambda drawer: drawer["cursor"]["line"] == words)
     page.pressed_until(
         "esc", lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["by"] == ""
     )

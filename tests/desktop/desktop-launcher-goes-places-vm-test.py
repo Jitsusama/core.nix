@@ -141,15 +141,15 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
             and (shown.get("drawer") or {}).get("out") is False
         )
     )
-    # A program found by a search is a thing, but with nothing beyond its
-    # name and side the drawer would only repeat it, so it stays in (Joel,
-    # 2026-10-29: "never show the side panel when it is just repeating the
-    # currently selected text"). Now's meeting shows one that's out.
+    # A program found by a search is a thing whose drawer says more than its
+    # row, its command, kinds and categories, so it's out (Joel, 2026-10-29:
+    # "never show the side panel when it is just repeating the currently
+    # selected text", which a program's drawer never does).
     desktop.type_in("kitty", selecting="kitty")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "kitty"
-            and (shown.get("drawer") or {}).get("out") is False
+            and (shown.get("drawer") or {}).get("out") is True
         )
     )
     # Its acts are not things, so going into it by Ctrl+], as Return would

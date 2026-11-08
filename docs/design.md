@@ -600,8 +600,10 @@ The rest follows from the ladder:
   band and the rows never move.
 - **Held room at the far end.** A place that keeps the widest room it's needed
   keeps it after its cluster's last item, never between items, so every gap is
-  its rung. Return's slack sits before the dot that joins it, so the dot goes
-  with Return and none hangs alone before a gap.
+  its rung. Return's slack sits inside its own place, between the dot that
+  joins it and its key, so as the selection moves and Return's words change,
+  nothing before the dot moves and every hint keeps its rung (VKCF3Z,
+  2026-11-08).
 - **Rows tile, as Vim's lines do** (Joel, 2026-11-06: "rows in the launcher
   should have padding instead of margins"): a row is a band with its room
   inside it, and bands meet with no gap. A one-line band is 48, its line
@@ -785,7 +787,13 @@ its figure ("paused · 9:50", "ready · short of memory", "this machine ·
 where the words are ours, never a sentence with a capital and a stop
 ("found by its meaning"), written most-needed first, so that short of
 room it gives way by whole items from its end, never to an ellipsis
-(VKCF3Z, 2026-11-08). A row for an act or a set already says what it is in its name
+(VKCF3Z, 2026-11-08). How it stands never gives way: short of room the
+note goes first, then the name ends as a long name does. Two rows that
+would read alike (one track in two players) each say in their note what
+tells them apart, and a file's name kept there gives way from its middle,
+keeping its start and its ending ("second-…take.mp3"), as a path does;
+that is the one "…" a note holds. A file in the Nix store is named
+without its hash. A row for an act or a set already says what it is in its name
 ("Lock the screen", "Windows"), so its chord stays at the right. A thing's
 chord is taught in the foot instead, "next time" and the keys. Inside a
 collection the path in the field says the kind, so its rows don't. What
@@ -1244,7 +1252,7 @@ works the same way everywhere.
   Stop, Forget, Close), each asking once when it can't be taken back,
   saying what it ends; then Copy. A switch is one row that keeps its name
   as it flips, its note saying how it stands (Keep Awake, "on, lid shut
-  too"; a notice's Read, "no"), and a setting's two states are never
+  too"; Night Light, "on"), and a setting's two states are never
   a place holding both. Return flips it and the launcher stays; one that
   would cut off something in use asks once first ("Turn Bluetooth Off,
   Disconnecting the Keychron"). A choice is said by its value alone
@@ -1498,7 +1506,14 @@ works the same way everywhere.
   from the language's `ends`, never a list kept by hand. A copy closes
   saying so: the keys go back to the
   window at once, and the card stays a moment with "copied" where
-  Return's key was, its done mark in the success colour, then leaves.
+  Return's key was, its done mark in the success colour, then leaves. A
+  password's copy closes too, so it pastes at once, and while the
+  clipboard holds it the margin wears a mark until it clears. What the
+  foot says is lowercase, as a said value is ("copied", "told reef").
+  A refusal names the thing, what wasn't done, then why: "GitHub's
+  password not copied · 1Password is locked", "HP Z27 not unplugged ·
+  the last lit screen". Asked for what already holds, it says what's
+  true, as Vim's `:set` does: "HP Z27 is plugged in".
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
   xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
@@ -1670,7 +1685,11 @@ works the same way everywhere.
   folder every screenshot shares, is said once, in the eyebrow. A thing
   has one drawer wherever it's reached: Now's Microphone opens Sound's
   drawer for it, and Now draws its own only for what no place holds,
-  as Disk or Lag (VKCF3Z, 2026-11-08); then its words,
+  as Disk or Lag (VKCF3Z, 2026-11-08). What kind of thing it is goes in
+  its eyebrow, never a fact named Mode or Kind ("time server", "reference
+  clock"), and a state of ours is lowercase wherever it's said ("normal",
+  "off"). A figure takes the unit that fits it, "3.00 mV", never "0.00300
+  V"; then its words,
   a notice's in the serif upright its card reads them in; then its picture. Its
   text is as far from its frame as the card's (the inset, l and the
   hairline) on every side, its foot included, so it ends at the last
@@ -1806,9 +1825,16 @@ works the same way everywhere.
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open. Among the notices its
+  program that sent it, its window when one is open. Its row is named by
+  its title alone, or by its words' first line when it has none; its note
+  is the line of its words holding what's typed, else their first, giving
+  way by whole words from its end, so one notice reads the same in every
+  list. Its words are found but never its name (VKCF3Z, 2026-11-08). Its
+  drawer's eyebrow says who sent it, then its kind ("from Slack ·
+  message"), a kind the glossary doesn't name left out. Among the notices its
   row's acts are in `launcher/Notice.js`'s order: going to what it's about,
-  what its sender offers, Read, one switch saying yes or no, Forget It, and
+  what its sender offers, Mark It Read (Mark It Unread once read), an act
+  with nothing at its side, Forget It, and
   Copy What It Said last. Held, a card's acts are commands, never a row
   stepped into: the cursor card names what its sender offers under its
   sender, ":reply · :play", and : puts them first in the menu, after

@@ -310,12 +310,12 @@ ShellRoot {
             same("as written, since its folder is a name", talk.drawer.eyebrowNames, true);
             same("then what's still to play, what mpv kept, its size and its path", facts(talk),
                 "Still to Play 29:05, Speed 1.5\u00d7, Volume 80%, Audio 2, Subtitles off, "
-                + "sub-delay 0.500 s, Size 1.2\u00a0GB, Path ~/Videos/talk.mkv");
+                + "sub-delay 0.500 s, Size 1.23\u00a0GB, Path ~/Videos/talk.mkv");
             same("its path marked an identifier", JSON.stringify(talk.drawer.facts.map(fact =>
                 fact.identifies === true)), JSON.stringify([false, false, false, false, false, false,
                 false, true]));
             same("one mpv kept nothing more of", facts(long),
-                "Still to Play 37:57, Size 5.0\u00a0MB, Path ~/Videos/long.mkv");
+                "Still to Play 37:57, Size 5.00\u00a0MB, Path ~/Videos/long.mkv");
             talk.run();
             same("Return resumes", JSON.stringify(Niri.spawned),
                 JSON.stringify(Mpv.play(`${root.videos}/talk.mkv`, false)));
