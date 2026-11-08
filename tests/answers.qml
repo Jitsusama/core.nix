@@ -2087,15 +2087,19 @@ QtObject {
         const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };
         const portStates = { charging: "charging", giving: "powering what's plugged in",
             plugged: "plugged in, giving nothing", empty: "empty" };
-        machine("a port charging", Power.port(powerPort, number, portStates),
+        const measured = value => Numbers.significant(value);
+        machine("a port charging", Power.port(powerPort, measured, portStates),
             "100 W \u00b7 20.0 V \u00b7 5.00 A \u00b7 USB PD");
         machine("a port charging slowly, to three figures", Power.port({ online: true,
-            volts: 15, amps: 3, protocol: "" }, number, portStates),
+            volts: 15, amps: 3, protocol: "" }, measured, portStates),
             "45.0 W \u00b7 15.0 V \u00b7 3.00 A");
+        machine("a port's half an amp, to three figures", Power.port({ online: true,
+            volts: 5, amps: 0.5, protocol: "" }, measured, portStates),
+            "2.50 W \u00b7 5.00 V \u00b7 0.500 A");
         machine("a port charging, its figures unsaid", Power.port({ online: true, volts: null,
-            amps: null, protocol: "" }, number, portStates), "charging");
+            amps: null, protocol: "" }, measured, portStates), "charging");
         machine("a port charging, its protocol said", Power.port({ online: true, volts: null,
-            amps: null, protocol: "USB-C" }, number, portStates), "charging \u00b7 USB-C");
+            amps: null, protocol: "USB-C" }, measured, portStates), "charging \u00b7 USB-C");
 
         // A USB-C port's drawer: its roles as the kernel marks them, how it
         // negotiates in words, what the charger offers, and its revisions
@@ -2104,13 +2108,17 @@ QtObject {
             "mode:usb_power_delivery": "USB Power Delivery", "mode:default": "USB default",
             range: "{from} to {to} V", at: "{offers} at {amps} A" };
         const portNamed = id => `[${id.slice("power:port:".length)}]`;
+        // A name's figures as Numbers.format writes them, no zeros added,
+        // in a mark of the machine's own.
+        const offeredAs = (value, places) => String(Number(value.toFixed(places)))
+            .replace(".", ",");
         const portDrawn = Power.portDrawer({
             n: 1, power: "source [sink]", data: "[host] device", mode: "usb_power_delivery",
             accessory: "none", revision: "3.0", partnerRevision: "0.0",
             capabilities: [{ volts: 5, amps: 3 }, { volts: 9, amps: 3 }, { volts: 15, amps: 3 },
                 { volts: 20, amps: 3 }],
             usbType: "C [PD] PD_PPS PD_DRP", supply: "ucsi-source-psy-USBC000:001"
-        }, portNamed, portWords);
+        }, portNamed, portWords, offeredAs);
         machine("a port's drawer", [portDrawn.eyebrow].concat(portDrawn.facts
             .map(fact => `${fact.label} ${fact.value}`)), ["on port 1 \u00b7 charger",
             "[power-role] sink", "[data-role] host", "[mode] USB Power Delivery",
@@ -2121,16 +2129,16 @@ QtObject {
             portDrawn.facts[portDrawn.facts.length - 1].identifies, true);
         machine("a charger's offers at their own currents, named as it names them",
             Power.offers([{ volts: 5, amps: 3 }, { volts: 20, amps: 4.5 },
-                { volts: 3.3, to: 21, amps: 2.25 }], portWords),
-            "5 V at 3 A \u00b7 20 V at 4.5 A \u00b7 3.3 to 21 V at 2.25 A");
+                { volts: 3.3, to: 21, amps: 2.25 }], portWords, offeredAs),
+            "5 V at 3 A \u00b7 20 V at 4,5 A \u00b7 3,3 to 21 V at 2,25 A");
         machine("an audio accessory in an empty port", Power.portDrawer({ n: 2,
-            accessory: "audio", partnerRevision: "2.0" }, portNamed, portWords).facts
+            accessory: "audio", partnerRevision: "2.0" }, portNamed, portWords, offeredAs).facts
             .map(fact => fact.value), ["audio accessory", "2.0"]);
-        machine("a port powering a phone", Power.port({ online: false, giving: true }, number,
+        machine("a port powering a phone", Power.port({ online: false, giving: true }, measured,
             portStates), "powering what's plugged in");
         machine("a port with something in", Power.port({ online: false, partner: true },
-            number, portStates), "plugged in, giving nothing");
-        machine("an empty port", Power.port({ online: false }, number, portStates), "empty");
+            measured, portStates), "plugged in, giving nothing");
+        machine("an empty port", Power.port({ online: false }, measured, portStates), "empty");
         machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
         machine("made in a month", Power.made(2026, 7, 0), "2026-07");
         machine("a date that isn't", Power.made(0, 13, 40), "");

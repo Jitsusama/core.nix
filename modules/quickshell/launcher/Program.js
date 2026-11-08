@@ -49,9 +49,11 @@ function eyebrow(places, kind, said) {
 }
 
 // A share of the whole machine, from 0 to 1, as a percentage to three
-// significant figures, as every measured figure is: 4.50%, 37.0%.
+// significant figures, as every measured figure is: 4.50%, 37.0%; none
+// at all reads "0%", as the machine's Using It says it, since nothing has
+// no places to read it to.
 function percent(share) {
-    return `${(share * 100).toPrecision(SIGNIFICANT)}%`;
+    return share === 0 ? "0%" : `${(share * 100).toPrecision(SIGNIFICANT)}%`;
 }
 
 // What a program's processes use, from what the machine daemon says of

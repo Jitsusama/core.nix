@@ -62,6 +62,12 @@ Provider {
         return Numbers.format(value, decimals, settings.group, settings.point);
     }
 
+    // A figure read off the machine, to three significant digits, its
+    // zeros kept to say how closely (VKCF3Z's one rule for every measure).
+    function measured(value) {
+        return Numbers.significant(value, settings.group, settings.point);
+    }
+
     // Below this share, draining, the battery wants Joel to plug in, as
     // the margin's battery says by default (pieces/Battery.qml), so its bar
     // takes the warning colour; a full battery wants nothing.
@@ -197,7 +203,7 @@ Provider {
             glyph: Theme.glyph.charging,
             note: usb.length === 1 ? "one USB-C port" : `${usb.length} USB-C ports`
         }), () => usb.map(port => {
-            const what = Power.port(port.said, provider.number,
+            const what = Power.port(port.said, provider.measured,
                 Words.of("power:port").said);
             return copyRow({
                 thing: true,
@@ -227,7 +233,7 @@ Provider {
             return null;
         }
         return Object.assign({ title: named("port", "", { n }) }, Power.portDrawer(read,
-            id => Words.name(id), Words.of("power:port:drawer").said));
+            id => Words.name(id), Words.of("power:port:drawer").said, provider.number));
     }
 
     // A charger's source capabilities, as its partner's power delivery

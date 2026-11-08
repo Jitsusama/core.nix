@@ -45,6 +45,7 @@ QtObject {
 
         expect("a share, to three significant figures", [0.045, 0.37, 1].map(Program.percent),
             ["4.50%", "37.0%", "100%"]);
+        expect("none at all, as the machine says it", Program.percent(0), "0%");
         // Two windows' processes and all each started, as the daemon's
         // tree kind says them, and a window it hasn't said yet.
         expect("what its processes use, summed over its windows", Program.usage([
