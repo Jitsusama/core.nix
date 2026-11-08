@@ -562,8 +562,11 @@ QtObject {
             { id: "devices", value: "2 listed \u00b7 1 on now" },
             { heading: "listed" },
             { label: "generic 2", value: "on Den" },
-            { label: "02:00:00:00:00:35", value: "not on now" }
+            { label: "tablet 3", value: "not on now" }
         ]);
+        expect("a device the profile doesn't name, by its hardware address",
+            Drawers.profile(model, Object.assign({}, held, { members: [] })).facts.slice(-1)[0],
+            { label: "02:00:00:00:00:35", value: "not on now" });
 
         // What a profile blocks is one fact, each filter that's on named
         // and one that's off saying nothing; what it holds search to, the
