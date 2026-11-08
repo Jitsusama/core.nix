@@ -51,7 +51,55 @@ fn target(disk: &str) -> Target {
         start_from_stick: None,
         clear_secure_boot_keys: None,
         leave_out: vec![],
+        secure_boot: true,
     }
+}
+
+/// The ids of the install's steps for this target, starting afresh.
+fn step_ids(target: &Target) -> Vec<&'static str> {
+    guide::install::steps(target, Start::Afresh)
+        .iter()
+        .map(|step| step.id())
+        .collect()
+}
+
+#[test]
+fn a_machine_without_secure_boot_is_installed_with_no_keys_to_sign_with() {
+    let mut target = target("/dev/disk/by-id/virtio-root");
+    target.secure_boot = false;
+    let ids = step_ids(&target);
+    for absent in [
+        "check-firmware",
+        "secure-boot-keys",
+        "seal-rescue-bundle",
+        "ready-enrolment",
+        "keep-on-stick",
+    ] {
+        assert!(!ids.contains(&absent), "{absent} in {ids:?}");
+    }
+    for kept in [
+        "confirm-disk",
+        "lay-out-disk",
+        "enrol-nano",
+        "make-recovery-key",
+        "keep-recovery-key",
+        "install-system",
+        "set-password",
+        "wipe-install-key",
+    ] {
+        assert!(ids.contains(&kept), "{kept} not in {ids:?}");
+    }
+}
+
+#[test]
+fn a_target_that_says_nothing_of_secure_boot_has_it() {
+    // Sticks written before the field was there carry targets without it,
+    // and every machine they were written for boots with Secure Boot.
+    let mut written = serde_json::to_value(target("/dev/disk/by-id/virtio-root")).unwrap();
+    written.as_object_mut().unwrap().remove("secure_boot");
+    let read: Target = serde_json::from_value(written).unwrap();
+    assert!(read.secure_boot);
+    assert!(step_ids(&read).contains(&"secure-boot-keys"));
 }
 
 /// A stand-in machine on the stick, its vault open and holding this target.
@@ -850,11 +898,9 @@ const DUMP: [&str; 3] = [
 
 #[test]
 fn carrying_on_opens_the_disk_as_it_was_left_rather_than_wiping_it() {
-    let afresh: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
-    let carrying_on: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::CarryingOn)
+    let target = target("/dev/disk/by-id/virtio-root");
+    let afresh = step_ids(&target);
+    let carrying_on: Vec<&str> = guide::install::steps(&target, Start::CarryingOn)
         .iter()
         .map(|step| step.id())
         .collect();
@@ -1281,10 +1327,7 @@ fn a_firmware_that_wont_take_the_keys_stops_the_install_before_the_disk_is_touch
         Standing::Blocked { .. }
     ));
 
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
+    let ids = step_ids(&target);
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
     assert!(at("check-firmware") < at("confirm-disk"), "{ids:?}");
     assert!(at("confirm-disk") < at("lay-out-disk"), "{ids:?}");
@@ -1435,10 +1478,7 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
         Standing::Blocked { .. }
     ));
 
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
+    let ids = step_ids(&target);
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
     assert!(at("secure-boot-keys") < at("seal-rescue-bundle"), "{ids:?}");
     assert!(
@@ -1697,10 +1737,7 @@ fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
 
 #[test]
 fn the_stick_is_made_the_machines_own_only_once_the_machine_is_finished() {
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
+    let ids = step_ids(&target("/dev/disk/by-id/virtio-root"));
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
     assert!(at("set-password") < at("keep-on-stick"), "{ids:?}");
     assert!(at("wipe-install-key") < at("keep-on-stick"), "{ids:?}");

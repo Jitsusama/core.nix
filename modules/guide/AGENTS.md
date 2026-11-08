@@ -133,6 +133,17 @@ driven on; the installed machine's steps come later.
   names, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
+- **Without Secure Boot or a TPM.** A machine whose hardware module sets
+  `jitsusama.firmware.secureBoot` false, as an Apple silicon Mac's does
+  under U-Boot, is installed with no steps for Secure Boot keys: none to
+  check the firmware takes, make, seal into a rescue bundle, ready for
+  enrolment or sign the stick with. Its YubiKeys, recovery key, system and
+  password are installed as on any machine, and its first-start card says
+  the disk asks for a key or the words at every start. The installed guide
+  seals the disk only where there's a TPM and Secure Boot both, and makes
+  the accounts' keys only where `jitsusama.firmware.tpm` says there's a
+  TPM. Each is said in the target and `machine.json` only when false, so a
+  machine that has both carries what it always has.
 - **Carrying the home folders** (`src/install/carry.rs`). Installing a
   machine again asks first whether to carry its home folders across. If
   so, before anything is wiped it opens the old disk as Recover does and

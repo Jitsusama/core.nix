@@ -703,6 +703,50 @@ fn a_splash_that_refuses_to_quit_still_leaves_the_guide_to_show() {
     assert_eq!(stand_in.calls, ["plymouth --ping", "plymouth quit"]);
 }
 
+/// The ids of the installed machine's steps, as core's guide module
+/// describes it in these facts, with no YubiKey named.
+fn installed_steps(facts: &[u8]) -> Vec<&'static str> {
+    let mut stand_in = StandIn::new();
+    stand_in
+        .file(FACTS, facts)
+        .no_file(guide::install::keys::NAMED);
+    guide::installed::steps(&mut stand_in)
+        .unwrap()
+        .iter()
+        .map(|step| step.id())
+        .collect()
+}
+
+#[test]
+fn a_machine_with_a_tpm_and_secure_boot_is_sealed_and_keyed() {
+    assert_eq!(
+        installed_steps(br#"{"disk_name":"system"}"#),
+        [
+            "check-secure-boot",
+            "seal-tpm",
+            "free-old-policies",
+            "make-keys"
+        ]
+    );
+}
+
+#[test]
+fn a_machine_with_neither_has_nothing_to_seal_or_key() {
+    assert!(
+        installed_steps(br#"{"disk_name":"system","secure_boot":false,"tpm":false}"#).is_empty()
+    );
+}
+
+#[test]
+fn a_tpm_without_secure_boot_keeps_its_keys_but_seals_nothing() {
+    // The seal's policy counts on Secure Boot's state, so without it there's
+    // nothing to seal to; the accounts' SSH keys need only the TPM.
+    assert_eq!(
+        installed_steps(br#"{"disk_name":"system","secure_boot":false}"#),
+        ["make-keys"]
+    );
+}
+
 #[test]
 fn a_finished_machine_leaves_the_splash_alone() {
     let mut stand_in = StandIn::new();
