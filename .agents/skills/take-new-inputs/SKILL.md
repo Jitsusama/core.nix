@@ -39,10 +39,19 @@ judgement, which is why this is a skill and not a script.
    renamed package or an assertion. For each break:
    - Read why upstream changed it, in the nixpkgs or home-manager commit
      that did, and meet the change in the module that breaks. Never pin an
-     input back to dodge one, and never paper over it with `mkForce`.
+     input back to dodge one. A `mkForce` is for upstream turning on what
+     a module turns off, such as a unit nixpkgs now enables, and its
+     comment says why.
    - A check that only read a setting upstream removed stops reading it.
    - A module that worked around a bug upstream has now fixed drops its
-     workaround, and its comment with it.
+     workaround, and its comment with it. A patch nixpkgs now carries
+     itself is dropped, and a patch that no longer applies is rebased on
+     the new source.
+   - Breaks are independent of each other more often than not: a
+     terminal's patch, a test's stand-in module, a unit's new name. Give
+     each a tree and a builder of its own and run them side by side,
+     then bring the fixes back to the branch.
+
    Commit the fixes as `fix: meet <month>'s nixpkgs and home-manager`,
    whose body says what each upstream change was and how the module meets
    it.
@@ -62,23 +71,38 @@ judgement, which is why this is a skill and not a script.
    kernel has an owner: send them what you found if they aren't you.
 
 6. **Run everything, on the builders.** Commit first, since a builder
-   fetches only a commit. Then `merge-net needs`, which names every VM test
+   fetches only a commit. Build the formatter on a builder before the
+   first `nix fmt`, since a new nixpkgs rebuilds its linters, and
+   compiling them here takes the machine from its person. A new Rust
+   brings new default lints, so run every `*-passes-clippy` check first with
+   `nix-offload there -L --keep-going`: take each suggested line from the
+   log, rooting its paths at `crate::`, since a test module can't see a
+   path that starts elsewhere, and remove each `expect` it says went
+   unfulfilled. Then `merge-net needs`, which names every VM test
    a lock change moves, and `changed-checks --build`, which builds every
    check the change moved, VM tests included, on the builders. A bump
    moves nearly every check, so this is the whole run: start it in the
    background and do step 7 while it goes. A check that fails is read and
-   fixed as in step 3, never retried unread.
+   fixed as in step 3, never retried unread; `nix-offload` is retried only
+   when it exits 75, its sign of a failure that may pass.
 
 7. **Build the machines.** Each machine repository builds its machines
    with core overridden to the tree, as [docs/testing.md][testing] says
    in Checking a Machine Repository Against a Change. A machine that fails
-   to build here would fail to switch.
+   to build here would fail to switch. A machine whose configuration
+   reads secrets is evaluated through its repository's own check for it.
+   A machine that copies its kernel from a builder, rather than building
+   it, needs that kernel built and copied before the merge, so its update
+   never compiles one.
 
 8. **Merge, and say what moved.** The pull request's description names the
    date each input moved to, every fix and why, and what a person might
    notice. Anything that needs a restart to take effect, such as the
    kernel, the boot loader or the initrd, is named, since it waits for its
-   person to restart. Then the machine repositories take the new core.
+   person to restart. Then each machine repository takes the new core,
+   with `nix flake update core`, and its own pinned inputs with it. A
+   switch that restarts the Nix daemon stops every build on the machine,
+   so it waits until the machine's other work has paused.
 
 ## When It's Urgent
 
