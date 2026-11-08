@@ -1827,21 +1827,27 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
     """Shoot Now with its Timers row, and the margin with its mark, at Joel's two scales."""
     machine = desktop.machine
     for scale in ("1.5", "2"):
+        # Each scale is set with the launcher closed, so it opens laid out for it, as
+        # desktop-looks sets its own.
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: "Timers" in shown["rows"])
         # Picked, by G as it's listed last, so it's in view at 2 and says its names and Return.
         desktop.normal()
-        # The card draws the pick a frame or more after the shell says it, and at 2 the list
-        # scrolls to it first, so the shot waits for a frame drawn since G.
-        drawn = int(desktop.as_account("qs ipc call launcher frames"))
+        # The screen shows the pick some frames after the shell says it, and at 2 the list
+        # scrolls to it first, so the shot waits for the screen itself to move from before G:
+        # a count of the card's frames moves with the piece's own clock too.
+        desktop.held_still()
+        before = desktop.screen_now()
         machine.send_chars("G")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
-        machine.wait_until_succeeds(
-            desktop.in_session(f'test "$(qs ipc call launcher frames)" -gt {drawn}'),
-            timeout=timedelta(seconds=30),
-        )
+
+        def moved(_: bool, before: Image.Image = before) -> bool:
+            return ImageChops.difference(before, desktop.screen_now()).getbbox() is not None
+
+        retry(moved, timeout=timedelta(seconds=30))
         desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
