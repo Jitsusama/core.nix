@@ -1,45 +1,44 @@
 // What each program had open lately, for its Recent inside the launcher
-// (Applications.qml): the paths it keeps, in the order it keeps them, read
-// once at start and again each time the file it keeps them in changes,
-// and never on a timer. A change while the launcher is closed (`showing`)
-// is only noted, and read as it next opens, so no list's command runs
-// while nothing shows it, however often a program writes (the shell's
-// design, RSCH-20261029-0E8050).
-// Its `sources`, each { app, watch, list }: `app` the program's desktop
-// entry, `watch` the file the program writes as it goes, and `list` the
-// command that prints its paths, one a line. A source with no `app` is a
-// list many programs share, the desktop's files opened lately
-// (open-with's recent-files): its command prints a program and a path a
-// line, a tab between, newest first, and each program is matched to its
+// (Applications.qml): the paths it keeps, in the order it keeps them, as
+// the programs daemon holds them (modules/programs), which runs each
+// list's command as its file changes, and only while the launcher is
+// open (`showing`), so no list's command runs while nothing shows it,
+// however often a program writes (the shell's design, RSCH-20261029-0E8050).
+// The shell runs none of them.
+// Its `sources`, each { app, watch, list }, are recents.nix's, which the
+// daemon is given too: `app` the program's desktop entry, `watch` the
+// file the program writes as it goes, and `list` the command that prints
+// its paths. A source with no `app` is a list many programs share, the
+// desktop's files opened lately (open-with's recent-files): a program and
+// a path a line, newest first, and each program is matched to its
 // desktop entry by its id or its window's class, as heuristicLookup does,
 // or else by its name, which is how GTK names a program there, or else by
 // its command, which is how recent-files names one (zathura's entry is
 // org.pwmt.zathura), taking the entry the launcher shows rather than a
 // hidden one running the same command (zathura's plugins have one each).
 // At most nine are kept a program, so 1 to 9 pick one. A source that's
-// `asked` watches nothing and is read only as its program is stepped into,
-// once each time the launcher opens (`ask`), for a program such as Chrome
-// whose history changes with every page. A source that also says what its
-// program has open now (`opened`, Chrome's tabs from its session, or the
-// file each mpv plays) is asked that then too, and never otherwise, a line
-// each as its command prints them. One saying no more than that, as mpv's
-// does, has no list of its own, so its program's paths stay the shared
-// list's. A source that's `dated` ends each line with a tab and when it
-// was last used, in seconds since 1970, which is kept apart from the line
-// (`atOf`), so Recent places it among the program's other sources by when
-// and everything else reads its lines as an undated source prints them.
+// `asked` is read only as its program is stepped into, once each time the
+// launcher opens (`ask`), for a program such as Chrome whose history
+// changes with every page. A source that also says what its program has
+// open now (`opened`, Chrome's tabs from its session, or the file each
+// mpv plays) is asked that then too, and never otherwise. One saying no
+// more than that, as mpv's does, has no list of its own, so its program's
+// paths stay the shared list's. A source that's `dated` says when each
+// was last used, kept apart from its line (`atOf`), so Recent places it
+// among the program's other sources by when. Each is kept as the line its
+// command printed (Recents.js), as Applications.qml reads them.
 pragma ComponentBehavior: Bound
 
 import Quickshell
-import Quickshell.Io
 import QtQuick
+import qs
 import "Recents.js" as Lines
 
 Scope {
     id: recents
 
     property var sources: []
-    // Whether the launcher is open, which a change is read while.
+    // Whether the launcher is open, which the lists are watched while.
     property bool showing: false
 
     // Each program's paths by its desktop entry's id: from its own source,
@@ -71,20 +70,24 @@ Scope {
     // The programs whose asked sources were read since the launcher opened.
     property var asked: ({})
 
+    // The keys of the program stepped into last, watched by name, so the
+    // daemon reads its asked list and what it has open.
+    property var stepped: []
+
     // Reads the asked sources of a program stepped into, and what it has
     // open, once an opening.
     function ask(app) {
         if (recents.asked[app])
             return;
         recents.asked = Object.assign({}, recents.asked, { [app]: true });
-        for (const source of each.instances) {
-            if (source.modelData.app !== app)
-                continue;
-            if (source.modelData.asked)
-                source.read();
-            if (source.modelData.opened)
-                source.look();
-        }
+        const mine = recents.sources.filter(source => source.app === app);
+        const keys = [];
+        if (mine.some(source => source.asked && (source.list ?? []).length > 0))
+            keys.push(`recent:${app}`);
+        if (mine.some(source => (source.opened ?? []).length > 0))
+            keys.push(`opened:${app}`);
+        if (keys.length > 0)
+            recents.stepped = keys;
     }
 
     // What a program has open now, a line each, or none.
@@ -123,107 +126,54 @@ Scope {
         return entry?.id ?? "";
     }
 
-    Variants {
-        id: each
-
-        model: recents.sources
-
-        Scope {
-            id: source
-
-            required property var modelData
-
-            // A change while the list is being read is read again once it's
-            // done, so the last change always counts.
-            property bool again: false
-            // A change while the launcher was closed, read as it opens.
-            property bool stale: false
-
-            readonly property bool showing: recents.showing
-
-            onShowingChanged: {
-                if (source.showing && source.stale) {
-                    source.stale = false;
-                    source.read();
-                }
+    // The lines and times of the records a change touched, each set only
+    // where it differs, so a change to one program's list draws no other's.
+    function took(keys) {
+        let lists = recents.lately;
+        let times = recents.latelyAt;
+        let opened = recents.openNow;
+        for (const key of keys) {
+            const record = daemon.held[key];
+            const colon = key.indexOf(":");
+            const app = key.slice(colon + 1);
+            if (key.slice(0, colon) === "opened") {
+                const now = record ? Lines.openedLines(record) : [];
+                opened = Object.assign({}, opened, { [app]: now });
+                continue;
             }
-
-            function changedNow() {
-                if (source.showing)
-                    source.read();
-                else
-                    source.stale = true;
+            const lines = record ? Lines.recentLines(record) : [];
+            const when = {};
+            for (const one of lines) {
+                if (one.at !== undefined && !(one.line in when))
+                    when[one.line] = one.at;
             }
-
-            function read() {
-                if (listing.running)
-                    source.again = true;
-                else
-                    listing.running = true;
+            if (app === "shared") {
+                recents.sharedTimes = when;
+                recents.sharedLines = lines.map(one => one.line);
+                continue;
             }
-
-            // What its program has open, read only when asked.
-            function look() {
-                if (!opening.running)
-                    opening.running = true;
-            }
-
-            Process {
-                id: opening
-
-                command: source.modelData.opened ?? []
-                running: false
-                stdout: StdioCollector {
-                    id: opens
-
-                    onStreamFinished: recents.openNow = Object.assign({}, recents.openNow, {
-                        [source.modelData.app]: opens.text.split("\n").filter(line => line !== "")
-                    })
-                }
-            }
-
-            FileView {
-                path: source.modelData.asked ? "" : source.modelData.watch ?? ""
-                watchChanges: true
-                printErrors: false
-                onFileChanged: source.changedNow()
-            }
-
-            Process {
-                id: listing
-
-                command: source.modelData.list ?? []
-                running: !source.modelData.asked && (source.modelData.list ?? []).length > 0
-                onExited: {
-                    if (source.again) {
-                        source.again = false;
-                        listing.running = true;
-                    }
-                }
-                stdout: StdioCollector {
-                    id: listed
-
-                    onStreamFinished: {
-                        const read = listed.text.split("\n").filter(line => line !== "")
-                            .map(line => Lines.dated(line, source.modelData.dated === true));
-                        const lines = read.map(one => one.line);
-                        const times = {};
-                        for (const one of read) {
-                            if (one.at !== undefined && !(one.line in times))
-                                times[one.line] = one.at;
-                        }
-                        if (source.modelData.app === undefined) {
-                            recents.sharedTimes = times;
-                            recents.sharedLines = lines;
-                        } else {
-                            recents.latelyAt = Object.assign({}, recents.latelyAt,
-                                { [source.modelData.app]: times });
-                            recents.lately = Object.assign({}, recents.lately,
-                                { [source.modelData.app]: lines.slice(0, recents.most) });
-                        }
-                    }
-                }
-            }
+            lists = Object.assign({}, lists,
+                { [app]: lines.map(one => one.line).slice(0, recents.most) });
+            times = Object.assign({}, times, { [app]: when });
         }
+        if (JSON.stringify(times) !== JSON.stringify(recents.latelyAt))
+            recents.latelyAt = times;
+        if (JSON.stringify(lists) !== JSON.stringify(recents.lately))
+            recents.lately = lists;
+        if (JSON.stringify(opened) !== JSON.stringify(recents.openNow))
+            recents.openNow = opened;
+    }
+
+    // Every program's list while the launcher is open, and the program
+    // stepped into last by name.
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+        kind: "recent"
+        live: recents.showing
+        ahead: recents.stepped
+
+        onHeard: keys => recents.took(keys)
     }
 }
