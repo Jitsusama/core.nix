@@ -2772,25 +2772,26 @@ pub fn rejoined(rest: Option<Asked>, part: &Asked) -> Asked {
     }
 }
 
-/// Builds what was asked on a machine nearby, or here when ssh can't reach
-/// it, sending a flake that's a folder here with it. `tar` and `nix` are
-/// the programs run here, beside `ssh`.
-pub fn nearby_run(machine: &Nearby, asked: &Asked, scratch: &Path, programs: [&str; 3]) -> Ran {
+/// Builds what was asked on a machine nearby, sending a flake that's a
+/// folder here with it, or none when ssh can't reach it, so what it was
+/// to take goes with the rest. It was built here instead, unasked: on 8
+/// November a run's part for a Mac gone quiet compiled biome here for 55
+/// minutes beside Joel's work. `tar` and `nix` are the programs run here,
+/// beside `ssh`.
+pub fn nearby_run(
+    machine: &Nearby,
+    asked: &Asked,
+    scratch: &Path,
+    programs: [&str; 3],
+) -> Option<Ran> {
     let [ssh, tar, nix] = programs;
-    match sent_nearby(machine, asked, scratch, ssh, tar, nix) {
-        Ok(ran) if ran.status != UNREACHED => ran,
-        Ok(_) => {
-            eprintln!(
-                "nix-offload: ssh couldn't reach {}, so this builds here",
-                machine.host
-            );
-            here(asked, nix)
-        }
-        Err(error) => {
-            eprintln!("nix-offload: {error}, so this builds here");
-            here(asked, nix)
-        }
-    }
+    let why = match sent_nearby(machine, asked, scratch, ssh, tar, nix) {
+        Ok(ran) if ran.status != UNREACHED => return Some(ran),
+        Ok(_) => format!("ssh couldn't reach {}", machine.host),
+        Err(error) => error,
+    };
+    eprintln!("nix-offload: {why}, so what it takes goes the other way");
+    None
 }
 
 fn sent_nearby(

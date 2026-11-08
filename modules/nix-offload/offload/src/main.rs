@@ -491,9 +491,18 @@ fn there(arguments: &[String]) -> ExitCode {
         .unwrap_or_default();
     let (near, mut left) = there::shared(&asked, &nearby, machines::answers);
     let mut status = 0;
-    let mut timed = |part: &there::Asked, build: &dyn Fn() -> there::Ran| {
+    for (machine, part) in &near {
+        // What a machine that can't fetch the flake, or that ssh can't
+        // reach, takes goes with the rest, to the builders, rather than
+        // failing there.
         let began = now();
-        let ran = build();
+        let ran = there::fetches(machine, part, &scratch, "ssh")
+            .then(|| there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"]))
+            .flatten();
+        let Some(ran) = ran else {
+            left = Some(there::rejoined(left.take(), part));
+            continue;
+        };
         let ended = now();
         there::note(
             &journal,
@@ -507,17 +516,6 @@ fn there(arguments: &[String]) -> ExitCode {
         if status == 0 {
             status = ran.status;
         }
-    };
-    for (machine, part) in &near {
-        // What a machine that can't fetch the flake takes goes with the
-        // rest, to the lent builder or here, rather than failing there.
-        if !there::fetches(machine, part, &scratch, "ssh") {
-            left = Some(there::rejoined(left.take(), part));
-            continue;
-        }
-        timed(part, &|| {
-            there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"])
-        });
     }
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a

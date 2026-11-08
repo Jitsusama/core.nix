@@ -1249,6 +1249,72 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
     );
 }
 
+// On 8 November a run's part for a nearby machine whose ssh then failed
+// was built here, compiling biome beside Joel's work, unasked.
+#[test]
+fn a_part_for_a_nearby_machine_ssh_cant_reach_goes_with_the_rest() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "255").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let flake = format!("path:{}", zone.display());
+    let asked = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L"])
+            .args(extra)
+            .args([&flake, "checks.aarch64-darwin.a", "checks.x86_64-linux.b"])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path().join("config"))
+            .output()
+            .unwrap()
+    };
+    let given = bin.join("nix-was-given");
+
+    let ran = asked(&[]);
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("ssh couldn't reach mac"), "{said}");
+    assert!(
+        said.contains("no builder is lent, so nothing was built"),
+        "{said}"
+    );
+    assert!(!given.exists(), "nothing was built here");
+
+    let ran = asked(&["--here"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        fs::read_to_string(&given).unwrap(),
+        format!(
+            "build --no-link -L {flake}#checks.x86_64-linux.b {flake}#checks.aarch64-darwin.a\n"
+        ),
+        "asked to, both are built here as one"
+    );
+}
+
 #[test]
 fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     // A working tree's zone held 509 MB, almost all one ignored target.
