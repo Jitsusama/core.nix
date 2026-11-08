@@ -28,7 +28,7 @@ pub enum Went {
     ArchivedInGmail,
     /// Gmail no longer marks it important.
     Unimportant,
-    /// Deleted, or otherwise gone from the account.
+    /// Deleted, put in the trash, marked spam, or otherwise gone.
     Gone,
     /// Marked read from the shell.
     ReadHere,
@@ -50,8 +50,10 @@ pub struct Done {
 
 /// How mail gone from what wants Joel left, from its labels as Gmail
 /// gives them, or none where it still wants him and was only pushed off
-/// the list by newer mail. Read is said before archived, since mail read
-/// and archived at once was read first.
+/// the list by newer mail. Mail in the trash or marked spam is gone,
+/// whatever else it's labelled, since neither has an inbox to be read or
+/// archived from. Read is said before archived, since mail read and
+/// archived at once was read first.
 pub fn left(labels: Option<&Value>) -> Option<Went> {
     let Some(labels) = labels else {
         return Some(Went::Gone);
@@ -62,7 +64,9 @@ pub fn left(labels: Option<&Value>) -> Option<Went> {
             .and_then(Value::as_array)
             .is_some_and(|all| all.iter().any(|one| one.as_str() == Some(label)))
     };
-    if !has("UNREAD") {
+    if has("TRASH") || has("SPAM") {
+        Some(Went::Gone)
+    } else if !has("UNREAD") {
         Some(Went::ReadInGmail)
     } else if !has("INBOX") {
         Some(Went::ArchivedInGmail)
@@ -100,6 +104,19 @@ mod tests {
             Some(Went::Unimportant)
         );
         assert_eq!(left(None), Some(Went::Gone));
+    }
+
+    #[test]
+    fn mail_in_the_trash_or_spam_is_gone_however_else_it_is_labelled() {
+        let labels = |all: &[&str]| json!({ "labelIds": all });
+        assert_eq!(
+            left(Some(&labels(&["TRASH", "IMPORTANT"]))),
+            Some(Went::Gone)
+        );
+        assert_eq!(
+            left(Some(&labels(&["SPAM", "UNREAD", "INBOX"]))),
+            Some(Went::Gone)
+        );
     }
 
     #[test]

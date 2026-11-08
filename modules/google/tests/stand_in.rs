@@ -6,7 +6,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -1385,7 +1385,9 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     });
     let path = credentials("done", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
-    assert!(watch.look(&now()).finished.is_empty());
+    let state = watch.look(&now()).clone();
+    assert!(state.finished.is_empty());
+    assert_eq!(state.meetings[0].done, None, "the meeting is still to come");
     // Joel reads the newer one in Gmail: it's done, read there.
     read_elsewhere.store(true, Ordering::SeqCst);
     let state = watch.look(&now()).clone();
@@ -1418,6 +1420,109 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     let ended = state.meetings[0].done.expect("it ended");
     assert_eq!(ended.how, Went::Ended);
     assert_eq!(ended.at, state.meetings[0].end);
+}
+
+/// Gmail as mail leaves what wants Joel, by `phase`: both listed (0); the
+/// newer gone from the list, its labels refused for now (1), then read
+/// (2); and both listed again (3).
+fn departing(phase: &AtomicU8, path: &str, body: &str) -> (u16, String) {
+    let now = phase.load(Ordering::SeqCst);
+    if now == 1 || now == 2 {
+        if path.starts_with("GET /gmail/v1/users/me/messages?") && !path.contains("newer_than") {
+            return (
+                200,
+                r#"{"messages": [{"id": "old", "threadId": "t1"}]}"#.into(),
+            );
+        }
+        if path.starts_with("GET /gmail/v1/users/me/messages/new?") {
+            return if now == 1 {
+                (503, "{}".into())
+            } else {
+                (200, r#"{"labelIds": ["INBOX", "IMPORTANT"]}"#.into())
+            };
+        }
+    }
+    gmail(path, body)
+}
+
+#[test]
+fn mail_whose_labels_gmail_refuses_is_asked_about_again_on_the_next_look() {
+    let phase = Arc::new(AtomicU8::new(0));
+    let said = Arc::clone(&phase);
+    let stand_in = StandIn::new(move |path, body| departing(&said, path, body));
+    let path = credentials("refused", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    phase.store(1, Ordering::SeqCst);
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert!(state.finished.is_empty(), "{:?}", state.finished);
+    phase.store(2, Ordering::SeqCst);
+    let later = now().checked_add(jiff::Span::new().minutes(1)).unwrap();
+    let state = watch.look(&later).clone();
+    let how: Vec<_> = state
+        .finished
+        .iter()
+        .map(|mail| (mail.id.as_str(), mail.done.map(|done| done.how)))
+        .collect();
+    assert_eq!(how, [("new", Some(Went::ReadInGmail))]);
+}
+
+#[test]
+fn mail_listed_again_before_gmail_says_how_it_left_wants_joel_still() {
+    let phase = Arc::new(AtomicU8::new(0));
+    let said = Arc::clone(&phase);
+    let stand_in = StandIn::new(move |path, body| departing(&said, path, body));
+    let path = credentials("again", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    phase.store(1, Ordering::SeqCst);
+    watch.look(&now());
+    phase.store(3, Ordering::SeqCst);
+    let later = now().checked_add(jiff::Span::new().minutes(1)).unwrap();
+    let state = watch.look(&later).clone();
+    let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+    assert_eq!(held, ["new", "old"]);
+    assert!(state.finished.is_empty(), "{:?}", state.finished);
+    let asked = stand_in
+        .heard()
+        .into_iter()
+        .filter(|heard| {
+            heard
+                .line
+                .starts_with("GET /gmail/v1/users/me/messages/new?")
+        })
+        .filter(|heard| heard.line.contains("format=minimal"))
+        .count();
+    assert_eq!(asked, 1, "its labels are asked for only while it's gone");
+}
+
+#[test]
+fn a_meeting_declined_is_done_from_when_joel_was_first_heard_to_decline_it() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("GET /calendar/v3/calendars/primary/events?") {
+            return (
+                200,
+                r#"{"items": [{"id": "e1", "summary": "Standup",
+                    "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-26T16:15:00-04:00"},
+                    "attendees": [{"email": "joel@example.com", "self": true,
+                        "responseStatus": "declined"}]}]}"#
+                    .into(),
+            );
+        }
+        gmail(path, body)
+    });
+    let path = credentials("declined", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let first = watch.look(&now()).meetings[0].done.expect("declined");
+    assert_eq!(
+        (first.how, first.at),
+        (Went::Declined, now().timestamp().as_millisecond())
+    );
+    let later = now().checked_add(jiff::Span::new().minutes(5)).unwrap();
+    let again = watch.look(&later).meetings[0].done.expect("still declined");
+    assert_eq!(again, first, "declined when first heard, not each look");
 }
 
 #[test]

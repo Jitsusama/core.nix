@@ -58,6 +58,9 @@ pub struct Watch {
     calls_failed: u32,
     /// When Joel was first heard to decline each meeting he declined.
     declined: HashMap<String, i64>,
+    /// Mail gone from what wants Joel whose labels Gmail couldn't be asked
+    /// for, and when it went, to ask again on the next look (done.rs).
+    departed: Vec<(Mail, i64)>,
 }
 
 /// How long a follow lasts unless the shell says it again: a little over
@@ -104,6 +107,7 @@ impl Watch {
             followed_at: 0,
             calls_failed: 0,
             declined: HashMap::new(),
+            departed: Vec::new(),
         }
     }
 
@@ -217,9 +221,14 @@ impl Watch {
         let held = std::mem::take(&mut self.state.mail);
         match self.asking(now, |google, token| wanted(google, token, &held)) {
             Ok((found, unread)) => {
-                let left: Vec<Mail> = held
+                // What left before and couldn't be asked about is asked
+                // again, unless it wants Joel again.
+                let went = now.timestamp().as_millisecond();
+                let left: Vec<(Mail, i64)> = held
                     .into_iter()
-                    .filter(|was| !found.iter().any(|mail| mail.id == was.id))
+                    .map(|mail| (mail, went))
+                    .chain(std::mem::take(&mut self.departed))
+                    .filter(|(was, _)| !found.iter().any(|mail| mail.id == was.id))
                     .collect();
                 self.state.mail = found;
                 self.state.unread = unread;
@@ -480,6 +489,7 @@ impl Watch {
         match self.asking(now, |google, token| google.label(token, id, "UNREAD")) {
             Ok(()) => {
                 self.state.finished.retain(|mail| mail.id != id);
+                self.departed.retain(|(mail, _)| mail.id != id);
                 if let Some(at) = self.read.iter().position(|mail| mail.id == id) {
                     let back = self.read.remove(at);
                     if !self.state.mail.iter().any(|mail| mail.id == id) {
@@ -497,20 +507,30 @@ impl Watch {
     }
 
     /// Asks Gmail once how each piece of mail gone from what wants Joel
-    /// left it, and holds those done as done (done.rs). One that Gmail
-    /// couldn't be asked about is let go untold. False where the account
-    /// fell while asking, which holds nothing.
-    fn left(&mut self, left: Vec<Mail>, now: &Zoned) -> bool {
+    /// left it, with when it went, and holds those done as done
+    /// (done.rs). One Gmail couldn't be asked about, a 429 or a 5xx, is
+    /// asked again on the next look, for as long as a thing done is told.
+    /// False where the account fell while asking, which keeps the rest to
+    /// ask once it's back.
+    fn left(&mut self, left: Vec<(Mail, i64)>, now: &Zoned) -> bool {
         let at = now.timestamp().as_millisecond();
-        for mail in left {
+        let mut left = left.into_iter();
+        while let Some((mail, went)) = left.next() {
             match self.asking(now, |google, token| google.labels(token, &mail.id)) {
                 Ok(labels) => {
                     if let Some(how) = done::left(labels.as_ref()) {
                         self.finish(mail, how, at);
                     }
                 }
-                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                Err(Looked::Refused(Refused::Unreachable(why))) => {
+                    eprintln!("<4>{why}");
+                    if at - went < done::KEPT {
+                        self.departed.push((mail, went));
+                    }
+                }
                 Err(looked) => {
+                    self.departed.push((mail, went));
+                    self.departed.extend(left);
                     self.fell(looked, Standing::Unreachable);
                     return false;
                 }
