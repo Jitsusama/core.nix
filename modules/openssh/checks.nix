@@ -22,6 +22,20 @@
         && lib.hasInfix "ClientAliveCountMax 4" written.text
       );
 
+  # And takes only keys, never as root, in that same file.
+  a-mac-sshd-takes-only-keys =
+    let
+      written = macWorkstation.config.environment.etc."ssh/sshd_config.d/100-nix-darwin.conf";
+    in
+    holds "a-mac-sshd-takes-only-keys"
+      "A Mac's sshd takes a password or signs root in, so anyone on the laptop's network can guess their way in."
+      (
+        written.enable
+        && lib.hasInfix "PasswordAuthentication no" written.text
+        && lib.hasInfix "KbdInteractiveAuthentication no" written.text
+        && lib.hasInfix "PermitRootLogin no" written.text
+      );
+
   # So does every NixOS machine's.
   sshd-lets-a-gone-caller-go =
     let

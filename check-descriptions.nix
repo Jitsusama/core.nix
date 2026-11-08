@@ -54,6 +54,9 @@
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
+  a-mac-sshd-takes-only-keys = ''
+    every Mac's sshd refuses passwords, typed or asked for, and never signs root in
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
