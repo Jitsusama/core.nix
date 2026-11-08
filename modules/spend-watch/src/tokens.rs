@@ -116,6 +116,11 @@ pub struct Tokens {
     /// The key of the cap it speaks for, whose own notices it replaces.
     #[serde(skip)]
     pub cap: String,
+    /// The key of that cap's row as the spend collection lists it, so the
+    /// launcher's Tokens row opens the same drawer rather than one of its
+    /// own (X0G8U9, 2026-11-08).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub row: String,
 }
 
 /// What the outlook is worked out from, read from the history.
@@ -447,6 +452,12 @@ pub fn key(inputs: &Inputs) -> String {
     )
 }
 
+/// The key the spend collection gives its cap's row (`collection.rs`,
+/// `cap_line`), which differs from `key`: a row is one cap's, whoever's.
+fn row(inputs: &Inputs) -> String {
+    format!("cap:{}", inputs.cap.name)
+}
+
 /// What Joel can do: see what spends, and pause the session spending most.
 fn acts(inputs: &Inputs) -> Vec<Act> {
     let mut acts = vec![Act {
@@ -492,6 +503,7 @@ fn unread(inputs: &Inputs, zone: &Zone, now: f64) -> Tokens {
         runs_out: None,
         back: None,
         cap: key(inputs),
+        row: row(inputs),
     }
 }
 
@@ -598,6 +610,7 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
         runs_out: Some(runs_out),
         back,
         cap: key(inputs),
+        row: row(inputs),
     })
 }
 
@@ -677,6 +690,17 @@ mod tests {
             refused: None,
             counter: "the AI proxy".into(),
         }
+    }
+
+    // The Tokens row opens the drawer of its cap's row in the spend
+    // collection, so it names that row by the key the collection gives it.
+    #[test]
+    fn the_outlook_names_its_caps_row() {
+        let given = inputs(14_560.0, 300.0, 0.0);
+        let tokens = outlook(&given, None, &toronto(), NOW).unwrap();
+        assert_eq!(tokens.row, "cap:weekly");
+        let unread = unread(&given, &toronto(), NOW);
+        assert_eq!(unread.row, "cap:weekly");
     }
 
     #[test]
