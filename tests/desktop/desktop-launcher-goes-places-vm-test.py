@@ -879,6 +879,22 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     )
 
 
+def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
+    """Shoot home at 1.5 and 2, where each place's own mark is judged, for the gallery.
+
+    The launcher opens afresh at each, as an open one keeps the size it opened at.
+    """
+    if not desktop.values["shots"]:
+        return
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_until(lambda shown: shown["rows"] == home)
+        desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
+
+
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
     desktop: Desktop,
 ) -> None:
@@ -947,13 +963,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         f"home moved as the queue changed: from {scrolled} to {still}"
     )
     desktop.shoot("launcher-home-categories")
-    # And at Joel's scales, where each place's own mark is judged.
-    if desktop.values["shots"]:
-        for scale in ("1.5", "2"):
-            desktop.as_account(f"niri msg output winit scale {scale}")
-            desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
-        desktop.as_account("niri msg output winit scale 1")
     desktop.close_launcher()
+    shoot_home_at_joels_scales(desktop, home)
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
     )
