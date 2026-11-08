@@ -346,6 +346,19 @@ function moved(act, count, page) {
     }
 }
 
-function faceOf(_fact, _script) {
-    return "";
+// The face a fact's value is set in, given the script its plate is in, ""
+// for the theme's own: "name" for an identifier (`identifies: true`), a
+// node, a serial or a bus name, which the drawer lists last in the Name
+// face so it reads as something to copy rather than a figure (VKCF3Z,
+// 2026-11-07); "words" for a sentence (`words: true`); "latin" for Latin
+// letters on a script's plate (`latin: true`), since the script's cut
+// draws them in another's; and "value", at Figure, for the rest.
+function faceOf(fact, script) {
+    if (fact?.identifies === true) {
+        return "name";
+    }
+    if (fact?.words === true) {
+        return "words";
+    }
+    return script !== "" && fact?.latin === true ? "latin" : "value";
 }
