@@ -378,9 +378,10 @@ def test_a_check_main_quarantines_fails_saying_so_and_blocking_nothing(
     assert stand_in.ran() is None
 
 
+@pytest.mark.usefixtures("stand_in")
 @pytest.mark.parametrize("status", [75, 69, 255])
 def test_a_run_that_never_ran_is_never_excused_by_a_quarantine(
-    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
+    tool: Tool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
 ) -> None:
     # As when no builder was lent, between 01:30 and 04:15 on 8 November:
     # nothing ran, so nothing failed that a quarantine could excuse.
