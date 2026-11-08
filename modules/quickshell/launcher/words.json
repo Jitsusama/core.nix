@@ -2606,6 +2606,37 @@
       "name": "Devices in It"
     },
     {
+      "id": "eero:profile:blocks",
+      "in": "eero:profile",
+      "name": "Blocks"
+    },
+    {
+      "id": "eero:profile:enforces",
+      "in": "eero:profile",
+      "name": "Enforces"
+    },
+    {
+      "id": "eero:profile:allows",
+      "in": "eero:profile",
+      "name": "Allows"
+    },
+    {
+      "id": "eero:profile:schedule",
+      "in": "eero:profile",
+      "name": "Schedule"
+    },
+    {
+      "id": "eero:profile:default",
+      "in": "eero:profile",
+      "name": "Default"
+    },
+    {
+      "id": "eero:profile:traffic",
+      "in": "eero:profile",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
       "id": "eero:internet:events",
       "in": "eero:internet",
       "name": "What Happened"

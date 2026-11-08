@@ -6,7 +6,7 @@
 // the record beside this file, and runs `qml home-network.qml` in UTC. Each
 // case names what's asked and what has to come back: the rows' order,
 // what each row says, and every figure the eero contract places in the
-// internet's, a node's and a device's drawer
+// internet's, a node's, a device's and a profile's drawer
 // (modules/eero/contract/README.md).
 import QtQuick
 import "HomeNetwork.js" as Home
@@ -478,7 +478,8 @@ QtObject {
         }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));
         expect("a device's profile", value(inProfile, "profile"), "profile 1 \u00b7 paused");
 
-        // What happened, newest first, in the internet's drawer, and each
+        // What happened, newest first, in the internet's drawer, with each
+        // notice the daemon told set among eero's events, and each
         // device's own in its.
         const events = Drawers.internet(model, now).facts;
         const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
@@ -486,7 +487,21 @@ QtObject {
             { label: "22:42", value: "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52." },
             { label: "22:42", value: "tablet 1 disconnected from Study eero Pro 6." }
         ]);
-        expect("every event", timeline.length, 5);
+        expect("every event and every notice", timeline.length, 10);
+        expect("a notice by when it was told, then what it said", timeline.slice(5, 7), [
+            { label: "07:24", value: "The nodes updated to v7.17.4-5. From v7.17.3-9." },
+            { label: "yesterday 16:21",
+                value: "A firmware update is waiting. "
+                    + "eero updates the nodes to v7.17.4-5 at 02:00." }
+        ]);
+        expect("the oldest last", timeline[9], { label: "3 Nov 03:12",
+            value: "The internet is out. Nothing past the home network answers this machine." });
+        const quiet = Drawers.internet(Object.assign({}, model, { events: [], told: [{
+            at: "2026-11-07T07:24:13Z", summary: "The internet is back", body: "" }] }), now)
+            .facts;
+        expect("a notice with nothing more to say is its summary",
+            quiet[quiet.findIndex(fact => fact.heading === "events") + 1].value,
+            "The internet is back");
         const tablet = Drawers.device(model, device("tablet 1"), now).facts;
         expect("a device's own events", tablet.slice(tablet.findIndex(fact =>
             fact.heading === "events") + 1).map(fact => fact.value), [
@@ -538,12 +553,55 @@ QtObject {
         expect("a profile held off", Home.profileRow(model, held).side, "paused");
         const plate = Drawers.profile(model, held);
         expect("a profile's plate", [plate.eyebrow, plate.title], ["profile", "profile 2"]);
+        const flat = { shape: "spark", values: new Array(20).fill(0), warn: false };
         expect("a profile's facts", plate.facts, [
+            { id: "blocks", value: "nothing" },
+            { id: "schedule", value: "none" },
+            { id: "default", value: "no" },
+            { id: "traffic", value: "0 B down \u00b7 0 B up", figure: flat },
             { id: "devices", value: "2 listed \u00b7 1 on now" },
             { heading: "listed" },
             { label: "generic 2", value: "on Den" },
             { label: "02:00:00:00:00:35", value: "not on now" }
         ]);
+
+        // What a profile blocks is one fact, each filter that's on named
+        // and one that's off saying nothing; what it holds search to, the
+        // sites it lets through, its schedules and its traffic are each
+        // one more.
+        const filtered = byId(Drawers.profile(model, Object.assign({}, model.profiles[0], {
+            default: true,
+            schedules: 2,
+            filters: Object.assign({}, model.profiles[0].filters, {
+                gaming: true, social: true, ad_block_network: true,
+                blocked_sites: ["example.com"], blocked_apps: ["tiktok"],
+                safe_search: true, youtube_restricted: true,
+                allowed_sites: ["example.org", "example.net"]
+            }),
+            usage: {
+                download: { total_bytes: 2400000, hours: [{ bytes: 400000 }, { bytes: 2000000 }] },
+                upload: { total_bytes: 53741, hours: [{ bytes: 53741 }, { bytes: 0 }] }
+            }
+        })));
+        expect("what a profile blocks", filtered.blocks.value,
+            "gaming \u00b7 social \u00b7 ads network-wide \u00b7 example.com \u00b7 tiktok");
+        expect("its own ad blocking said plainly", byId(Drawers.profile(model,
+            Object.assign({}, model.profiles[0], { filters: { gaming: false, ad_block: true,
+                ad_block_network: true } }))).blocks.value, "ads");
+        expect("what a profile holds search to", filtered.enforces.value,
+            "safe search \u00b7 YouTube restricted mode");
+        expect("the sites a profile lets through", filtered.allows.value,
+            "example.org \u00b7 example.net");
+        expect("a profile's schedules counted", filtered.schedule.value, "2 schedules");
+        expect("the default profile", filtered.default.value, "yes");
+        expect("a profile's traffic", filtered.traffic.value, "2.40 MB down \u00b7 53.7 kB up");
+        expect("a profile's traffic sparked by the hour", filtered.traffic.figure.values,
+            [(400000 + 53741) / 2000000, 1]);
+        const unsaid = byId(Drawers.profile(model, { id: "3009", name: "profile 9",
+            devices: [] }));
+        expect("a profile eero said none of its figures of",
+            ["blocks", "enforces", "allows", "schedule", "default", "traffic"]
+                .filter(id => unsaid[id] !== undefined), []);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

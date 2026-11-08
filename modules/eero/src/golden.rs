@@ -47,6 +47,11 @@ pub fn contract_answers() -> Answers {
         usage: contract("usage.json"),
         node_usage: by_node(|id| format!("usage.eero.{id}.json")),
         profiles: contract("net.profiles.json"),
+        // The contract read only the first two profiles' traffic.
+        profile_usage: ["3001", "3002"]
+            .into_iter()
+            .map(|id| (id.to_owned(), contract(&format!("usage.profile.{id}.json"))))
+            .collect(),
         events: contract("net.app_events.json"),
     }
 }

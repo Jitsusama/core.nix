@@ -537,6 +537,48 @@ pub struct Profile {
     pub paused: Option<bool>,
     /// Its devices, by hardware address, on now or not.
     pub devices: Vec<String>,
+    /// Whether it's eero's default profile.
+    #[serde(default)]
+    pub default: Option<bool>,
+    /// How many schedules eero keeps for it. eero's list has held none
+    /// yet, so a schedule's own shape has no type.
+    #[serde(default)]
+    pub schedules: Option<usize>,
+    /// What it blocks, and lets through.
+    #[serde(default)]
+    pub filters: Filters,
+    /// Its bytes by hour over the last day.
+    #[serde(default)]
+    pub usage: Option<Usage>,
+}
+
+/// What a profile blocks, and lets through: each kind of content eero
+/// filters, whether it's blocked, and the sites and apps named one by one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Filters {
+    /// Whether any content filter is set.
+    pub set: Option<bool>,
+    pub gaming: Option<bool>,
+    pub illegal: Option<bool>,
+    pub messaging: Option<bool>,
+    pub pornographic: Option<bool>,
+    pub social: Option<bool>,
+    pub shopping: Option<bool>,
+    pub streaming: Option<bool>,
+    pub violent: Option<bool>,
+    /// Whether search engines are held to their safe results.
+    pub safe_search: Option<bool>,
+    /// Whether `YouTube` is held to its restricted mode.
+    pub youtube_restricted: Option<bool>,
+    /// Whether it blocks ads, and whether the whole network does.
+    pub ad_block: Option<bool>,
+    pub ad_block_network: Option<bool>,
+    /// Sites blocked, and let through, by name.
+    pub blocked_sites: Vec<String>,
+    pub allowed_sites: Vec<String>,
+    /// Apps blocked, by eero's name for each.
+    pub blocked_apps: Vec<String>,
 }
 
 /// A change the daemon told, and what its notice said.

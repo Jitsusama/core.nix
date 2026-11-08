@@ -53,8 +53,11 @@ on a machine that's the first laptop.
   interval and Wi-Fi generation, retries, packets, and its speed now;
   the last hour of its signal, SNR, rates and speed, and its `roams` to
   another node or band over the last day.
-- `profiles[]`, `events[]`: who's in which profile, and the app's
-  activity list.
+- `profiles[]`: each profile by `id`, its devices, whether it's held
+  off, its schedules, what its `filters` block and let through, and its
+  bytes by hour over the last day, where they were read (the daemon
+  doesn't read them yet).
+- `events[]`: the app's activity list.
 - `joins_and_leaves[]`: the devices that joined or left over the last
   day, with the name each had.
 - `told[]`: what the daemon told as notices over the last 30 days,
