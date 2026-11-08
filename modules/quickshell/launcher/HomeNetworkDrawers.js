@@ -111,7 +111,7 @@ function internet(model, now, settings) {
                 known(dns.caching) ? `caching ${onOff(dns.caching)}` : "",
                 dns.ipv6_mode ? `IPv6 ${dns.ipv6_mode}` : ""])),
             fact("ipv6", onOff(net.ipv6)),
-        ]), switches(net), History.joinsAndLeaves(model, now),
+        ]), switches(net), History.devicesOff(model, now), History.joinsAndLeaves(model, now),
             happened(History.timeline(model), now)),
     };
 }

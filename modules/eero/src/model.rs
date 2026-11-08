@@ -25,6 +25,9 @@ pub struct HomeNetwork {
     pub nodes: Vec<Node>,
     /// The devices on now, by node, the strongest signal first.
     pub devices: Vec<Device>,
+    /// The devices eero knows that aren't on now, the last on first.
+    #[serde(default)]
+    pub devices_off: Vec<DeviceOff>,
     pub profiles: Vec<Profile>,
     /// The app's activity list, newest first.
     pub events: Vec<Event>,
@@ -436,6 +439,31 @@ pub struct Device {
     /// first, at most 20.
     #[serde(default)]
     pub roams: Vec<Roam>,
+}
+
+/// A device eero knows that isn't on now: what stays true of it while it's
+/// off. eero keeps its last link's figures too, but they're of a link
+/// that's gone, so they're left out rather than read as now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceOff {
+    pub mac: String,
+    pub name: Option<String>,
+    pub nickname: Option<String>,
+    pub hostname: Option<String>,
+    pub kind: Option<String>,
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub manufacturer: Option<String>,
+    pub private: Option<bool>,
+    pub first_seen: Option<String>,
+    /// When it was last on.
+    pub last_active: Option<String>,
+    /// The id of the node it was last on, and how.
+    pub node: Option<String>,
+    pub ethernet: bool,
+    pub band: Option<String>,
+    /// The id of its profile.
+    pub profile: Option<String>,
 }
 
 /// A device's link over the last hour, a sample a read, oldest first:

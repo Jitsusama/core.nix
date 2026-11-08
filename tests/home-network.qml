@@ -229,7 +229,7 @@ QtObject {
             "mesh"]);
         expect("the internet's groups", internetFacts.filter(fact => fact.heading !== undefined)
             .map(fact => fact.heading), ["probe", "outage-list", "speed-tests", "addressing",
-            "settings", "joins-and-leaves", "events"]);
+            "settings", "devices-off", "joins-and-leaves", "events"]);
         expect("eero's outages counted where no history is kept", value(byId(Drawers
             .internet(unkept, now)), "outages"), "none recorded");
 
@@ -293,6 +293,16 @@ QtObject {
             { label: "22:49", value: "phone 1 left Den \u00b7 5 GHz" },
             { label: "22:39", value: "laptop computer 1 joined Study \u00b7 5 GHz" }
         ]);
+        // The devices eero knows that aren't on now, the last on first,
+        // each where and how it was last on.
+        const off = listed("devices-off");
+        expect("each device not on now", [off.length, off[0], off[2]], [9,
+            { label: "game console 2", value: "Study \u00b7 5 GHz \u00b7 21:38" },
+            { label: "generic 5", value: "Hall \u00b7 Ethernet \u00b7 13:15" }]);
+        expect("one eero names nothing, by its hardware address", off[3].label,
+            "02:00:00:00:00:1b");
+        expect("none off, no heading", Drawers.internet(Object.assign({}, model,
+            { devices_off: [] }), now).facts.some(fact => fact.heading === "devices-off"), false);
         expect("none joined or left, no heading", Drawers.internet(Object.assign({}, model,
             { joins_and_leaves: [] }), now).facts.some(fact =>
             fact.heading === "joins-and-leaves"), false);
