@@ -152,8 +152,12 @@ Rectangle {
             ? row.countItems.map(item => item.said).join(" \u00b7 ") : row.count,
         row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
     readonly property bool detailed: detailUncut !== ""
-    readonly property real detailWide: detailed
-        ? Math.ceil(wordsFace.advanceWidth(detailUncut)) + 1 : 0
+    // Read through the face's font, as noted is, so a scale or a theme
+    // changed measures it again.
+    readonly property real detailWide: {
+        void wordsFace.font;
+        return detailed ? Math.ceil(wordsFace.advanceWidth(detailUncut)) + 1 : 0;
+    }
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
     // Its name is the shell speaking to Joel, in the voice's face, as an
