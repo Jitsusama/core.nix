@@ -2619,6 +2619,58 @@
         "02:00:00:00:00:33",
         "02:00:00:00:00:34"
       ],
+      "members": [
+        {
+          "mac": "02:00:00:00:00:2b",
+          "name": "phone 3",
+          "kind": "phone"
+        },
+        {
+          "mac": "02:00:00:00:00:2c",
+          "name": "tablet 2",
+          "kind": "tablet"
+        },
+        {
+          "mac": "02:00:00:00:00:2d",
+          "name": "phone 4",
+          "kind": "phone"
+        },
+        {
+          "mac": "02:00:00:00:00:2e",
+          "name": "tablet 2",
+          "kind": "tablet"
+        },
+        {
+          "mac": "02:00:00:00:00:2f",
+          "name": "laptop computer 3",
+          "kind": "laptop_computer"
+        },
+        {
+          "mac": "02:00:00:00:00:30",
+          "name": "laptop computer 4",
+          "kind": "laptop_computer"
+        },
+        {
+          "mac": "02:00:00:00:00:31",
+          "name": "laptop computer 5",
+          "kind": "laptop_computer"
+        },
+        {
+          "mac": "02:00:00:00:00:32",
+          "name": "phone 5",
+          "kind": "phone"
+        },
+        {
+          "mac": "02:00:00:00:00:33",
+          "name": "tablet 2",
+          "kind": "tablet"
+        },
+        {
+          "mac": "02:00:00:00:00:34",
+          "name": "laptop computer 6",
+          "kind": "laptop_computer"
+        }
+      ],
       "default": false,
       "schedules": 0,
       "filters": {
@@ -2862,6 +2914,23 @@
         "02:00:00:00:00:36",
         "02:00:00:00:00:37"
       ],
+      "members": [
+        {
+          "mac": "02:00:00:00:00:35",
+          "name": "tablet 3",
+          "kind": "tablet"
+        },
+        {
+          "mac": "02:00:00:00:00:36",
+          "name": "tablet 4",
+          "kind": "tablet"
+        },
+        {
+          "mac": "02:00:00:00:00:37",
+          "name": "tablet 4",
+          "kind": "tablet"
+        }
+      ],
       "default": false,
       "schedules": 0,
       "filters": {
@@ -3102,6 +3171,13 @@
       "paused": false,
       "devices": [
         "02:00:00:00:00:38"
+      ],
+      "members": [
+        {
+          "mac": "02:00:00:00:00:38",
+          "name": "network equipment 1",
+          "kind": "network_equipment"
+        }
       ],
       "default": false,
       "schedules": 0,
