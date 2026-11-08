@@ -20,8 +20,9 @@ pragma ComponentBehavior: Bound
 //
 // And Drive's folders, for the launcher's picker and Files, which draw
 // them: `list` asks what one holds and `listing` gives it; `download`
-// asks for a file, kept in the session's runtime folder to open or to
-// hand the program that asked the picker, or saved where Joel picked, and
+// asks for a file, kept in the cache home's google/drive to open or to
+// hand the program that asked the picker, fetched again only once Drive
+// changes it (src/files.rs), or saved where Joel picked, and
 // `downloading` says how the one asked stands. Nothing is listed or
 // fetched until asked.
 import qs
@@ -236,7 +237,7 @@ Singleton {
                 key: `drive:folder:${folder}`,
                 name: Words.name(word),
                 note: "",
-                inside: () => root.inside(folder),
+                inside: () => root.inside(folder, Words.name(word)),
                 empty: () => root.empty(folder)
             }));
         return [place("root", "drive:mine")].concat(root.saving ? [] : [place("shared", "drive:shared")])
@@ -269,22 +270,33 @@ Singleton {
     }
 
     // A folder's rows: its folders, stepped into, then the files the
-    // program that asked would take, each picked by fetching it.
-    function inside(folder) {
+    // program that asked would take, each picked by fetching it. `where`
+    // is the folders it's in and itself, from its place, as each row's
+    // plate says it.
+    function inside(folder, where) {
         const files = root.holds(folder)?.files ?? [];
         return files.filter(file => file.kind === "folder" || !root.saving
             && root.chooser.wants(Said.pickedAs(file).name, Said.pickedAs(file).mime))
-            .map(file => root.pickable(file));
+            .map(file => root.pickable(file, where));
     }
 
-    function pickable(file) {
-        const facts = Said.placed(file, Calendar.now, Mail.dates);
+    // A file or a folder in Drive as the picker draws one here, its row
+    // and plate saying what Drive listed (Drive.js's placed). Normal's gx
+    // opens a file as Return opens it in Drive's own places: one of
+    // Google's own kinds by its link, in its program's window, and any
+    // other fetched into the cache and opened by the desktop's program
+    // for its kind, never one that runs.
+    function pickable(file, where) {
+        const facts = Said.placed(file);
         if (file.kind === "folder")
             return root.chooser.folder(root.savedIn(file.id, {
                 key: facts.key,
                 name: facts.name,
                 note: facts.note,
-                inside: () => root.inside(file.id),
+                entry: facts.entry,
+                where: where,
+                facts: facts.facts,
+                inside: () => root.inside(file.id, `${where}/${file.name}`),
                 empty: () => root.empty(file.id)
             }));
         const document = Said.asDocument(file);
@@ -292,9 +304,19 @@ Singleton {
             key: facts.key,
             name: facts.name,
             note: facts.note,
-            drawer: facts.drawer,
+            entry: facts.entry,
+            where: where,
+            facts: facts.facts,
             adopt: document === null ? null : root.row(document, root.provider),
-            fetch: (done, failed) => root.fetch(file.id, done, failed)
+            fetch: (done, failed) => root.fetch(file.id, done, failed, "pick"),
+            open: (done, failed) => {
+                if (document === null) {
+                    root.fetch(file.id, done, failed, "open");
+                    return;
+                }
+                root.open(document);
+                done("");
+            }
         });
     }
 
@@ -305,9 +327,11 @@ Singleton {
         return Said.unlisted(listed === undefined ? "listing" : listed.failed ?? "");
     }
 
-    function fetch(file, done, failed) {
+    // Fetches a file to "pick" or to "open", calling `done` with where it
+    // is or `failed` with why not.
+    function fetch(file, done, failed, how) {
         root.fetches = root.fetches.concat([{ file, since: Date.now(), done, failed }]);
-        Google.download(file, "pick", "");
+        Google.download(file, how, "");
     }
 
     // Each folder awaited is kept once the program lists it, from among

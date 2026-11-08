@@ -317,3 +317,34 @@ function plate(file, said, now, words) {
     }
     return shown;
 }
+
+// A file or a folder kept elsewhere, as Google's Drive keeps one, is
+// drawn as one here is, from what its place said as it listed it,
+// `entry` ({ name, folder, size, modified }), since nothing here can be
+// previewed before it's fetched. Its row says its size, or nothing for a
+// folder whose items its place doesn't count, and when it changed, each
+// where its place says it.
+function sideElsewhere(entry, now, words) {
+    const size = !entry.folder && typeof entry.size === "number" ? weighed(entry.size) : "";
+    const changed = typeof entry.modified === "number" ? when(entry.modified, now, words) : "";
+    return [size, changed].filter(part => part !== "").join(BETWEEN);
+}
+
+// Its plate, `file` its name, the folders it's in as its place names them
+// (where), its entry and what more its place says of it (facts): the
+// eyebrow its kind by its ending, as file-preview says one here, or a
+// folder's; its name; then Size, Changed and Where as a file's here, and
+// its place's facts after them. A figure its place doesn't give is left
+// out, never awaited, since nothing more is coming.
+function plateElsewhere(file, now, words) {
+    const entry = file.entry;
+    const shown = plate({ path: "", name: file.name, where: file.where ?? "", entry }, null, now,
+        words);
+    const ending = nameEnd(file.name);
+    return Object.assign(shown, {
+        eyebrow: entry.folder ? words.folder
+            : ending < file.name.length ? file.name.slice(ending + 1).toUpperCase() : words.file,
+        facts: shown.facts.filter(fact => fact.value !== null && fact.value !== "")
+            .concat(file.facts ?? [])
+    });
+}
