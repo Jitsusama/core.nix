@@ -246,9 +246,10 @@ in the first four, and the graphical role the last two:
   what Joel uses; a call's audio may run in real time; and the work's disk
   writes give way while a save of his waits on the disk.
 - **[`shaper`][shaper]:** the network in the same order: CAKE on every link
-  with a default route, a little under the rate the line takes, found as it
-  goes, so the queue is here and sorted rather than in the modem; names,
-  calls and what Joel uses go ahead of the work he started, both ways.
+  with a default route, a little under the rate the connection takes, found
+  as it goes, so the queue is here and sorted rather than in the modem;
+  names, calls and what Joel uses go ahead of the work he started, both
+  ways.
 
 ## How It's Checked
 

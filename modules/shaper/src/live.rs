@@ -14,7 +14,8 @@ use std::time::{Duration, SystemTime};
 
 /// How long the recorder may write nothing, in ms, before its link is let
 /// go unlimited: with no signal, the controller has nothing to hold a rate
-/// to, and a rate held from a minute ago may be far under the line's now.
+/// to, and a rate held from a minute ago may be far under the
+/// connection's now.
 const SILENT_MS: u64 = 10_000;
 
 /// What the recorder's lines have said: the link it records, and the

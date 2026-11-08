@@ -1,13 +1,13 @@
 //! Replays shaper-record's day files through a controller, a second at a
 //! time, and scores the rates it would have set, so a new controller is
-//! proved on a real week of the line before it shapes anything.
+//! proved on a real week of the connection before it shapes anything.
 //!
-//! A replay can't show what a rate would have done to the delay: the line
-//! carried what it carried under the rates of the day. So the score is of
-//! the controller's own state against what the line showed: a rate held low
-//! while nothing needed it to be, a cut with no queue of that direction's
-//! own to cause it, and a rate held under half the line while traffic
-//! wanted more.
+//! A replay can't show what a rate would have done to the delay: the
+//! connection carried what it carried under the rates of the day. So the
+//! score is of the controller's own state against what the connection
+//! showed: a rate held low while nothing needed it to be, a cut with no
+//! queue of that direction's own to cause it, and a rate held under half
+//! the connection while traffic wanted more.
 
 use crate::oneway;
 use crate::rate::{float, whole};
@@ -23,7 +23,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 /// Counters further apart than this, in ms, are of a machine asleep or a
-/// recorder stopped, and the seconds between them aren't the line's.
+/// recorder stopped, and the seconds between them aren't the
+/// connection's.
 const GAP_MS: u64 = 60_000;
 /// How long a reflector's least delay stands, in ms: long enough for a
 /// queue to drain under it, short enough to follow a clock that drifts.
@@ -34,13 +35,13 @@ const LOW: f64 = 0.8;
 const IDLE: f64 = 0.5;
 /// A spell held low counts once it lasts longer than this, in seconds.
 const SPELL_S: u64 = 60;
-/// A rate under this share of the base is starved, when the line, recorded
-/// unshaped, carried more than it with no queue of its own.
+/// A rate under this share of the base is starved, when the connection,
+/// recorded unshaped, carried more than it with no queue of its own.
 const STARVED: f64 = 0.5;
 /// A direction's own delay over this, in ms, is cause for a cut.
 const CAUSE_MS: f64 = 15.0;
 
-/// What one second of the line showed, as a controller is handed it.
+/// What one second of the connection showed, as a controller is handed it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Second {
     /// Seconds since the stay began.
@@ -246,7 +247,7 @@ impl Reading {
         let at = sample.at();
         let second = at / 1_000;
         // A clock set back writes a moment already past; it's passed over.
-        // A new pool says nothing of the line.
+        // A new pool says nothing of the connection.
         if second < self.done || matches!(sample, Sample::Pool { .. }) {
             return;
         }
@@ -511,12 +512,13 @@ pub fn score(stay: &Stay, controller: &mut impl Controller, base: Option<Base>) 
     }
 }
 
-/// How long a rate must be carried to stand for the line, in seconds.
+/// How long a rate must be carried to stand for the connection, in
+/// seconds.
 const SUSTAINED_S: usize = 5;
 
 /// The most a direction carried for `SUSTAINED_S` seconds running, or
 /// in any one second of a shorter stay. A burst out of a buffer upstream
-/// can carry a second over the line; it can't carry five. A percentile
+/// can carry a second over the connection; it can't carry five. A percentile
 /// would be steadier still on a busy week, but on an idle one it lands on
 /// idle seconds.
 fn sustained(seconds: &[Second], kbit: fn(&Second) -> f64) -> f64 {
@@ -534,7 +536,8 @@ struct Tally {
     way: &'static str,
     base: f64,
     score: Score,
-    /// How long the rate has been held low on an idle line, in seconds.
+    /// How long the rate has been held low on an idle connection, in
+    /// seconds.
     spell: u64,
 }
 
@@ -675,7 +678,11 @@ pub fn summary(report: &Report) -> String {
     let stays = report.stays.len();
     let seconds = report.stays.iter().map(|s| s.seconds).sum();
     let plural = if stays == 1 { "" } else { "s" };
-    let _ = writeln!(out, "{stays} stay{plural}, {} of the line\n", span(seconds));
+    let _ = writeln!(
+        out,
+        "{stays} stay{plural}, {} of the connection\n",
+        span(seconds)
+    );
     let _ = writeln!(out, "{:<16}{:>12}{:>12}", "", "up", "down");
     let (up, down) = (&report.up, &report.down);
     let rows: [(&str, String, String); 5] = [
@@ -736,7 +743,8 @@ pub enum Choice {
     /// The rebuilt controller, from each direction's own delay
     /// (src/oneway.rs), starting each stay as on a network it never met.
     OneWay,
-    /// The stand-in that limits nothing, for what the line alone scores.
+    /// The stand-in that limits nothing, for what the connection alone
+    /// scores.
     Unlimited,
 }
 
@@ -868,17 +876,17 @@ mod tests {
         json!({"at": at, "gateway": null, "lost": true}).to_string()
     }
 
-    /// The counters of a line carrying `up` and `down` kbit/s, received
-    /// and sent, at a moment.
+    /// The counters of a connection carrying `up` and `down` kbit/s,
+    /// received and sent, at a moment.
     fn constant(up: u64, down: u64) -> impl Fn(u64) -> (u64, u64) {
         move |at| ((at - COUNTED_FROM) * down / 8, (at - COUNTED_FROM) * up / 8)
     }
 
-    /// A line heard each second from `from` for `seconds`: each reflector
-    /// at its turn, its delays 10 ms out and 12 back over its clock's
-    /// offset, plus what `queue` adds for that second and reflector, and
-    /// the gateway at 4 ms.
-    fn line(
+    /// The recorded lines of a connection heard each second from `from`
+    /// for `seconds`: each reflector at its turn, its delays 10 ms out and
+    /// 12 back over its clock's offset, plus what `queue` adds for that
+    /// second and reflector, and the gateway at 4 ms.
+    fn connection(
         from: u64,
         seconds: u64,
         counters: impl Fn(u64) -> (u64, u64),
@@ -977,7 +985,7 @@ mod tests {
     #[test]
     fn what_the_link_carried_is_read_from_its_counters() {
         let mut lines = vec![pool(NOV3, "home")];
-        lines.extend(line(NOV3, 120, constant(8_000, 40_000), quiet));
+        lines.extend(connection(NOV3, 120, constant(8_000, 40_000), quiet));
         let stays = read_lines(&lines);
         assert_eq!(stays.len(), 1);
         let seconds = &stays[0].seconds;
@@ -1000,7 +1008,7 @@ mod tests {
                 (0.0, 0.0)
             }
         };
-        let stays = read_lines(&line(NOV3, 180, constant(8_000, 40_000), queue));
+        let stays = read_lines(&connection(NOV3, 180, constant(8_000, 40_000), queue));
         let seconds = &stays[0].seconds;
         for s in seconds {
             let queued = if (60.0..120.0).contains(&s.t_s) {
@@ -1026,7 +1034,7 @@ mod tests {
                 (0.0, 0.0)
             }
         };
-        let seconds = &read_lines(&line(NOV3, 180, constant(0, 0), queue))[0].seconds;
+        let seconds = &read_lines(&connection(NOV3, 180, constant(0, 0), queue))[0].seconds;
         for s in seconds {
             assert!(near_some(s.up_delay_ms, 0.0), "{s:?}");
             assert!(near_some(s.down_delay_ms, 0.0), "{s:?}");
@@ -1042,8 +1050,8 @@ mod tests {
                 (0.0, 0.0)
             }
         };
-        let mut lines = line(NOV3, 10, constant(0, 0), quiet);
-        lines.extend(line(NOV3 + 10_000, 10, constant(0, 0), queue));
+        let mut lines = connection(NOV3, 10, constant(0, 0), quiet);
+        lines.extend(connection(NOV3 + 10_000, 10, constant(0, 0), queue));
         let seconds = &read_lines(&lines)[0].seconds;
         assert!(seconds.iter().all(|s| near_some(s.down_delay_ms, 0.0)));
     }
@@ -1052,7 +1060,7 @@ mod tests {
     fn a_reflector_s_least_is_forgotten_after_ten_minutes() {
         // Every reflector's clock steps 50 ms at five minutes in.
         let queue = |t: u64, _| if t >= 300 { (50.0, 0.0) } else { (0.0, 0.0) };
-        let seconds = &read_lines(&line(NOV3, 1_000, constant(0, 0), queue))[0].seconds;
+        let seconds = &read_lines(&connection(NOV3, 1_000, constant(0, 0), queue))[0].seconds;
         assert!(near_some(seconds[360].up_delay_ms, 50.0));
         assert!(near_some(seconds[899].up_delay_ms, 50.0));
         assert!(near_some(seconds[950].up_delay_ms, 0.0));
@@ -1063,8 +1071,8 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("shaper-replay-{}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         let mut before = vec![pool(NOV3 - 120_000, "home")];
-        before.extend(line(NOV3 - 120_000, 120, constant(8_000, 40_000), quiet));
-        let after = line(NOV3, 120, constant(8_000, 40_000), quiet);
+        before.extend(connection(NOV3 - 120_000, 120, constant(8_000, 40_000), quiet));
+        let after = connection(NOV3, 120, constant(8_000, 40_000), quiet);
         let (first, second) = (
             folder.join("2026-11-02.jsonl"),
             folder.join("2026-11-03.jsonl"),
@@ -1094,13 +1102,13 @@ mod tests {
     #[test]
     fn a_new_network_starts_a_stay_and_a_new_pool_does_not() {
         let mut lines = vec![pool(NOV3, "home")];
-        lines.extend(line(NOV3, 60, constant(8_000, 40_000), quiet));
+        lines.extend(connection(NOV3, 60, constant(8_000, 40_000), quiet));
         lines.push(repool(NOV3 + 60_000));
-        lines.extend(line(NOV3 + 60_000, 60, constant(8_000, 40_000), quiet));
+        lines.extend(connection(NOV3 + 60_000, 60, constant(8_000, 40_000), quiet));
         lines.push(pool(NOV3 + 120_000, "cafe"));
         // The new network's link counts from nothing.
         let counters = |at: u64| constant(800, 4_000)(at - (NOV3 + 120_000) + COUNTED_FROM);
-        lines.extend(line(NOV3 + 120_000, 60, counters, quiet));
+        lines.extend(connection(NOV3 + 120_000, 60, counters, quiet));
         let stays = read_lines(&lines);
         let named: Vec<(&str, usize)> = stays
             .iter()
@@ -1113,7 +1121,7 @@ mod tests {
 
     #[test]
     fn samples_before_any_network_are_a_stay_of_their_own() {
-        let stays = read_lines(&line(NOV3, 5, constant(0, 0), quiet));
+        let stays = read_lines(&connection(NOV3, 5, constant(0, 0), quiet));
         assert_eq!(stays[0].network, "unknown");
     }
 
@@ -1127,7 +1135,7 @@ mod tests {
         lines.extend(
             (10..15).flat_map(|t| [lost(NOV3 + t * 1_000), lost_gateway(NOV3 + t * 1_000 + 500)]),
         );
-        lines.extend(line(NOV3 + 15_000, 10, &counters, quiet));
+        lines.extend(connection(NOV3 + 15_000, 10, &counters, quiet));
         let seconds = &read_lines(&lines)[0].seconds;
         assert_eq!(seconds.len(), 25);
         for s in &seconds[..15] {
@@ -1140,8 +1148,8 @@ mod tests {
 
     #[test]
     fn a_machine_asleep_leaves_no_seconds() {
-        let mut lines = line(NOV3, 60, constant(8_000, 40_000), quiet);
-        lines.extend(line(NOV3 + 7_200_000, 60, constant(8_000, 40_000), quiet));
+        let mut lines = connection(NOV3, 60, constant(8_000, 40_000), quiet);
+        lines.extend(connection(NOV3 + 7_200_000, 60, constant(8_000, 40_000), quiet));
         let seconds = &read_lines(&lines)[0].seconds;
         assert_eq!(seconds.len(), 120);
         assert!(near(seconds[60].t_s, 7_200.0));
@@ -1191,7 +1199,7 @@ mod tests {
 
     #[test]
     fn no_limit_scores_nothing() {
-        let stays = read_lines(&line(NOV3, 300, constant(0, 0), quiet));
+        let stays = read_lines(&connection(NOV3, 300, constant(0, 0), quiet));
         let report = replay(&stays, Some(BASE), || Unlimited);
         assert_eq!(
             (&report.up, &report.down),
@@ -1211,7 +1219,7 @@ mod tests {
                 (0.0, 0.0)
             }
         };
-        let stays = read_lines(&line(NOV3, 60, constant(8_000, 40_000), queue));
+        let stays = read_lines(&connection(NOV3, 60, constant(8_000, 40_000), queue));
         let scored = score(
             &stays[0],
             &mut Cutter {
@@ -1248,15 +1256,15 @@ mod tests {
                 }
             }
         }
-        let stays = read_lines(&line(NOV3, 10, constant(0, 0), quiet));
+        let stays = read_lines(&connection(NOV3, 10, constant(0, 0), quiet));
         let scored = score(&stays[0], &mut Late(0), Some(BASE));
         assert_eq!((scored.down.cuts, scored.down.unfounded), (1, 1));
     }
 
     #[test]
-    fn a_rate_held_low_on_an_idle_line_counts_after_a_minute() {
+    fn a_rate_held_low_on_an_idle_connection_counts_after_a_minute() {
         // The rate holds from the second after it's first answered.
-        let stays = read_lines(&line(NOV3, 150, constant(0, 0), quiet));
+        let stays = read_lines(&connection(NOV3, 150, constant(0, 0), quiet));
         let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(
             (scored.up.held_idle_s, scored.up.longest_held_idle_s),
@@ -1269,42 +1277,42 @@ mod tests {
             let from = NOV3 + 40_000;
             (0, (at.clamp(from, from + 30_000) - from) * 8_000 / 8)
         };
-        let stays = read_lines(&line(NOV3, 110, busy, quiet));
+        let stays = read_lines(&connection(NOV3, 110, busy, quiet));
         let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(scored.up.held_idle_s, 0);
 
         // Nor across a machine asleep.
-        let mut lines = line(NOV3, 50, constant(0, 0), quiet);
-        lines.extend(line(NOV3 + 3_600_000, 50, constant(0, 0), quiet));
+        let mut lines = connection(NOV3, 50, constant(0, 0), quiet);
+        lines.extend(connection(NOV3 + 3_600_000, 50, constant(0, 0), quiet));
         let scored = score(&read_lines(&lines)[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(scored.up.held_idle_s, 0);
     }
 
     #[test]
-    fn a_rate_under_half_the_base_the_line_carried_past_is_starved() {
-        let stays = read_lines(&line(NOV3, 60, constant(5_000, 0), quiet));
+    fn a_rate_under_half_the_base_the_connection_carried_past_is_starved() {
+        let stays = read_lines(&connection(NOV3, 60, constant(5_000, 0), quiet));
         let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(scored.up.starved_s, 59);
         assert_eq!(scored.up.held_idle_s, 0);
         let scored = score(&stays[0], &mut fixed(6_000), Some(BASE));
         assert_eq!(scored.up.starved_s, 0, "over half the base");
 
-        // As the replay of 3 to 7 November found, a rate the line never
-        // reached held nothing back, recorded unshaped.
-        let stays = read_lines(&line(NOV3, 60, constant(4_000, 0), quiet));
+        // As the replay of 3 to 7 November found, a rate the connection
+        // never reached held nothing back, recorded unshaped.
+        let stays = read_lines(&connection(NOV3, 60, constant(4_000, 0), quiet));
         let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(scored.up.starved_s, 0, "carried no more than the rate");
 
         // Nor past a queue of its own, which holding it would drain.
         let queue = |t: u64, _| if t >= 30 { (30.0, 0.0) } else { (0.0, 0.0) };
-        let stays = read_lines(&line(NOV3, 60, constant(5_000, 0), queue));
+        let stays = read_lines(&connection(NOV3, 60, constant(5_000, 0), queue));
         let scored = score(&stays[0], &mut fixed(4_000), Some(BASE));
         assert_eq!(scored.up.starved_s, 29, "only before the queue");
     }
 
     #[test]
     fn the_base_is_the_most_carried_unless_given() {
-        let stays = read_lines(&line(NOV3, 60, constant(8_000, 40_000), quiet));
+        let stays = read_lines(&connection(NOV3, 60, constant(8_000, 40_000), quiet));
         assert_eq!(
             score(&stays[0], &mut Unlimited, None).base,
             Base {
@@ -1314,7 +1322,8 @@ mod tests {
         );
         assert_eq!(score(&stays[0], &mut Unlimited, Some(BASE)).base, BASE);
 
-        // Two seconds of a burst from a buffer don't stand for the line.
+        // Two seconds of a burst from a buffer don't stand for the
+        // connection.
         let burst = |at: u64| {
             let (received, sent) = constant(8_000, 40_000)(at);
             let from = NOV3 + 30_000;
@@ -1323,19 +1332,19 @@ mod tests {
                 sent + (at.clamp(from, from + 2_000) - from) * 12_000 / 8,
             )
         };
-        let stays = read_lines(&line(NOV3, 60, burst, quiet));
+        let stays = read_lines(&connection(NOV3, 60, burst, quiet));
         assert!(stays[0].seconds.iter().any(|s| s.up_kbit > 19_000.0));
         assert_eq!(score(&stays[0], &mut Unlimited, None).base.up, 8_000);
-        let short = read_lines(&line(NOV3, 3, constant(8_000, 40_000), quiet));
+        let short = read_lines(&connection(NOV3, 3, constant(8_000, 40_000), quiet));
         assert_eq!(score(&short[0], &mut Unlimited, None).base.up, 8_000);
     }
 
     #[test]
     fn the_whole_adds_up_its_stays() {
         let mut lines = vec![pool(NOV3, "home")];
-        lines.extend(line(NOV3, 150, constant(0, 0), quiet));
+        lines.extend(connection(NOV3, 150, constant(0, 0), quiet));
         lines.push(pool(NOV3 + 150_000, "cafe"));
-        lines.extend(line(NOV3 + 150_000, 100, constant(0, 0), quiet));
+        lines.extend(connection(NOV3 + 150_000, 100, constant(0, 0), quiet));
         let report = replay(&read_lines(&lines), Some(BASE), || fixed(4_000));
         assert_eq!(
             (report.up.held_idle_s, report.up.longest_held_idle_s),

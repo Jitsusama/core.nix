@@ -8,12 +8,12 @@
 //! halved instead, since the queue is mostly another machine's. It climbs
 //! while it's full with its delay short of a queue: gently from half of
 //! where its queue last stood, in the half minute before, to a quarter
-//! past it, and fast anywhere else. It drifts back toward the network's
-//! line while it's idle or low. The base
-//! is learned from the line: what a direction carried each time its queue
-//! stood with the rate well over it, the median of the last ten, less a
-//! tenth. A new network starts with no limit at all, so nothing is held
-//! down by a guess until the line shows where its queue is.
+//! past it, and fast anywhere else. It drifts back toward what the
+//! network's connection carries while it's idle or low. The base is
+//! learned from the connection: what a direction carried each time its
+//! queue stood with the rate well over it, the median of the last ten,
+//! less a tenth. A new network starts with no limit at all, so nothing is
+//! held down by a guess until the connection shows where its queue is.
 //!
 //! Two things look like a queue and aren't. Wi-Fi's late spells delay
 //! both directions at once and the gateway's round trip with them, so
@@ -24,15 +24,17 @@
 //! A live guard stands over it: a direction held under half its base for
 //! a minute with no delay standing, or whose delay has stood unbroken for
 //! half a minute however far it was cut, or stood nearly all of it while
-//! the direction carried a sliver of its line, so that the queue is plainly
-//! another machine's, goes back to its base; after three such returns the
-//! controller gives up and leaves the line unlimited for ten minutes, as it
-//! does when no timestamps are answered. Cuts alone don't trip it: a line
-//! filling its buffer is rightly cut each second until it drains.
+//! the direction carried a sliver of its connection, so that the queue is
+//! plainly another machine's, goes back to its base; after three such
+//! returns the controller gives up and leaves the connection unlimited for
+//! ten minutes, as it does when no timestamps are answered. Cuts alone
+//! don't trip it: a connection filling its buffer is rightly cut each
+//! second until it drains.
 //!
-//! The line is also what the direction carried for five seconds running
-//! with no queue, so a queue met while it carried a sliver can't teach it
-//! a line under what it has already carried.
+//! What the connection carries is also what the direction carried for
+//! five seconds running with no queue, so a queue met while it carried a
+//! sliver can't teach it that the connection carries less than it already
+//! has.
 
 use std::collections::VecDeque;
 
@@ -47,17 +49,18 @@ const FLOWING_KBIT: f64 = 500.0;
 /// The least a direction is ever held to.
 const LEAST_KBIT: f64 = 500.0;
 /// A direction carrying under this share of what it could carry, its rate
-/// or its line, when its queue stands carries a sliver: the queue is
+/// or its connection, when its queue stands carries a sliver: the queue is
 /// mostly another machine's or the air's, so a cut halves what it could
 /// carry, and teaches neither the base nor where the queue stood.
 const SLIVER: f64 = 0.25;
 /// A queue standing this share of `FUTILE_S` while the direction carries a
-/// sliver of its line is another machine's, however it breaks between.
+/// sliver of its connection is another machine's, however it breaks
+/// between.
 const CROWDED: f64 = 0.5;
-/// How long the line is left unlimited once the guard gives up.
+/// How long the connection is left unlimited once the guard gives up.
 const GIVEN_UP_S: f64 = 600.0;
-/// How long a direction must carry a rate with no queue to prove the line
-/// carries it.
+/// How long a direction must carry a rate with no queue to prove the
+/// connection carries it.
 const PROVEN_S: f64 = 5.0;
 /// How long after a cut before another.
 const BETWEEN_CUTS_S: f64 = 1.0;
@@ -66,20 +69,20 @@ const BETWEEN_CUTS_S: f64 = 1.0;
 const CLIMB: f64 = 1.05;
 /// How fast a rate climbs, per second, far from any queue it has met:
 /// under this share of what got through when one last stood, or with none
-/// met yet. A remembered rate far under the line is back in under ten
-/// seconds.
+/// met yet. A remembered rate far under the connection is back in under
+/// ten seconds.
 const FAST_CLIMB: f64 = 1.25;
 const FAR: f64 = 0.5;
 /// How long where a queue last stood slows the climb: past it, as CUBIC
-/// does, the line has likely moved since.
+/// does, the connection has likely moved since.
 const CEILING_S: f64 = 30.0;
 /// A rate this far past where its queue last stood, with none standing, is
-/// on a line that has grown, and climbs fast again.
+/// on a connection that has grown, and climbs fast again.
 const PAST: f64 = 1.25;
 const DRIFT: f64 = 0.01;
 /// What share of its rate counts as full, and what as low.
 const FULL: f64 = 0.75;
-/// How many of the line's rates the base is the median of.
+/// How many of the connection's rates the base is the median of.
 const LEARNED: usize = 10;
 /// The gateway's jitter on Wi-Fi: its rises past this are the air's.
 const AIR_MARGIN_MS: f64 = 8.0;
@@ -89,7 +92,8 @@ const AIR_RISE_MS: f64 = 0.05;
 /// A direction carrying under this share of its rate is idle, and its
 /// delay measures the path.
 const IDLE: f64 = 0.1;
-/// With no timestamps answered for this long, the line goes unlimited.
+/// With no timestamps answered for this long, the connection goes
+/// unlimited.
 const UNANSWERED_S: f64 = 10.0;
 /// The live guard's limits.
 const GUARD_WINDOW_S: f64 = 60.0;
@@ -136,18 +140,18 @@ pub struct Way {
     clear: VecDeque<(f64, f64)>,
     clear_since: Option<f64>,
     /// The most it carried for `PROVEN_S` running with no queue, in this
-    /// stay: the line carries at least that.
+    /// stay: the connection carries at least that.
     proven: f64,
     /// Each moment of the last `FUTILE_S`, and whether its queue stood
-    /// while it carried a sliver of its line.
+    /// while it carried a sliver of its connection.
     crowded: VecDeque<(f64, bool)>,
 }
 
 impl Way {
     /// A direction on a network whose base is `base`, if one was learned,
     /// starting there; with none, it starts with no limit. A known base
-    /// counts as one of the line's rates, so a single cut under another
-    /// machine's flow doesn't replace it.
+    /// counts as one of the connection's rates, so a single cut under
+    /// another machine's flow doesn't replace it.
     pub fn new(base: Option<f64>) -> Way {
         Way {
             rate: base.unwrap_or(f64::INFINITY),
@@ -165,9 +169,10 @@ impl Way {
         }
     }
 
-    /// What the line is known to carry: its base, or what it was proven to
-    /// carry, whichever is more, less a tenth of the proof as the base is.
-    fn line(&self) -> Option<f64> {
+    /// What the connection is known to carry: its base, or what it was
+    /// proven to carry, whichever is more, less a tenth of the proof as the
+    /// base is.
+    fn connection(&self) -> Option<f64> {
         let proven = (self.proven > 0.0).then_some(self.proven * 0.9);
         match (self.base, proven) {
             (Some(base), Some(proven)) => Some(base.max(proven)),
@@ -175,7 +180,7 @@ impl Way {
         }
     }
 
-    /// Keep what a clear spell proves the line carries.
+    /// Keep what a clear spell proves the connection carries.
     fn prove(&mut self, at: f64, delay_ms: f64, carried: f64) {
         if delay_ms >= CLEAR_MS {
             self.clear.clear();
@@ -219,12 +224,15 @@ impl Way {
     /// Take in a moment: this direction's own delay, with the air and the
     /// other direction's path taken off, and what it carried.
     pub fn step(&mut self, at: f64, delay_ms: f64, carried: f64) {
-        // A gap, while the line was left unlimited or asleep, is one
+        // A gap, while the connection was left unlimited or asleep, is one
         // moment, not a climb all through it.
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
         self.last_at = Some(at);
         self.prove(at, delay_ms, carried);
-        let crowded = delay_ms > LATE_MS && self.line().is_some_and(|line| carried < line * SLIVER);
+        let crowded = delay_ms > LATE_MS
+            && self
+                .connection()
+                .is_some_and(|connection| carried < connection * SLIVER);
         self.crowded.push_back((at, crowded));
         while self
             .crowded
@@ -246,15 +254,15 @@ impl Way {
             self.cut(at, delay_ms, carried);
         } else if carried >= self.rate * FULL && delay_ms <= LATE_MS {
             // As TCP's slow start does: far from any queue it has met, a
-            // rate climbs fast, since nothing says the line is near, and
-            // near the last one gently. A little delay short of a queue
-            // doesn't stop it: the line carried more with no more than
-            // that.
+            // rate climbs fast, since nothing says the connection is near,
+            // and near the last one gently. A little delay short of a queue
+            // doesn't stop it: the connection carried more with no more
+            // than that.
             let far = self.ceiling.is_none_or(|(ceiling, met)| {
                 self.rate < ceiling * FAR || self.rate > ceiling * PAST || at - met >= CEILING_S
             });
             self.rate *= if far { FAST_CLIMB } else { CLIMB }.powf(dt);
-        } else if let Some(base) = self.line()
+        } else if let Some(base) = self.connection()
             && carried < self.rate * FULL
             && !standing
         {
@@ -270,16 +278,19 @@ impl Way {
     fn cut(&mut self, at: f64, delay_ms: f64, carried: f64) {
         // Cut under a sliver, a queue this machine hardly feeds drains no
         // faster and the machine starves, so the reach is halved instead.
-        // A line that really fell that far is met in a few halvings; a
-        // queue no cut drains is the guard's.
-        let reach = self.line().map_or(self.rate, |line| line.min(self.rate));
+        // A connection that really fell that far is met in a few halvings;
+        // a queue no cut drains is the guard's.
+        let reach = self
+            .connection()
+            .map_or(self.rate, |connection| connection.min(self.rate));
         if reach.is_finite() && carried < reach * SLIVER {
             self.rate = (reach * 0.5).max(LEAST_KBIT);
             self.last_cut = at;
             return;
         }
-        // With the rate well over what got through, the line, not this
-        // machine, set what it carried, and that is what the base learns.
+        // With the rate well over what got through, the connection, not
+        // this machine, set what it carried, and that is what the base
+        // learns.
         if carried * 1.15 <= self.rate {
             self.learned.push_back(carried);
             if self.learned.len() > LEARNED {
@@ -297,8 +308,8 @@ impl Way {
 
     /// Whether the guard should send this direction back to its base: a
     /// delay standing unbroken past what cuts could drain, or standing
-    /// nearly all that time while it carried a sliver of its line, or held
-    /// under half its base for a minute with no queue standing.
+    /// nearly all that time while it carried a sliver of its connection, or
+    /// held under half its base for a minute with no queue standing.
     fn misbehaving(&mut self, at: f64) -> bool {
         let unbroken = self.late_since.is_some_and(|since| at - since >= FUTILE_S);
         let spanned = self
@@ -313,7 +324,7 @@ impl Way {
         let share = crowded as f64 / self.crowded.len().max(1) as f64;
         // A direction held to nothing has nothing to go back from.
         let futile = self.rate.is_finite() && (unbroken || spanned && share >= CROWDED);
-        let held_down = match self.line() {
+        let held_down = match self.connection() {
             Some(base) if self.rate < base * 0.5 && self.late_since.is_none() => {
                 at - *self.under_half_since.get_or_insert(at) >= GUARD_WINDOW_S
             }
@@ -326,7 +337,7 @@ impl Way {
     }
 
     fn reset(&mut self) {
-        self.rate = self.line().unwrap_or(f64::INFINITY);
+        self.rate = self.connection().unwrap_or(f64::INFINITY);
         self.under_half_since = None;
         self.late_since = None;
         self.crowded.clear();
@@ -334,7 +345,8 @@ impl Way {
     }
 
     /// Start over as on arriving, unlimited until a queue stands, keeping
-    /// what was learned of the line, so a limit is never set without one.
+    /// what was learned of the connection, so a limit is never set without
+    /// one.
     fn start_over(&mut self) {
         self.reset();
         self.rate = f64::INFINITY;
@@ -474,7 +486,7 @@ mod tests {
     use crate::replay::{self, Base, Stay};
 
     #[test]
-    fn a_replayed_queue_is_cut_with_cause_and_an_idle_line_isnt_held_low() {
+    fn a_replayed_queue_is_cut_with_cause_and_an_idle_connection_isnt_held_low() {
         let second = |t: u64, down_ms: f64, down_kbit: f64| replay::Second {
             t_s: crate::rate::float(t),
             up_kbit: 300.0,
@@ -514,13 +526,13 @@ mod tests {
     }
 
     #[test]
-    fn a_queue_under_a_sliver_of_the_line_doesnt_hold_the_line_low() {
+    fn a_queue_under_a_sliver_of_the_connection_doesnt_hold_the_connection_low() {
         // As the replay of 7 November found: a download carrying 100
         // Mbit/s with no queue, then a queue of 39 ms standing while it
         // carried 737 kbit/s, so the queue was another machine's or the
         // air's, then 15 Mbit/s with none. Cut to under the 737 and taught
-        // it as the line, the controller held the download under half the
-        // line for the next five minutes.
+        // it as the connection, the controller held the download under half
+        // the connection for the next five minutes.
         let second = |t: u64, down_ms: f64, down_kbit: f64| replay::Second {
             t_s: crate::rate::float(t),
             up_kbit: 300.0,
@@ -549,9 +561,9 @@ mod tests {
     }
 
     #[test]
-    fn another_machines_queue_breaking_now_and_then_goes_back_to_the_line() {
-        // As the replay of 7 November found: with the line proven at 90
-        // Mbit/s, the download's own delay stood at 16 to 30 ms for three
+    fn another_machines_queue_breaking_now_and_then_goes_back_to_the_connection() {
+        // As the replay of 7 November found: with the connection proven at
+        // 90 Mbit/s, the download's own delay stood at 16 to 30 ms for three
         // minutes, clearing a moment now and then, while this machine
         // carried 2 Mbit/s. Every break restarted the guard's half minute,
         // so the download sat at the least, which no call fits in.
@@ -566,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn ten_minutes_after_giving_up_the_line_is_shaped_again() {
+    fn ten_minutes_after_giving_up_the_connection_is_shaped_again() {
         let mut c = Controller::new(None, Some(200_000.0));
         run(&mut c, 0.0, 95.0, queued(40.0, 150_000.0));
         assert!(c.given_up());
@@ -578,10 +590,10 @@ mod tests {
     }
 
     #[test]
-    fn under_half_its_line_a_full_direction_climbs_through_a_little_delay() {
+    fn under_half_its_connection_a_full_direction_climbs_through_a_little_delay() {
         // As the replay found of uploads on Wi-Fi: cut, then full with its
-        // own delay between 5 and 15 ms, a rate under half the line was
-        // held there for minutes while the line carried more.
+        // own delay between 5 and 15 ms, a rate under half the connection
+        // was held there for minutes while the connection carried more.
         let mut c = Controller::new(None, Some(250_000.0));
         run(&mut c, 0.0, 2.2, queued(40.0, 100_000.0));
         assert!(c.down.limit() < Some(125_000), "cut: {:?}", c.down.limit());
@@ -620,8 +632,8 @@ mod tests {
         limits
     }
 
-    /// A wide line from `from` to `to` carrying the whole of whatever the
-    /// download is held to, with nothing waiting.
+    /// A wide connection from `from` to `to` carrying the whole of whatever
+    /// the download is held to, with nothing waiting.
     fn wide(c: &mut Controller, from: f64, to: f64) -> Limits {
         let mut limits = Limits {
             up: c.up.limit(),
@@ -676,7 +688,7 @@ mod tests {
     }
 
     #[test]
-    fn a_standing_queue_cuts_a_tenth_under_what_got_through_and_learns_the_line() {
+    fn a_standing_queue_cuts_a_tenth_under_what_got_through_and_learns_the_connection() {
         let mut c = Controller::new(None, None);
         let limits = run(&mut c, 0.0, 1.15, queued(40.0, 300_000.0));
         // 300,000 × 0.9 × (1 − 0.04).
@@ -777,7 +789,7 @@ mod tests {
     }
 
     #[test]
-    fn no_timestamps_for_ten_seconds_leaves_the_line_unlimited() {
+    fn no_timestamps_for_ten_seconds_leaves_the_connection_unlimited() {
         let mut c = Controller::new(Some(10_000.0), Some(200_000.0));
         let unanswered = |_| Seen {
             gateway_ms: Some(3.0),
@@ -853,7 +865,7 @@ mod tests {
     fn a_queue_met_half_a_minute_ago_no_longer_slows_the_climb() {
         // As the replay found of downloads on Wi-Fi: cut where the air
         // once queued, a rate climbed gently for many seconds after the
-        // air had cleared and the line carried twice that.
+        // air had cleared and the connection carried twice that.
         let mut c = Controller::new(None, None);
         run(&mut c, 0.0, 1.2, queued(40.0, 100_000.0));
         run(&mut c, 1.2, 32.0, quiet(300.0, 1_000.0));
@@ -865,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn a_line_filling_its_buffer_is_cut_each_second_without_the_guard() {
+    fn a_connection_filling_its_buffer_is_cut_each_second_without_the_guard() {
         let mut c = Controller::new(None, Some(200_000.0));
         for n in 0..20 {
             let from = f64::from(n) * 3.0;
@@ -913,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn three_returns_and_the_line_is_left_unlimited() {
+    fn three_returns_and_the_connection_is_left_unlimited() {
         let mut c = Controller::new(None, Some(200_000.0));
         run(&mut c, 0.0, 95.0, queued(40.0, 150_000.0));
         assert!(c.given_up());
