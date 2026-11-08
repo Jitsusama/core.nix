@@ -39,6 +39,9 @@ OTHER_SENSE = {
     "drive:drive": "Google Drive, as Google names its file store, not a disk",
     "drive:drives": "Google Drive's shared drives, as Google names them, not disks",
     "drive:mine": "Google Drive's My Drive, as Google names it, not a disk",
+    "drive:file": "a file on one of Google Drive's shared drives, as Google names them",
+    "drive:place:drives": "Google Drive's shared drives, as Google names them, not disks",
+    "verb:drive:open": "opening in Google Drive, as Google names its file store",
     "power:limit": "a battery's charge limit, not an allowance",
 }
 

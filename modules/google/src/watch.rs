@@ -1,7 +1,7 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
 //! asks for the meetings and the mail that wants Joel, and every few
-//! minutes the documents he looked at lately and how each series of
-//! meetings repeats, and says how it all stands; an answer to an
+//! minutes the documents he looked at lately, Drive's own places and how
+//! each series of meetings repeats, and says how it all stands; an answer to an
 //! invitation, a meeting cancelled or moved, and mail marked read or
 //! archived, are asked the same way, and change what's held at once. A
 //! Drive folder is listed, and a file downloaded, only when the shell
@@ -16,7 +16,9 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, MAKES_MEETINGS, Put, Refused};
 use crate::calendar::{self, Answer};
-use crate::drive::{self, Document, Downloaded, Folder, Kind, Listed, Unlisted, Unsaved, Uploaded};
+use crate::drive::{
+    self, Document, Downloaded, Folder, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
+};
 use crate::files::{self, Failed, Fetched, Heard, How, Places};
 use crate::mail::{self, Bytes, Mail, Tidy};
 use crate::saves::{self, Staged};
@@ -38,6 +40,8 @@ pub struct Watch {
     /// When the documents were last heard, in milliseconds since the
     /// epoch, or none since the account was last gone.
     documented: Option<i64>,
+    /// When Drive's places were last asked for, as `documented` is.
+    placed: Option<i64>,
     /// How each series of meetings repeats, by its id, as its rule's lines
     /// were last heard, and when.
     rules: HashMap<String, (Vec<String>, i64)>,
@@ -47,6 +51,13 @@ pub struct Watch {
 /// looked at lately moves when he opens one, seldom within minutes, and
 /// it's three asks each time.
 const DOCUMENTS_EVERY: i64 = 5 * 60 * 1000;
+
+/// How long Drive's places are kept before Drive is asked again: as long
+/// as the documents, so Drive's Recent moves with Docs', and Starred,
+/// Shared with Me and the shared drives, which change only as someone
+/// stars or shares, are never staler than it. It's four asks each time,
+/// far inside what Drive lets one account ask a minute.
+const PLACES_EVERY: i64 = DOCUMENTS_EVERY;
 
 /// How long a series' rule is kept before Google is asked again: one
 /// seldom changes, and it's an ask for each series.
@@ -63,6 +74,7 @@ impl Watch {
             writable: Vec::new(),
             read: Vec::new(),
             documented: None,
+            placed: None,
             rules: HashMap::new(),
         }
     }
@@ -131,7 +143,34 @@ impl Watch {
                 Err(looked) => self.fell(looked, Standing::Unreachable),
             }
         }
+        if self.state.account == Standing::Ready
+            && self.placed.is_none_or(|heard| at - heard >= PLACES_EVERY)
+        {
+            self.place(now);
+        }
         &self.state
+    }
+
+    /// Asks Drive what each of its places holds. Each is asked on its own,
+    /// so one Drive won't answer keeps what was held of it until the next
+    /// time, five minutes on, and costs the rest nothing.
+    fn place(&mut self, now: &Zoned) {
+        self.placed = Some(now.timestamp().as_millisecond());
+        for place in Place::ALL {
+            match self.asking(now, |google, token| google.place(token, place)) {
+                Ok(answer) => self.state.drive.places.hold(place, &answer),
+                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                Err(looked) => {
+                    self.fell(looked, Standing::Unreachable);
+                    return;
+                }
+            }
+        }
+        match self.asking(now, Google::drives) {
+            Ok(answer) => self.state.drive.places.drives = drive::shared_drives(&answer),
+            Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+            Err(looked) => self.fell(looked, Standing::Unreachable),
+        }
     }
 
     /// The rule each series in the calendar's answer repeats by, by its
@@ -674,10 +713,12 @@ impl Watch {
             Looked::Missing => {
                 self.state = State::without(Standing::None);
                 self.documented = None;
+                self.placed = None;
             }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
                 self.documented = None;
+                self.placed = None;
             }
             Looked::Refused(Refused::Unreachable(why)) => {
                 eprintln!("<4>{why}");

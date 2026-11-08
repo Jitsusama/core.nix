@@ -50,7 +50,11 @@ QtObject {
 
         // What the daemon holds, by key, as src/daemon.rs makes each record.
         const unmade = { granted: false, made: null };
-        const undriven = { listings: [], downloads: [], uploads: [] };
+        const placeless = { files: [], more: false };
+        const undriven = {
+            listings: [], downloads: [], uploads: [],
+            places: { recent: [], starred: placeless, shared: placeless, drives: placeless }
+        };
         const record = (kind, id, thing, heard) => ({
             [`${kind}:${id}`]: { key: `${kind}:${id}`, kind, heard, [kind]: thing }
         });
@@ -145,6 +149,20 @@ QtObject {
         ];
         for (const [what, time, meant] of cames)
             check(`came ${what}`, Mail.came(time, now, said), meant);
+
+        // When something was, as a drawer's fact says it: its day as a row
+        // says one, then its time, never minutes ago. [what, when, said]
+        const moments = [
+            ["twelve minutes ago", at(9, 26, 15, 8), "15:08"],
+            ["this morning", at(9, 26, 6, 6), "06:06"],
+            ["yesterday", at(9, 25, 14, 10), "yesterday 14:10"],
+            ["on Thursday", at(9, 22, 9, 0), "Thursday 09:00"],
+            ["a week ago today", at(9, 19, 9, 0), "19 Oct 09:00"],
+            ["last year", new Date(2025, 9, 28, 9, 0).getTime(), "28 Oct 2025 09:00"],
+            ["tomorrow, by a wrong clock", at(9, 27, 9, 0), "27 Oct 09:00"]
+        ];
+        for (const [what, time, meant] of moments)
+            check(`a moment ${what}`, Mail.moment(time, now, said), meant);
 
         check("the line marking it read", Mail.tidy(mail, "read"), '{"read":{"id":"m_1"}}\n');
         check("the line archiving it", Mail.tidy(mail, "archive"),

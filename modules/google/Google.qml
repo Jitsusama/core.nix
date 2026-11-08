@@ -59,8 +59,10 @@ Singleton {
     // Drive's folders, downloads and saves lately, each newest first: each
     // folder's last listing { folder, asked, files, more, failed }, each
     // download { file, how, asked, path, failed }, and each save the picker
-    // staged { path, folder, name, asked, id, link, failed }.
-    property var drive: ({ listings: [], downloads: [], uploads: [] })
+    // staged { path, folder, name, asked, id, link, failed }; and Drive's
+    // own places, { recent, starred, shared, drives } (Google.js's
+    // placesOf).
+    property var drive: Said.stateOf({ account: "none", meetings: [] }).drive
 
     // The person an address is, as People's row for them, from the
     // launcher's provider that knows people (People.qml's personOf), so a

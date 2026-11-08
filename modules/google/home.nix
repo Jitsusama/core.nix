@@ -28,7 +28,9 @@
 # signed out wants him to sign in again (SignedOut.qml); and the mail that
 # wants him is counted there too (NewMail.qml). What became of each save
 # the launcher's picker staged for Drive is said as a notice (Saves.qml),
-# a failed one with Save a Copy, so nothing saved is lost.
+# a failed one with Save a Copy, so nothing saved is lost. Drive's program
+# holds Drive's own places, its Recent, Starred, Shared with Me and Shared
+# Drives (DriveProgram.qml).
 { people, quickshell }:
 {
   config,
@@ -134,6 +136,7 @@ in
       "quickshell/Meet.js".source = ./Meet.js;
       "quickshell/Drive.qml".source = ./Drive.qml;
       "quickshell/Drive.js".source = ./Drive.js;
+      "quickshell/DrivePlaces.js".source = ./DrivePlaces.js;
       "quickshell/Saves.qml".source = ./Saves.qml;
       "quickshell/Saves.js".source = ./Saves.js;
     };
@@ -199,6 +202,12 @@ in
     jitsusama.quickshell.launcher.providers.meet = {
       order = 50;
       source = ./Meet.qml;
+    };
+    # Drive's own places in its program: its Recent of every kind, then
+    # Starred, Shared with Me and Shared Drives.
+    jitsusama.quickshell.launcher.providers.drive = {
+      order = 50;
+      source = ./DriveProgram.qml;
     };
     # Each wears a mark of its own in Programs rather than the program
     # mark every window without a logo shares: Calendar the calendar's,

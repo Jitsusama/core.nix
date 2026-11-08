@@ -3,7 +3,8 @@
 //! (account.rs), the token to ask with (token.rs), asking Google
 //! (api.rs), the meetings and the link each is joined by (calendar.rs,
 //! link.rs), the mail that wants Joel (mail.rs) and where the files it
-//! carries go (files.rs), the documents he looked at lately (drive.rs),
+//! carries go (files.rs), the documents he looked at lately and Drive's
+//! own places (drive.rs),
 //! what the shell is told (state.rs) and how, in the daemon interface
 //! (daemon.rs), what the shell asks (ask.rs), what Joel saves into Drive
 //! (saves.rs), and the account as it stands (watch.rs).
