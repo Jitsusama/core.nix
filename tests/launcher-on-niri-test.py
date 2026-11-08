@@ -991,10 +991,12 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     reboot = next(row for row in power["rows"] + power["acts"] if row["name"] == "Reboot")
     assert reboot["id"].startswith("\u203a".join(power["path"]) + "\u203a"), reboot
     assert reboot["verb"] == "reboot", reboot
-    # A thing's own acts are said apart from its rows, for `launcher do` (VKCF3Z).
-    disk = shown("machine", "disk")
-    assert "Copy" in [row["name"] for row in disk["acts"]], disk
-    assert "Copy" not in [row["name"] for row in disk["rows"]], disk
+    # A thing's own acts are said apart from its rows, for `launcher do` (VKCF3Z),
+    # and only the row the path names says its drawer, never each row it lists.
+    grinning = shown("desktop", "emoji", "grinning face")
+    assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
+    assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
+    assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
     # A miss says where, and the names it was nearest.
     assert shown("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
     assert shown("machine", "zebra")["in"] == ["Machine"]

@@ -57,9 +57,16 @@ impl Words {
         said
     }
 
-    /// How the program is used.
+    /// How the program is used, kept in words.json as its lines.
     pub fn usage(&self) -> String {
-        let mut usage = self.word("usage", &[]);
+        let mut usage = match self.said.get("usage").and_then(Value::as_array) {
+            Some(lines) => lines
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("\n"),
+            None => self.word("usage", &[]),
+        };
         if !usage.ends_with('\n') {
             usage.push('\n');
         }
@@ -154,5 +161,13 @@ mod tests {
         assert_eq!(Words::from_value(&Value::Null).silent(), "silent");
         assert_eq!(Words::from_value(&Value::Null).home(), "home");
         assert_eq!(words().usage(), "launcher show\n");
+    }
+
+    #[test]
+    fn usage_kept_as_lines_is_said_as_them() {
+        let lined = Words::from_value(&serde_json::json!({
+            "terminal": { "usage": ["launcher show", "", "Shows a place."] }
+        }));
+        assert_eq!(lined.usage(), "launcher show\n\nShows a place.\n");
     }
 }

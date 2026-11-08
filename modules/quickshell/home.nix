@@ -885,13 +885,16 @@ let
   # the shell through, how it inks and the words it says, from the
   # launcher's own vocabulary.
   launcherInATerminal =
+    let
+      program = lib.getExe (pkgs.callPackage ./in-a-terminal/package.nix { });
+    in
     pkgs.runCommand "launcher"
       {
         nativeBuildInputs = [ pkgs.makeWrapper ];
         meta.mainProgram = "launcher";
       }
       ''
-        makeWrapper ${lib.getExe (pkgs.callPackage ./in-a-terminal/package.nix { })} $out/bin/launcher \
+        makeWrapper ${program} $out/bin/launcher \
           --set LAUNCHER_QS ${lib.getExe' pkgs.quickshell "qs"} \
           --set LAUNCHER_LOOK ${terminalLook} \
           --set LAUNCHER_WORDS ${pkgs.writeText "words.json" (builtins.toJSON launcher.words)}

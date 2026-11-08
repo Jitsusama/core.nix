@@ -46,14 +46,12 @@ pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
         .spawn()
         .map_err(|error| error.to_string())?;
     let began = Instant::now();
-    // The answer is read as it comes, so one longer than a pipe holds
-    // never stops qs writing it.
-    let mut stdout = child.stdout.take().ok_or_else(String::new)?;
-    let reading = thread::spawn(move || {
-        let mut printed = String::new();
-        let _ = stdout.read_to_string(&mut printed);
-        printed
-    });
+    // The answer and qs's own words are each read as they come, so one
+    // longer than a pipe holds never stops qs writing it.
+    let stdout = child.stdout.take().ok_or_else(String::new)?;
+    let stderr = child.stderr.take().ok_or_else(String::new)?;
+    let reading = read_apart(stdout);
+    let hearing = read_apart(stderr);
     loop {
         if child
             .try_wait()
@@ -70,16 +68,22 @@ pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
         thread::sleep(LOOK_AGAIN);
     }
     let printed = reading.join().unwrap_or_default();
-    let mut said = String::new();
-    if let Some(mut stderr) = child.stderr.take() {
-        let _ = stderr.read_to_string(&mut said);
-    }
+    let said = hearing.join().unwrap_or_default();
     answer_of(&printed).ok_or_else(|| {
         plain(if said.trim().is_empty() {
             &printed
         } else {
             &said
         })
+    })
+}
+
+/// Reads all a pipe says, on a thread of its own.
+fn read_apart(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
+    thread::spawn(move || {
+        let mut said = String::new();
+        let _ = pipe.read_to_string(&mut said);
+        said
     })
 }
 

@@ -24,7 +24,8 @@ QtObject {
 
     function expect(what, got, wanted) {
         if (JSON.stringify(got) !== JSON.stringify(wanted)) {
-            console.warn(`FAIL ${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(wanted)}`);
+            const said = `got ${JSON.stringify(got)}, wanted ${JSON.stringify(wanted)}`;
+            console.warn(`FAIL ${what}: ${said}`);
             failed += 1;
         }
     }

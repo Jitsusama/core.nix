@@ -1274,15 +1274,17 @@ Scope {
             things = collects({ row: found.row });
         }
         const ids = trail.map(one => steadyId(one));
-        const entry = (one, at) => Showing.shaped(one, {
+        // Only the row the path names says its drawer, since a listed row's
+        // would be built for every row a long place holds, for one show.
+        const entry = (one, at, drawn) => Showing.shaped(one, {
             id: at.concat([steadyId(one)]).join(catalogueStep),
             kind: Catalogue.kindOf(one),
             verb: verbOf(one),
             holds: showsMore(one),
-            drawer: drawerOf(one)
+            drawer: drawn ? drawerOf(one) : null
         });
         const last = trail.length > 0 ? trail[trail.length - 1] : null;
-        // A thing's own acts, Return's act (Copy on Disk) and its verbs, are
+        // A thing's own acts, Return's act (an emoji's Copy) and its verbs, are
         // what `launcher do` does rather than rows to read, so they're said
         // apart (VKCF3Z, 2026-11-08); a place's or a collection's rows are
         // its things.
@@ -1295,9 +1297,9 @@ Scope {
         return {
             in: trail.map(one => one.name),
             path: ids,
-            row: last === null ? null : entry(last, ids.slice(0, -1)),
-            rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids)),
-            acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids))
+            row: last === null ? null : entry(last, ids.slice(0, -1), true),
+            rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, false)),
+            acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids, false))
         };
     }
 

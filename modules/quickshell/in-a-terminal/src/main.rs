@@ -51,20 +51,28 @@ fn asked(arguments: &[String]) -> Asked {
     match arguments.first().map(String::as_str) {
         None | Some("-h" | "--help" | "help") => Asked::Help,
         Some("show") => {
+            // After `--`, every argument is a step, so one starting with a
+            // hyphen can be named too.
             let rest = &arguments[1..];
-            if let Some(flag) = rest
+            let ends = rest.iter().position(|one| one == "--");
+            let (flagged, named) = match ends {
+                Some(at) => (&rest[..at], &rest[at + 1..]),
+                None => (rest, &rest[rest.len()..]),
+            };
+            if let Some(flag) = flagged
                 .iter()
                 .find(|one| one.starts_with('-') && *one != "--json")
             {
                 return Asked::Unknown(flag.clone());
             }
             Asked::Show {
-                steps: rest
+                steps: flagged
                     .iter()
                     .filter(|one| *one != "--json")
+                    .chain(named)
                     .cloned()
                     .collect(),
-                json: rest.iter().any(|one| one == "--json"),
+                json: flagged.iter().any(|one| one == "--json"),
             }
         }
         Some(other) => Asked::Unknown(other.to_string()),
@@ -177,6 +185,17 @@ mod tests {
             Asked::Show {
                 steps: vec![],
                 json: false
+            }
+        );
+    }
+
+    #[test]
+    fn after_two_hyphens_every_word_is_a_step() {
+        assert_eq!(
+            asked(&words(&["show", "--json", "--", "-5 dB", "--json"])),
+            Asked::Show {
+                steps: words(&["-5 dB", "--json"]),
+                json: true
             }
         );
     }
