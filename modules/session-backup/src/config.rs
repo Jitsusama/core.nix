@@ -19,6 +19,18 @@ const SETTLED_HOURS: u64 = 48;
 /// about a minute in all, well inside the hour before the next run.
 const RETRY_SECONDS: [u64; 3] = [2, 10, 30];
 
+/// The Drive folder every object goes in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Folder {
+    /// A folder made in Drive's web page, by its id. Only a login that may
+    /// use the whole of Drive can add to it.
+    Given(String),
+    /// A folder the backup makes itself, by its name, at the top of the
+    /// account's Drive. A login that may use only the files the backup made
+    /// reaches it, and nothing else in Drive.
+    Own(String),
+}
+
 /// One run's settings.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -35,8 +47,8 @@ pub struct Config {
     /// How many copies of logs gone from the machine a run reads back to
     /// give them rows.
     pub backfill: usize,
-    /// The Drive folder every object goes in, by its id.
-    pub folder: String,
+    /// The Drive folder every object goes in.
+    pub folder: Folder,
     /// The machine, as its objects are named.
     pub host: String,
     /// Who can open an object: age recipients, plugins' included.
@@ -97,6 +109,14 @@ impl Config {
             .and_then(Value::as_u64)
             .filter(|days| *days > 0)
             .map(|days| Duration::from_hours(days * 24));
+        let folder = match (text("folder"), text("ownFolder")) {
+            (Ok(id), Err(_)) => Folder::Given(id),
+            (Err(_), Ok(name)) => Folder::Own(name),
+            (Ok(_), Ok(_)) => {
+                return Err("the settings name a folder and an own folder; name one".into());
+            }
+            (Err(_), Err(_)) => return Err("the settings name no folder".into()),
+        };
         let retries = value
             .get("retrySeconds")
             .and_then(Value::as_array)
@@ -117,7 +137,7 @@ impl Config {
                 .and_then(Value::as_u64)
                 .and_then(|most| usize::try_from(most).ok())
                 .unwrap_or(BACKFILL_PER_RUN),
-            folder: text("folder")?,
+            folder,
             host: text("host")?,
             recipients,
             credentials: text("credentials")?.into(),

@@ -16,7 +16,7 @@ use crate::ledger::Ledger;
 use crate::names::{self, Settled};
 use crate::retry::{again, patiently};
 use crate::seal::{self, Recipients};
-use crate::token::Login;
+use crate::token::{self, Login};
 
 /// What a run did.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -102,12 +102,27 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
     if waiting.is_empty() && old.is_empty() && !backlog {
         return Ok(done);
     }
-    let mut login = Login::read(&config.credentials, &config.token)?;
+    let sign_in = token::sign_in(&config.folder);
+    let mut login = Login::read(&config.credentials, &config.token, sign_in)?;
     let agent = drive::agent();
+    let folder = match drive::folder_id(
+        &config.folder,
+        &agent,
+        &config.api,
+        &config.retries,
+        &mut login,
+    ) {
+        Err(Fault::Busy(why)) => {
+            done.busy = Some(why);
+            return Ok(done);
+        }
+        other => other.map_err(|fault| fault.to_string())?,
+    };
     let drive = Drive {
         agent: &agent,
         api: &config.api,
-        folder: &config.folder,
+        folder: &folder,
+        sign_in,
     };
     let scratch = config.ledger.with_extension("sealing");
     let recipients = Recipients::parse(&config.recipients)?;

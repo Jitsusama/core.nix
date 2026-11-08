@@ -1,7 +1,9 @@
 //! The three calls made to Drive, each about the backup's one folder:
 //! whether a name is in it, making a file in it, and reading back a file
-//! found there. Nothing here can change, move or remove a file, and the
-//! tests fail on any other call.
+//! found there. A backup into a folder of its own makes one call more,
+//! once a run: finding that folder, or making it when there is none.
+//! Nothing here can change, move or remove a file, and the tests fail on
+//! any other call.
 
 use std::fs::File;
 use std::io;
@@ -9,6 +11,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+
+use crate::config::Folder;
+use crate::retry::{again, patiently};
+use crate::token::Login;
 
 /// How long a connection may take to open.
 const CONNECT: Duration = Duration::from_secs(30);
@@ -46,6 +52,88 @@ pub struct Drive<'a> {
     pub agent: &'a ureq::Agent,
     pub api: &'a str,
     pub folder: &'a str,
+    /// How to sign in with a login that may use the folder, said when
+    /// Drive refuses one that may not.
+    pub sign_in: &'a str,
+}
+
+/// What Drive calls a folder.
+const FOLDER_TYPE: &str = "application/vnd.google-apps.folder";
+
+/// The id of the backup's own folder, `name`, at the top of the account's
+/// Drive: the one a run made before, or one made now. A login that may use
+/// only the files the backup made lists only those, so a folder of the
+/// same name someone made in the web page is never the one it adds to.
+pub fn own_folder(
+    agent: &ureq::Agent,
+    api: &str,
+    sign_in: &str,
+    token: &str,
+    name: &str,
+) -> Result<String, Fault> {
+    let query = format!(
+        "name = '{}' and mimeType = '{FOLDER_TYPE}' and 'root' in parents and trashed = false",
+        quoted(name)
+    );
+    let url = format!(
+        "{api}/drive/v3/files?q={}&fields=files(id)&orderBy=createdTime",
+        encoded(&query)
+    );
+    let mut answer = agent
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .call()
+        .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
+    let body = read(&mut answer, sign_in, "look for the folder", name)?;
+    let value: Value = serde_json::from_str(&body)
+        .map_err(|why| Fault::Other(format!("Drive's list of {name} isn't JSON: {why}")))?;
+    if let Some(id) = first_id(&value) {
+        return Ok(id);
+    }
+    let mut made = agent
+        .post(&format!("{api}/drive/v3/files?fields=id"))
+        .header("Authorization", format!("Bearer {token}"))
+        .content_type("application/json; charset=UTF-8")
+        .send(json!({ "name": name, "mimeType": FOLDER_TYPE }).to_string())
+        .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
+    let body = read(&mut made, sign_in, "make the folder", name)?;
+    let value: Value = serde_json::from_str(&body)
+        .map_err(|why| Fault::Other(format!("Drive's answer for {name} isn't JSON: {why}")))?;
+    value
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| Fault::Other(format!("Drive made the folder {name} but gave no id")))
+}
+
+/// The id of the folder the settings name: the one given, or the backup's
+/// own, found or made with the retries a busy Drive is given.
+pub fn folder_id(
+    folder: &Folder,
+    agent: &ureq::Agent,
+    api: &str,
+    retries: &[Duration],
+    login: &mut Login,
+) -> Result<String, Fault> {
+    match folder {
+        Folder::Given(id) => Ok(id.clone()),
+        Folder::Own(name) => patiently(retries, || {
+            again(login, agent, |token| {
+                own_folder(agent, api, crate::token::sign_in(folder), token, name)
+            })
+        }),
+    }
+}
+
+/// The id of the first file in a list Drive answered.
+fn first_id(value: &Value) -> Option<String> {
+    value
+        .get("files")
+        .and_then(Value::as_array)
+        .and_then(|files| files.first())
+        .and_then(|file| file.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 impl Drive<'_> {
@@ -68,16 +156,10 @@ impl Drive<'_> {
             .header("Authorization", format!("Bearer {token}"))
             .call()
             .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
-        let body = read(&mut answer, "look for", name)?;
+        let body = read(&mut answer, self.sign_in, "look for", name)?;
         let value: Value = serde_json::from_str(&body)
             .map_err(|why| Fault::Other(format!("Drive's list of {name} isn't JSON: {why}")))?;
-        Ok(value
-            .get("files")
-            .and_then(Value::as_array)
-            .and_then(|files| files.first())
-            .and_then(|file| file.get("id"))
-            .and_then(Value::as_str)
-            .map(str::to_owned))
+        Ok(first_id(&value))
     }
 
     /// Make a file of this name in the folder from the sealed copy at
@@ -113,7 +195,7 @@ impl Drive<'_> {
             .get("location")
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
-        read(&mut opened, "start sending", name)?;
+        read(&mut opened, self.sign_in, "start sending", name)?;
         let location =
             location.ok_or_else(|| Fault::Other(format!("Drive gave nowhere to send {name}")))?;
         let mut file = File::open(path)
@@ -126,7 +208,7 @@ impl Drive<'_> {
             .content_type("application/octet-stream")
             .send(ureq::SendBody::from_reader(&mut file))
             .map_err(|why| Fault::Busy(format!("can't send {name} to Drive: {why}")))?;
-        let body = read(&mut sent, "send", name)?;
+        let body = read(&mut sent, self.sign_in, "send", name)?;
         let value: Value = serde_json::from_str(&body)
             .map_err(|why| Fault::Other(format!("Drive's answer for {name} isn't JSON: {why}")))?;
         value
@@ -151,7 +233,7 @@ impl Drive<'_> {
             .call()
             .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
         if !answer.status().is_success() {
-            read(&mut answer, "read back", name)?;
+            read(&mut answer, self.sign_in, "read back", name)?;
         }
         let mut file = File::create(path)
             .map_err(|why| Fault::Other(format!("can't write {}: {why}", path.display())))?;
@@ -165,6 +247,7 @@ impl Drive<'_> {
 /// An answer's body, or why Drive refused.
 fn read(
     answer: &mut ureq::http::Response<ureq::Body>,
+    sign_in: &str,
     doing: &str,
     name: &str,
 ) -> Result<String, Fault> {
@@ -185,8 +268,7 @@ fn read(
         {
             Err(Fault::Other(format!(
                 "Drive refused to {doing} {name}, since the login may not use Drive; \
-                 sign in with {}",
-                crate::token::SIGN_IN
+                 sign in with {sign_in}"
             )))
         }
         _ => Err(Fault::Other(format!(

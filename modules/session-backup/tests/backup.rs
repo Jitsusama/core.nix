@@ -1,7 +1,9 @@
 //! session-backup against a stand-in for Google: its token endpoint and the
 //! three Drive calls the backup may make. The stand-in refuses, and the
 //! tests fail on, any call that isn't a token, a list scoped to the
-//! backup's folder, a file made in it, or the download of one it holds.
+//! backup's folder, a file made in it, or the download of one it holds;
+//! and, for a backup into a folder of its own, a list of the folders of
+//! that name at the top of Drive, or making that folder there.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -15,7 +17,7 @@ use std::time::{Duration, SystemTime};
 use age::secrecy::ExposeSecret;
 use serde_json::{Value, json};
 use session_backup::backup::{self, Done};
-use session_backup::config::Config;
+use session_backup::config::{Config, Folder};
 use session_backup::fetch;
 
 const FOLDER: &str = "folder-0042";
@@ -30,6 +32,9 @@ struct Google {
     refused: Vec<String>,
     /// Files made, by name: their id and bytes.
     files: HashMap<String, (String, Vec<u8>)>,
+    /// Folders made at the top of Drive, by name. The first is given the
+    /// backup's folder's id.
+    folders: Vec<String>,
     /// Uploads opened, by session: the name each makes.
     opened: HashMap<String, String>,
     /// Answer this many sends busy from now on, keeping nothing.
@@ -166,28 +171,7 @@ fn answer(
             .to_string()
             .into(),
         ),
-        ("GET", "/drive/v3/files") => {
-            let q = decode(
-                query
-                    .split('&')
-                    .find_map(|pair| pair.strip_prefix("q="))
-                    .unwrap_or(""),
-            );
-            if !q.contains(&format!("'{FOLDER}' in parents")) {
-                google
-                    .refused
-                    .push(format!("a list outside the folder: {q}"));
-                return (403, String::new(), "{}".into());
-            }
-            let name = q.split('\'').nth(1).unwrap_or("").to_owned();
-            let files: Vec<Value> = google
-                .files
-                .get(&name)
-                .map(|(id, _)| json!({ "id": id }))
-                .into_iter()
-                .collect();
-            (200, String::new(), json!({ "files": files }).to_string().into())
-        }
+        ("GET", "/drive/v3/files") => list(&mut google, query),
         ("GET", file) if file.starts_with("/drive/v3/files/") && query.contains("alt=media") => {
             let id = file.trim_start_matches("/drive/v3/files/");
             if google.fail_downloads > 0 {
@@ -199,6 +183,7 @@ fn answer(
             };
             (200, String::new(), bytes.clone())
         }
+        ("POST", "/drive/v3/files") => make_folder(&mut google, &body),
         ("POST", "/upload/drive/v3/files") if query.contains("uploadType=resumable") => {
             let metadata: Value = serde_json::from_slice(&body).unwrap();
             if metadata["parents"] != json!([FOLDER]) {
@@ -235,6 +220,85 @@ fn answer(
             google.refused.push(format!("{method} {target}"));
             (403, String::new(), "{}".into())
         }
+    }
+}
+
+/// Drive's answer to a search by name: for a file in the backup's folder,
+/// or for a folder at the top of Drive. Any other search is refused.
+fn list(google: &mut Google, query: &str) -> (u16, String, Vec<u8>) {
+    let q = decode(
+        query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("q="))
+            .unwrap_or(""),
+    );
+    if q.contains("mimeType = 'application/vnd.google-apps.folder'")
+        && q.contains("'root' in parents")
+    {
+        return find_folder(google, &q);
+    }
+    if !q.contains(&format!("'{FOLDER}' in parents")) {
+        google
+            .refused
+            .push(format!("a list outside the folder: {q}"));
+        return (403, String::new(), "{}".into());
+    }
+    let name = q.split('\'').nth(1).unwrap_or("").to_owned();
+    let files: Vec<Value> = google
+        .files
+        .get(&name)
+        .map(|(id, _)| json!({ "id": id }))
+        .into_iter()
+        .collect();
+    (
+        200,
+        String::new(),
+        json!({ "files": files }).to_string().into(),
+    )
+}
+
+/// Drive's answer to a search for a folder at the top of Drive, by the
+/// name the query `q` names.
+fn find_folder(google: &Google, q: &str) -> (u16, String, Vec<u8>) {
+    let name = q.split('\'').nth(1).unwrap_or("");
+    let folders: Vec<Value> = google
+        .folders
+        .iter()
+        .position(|made| made == name)
+        .map(|at| json!({ "id": made_folder(at) }))
+        .into_iter()
+        .collect();
+    (
+        200,
+        String::new(),
+        json!({ "files": folders }).to_string().into(),
+    )
+}
+
+/// Drive making a folder, refusing anything else made outside an upload.
+fn make_folder(google: &mut Google, body: &[u8]) -> (u16, String, Vec<u8>) {
+    let metadata: Value = serde_json::from_slice(body).unwrap();
+    if metadata
+        != json!({ "name": metadata["name"], "mimeType": "application/vnd.google-apps.folder" })
+    {
+        google
+            .refused
+            .push(format!("something made that isn't a folder: {metadata}"));
+        return (403, String::new(), "{}".into());
+    }
+    let id = made_folder(google.folders.len());
+    google
+        .folders
+        .push(metadata["name"].as_str().unwrap().to_owned());
+    (200, String::new(), json!({ "id": id }).to_string().into())
+}
+
+/// The id of the folder made `at`th: the backup's folder first.
+fn made_folder(at: usize) -> String {
+    if at == 0 {
+        FOLDER.to_owned()
+    } else {
+        format!("other-{at}")
     }
 }
 
@@ -351,6 +415,7 @@ fn only_backup_calls(google: &StandIn) {
             [
                 "POST /token",
                 "GET /drive/v3/files",
+                "POST /drive/v3/files",
                 "POST /upload/drive/v3/files"
             ]
             .contains(&call.as_str())
@@ -549,6 +614,88 @@ fn says_how_to_sign_in_when_the_login_may_not_use_drive() {
         "{why}"
     );
     assert!(google.names().is_empty());
+}
+
+/// An account whose backup goes in a folder of its own, `name`.
+fn owning(google: &StandIn, name: &str) -> Account {
+    let mut account = Account::new(google);
+    account.config.folder = Folder::Own(name.into());
+    account
+}
+
+fn folders_made(google: &StandIn) -> usize {
+    google
+        .calls()
+        .iter()
+        .filter(|call| *call == "POST /drive/v3/files")
+        .count()
+}
+
+#[test]
+fn makes_a_folder_of_its_own_once_and_sends_into_it() {
+    let google = StandIn::start();
+    let account = owning(&google, "pi sessions");
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+
+    assert_eq!(account.run().unwrap().sent, 1);
+    account.log("--a--", "two.jsonl", "two\n", 3 * DAY);
+    assert_eq!(account.run().unwrap().sent, 1);
+
+    assert_eq!(google.google.lock().unwrap().folders, vec!["pi sessions"]);
+    assert_eq!(folders_made(&google), 1);
+    assert_eq!(google.names().len(), 2);
+    only_backup_calls(&google);
+}
+
+#[test]
+fn fetches_from_a_folder_of_its_own_without_making_another() {
+    let google = StandIn::start();
+    let account = owning(&google, "pi sessions");
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    account.run().unwrap();
+    let name = only_name(&google);
+    fs::remove_file(account.root.join("state/sent.jsonl")).unwrap();
+
+    assert_eq!(account.fetch(&name, "back.jsonl").unwrap(), 4);
+
+    assert_eq!(
+        fs::read_to_string(account.root.join("back.jsonl")).unwrap(),
+        "one\n"
+    );
+    assert_eq!(folders_made(&google), 1);
+    only_backup_calls(&google);
+}
+
+#[test]
+fn says_how_to_sign_in_for_a_folder_of_its_own() {
+    let google = StandIn::start();
+    let account = owning(&google, "pi sessions");
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    fs::remove_file(account.root.join("adc.json")).unwrap();
+
+    let why = account.run().unwrap_err();
+
+    assert!(
+        why.contains("CLOUDSDK_CONFIG")
+            && why.contains("https://www.googleapis.com/auth/drive.file"),
+        "{why}"
+    );
+    assert!(google.calls().is_empty());
+}
+
+#[test]
+fn settings_name_one_folder() {
+    let both = Config::from_json(&json!({
+        "sessions": "/s", "ledger": "/l", "host": "laptop", "credentials": "/c",
+        "recipients": ["age1someone"], "folder": FOLDER, "ownFolder": "pi sessions",
+    }));
+    let neither = Config::from_json(&json!({
+        "sessions": "/s", "ledger": "/l", "host": "laptop", "credentials": "/c",
+        "recipients": ["age1someone"],
+    }));
+
+    assert!(both.unwrap_err().contains("name one"));
+    assert!(neither.unwrap_err().contains("no folder"));
 }
 
 #[test]
