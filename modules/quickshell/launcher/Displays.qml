@@ -57,8 +57,21 @@ Provider {
 
     // :set brightness=60 sets the screen as its Brightness row does, on a
     // machine with a backlight, and :set nowarmth gives it its own white as
-    // its Warmth row does, where the backlight daemon warms it.
-    setOptions: Object.assign(backlights.count === 0 ? {} : {
+    // its Warmth row does, where the backlight daemon warms it. :set
+    // noscreens turns every screen off, as Turn Every Screen Off does; they
+    // are on whenever the launcher can be seen, so screens alone does
+    // nothing.
+    setOptions: Object.assign({
+        screens: {
+            kind: "switch",
+            now: () => true,
+            set: to => {
+                if (!to)
+                    provider.sleepAll();
+                return "";
+            }
+        }
+    }, backlights.count === 0 ? {} : {
         brightness: {
             kind: "number",
             least: 0,
@@ -419,8 +432,39 @@ Provider {
         });
     }
 
+    // Every screen off, as niri's power-off-monitors turns them off: each
+    // stays connected and enabled, so the machine still counts as docked
+    // and a monitor's hub and network card stay powered, which taking it
+    // out of niri's outputs doesn't keep (Joel, 2026-10-24: "is there a way
+    // to turn my external display off without shutting down its hub or
+    // network card or anything? i want the laptop to be able to keep going
+    // without blinding me in my sleep"). Any key or the pointer wakes them.
+    readonly property var sleepRow: thing({
+        key: "displays:sleep",
+        verb: Words.verb("displays:sleep"),
+        name: Words.name("displays:sleep"),
+        glyph: Words.glyph("displays:sleep"),
+        hue: "action",
+        note: Words.of("displays:sleep").said?.note ?? "",
+        run: () => provider.sleepAll()
+    })
+
     readonly property var all: shown.map(output => made(output))
+        .concat(lit.length > 0 ? [sleepRow] : [])
     onAllChanged: changed()
+
+    // niri wakes the screens at any key, so the one that asked, still held
+    // or let go just after, would wake them at once: they're turned off
+    // once it has come up and the launcher has closed.
+    function sleepAll() {
+        sleeping.restart();
+    }
+
+    Timer {
+        id: sleeping
+        interval: 750
+        onTriggered: Niri.act({ PowerOffMonitors: {} })
+    }
 
     // A choice wears the theme's mark of the setting it's for, by name.
     // Setting it keeps the launcher, the setting saying what it's at now.

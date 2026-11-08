@@ -4301,6 +4301,18 @@
       }
     },
     {
+      "id": "displays:sleep",
+      "command": "set",
+      "argument": "noscreens",
+      "in": "displays",
+      "name": "Turn Every Screen Off",
+      "verb": "turn off",
+      "glyph": "displayOff",
+      "said": {
+        "note": "a key wakes them \u00b7 hubs stay on"
+      }
+    },
+    {
       "id": "displays:room",
       "in": "displays",
       "name": "Room Light",
