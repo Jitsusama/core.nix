@@ -545,11 +545,14 @@ def test_the_media_place_lists_each_player_and_its_acts_reach_it(desktop: Deskto
     matters now, as MPRIS tells D-Bus.
     """
     machine = desktop.machine
+    # One track under two names, so the rows, alike but for their files, are told apart.
     track = desktop.values["track"]
-    for unit, paused in [("first-player", ""), ("second-player", " --pause")]:
+    copy = "/tmp/second-take.mp3"
+    machine.succeed(f"install -m 644 {track} {copy}")
+    for unit, paused, played in [("first-player", "", track), ("second-player", " --pause", copy)]:
         desktop.as_account(
             f"systemd-run --user --collect --unit={unit} mpv --ao=null --no-video"
-            f" --no-terminal --loop{paused} {track}"
+            f" --no-terminal --loop{paused} {played}"
         )
     try:
         named = "busctl --user list --acquired | grep -c '^org\\.mpris\\.MediaPlayer2\\.mpv'"
@@ -557,8 +560,13 @@ def test_the_media_place_lists_each_player_and_its_acts_reach_it(desktop: Deskto
 
         def stands(shown: Json) -> bool:
             sides = [thing["reads"] for thing in shown["things"]]
-            return any("paused \u00b7 " in side for side in sides) and any(
-                re.search(r"\d:\d\d of \d:\d\d", side) and "paused" not in side for side in sides
+            return (
+                any("paused \u00b7 " in side for side in sides)
+                and any(
+                    re.search(r"\d:\d\d of \d:\d\d", side) and "paused" not in side
+                    for side in sides
+                )
+                and any("\u00b7 second-take.mp3 \u00b7" in side for side in sides)
             )
 
         # Shot at each of Joel's scales, then back at 1 for what follows.
@@ -599,6 +607,7 @@ def test_the_media_place_lists_each_player_and_its_acts_reach_it(desktop: Deskto
         desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user stop first-player second-player || true")
+        machine.succeed(f"rm -f {copy}")
 
 
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:

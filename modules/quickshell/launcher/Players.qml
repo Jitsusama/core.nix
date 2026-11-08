@@ -97,6 +97,26 @@ Provider {
         return Number(player?.position) || 0;
     }
 
+    // A player as its note tells it from the rest: what it plays, the file
+    // and the workspace its window is on.
+    function about(player) {
+        const window = Music.windowOf(player);
+        const workspace = window ? Niri.workspaces[window.workspace_id]?.idx ?? "" : "";
+        return {
+            title: player.trackTitle,
+            artist: player.trackArtist,
+            file: Players.fileOf(player.metadata?.["xesam:url"]),
+            workspace: String(workspace)
+        };
+    }
+
+    // Its note, said apart from any other player's that would read alike.
+    function noteOf(player) {
+        const players = Playing.players;
+        const notes = Players.notes(players.map(about), said("workspace"));
+        return notes[players.indexOf(player)] ?? player.trackArtist;
+    }
+
     function playerRow(player) {
         const loaded = player.trackTitle !== "";
         const position = at(player);
@@ -105,7 +125,7 @@ Provider {
             key: `player:${player.dbusName}`,
             // With nothing loaded, the program's own name (VKCF3Z).
             name: loaded ? player.trackTitle : player.identity,
-            count: loaded ? player.trackArtist : "",
+            count: loaded ? noteOf(player) : "",
             keywords: [player.identity, player.trackArtist, player.trackAlbum].join(" "),
             glyph: provider.programGlyph(player.desktopEntry),
             hue: "program",
@@ -120,8 +140,14 @@ Provider {
             verbs: () => provider.parts(player),
             drawer: () => {
                 void clock.date;
-                return Media.drawer(player, id => Words.name(`program:media:${id}`),
+                // Its position is said once, at the row's side, so the
+                // drawer leads with its volume (VKCF3Z, 2026-11-08).
+                const drawn = Media.drawer(player, id => Words.name(`program:media:${id}`),
                     Words.of("program:media").said, provider.settings.lookups !== false);
+                const position = Words.name("program:media:position");
+                return Object.assign({}, drawn, {
+                    facts: (drawn.facts ?? []).filter(fact => fact.label !== position)
+                });
             }
         });
     }
@@ -227,7 +253,9 @@ Provider {
             name: Words.name("media:shuffle"),
             verb: Words.verb("media:shuffle", on ? "" : "off"),
             glyph: Theme.glyph.shuffle,
-            hue: "machine",
+            // Muted as the settings beside it are, since a switch is one
+            // (VKCF3Z, 2026-11-08).
+            hue: "muted",
             side: said(on ? "on" : "off"),
             stays: true,
             run: () => Music.shuffled(player, !on)

@@ -136,6 +136,29 @@ QtObject {
         if ([1, 0.5, 1.25, 2.0001].map(Music.speed).join() !== "1\u00d7,0.5\u00d7,1.25\u00d7,2\u00d7")
             failures.push("a speed isn't said in as few figures as say it");
 
+        // A track's file, as a person reads it.
+        if (Music.fileOf("file:///home/joel/Music/Bless%20The%20Child.mp3")
+            !== "Bless The Child.mp3" || Music.fileOf("https://example.com/a.mp3") !== ""
+            || Music.fileOf("file:///music/100%off.mp3") !== "100%off.mp3")
+            failures.push("a track's file isn't read from its address");
+
+        // Two rows that would read alike are told apart by the file, else the
+        // workspace; a row alone keeps its artist.
+        const track = { title: "Bless The Child", artist: "Nightwish", workspace: "" };
+        const byFile = Music.notes([Object.assign({ file: "a.mp3" }, track),
+            Object.assign({ file: "b.mp3" }, track)], "workspace {n}");
+        if (byFile.join() !== "Nightwish \u00b7 a.mp3,Nightwish \u00b7 b.mp3")
+            failures.push(`two players on one track aren't told by file: ${byFile}`);
+        const bySpace = Music.notes([
+            Object.assign({}, track, { file: "a.mp3", workspace: "1" }),
+            Object.assign({}, track, { file: "a.mp3", workspace: "2" })], "workspace {n}");
+        if (bySpace.join() !== "Nightwish \u00b7 workspace 1,Nightwish \u00b7 workspace 2")
+            failures.push(`two players on one file aren't told by workspace: ${bySpace}`);
+        const alone = Music.notes([Object.assign({ file: "a.mp3" }, track),
+            { title: "Other", artist: "Nightwish", file: "b.mp3", workspace: "" }], "w {n}");
+        if (alone.join() !== "Nightwish,Nightwish")
+            failures.push(`players apart already gain a note: ${alone}`);
+
         asked++;
         if (Music.mark("Spotify") !== String.fromCodePoint(0xf1bc)
                 || Music.mark("") !== String.fromCodePoint(0xf075a)

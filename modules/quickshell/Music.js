@@ -106,6 +106,43 @@ function speed(rate) {
     return `${Number(rate.toFixed(2))}\u00d7`;
 }
 
+// The file a track's address names, as a person reads it, or "" where it's
+// no file.
+const FILE = /^file:\/\/.*\/([^/]+)$/u;
+function fileOf(address) {
+    const found = FILE.exec(String(address ?? ""));
+    if (!found) {
+        return "";
+    }
+    try {
+        return decodeURIComponent(found[1]);
+    } catch (_malformed) {
+        return found[1];
+    }
+}
+
+// Each player's note in the Media place: its artist, and where two players'
+// rows would read alike, the first of its file's name or its window's
+// workspace that tells them apart (VKCF3Z, 2026-11-08). Each player is
+// `{ title, artist, file, workspace }`, and `onWorkspace` says a workspace
+// with `{n}`.
+function notes(players, onWorkspace) {
+    return players.map(player => {
+        const twins = players.filter(
+            other => other.title === player.title && other.artist === player.artist,
+        );
+        const apart = field =>
+            player[field] !== "" && new Set(twins.map(twin => twin[field])).size === twins.length;
+        let told = "";
+        if (twins.length > 1 && apart("file")) {
+            told = player.file;
+        } else if (twins.length > 1 && apart("workspace")) {
+            told = onWorkspace.replace("{n}", player.workspace);
+        }
+        return [player.artist, told].filter(part => part !== "").join(" \u00b7 ");
+    });
+}
+
 // A player's mark where Nerd Fonts has one, by the desktop entry it names,
 // and a note otherwise.
 const marks = {

@@ -7293,7 +7293,8 @@
         "on": "on",
         "off": "off",
         "chosen": "chosen",
-        "speeds": "{speed} · {least} to {most}"
+        "speeds": "{speed} · {least} to {most}",
+        "workspace": "workspace {n}"
       }
     },
     {
