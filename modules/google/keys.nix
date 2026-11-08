@@ -196,7 +196,7 @@ in
         does = "Undo the last change";
       }
     ]
-    ++ [
+    ++ grouped "anywhere" [
       {
         chord = "/";
         does = "Search the calendar";

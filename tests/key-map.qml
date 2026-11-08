@@ -256,6 +256,16 @@ ShellRoot {
             expect("over a Docs tab, its own, then the browser's",
                 names(map.everything()).slice(0, 3).join(", ") === "Docs, Browser, Desktop",
                 names(map.everything()).join(", "));
+            // Mail says what it needs to work, leading or not, and on its page.
+            over("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail");
+            const mail = map.everything()[0];
+            const needs = "works once Gmail's keyboard shortcuts are on";
+            expect("leading, Mail says what it needs", mail.name === "Mail" && mail.note === needs,
+                `${mail.name}: ${mail.note}`);
+            expect("and on its page", mail.standing() === needs, mail.standing());
+            over("kitty", "~");
+            const placed = map.everything().find(row => row.name === "Mail");
+            expect("not leading, still", placed.note === needs, placed.note);
             const mailKeys = map.layerOf("google-mail");
             expect("Mail holds its keys", mailKeys !== null && mailKeys.layer === "google-mail",
                 mailKeys ? mailKeys.layer : "nothing");

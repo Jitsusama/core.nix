@@ -4759,7 +4759,10 @@
     {
       "id": "shortcuts:google-mail",
       "in": "shortcuts",
-      "name": "Mail"
+      "name": "Mail",
+      "said": {
+        "note": "works once Gmail's keyboard shortcuts are on"
+      }
     },
     {
       "id": "shortcuts:google-calendar",
@@ -5604,6 +5607,11 @@
       "id": "shortcuts:google-calendar:events",
       "in": "shortcuts",
       "name": "Making an Event"
+    },
+    {
+      "id": "shortcuts:google-calendar:anywhere",
+      "in": "shortcuts",
+      "name": "Anywhere in Calendar"
     },
     {
       "id": "shortcuts:google-meet:you",

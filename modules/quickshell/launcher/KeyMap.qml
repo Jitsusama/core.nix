@@ -144,6 +144,9 @@ Provider {
         const rows = groups.map(group => group.row).concat(arranged.loose.map(at => chords[at]));
         const held = places.map(at => chords[at]);
         const entry = Words.of(id);
+        // What it takes to work, where something must be switched on first
+        // (Mail's), said on its row wherever it stands, and on its page.
+        const condition = entry.said?.note ?? "";
         const last = id.split(":").pop();
         const name = Words.things[id] ? entry.name : last.charAt(0).toUpperCase() + last.slice(1);
         // Found inside this level, a group of its own says its first
@@ -173,6 +176,8 @@ Provider {
             // how many keys at its right, where a row's figure stands
             // (VKCF3Z, 2026-11-05: one place for each kind of fact).
             count: first,
+            note: condition,
+            standing: () => condition,
             side: held.length > 0 ? String(held.length) : "",
             chip: name.toLowerCase(),
             ask: provider.collection?.ask ?? "which shortcut?",
@@ -222,8 +227,11 @@ Provider {
         const rest = layers.filter(layer => !leads.includes(layer.name));
         if (own.length === 0 || own[0].name === "desktop")
             return own.concat(rest);
+        // What it needs to work says more than that it leads, which its
+        // place already says (VKCF3Z, 2026-11-07).
+        const note = own[0].row.note || "the keys of the window you were in";
         const first = Object.assign({}, own[0], {
-            row: Object.assign({}, own[0].row, { note: "the keys of the window you were in" })
+            row: Object.assign({}, own[0].row, { note: note })
         });
         return [first].concat(own.slice(1), rest);
     }
