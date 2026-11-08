@@ -1607,9 +1607,11 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
         desktop.as_account(f"niri msg output winit scale {scale}")
         for asked, picture in [
             ("launcher show", "terminal-home"),
-            ("launcher show machine disk", "terminal-disk"),
+            # Screens, which niri answers at once, where Disk waits on the
+            # machine's daemon in the VM.
+            ("launcher show desktop screens", "terminal-screens"),
             ("launcher show mahcine", "terminal-miss"),
-            ("launcher show machine disk --drawers", "terminal-drawers"),
+            ("launcher show desktop screens --drawers", "terminal-drawers"),
         ]:
             window = desktop.opened(
                 picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
