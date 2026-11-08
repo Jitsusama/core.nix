@@ -1715,8 +1715,10 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     # Beside Wi-Fi, before what either is addressed by.
     rows = desktop.showing()["rows"]
     assert rows.index("Wi-Fi") < rows.index("Ethernet") < rows.index("Address"), rows
-    desktop.type_in("ethernet", selecting="Ethernet")
-    desktop.step_in("ret")
+    # The whole word asks the answer itself, so the start of it finds the
+    # row, an answer that Tab goes into.
+    desktop.type_in("eth", selecting="Ethernet")
+    desktop.step_in("tab")
     # Every card on a cable, whatever its address: the way out, the cable
     # and the switch's.
     desktop.launcher_until(lambda shown: "Ethernet 3" in shown["rows"])
@@ -1732,9 +1734,13 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     )
     desktop.type_in("lease", selecting="Lease")
     desktop.step_in("ret")
-    lease = ["Server \u00b7 10.9.0.2", "Given For \u00b7 1 d", "Name Servers \u00b7 10.9.0.3"]
+    # No name servers: the cable asks for none (tests/desktop.nix), and
+    # QEMU's server offers only what's asked.
+    lease = ["Server \u00b7 10.9.0.2", "Given For \u00b7 1 d"]
     desktop.launcher_until(lambda shown: set(lease) <= set(reads(shown)))
-    times = dict(read.split(" \u00b7 ", 1) for read in reads(desktop.showing()))
+    times = dict(
+        read.split(" \u00b7 ", 1) for read in reads(desktop.showing()) if " \u00b7 " in read
+    )
     assert times["Got"].endswith(" ago"), times
     assert times["Renews"].startswith("in 11 h"), times
     assert times["Ends"].startswith("in 23 h"), times

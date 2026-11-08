@@ -300,7 +300,7 @@ Provider {
     readonly property var connections: (links ?? []).map(link => `networks:${link.name}`)
     readonly property bool watching: launcher !== null && launcher.open
         && ((launcher.held ?? []).some(step => cableHeld(step.row))
-            || (launcher.held.length === 0 && cableHeld(launcher.answer)))
+            || ((launcher.held ?? []).length === 0 && cableHeld(launcher.answer)))
 
     // Whether a row is a connection, one of its parts, or the cards on a
     // cable asked alone.
@@ -600,8 +600,9 @@ Provider {
         const now = standing();
         if (now === null)
             return unknown;
-        const cards = now.links.filter(link => link.kind === "wired")
-            .sort((a, b) => a.name.localeCompare(b.name));
+        // In ip's order, as the addresses number them, so a card has one
+        // name in both.
+        const cards = now.links.filter(link => link.kind === "wired");
         const said = link => {
             const cable = Interfaces.cable(file => sys(link.name, file));
             return cable.speed !== null ? Interfaces.linkRate(cable.speed,
