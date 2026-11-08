@@ -1,0 +1,6 @@
+home · 3 profiles · read 1 min 7 s ago
+
+profile    state   paused  devices  on now
+profile 1  Active  no           10       0
+profile 2  Active  no            3       0
+profile 3  Active  no            1       0

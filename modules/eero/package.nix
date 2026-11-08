@@ -12,6 +12,8 @@ rustPlatform.buildRustPackage {
       # The tests read eero's answers and the model drawn from them.
       ./contract
       ./home-network.json
+      # The theme the terminal's colours are tested on.
+      ./tests/osaka-jade.json
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;

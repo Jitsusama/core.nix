@@ -1,0 +1,8 @@
+home · 5 events · read 1 min 7 s ago
+
+            at        kind    what happened
+2026-11-07  17:42:35  Device  tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52.
+            17:42:35  Device  tablet 1 disconnected from Study eero Pro 6.
+            17:31:41  Device  phone 1 connected to Den eero Pro 6 on 5.8GHz channel 149.
+            17:31:41  Device  phone 1 disconnected from Study eero Pro 6.
+            17:02:11  Device  phone 1 connected to Hall eero Pro 6 on 5.8GHz channel 149.

@@ -47,12 +47,12 @@ never a guess.
 only when it changes. It reads the account's first network, each part
 as often as its figures move ([`src/schedule.rs`][schedule]):
 
-| Read                                           | Requests        | Every                        |
-| ---------------------------------------------- | --------------- | ---------------------------- |
-| the network and its devices                    | 2               | 30 s listened to, else 5 min |
-| each node's connections                        | 1 a node        | 5 min                        |
-| the day's usage, the network's and each node's | 1, and 1 a node | 15 min                       |
-| speed tests, profiles, Thread, outages, events | 5               | 15 min                       |
+| Read                                             | Requests        | Every                        |
+| ------------------------------------------------ | --------------- | ---------------------------- |
+| the network and its devices                      | 2               | 30 s listened to, else 5 min |
+| each node's connections                          | 1 a node        | 5 min                        |
+| the day's traffic, the network's and each node's | 1, and 1 a node | 15 min                       |
+| speed tests, profiles, Thread, outages, events   | 5               | 15 min                       |
 
 Its socket, `$XDG_RUNTIME_DIR/eero/socket`, writes whoever connects the
 model as one line of JSON, and another on every change. While anyone
@@ -68,7 +68,34 @@ The model's `cloud.state` says whether the figures are current:
 - `signed-out`: the session aged past refreshing; `reason` says to run
   `eero sign-in`, and the next read opens the newly sealed session.
 
+## The Views
+
+The command line's views (`src/views/`) read the record and never eero's
+cloud, so each is instant and opens with how old what it shows is, and
+says so when eero isn't answering or the daemon has stopped renewing it.
+Each is a pure function of the record, the time and the ink, set as text
+for a person or, with `--json`, as the record's own slice of it.
+`eero watch <view>` ([`src/watch.rs`][watch]) listens on the socket and
+draws the view again with each model, and when its reading's age next
+reads differently. Every page is held to a golden one drawn from
+`home-network.json` (`src/views/golden/`): change a page on purpose with
+`EERO_GOLDEN=write cargo test`, and read the pages it wrote before
+committing them. A view shows every figure its part of the record has,
+figures lined up by their point with their units beside them, and colour
+only on a terminal, in the theme's terminal colour for each role
+(`src/views/theme.rs`): text in the text roles, and alert and warning
+only on the marks beside it. The record keeps eero's word, usage, for the
+bytes moved; every page says traffic, the glossary's word.
+
+zsh completes eero with what `eero completion zsh` writes
+([`src/completion.zsh`][completion]), which asks `eero names <kind>` for
+the views and for the nodes, devices and profiles the record holds now,
+each by the name its view finds it by: a device two share a name with is
+offered by its hardware address.
+
 [contract]: contract/README.md
 [model]: home-network.json
 [read]: src/read.rs
 [schedule]: src/schedule.rs
+[watch]: src/watch.rs
+[completion]: src/completion.zsh

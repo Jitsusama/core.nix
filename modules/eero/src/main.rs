@@ -5,13 +5,24 @@
 //! him (session.rs). It reads, and changes one setting: "Optimize for
 //! conferencing and gaming".
 //!
+//! The views read the record the daemon keeps of the home network
+//! (live.rs, views/), and never eero's cloud themselves, so a view is
+//! instant and says how old what it shows is.
+//!
 //! Usage:
 //!   eero sign-in <email or phone>   sign in once, typing the code eero sends
-//!   eero status [--json]            each network: online, speed, setting, devices
-//!   eero devices                    what's connected now
+//!   eero <view> [--json]            a view of the home network, below
+//!   eero watch <view> [--json]      the view, drawn again as it changes
 //!   eero speedtest                  start the eero's own speed test
 //!   eero sqm on|off                 optimize for conferencing and gaming, or not
 //!   eero daemon                     keep the home network for the shell
+//!
+//! The views: status, nodes, node <location|id>, mesh, devices,
+//! device <name|mac>, internet, speeds, firmware, radio, traffic, profiles,
+//! profile <name|id> and events.
+//!
+//! For the shell: `eero completion zsh` writes zsh's completion, and
+//! `eero names views|nodes|devices|profiles` what it offers of each.
 
 mod api;
 mod cloud;
@@ -19,30 +30,62 @@ mod daemon;
 #[cfg(test)]
 mod golden;
 mod listeners;
+mod live;
 mod model;
 mod read;
 mod schedule;
 mod session;
 mod status;
 mod time;
+mod views;
+mod watch;
 
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use cloud::Cloud;
 
-const USAGE: &str = "usage: eero sign-in <email or phone> | status [--json] | devices | speedtest | \
-                     sqm on|off | daemon";
+const USAGE: &str = concat!(
+    "usage: eero <view> [--json] | watch <view> [--json] | speedtest | sqm on|off |\n",
+    "       sign-in <email or phone> | daemon\n\n",
+    "views: status, nodes, node <location|id>, mesh, devices, device <name|mac>, internet,\n",
+    "       speeds, firmware, radio, traffic, profiles, profile <name|id>, events",
+);
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    let json = args.iter().any(|arg| arg == "--json");
+    let words: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|arg| *arg != "--json")
+        .collect();
     let done = match words.as_slice() {
+        [view, ..] if views::View::named(view) => views::View::parse(&words)
+            .and_then(|view| {
+                live::show(&view, json, &views::theme::ink(io::stdout().is_terminal()))
+            })
+            .and_then(|page| {
+                io::stdout()
+                    .write_all(page.as_bytes())
+                    .map_err(|e| e.to_string())
+            }),
+        ["watch"] => Err("name a view to watch: eero watch <view>".into()),
+        ["watch", view @ ..] => views::View::parse(view).and_then(|view| {
+            let terminal = io::stdout().is_terminal();
+            let how = watch::Watch {
+                view: &view,
+                json,
+                ink: &views::theme::ink(terminal),
+                terminal,
+            };
+            watch::watch(&how, &mut io::stdout().lock())
+        }),
+        ["completion", "zsh"] => io::stdout()
+            .write_all(include_str!("completion.zsh").as_bytes())
+            .map_err(|e| e.to_string()),
+        ["names", kind] => names(kind),
         ["sign-in", login] => sign_in(login),
-        ["status"] => show(false),
-        ["status", "--json"] => show(true),
-        ["devices"] => devices(),
         ["speedtest"] => speedtest(),
         ["sqm", "on"] => conferencing(true),
         ["sqm", "off"] => conferencing(false),
@@ -56,6 +99,23 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What completion offers of a kind, as zsh reads it. The views need no
+/// record; the rest are what the record holds now.
+fn names(kind: &str) -> Result<(), String> {
+    use views::names;
+    let record = || live::read(&live::file()?);
+    let named = match kind {
+        "views" => names::views(),
+        "nodes" => names::nodes(&record()?),
+        "devices" => names::devices(&record()?),
+        "profiles" => names::profiles(&record()?),
+        _ => return Err("usage: eero names views|nodes|devices|profiles".into()),
+    };
+    io::stdout()
+        .write_all(names::for_zsh(&named).as_bytes())
+        .map_err(|e| e.to_string())
 }
 
 fn sign_in(login: &str) -> Result<(), String> {
@@ -73,60 +133,17 @@ fn sign_in(login: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Every network on the account, with how many devices each has on it.
-fn read(cloud: &mut Cloud) -> Result<Vec<(api::Network, Option<usize>)>, String> {
-    let account = cloud.get(api::ACCOUNT)?;
-    let mut read = Vec::new();
-    for url in api::networks(&account) {
-        let network = api::network(&url, &cloud.get(&url)?);
-        let devices = match &network.devices_url {
-            Some(list) => Some(api::devices(&cloud.get(list)?).len()),
-            None => None,
-        };
-        read.push((network, devices));
-    }
-    Ok(read)
-}
-
-fn show(json: bool) -> Result<(), String> {
-    let mut cloud = Cloud::signed_in()?;
-    let networks = read(&mut cloud)?;
-    if json {
-        println!("{}", status::file(now(), &networks));
-    } else {
-        for (network, devices) in &networks {
-            println!("{}", status::line(network, *devices));
-        }
-    }
-    Ok(())
-}
-
-fn devices() -> Result<(), String> {
-    let mut cloud = Cloud::signed_in()?;
-    for (network, _) in read(&mut cloud)? {
-        let Some(list) = &network.devices_url else {
-            continue;
-        };
-        for device in api::devices(&cloud.get(list)?) {
-            let ip = device.ip.as_deref().unwrap_or("-");
-            let link = if device.wired { "wired" } else { "wireless" };
-            println!("{}  {}  {ip}  {link}", network.name, device.name);
-        }
-    }
-    Ok(())
-}
-
 fn speedtest() -> Result<(), String> {
     let mut cloud = Cloud::signed_in()?;
     for url in api::networks(&cloud.get(api::ACCOUNT)?) {
         cloud.post(&format!("{url}/speedtest"), None)?;
     }
-    println!("The eero is testing its line; `eero status` shows the result in about a minute.");
+    println!("The eero is testing its internet; `eero speeds` shows the result in about a minute.");
     Ok(())
 }
 
 /// Turns "Optimize for conferencing and gaming" on or off on every
-/// network, and says each one's line once eero reads the change back.
+/// network, and says each one's status once eero reads the change back.
 fn conferencing(on: bool) -> Result<(), String> {
     let mut cloud = Cloud::signed_in()?;
     for url in api::networks(&cloud.get(api::ACCOUNT)?) {
@@ -140,10 +157,4 @@ fn conferencing(on: bool) -> Result<(), String> {
         println!("{}", status::line(&now, None));
     }
     Ok(())
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs())
 }
