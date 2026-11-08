@@ -1306,7 +1306,7 @@ Scope {
         return {
             // Whether a provider is still reading what it shows for the
             // first time, so the terminal asks again for its figures.
-            reading: sources.some(source => source.reading),
+            reading: sources.some(source => source.stillReading === true),
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),

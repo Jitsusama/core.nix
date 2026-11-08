@@ -295,6 +295,7 @@ fn errors() -> Look {
 
 /// How a place is asked: for its names alone, or settled, with every
 /// row's drawer where `drawers` says.
+#[derive(Clone, Copy)]
 enum Ask {
     Names,
     Settled { drawers: bool },

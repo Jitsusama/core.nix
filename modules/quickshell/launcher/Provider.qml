@@ -60,7 +60,7 @@ Scope {
     // asks again for its figures rather than saying the placeholder
     // (Launcher.qml's shownToTerminal). One that reads nothing it waits
     // on leaves it false.
-    property bool reading: false
+    property bool stillReading: false
     property var things: []
     // The options :set takes from it, by name, as the command line reads
     // them (SetWords.setting): { kind: "switch" | "number" | "choice",

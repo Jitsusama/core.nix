@@ -1522,8 +1522,8 @@ Provider {
     readonly property var terminalListed: launcher?.terminalSees.listed ?? []
 
     // Whether a daemon it watches hasn't yet said its kind once, so what
-    // it shows is the placeholder still being read (Provider.reading).
-    reading: [daemon, diskWatch, users].some(watch => watch.live && !watch.answered
+    // it shows is the placeholder still being read (Provider.stillReading).
+    stillReading: [daemon, diskWatch, users].some(watch => watch.live && !watch.answered
         && watch.state !== "not answering")
 
     // Whether a Using row can be seen, so the daemon is asked for the
