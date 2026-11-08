@@ -869,9 +869,9 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         return error(id, code, &message);
     }
     let audited = passwords.len();
-    let breaches =
+    let asked_at =
         std::env::var("PASSWORDS_BREACHES").unwrap_or_else(|_| audit::BREACHES.to_owned());
-    let found = audit::audit(passwords, &breaches);
+    let found = audit::audit(passwords, &asked_at);
     let mut daemon = lock(shared);
     let changed = daemon.held.audited(&read, found.health);
     let records: Vec<Value> = changed

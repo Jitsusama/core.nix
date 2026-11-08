@@ -28,6 +28,13 @@
 // can't read, the place's first row lets the launcher in, as Let the
 // Launcher In leads Programs › 1Password, which, once it's let in, holds
 // its entries by vault beside Quick Access and Lock.
+//
+// Check Every Password, last in the place, has the daemon read every
+// password to find those reused and those breached (`audit`), only as
+// Joel presses it, since 1Password asks his leave for it; its side says
+// so while it runs. Each entry's Health then says what was found
+// (Passwords.js), and Needing Attention, after any unlock row, holds
+// each entry with a problem, counted.
 import qs
 import Quickshell
 import QtQuick
@@ -99,16 +106,89 @@ Provider {
     }
 
     // Those listed with nothing typed, led by a row for each manager that
-    // can't read, which lets the launcher in.
+    // can't read, which lets the launcher in, then Needing Attention once a
+    // check has found a problem, and ended by Check Every Password.
     readonly property var all: {
         const rows = everyone;
         const byKey = {};
         for (const row of rows)
             byKey[row.key] = row;
         return managers.filter(manager => signedOut(manager)).map(manager => unlock(manager))
-            .concat(Passwords.listed(records).map(record => byKey[record.key]));
+            .concat(attention, Passwords.listed(records).map(record => byKey[record.key]),
+                [checkRow]);
     }
     onAllChanged: changed()
+
+    // Whether every password is being checked now, as Joel asked, and why
+    // the last check couldn't finish or couldn't ask about breaches.
+    property bool checking: false
+    property string checkWhy: ""
+
+    // Check Every Password, which reads every password, so it runs only as
+    // Joel's own act, never as the place opens or on a timer. The launcher
+    // goes, as letting a manager in does, so 1Password's own window can ask
+    // him first; while it runs, its side says so, as the place's row at
+    // home does, and it says below why the last couldn't finish.
+    readonly property var checkRow: {
+        const words = "verb:passwords:audit";
+        const name = Words.name(words);
+        return Object.assign(thing({
+            key: words,
+            name: name,
+            side: checking ? said.checking ?? "" : "",
+            note: checking ? "" : checkWhy,
+            verb: Words.verb(words),
+            glyph: Words.glyph(words),
+            hue: "action",
+            run: () => provider.checkEvery()
+        }), { named: Fuzzy.letters([name.toLowerCase()]), worded: 0 });
+    }
+
+    // Needing Attention, a part holding each entry the last check found a
+    // problem with, by title, counted; none before a check, or with none.
+    readonly property var attention: {
+        const needing = Passwords.needing(records);
+        if (needing.length === 0)
+            return [];
+        const rows = () => {
+            const byKey = {};
+            for (const row of provider.everyone)
+                byKey[row.key] = row;
+            return Passwords.needing(provider.records).map(record => byKey[record.key])
+                .filter(Boolean);
+        };
+        const name = Words.name("passwords:attention");
+        const part = thing({
+            key: "passwords:attention",
+            name: name,
+            verb: Words.verb("passwords:attention"),
+            glyph: Words.glyph("passwords:attention"),
+            hue: "machine",
+            count: String(needing.length),
+            nested: true,
+            stays: true,
+            verbs: rows,
+            targets: rows,
+            run: () => provider.launcher?.enter(part)
+        });
+        return [Object.assign(part, { named: Fuzzy.letters([name.toLowerCase()]), worded: 0 })];
+    }
+
+    // Asks the daemon to check every password, Joel having pressed it: each
+    // entry's health comes back on its record by the watch, and the answer
+    // says only why it couldn't, if it couldn't.
+    function checkEvery() {
+        if (checking)
+            return;
+        checking = true;
+        checkWhy = "";
+        daemon.ask({ ask: "audit", asked: true, patience: 120000 }, answer => {
+            provider.checking = false;
+            provider.checkWhy = answer === null ? said.away ?? ""
+                : answer.error ? String(answer.error.message ?? answer.error.code)
+                : String(answer.unreached ?? "");
+        });
+    }
 
     // The record held by a key now, or null.
     function recordOf(key) {
@@ -377,8 +457,9 @@ Provider {
     // Below its row at home: why a manager can't read, where one can't for
     // a reason other than Joel's leave.
     function noted() {
-        return managers.filter(manager => daemon.sources[manager.name]?.state === "refused")
-            .map(manager => `${manager.called}: ${daemon.sources[manager.name]?.reason ?? ""}`)
+        return (checking ? [said.checking ?? ""] : []).concat(managers
+            .filter(manager => daemon.sources[manager.name]?.state === "refused")
+            .map(manager => `${manager.called}: ${daemon.sources[manager.name]?.reason ?? ""}`))
             .join(" \u00b7 ");
     }
 
@@ -386,9 +467,10 @@ Provider {
         return all;
     }
 
-    // A search looks through every entry held, not only those listed.
+    // A search looks through every entry held, not only those listed, and
+    // the place's own rows: Check Every Password, and Needing Attention.
     function looksThrough() {
-        return everyone;
+        return everyone.concat(attention, [checkRow]);
     }
 
     // From the top, what's typed finds what's held, asking no manager
@@ -413,7 +495,7 @@ Provider {
         const missed = { score: -1, grade: 3 };
         const matched = [];
         let grade = 3;
-        for (const row of everyone) {
+        for (const row of looksThrough()) {
             const byName = (row.named & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : missed;
             const byWords = (row.worded & need) === need

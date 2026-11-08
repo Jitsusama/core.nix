@@ -171,7 +171,7 @@ pub fn audit(passwords: Vec<(String, String)>, breaches: &str) -> Audited {
     let ranges = ranges(breaches, &prefixes);
     let mut audited = Audited::default();
     for (key, hash) in &hashed {
-        let breached = match ranges.get(&hash[..PREFIX]) {
+        let times = match ranges.get(&hash[..PREFIX]) {
             Some(Ok(range)) => Some(seen(range, &hash[PREFIX..])),
             Some(Err(why)) => {
                 audited.unreached.get_or_insert_with(|| why.clone());
@@ -179,10 +179,11 @@ pub fn audit(passwords: Vec<(String, String)>, breaches: &str) -> Audited {
             }
             None => None,
         };
-        let reused = reused.get(key).copied().unwrap_or(0);
-        audited
-            .health
-            .insert(key.clone(), Health { reused, breached });
+        let health = Health {
+            reused: reused.get(key).copied().unwrap_or(0),
+            breached: times,
+        };
+        audited.health.insert(key.clone(), health);
     }
     audited
 }

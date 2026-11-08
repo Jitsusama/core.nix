@@ -1205,8 +1205,9 @@
   onepassword-manager-passes-no-secret-on = ''
     1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
     value and no password's history, reads a secret only for the one detail asked, says
-    1Password's categories and kinds in Passwords' own words, and names each entry's account from
-    op's own, for 1Password's link to it
+    1Password's categories and kinds in Passwords' own words, names each entry's account from
+    op's own, for 1Password's link to it, and reads each login's password alone from op's many
+    items for an audit
   '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
@@ -1226,9 +1227,9 @@
     clippy finds nothing in the portal's chooser or its tests
   '';
   passwords-completes-in-zsh = ''
-    passwords completes in zsh with its commands, each entry the daemon holds by its title, a held
-    entry's details by their labels, each password manager and --json, and no Tab asks a password
-    manager anything
+    passwords completes in zsh with its commands, audit among them, each entry the daemon holds by
+    its title, a held entry's details by their labels, each password manager and --json, and no
+    Tab asks a password manager anything
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -1236,9 +1237,14 @@
     only to the client that asked to see it or to the clipboard marked sensitive and cleared when
     its time is up, says a one-time code's period, gives a one-time code's detail as its code and
     never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    audits every password only when Joel asks, refusing otherwise and for a manager signed out,
+    counting the entries that share one and matching each hash's suffix against a stand-in Have I
+    Been Pwned's range, padding counting nothing, sending it five characters alone and saying no
+    secret in an answer or a log;
     and the passwords command sets each answer in columns under a header for a person and
     tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
-    finds an entry by its title and a detail by its label, and exits as its usage says
+    finds an entry by its title and a detail by its label, lists an audit's entries with a
+    problem, and exits as its usage says
   '';
   passwords-lists-1passwords-ssh-keys = ''
     passwords keys lists the keys an SSH agent holds at 1Password's socket, each by its type, size,
@@ -2198,8 +2204,9 @@
     says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,
-    each in the warning's role, and the foot counts a copy down to its clearing, or a one-time code
-    to its lapsing
+    each in the warning's role, its password reused or breached as its health once every password
+    is checked, its figures grouped, and nothing before, those needing attention by title, and the
+    foot counts a copy down to its clearing, or a one-time code to its lapsing
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
