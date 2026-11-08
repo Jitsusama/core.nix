@@ -1208,13 +1208,12 @@ panel self refresh only with `dcfeaturemask`'s 0x8, and even then only when
 the display firmware's capabilities name it, which only DCN 3.0 and later's
 setup reads. Renoir is DCN 2.1.
 
-### The Panel's Colours
+### The Panel's Saturation
 
 The panel (Sharp LQ135P1JX51) declares sRGB's own primaries in its EDID, so
-niri's `srgb-gamut` leaves it as it is and it shows sRGB accurately. Windows
-shows it through its "Enhanced" colour profile by default, more saturated,
-and beside that the accurate panel looked washed out. A machine wanting it
-so sets `jitsusama.niri.panelSaturation` (modules/niri's
+niri's `srgb-gamut` leaves it as it is and it shows sRGB accurately, which
+Joel finds washed out beside a vivid screen. A machine wanting it more
+colourful sets `jitsusama.niri.panelSaturation` (modules/niri's
 panel-saturation.patch), which saturates a laptop's own panel in the display
 engine and leaves a monitor beside it accurate.
 

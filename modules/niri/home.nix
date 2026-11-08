@@ -192,7 +192,7 @@ in
       {
         text = ''
           [Service]
-          Environment=NIRI_PANEL_SATURATION=${toString config.jitsusama.niri.panelSaturation}
+          Environment=NIRI_PANEL_SATURATION=${builtins.toJSON config.jitsusama.niri.panelSaturation}
         '';
       };
 
