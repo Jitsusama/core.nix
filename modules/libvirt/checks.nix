@@ -75,6 +75,7 @@
       cp ${./tests/machines.qml} machines.qml
       cp ${./Machines.js} Machines.js
       cp ${../quickshell/launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${../quickshell/launcher/Order.js} Order.js
       cp ${../quickshell/launcher/Numbers.js} Numbers.js
       cp ${../quickshell/launcher/Interfaces.js} Interfaces.js
       cp ${../quickshell/launcher/words.json} words.json
