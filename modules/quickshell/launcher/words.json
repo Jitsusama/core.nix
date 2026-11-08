@@ -6590,7 +6590,7 @@
     {
       "id": "wifi:dcm",
       "in": "wifi:speed",
-      "name": "Dual Carrier"
+      "name": "DCM"
     },
     {
       "id": "wifi:width",

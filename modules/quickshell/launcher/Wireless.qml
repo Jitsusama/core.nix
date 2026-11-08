@@ -12,7 +12,7 @@
 // a part named first: the card's Signal (a spark of it while shown, each
 // antenna, the beacons' timing and the transmit power a step in), its Speed
 // (each way, what the link is expected to carry, the Wi-Fi generation, and
-// the coding, streams, guard interval, dual carrier and width each way, the
+// the coding, streams, guard interval, DCM and width each way, the
 // channel, how its frames are framed and wait for the air, and Retries a
 // step in),
 // its Traffic each way since it connected (the packets, and how long
