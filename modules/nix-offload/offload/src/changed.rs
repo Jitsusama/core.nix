@@ -12,11 +12,15 @@
 //! tree's dev shell would have named.
 //!
 //! Where: the lent builder while one stands, which evaluates and builds
-//! in one place. Otherwise the first evaluator that answers and takes the
+//! in one place, or the second lent builder when the first doesn't take
+//! it, and while a lender runs, a builder waited for once neither answers.
+//! With no lender running, the first evaluator that answers and takes the
 //! repository's owner, named in `nix-offload/evaluators` under XDG's
 //! config folder, which only
 //! evaluates, and the checks it names are built by `there` as any build
-//! is. With neither, it exits [`NOT_TAKEN`] and changed-checks runs here.
+//! is. With none, it exits [`UNBUILT`] while a lender runs, so nothing is
+//! evaluated here unasked, and otherwise [`NOT_TAKEN`], and changed-checks
+//! runs here.
 //!
 //! A run that passed at a commit is kept with what it named
 //! (`passed.rs`), since a builder lent since evaluated both sides again,
