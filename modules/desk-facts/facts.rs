@@ -771,13 +771,18 @@ fn channels(count: &str) -> String {
     }
 }
 
-/// Every way a stream can run, each once: "48 kHz, 16 bit, stereo".
+/// Two figures of one value, set apart as the launcher sets a run apart,
+/// never with a comma beside its dots (VKCF3Z, 2026-11-07).
+const APART: &str = " \u{b7} ";
+
+/// Every way a stream can run, each once: "48 kHz \u{b7} 16 bit \u{b7}
+/// stereo".
 fn offered(settings: &[Setting]) -> String {
     let mut said: Vec<String> = Vec::new();
     for setting in settings {
         let rates: Vec<String> = setting.rates.split(',').map(kilohertz).collect();
         let each = format!(
-            "{}, {}, {}",
+            "{}{APART}{}{APART}{}",
             rates.join(" or "),
             bits(&setting.format),
             channels(&setting.channels)
@@ -790,8 +795,10 @@ fn offered(settings: &[Setting]) -> String {
 }
 
 /// What a running stream's `hw_params` say it runs at: its period and
-/// buffer in frames, and the time each holds at its rate, which is the
-/// card's own share of the delay.
+/// buffer, each the time it holds at its rate, which is the card's own
+/// share of the delay, then in frames: "48 kHz \u{b7} 32 bit \u{b7} period
+/// 21.3 ms (1024) \u{b7} buffer 682.7 ms (32768)". Where the rate isn't
+/// known, only the frames are said.
 fn running(hw_params: &str) -> String {
     let field = |name: &str| {
         hw_params
@@ -802,17 +809,21 @@ fn running(hw_params: &str) -> String {
     let (Some(format), Some(rate)) = (field("format"), field("rate")) else {
         return String::new();
     };
-    let mut said = format!("{}, {}", kilohertz(&rate), bits(&format));
+    let mut said = format!("{}{APART}{}", kilohertz(&rate), bits(&format));
     let hertz = rate.parse::<u32>().ok().filter(|hertz| *hertz > 0);
     for (name, size) in [
         ("period", field("period_size")),
         ("buffer", field("buffer_size")),
     ] {
         let Some(size) = size else { continue };
-        let _ = write!(said, ", {name} {size}");
-        if let (Some(hertz), Ok(frames)) = (hertz, size.parse::<u32>()) {
-            let _ = write!(said, " ({})", milliseconds(frames, hertz));
-        }
+        let _ = match (hertz, size.parse::<u32>()) {
+            (Some(hertz), Ok(frames)) => write!(
+                said,
+                "{APART}{name} {} ({size})",
+                milliseconds(frames, hertz)
+            ),
+            _ => write!(said, "{APART}{name} {size}"),
+        };
     }
     said
 }
@@ -2573,14 +2584,14 @@ Capture:
         assert_eq!(playback.clock, "adaptive");
         assert_eq!(
             offered(&playback.settings),
-            "44.1 kHz or 48 kHz, 24 bit, stereo"
+            "44.1 kHz or 48 kHz \u{b7} 24 bit \u{b7} stereo"
         );
         assert!(capture.running);
         assert_eq!(capture.momentary, "48000 Hz");
         assert_eq!(capture.clock, "asynchronous");
         assert_eq!(
             offered(&capture.settings),
-            "44.1 kHz or 48 kHz, 24 bit, mono"
+            "44.1 kHz or 48 kHz \u{b7} 24 bit \u{b7} mono"
         );
     }
 
@@ -2589,7 +2600,12 @@ Capture:
         let hw = "access: MMAP_INTERLEAVED\nformat: S24_3LE\nsubformat: STD\nchannels: 1\nrate: 48000 (48000/1)\nperiod_size: 256\nbuffer_size: 16384\n";
         assert_eq!(
             running(hw),
-            "48 kHz, 24 bit, period 256 (5.3 ms), buffer 16384 (341.3 ms)"
+            "48 kHz \u{b7} 24 bit \u{b7} period 5.3 ms (256) \u{b7} buffer 341.3 ms (16384)"
+        );
+        // Without a rate, the frames are all there is to say.
+        assert_eq!(
+            running("format: S16_LE\nrate: 0\nperiod_size: 256\n"),
+            "0 kHz \u{b7} 16 bit \u{b7} period 256"
         );
         assert_eq!(milliseconds(1024, 44_100), "23.2 ms");
         assert_eq!(milliseconds(0, 48_000), "0.0 ms");
@@ -2600,10 +2616,16 @@ Capture:
     fn a_direction_says_what_plays_first_and_only_while_it_does() {
         let (playback, capture) = streams(MV7);
         let speed = speed("12\n");
-        let recording = direction(&capture, &speed, "release 2.03", "48 kHz, 24 bit", false);
+        let recording = direction(
+            &capture,
+            &speed,
+            "release 2.03",
+            "48 kHz \u{b7} 24 bit",
+            false,
+        );
         assert_eq!(
             recording[0],
-            ("recording".to_owned(), "48 kHz, 24 bit".to_owned())
+            ("recording".to_owned(), "48 kHz \u{b7} 24 bit".to_owned())
         );
         assert_eq!(named(&recording, "measured rate"), Some("48000 Hz"));
         let idle = direction(&playback, &speed, "release 2.03", "", true);
@@ -3119,7 +3141,7 @@ Playback:
         assert_eq!(
             pairs(&found[1].1),
             [
-                "playing: 48 kHz, 32 bit, period 1024 (21.3 ms), buffer 32768 (682.7 ms)",
+                "playing: 48 kHz \u{b7} 32 bit \u{b7} period 21.3 ms (1024) \u{b7} buffer 682.7 ms (32768)",
                 "amplifiers: 4 \u{d7} Cirrus Logic CS35L57"
             ]
         );

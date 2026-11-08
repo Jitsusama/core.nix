@@ -121,7 +121,7 @@ def test_a_device_not_on_usb_says_what_it_plays_at_while_it_plays(desk: Desk) ->
     )
     desk.machine.wait_until_succeeds(f"grep -q '\"playing\"' {FACTS}", timeout=HEARING)
     facts = {fact["name"]: fact["value"] for fact in desk.said()["Dummy,0:out"]}
-    assert facts["playing"].startswith("48 kHz, 16 bit, period ")
+    assert facts["playing"].startswith("48 kHz \u00b7 16 bit \u00b7 period "), facts
     desk.machine.succeed("systemctl stop playing")
     desk.machine.wait_until_fails(f"grep -q '\"playing\"' {FACTS}", timeout=HEARING)
 
