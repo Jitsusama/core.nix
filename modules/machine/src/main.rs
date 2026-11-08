@@ -20,11 +20,12 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
+use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -47,6 +48,13 @@ const FRESH: Duration = Duration::from_millis(1500);
 const LEEWAY: Duration = Duration::from_millis(50);
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
+/// How many lines a connection may have waiting to be written before
+/// it's taken as no longer reading and hung up on, so one stuck client
+/// can't grow the daemon without end.
+const QUEUED: usize = 256;
+/// How long to wait after a connection couldn't be taken, as when the
+/// process is out of descriptors, so the loop doesn't spin a core.
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// One watch a client holds.
 struct Watch {
@@ -54,7 +62,9 @@ struct Watch {
     id: Value,
     kinds: Vec<String>,
     keys: Option<Vec<String>>,
-    told: Sender<String>,
+    told: SyncSender<String>,
+    /// Its connection, to hang up on once it stops reading.
+    stream: Arc<UnixStream>,
 }
 
 impl Watch {
@@ -200,7 +210,10 @@ fn main() {
         std::thread::spawn(move || health_loop(&shared));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
-        let Ok(stream) = stream else { continue };
+        let Ok(stream) = stream else {
+            std::thread::sleep(ACCEPT_BACKOFF);
+            continue;
+        };
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
@@ -299,6 +312,9 @@ fn read(shared: &Shared, kinds: &HashSet<String>) {
     if changed.is_empty() && gone.is_empty() {
         return;
     }
+    // A connection whose lines aren't being read is hung up on, and its
+    // watches dropped, rather than told less than it asked for.
+    let mut stuck = HashSet::new();
     for watch in &daemon.watches {
         let records: Vec<&Value> = changed
             .iter()
@@ -312,7 +328,15 @@ fn read(shared: &Shared, kinds: &HashSet<String>) {
         if !went.is_empty() {
             told["gone"] = json!(went);
         }
-        let _ = watch.told.send(told.to_string());
+        if watch.told.try_send(told.to_string()).is_err() {
+            stuck.insert(watch.connection);
+            let _ = watch.stream.shutdown(Shutdown::Both);
+        }
+    }
+    if !stuck.is_empty() {
+        daemon
+            .watches
+            .retain(|watch| !stuck.contains(&watch.connection));
     }
 }
 
@@ -560,7 +584,10 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     let Ok(reading) = stream.try_clone() else {
         return;
     };
-    let (told, lines) = mpsc::channel::<String>();
+    let Ok(hangup) = stream.try_clone().map(Arc::new) else {
+        return;
+    };
+    let (told, lines) = mpsc::sync_channel::<String>(QUEUED);
     let mut writing = stream;
     std::thread::spawn(move || {
         for line in lines {
@@ -571,7 +598,7 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let answer = answer(shared, ask(&line), connection, &told);
+        let answer = answer(shared, ask(&line), connection, &told, &hangup);
         if told.send(answer.to_string()).is_err() {
             break;
         }
@@ -584,14 +611,25 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
 /// The records held of these kinds or keys, read first where they aren't
 /// fresh, in the daemon's order: by kind, then by key.
 fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
-    let wanted: HashSet<String> = match keys {
+    refresh(shared, kinds, keys);
+    held(&lock(&shared.daemon), kinds, keys)
+}
+
+/// The kinds these kinds or keys are of.
+fn wanted_kinds(kinds: &[String], keys: Option<&[String]>) -> HashSet<String> {
+    match keys {
         Some(keys) => keys
             .iter()
             .filter_map(|key| kind_of(key))
             .map(str::to_owned)
             .collect(),
         None => kinds.iter().cloned().collect(),
-    };
+    }
+}
+
+/// Reads the kinds of these kinds or keys that weren't read lately.
+fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
+    let wanted = wanted_kinds(kinds, keys);
     let stale: HashSet<String> = {
         let daemon = lock(&shared.daemon);
         wanted
@@ -608,7 +646,11 @@ fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Va
     if !stale.is_empty() {
         read(shared, &stale);
     }
-    let daemon = lock(&shared.daemon);
+}
+
+/// The records held of these kinds or keys, in the daemon's order.
+fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
+    let wanted = wanted_kinds(kinds, keys);
     let mut found: Vec<Value> = match keys {
         Some(keys) => keys
             .iter()
@@ -636,7 +678,13 @@ fn sources(daemon: &Daemon) -> Value {
 }
 
 /// What one ask is answered with.
-fn answer(shared: &Arc<Shared>, asked: Ask, connection: u64, told: &Sender<String>) -> Value {
+fn answer(
+    shared: &Arc<Shared>,
+    asked: Ask,
+    connection: u64,
+    told: &SyncSender<String>,
+    hangup: &Arc<UnixStream>,
+) -> Value {
     match asked {
         Ask::Hello { id } => {
             let daemon = lock(&shared.daemon);
@@ -650,8 +698,11 @@ fn answer(shared: &Arc<Shared>, asked: Ask, connection: u64, told: &Sender<Strin
         }
         Ask::List { id, kinds } => json!({"id": id, "records": records(shared, &kinds, None)}),
         Ask::Watch { id, kinds, keys } => {
-            let held = records(shared, &kinds, keys.as_deref());
+            refresh(shared, &kinds, keys.as_deref());
+            // What it's told first is taken under the lock that holds the
+            // watch, so a read between them is either in it or told after.
             let mut daemon = lock(&shared.daemon);
+            let snapshot = held(&daemon, &kinds, keys.as_deref());
             // A watch asked again by its id replaces the one before.
             daemon
                 .watches
@@ -662,9 +713,10 @@ fn answer(shared: &Arc<Shared>, asked: Ask, connection: u64, told: &Sender<Strin
                 kinds,
                 keys,
                 told: told.clone(),
+                stream: Arc::clone(hangup),
             });
             shared.woken.notify_all();
-            json!({"id": id, "records": held})
+            json!({"id": id, "records": snapshot})
         }
         Ask::Unwatch { id } => {
             let mut daemon = lock(&shared.daemon);
