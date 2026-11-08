@@ -4,7 +4,10 @@
 //! them, answered over SOCKET in the shell's daemon interface (lib.rs).
 //! A `watch` says every timer, then each change as it happens; `start`,
 //! `pause`, `resume`, `again`, `add` and `end` change one, each answered
-//! with the timer as it now stands, or gone. Every change is kept at KEPT
+//! with the timer as it now stands, or gone. The one stopwatch is a record
+//! of its own kind, `stopwatch`, which `run`, `stop`, `lap` and `reset`
+//! change; it rings nothing, so only what's kept and told is its own.
+//! A watch hears the kinds it asked for. Every change is kept at KEPT
 //! at once, so a restart of the shell, of this daemon or of the machine
 //! loses none.
 //!
@@ -38,7 +41,8 @@ use rustix::time::{
 };
 use serde_json::{Value, json};
 use timers::{
-    Ask, Held, KIND, Notice, Refusal, Standing, Timer, VERSION, Words, ask, error, now, unsaid,
+    Ask, Held, KIND, Notice, Refusal, STOPWATCH, Standing, Stopwatch, Timer, VERSION, Words, ask,
+    error, now, unsaid, watched,
 };
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::Value as Variant;
@@ -68,6 +72,8 @@ const DISMISSED: u32 = 2;
 struct Watch {
     connection: u64,
     id: Value,
+    /// The kinds it asked for, every kind when none.
+    kinds: Vec<String>,
     told: Sender<String>,
 }
 
@@ -233,7 +239,21 @@ fn changes(shared: &Shared, daemon: &mut Daemon, changed: &[Value], gone: &[Stri
         );
     }
     daemon.watches.retain(|watch| {
-        let line = json!({"id": watch.id, "changed": changed, "gone": gone}).to_string();
+        let kind_of = |record: &&Value| record["kind"].as_str().unwrap_or(KIND).to_owned();
+        let theirs: Vec<&Value> = changed
+            .iter()
+            .filter(|record| watched(&watch.kinds, &kind_of(record)))
+            .collect();
+        // Only timers go, so only a watch of timers hears it.
+        let gone: &[String] = if watched(&watch.kinds, KIND) {
+            gone
+        } else {
+            &[]
+        };
+        if theirs.is_empty() && gone.is_empty() {
+            return true;
+        }
+        let line = json!({"id": watch.id, "changed": theirs, "gone": gone}).to_string();
         watch.told.send(line).is_ok()
     });
     let _ = rustix::io::write(&shared.wake, &1u64.to_ne_bytes());
@@ -594,17 +614,24 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             "id": id, "version": VERSION, "domain": "timers", "state": "answering",
             "since": daemon.since, "sources": {},
         }),
-        Ask::Watch { id } => {
+        Ask::Watch { id, kinds } => {
             // A watch asked again by its id replaces the one before.
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            let mut records: Vec<Value> = Vec::new();
+            if watched(&kinds, KIND) {
+                records.extend(daemon.held.timers.iter().map(Timer::json));
+            }
+            if watched(&kinds, STOPWATCH) {
+                records.push(daemon.held.stopwatch.json());
+            }
             daemon.watches.push(Watch {
                 connection,
                 id: id.clone(),
+                kinds,
                 told: told.clone(),
             });
-            let records: Vec<Value> = daemon.held.timers.iter().map(Timer::json).collect();
             json!({"id": id, "records": records})
         }
         Ask::Unwatch { id } => {
@@ -616,8 +643,13 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         Ask::Get { id, keys } => {
             let records: Vec<Value> = keys
                 .iter()
-                .filter_map(|key| daemon.held.get(key))
-                .map(Timer::json)
+                .filter_map(|key| {
+                    if key == STOPWATCH {
+                        Some(daemon.held.stopwatch.json())
+                    } else {
+                        daemon.held.get(key).map(Timer::json)
+                    }
+                })
                 .collect();
             json!({"id": id, "records": records})
         }
@@ -654,17 +686,33 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             }
             Err(refusal) => refusal.json(&id),
         },
+        Ask::Run { id } => {
+            let ran = daemon.held.stopwatch.run(at).map(Stopwatch::json);
+            changed(shared, &mut daemon, &id, ran)
+        }
+        Ask::Stop { id } => {
+            let stopped = daemon.held.stopwatch.stop(at).map(Stopwatch::json);
+            changed(shared, &mut daemon, &id, stopped)
+        }
+        Ask::Lap { id } => {
+            let lapped = daemon.held.stopwatch.lap(at).map(Stopwatch::json);
+            changed(shared, &mut daemon, &id, lapped)
+        }
+        Ask::Reset { id } => {
+            let reset = daemon.held.stopwatch.reset().json();
+            changed(shared, &mut daemon, &id, Ok(reset))
+        }
         Ask::UnknownKind { id, kind } => error(
             &id,
             "unknown-kind",
-            &format!("this daemon keeps only {KIND}, not {kind}"),
+            &format!("this daemon keeps only {KIND} and {STOPWATCH}, not {kind}"),
         ),
         Ask::Malformed { id, why } => error(&id, "malformed", why),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?}")),
     }
 }
 
-/// The answer to an ask that changed one timer, told to every watch too,
+/// The answer to an ask that changed one record, told to every watch too,
 /// or why it changed nothing.
 fn changed(
     shared: &Shared,
