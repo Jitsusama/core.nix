@@ -78,7 +78,7 @@ Provider {
             // name, which already holds both, over both again (VKCF3Z,
             // 2026-11-02). With no body it would only repeat the name, so
             // there's no drawer (Launcher.qml's drawerAdds). Over them,
-            // who sent it and when. Its words read in the face its card
+            // who sent it and what kind it is. Its words read in the face its card
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03). Its sender is a name from the world,
             // so the eyebrow is set as it's written (VKCF3Z, 2026-11-07).
@@ -86,7 +86,7 @@ Provider {
             // markup or a link, and plain otherwise, so a long log keeps its
             // own lines to scroll by; its own picture while it has one; and
             // how it was sent and how it left, as facts.
-            drawer: { eyebrow: provider.whoAndWhen(notice), eyebrowNames: true,
+            drawer: { eyebrow: provider.fromAndKind(notice), eyebrowNames: true,
                 title: notice.summary,
                 body: provider.marked(notice) ? notice.styled : notice.body,
                 styled: provider.marked(notice),
@@ -148,40 +148,46 @@ Provider {
         return typeof notice.styled === "string" && /<(?:a|b|i|u)[ >]/.test(notice.styled);
     }
 
-    // What its drawer says of a notice beyond its words: how it left the
-    // screen and when, or that it's still open; the urgency its sender
-    // asked; and what kind of notice it says it is, where it says. What the
-    // spec gives besides is left out: a sound, which the desktop never
-    // plays for a sender; the icons of its actions, since its acts wear the
-    // desktop's marks; and how long it asked to stay, which its leaving
-    // already tells.
+    // What its drawer says of a notice beyond its words: when it arrived,
+    // how it left the screen and when, or that it's still open; and the
+    // urgency its sender asked (Notice.js). What the spec gives besides is
+    // left out: a sound, which the desktop never plays for a sender; the
+    // icons of its actions, since its acts wear the desktop's marks; and
+    // how long it asked to stay, which its leaving already tells.
     function facts(notice) {
-        const out = [];
-        const at = notice.leftAt ? Qt.formatDateTime(new Date(notice.leftAt), "HH:mm") : "";
         const how = notice.left ?? (notice.id in Notices.resting ? "resting"
             : notice.id in Notices.live ? "shown" : "");
-        if (how !== "")
-            out.push({ label: Words.name("notices:left"),
-                value: (Words.of("notices:left", how).said ?? "").replace("{at}", at) });
-        if (notice.urgency)
-            out.push({ label: Words.name("notices:urgency"),
-                value: Words.name("notices:urgency", notice.urgency) });
-        // Its kind is no fact: it comes as the eyebrow's last word once its
-        // words are named, never the spec's raw category (VKCF3Z,
-        // 2026-11-08), so the record keeps it until then.
-        return out;
+        return Notice.facts(
+            { label: Words.name("notices:arrived"), at: clock(notice.at) },
+            { label: Words.name("notices:left"),
+                said: how === "" ? "" : Words.of("notices:left", how).said ?? "",
+                at: notice.leftAt ? clock(notice.leftAt) : "" },
+            { label: Words.name("notices:urgency"),
+                said: notice.urgency ? Words.of("notices:urgency", notice.urgency).said ?? ""
+                    : "" });
     }
 
-    // Who sent a notice and when, as its drawer's eyebrow says it: the
-    // sender by the name its card signs it with (Notices.qml), so the two
-    // never differ (VKCF3Z, 2026-11-03), and the time alone today, and its
-    // day before.
-    function whoAndWhen(notice) {
-        const when = new Date(notice.at);
+    // A time as its drawer writes it: alone today, with its day before.
+    function clock(at) {
+        if (!at)
+            return "";
+        const when = new Date(at);
         const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
+    }
+
+    // Who sent a notice and what kind it is, as its drawer's eyebrow says
+    // it: the sender by the name its card signs it with (Notices.qml), so
+    // the two never differ (VKCF3Z, 2026-11-03), and the kind its category
+    // names, never a time, which Arrived says (VKCF3Z, 2026-11-08).
+    function fromAndKind(notice) {
+        const said = Words.of("notices").said;
+        const kinds = {};
+        for (const [type, state] of Object.entries(Words.of("notices:kind").states ?? {}))
+            kinds[type] = state.said;
         const who = notice.app === "" ? "" : Notices.sender(notice.app).name;
-        return [who, Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm")]
-            .filter(part => part !== "").join(" \u00b7 ");
+        return Notice.eyebrow(who, Notice.kind(notice.category,
+            { kinds: kinds, failed: said.failed, bounced: said.bounced }), said.from);
     }
 
     // What can be done to a notice, the acts its card lists too, in the

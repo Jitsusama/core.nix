@@ -5949,7 +5949,10 @@
       "said": {
         "no-link": "no link here",
         "one-link": "only 1 link here",
-        "links": "only {count} links here"
+        "links": "only {count} links here",
+        "from": "from {who}",
+        "failed": "{kind} failed",
+        "bounced": "mail bounced"
       }
     },
     {
@@ -6075,7 +6078,7 @@
           "said": "taken back by its sender at {at}"
         },
         "resting": {
-          "said": "off the screen, still open"
+          "said": "off the screen \u00b7 still open"
         },
         "shown": {
           "said": "still on the screen"
@@ -6088,13 +6091,43 @@
       "name": "Urgency",
       "states": {
         "low": {
-          "name": "Low"
+          "said": "low"
         },
         "normal": {
-          "name": "Normal"
+          "said": "normal"
         },
         "critical": {
-          "name": "Critical"
+          "said": "critical"
+        }
+      }
+    },
+    {
+      "id": "notices:arrived",
+      "in": "notices",
+      "name": "Arrived"
+    },
+    {
+      "id": "notices:kind",
+      "in": "notices",
+      "name": "Kind",
+      "states": {
+        "im": {
+          "said": "message"
+        },
+        "email": {
+          "said": "mail"
+        },
+        "device": {
+          "said": "device"
+        },
+        "network": {
+          "said": "network"
+        },
+        "presence": {
+          "said": "status"
+        },
+        "transfer": {
+          "said": "transfer"
         }
       }
     },
