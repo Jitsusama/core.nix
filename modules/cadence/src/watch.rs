@@ -24,8 +24,11 @@ pub const NET_BEHIND_H: f64 = 3.0;
 /// fixed forward or reverted by hand, and on 6 November a revert that
 /// conflicted left it so with only a log line said.
 pub const HELD_UNREVERTED_MIN: i64 = 10;
-/// The card is overdue when the watcher sent none this long, in seconds.
-pub const CARD_EVERY: i64 = 75 * 60;
+/// The card is overdue when neither the watcher nor cadence sent one this
+/// long, in seconds; cadence then sends its own, since asking the watcher
+/// waits on that session's turn, and on 7 November three cards in a row
+/// went late that way.
+pub const CARD_EVERY: i64 = 65 * 60;
 /// How long the watcher has to answer before the steward is asked.
 pub const ANSWER_WITHIN: i64 = 20 * 60;
 /// How long the watcher may be gone before the steward is asked.
@@ -219,6 +222,9 @@ pub struct State {
     pub escalated: BTreeMap<String, i64>,
     #[serde(default)]
     pub down_since: Option<i64>,
+    /// When cadence last sent the steward the card itself.
+    #[serde(default)]
+    pub carded: Option<i64>,
 }
 
 /// Who a question goes to.
@@ -315,19 +321,21 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
             format!("Cadence alarm: {}.", breach.text),
         );
     }
-    if s.last_card.is_none_or(|at| s.now - at > CARD_EVERY) {
-        ask(
-            state,
-            format!("card:{}", s.now / 3600),
-            "The hourly card is overdue; send it to the steward.".to_owned(),
-        );
-    }
 
     let keep = |at: &i64| s.now - *at < REMEMBER;
     state.seen.retain(|_, at| keep(at));
     state.escalated.retain(|_, at| keep(at));
     state.asked.retain(|_, q| keep(&q.at));
     out
+}
+
+/// Whether the card is overdue, so cadence sends the steward its own: no
+/// card from the watcher or from cadence within [`CARD_EVERY`].
+#[must_use]
+pub fn card_due(s: &Snapshot, state: &State) -> bool {
+    s.last_card
+        .max(state.carded)
+        .is_none_or(|at| s.now - at > CARD_EVERY)
 }
 
 impl State {
@@ -497,11 +505,19 @@ mod tests {
     }
 
     #[test]
-    fn an_overdue_card_is_asked_for() {
+    fn an_overdue_card_is_sent_by_cadence_once_an_hour_rather_than_asked_for() {
         let mut s = calm(100_000);
         s.last_card = Some(100_000 - CARD_EVERY - 1);
-        let asked = tick(&s, &mut State::default());
-        assert!(asked[0].text.contains("card is overdue"));
+        let mut state = State::default();
+        assert!(tick(&s, &mut state).is_empty(), "the watcher isn't asked");
+        assert!(card_due(&s, &state), "the watcher's card is late");
+        state.carded = Some(s.now);
+        s.now += 5 * 60;
+        assert!(!card_due(&s, &state), "cadence sent one this hour");
+        s.now += CARD_EVERY;
+        assert!(card_due(&s, &state), "and none since");
+        s.last_card = Some(s.now - 60);
+        assert!(!card_due(&s, &state), "the watcher's own card counts");
     }
 
     #[test]
