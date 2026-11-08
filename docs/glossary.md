@@ -333,6 +333,7 @@ off.
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
 | profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
+| graph | how the machine's sound joins each device to each program playing or recording, where a device's Graph ID says which it is and its Graph Format the audio it moves | | PipeWire's graph, its node id |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
