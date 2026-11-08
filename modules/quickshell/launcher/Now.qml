@@ -1051,6 +1051,17 @@ Provider {
     readonly property var unreadNotices: Lately.held({ notices: Notices.history, mail: [],
         messages: null }).desktop
 
+    // Desktop and History are For You's, which is Now's, so a notice
+    // forgotten, brought back or read is said again in them: the launcher
+    // makes a place again only when what it was entered from changes.
+    Connections {
+        target: Notices
+
+        function onHistoryChanged() {
+            provider.changed();
+        }
+    }
+
     function latelyRows(now) {
         const holding = { mail: [], slack: [], desktop: unreadNotices.map(notice => ({
             who: notice.app, at: notice.at })) };
