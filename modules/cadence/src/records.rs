@@ -124,12 +124,16 @@ pub struct Follower {
     /// Whether its newest answer put a switch off for a meeting or a call,
     /// a wait chosen rather than a fault.
     pub meeting: bool,
+    /// When the first of the updates failing since the last that ended
+    /// well failed, and why the newest did, while none has ended well.
+    pub failed: Option<(i64, String)>,
 }
 
 #[derive(Deserialize)]
 struct Step {
     step: Option<String>,
     followed: Option<Followed>,
+    why: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -172,6 +176,14 @@ pub fn parse_follower(journal: &str) -> Follower {
         let Ok(step) = serde_json::from_str::<Step>(&rest[brace..]) else {
             continue;
         };
+        match step.step.as_deref() {
+            Some("done" | "unchanged") => follower.failed = None,
+            Some("failed") => {
+                let first = follower.failed.as_ref().map_or(at, |(first, _)| *first);
+                follower.failed = Some((first, step.why.clone().unwrap_or_default()));
+            }
+            _ => {}
+        }
         let ended = matches!(
             step.step.as_deref(),
             Some("done" | "unchanged" | "failed" | "refused")
@@ -411,6 +423,20 @@ mod tests {
     #[test]
     fn an_ask_with_no_end_yet_is_going() {
         assert_eq!(parse_follower(JOURNAL).going, Some(400));
+    }
+
+    #[test]
+    fn failures_in_a_row_count_from_the_first_until_one_ends_well() {
+        let failed = |at: u32, why: &str| {
+            format!("{at}.0 h u[1]: {{\"step\":\"failed\",\"commit\":\"ab\",\"why\":\"{why}\"}}\n")
+        };
+        let mut journal = format!("{}{}", failed(10, "no builder"), failed(20, "dropped"));
+        assert_eq!(
+            parse_follower(&journal).failed,
+            Some((10, "dropped".to_owned()))
+        );
+        journal.push_str("30.0 h u[1]: {\"step\":\"done\",\"commit\":\"ab\"}\n");
+        assert_eq!(parse_follower(&journal).failed, None);
     }
 
     #[test]
