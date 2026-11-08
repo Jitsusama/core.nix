@@ -2,8 +2,10 @@
 //!
 //! How this machine is doing, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (interface.rs):
-//! the processor, the memory, each disk, this boot and the programs using
-//! the machine most, each a record whose figures are the kernel's own
+//! the processor, the memory, each disk, this boot, the programs using
+//! the machine most, its sensors, thermal zones and cooling, each power
+//! supply, how it sleeps and its firmware, each a record whose figures are
+//! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
 //!
@@ -14,9 +16,12 @@
 //! so a figure stands for now as soon as it can. Each read tells every
 //! watch the records it changed, all in one line. The programs are read
 //! only while someone watches `using`, or a process's tree by its key,
-//! since reading every process costs the most. Each disk's health is asked of `UDisks` once a minute while
-//! disks are watched, on a thread of its own, so a slow bus never holds a
-//! read back.
+//! since reading every process costs the most. What the system bus's
+//! services say is asked each on a thread of its own, so a slow bus never
+//! holds a read back, and only while its kind is watched: each disk's
+//! health of `UDisks` once a minute, the battery's times of `UPower` every
+//! five seconds, idling and what holds sleep off of logind every two, and
+//! the firmware of fwupd once a minute and whenever it says it changed.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -30,7 +35,10 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
-use machine::{Root, boot, clock_ms, disk, memory, now_ms, processor, tree, using};
+use machine::{
+    Root, boot, clock_ms, disk, firmware, heat, memory, now_ms, processor, rounded, sleep, supply,
+    tree, using,
+};
 use serde_json::{Value, json};
 
 /// How often what's watched is read.
@@ -42,6 +50,14 @@ const HEALTH_EVERY: Duration = Duration::from_secs(60);
 /// The longest a call to a bus service may take, so one that hangs can't
 /// hold its thread.
 const BUS_WAIT: Duration = Duration::from_secs(10);
+/// How often `UPower` is asked while supplies are watched; it works its
+/// times out afresh no more often than this.
+const UPOWER_EVERY: Duration = Duration::from_secs(5);
+/// How often fwupd is asked while firmware is watched, unless it says
+/// something changed first.
+const FIRMWARE_EVERY: Duration = Duration::from_secs(60);
+/// How often logind is asked while sleep is watched.
+const LOGIND_EVERY: Duration = Duration::from_secs(2);
 /// What a get answers from what's held, rather than reading again.
 const FRESH: Duration = Duration::from_millis(1500);
 /// How near its time a kind is read with others due now.
@@ -86,17 +102,20 @@ struct Reader {
     disks: Option<disk::Counters>,
     disk_sensors: disk::Kept,
     programs: Option<using::Counters>,
+    /// The sensors' labels and limits, read once.
+    sensors: heat::Kept,
 }
 
 impl Reader {
     /// Reads these kinds, as rates from their last read, the trees of
-    /// these pids among them.
+    /// these pids among them, with what the buses last said.
     fn read(
         &mut self,
         kinds: &HashSet<String>,
         trees: &BTreeSet<u32>,
-        health: &BTreeMap<String, Value>,
+        buses: &Buses,
     ) -> Vec<Value> {
+        let health = &buses.health;
         let at = clock_ms();
         let mut records = Vec::new();
         let wants = |kind: &str| kinds.contains(kind);
@@ -139,6 +158,27 @@ impl Reader {
         if wants("boot") {
             records.push(boot::record(&self.root, boot::asleep_s()));
         }
+        if wants("sensor") {
+            records.extend(heat::sensors(&self.root, &mut self.sensors));
+        }
+        if wants("zone") {
+            records.extend(heat::zones(&self.root));
+        }
+        if wants("cooling") {
+            records.extend(heat::cooling(&self.root));
+        }
+        if wants("firmware") {
+            records.extend(buses.firmware.iter().cloned());
+        }
+        if wants("sleep") {
+            records.push(sleep::record(&self.root, &buses.logind));
+        }
+        if wants("supply") {
+            for name in supply::supplies(&self.root) {
+                let said = buses.upower.get(&name).cloned().unwrap_or(Value::Null);
+                records.push(supply::record(&self.root, &name, &said));
+            }
+        }
         // The programs and the trees share one read of every process, and
         // each measures its rates from whichever read came last.
         let trees_wanted = wants("tree") && !trees.is_empty();
@@ -161,6 +201,15 @@ impl Reader {
     }
 }
 
+/// What the system bus's services last said, for a read to put in its
+/// records.
+struct Buses {
+    health: BTreeMap<String, Value>,
+    upower: BTreeMap<String, Value>,
+    logind: Value,
+    firmware: Vec<Value>,
+}
+
 /// Everything the threads share.
 struct Daemon {
     held: BTreeMap<String, Value>,
@@ -171,6 +220,16 @@ struct Daemon {
     health: BTreeMap<String, Value>,
     /// How asking `UDisks` stands: "answering", or "refused" and why.
     udisks: Value,
+    /// What `UPower` last worked out of each supply, by its name.
+    upower: BTreeMap<String, Value>,
+    /// What logind last said of idling and sleep.
+    logind: Value,
+    /// fwupd's records, as it last said them.
+    firmware: Vec<Value>,
+    /// The kinds whose source said they changed, to be asked again now.
+    hurried: HashSet<String>,
+    /// When the last sleep began and ended, as logind's signal said.
+    slept: Arc<Mutex<Value>>,
     took: VecDeque<u64>,
     since: u64,
 }
@@ -205,6 +264,11 @@ fn main() {
             watches: Vec::new(),
             health: BTreeMap::new(),
             udisks: json!({"state": "starting"}),
+            upower: BTreeMap::new(),
+            logind: Value::Null,
+            firmware: Vec::new(),
+            hurried: HashSet::new(),
+            slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
             since: now_ms(),
         }),
@@ -217,6 +281,7 @@ fn main() {
             disks: None,
             disk_sensors: disk::Kept::default(),
             programs: None,
+            sensors: heat::Kept::default(),
         }),
         woken: Condvar::new(),
     });
@@ -227,6 +292,18 @@ fn main() {
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || health_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || upower_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || logind_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || firmware_loop(&shared));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -302,14 +379,20 @@ fn watched_trees(daemon: &Daemon) -> BTreeSet<u32> {
 /// Reads these kinds now, the trees watched and those `asked` names among
 /// them, keeps what changed, and tells each watch of it.
 fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
-    let (health, trees) = {
+    let (buses, trees) = {
         let daemon = lock(&shared.daemon);
         let mut trees = watched_trees(&daemon);
         trees.extend(asked.iter().filter_map(|key| tree::pid_of(key)));
-        (daemon.health.clone(), trees)
+        let buses = Buses {
+            health: daemon.health.clone(),
+            upower: daemon.upower.clone(),
+            logind: daemon.logind.clone(),
+            firmware: daemon.firmware.clone(),
+        };
+        (buses, trees)
     };
     let started = Instant::now();
-    let records = lock(&shared.reader).read(kinds, &trees, &health);
+    let records = lock(&shared.reader).read(kinds, &trees, &buses);
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);
     daemon.took.push_back(took);
@@ -432,6 +515,295 @@ fn watch_loop(shared: &Shared) {
     }
 }
 
+/// Waits until a kind is watched and `every` has passed since `last`, at
+/// once when it starts to be watched or its source says it changed, and
+/// says when that was.
+fn due(shared: &Shared, kind: &str, every: Duration, last: &mut Option<Instant>) {
+    let mut daemon = lock(&shared.daemon);
+    loop {
+        let watching = watched(&daemon).contains(kind);
+        if !watching {
+            *last = None;
+        }
+        let hurried = daemon.hurried.remove(kind);
+        if watching && (hurried || last.is_none_or(|at| at.elapsed() >= every)) {
+            break;
+        }
+        let wait = if watching {
+            every.saturating_sub(last.map_or(Duration::ZERO, |at| at.elapsed()))
+        } else {
+            Duration::from_secs(3600)
+        };
+        daemon = shared
+            .woken
+            .wait_timeout(daemon, wait)
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .0;
+    }
+    *last = Some(Instant::now());
+}
+
+/// Asks `UPower` what it works out of each supply every few seconds while
+/// supplies are watched: its state, and the battery's time to empty or
+/// full and the rate it's changing at, by the supply's name.
+fn upower_loop(shared: &Shared) {
+    let mut bus: Option<zbus::blocking::Connection> = None;
+    let mut last = None;
+    loop {
+        due(shared, "supply", UPOWER_EVERY, &mut last);
+        if bus.is_none() {
+            bus = zbus::blocking::Connection::system().ok();
+        }
+        let said = bus.as_ref().map(upower).unwrap_or_default();
+        let mut daemon = lock(&shared.daemon);
+        daemon.upower = said;
+    }
+}
+
+/// Asks logind every two seconds while sleep is watched whether the
+/// session is idle and what holds sleep off, with when the last sleep
+/// began and ended as its signal said.
+fn logind_loop(shared: &Shared) {
+    let mut bus: Option<zbus::blocking::Connection> = None;
+    let mut last = None;
+    loop {
+        due(shared, "sleep", LOGIND_EVERY, &mut last);
+        if bus.is_none() {
+            bus = zbus::blocking::Connection::system().ok();
+            if let Some(connection) = bus.clone() {
+                let shared_slept = Arc::clone(&lock(&shared.daemon).slept);
+                std::thread::spawn(move || sleeps(&connection, &shared_slept));
+            }
+        }
+        let slept = lock(&lock(&shared.daemon).slept).clone();
+        let said = bus
+            .as_ref()
+            .map_or(Value::Null, |connection| logind(connection, &slept));
+        lock(&shared.daemon).logind = said;
+    }
+}
+
+fn login1(connection: &zbus::blocking::Connection) -> zbus::Result<zbus::blocking::Proxy<'_>> {
+    zbus::blocking::Proxy::new(
+        connection,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+    )
+}
+
+/// Keeps when each sleep began and ended, as logind's `PrepareForSleep`
+/// says: true as it begins, false once it's woken. It waits on the bus
+/// alone, so it wakes for nothing else.
+fn sleeps(connection: &zbus::blocking::Connection, slept: &Mutex<Value>) {
+    let Ok(manager) = login1(connection) else {
+        return;
+    };
+    let Ok(signals) = manager.receive_signal("PrepareForSleep") else {
+        return;
+    };
+    for signal in signals {
+        let Ok(beginning) = signal.body().deserialize::<bool>() else {
+            continue;
+        };
+        let mut slept = lock(slept);
+        if beginning {
+            *slept = json!({"began_at_ms": now_ms(), "ended_at_ms": null});
+        } else {
+            slept["ended_at_ms"] = json!(now_ms());
+        }
+    }
+}
+
+/// What logind says of idling and sleep: whether the session's idle and
+/// since when, whether it's about to sleep, what's held off, and every
+/// inhibitor, with the last sleep this daemon saw.
+fn logind(connection: &zbus::blocking::Connection, slept: &Value) -> Value {
+    let Ok(manager) = login1(connection) else {
+        return Value::Null;
+    };
+    let inhibitors = manager
+        .call::<_, _, Vec<(String, String, String, String, u32, u32)>>("ListInhibitors", &())
+        .map(|all| {
+            all.into_iter()
+                .map(|(what, who, why, mode, uid, pid)| {
+                    json!({
+                        "what": what.split(':').collect::<Vec<_>>(),
+                        "who": who, "why": why, "mode": mode, "uid": uid, "pid": pid,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .ok();
+    let listed = |property: &str| {
+        manager.get_property::<String>(property).ok().map(|what| {
+            what.split(':')
+                .filter(|w| !w.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+    };
+    json!({
+        "idle": manager.get_property::<bool>("IdleHint").ok(),
+        "idle_since_ms": manager.get_property::<u64>("IdleSinceHint").ok().filter(|us| *us > 0).map(|us| us / 1000),
+        "preparing": manager.get_property::<bool>("PreparingForSleep").ok(),
+        "blocked": listed("BlockInhibited"),
+        "delayed": listed("DelayInhibited"),
+        "inhibitors": inhibitors,
+        "last_sleep": slept,
+    })
+}
+
+/// Asks fwupd once a minute while firmware is watched, and at once when
+/// it says something changed, what it knows of each device and what it
+/// offers each.
+fn firmware_loop(shared: &Arc<Shared>) {
+    let mut bus: Option<zbus::blocking::Connection> = None;
+    let mut last = None;
+    loop {
+        due(shared, "firmware", FIRMWARE_EVERY, &mut last);
+        if bus.is_none() {
+            bus = zbus::blocking::Connection::system().ok();
+            if let Some(connection) = bus.clone() {
+                let shared = Arc::clone(shared);
+                std::thread::spawn(move || changes(&connection, &shared));
+            }
+        }
+        let said = bus.as_ref().map(fwupd).unwrap_or_default();
+        lock(&shared.daemon).firmware = said;
+    }
+}
+
+fn fwupd_proxy(connection: &zbus::blocking::Connection) -> zbus::Result<zbus::blocking::Proxy<'_>> {
+    zbus::blocking::Proxy::new(
+        connection,
+        "org.freedesktop.fwupd",
+        "/",
+        "org.freedesktop.fwupd",
+    )
+}
+
+/// Says firmware changed each time fwupd does, as a device comes, goes
+/// or takes an update, waiting on the bus alone.
+fn changes(connection: &zbus::blocking::Connection, shared: &Arc<Shared>) {
+    let Ok(proxy) = fwupd_proxy(connection) else {
+        return;
+    };
+    let Ok(signals) = proxy.receive_signal("Changed") else {
+        return;
+    };
+    for _ in signals {
+        lock(&shared.daemon).hurried.insert("firmware".to_owned());
+        shared.woken.notify_all();
+    }
+}
+
+/// Every record fwupd's answers make, the host's first.
+fn fwupd(connection: &zbus::blocking::Connection) -> Vec<Value> {
+    type Dicts = Vec<HashMap<String, zbus::zvariant::OwnedValue>>;
+    let Ok(proxy) = fwupd_proxy(connection) else {
+        return vec![];
+    };
+    let text = |property: &str| proxy.get_property::<String>(property).ok();
+    let mut records = vec![firmware::host(
+        text("HostSecurityId"),
+        text("HostProduct"),
+        text("DaemonVersion"),
+    )];
+    let as_json = |dict: &HashMap<String, zbus::zvariant::OwnedValue>| {
+        Value::Object(dict.iter().map(|(k, v)| (k.clone(), plain(v))).collect())
+    };
+    let Ok(devices) = proxy.call::<_, _, Dicts>("GetDevices", &()) else {
+        return records;
+    };
+    let devices: Vec<Value> = devices.iter().map(as_json).collect();
+    let mut offered = BTreeMap::new();
+    for device in &devices {
+        let Some(id) = device["DeviceId"].as_str() else {
+            continue;
+        };
+        // fwupd offers only an updatable device anything.
+        if device["Flags"]
+            .as_u64()
+            .is_none_or(|flags| flags & 0b10 == 0)
+        {
+            continue;
+        }
+        let said: firmware::Offered = match proxy.call::<_, _, Dicts>("GetUpgrades", &(id,)) {
+            Ok(releases) => Ok(releases.first().map(as_json)),
+            Err(zbus::Error::MethodError(_, Some(why), _)) => Err(why),
+            Err(why) => Err(why.to_string()),
+        };
+        offered.insert(id.to_owned(), said);
+    }
+    records.extend(firmware::records(&devices, &offered));
+    records
+}
+
+/// What `UPower` says of each device it keeps, by its supply's name.
+fn upower(connection: &zbus::blocking::Connection) -> BTreeMap<String, Value> {
+    let service = "org.freedesktop.UPower";
+    let Ok(manager) = zbus::blocking::Proxy::new(
+        connection,
+        service,
+        "/org/freedesktop/UPower",
+        "org.freedesktop.UPower",
+    ) else {
+        return BTreeMap::new();
+    };
+    let Ok(paths) =
+        manager.call::<_, _, Vec<zbus::zvariant::OwnedObjectPath>>("EnumerateDevices", &())
+    else {
+        return BTreeMap::new();
+    };
+    let mut said = BTreeMap::new();
+    for path in paths {
+        let Ok(device) = zbus::blocking::Proxy::new(
+            connection,
+            service,
+            path.as_str().to_owned(),
+            "org.freedesktop.UPower.Device",
+        ) else {
+            continue;
+        };
+        let Ok(name) = device.get_property::<String>("NativePath") else {
+            continue;
+        };
+        let seconds = |property: &str| device.get_property::<i64>(property).ok().filter(|s| *s > 0);
+        // UPower's states, as its Device interface numbers them.
+        let state = device.get_property::<u32>("State").ok().map(|s| match s {
+            1 => "charging",
+            2 => "discharging",
+            3 => "empty",
+            4 => "full",
+            5 => "pending charge",
+            6 => "pending discharge",
+            _ => "unknown",
+        });
+        let warning = device
+            .get_property::<u32>("WarningLevel")
+            .ok()
+            .map(|w| match w {
+                2 => "discharging",
+                3 => "low",
+                4 => "critical",
+                5 => "action",
+                _ => "none",
+            });
+        said.insert(
+            name.rsplit('/').next().unwrap_or(&name).to_owned(),
+            json!({
+                "state": state,
+                "warning": warning,
+                "time_to_empty_s": seconds("TimeToEmpty"),
+                "time_to_full_s": seconds("TimeToFull"),
+                "rate_w": device.get_property::<f64>("EnergyRate").ok().map(|w| rounded(w, 3)),
+            }),
+        );
+    }
+    said
+}
+
 /// Asks `UDisks` for each disk's health once a minute while disks are
 /// watched, and when they start to be if it last asked a minute or more
 /// ago, so a launcher opened and closed doesn't ask each time.
@@ -439,27 +811,7 @@ fn health_loop(shared: &Shared) {
     let mut bus: Option<zbus::blocking::Connection> = None;
     let mut last: Option<Instant> = None;
     loop {
-        {
-            let mut daemon = lock(&shared.daemon);
-            loop {
-                let watching = watched(&daemon).contains("disk");
-                let due = last.is_none_or(|at| at.elapsed() >= HEALTH_EVERY);
-                if watching && due {
-                    break;
-                }
-                let wait = if watching {
-                    HEALTH_EVERY.saturating_sub(last.map_or(Duration::ZERO, |at| at.elapsed()))
-                } else {
-                    Duration::from_secs(3600)
-                };
-                daemon = shared
-                    .woken
-                    .wait_timeout(daemon, wait)
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .0;
-            }
-        }
-        last = Some(Instant::now());
+        due(shared, "disk", HEALTH_EVERY, &mut last);
         let names = disk::disks(&lock(&shared.reader).root);
         if bus.is_none() {
             match zbus::blocking::connection::Builder::system()
