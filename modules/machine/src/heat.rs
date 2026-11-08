@@ -99,6 +99,52 @@ fn numbered(files: &[String], kind: &str) -> Vec<u32> {
     found
 }
 
+/// Each sensor's label, by its kind and number, as its chip says it.
+type Labels = [(String, u32, Option<String>)];
+
+fn label_in(labels: &Labels, kind: &str, n: u32) -> Option<String> {
+    labels
+        .iter()
+        .find(|(k, m, _)| k == kind && *m == n)
+        .and_then(|(_, _, l)| l.clone())
+}
+
+/// A chip's sensors of one electric kind (`in`, `curr` or `power`), each
+/// figure in `unit`, scaled from the thousandths or millionths the chip
+/// says it in.
+fn electric(
+    root: &Root,
+    folder: &str,
+    files: &[String],
+    labels: &Labels,
+    (kind, unit, scale): (&str, &str, f64),
+) -> Vec<Value> {
+    let value = |file: String| {
+        root.said(&format!("{folder}/{file}"))
+            .and_then(|v| v.parse::<i64>().ok())
+            .and_then(|v| i32::try_from(v).ok())
+            .map(|v| rounded(f64::from(v) / scale, 3))
+    };
+    numbered(files, kind)
+        .into_iter()
+        .map(|n| {
+            let mut out = serde_json::Map::new();
+            out.insert("n".into(), json!(n));
+            out.insert("label".into(), json!(label_in(labels, kind, n)));
+            out.insert(unit.into(), value(format!("{kind}{n}_input")).into());
+            out.insert(
+                format!("min_{unit}"),
+                value(format!("{kind}{n}_min")).into(),
+            );
+            out.insert(
+                format!("max_{unit}"),
+                value(format!("{kind}{n}_max")).into(),
+            );
+            Value::Object(out)
+        })
+        .collect()
+}
+
 /// One chip's record, its sensors' moving figures read now and their
 /// labels and limits as kept.
 fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Value {
@@ -113,12 +159,7 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
         .flat_map(|kind| numbered(&files, kind).into_iter().map(move |n| (*kind, n)))
         .map(|(kind, n)| (kind.to_owned(), n, label(kind, n)))
         .collect();
-    let label_of = |kind: &str, n: u32| {
-        labels
-            .iter()
-            .find(|(k, m, _)| k == kind && *m == n)
-            .and_then(|(_, _, l)| l.clone())
-    };
+    let label_of = |kind: &str, n: u32| label_in(&labels, kind, n);
     let now = |file: String| root.said(&format!("{folder}/{file}"));
     let mut fixed = |file: String| kept.said(root, &format!("{folder}/{file}"));
     let temperatures: Vec<Value> = numbered(&files, "temp")
@@ -174,32 +215,7 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
             })
         })
         .collect();
-    let electric = |kind: &str, unit: &str, scale: f64| -> Vec<Value> {
-        numbered(&files, kind)
-            .into_iter()
-            .map(|n| {
-                let value = |file: String| {
-                    now(file)
-                        .and_then(|v| v.parse::<i64>().ok())
-                        .and_then(|v| i32::try_from(v).ok())
-                        .map(|v| rounded(f64::from(v) / scale, 3))
-                };
-                let mut out = serde_json::Map::new();
-                out.insert("n".into(), json!(n));
-                out.insert("label".into(), json!(label_of(kind, n)));
-                out.insert(unit.into(), value(format!("{kind}{n}_input")).into());
-                out.insert(
-                    format!("min_{unit}"),
-                    value(format!("{kind}{n}_min")).into(),
-                );
-                out.insert(
-                    format!("max_{unit}"),
-                    value(format!("{kind}{n}_max")).into(),
-                );
-                Value::Object(out)
-            })
-            .collect()
-    };
+    let electrics = |kind| electric(root, folder, &files, &labels, kind);
     json!({
         "key": key,
         "kind": "sensor",
@@ -207,9 +223,9 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
         "part": part(name),
         "temperatures": temperatures,
         "fans": fans,
-        "voltages": electric("in", "volts", 1000.0),
-        "currents": electric("curr", "amps", 1000.0),
-        "power": electric("power", "watts", 1_000_000.0),
+        "voltages": electrics(("in", "volts", 1000.0)),
+        "currents": electrics(("curr", "amps", 1000.0)),
+        "power": electrics(("power", "watts", 1_000_000.0)),
     })
 }
 
