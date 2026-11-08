@@ -5,28 +5,31 @@
 // "up to date" or "1 update ready", the latter in the warning colour; the
 // rows are each device fwupd knows, those with an update first, then in
 // fwupd's order, each saying its version, holding its Version a step in,
-// and showing in the drawer its vendor, its version, when it was last
-// updated and what's offered, with the release's notes.
+// and showing in the drawer everything fwupd says of it and of what's
+// offered, with the release's notes; then Security, fwupd's rating of
+// the machine's own firmware.
 //
-// fwupd is asked as the answer is wanted and again while it stays wanted,
-// a moment apart, never between: nothing is remembered from one opening
-// of the launcher to the next, so it never shows a version that was. Its
-// three answers, the devices, what LVFS offers them and what's been
-// installed, are worked into rows by Firmware.js. A machine without fwupd
-// has no fwupdmgr, and so no answer.
+// What fwupd says comes from the machine daemon's firmware records
+// (modules/machine), watched once Firmware is asked since the launcher
+// opened, until it closes. The daemon asks fwupd once a minute while
+// watched and at once each time fwupd says something changed, as when a
+// device is unplugged from the charger, so nothing here asks fwupd
+// anything but to install. A machine without fwupd names no Firmware.
 //
 // A device with an update offered holds Install first (VKCF3Z,
 // 2026-10-30), which asks once, saying what it ends, since firmware can't
 // be taken back; a second Return installs that device's update alone and
 // never restarts, the restart being Joel's, through Power. fwupd's own
 // polkit rules say whether a password is asked: a signed release from
-// LVFS goes in without one. Nothing installs by itself.
+// LVFS goes in without one. Nothing installs by itself. An update fwupd
+// won't put in now says why in fwupd's own words, after a dot, and
+// nothing is dimmed (VKCF3Z, 2026-11-08).
 import qs
 import Quickshell
 import Quickshell.Io
-import Quickshell.Services.UPower
 import QtQuick
 import "Firmware.js" as Fwupd
+import "Machine.js" as Machine
 
 Provider {
     id: provider
@@ -34,19 +37,6 @@ Provider {
     // The words it answers whole, and by their start (Provider.qml).
     questions: Words.answers("firmware")
 
-    // How old fwupd's answers may be and still be what's shown, since
-    // they change only as a device comes or goes or an update goes in.
-    readonly property int fresh: 10000
-
-    // fwupd's three answers as each command's --json said them, while the
-    // launcher is open, or null before they're all in.
-    property var said: null
-    property real saidAt: 0
-    // Whether fwupd wouldn't answer, so the answer is left out rather
-    // than waiting on it.
-    property bool failed: false
-    // How many of the three commands are still to answer.
-    property int waiting: 0
     // The device whose update is going in, or "": fwupd installs one at a
     // time, so a second Return can't start a second.
     property string installing: ""
@@ -54,34 +44,26 @@ Provider {
     // { outcome, reason }, outcome "installed" or "failed", so its row
     // stays to say so until Firmware is opened again, by the Lists rule.
     property var installs: ({})
+    // Whether Firmware has been asked since the launcher opened, so the
+    // daemon asks fwupd only then.
+    property bool askedSinceOpen: false
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
-    // Whether anyone can see what it says: fwupd is asked only then, so a
-    // version is never remembered from an earlier opening. A terminal's
-    // `launcher show` sees it for a while after, with the launcher closed,
-    // while what it walked through or listed is Firmware's answer
-    // (Launcher.qml's terminalSees), so what fwupd says once the show has
-    // returned is kept for the terminal's next ask rather than let go.
-    readonly property bool shown: launcher !== null
-        && (launcher.open || launcher.cataloguing || terminalSeen)
-    readonly property bool terminalSeen: (launcher?.terminalSees.walked ?? [])
-        .concat(launcher?.terminalSees.listed ?? []).some(row => row?.live === provider)
-    onShownChanged: {
-        if (!shown)
-            said = null;
-    }
-
-    // fwupd being asked with nothing yet said, so its answer is the
-    // placeholder (Provider.stillReading).
-    stillReading: said === null && waiting > 0
+    // Whether anyone can see what it says, so a change fwupd says is
+    // answered at once.
+    readonly property bool shown: launcher !== null && (launcher.open || launcher.cataloguing)
 
     function answer(typed) {
         if (fwupdmgr === "" || asks(typed) === "")
             return null;
-        if (shown && (said === null || Date.now() - saidAt > fresh))
-            look();
-        if (said === null)
-            return failed ? null : waitingAnswer();
+        if (!askedSinceOpen)
+            Qt.callLater(() => provider.askedSinceOpen = true);
+        // A daemon that isn't there says nothing, so Firmware is left out
+        // rather than waiting on it.
+        if (daemon.state === "not answering")
+            return null;
+        if (!daemon.answered)
+            return waitingAnswer();
         return told();
     }
 
@@ -100,30 +82,70 @@ Provider {
     }
 
     function told() {
-        const devices = Fwupd.devices(said.listed, said.offered, said.history);
+        const records = Object.values(daemon.revision >= 0 ? daemon.held : {});
+        const devices = Fwupd.devicesOf(records);
         if (devices.length === 0)
             return null;
+        const host = Fwupd.hostOf(records);
         return {
             headline: Fwupd.standing(devices),
             warns: devices.some(device => device.offered !== null),
             glyph: Words.glyph("firmware"),
-            rows: devices.map(device => provider.deviceRow(device)),
+            rows: devices.map(device => provider.deviceRow(device))
+                .concat(host?.security ? [provider.securityRow(host)] : []),
             live: provider,
             note: ""
         };
     }
 
+    // What holds an offered update back, in fwupd's own words, or "".
+    function heldSaid(device) {
+        const held = Fwupd.heldBy(device);
+        return held === "" ? "" : Words.of("firmware:held").said?.[held] ?? held;
+    }
+
     function deviceRow(device) {
+        const held = heldSaid(device);
         return thingRow({
             thing: true,
             key: `firmware:${device.id}`,
             name: device.name,
             side: device.version,
-            note: Fwupd.versionOf(device),
+            note: held === "" ? Fwupd.versionOf(device) : `${Fwupd.versionOf(device)} \u00b7 ${held}`,
             warns: device.offered !== null,
             glyph: Words.glyph("firmware"),
             drawer: () => provider.drawerOf(device)
         }, () => provider.inside(device));
+    }
+
+    // fwupd's rating of the machine's own firmware, "HSI:3!", as fwupd
+    // writes it, without the version it appends; a "!" says something
+    // running lowers it. The drawer says what it rated and which fwupd.
+    function securityRow(host) {
+        const id = "firmware:security";
+        const level = String(host.security).replace(/\s*\(v[^)]*\)\s*$/, "");
+        const said = Words.of(id).said ?? {};
+        const facts = [];
+        if (host.product)
+            facts.push({ label: Words.name("firmware:product"), value: host.product });
+        if (host.fwupd)
+            facts.push({ label: Words.name("firmware:rated"), value: `fwupd ${host.fwupd}` });
+        return thingRow({
+            thing: true,
+            key: `${id}`,
+            name: Words.name(id),
+            side: level,
+            note: level.endsWith("!") ? said.running : said.level,
+            glyph: Words.glyph("firmware"),
+            drawer: () => ({ title: Words.name(id), facts: facts, body: "" })
+        }, () => [copyRow({
+            key: `${id}:level`,
+            name: Words.name(id),
+            side: level,
+            copy: level,
+            hue: "machine",
+            glyph: ""
+        })]);
     }
 
     // What a device holds a step in: Install while an update is offered,
@@ -144,8 +166,9 @@ Provider {
 
     // Install, as it stands: ready, asking once; installing, when Return
     // does nothing more; or dimmed in place once there's nothing to do, as
-    // it waits for the restart, has gone in, or needs the charger while on
-    // battery. One that didn't install says so and can be tried again.
+    // it waits for the restart or has gone in. One fwupd won't put in now
+    // says why in fwupd's words, undimmed, and Return does nothing; one
+    // that didn't install says so and can be tried again.
     function installRow(device) {
         const id = "verb:firmware:install";
         const notes = Words.of(id).said ?? {};
@@ -171,8 +194,9 @@ Provider {
             return noted({ gone: true }, notes.waits);
         if (device.offered === null || ended?.outcome === "installed")
             return noted({ gone: true }, notes.installed);
-        if (device.charger && UPower.onBattery)
-            return noted({ gone: true }, notes.charger);
+        const held = heldSaid(device);
+        if (held !== "")
+            return noted({ run: () => {} }, held);
         const final = device.restarts ? notes["final-at-restart"] : notes.final;
         const sure = () => [thing({
             key: `${id}:sure:${device.id}`,
@@ -220,38 +244,62 @@ Provider {
         answered();
     }
 
-    // An install ended: what fwupd says now is asked again while shown,
-    // so the row says whether it waits for the restart or has gone in.
+    // An install ended: fwupd says what changed, which the daemon reads
+    // at once, so the row says whether it waits for the restart or has
+    // gone in.
     function installEnded(code) {
         const ended = Object.assign({}, installs);
         ended[installing] = code === 0 ? { outcome: "installed", reason: "" }
             : { outcome: "failed", reason: Fwupd.reason(installerErr.text) };
         installs = ended;
         installing = "";
-        if (shown) {
-            said = null;
-            look();
-        }
         answered();
     }
 
     // What the drawer shows of a device: what it is and where it stands,
-    // then the notes of what's offered. A fact fwupd doesn't know is left
-    // out rather than shown as coming.
+    // what's offered and what holds it back, then its identifiers in the
+    // Name face, and the notes of what's offered. A fact fwupd doesn't
+    // know is left out rather than shown as coming.
     function drawerOf(device) {
         const facts = [];
-        if (device.vendor !== "")
-            facts.push({ label: Words.name("firmware:vendor"), value: device.vendor });
-        facts.push({ label: Words.name("firmware:version"), value: device.version });
+        const add = (id, value, extra) => {
+            if (value !== null && value !== undefined && value !== "")
+                facts.push(Object.assign({ label: Words.name(id), value: String(value) }, extra ?? {}));
+        };
+        const about = device.about;
+        const release = device.release;
+        add("firmware:vendor", device.vendor);
+        add("firmware:version", device.version);
+        add("firmware:lowest", about.lowest);
+        add("firmware:bootloader", about.bootloader);
+        add("firmware:branch", about.branch);
         if (device.updated !== null)
-            facts.push({ label: Words.name("firmware:last-updated"), value: dated(device.updated) });
-        if (device.offered !== null)
-            facts.push({ label: Words.name("firmware:offered"), value: device.offered });
+            add("firmware:last-updated", dated(device.updated));
+        add("firmware:offered", device.offered);
+        add("firmware:urgency", release?.urgency);
+        if (release?.size)
+            add("firmware:size", Machine.bytes(release.size));
+        if (release?.released)
+            add("firmware:released", dated(release.released));
+        if (release?.minutes)
+            add("firmware:takes", String(Words.of("firmware:takes").said?.minutes ?? "")
+                .replace("{count}", release.minutes));
+        const held = Words.of("firmware:held").said ?? {};
+        add("firmware:held", device.problems.map(problem => held[problem] ?? problem).join(" \u00b7 "));
+        add("firmware:none", device.offered === null ? about.none : null);
+        add("firmware:failed", device.failed);
+        if (about.flashes !== null)
+            add("firmware:flashes", about.flashes);
+        if (about.battery !== null)
+            add("firmware:battery", `${about.battery}%`);
+        add("firmware:protocols", about.protocols.join(" \u00b7 "));
+        add("firmware:plugin", about.plugin, { named: true });
+        add("firmware:serial", about.serial, { named: true });
         const ended = installs[device.id] ?? null;
         const failed = ended?.outcome === "failed" && ended.reason !== ""
             ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";
         return { title: device.name, facts: facts,
-            body: [failed, device.notes].filter(part => part !== "").join("\n\n") };
+            body: [failed, release?.summary ?? "", device.notes].filter(part => part !== "").join("\n\n") };
     }
 
     // A day, as Quests says one: "29 Oct", or "29 Oct 2025" in another year.
@@ -261,47 +309,13 @@ Provider {
         return Qt.formatDate(when, thisYear ? "d MMM" : "d MMM yyyy");
     }
 
-    // Asks fwupd all three at once, unless it's already being asked.
-    function look() {
-        if (waiting > 0)
-            return;
-        failed = false;
-        waiting = 3;
-        devicesAsked.running = true;
-        offeredAsked.running = true;
-        historyAsked.running = true;
-    }
+    // What fwupd says changed is answered at once while anyone can see it.
+    Connections {
+        target: daemon
 
-    // One command's answer in; once the last is, the answer is made again.
-    function heard() {
-        waiting -= 1;
-        if (waiting > 0)
-            return;
-        // Answered after the launcher closed, it's left unsaid, or the next
-        // opening would show it as though just asked.
-        if (!shown)
-            return;
-        const listed = parsedOr(devicesOut.text, null);
-        if (listed === null) {
-            failed = true;
-            said = null;
-        } else {
-            // With nothing offered, fwupd says so in words, not JSON.
-            said = {
-                listed: listed,
-                offered: parsedOr(offeredOut.text, {}),
-                history: parsedOr(historyOut.text, {})
-            };
-            saidAt = Date.now();
-        }
-        answered();
-    }
-
-    function parsedOr(text, otherwise) {
-        try {
-            return JSON.parse(text);
-        } catch (error) {
-            return otherwise;
+        function onHeard(keys) {
+            if (provider.shown)
+                provider.answered();
         }
     }
 
@@ -311,21 +325,20 @@ Provider {
 
         function onOpenChanged() {
             if (!provider.launcher.open) {
-                provider.said = null;
                 provider.installs = ({});
+                provider.askedSinceOpen = false;
             }
         }
     }
 
-    // Plugged in or out while shown, an Install that needs the charger
-    // lights or dims in place.
-    Connections {
-        target: UPower
+    Daemon {
+        id: daemon
 
-        function onOnBatteryChanged() {
-            if (provider.shown && provider.said !== null)
-                provider.answered();
-        }
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: ["firmware"]
+        live: provider.launcher !== null && provider.launcher.open && provider.askedSinceOpen
+        keptThroughGap: false
+        answersWhole: true
     }
 
     Process {
@@ -334,32 +347,5 @@ Provider {
             id: installerErr
         }
         onExited: code => provider.installEnded(code)
-    }
-
-    Process {
-        id: devicesAsked
-        command: [provider.fwupdmgr, "get-devices", "--json"]
-        stdout: StdioCollector {
-            id: devicesOut
-            onStreamFinished: provider.heard()
-        }
-    }
-
-    Process {
-        id: offeredAsked
-        command: [provider.fwupdmgr, "get-updates", "--json"]
-        stdout: StdioCollector {
-            id: offeredOut
-            onStreamFinished: provider.heard()
-        }
-    }
-
-    Process {
-        id: historyAsked
-        command: [provider.fwupdmgr, "get-history", "--json"]
-        stdout: StdioCollector {
-            id: historyOut
-            onStreamFinished: provider.heard()
-        }
     }
 }

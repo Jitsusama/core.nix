@@ -109,10 +109,18 @@ units, or named here as left out with the reason.
 |                 | last, longest and all hardware sleep         | Sleep's drawer                            |
 |                 | logind: idle, since, idle action and delay   | Keep Awake's headline                     |
 |                 | every inhibitor, the last sleep's start, end | Keep Awake's Held By, Last Slept          |
-| `firmware:<id>` | name, vendor, versions, flags, problems      | Firmware, each device                     |
-|                 | the update offered, or fwupd's words for none | Firmware's row, its note                 |
-|                 | the last update's state, time, version, and when one last went in | Firmware's Last Updated, at the restart   |
-| `firmware:host` | security level, product, fwupd's version     | Firmware's drawer                         |
+| `firmware:<id>` | name, vendor, version                        | Firmware, each device                     |
+|                 | lowest and bootloader versions, branch       | each device's drawer                      |
+|                 | the hidden, needs-reboot and require-ac flags | which are listed, Install's note         |
+|                 | problems, in fwupd's words                   | the row's note, Install, Held Back        |
+|                 | the update: version, urgency, size, date, time to install, summary, notes | Offered and its drawer |
+|                 | fwupd's words for offering none              | the drawer's Nothing Offered              |
+|                 | the last update's state, version, error      | at the restart, Last Install              |
+|                 | when an update last went in                  | Last Updated                              |
+|                 | flashes left, battery, protocols             | each device's drawer                      |
+|                 | plugin, serial                               | the drawer's last, in the Name face       |
+| `firmware:host` | security level                               | Firmware's Security                       |
+|                 | product, fwupd's version                     | Security's drawer                         |
 
 ## Left Out, and Why
 
@@ -161,6 +169,13 @@ units, or named here as left out with the reason.
   manage the zone, the same for every zone, and nothing Joel acts on.
 - **fwupd's devices with no name.** They're pins it keeps for its own
   checks, with no version and nothing to update.
+- **A firmware device's other flags, parent, version format, summary
+  and times.** They say how fwupd handles the device and when it first
+  saw it, nothing Joel acts on; the flags that change what Install does
+  show as what it does. fwupd's own update error is its words for a
+  device it hides.
+- **An update's vendor, protocol and download.** The device names its
+  vendor and protocols, and fwupd fetches the download itself.
 - **The last sleep before the daemon started.** logind says a sleep as
   it happens and keeps none, so it's kept from the daemon's start; time
   asleep since boot is `boot:<id>`'s, whole.

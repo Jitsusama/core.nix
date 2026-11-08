@@ -133,12 +133,10 @@ let
     mv "$out.part" "$out.exit"
   '';
 
-  # Stands in for fwupd's fwupdmgr, which the VM doesn't run: each command's
-  # --json answer is what the test wrote to the runtime folder's
-  # fwupd/<command>.json, or else the laptop's two devices with nothing
-  # offered, as fwupd says that, in words and failing. An update runs what
-  # the test wrote to fwupd/update, as fwupd would install, or else fails,
-  # with nothing to install.
+  # Stands in for fwupd, which the VM doesn't run, on the system bus
+  # (desktop/stand-in-fwupd.py): each of its answers is what the test wrote
+  # to the runtime folder's fwupd/<command>.json, as fwupdmgr's --json says
+  # it, or else the laptop's two devices with nothing offered.
   fwupdDevices = pkgs.writeText "fwupd-devices.json" (
     builtins.toJSON {
       Devices = [
@@ -166,16 +164,30 @@ let
       ];
     }
   );
+  standInFwupd = pkgs.writers.writePython3 "stand-in-fwupd" {
+    libraries = [ pkgs.python3Packages.jeepney ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-fwupd.py);
+  # Lets the stand-in hold fwupd's name on the system bus, and anyone ask it.
+  standInFwupdPolicy = pkgs.writeTextDir "share/dbus-1/system.d/stand-in-fwupd.conf" ''
+    <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+      "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+    <busconfig>
+      <policy user="root">
+        <allow own="org.freedesktop.fwupd"/>
+      </policy>
+      <policy context="default">
+        <allow send_destination="org.freedesktop.fwupd"/>
+      </policy>
+    </busconfig>
+  '';
+  # Stands in for fwupdmgr, which Firmware runs only to install: it runs
+  # what the test wrote to the runtime folder's fwupd/update, as fwupd
+  # would install, or else fails, with nothing to install.
   standInFwupdmgr = pkgs.writeShellScript "fwupdmgr" ''
     installs=$XDG_RUNTIME_DIR/fwupd/update
     if [ "$1" = update ] && [ -x "$installs" ]; then exec "$installs" "$@"; fi
-    said=$XDG_RUNTIME_DIR/fwupd/$1.json
-    if [ -e "$said" ]; then exec cat "$said"; fi
-    case $1 in
-      get-devices) exec cat ${fwupdDevices} ;;
-      get-history) echo '{"Devices": []}' ;;
-      *) echo "No updatable devices"; exit 2 ;;
-    esac
+    echo "No updatable devices"; exit 2
   '';
 
   # Stands in for dictation's service, on the socket systemd hands it
@@ -586,6 +598,14 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # The launcher reads the battery from UPower, which the laptop role
       # brings.
       services.upower.enable = true;
+      # fwupd, as the machine daemon asks it, saying what the account's
+      # runtime folder's fwupd/ says.
+      services.dbus.packages = [ standInFwupdPolicy ];
+      systemd.services.stand-in-fwupd = {
+        wantedBy = [ "multi-user.target" ];
+        after = [ "dbus.service" ];
+        serviceConfig.ExecStart = "${standInFwupd} /run/user/1000/fwupd ${fwupdDevices}";
+      };
       # Where a machine's disk guard says how its disks stand, for the test
       # to write in its place. Where cameras' holders are said the graphical
       # role makes itself (usb-camera-holders).

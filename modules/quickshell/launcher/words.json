@@ -2858,6 +2858,120 @@
       "name": "Offered"
     },
     {
+      "id": "firmware:lowest",
+      "in": "firmware",
+      "name": "Lowest Version"
+    },
+    {
+      "id": "firmware:bootloader",
+      "in": "firmware",
+      "name": "Bootloader Version"
+    },
+    {
+      "id": "firmware:branch",
+      "in": "firmware",
+      "name": "Branch"
+    },
+    {
+      "id": "firmware:urgency",
+      "in": "firmware",
+      "name": "Urgency"
+    },
+    {
+      "id": "firmware:size",
+      "in": "firmware",
+      "name": "Size"
+    },
+    {
+      "id": "firmware:released",
+      "in": "firmware",
+      "name": "Released"
+    },
+    {
+      "id": "firmware:takes",
+      "in": "firmware",
+      "name": "Takes",
+      "said": {
+        "minutes": "{count} min"
+      }
+    },
+    {
+      "id": "firmware:held",
+      "in": "firmware",
+      "name": "Held Back",
+      "said": {
+        "system-power-too-low": "system power is too low",
+        "unreachable": "device is unreachable, or out of wireless range",
+        "power-too-low": "device battery power is too low",
+        "update-pending": "device is waiting for the update to be applied",
+        "require-ac-power": "device requires AC power to be connected",
+        "lid-is-closed": "device cannot be updated while the lid is closed",
+        "is-emulated": "device is emulated",
+        "missing-license": "device requires a software license to update",
+        "system-inhibit": "all devices are prevented from update by system inhibit",
+        "update-in-progress": "an update is in progress",
+        "in-use": "device is in use",
+        "display-required": "device requires a display to be plugged in",
+        "lower-priority": "device is lower priority than an equivalent device",
+        "insecure-platform": "system has been signed with an insecure key",
+        "firmware-locked": "device firmware has been locked"
+      }
+    },
+    {
+      "id": "firmware:none",
+      "in": "firmware",
+      "name": "Nothing Offered"
+    },
+    {
+      "id": "firmware:failed",
+      "in": "firmware",
+      "name": "Last Install"
+    },
+    {
+      "id": "firmware:flashes",
+      "in": "firmware",
+      "name": "Flashes Left"
+    },
+    {
+      "id": "firmware:battery",
+      "in": "firmware",
+      "name": "Battery"
+    },
+    {
+      "id": "firmware:protocols",
+      "in": "firmware",
+      "name": "Protocols"
+    },
+    {
+      "id": "firmware:plugin",
+      "in": "firmware",
+      "name": "Plugin"
+    },
+    {
+      "id": "firmware:serial",
+      "in": "firmware",
+      "name": "Serial"
+    },
+    {
+      "id": "firmware:security",
+      "in": "firmware",
+      "name": "Security",
+      "said": {
+        "level": "how fwupd rates the firmware's defences",
+        "running": "how fwupd rates the firmware's defences, lowered by what's running"
+      }
+    },
+    {
+      "id": "firmware:product",
+      "in": "firmware",
+      "name": "Product"
+    },
+    {
+      "id": "firmware:rated",
+      "in": "firmware",
+      "name": "Rated By"
+    },
+    {
       "id": "verb:firmware:install",
       "command": "install",
       "in": "firmware",

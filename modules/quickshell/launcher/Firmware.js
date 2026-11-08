@@ -1,9 +1,10 @@
-// What the launcher's Firmware makes of fwupd's answers, in plain
-// JavaScript so a check can run it in Qt's own engine, as the shell does:
-// which devices are listed, in what order and by what names, which has an
-// update offered, when each was last updated, and an update's release
-// notes as words. Firmware.qml asks fwupd and draws the rows; nothing here
-// asks it anything.
+// What the launcher's Firmware makes of the machine daemon's firmware
+// records, fwupd's own answers, in plain JavaScript so a check can run it
+// in Qt's own engine, as the shell does: which devices are listed, in
+// what order and by what names, which has an update offered and what
+// holds one back, when each was last updated, and an update's release
+// notes as words. Firmware.qml watches the daemon and draws the rows;
+// nothing here asks anything.
 .pragma library
 
 // A device fwupd keeps from people, as it does each region of the BIOS's
@@ -15,60 +16,127 @@ const AT_RESTART = "needs-reboot";
 const UNKNOWN = "Unknown";
 // A device fwupd installs to only on the charger, as the BIOS.
 const ON_THE_CHARGER = "require-ac";
-// What fwupd's history says of an update that went in.
-const INSTALLED = 2;
-// What it says of one that's in but finishes at a restart: pending, as a
-// BIOS's capsule is until the restart flashes it, or needing a reboot.
-const AT_THE_RESTART = [1, 4];
+// What fwupd's history says of an update that's in but finishes at a
+// restart: pending, as a BIOS's capsule is until the restart flashes it,
+// or needing a reboot.
+const AT_THE_RESTART = ["pending", "needs-reboot"];
+// What it says of one that didn't go in.
+const FAILED = ["failed", "failed-transient"];
 // The characters release notes escape, and what each is.
 const ESCAPED = [["&lt;", "<"], ["&gt;", ">"], ["&quot;", "\""], ["&#39;", "'"],
     ["&apos;", "'"], ["&nbsp;", " "], ["&amp;", "&"]];
 
-// Each device worth listing from fwupd's devices, offered updates and
-// history, as each command's `--json` says them: a named device with a
-// version that fwupd doesn't hide, those with an update first, then in
-// fwupd's order, each { id, name, vendor, version, offered, notes,
-// updated, restarts, waits, charger }: `waits` is the version installed
-// to finish at the next restart, which is offered too until then, and
-// `charger` whether fwupd installs to it only on the charger. Two devices of one name are numbered, as two USB-C
-// controllers of one dock are, so neither reads as the other.
-function devices(listed, offered, history) {
-    const shown = (listed?.Devices ?? []).filter(device => (device.Name ?? "") !== ""
-        && (device.Version ?? "") !== "" && !(device.Flags ?? []).includes(HIDDEN));
-    const updates = new Map((offered?.Devices ?? [])
-        .filter(device => (device.Releases ?? []).length > 0)
-        .map(device => [device.DeviceId, device.Releases[0]]));
-    const installed = new Map((history?.Devices ?? [])
-        .filter(entry => entry.UpdateState === INSTALLED)
-        .map(entry => [entry.DeviceId, Number(entry.Modified ?? entry.Created ?? 0)]));
-    const waiting = new Map((history?.Devices ?? [])
-        .filter(entry => AT_THE_RESTART.includes(entry.UpdateState))
-        .map(entry => [entry.DeviceId, entry.Releases?.[0] ?? null])
-        .filter(([, release]) => (release?.Version ?? "") !== ""));
-    const made = shown.map(device => {
-        const waits = waiting.get(device.DeviceId) ?? null;
-        // Once the restart has flashed it, the version it waited for is
-        // the device's own, and nothing waits.
-        const pending = waits !== null && waits.Version !== device.Version ? waits : null;
-        const release = updates.get(device.DeviceId) ?? pending;
-        return {
-            id: device.DeviceId,
-            name: device.Name,
-            // fwupd says "Unknown" of a vendor it doesn't know, as of the
-            // Secure Boot keys', which is no vendor to show.
-            vendor: device.Vendor === UNKNOWN ? "" : device.Vendor ?? "",
-            version: device.Version,
-            offered: release ? release.Version ?? null : null,
-            notes: release ? words(release.Description ?? "") : "",
-            updated: installed.get(device.DeviceId) || null,
-            restarts: (device.Flags ?? []).includes(AT_RESTART),
-            waits: pending ? pending.Version : null,
-            charger: (device.Flags ?? []).includes(ON_THE_CHARGER)
-        };
-    });
+// Each device worth listing from the daemon's firmware records: a named
+// device with a version that fwupd doesn't hide, those with an update
+// first, then in fwupd's order, each { id, name, vendor, version,
+// offered, notes, updated, restarts, waits, charger, problems, failed,
+// release, about }:
+// - `waits` is the version installed to finish at the next restart,
+//   which is offered too until then;
+// - `charger` whether fwupd installs to it only on the charger;
+// - `problems` what fwupd says keeps it from updating now, by fwupd's
+//   names, as "require-ac-power" while it's on battery;
+// - `failed` fwupd's words for why the last install didn't go in;
+// - `release` what's offered: { urgency, size, released, minutes,
+//   summary }, or null;
+// - `about` what fwupd says of the device itself: { lowest, bootloader,
+//   branch, flashes, battery, protocols, plugin, serial, none }, `none`
+//   being fwupd's words for why it offers nothing.
+// Two devices of one name are numbered, as two USB-C controllers of one
+// dock are, so neither reads as the other.
+function devicesOf(records) {
+    const shown = (records ?? []).filter(record => record.kind === "firmware"
+        && record.key !== "firmware:host" && (record.name ?? "") !== ""
+        && (record.version ?? "") !== "" && !(record.flags ?? []).includes(HIDDEN));
+    const made = shown.map(deviceOf);
     const ordered = made.filter(device => device.offered !== null)
         .concat(made.filter(device => device.offered === null));
     return numbered(ordered);
+}
+
+// One device as Firmware shows it, from its record.
+function deviceOf(record) {
+    const flags = record.flags ?? [];
+    const last = record.last_update ?? null;
+    const waits = waitsFor(record, last);
+    const update = record.update ?? null;
+    return {
+        id: record.id,
+        name: record.name,
+        // fwupd says "Unknown" of a vendor it doesn't know, as of the
+        // Secure Boot keys', which is no vendor to show.
+        vendor: record.vendor === UNKNOWN ? "" : record.vendor ?? "",
+        version: record.version,
+        offered: update?.version ?? waits,
+        notes: words(update?.description ?? ""),
+        updated: last?.updated_at_s ?? null,
+        restarts: flags.includes(AT_RESTART),
+        waits,
+        charger: flags.includes(ON_THE_CHARGER),
+        problems: record.problems ?? [],
+        failed: last !== null && FAILED.includes(last.state) ? last.error ?? "" : null,
+        release: releaseOf(update),
+        about: aboutOf(record)
+    };
+}
+
+// The version an update installed waits for the restart to flash, or
+// null. Once the restart has flashed it, that version is the device's
+// own, and nothing waits.
+function waitsFor(record, last) {
+    if (last === null || !AT_THE_RESTART.includes(last.state)) {
+        return null;
+    }
+    const version = last.version ?? "";
+    return version !== "" && version !== record.version ? version : null;
+}
+
+// What's offered, as its drawer says it, or null with nothing offered.
+function releaseOf(update) {
+    if (update === null) {
+        return null;
+    }
+    return {
+        // fwupd's "unknown" is no urgency to show.
+        urgency: update.urgency === "unknown" ? null : update.urgency ?? null,
+        size: update.size_b ?? null,
+        released: update.released_at_s ?? null,
+        minutes: update.install_minutes ?? null,
+        summary: update.summary ?? ""
+    };
+}
+
+// What fwupd says of the device itself.
+function aboutOf(record) {
+    return {
+        lowest: record.version_lowest ?? null,
+        bootloader: record.version_bootloader ?? null,
+        branch: record.branch ?? null,
+        flashes: record.flashes_left ?? null,
+        battery: record.battery_pct ?? null,
+        protocols: record.protocols ?? [],
+        plugin: record.plugin ?? null,
+        serial: record.serial ?? null,
+        none: record.no_update ?? null
+    };
+}
+
+// The machine's own, as fwupd rates it: { security, product, fwupd }, or
+// null before fwupd has answered.
+function hostOf(records) {
+    const host = (records ?? []).find(record => record.key === "firmware:host") ?? null;
+    return host === null ? null
+        : { security: host.security ?? null, product: host.product ?? null, fwupd: host.fwupd ?? null };
+}
+
+// What holds back an update that's offered, by fwupd's name for it, or
+// "": the first problem fwupd says, once nothing waits for the restart,
+// since an update waiting there is no update held back.
+function heldBy(device) {
+    if (device.offered === null || device.waits !== null) {
+        return "";
+    }
+    return device.problems.find(problem => problem !== "update-pending") ?? "";
 }
 
 // The devices with each name that's shared numbered in the order listed,

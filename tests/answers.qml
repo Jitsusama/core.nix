@@ -2007,73 +2007,104 @@ QtObject {
             Sounds.sameFormat("48 kHz \u00b7 16 bit", "44.1 kHz \u00b7 16 bit \u00b7 period 1024"),
             Sounds.sameFormat("48 kHz \u00b7 16 bit", "")], [true, false, true, false, false]);
 
-        // The firmware fwupd knows, as its three commands' --json say it: a
-        // device it hides, one with no version and one with no name are
+        // The firmware fwupd knows, as the machine daemon's records say it:
+        // a device it hides, one with no version and one with no name are
         // left out; the one with an update offered comes first; two of one
         // name are numbered; and when each was last updated is from the
         // history's update that went in.
-        const fwupdDevices = { Devices: [
-            { DeviceId: "ssd", Name: "PVC10 SK hynix 1024GB", Vendor: "SK hynix",
-                Version: "61001171", Flags: ["internal", "updatable", "needs-reboot"] },
-            { DeviceId: "bios", Name: "System Firmware", Vendor: "Dell", Version: "1.12.0",
-                Flags: ["internal", "updatable", "needs-reboot", "require-ac"] },
-            { DeviceId: "region", Name: "Internal SPI Controller (BIOS)", Version: "1.12.0",
-                Flags: ["internal", "updatable-hidden"] },
-            { DeviceId: "spi", Name: "Internal SPI Controller", Flags: ["internal"] },
-            { DeviceId: "nameless", Version: "1" },
-            { DeviceId: "pk", Name: "Platform Key", Vendor: "Unknown", Version: "2026" },
-            { DeviceId: "dock1", Name: "USB-C Controller", Vendor: "HP", Version: "69.52",
-                Flags: ["updatable"] },
-            { DeviceId: "dock2", Name: "USB-C Controller", Vendor: "HP", Version: "69.64",
-                Flags: ["updatable"] }
-        ] };
-        const fwupdOffered = { Devices: [{ DeviceId: "bios", Releases: [
-            { Version: "1.13.0",
-                Description: "<p>This release fixes:</p><ul><li>a &amp; b</li><li>c</li></ul>" },
-            { Version: "1.12.5" }] }] };
-        const fwupdHistory = { Devices: [
-            { DeviceId: "bios", UpdateState: 2, Created: 1793234644, Modified: 1793278224 },
-            { DeviceId: "ssd", UpdateState: 3, Created: 1793000000 }
-        ] };
-        const firmware = Firmware.devices(fwupdDevices, fwupdOffered, fwupdHistory);
+        const fw = (id, fields) => Object.assign({ key: `firmware:${id}`, kind: "firmware", id: id,
+            flags: [], problems: [], update: null, no_update: null, last_update: null }, fields);
+        const firmwareHeld = [
+            { key: "firmware:host", kind: "firmware", security: "HSI:3! (v2.1.6)",
+                product: "XPS", fwupd: "2.1.6" },
+            fw("ssd", { name: "PVC10 SK hynix 1024GB", vendor: "SK hynix", version: "61001171",
+                flags: ["internal", "updatable", "needs-reboot"],
+                no_update: "current version is 61001171: 61001171=same",
+                last_update: { state: "failed", at_s: 1793000000, version: "61001172",
+                    error: "device was not in supported mode", updated_at_s: null } }),
+            fw("bios", { name: "System Firmware", vendor: "Dell", version: "1.12.0",
+                version_lowest: "1.2.0", serial: "ABC123", plugin: "uefi_capsule",
+                protocols: ["org.uefi.capsule"],
+                flags: ["internal", "updatable", "needs-reboot", "require-ac"],
+                update: { version: "1.13.0", summary: "Dell System Firmware Update",
+                    description: "<p>This release fixes:</p><ul><li>a &amp; b</li><li>c</li></ul>",
+                    urgency: "high", size_b: 26518575, released_at_s: 1788150135,
+                    install_minutes: 2 },
+                last_update: { state: "success", at_s: 1793278224, version: "1.12.0",
+                    error: null, updated_at_s: 1793278224 } }),
+            fw("region", { name: "Internal SPI Controller (BIOS)", version: "1.12.0",
+                flags: ["internal", "updatable-hidden"] }),
+            fw("spi", { name: "Internal SPI Controller", version: null, flags: ["internal"] }),
+            fw("nameless", { name: null, version: "1" }),
+            fw("pk", { name: "Platform Key", vendor: "Unknown", version: "2026" }),
+            fw("dock1", { name: "USB-C Controller", vendor: "HP", version: "69.52",
+                flags: ["updatable"] }),
+            fw("dock2", { name: "USB-C Controller", vendor: "HP", version: "69.64",
+                flags: ["updatable"] })
+        ];
+        const firmware = Firmware.devicesOf(firmwareHeld);
         machine("the firmware listed, an update first", firmware.map(device => device.name),
             ["System Firmware", "PVC10 SK hynix 1024GB", "Platform Key", "USB-C Controller 1",
                 "USB-C Controller 2"]);
         machine("the firmware with an update offered", firmware[0], {
             id: "bios", name: "System Firmware", vendor: "Dell", version: "1.12.0",
             offered: "1.13.0", notes: "This release fixes:\na & b\nc", updated: 1793278224,
-            restarts: true, waits: null, charger: true
+            restarts: true, waits: null, charger: true, problems: [], failed: null,
+            release: { urgency: "high", size: 26518575, released: 1788150135, minutes: 2,
+                summary: "Dell System Firmware Update" },
+            about: { lowest: "1.2.0", bootloader: null, branch: null, flashes: null,
+                battery: null, protocols: ["org.uefi.capsule"], plugin: "uefi_capsule",
+                serial: "ABC123", none: null }
         });
         machine("firmware never updated, or not successfully", firmware[1].updated, null);
+        machine("why the last install failed, in fwupd's words", firmware[1].failed,
+            "device was not in supported mode");
+        machine("why nothing's offered, in fwupd's words", firmware[1].about.none,
+            "current version is 61001171: 61001171=same");
         machine("firmware's version with an update offered", Firmware.versionOf(firmware[0]),
             "1.12.0, 1.13.0 ready");
         machine("firmware's version alone", Firmware.versionOf(firmware[1]), "61001171");
         machine("one firmware update ready", Firmware.standing(firmware), "1 update ready");
         machine("firmware up to date", Firmware.standing(firmware.slice(1)), "up to date");
-        machine("nothing offered, said in words", Firmware.devices(fwupdDevices, {}, {})
-            .every(device => device.offered === null), true);
-        machine("fwupd with no devices", Firmware.devices({}, {}, {}), []);
+        machine("fwupd with no devices", Firmware.devicesOf([firmwareHeld[0]]), []);
+        machine("the daemon with nothing held", Firmware.devicesOf([]), []);
         machine("a vendor fwupd doesn't know is none",
             firmware.find(device => device.id === "pk").vendor, "");
+        machine("an urgency fwupd doesn't know is none", Firmware.devicesOf([
+            fw("bios", { name: "System Firmware", version: "1",
+                update: { version: "2", urgency: "unknown" } })])[0].release.urgency, null);
+        machine("fwupd's rating of the machine", Firmware.hostOf(firmwareHeld),
+            { security: "HSI:3! (v2.1.6)", product: "XPS", fwupd: "2.1.6" });
+        machine("no rating before fwupd answers", Firmware.hostOf([]), null);
+        // What holds back an update that's offered, by fwupd's name: the
+        // charger's, unplugged; nothing, with nothing offered or once it
+        // waits for the restart.
+        const unplugged = Firmware.devicesOf([fw("bios", { name: "System Firmware",
+            version: "1.12.0", problems: ["require-ac-power"], update: { version: "1.13.0" } })])[0];
+        machine("an update held back on battery", Firmware.heldBy(unplugged), "require-ac-power");
+        machine("nothing held back with nothing offered", Firmware.heldBy(Firmware.devicesOf([
+            fw("pk", { name: "Platform Key", version: "1", problems: ["firmware-locked"] })])[0]),
+            "");
+        machine("nothing held back with nothing amiss", Firmware.heldBy(firmware[0]), "");
         // An update in but finishing at the restart, as the history says a
         // capsule's is: offered until then, and said to wait for it; once
         // the restart has flashed it, nothing waits.
-        const waiting = state => ({ Devices: [{ DeviceId: "bios", UpdateState: state,
-            Releases: [{ Version: "1.13.0" }] }] });
-        const waits = Firmware.devices(fwupdDevices, {}, waiting(1))[0];
+        const waiting = (state, version) => Firmware.devicesOf([fw("bios", {
+            name: "System Firmware", version: version ?? "1.12.0",
+            problems: ["update-pending"],
+            last_update: { state: state, at_s: 1, version: "1.13.0", error: null,
+                updated_at_s: null } })])[0];
+        const waits = waiting("pending");
         machine("firmware waiting for the restart", [waits.offered, waits.waits],
             ["1.13.0", "1.13.0"]);
         machine("firmware's version waiting for the restart", Firmware.versionOf(waits),
             "1.12.0, 1.13.0 at the restart");
-        machine("firmware needing a reboot waits too",
-            Firmware.devices(fwupdDevices, {}, waiting(4))[0].waits, "1.13.0");
-        machine("firmware that failed doesn't wait",
-            Firmware.devices(fwupdDevices, {}, waiting(3)).find(device => device.id === "bios")
-                .waits, null);
-        const flashed = { Devices: [Object.assign({}, fwupdDevices.Devices[1],
-            { Version: "1.13.0" })] };
+        machine("firmware waiting for the restart is held back by nothing",
+            Firmware.heldBy(waits), "");
+        machine("firmware needing a reboot waits too", waiting("needs-reboot").waits, "1.13.0");
+        machine("firmware that failed doesn't wait", waiting("failed").waits, null);
         machine("firmware flashed at the restart waits no more",
-            Firmware.devices(flashed, {}, waiting(1))[0].waits, null);
+            waiting("pending", "1.13.0").waits, null);
         machine("why an install didn't go in", Firmware.reason(
             "Decompressing\u2026\nSystem Firmware cannot be updated: on battery\n\n"),
             "System Firmware cannot be updated: on battery");
