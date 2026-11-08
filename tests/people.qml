@@ -171,8 +171,12 @@ ShellRoot {
 
                 const steps = open[0].verbs();
                 expect("their page after the ways to reach them, the address last",
-                    names(steps) === "Call Them, Open in Pages, Favourite, ada@example.com",
+                    names(steps) === "Call Them, Open in Pages, Recent, Favourite, ada@example.com",
                     names(steps));
+                // Recent stands with nothing in it, saying so, so it's always
+                // where it was; Unread stands only while there's any.
+                expect("an empty Recent says none", steps[2].side === "none"
+                    && steps[2].empty === "Nothing yet.", `${steps[2].side} ${steps[2].empty}`);
                 steps[1].run();
                 expect("their page opens", steps[1].verb === "open" && Niri.spawned.join(" ")
                     === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
@@ -193,9 +197,9 @@ ShellRoot {
                     facts[1] === "Team: Shell" && facts[2] === "Time Zone: Asia/Kolkata"
                         && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[3]),
                     facts.join("; "));
-                expect("a favourite says so", steps[2].side === "yes" && steps[2].verb === "unstar",
-                    `${steps[2].side} ${steps[2].verb}`);
-                expect("their email copies itself", steps[3].verb === "copy", steps[3].verb);
+                expect("a favourite says so", steps[3].side === "yes" && steps[3].verb === "unstar",
+                    `${steps[3].side} ${steps[3].verb}`);
+                expect("their email copies itself", steps[4].verb === "copy", steps[4].verb);
                 // Nor is anyone's drawer made with them: it's made when it's
                 // first shown, and once.
                 const eager = people.everyone.filter(row => {
