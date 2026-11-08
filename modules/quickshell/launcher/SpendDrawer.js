@@ -68,27 +68,22 @@ function hidden(allowance, words) {
 // says, which is the one thing to act on, while it says anything; its
 // standing, where `standing` asks for it; when it resets; when an
 // override of it ends and how it last changed; whose reading it is and
-// when; and where it warns. A share's row already says how much,
-// so its meter rides on Resets' line instead of a Standing that would
-// repeat it, and on Read By's where it has no reset; `meter` false leaves
-// it off, for a budget's drawer that already drew it. Dollars go while
-// the screen is shared, and a dollar window's meter, which holds none,
-// rides as a share's does.
-function windowFacts(allowance, words, standing, meter) {
+// when; and where it warns. A share's row already says how much, so it
+// has no Standing and no meter at all: one beside Resets would only say
+// the row's share again (VKCF3Z, 2026-11-08). Dollars go while the
+// screen is shared, their meter with them.
+function windowFacts(allowance, words, standing) {
     const told = allowance.said ?? {};
     const quiet = hidden(allowance, words);
-    const figure = meter ? stroke(allowance) : null;
     const stands = standing && allowance.unit !== "share" && !quiet
         && said(allowance.standing);
-    const riding = stands ? null : figure;
-    const resets = said(told.resets);
     return [
         ["state", told.state, null, true],
-        ["standing", allowance.standing, figure, stands],
-        ["resets", told.resets, riding, resets],
+        ["standing", allowance.standing, stands ? stroke(allowance) : null, stands],
+        ["resets", told.resets, null, true],
         ["override", told.ends, null, true],
         ["changed", told.changed, null, !quiet],
-        ["read", told.read, resets ? null : riding, said(told.read)],
+        ["read", told.read, null, true],
         ["warns", told.warns, null, !quiet]
     ].filter(([, value, , shows]) => shows && said(value))
         .map(([id, value, shape]) => fact(words.name(id), value, shape));
@@ -106,7 +101,7 @@ function budgetDrawer(budget, words) {
     const windows = shown.map(one => fact(one.label,
         said(one.standing) ? one.standing : words.unread, stroke(one)));
     const only = allowances.length === 1
-        ? windowFacts(allowances[0], words, false, shown.length === 0) : [];
+        ? windowFacts(allowances[0], words, false) : [];
     const told = budget.said ?? {};
     const amounts = words.sharing !== true;
     const more = [
@@ -120,11 +115,12 @@ function budgetDrawer(budget, words) {
         facts: windows.concat(only, more), body: "" };
 }
 
-// A window's drawer: where it is and what it is over its name, "Your AI
-// proxy token \u00b7 window", set as it's written since it names
-// something (Drawer.qml); then its facts, its standing among them.
+// A window's drawer: where it is and what it is over its name, "in Your
+// AI proxy token \u00b7 window", the vocabulary's sentence with its
+// preposition as every where takes one, set as it's written since it
+// names something (Drawer.qml); then its facts, its standing among them.
 function windowDrawer(budget, allowance, words) {
-    return { eyebrow: [budget.label, words.window].filter(said).join(DOT),
+    return { eyebrow: said(budget.label) ? words.window.split("{budget}").join(budget.label) : "",
         eyebrowNames: true, title: allowance.label,
         facts: windowFacts(allowance, words, true, true), body: "" };
 }
