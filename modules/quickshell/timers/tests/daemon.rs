@@ -5,7 +5,8 @@
 //! notice back; a ring with no server to take it is said once one comes;
 //! a ring lost with its server is said to the one after it; what's kept
 //! outlasts the daemon, its notices with it, one that ended meanwhile
-//! ringing late as it starts again; and an ask it can't do is refused.
+//! ringing late as it starts again; a timer coming due is heard once,
+//! quietly during a call; and an ask it can't do is refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -154,6 +155,12 @@ struct Running {
 
 impl Running {
     fn start(folder: &Path, bus: &Bus) -> Running {
+        Running::heard(folder, bus, &[])
+    }
+
+    /// The daemon, given `sound`'s player, sound and call to ring aloud
+    /// with, or none.
+    fn heard(folder: &Path, bus: &Bus, sound: &[&Path]) -> Running {
         let socket = folder.join("daemons").join("timers.sock");
         let words = folder.join("words.json");
         std::fs::write(
@@ -171,6 +178,7 @@ impl Running {
             .arg(&socket)
             .arg(folder.join("state").join("held.json"))
             .arg(&words)
+            .args(sound)
             .env("DBUS_SESSION_BUS_ADDRESS", &bus.address)
             .stdout(Stdio::null())
             .spawn()
@@ -244,6 +252,18 @@ fn folder(test: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
     folder
+}
+
+/// A stand-in program at `path`, running `body` in the shell found on
+/// PATH, since a build's sandbox has no /bin/sh.
+fn stand_in(path: &Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let shell = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|folder| folder.join("sh"))
+        .find(|shell| shell.exists())
+        .expect("a shell on PATH");
+    std::fs::write(path, format!("#!{}\n{body}\n", shell.display())).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 fn waits_for(done: impl Fn() -> bool) {
@@ -499,6 +519,45 @@ fn the_stopwatch_runs_laps_and_stops_and_outlasts_the_daemon() {
     assert_eq!(reset["records"][0]["state"], "unstarted");
     let code = |answer: Value| answer["error"]["code"].as_str().unwrap().to_owned();
     assert_eq!(code(client.ask(&json!({"id": 6, "ask": "lap"}))), "refused");
+    running.stop();
+}
+
+#[test]
+fn a_timer_coming_due_is_heard_once_and_quietly_during_a_call() {
+    let folder = folder("aloud");
+    let bus = Bus::new(&folder);
+    let (connection, server) = bus.serve();
+    let played = folder.join("played");
+    let calling = folder.join("calling");
+    let player = folder.join("player");
+    let call = folder.join("call");
+    stand_in(&player, &format!("echo \"$*\" >> '{}'", played.display()));
+    stand_in(&call, &format!("test -e '{}'", calling.display()));
+    let sound = folder.join("ding.wav");
+    let running = Running::heard(&folder, &bus, &[&player, &sound, &call]);
+    let mut client = running.client();
+    let heard = || {
+        std::fs::read_to_string(&played)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
+    waits_for(|| heard().len() == 1);
+    assert_eq!(heard(), vec![sound.display().to_string()]);
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    // Its notice said afresh to a server taking the last one's place
+    // isn't heard again: it would be the next line, at full volume.
+    drop(connection);
+    let (_connection, after) = bus.serve();
+    waits_for(|| after.shown.lock().unwrap().len() == 1);
+    assert_eq!(server.shown.lock().unwrap().len(), 1);
+    std::fs::write(&calling, "").unwrap();
+    client.ask(&json!({"id": 2, "ask": "start", "span": 100, "name": "eggs"}));
+    waits_for(|| after.shown.lock().unwrap().len() == 2);
+    waits_for(|| heard().len() == 2);
+    assert_eq!(heard()[1], format!("--volume=0.3 {}", sound.display()));
     running.stop();
 }
 

@@ -1,4 +1,4 @@
-//! timers SOCKET KEPT WORDS
+//! timers SOCKET KEPT WORDS [PLAYER SOUND CALL]
 //!
 //! Joel's timers, kept and rung whether or not the shell is up to show
 //! them, answered over SOCKET in the shell's daemon interface (lib.rs).
@@ -22,6 +22,11 @@
 //! timer with the server that took it, so a daemon started again still
 //! knows its card, and a card lost with a server that went, as the
 //! shell's does on a switch, is said again to the one that takes its place.
+//!
+//! Given PLAYER, SOUND and CALL, a timer coming due is heard too, once,
+//! however often its notice is said: PLAYER (PipeWire's pw-play) plays
+//! SOUND, at a third of its volume while CALL (a-call-is-on) says a call
+//! is on, so a ring never drowns one out.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -30,6 +35,7 @@ use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -61,6 +67,9 @@ const NOTIFICATIONS_PATH: &str = "/org/freedesktop/Notifications";
 const BUS: &str = "org.freedesktop.DBus";
 const BUS_PATH: &str = "/org/freedesktop/DBus";
 
+/// How loud a ring plays while a call is on, as pw-play takes it.
+const QUIETLY: &str = "--volume=0.3";
+
 /// The act a notice carries to set its timer going again.
 const AGAIN_ACT: &str = "again";
 
@@ -91,6 +100,15 @@ struct Shared {
     wake: OwnedFd,
     /// What the notices thread is to say or take back.
     notices: Mutex<Sender<Tell>>,
+    /// How a timer coming due is heard, when it's heard at all.
+    sound: Option<Arc<Sound>>,
+}
+
+/// What plays a ring aloud, and what says whether to play it quietly.
+struct Sound {
+    player: PathBuf,
+    sound: PathBuf,
+    call: PathBuf,
 }
 
 /// What the notices thread does.
@@ -103,9 +121,21 @@ enum Tell {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (Some(socket), Some(kept), Some(words)) = (args.next(), args.next(), args.next()) else {
-        eprintln!("usage: timers SOCKET KEPT WORDS");
+    let usage = || -> ! {
+        eprintln!("usage: timers SOCKET KEPT WORDS [PLAYER SOUND CALL]");
         std::process::exit(64);
+    };
+    let (Some(socket), Some(kept), Some(words)) = (args.next(), args.next(), args.next()) else {
+        usage();
+    };
+    let sound = match (args.next(), args.next(), args.next(), args.next()) {
+        (None, None, None, None) => None,
+        (Some(player), Some(sound), Some(call), None) => Some(Arc::new(Sound {
+            player: PathBuf::from(player),
+            sound: PathBuf::from(sound),
+            call: PathBuf::from(call),
+        })),
+        _ => usage(),
     };
     let words: Words = match std::fs::read_to_string(&words)
         .map_err(|why| why.to_string())
@@ -150,6 +180,7 @@ fn main() {
         }),
         wake,
         notices: Mutex::new(tell),
+        sound,
     });
     {
         // What ended while the daemon was down rings now, late, and every
@@ -163,6 +194,9 @@ fn main() {
             .collect();
         changes(&shared, &mut daemon, &changed, &[]);
         drop(daemon);
+        if !due.is_empty() {
+            aloud(&shared);
+        }
         for key in rung(&shared) {
             say(&shared, Tell::Ring(key));
         }
@@ -313,10 +347,43 @@ fn keep_time(shared: &Shared, clock: &OwnedFd) {
             .collect();
         changes(shared, &mut daemon, &changed, &[]);
         drop(daemon);
+        if !rung.is_empty() {
+            aloud(shared);
+        }
         for key in rung {
             say(shared, Tell::Ring(key));
         }
     }
+}
+
+/// Plays the ring once, for every timer that came due together, in a
+/// thread of its own, since asking whether a call is on takes a couple of
+/// seconds and no notice waits on it.
+fn aloud(shared: &Shared) {
+    let Some(sound) = shared.sound.clone() else {
+        return;
+    };
+    std::thread::spawn(move || {
+        let quietly = Command::new(&sound.call)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        let mut player = Command::new(&sound.player);
+        if quietly {
+            player.arg(QUIETLY);
+        }
+        match player
+            .arg(&sound.sound)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .status()
+        {
+            Ok(status) if status.success() => {}
+            Ok(status) => eprintln!("<4>the ring's player ended {status}"),
+            Err(why) => eprintln!("<4>couldn't play the ring: {why}"),
+        }
+    });
 }
 
 /// Says each ring as a notice, and takes back each the timer no longer

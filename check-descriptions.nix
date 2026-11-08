@@ -2292,7 +2292,9 @@
     rung takes its notice back, a ring with no server to take it is said once one comes, what's
     kept outlasts the daemon, one that ended meanwhile ringing late, an ask it can't do is
     refused with a reason the launcher says in its own words, and the stopwatch runs, laps,
-    pauses and resets, outlasts the daemon, and is heard only by watches of its kind
+    pauses and resets, outlasts the daemon, and is heard only by watches of its kind; a timer
+    coming due plays its sound once, not again when its notice is said afresh, and quietly while
+    a call is on
   '';
   timers-passes-clippy = ''
     clippy finds nothing in the timers daemon or its tests
