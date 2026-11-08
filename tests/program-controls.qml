@@ -81,6 +81,7 @@ ShellRoot {
         // watch once it's off the program's row.
         property var selected: null
         property var held: []
+        property string typed: ""
         property var belowChord: []
         property var sources: [notices, keys, giver]
         property var entered: null
@@ -245,12 +246,13 @@ ShellRoot {
     // Once its file changes, Recent says what's in it now, nine at most.
     function changed() {
         const now = applications.recents.of("quiet");
-        if (now.length !== 9)
+        if (now[0] !== `${root.home}/folder 2`)
             return;
         try {
             const recent = program("quiet").verbs()[2];
             same("Recent follows its file, nine at most", `${recent.side} ${names(recent.targets())}`,
-                "9 folder 1, folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9");
+                "9 folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9, "
+                    + "folder 10");
             same("each in the folder it's in", recent.targets()[0].side, "~");
             // Read once every handler of the change has run.
             Qt.callLater(() => {
@@ -823,7 +825,9 @@ ShellRoot {
             root.waiting = "the recents to change";
             theLauncher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
             root.redrawn = 0;
-            writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
+            // Its first nine move, so what Recent shows changes: a list
+            // whose nine stay as they were changes nothing it shows.
+            writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 2}`)
                 .join("\n") + "\n");
         } catch (error) {
             fail(error.message);
