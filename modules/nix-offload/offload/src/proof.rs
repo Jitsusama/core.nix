@@ -235,10 +235,11 @@ fn nonce() -> String {
 pub fn expression(nonce: &str, system: Option<&str>, features: &[&str]) -> String {
     let string = |text: &str| format!("\"{}\"", text.replace(['"', '\\', '$'], ""));
     let system = system.map_or_else(|| "builtins.currentSystem".to_owned(), string);
-    let features: String = features
-        .iter()
-        .map(|feature| format!(" {}", string(feature)))
-        .collect();
+    let features = features.iter().fold(String::new(), |mut all, feature| {
+        all.push(' ');
+        all.push_str(&string(feature));
+        all
+    });
     format!(
         "derivation {{ name = \"nix-offload-proof\"; system = {system}; builder = \"/bin/sh\"; \
          args = [ \"-c\" \"echo {} > $out\" ]; requiredSystemFeatures = [{features} ]; }}",
