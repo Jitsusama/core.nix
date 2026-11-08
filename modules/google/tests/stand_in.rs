@@ -457,15 +457,82 @@ fn gmail_failing_keeps_the_mail_held_and_the_meetings_told() {
     assert_eq!(state.mail, held);
 }
 
+/// What a request to the stand-in asks by `name`, as Google reads it.
+fn asked(path: &str, name: &str) -> String {
+    let query = path
+        .split(' ')
+        .nth(1)
+        .and_then(|target| target.split_once('?'))
+        .map_or("", |(_, query)| query);
+    let said = query
+        .split('&')
+        .find_map(|pair| pair.strip_prefix(&format!("{name}=")))
+        .unwrap_or("");
+    let mut bytes = Vec::new();
+    let mut rest = said.bytes();
+    while let Some(byte) = rest.next() {
+        match byte {
+            b'+' => bytes.push(b' '),
+            b'%' => {
+                let high = rest.next().unwrap_or(b'0');
+                let low = rest.next().unwrap_or(b'0');
+                let hex = String::from_utf8(vec![high, low]).unwrap();
+                bytes.push(u8::from_str_radix(&hex, 16).unwrap());
+            }
+            byte => bytes.push(byte),
+        }
+    }
+    String::from_utf8(bytes).unwrap()
+}
+
+/// The stand-in's Drive places: a PDF and a sheet Joel looked at lately, a
+/// starred folder, a page more of what's shared with him than one asks,
+/// and two shared drives, one he hid.
+const RECENT: &str = r#"{"files": [
+    {"id": "pdf1", "name": "menu.pdf", "mimeType": "application/pdf", "size": "4",
+        "webViewLink": "https://drive.google.com/file/d/pdf1/view",
+        "viewedByMeTime": "2026-10-26T19:00:00Z", "owners": [{"displayName": "Ada Lovelace"}]},
+    {"id": "s1", "name": "About s1", "mimeType": "application/vnd.google-apps.spreadsheet",
+        "webViewLink": "https://docs.google.com/spreadsheets/d/s1/edit",
+        "viewedByMeTime": "2026-10-26T18:00:00Z"}
+]}"#;
+const STARRED: &str = r#"{"files": [
+    {"id": "dir1", "name": "Trips", "mimeType": "application/vnd.google-apps.folder",
+        "starred": true, "webViewLink": "https://drive.google.com/drive/folders/dir1"}
+]}"#;
+const SHARED: &str = r#"{"nextPageToken": "more", "files": [
+    {"id": "b1", "name": "Team Budget", "mimeType": "application/vnd.google-apps.spreadsheet",
+        "webViewLink": "https://docs.google.com/spreadsheets/d/b1/edit",
+        "sharedWithMeTime": "2026-10-25T12:00:00Z",
+        "sharingUser": {"displayName": "Grace Hopper"}}
+]}"#;
+const DRIVES: &str = r#"{"drives": [
+    {"id": "0Team", "name": "Team", "createdTime": "2026-01-05T12:00:00Z"},
+    {"id": "0Old", "name": "Archive", "hidden": true}
+]}"#;
+
 /// The stand-in's Drive: one document of each kind Joel looked at, by the
-/// kind each search asks for.
+/// kind each search asks for, and its places, by theirs.
 fn drive(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("GET /drive/v3/drives?") {
+        return (200, DRIVES.into());
+    }
     if !path.starts_with("GET /drive/v3/files?") {
         return google(path, body);
     }
-    let (id, link) = if path.contains("document") {
+    let search = asked(path, "q");
+    if search.starts_with("starred") {
+        return (200, STARRED.into());
+    }
+    if search.starts_with("sharedWithMe") {
+        return (200, SHARED.into());
+    }
+    if search.contains("folder") {
+        return (200, RECENT.into());
+    }
+    let (id, link) = if search.contains("document") {
         ("d1", "document")
-    } else if path.contains("spreadsheet") {
+    } else if search.contains("spreadsheet") {
         ("s1", "spreadsheets")
     } else {
         ("p1", "presentation")
@@ -500,7 +567,10 @@ fn each_kind_of_document_is_told_and_drive_asked_again_only_after_a_while() {
         stand_in
             .heard()
             .into_iter()
-            .filter(|heard| heard.line.starts_with("GET /drive/v3/files?"))
+            .filter(|heard| {
+                heard.line.starts_with("GET /drive/v3/files?")
+                    && asked(&heard.line, "q").starts_with("mimeType = ")
+            })
             .collect::<Vec<_>>()
     };
     let first = searches(&stand_in);
@@ -532,7 +602,8 @@ fn drive_failing_keeps_the_documents_held_and_the_rest_told() {
     let stand_in = StandIn::new(drive);
     let path = credentials("drive-down", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
-    let held = watch.look(&now()).documents.clone();
+    let first = watch.look(&now()).clone();
+    let held = first.documents.clone();
     let down = StandIn::new(|path, body| {
         if path.starts_with("GET /drive") {
             (503, "{}".into())
@@ -547,6 +618,155 @@ fn drive_failing_keeps_the_documents_held_and_the_rest_told() {
     assert_eq!(state.meetings.len(), 1);
     assert_eq!(state.documents, held);
     assert_eq!(held.len(), 3);
+    assert_eq!(state.drive.places, first.drive.places);
+    assert_eq!(first.drive.places.recent.len(), 2);
+}
+
+#[test]
+fn drives_places_are_told_each_as_drive_lists_it() {
+    let stand_in = StandIn::new(drive);
+    let path = credentials("places", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let places = watch.look(&now()).drive.places.clone();
+    let ids = |files: &[google::drive::Document]| -> Vec<String> {
+        files.iter().map(|file| file.id.clone()).collect()
+    };
+    // Recent holds every kind, in Drive's order, each as every row reads it.
+    assert_eq!(ids(&places.recent), ["pdf1", "s1"]);
+    assert_eq!(
+        (places.recent[0].kind, places.recent[0].size),
+        (Is::File, Some(4))
+    );
+    assert_eq!(places.recent[1].kind, Is::Spreadsheet);
+    assert_eq!(
+        (ids(&places.starred.files), places.starred.more),
+        (vec!["dir1".to_owned()], false)
+    );
+    // Drive saying there's another page is told as more.
+    assert_eq!(
+        (ids(&places.shared.files), places.shared.more),
+        (vec!["b1".to_owned()], true)
+    );
+    assert_eq!(
+        places.shared.files[0].shared_by.as_deref(),
+        Some("Grace Hopper")
+    );
+    // A shared drive he hid is left out, as Drive leaves it out.
+    let drives: Vec<_> = places
+        .drives
+        .files
+        .iter()
+        .map(|drive| (drive.title.as_str(), drive.link.as_str()))
+        .collect();
+    assert_eq!(
+        drives,
+        [("Team", "https://drive.google.com/drive/folders/0Team")]
+    );
+}
+
+#[test]
+fn each_place_is_asked_by_its_own_search_and_again_with_the_documents() {
+    let stand_in = StandIn::new(drive);
+    let path = credentials(
+        "places-asked",
+        now().timestamp().as_millisecond() + 3_600_000,
+    );
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    // Each place is asked for by its own search, in its own order, from
+    // every drive, a page of it at most, Recent as many as Recent lists.
+    let asks = |stand_in: &StandIn| -> Vec<(String, String, String, String)> {
+        stand_in
+            .heard()
+            .into_iter()
+            .filter(|heard| heard.line.starts_with("GET /drive/v3/files?"))
+            .map(|heard| {
+                let of = |name: &str| asked(&heard.line, name);
+                (of("q"), of("orderBy"), of("pageSize"), of("corpora"))
+            })
+            .filter(|(search, ..)| !search.starts_with("mimeType = "))
+            .collect()
+    };
+    let all = |order: &str, size: &str| (order.to_owned(), size.to_owned(), "allDrives".to_owned());
+    let first: Vec<_> = asks(&stand_in)
+        .into_iter()
+        .map(|(search, order, size, corpora)| (search, (order, size, corpora)))
+        .collect();
+    assert_eq!(
+        first,
+        [
+            (
+                "trashed = false and viewedByMeTime > '1970-01-01T00:00:00' and mimeType != \
+                 'application/vnd.google-apps.folder'"
+                    .to_owned(),
+                all("viewedByMeTime desc", "9")
+            ),
+            (
+                "starred = true and trashed = false".to_owned(),
+                all("recency desc", "100")
+            ),
+            (
+                "sharedWithMe = true and trashed = false".to_owned(),
+                all("sharedWithMeTime desc", "100")
+            ),
+        ]
+    );
+    // What every row says of a file is asked of each, and of each drive
+    // when it was made and whether he hid it.
+    let heard = stand_in.heard();
+    let place = heard
+        .iter()
+        .find(|heard| asked(&heard.line, "q").starts_with("starred"))
+        .unwrap();
+    assert_eq!(
+        asked(&place.line, "fields"),
+        format!("nextPageToken,files({})", google::drive::FILE_FIELDS)
+    );
+    let drives = heard
+        .iter()
+        .find(|heard| heard.line.starts_with("GET /drive/v3/drives?"))
+        .unwrap();
+    assert_eq!(
+        asked(&drives.line, "fields"),
+        "nextPageToken,drives(id,name,createdTime,hidden)"
+    );
+    // Asked again only once the documents are, five minutes on.
+    watch.look(&now());
+    assert_eq!(
+        asks(&stand_in).len(),
+        3,
+        "Drive's places were asked again at once"
+    );
+    let later: Zoned = "2026-10-26T15:25:00-04:00[-04:00]".parse().unwrap();
+    watch.look(&later);
+    assert_eq!(
+        asks(&stand_in).len(),
+        6,
+        "Drive's places weren't asked again after five minutes"
+    );
+}
+
+#[test]
+fn a_place_drive_wont_answer_costs_the_rest_nothing() {
+    let stand_in = StandIn::new(|path, body| {
+        if asked(path, "q").starts_with("starred") {
+            (400, "{}".into())
+        } else {
+            drive(path, body)
+        }
+    });
+    let path = credentials(
+        "a-place-down",
+        now().timestamp().as_millisecond() + 3_600_000,
+    );
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert_eq!(state.documents.len(), 3);
+    assert!(state.drive.places.starred.files.is_empty());
+    assert_eq!(state.drive.places.recent.len(), 2);
+    assert_eq!(state.drive.places.shared.files.len(), 1);
+    assert_eq!(state.drive.places.drives.files.len(), 1);
 }
 
 /// The stand-in's Drive folders: My Drive holds a folder, a PDF, a

@@ -3,8 +3,9 @@
 //!
 //! Each meeting is a `meeting:<id>` record, each piece of mail that wants
 //! Joel a `mail:<id>`, each document he looked at lately a `file:<id>`,
-//! and how the account stands, its unread count, Meet and Drive's
-//! transfers one `account:google`. A record carries its thing under a
+//! and how the account stands, its unread count, Meet, Drive's transfers
+//! and Drive's own places one `account:google`, each place's files told
+//! in its own order, which records alone don't keep. A record carries its thing under a
 //! field named for its kind, since meetings and documents have a `kind`
 //! of their own. A record's `heard` is when it last changed, so a look at
 //! Google that finds nothing new tells a watch only that the account was

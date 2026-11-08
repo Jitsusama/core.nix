@@ -49,7 +49,11 @@ onLinux {
   # while Gmail fails, mail marked read or archived takes one label off and
   # wants Joel no more, mail read here and marked unread again wants him
   # again at once, the documents of each kind are told, Drive asked again
-  # only after a while and kept while it fails, the shell asks only what's
+  # only after a while and kept while it fails, Drive's own places each
+  # asked by its own search with every figure a row shows, told in Drive's
+  # order with whether there's more, asked again with the documents, a
+  # shared drive he hid left out and one place failing costing the rest
+  # nothing, the shell asks only what's
   # read strictly, it hears the state on connecting and each change once,
   # the same served in the daemon interface, a watch hearing its records
   # and then only those a change touched and those gone, of the kinds it
@@ -81,9 +85,11 @@ onLinux {
     '';
 
   # The documents read from the program's state, which program opens each
-  # kind, what a document's row says and its details are Drive.js's, and
-  # which saves into Drive are told and how is Saves.js's, run in Qt's own
-  # engine (tests/drive.qml).
+  # kind, what a document's row says and its details are Drive.js's, which
+  # of Drive's own places its program lists, what each counts and what
+  # more a Drive file's drawer says are DrivePlaces.js's, and which saves
+  # into Drive are told and how is Saves.js's, run in Qt's own engine
+  # (tests/drive.qml).
   the-shell-reads-the-documents =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -91,6 +97,7 @@ onLinux {
     pkgs.runCommandLocal "the-shell-reads-the-documents" { } ''
       cp ${../../tests/drive.qml} drive.qml
       cp ${./Drive.js} Drive.js
+      cp ${./DrivePlaces.js} DrivePlaces.js
       cp ${./Mail.js} Mail.js
       cp ${../quickshell/When.js} When.js
       cp ${./Calendar.js} Calendar.js

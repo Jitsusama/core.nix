@@ -17,13 +17,24 @@ const KINDS = {
         open: "verb:slides:open", link: "verb:slides:link" }
 };
 
+// Drive's own program opens every kind, so its Recent is the files of
+// every kind Joel opened last (DriveProgram.qml), and a file no other
+// program opens, a folder or a shared drive has its words, each opening
+// in Drive's window, a folder or a drive wearing the folder's mark.
+const EVERY = "every";
+const DRIVE = { program: "google-drive", thing: "drive:file", open: "verb:drive:open",
+    link: "verb:drive:link" };
+const DRIVES = ["file", "folder", "other", "drive"];
+
 function kind(document) {
-    return KINDS[document?.kind] ?? null;
+    return KINDS[document?.kind] ?? (DRIVES.includes(document?.kind) ? DRIVE : null);
 }
 
-// The kind a program's desktop entry opens, or "" for one that opens none.
+// The kind a program's desktop entry opens, EVERY for Drive's own, or ""
+// for one that opens none.
 function kindOf(program) {
-    return Object.keys(KINDS).find(each => KINDS[each].program === program) ?? "";
+    return program === DRIVE.program ? EVERY
+        : Object.keys(KINDS).find(each => KINDS[each].program === program) ?? "";
 }
 
 // What its row says at the right: who owns it and when he last opened it,

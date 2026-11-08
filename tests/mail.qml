@@ -50,7 +50,11 @@ QtObject {
 
         // What the daemon holds, by key, as src/daemon.rs makes each record.
         const unmade = { granted: false, made: null };
-        const undriven = { listings: [], downloads: [], uploads: [] };
+        const placeless = { files: [], more: false };
+        const undriven = {
+            listings: [], downloads: [], uploads: [],
+            places: { recent: [], starred: placeless, shared: placeless, drives: placeless }
+        };
         const record = (kind, id, thing, heard) => ({
             [`${kind}:${id}`]: { key: `${kind}:${id}`, kind, heard, [kind]: thing }
         });

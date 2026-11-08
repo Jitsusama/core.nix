@@ -23,6 +23,8 @@ scope, so a shell may ask for a new Meet meeting, which is made at once as new-a
 Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
 Budget is shared with him, and the Team shared drive is empty. A shell may ask what a folder
 holds, and for a file in one, to open, pick or save, Google's own as their office files.
+Drive's own places hold the menu, which he opened last, then the two documents, as its Recent;
+the Trips folder, as Starred; Team Budget, as Shared with Me; and the Team shared drive.
 """
 
 import copy
@@ -90,6 +92,42 @@ DOWNLOADS_KEPT = 20
 LISTINGS_KEPT = 4
 # The ending each of Google's own kinds is downloaded with, as their office program's file.
 EXPORTED = {"document": ".docx", "spreadsheet": ".xlsx", "presentation": ".pptx"}
+
+
+# Drive's places, as the program says them while it holds nothing.
+NO_PLACES = {
+    "recent": [],
+    "starred": {"files": [], "more": False},
+    "shared": {"files": [], "more": False},
+    "drives": {"files": [], "more": False},
+}
+
+
+def placed(key: str, title: str, kind: str, mime: str, now: int) -> dict[str, object]:
+    """Give a file in Drive's places as the program says one, Ada's, changed an hour ago."""
+    return {
+        "id": key,
+        "title": title,
+        "kind": kind,
+        "link": f"https://drive.google.com/file/d/{key}/view",
+        "viewed": None,
+        "changed": now - 60 * MINUTE,
+        "owner": "Ada Lovelace",
+        "mime": mime,
+        "size": None,
+        "created": now - 7 * 24 * 60 * MINUTE,
+        "changedBy": "Grace Hopper",
+        "changedByMe": None,
+        "sharedWithMe": None,
+        "sharedBy": None,
+        "shared": False,
+        "starred": False,
+        "drive": None,
+        "about": None,
+        "across": None,
+        "down": None,
+        "lasts": None,
+    }
 
 
 def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict[str, object]:
@@ -261,6 +299,25 @@ class Account:
                 "owner": None,
             },
         ]
+        # Drive's own places, each file as the program says one (src/drive.rs's Document).
+        trips = placed("trips", "Trips", "folder", FOLDER, now)
+        trips["link"] = "https://drive.google.com/drive/folders/trips"
+        trips["starred"] = True
+        menu = placed("menu", "menu.pdf", "file", "application/pdf", now)
+        menu["viewed"] = now - 5 * MINUTE
+        menu["size"] = 4
+        team = placed("0Team", "Team", "drive", "", now)
+        team["link"] = "https://drive.google.com/drive/folders/0Team"
+        documents = [
+            {**placed(str(one["id"]), str(one["title"]), str(one["kind"]), "", now), **one}
+            for one in self.documents
+        ]
+        self.places = {
+            "recent": [menu, *documents],
+            "starred": {"files": [trips], "more": False},
+            "shared": {"files": documents[1:], "more": False},
+            "drives": {"files": [team], "more": False},
+        }
         self.heard = now
         # The file last asked to be fetched, as the program says it (src/files.rs).
         self.fetched: dict[str, object] | None = None
@@ -284,7 +341,7 @@ class Account:
                 "heard": None,
                 "fetched": None,
                 "meet": {"granted": False, "made": None},
-                "drive": {"listings": [], "downloads": [], "uploads": []},
+                "drive": {"listings": [], "downloads": [], "uploads": [], "places": NO_PLACES},
             }
         return {
             "account": "ready",
@@ -295,7 +352,12 @@ class Account:
             "heard": self.heard,
             "fetched": self.fetched,
             "meet": {"granted": True, "made": self.made},
-            "drive": {"listings": self.listings, "downloads": self.downloads, "uploads": []},
+            "drive": {
+                "listings": self.listings,
+                "downloads": self.downloads,
+                "uploads": [],
+                "places": self.places,
+            },
         }
 
     def records(self) -> dict[str, dict[str, object]]:

@@ -838,8 +838,10 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
 
 
 @pytest.mark.usefixtures("google")
-def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: Desktop) -> None:
-    """Docs' Recent lists what Joel opened lately, as search finds it, and Return opens it."""
+def test_docs_and_drives_recent_list_what_joel_opened_lately_and_return_opens_it(
+    desktop: Desktop,
+) -> None:
+    """Docs' and Drive's Recent list what Joel opened, Drive's Starred too, and Return opens it."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
@@ -889,6 +891,52 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    drive_holds_its_places(desktop, opened, closed)
+
+
+def into_drive(desktop: Desktop) -> None:
+    """Open Drive's program from the find, as Joel does.
+
+    Typed, drive leads with the disk's room, drive being one of the disk's words, so the
+    selection goes down to the program before Tab goes in.
+    """
+    desktop.answer("drive")
+    desktop.launcher_until(lambda shown: "Drive" in shown["rows"])
+    desktop.down_to("Drive")
+    desktop.into_program()
+
+
+def drive_holds_its_places(desktop: Desktop, opened: str, closed: str) -> None:
+    """Check Drive's Recent and Starred, as Docs' Recent is checked, Return opening a folder."""
+    machine = desktop.machine
+    # Drive's Recent holds every kind, the menu he opened last first, each
+    # the one row a Drive file is, so the documents are the rows Docs' are.
+    into_drive(desktop)
+    desktop.type_in("recent", selecting="Recent")
+    desktop.follow()
+    desktop.launcher_until(
+        lambda shown: shown["rows"] == ["menu.pdf", "Quarterly Plan", "Team Budget"]
+    )
+    menu = desktop.showing()["selected"]
+    assert menu["is"] == "gdoc:menu", menu
+    assert re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", menu["side"]), menu
+    labels = [fact["label"] for fact in (menu.get("drawer") or {}).get("facts") or []]
+    assert labels[:4] == ["Owner", "Opened", "Changed", "Changed By"], menu
+    assert labels[-2:] == ["Kind", "Size"], menu
+    desktop.close_launcher()
+    # Starred says how many it holds, and steps in to them, a folder
+    # opening in Drive's window.
+    into_drive(desktop)
+    desktop.type_in("starred", selecting="Starred")
+    assert desktop.showing()["selected"]["side"] == "1"
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Trips"])
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://drive.google.com/drive/folders/trips' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 

@@ -64,8 +64,26 @@ function stateOf(said) {
         drive: {
             listings: Array.isArray(said.drive?.listings) ? said.drive.listings : [],
             downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : [],
-            uploads: Array.isArray(said.drive?.uploads) ? said.drive.uploads : []
+            uploads: Array.isArray(said.drive?.uploads) ? said.drive.uploads : [],
+            places: placesOf(said.drive?.places)
         }
+    };
+}
+
+// Drive's own places as the program says them (src/drive.rs's Places):
+// its Recent, newest first, and Starred, Shared with Me and the shared
+// drives, each { files, more }; any not said holds none, as from a
+// program before them.
+function placesOf(places) {
+    const placed = place => ({
+        files: Array.isArray(place?.files) ? place.files : [],
+        more: place?.more === true
+    });
+    return {
+        recent: Array.isArray(places?.recent) ? places.recent : [],
+        starred: placed(places?.starred),
+        shared: placed(places?.shared),
+        drives: placed(places?.drives)
     };
 }
 

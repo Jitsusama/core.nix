@@ -543,7 +543,10 @@
     into a folder only Joel reads or into Downloads, never over a file there, marking it read or
     archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
     the documents of each kind he looked at lately, his last first, asking Drive again only every
-    five minutes and keeping them while Drive fails, makes a Meet meeting for its link when asked,
+    five minutes and keeping them while Drive fails, and Drive's own places, its Recent of every
+    kind, Starred, Shared with Me and the shared drives he hasn't hidden, each by its own search
+    and order with every figure a row shows and whether there's more, asked with the documents
+    and one failing costing the rest nothing, makes a Meet meeting for its link when asked,
     only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
     few asked each told, folders first, a shortcut as what it points at, leaving out what it
     can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
@@ -2068,7 +2071,10 @@
     tells each settled since the shell started once, oldest first, by its folder's name, sent as an
     answer with Open in Drive and failed with why and what mends it, a copy that couldn't be read
     going back to the program that saved it while it's open, and finds a failure's notice by its
-    file alone
+    file alone; and reads Drive's own places, Drive's program opening every kind and Drive opening
+    any file no other program does, lists each place holding anything with its count or over it,
+    and says a Drive file's kind with a picture's size and a video's length, where it is, and
+    every figure the program read of it in its drawer
   '';
   the-shell-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
