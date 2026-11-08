@@ -1165,12 +1165,13 @@ works the same way everywhere.
   same for every program and each only while it applies, made as it's
   stepped into: first what can be done (Go To the window used last,
   New Window, New Window Below, and its desktop entry's own actions such
-  as Chrome's New Incognito Window), then its Recent, what it had open
-  lately, newest first, each the thing it is (a file, a folder, a site),
-  led by what it has open now, which says so first at its right and
-  where it is after ("open in 2 windows · ~/Downloads"), so a side cut
-  short loses where and never the state, then its other windows by
-  title, its Notifications, newest first, its Shortcuts, any part of
+  as Chrome's New Incognito Window), then what it has open now, each
+  the thing it is (a file, a site, every tab behind the front one too),
+  newest looked at first, saying so first at its right and where it is
+  after ("open in 2 windows · ~/Downloads"), so a side cut short loses
+  where and never the state, then its other windows by title, only
+  those no open thing stands for, then its Recent, only what's closed,
+  its Notifications, newest first, its Shortcuts, any part of
   its own, such as the theme, and Quit, asked once
   since a window may hold unsaved work. Media while it has a player
   (Play or Pause, Next, Previous, and what's playing) and Sound while it
@@ -1201,6 +1202,19 @@ works the same way everywhere.
   (Joel, 2026-11-07: "keep"). Its say counts what it holds by kind ("1 tab
   · 2 recent", "3 today") and names one ("next 14:00 · Design Review") only
   where none is listed under it, so it never says a row below it again.
+- **Recent means one thing.** Recent is the last nine things Joel did
+  with a thing, newest first, each once, by what it is (a file by its
+  path, a site by its page), never what's open now or already shown
+  above it (VKCF3Z, 2026-10-30). A program's holds what it opened or
+  saved and has closed since, a person's what he had with them (a
+  meeting held, a call, a conversation), Capture's what he took, and
+  each is laid out by the one rule (Recent.js). It always
+  stands where its thing keeps any, so it never arrives late at the
+  bottom: how many at its right, "none" while it holds nothing and an
+  ellipsis while its source first answers, the newest one's name as its
+  note, and "Nothing yet." stepped into empty. What waits on Joel is
+  never Recent: a person's unread mail is their Unread, before it,
+  standing only while there's any.
 - **Acts in one order.** Every kind of thing lists what's inside it in
   the same order, so three anchors are all there is to learn: the top row
   does it, what ends it comes near the bottom, and Copy is last. Between
