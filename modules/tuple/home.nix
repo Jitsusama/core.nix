@@ -155,7 +155,7 @@ in
     ];
   };
   jitsusama.quickshell = {
-    overview.pieces.call = {
+    margin.pieces.call = {
       # Before the sharing, which a call often brings.
       order = 78;
       source = ./Call.qml;

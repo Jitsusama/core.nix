@@ -143,7 +143,7 @@ in
 
     # The account signed out, which wants Joel to sign in again, wearing
     # the signing-in mark; first among what of Google's wants him.
-    jitsusama.quickshell.overview.pieces.google = {
+    jitsusama.quickshell.margin.pieces.google = {
       order = 55;
       source = ./SignedOut.qml;
       label = "google";
@@ -153,7 +153,7 @@ in
 
     # A meeting coming, which wants Joel, wearing the calendar's own mark;
     # among what wants him, after the notices.
-    jitsusama.quickshell.overview.pieces.meeting = {
+    jitsusama.quickshell.margin.pieces.meeting = {
       order = 56;
       source = ./Starting.qml;
       label = "meeting";
@@ -163,7 +163,7 @@ in
 
     # The mail that wants Joel, wearing the mail mark; after what wants
     # him sooner, since it keeps.
-    jitsusama.quickshell.overview.pieces.mail = {
+    jitsusama.quickshell.margin.pieces.mail = {
       order = 61;
       source = ./NewMail.qml;
       label = "mail";
@@ -173,7 +173,7 @@ in
 
     # A Meet call, wearing the call mark Tuple's does, since it's a call
     # too; after Tuple's and before the sharing a call often brings.
-    jitsusama.quickshell.overview.pieces.meet = {
+    jitsusama.quickshell.margin.pieces.meet = {
       order = 79;
       source = ./Call.qml;
       label = "meet";
