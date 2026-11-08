@@ -2153,8 +2153,9 @@
     socket nothing listens on once, never looping
   '';
   the-shell-follows-tuple-calls = ''
-    the shell says who a Tuple call is with and how long it's gone on, and finds a call's link in
-    what was copied
+    the shell says who a Tuple call is with and how long it's gone on, finds a call's link in what
+    was copied, and lists Tuple's Recent newest first, each call by who, how long or missed, and
+    when
   '';
   the-shell-finds-screenshots-by-their-words = ''
     what was taken lately finds screenshots by their words from the screen-text daemon, on one
@@ -2341,9 +2342,10 @@
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
     it started, and tells a watch of a call, a sign-in gone and a stream ended as they happen, of a
-    ring and a missed call from the log, a new log read from its start, runs each of the call's
-    acts as Tuple's command, keeps the room's link, answers on systemd's socket, and refuses an
-    ask or a kind it doesn't know
+    ring and a missed call from the log, a new log read from its start, keeps a call that ended in
+    Recent's file and reads it back after a restart, runs each of the call's acts as Tuple's
+    command, keeps the room's link, answers on systemd's socket, and refuses an ask or a kind it
+    doesn't know
   '';
   tuple-call-passes-clippy = ''
     clippy finds nothing in tuple-call or its tests
@@ -2652,8 +2654,9 @@
   '';
   vm-desktop-takes-calls = ''
     Tuple's daemon starts before the other apps, a call shows in the margin while it lasts, people
-    coming and going are said, a ringing call wants Joel and is kept as missed, a copied link
-    joins, and the call's windows find their places
+    coming and going are said, a call that ended is in Tuple's Recent in Programs to call again,
+    a ringing call wants Joel and is kept as missed, a copied link joins, and the call's windows
+    find their places
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of

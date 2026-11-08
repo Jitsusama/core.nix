@@ -1,7 +1,8 @@
 """The desktop test's takes calls area.
 
 Here Tuple's calls are taken: its daemon starts first, a call shows in the margin, people
-coming and going are said, a ringing call wants Joel, and its windows find their places.
+coming and going are said, a call that ended is in Tuple's Recent, a ringing call wants Joel,
+and its windows find their places.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -142,6 +143,38 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     )
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))
     machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))
+
+
+def test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again(desktop: Desktop) -> None:
+    """A Tuple call that ended is in Tuple's Recent, to call again."""
+    machine = desktop.machine
+    desktop.tuple_follows()
+    # Named by Tuple's call alone, so her row is told apart from the
+    # other calls this run's tests had, whose guests Tuple never names.
+    ada = A_GUEST | {"id": 7, "full_name": "Ada Brightwater", "email": "ada@example.com"}
+    call = in_a_tuple_call(desktop, 9 * 60) | {"participants": [ada]}
+    with desktop.told("drawn margin"):
+        desktop.tuple_streams(call)
+    desktop.tuple_streams(None)
+    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    kept = f"grep -q '\"since\":{call['started_at']}' ~/.local/state/tuple-call/recent.jsonl"
+    machine.wait_until_succeeds(desktop.in_session(kept), timeout=timedelta(seconds=10))
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("tuple", selecting="Tuple")
+    desktop.into_program()
+    desktop.launcher_until(lambda shown: "Recent" in shown["rows"])
+    desktop.down_to("Recent")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"][-1:] == ["Recent"] and "Ada Brightwater" in shown["rows"]
+    )
+    desktop.down_to("Ada Brightwater")
+    row = desktop.showing()["selected"]
+    assert row["note"].startswith("9 min \u00b7 "), row
+    assert row["verb"] == "call", row
+    assert {"label": "Email", "value": "ada@example.com"} in row["drawer"]["facts"], row
+    desktop.close_launcher()
 
 
 def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(

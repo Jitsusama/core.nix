@@ -41,13 +41,15 @@
 # The shell is where a call shows (docs/design.md, Calls): a piece in the
 # margin while Joel's in one or one rings, with leaving, sharing and muting
 # in Now, the launcher's rows to open his room, join a call whose link
-# was copied, and leave, Tuple's own acts in Programs › Tuple, and notices
+# was copied, and leave, Tuple's own acts in Programs › Tuple, its Recent
+# there, the last nine calls ended or missed, each called again, and notices
 # as people come and go, which Tuple on Linux doesn't give yet. Tuple.qml
 # holds them all through tuple-call. Tuple's contacts are People's, one
 # of its sources (TupleSource.qml), so calling someone is with their mail
 # and meetings, not in a place of Tuple's own.
 #
-# tuple-call (call/) holds the call Joel's in, a ring and a missed call
+# tuple-call (call/) holds the call Joel's in, a ring and a missed call,
+# and the calls had lately, kept in its state folder across restarts,
 # for the shell and anything else that asks, on
 # $XDG_RUNTIME_DIR/daemons/tuple.sock in the shell's daemon interface,
 # and does the call's acts through Tuple's own command. Its socket is

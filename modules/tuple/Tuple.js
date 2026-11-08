@@ -1,8 +1,15 @@
 // What Tuple's links say, and how a call is put in words, for Tuple.qml
-// and Call.qml. Kept apart from Quickshell's types, so the
-// `the-shell-follows-tuple-calls` check can run it in Qt's own engine
-// (tests/tuple.qml). How a call stands is tuple-call's to say (call/).
+// and Call.qml, and how Recent's calls read, for Calls.qml. Kept apart
+// from Quickshell's types, so the `the-shell-follows-tuple-calls` check
+// can run it in Qt's own engine (tests/tuple.qml). How a call stands, and
+// which calls Recent keeps, is tuple-call's to say (call/).
 .pragma library
+.import "When.js" as When
+
+const SECOND = 1000;
+const MINUTE = 60_000;
+const HOUR_MINUTES = 60;
+const DIGITS = 2;
 
 // A call link, as tuple call join takes one.
 const CALL_LINK = /https:\/\/(?:production\.)?tuple\.app\/c\/[A-Za-z0-9_-]+/;
@@ -47,4 +54,112 @@ function length(minutes) {
     }
     const hours = `${Math.floor(minutes / 60)} h`;
     return minutes % 60 === 0 ? hours : `${hours} ${minutes % 60} min`;
+}
+
+// Words with what's in braces filled in: "{first} and {second}".
+function filled(words, fill) {
+    let said = String(words ?? "");
+    for (const key of Object.keys(fill)) {
+        said = said.replace(`{${key}}`, String(fill[key]));
+    }
+    return said;
+}
+
+// Recent's calls as tuple-call says them, newest first by when each began,
+// as the times their rows say read down, any that isn't a call left out.
+// tuple-call keeps nine, as many as a program's Recent lists.
+function newestFirst(recent) {
+    return (recent ?? [])
+        .filter(past => past && Array.isArray(past.people) && typeof past.since === "number"
+            && typeof past.ended === "number")
+        .sort((a, b) => b.since - a.since);
+}
+
+// Who a past call was with, as its row is named, from tuple-call's people,
+// each by their name or else their address, in `said`'s words: "Ana",
+// "Ana and Ben", "Ana and one other", "Ana and 2 others", and `someone`
+// for whoever Tuple never named: "Someone", "Someone and 2 others".
+function who(people, said) {
+    const named = people.map(one => one.name || one.email || "").filter(name => name !== "");
+    const known = named.length > 0 ? named : [said.someone];
+    if (people.length <= 1) {
+        return known[0];
+    }
+    if (people.length === 2 && known.length === 2) {
+        return filled(said.two, { first: known[0], second: known[1] });
+    }
+    const rest = people.length - 1;
+    return filled(rest === 1 ? said.other : said.others, { first: known[0], count: rest });
+}
+
+// How long a past call went on, from when it connected to its end, in
+// `said`'s words: "under a minute", "42 min", "1 h", "1 h 5 min".
+function lasted(since, ended, said) {
+    const minutes = Math.floor(Math.max(0, ended - since) / MINUTE);
+    if (minutes < 1) {
+        return said.under;
+    }
+    if (minutes < HOUR_MINUTES) {
+        return filled(said.minutes, { minutes });
+    }
+    const left = minutes % HOUR_MINUTES;
+    return filled(left === 0 ? said.hours : said.hoursMinutes,
+        { hours: Math.floor(minutes / HOUR_MINUTES), minutes: left });
+}
+
+// The time of day on the clock here, "14:10".
+function clock(time) {
+    const at = new Date(time);
+    const two = number => String(number).padStart(DIGITS, "0");
+    return `${two(at.getHours())}:${two(at.getMinutes())}`;
+}
+
+// When a past call began, as the launcher says when (When.js): its time
+// alone today, else its day before it, "yesterday 14:10", "Monday 09:05",
+// "28 Oct 16:40".
+function began(time, now, said) {
+    return [When.day(time, now, said), clock(time)].filter(part => part !== "").join(" ");
+}
+
+// A past call's note, after its name: how long it went on, or that it
+// was missed in place of a length it never had, then when it began:
+// "42 min \u00b7 yesterday 14:10", "missed \u00b7 09:12".
+function note(past, now, said) {
+    const long = past.missed ? said.missed : lasted(past.since, past.ended, said);
+    return `${long} \u00b7 ${began(past.since, now, said)}`;
+}
+
+// A past call's drawer, every figure tuple-call keeps of it: the day and
+// time it began over its name, as a transcript's says them, "Tuesday 3
+// November \u00b7 14:10", with the year only when it isn't this one; who
+// was in it by name, and by address, as Tuple knew them; how long it went
+// on, or for a missed call how long it rang, to the second, since a ring
+// lasts a minute at most; and when it or the ring ended. Tuple's id for
+// each is left out, a number Joel never sees in Tuple, used only to call
+// one who has no address. `said` gives the labels too.
+function details(past, now, said) {
+    const at = new Date(past.since);
+    const thisYear = at.getFullYear() === new Date(now).getFullYear();
+    const day = said.date(at, thisYear ? "dddd d MMMM" : "dddd d MMMM yyyy");
+    const names = past.people.map(one => one.name).filter(name => name !== "");
+    const emails = past.people.map(one => one.email).filter(email => email !== "");
+    const facts = [];
+    if (names.length > 0) {
+        facts.push({ label: said.with, value: names.join(", ") });
+    }
+    if (emails.length > 0) {
+        facts.push({ label: emails.length === 1 ? said.email : said.emails,
+            value: emails.join(", ") });
+    }
+    const seconds = Math.round(Math.max(0, past.ended - past.since) / SECOND);
+    facts.push(past.missed
+        ? { label: said.rang, value: filled(said.seconds, { seconds }) }
+        : { label: said.length, value: lasted(past.since, past.ended, said) });
+    facts.push({ label: said.ended, value: began(past.ended, now, said) });
+    return {
+        eyebrow: `${day} \u00b7 ${clock(past.since)}`,
+        title: who(past.people, said),
+        facts,
+        body: ""
+    };
 }

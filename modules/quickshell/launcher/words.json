@@ -9170,6 +9170,64 @@
       "name": "Copy My Room's Link",
       "verb": "copy",
       "by": "tuple"
+    },
+    {
+      "id": "tuple:call",
+      "in": "program:recent",
+      "name": "Call",
+      "verb": "call",
+      "glyph": "call",
+      "states": {
+        "busy": {
+          "verb": "join",
+          "glyph": "joinCall"
+        },
+        "unknown": {
+          "name": "Someone"
+        }
+      },
+      "said": {
+        "missed": "missed",
+        "two": "{first} and {second}",
+        "other": "{first} and one other",
+        "others": "{first} and {count} others",
+        "yesterday": "yesterday",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min",
+        "seconds": "{seconds} s"
+      }
+    },
+    {
+      "id": "tuple:call:with",
+      "in": "tuple:call",
+      "name": "With"
+    },
+    {
+      "id": "tuple:call:email",
+      "in": "tuple:call",
+      "name": "Email",
+      "states": {
+        "many": {
+          "name": "Emails"
+        }
+      }
+    },
+    {
+      "id": "tuple:call:length",
+      "in": "tuple:call",
+      "name": "Length"
+    },
+    {
+      "id": "tuple:call:rang",
+      "in": "tuple:call",
+      "name": "Rang For"
+    },
+    {
+      "id": "tuple:call:ended",
+      "in": "tuple:call",
+      "name": "Ended"
     }
   ],
   "commands": [

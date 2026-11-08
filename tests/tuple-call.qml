@@ -6,8 +6,10 @@
 // it by name and since when; muting counts only once connected; whose
 // screen and camera are shown, and Joel's own, are said; someone coming and
 // going is told once the call has settled; muting and opening the room are
-// asked of the daemon, which runs Tuple for each; the call ending ends it;
-// and a ring and a missed call, from Tuple's log, are told. It exits 0 once
+// asked of the daemon, which runs Tuple for each; the call ending ends it
+// and is kept in Recent with everyone who was in it, though they'd left;
+// and a ring and a missed call, from Tuple's log, are told, the missed
+// call kept in Recent ahead of the call. It exits 0 once
 // every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
@@ -210,6 +212,13 @@ ShellRoot {
 
     function ended() {
         expect("no mute without a call", Tuple.muted === null, Tuple.muted);
+        const kept = Tuple.recent[0] ?? {};
+        const had = (kept.people ?? []).map(one => `${one.id} ${one.name} ${one.email}`);
+        expect("kept in Recent with everyone who was in it", Tuple.recent.length === 1
+            && kept.since === root.started && kept.missed === false
+            && kept.ended >= Date.now() - 5000
+            && had.join(", ") === "7 Ada Brightwater ada@example.com, 9 Cal Dunmore ",
+            JSON.stringify(Tuple.recent));
         Tuple.open();
         root.step("the room's link copied",
             () => Niri.spawned.some(command => command.join(" ") === "wl-copy https://tuple.app/c/opened"),
@@ -239,6 +248,9 @@ ShellRoot {
 
     function missed() {
         expect("no longer ringing", Tuple.ringing === "", Tuple.ringing);
+        expect("kept in Recent, newest first", Tuple.recent.length === 2 && Tuple.recent[0].missed
+            && Tuple.recent[0].people[0]?.name === "Ada Brightwater" && !Tuple.recent[1].missed,
+            JSON.stringify(Tuple.recent));
         Qt.exit(0);
     }
 
