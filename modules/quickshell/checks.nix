@@ -2008,10 +2008,17 @@ onLinux {
           feed=$XDG_RUNTIME_DIR/litra-feed
           [ -e "$state" ] || echo "true 40 4000" > "$state"
           read -r on percent kelvin < "$state"
+          # A light as litra says it: its lumens are a Glow's, 20 to 250
+          # across its share, and it names itself as its HID device does.
+          said() {
+            printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"lumens":%s,"kelvin":%s,%s}]\n' \
+              "$on" "$percent" "$((20 + 230 * percent / 100))" "$kelvin" \
+              '"dimmest":20,"brightest":250,"name":"Litra Glow stand-in","serial":"stand-in"' \
+              >> "$feed"
+          }
           case "$1" in
             watch)
-              printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"kelvin":%s}]\n' \
-                "$on" "$percent" "$kelvin" >> "$feed"
+              said
               exec tail -n +1 -f "$feed"
               ;;
             on) on=true ;;
@@ -2028,8 +2035,7 @@ onLinux {
             *) exit 2 ;;
           esac
           echo "$on $percent $kelvin" > "$state"
-          printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"kelvin":%s}]\n' \
-            "$on" "$percent" "$kelvin" >> "$feed"
+          said
         '';
       };
     in

@@ -1291,6 +1291,7 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
         desktop.shoot(f"launcher-home-network-device-at-{at}")
         desktop.close_launcher()
         devices_plates_lie_on_the_lines(desktop, scale)
+        the_desk_lights_plate_lies_on_the_lines(desktop, scale)
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
@@ -1312,8 +1313,17 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             desktop.type_in(typed, selecting=typed)
 
         def plated(shown: Json, first: str = first) -> bool:  # As launcher_until calls it.
-            """Say whether the drawer is out, holding this plate's first fact."""
-            return shown["drawer"]["out"] is True and first in shown["drawer"]["facts"]
+            """Say whether the drawer is out, holding this plate's first fact, its facts laid.
+
+            A busy VM has reported a plate out before its facts were placed, all on one line,
+            so it's waited for laid rather than held to the pitch at once.
+            """
+            drawer = shown["drawer"]
+            return (
+                drawer["out"] is True
+                and first in drawer["facts"]
+                and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+            )
 
         desktop.launcher_until(plated)
         drawer = plate_shown(desktop, scale)
@@ -1350,6 +1360,54 @@ def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
         assert (unread["count"], unread["side"]) == ("Lunch on Friday", "1"), unread
         desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+
+
+def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> None:
+    """Hold the desk light's plate to the lines, as a sound device's.
+
+    A stand-in Litra Glow (desk-light-stand-in.py) is plugged in, lit as a Glow first is, and
+    the desk light answer's drawer says where it is and what it is over the light's own name,
+    then its output in lumens of its range, its HID device and its serial (VKCF3Z, 2026-11-08).
+    It's unplugged again after, so no later shot holds a light that test order put there.
+    systemd's hwdb opens a Litra to the seat by its USB parent, which a uhid stand-in hasn't, so
+    its node is given to the account here, as udev gives a real one; `litra watch` tries again
+    when it is.
+    """
+    machine = desktop.machine
+    light = desktop.values["desk_light"]
+    machine.succeed(
+        "systemctl is-active --quiet desk-light"
+        f" || systemd-run --unit=desk-light {light} litra /run/desk-light.log"
+    )
+    try:
+        found = machine.wait_until_succeeds(
+            "grep -l HID_ID=0003:0000046D:0000C900 /sys/class/hidraw/*/device/uevent",
+            timeout=timedelta(seconds=30),
+        )
+        node = found.split("/")[4]
+        machine.succeed(f"chown {desktop.account} /dev/{node}")
+        desktop.answer("desk light")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and "Output" in shown["drawer"]["facts"]
+                and things_apart(
+                    shown["drawer"]["lines"]["facts"], shown["drawer"]["factsWrapped"] > 0
+                )
+            )
+        )
+        drawer = plate_shown(desktop, scale)
+        assert drawer["eyebrow"] == "on USB \u00b7 desk light", f"at {scale}: {drawer}"
+        assert drawer["facts"] == ["Output", "HID Device", "Serial"], f"at {scale}: {drawer}"
+        assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
+            f"at {scale} the desk light's facts are off the pitch: {drawer}"
+        )
+        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
+        desktop.shoot(f"launcher-plate-desk-light-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    finally:
+        machine.succeed("systemctl stop desk-light")
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(

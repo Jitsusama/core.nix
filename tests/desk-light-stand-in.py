@@ -27,9 +27,32 @@ BUS_USB = 0x03
 EVENT = 4380
 
 
-def litra_answer(report: bytes) -> bytes:
-    """Answer as the Litra does: its header and the command echoed back, 20 bytes."""
-    return report[:20].ljust(20, b"\0")
+# The Litra's commands that set it, each with the question that asks it back, and what it
+# answers before it's set: lit, at 138 lumens, at 4000 K. Values are big-endian.
+LITRA_SETS = {0x1C: 0x01, 0x4C: 0x31, 0x9C: 0x81}
+LITRA_FIRST = {0x01: b"\x01", 0x31: (138).to_bytes(2), 0x81: (4000).to_bytes(2)}
+
+
+class Litra:
+    """Answer as the Litra does, 20 bytes: a command echoed back, and a question with how it's set.
+
+    It keeps what it was set to, so the shell and `litra status` read a light lit as it was told.
+    """
+
+    def __init__(self) -> None:
+        """Start lit, as the light comes up from its own memory."""
+        self.held = dict(LITRA_FIRST)
+
+    def __call__(self, report: bytes) -> bytes:
+        """Answer one report."""
+        # After the report id and the header, as litra.rs's `report` builds it.
+        command = report[3:4][0] if report[3:4] else 0
+        if command in LITRA_SETS:
+            question = LITRA_SETS[command]
+            self.held[question] = report[4 : 4 + len(self.held[question])]
+        elif command in self.held:
+            return (report[:4] + self.held[command]).ljust(20, b"\0")
+        return report[:20].ljust(20, b"\0")
 
 
 def pebble_answer(report: bytes) -> bytes:
@@ -57,7 +80,7 @@ DEVICES = {
         0x046D,
         0xC900,
         bytes.fromhex("0643ff0a0206a101 8511 7508 9513 1500 26ff00 0904 8100 0904 9100 c0"),
-        litra_answer,
+        Litra(),
     ),
     # Report 0x03, 63 bytes each way in the vendor collection 0xFF01.
     "pebble": Device(

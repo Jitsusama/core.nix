@@ -2077,7 +2077,12 @@
       "answers": [
         "desk light",
         "warmth"
-      ]
+      ],
+      "said": {
+        "usb": "on USB",
+        "plate": "desk light",
+        "of": "of {least} to {most}"
+      }
     },
     {
       "id": "light:desk:brightness",
@@ -2088,6 +2093,21 @@
       "id": "light:desk:warmth",
       "in": "light",
       "name": "Warmth"
+    },
+    {
+      "id": "light:desk:output",
+      "in": "light",
+      "name": "Output"
+    },
+    {
+      "id": "light:desk:hid-device",
+      "in": "light",
+      "name": "HID Device"
+    },
+    {
+      "id": "light:desk:serial",
+      "in": "light",
+      "name": "Serial"
     },
     {
       "id": "light:desk:level",

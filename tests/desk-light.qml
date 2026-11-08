@@ -1,7 +1,8 @@
 // Drives the desk light (modules/quickshell/DeskLight.qml) and the
 // launcher's answers for it (launcher/Light.qml) through Quickshell itself,
 // over a stand-in litra that keeps a light's state and says each change on
-// its watch, as the real one does. The answer says how the light is lit;
+// its watch, as the real one does. The answer says how the light is lit,
+// and its drawer the light's name, its lumens, its node and its serial;
 // "desk light 60", "desk light 4000 k", "desk light off" and "warmer" set
 // it through litra; its answer holds its Brightness and Warmth, each a
 // setting whose choices step it or set a level; the bar is told of a change
@@ -115,11 +116,22 @@ ShellRoot {
 
     function first() {
         const told = light.answer("desk light");
-        expect("how it's lit", told !== null && told.headline === "the desk light is 40%, 4000 K",
+        expect("how it's lit", told !== null && told.headline === "the desk light is 40% \u00b7 4,000 K",
             told?.headline);
         expect("its parts", told.rows.map(row => `${row.name} ${row.side}`).join(", ")
-            === "Brightness 40%, Warmth 4000 K, Turn It Off ",
+            === "Brightness 40%, Warmth 4,000 K, Turn It Off ",
             JSON.stringify(told.rows.map(row => [row.name, row.side])));
+        // Its drawer: where it is and what, the light by its own name, then
+        // its output in lumens of its range, its HID device and its serial,
+        // marked as identifiers, never the warmth the answer says.
+        const drawer = told.thing === true ? told.drawer() : null;
+        expect("its drawer", drawer !== null && drawer.eyebrow === "on USB \u00b7 desk light"
+            && drawer.title === "Litra Glow stand-in"
+            && drawer.facts.map(fact => `${fact.label}=${fact.value}`).join("; ")
+                === "Output=112 lm \u00b7 of 20 to 250 lm; HID Device=/dev/hidraw1; Serial=stand-in",
+            JSON.stringify(drawer));
+        expect("what identifies it", drawer?.facts.filter(fact => fact.identifies)
+            .map(fact => fact.label).join(", ") === "HID Device, Serial", JSON.stringify(drawer));
         expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);
         expect("nothing told the bar at first", root.brightened === 0 && root.warmed === 0,
@@ -152,7 +164,7 @@ ShellRoot {
             JSON.stringify([light.rowNow("light:desk:brightness")?.side,
                 light.rowNow("light:desk:level:60")?.side]));
         const set = light.answer("desk light 3000 k");
-        expect("a warmth set", set.headline === "set the desk light to 3000 K", set.headline);
+        expect("a warmth set", set.headline === "set the desk light to 3,000 K", set.headline);
         set.run();
         root.step("warmer by the launcher", () => root.lit(60, 3000), root.warmer);
     }
@@ -172,7 +184,7 @@ ShellRoot {
         const parts = light.answer("desk light").rows;
         const partNames = parts.map(part => part.name).join(", ");
         expect("the parts", partNames === "Brightness, Warmth, Turn It Off", partNames);
-        expect("how each is set", parts[0].side === "60%" && parts[1].side === "4100 K"
+        expect("how each is set", parts[0].side === "60%" && parts[1].side === "4,100 K"
             && parts[0].graph.shape === "bar" && parts[1].graph.shape === "bar",
             JSON.stringify(parts.slice(0, 2).map(part => [part.side, part.graph])));
         expect("each offers its choices beside it", parts[0].offers && parts[1].offers,
@@ -199,7 +211,7 @@ ShellRoot {
 
     function stepped() {
         const warmest = light.answer("warmer");
-        expect("warmer by a step", warmest.headline === "make the desk light warmer, 3600 K", warmest.headline);
+        expect("warmer by a step", warmest.headline === "make the desk light warmer \u00b7 3,600 K", warmest.headline);
         // A camera ends, and the light goes out by itself.
         root.says(["press", "false", "70", "4100"]);
         root.step("a camera putting it out",

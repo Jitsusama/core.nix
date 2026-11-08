@@ -441,6 +441,9 @@ Scope {
             heard: said.heard ?? "",
             // An answer that is a thing, as a pi's whole words are, says so.
             thing: said.thing ?? false,
+            // One with more to say than its words, as the desk light's,
+            // gives its drawer, as the headline it is when asked does.
+            drawer: said.drawer,
             // Its name says why it came to nothing, so nothing else does.
             missed: said.missed === true,
             live: said.live ?? null,
@@ -608,6 +611,9 @@ Scope {
         now: true,
         stays: answer.stays ?? false,
         thing: answer.thing ?? false,
+        // An answer that's a thing with more to say than its words, as the
+        // desk light's is, gives its drawer as any thing's row does.
+        drawer: answer.drawer,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
