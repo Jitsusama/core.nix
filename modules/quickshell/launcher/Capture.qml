@@ -303,9 +303,12 @@ Provider {
 
     onTakenChanged: changed()
 
-    // When each thing taken was, by its path, so its row says it.
-    readonly property var takenAt: Object.fromEntries(Taken.files
-        .map(file => [file.path, file.at]))
+    // When each thing taken was, by its path, so its row says it. Qt's
+    // engine has no Object.fromEntries.
+    readonly property var takenAt: Taken.files.reduce((at, file) => {
+        at[file.path] = file.at;
+        return at;
+    }, {})
     // When is said as a file's row says it (FileFacts.js), in the
     // launcher's words and the locale's days, as everywhere (Y2YBTS,
     // 2026-11-03).
