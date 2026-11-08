@@ -4175,10 +4175,12 @@
         "unknown": "unknown",
         "unnamed": "not named yet",
         "notFound": "not found yet",
-        "unfound": "GeoClue hasn't found the laptop yet",
+        "unfound": "not found by GeoClue yet",
         "found": "{within}, found through GeoClue",
-        "knows": "GeoClue, {within}",
-        "elsewhere": "keeps {zone} \u00b7 not following",
+        "knows": "through GeoClue, {within}",
+        "elsewhere": "keeps {zone} \u00b7 not following"
+      },
+      "tells": {
         "leftOut": "Wi-Fi gives no altitude, speed or heading."
       }
     },

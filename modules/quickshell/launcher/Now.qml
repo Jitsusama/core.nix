@@ -283,7 +283,7 @@ Provider {
                 identifies: fact.identifies === true
             })),
             // What GeoClue can't say of a place found by Wi-Fi, and why.
-            body: byHand ? "" : hereSaid.leftOut
+            body: byHand ? "" : Words.of("location").tells?.leftOut ?? ""
         });
         return thingRow(Object.assign({
             key: "on:location",
