@@ -308,9 +308,11 @@ Provider {
                 name: Words.name("lap", "numbered", { number: lap.number }),
                 // Lap's flag, muted, so the marks' column runs on unbroken
                 // below the act that makes them, as a mail's rows do below
-                // Write a Mail.
+                // Write a Mail. A figure wears its mark only when marked
+                // (Choice.qml).
                 glyph: Words.glyph("lap"),
                 hue: "muted",
+                marked: true,
                 side: Timing.tenths(lap.lap),
                 note: (watchSaid.at ?? "").replace("{count}", Timing.tenths(lap.at)),
                 copy: Timing.tenths(lap.lap)
