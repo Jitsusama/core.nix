@@ -930,6 +930,10 @@
     settings with it, but srgb-gamut's, in every niri booted since, and opens-next-window-on's
     action and opens-next-window-as-column's field of it, which only IPC takes
   '';
+  niri-refreshes-once-a-frame = ''
+    the session's niri, nested in the sandbox, walks its windows at most once a frame while a
+    client's commits wake it hundreds of times a second
+  '';
   niri-says-what-the-gpu-gave-it = ''
     the session's niri lets smithay say which GPU priority niri got, keeping the rest of niri's own
     log filter

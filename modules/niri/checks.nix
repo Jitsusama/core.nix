@@ -202,6 +202,44 @@ onLinux {
         touch $out
       '';
 
+  # niri walks every window at most once a frame, however often a client's
+  # commits wake it (refreshes-once-a-frame.patch): its real niri, with the
+  # account's configuration, nested in a headless sway in the sandbox
+  # (tests/nested-niri.sh), counts its refreshes in its log while a
+  # stand-in commits a thousand times a second
+  # (tests/refreshes-once-a-frame.py). niri's own tests say what it puts
+  # off and what it doesn't; this shows the count falls on a running niri.
+  niri-refreshes-once-a-frame =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "niri-refreshes-once-a-frame"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+        ];
+        # niri draws in software, as the desktop's machine does.
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+        # niri's own filter, with the line tallying its refreshes let through.
+        RUST_LOG = "niri=debug,refresh_pacing=debug";
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/refreshes-once-a-frame.py} logs/niri.log
+        touch $out
+      '';
+
   # niri's own screens are drawn in colours no theme reaches, so no key
   # opens one: not its screenshot screen, not its key list, and no quit that
   # asks first. The launcher's Log Out quits without asking too.
