@@ -1350,6 +1350,31 @@ QtObject {
         machine("how long, in whole days", Interfaces.lasted(172800), "2 d");
         machine("how long, only just", Interfaces.lasted(20), "under a minute");
         machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
+        // One way of a link, as wifid says it, iw filling in what it doesn't.
+        const wifidWay = { mbps: 1081, generation: 6, mcs: 10, streams: 2, guard: 0.8,
+            bytes: 23661070224, packets: 27210952 };
+        machine("a way of a link, as wifid says it, with iw's width",
+            Interfaces.way(wifidWay, networkRadio.receive), { mbps: 1081, width: 80,
+                generation: 6, mcs: 10, streams: 2, guard: 0.8, bytes: 23661070224,
+                packets: 27210952 });
+        machine("a Wi-Fi 7 way, its coding as iw says it", Interfaces.way(
+            { mbps: 2882, generation: null, mcs: null, streams: null, guard: null },
+            Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")), { mbps: 2882,
+                width: 160, generation: 7, mcs: 13, streams: 2, guard: null, bytes: null,
+                packets: null });
+        machine("a way neither says", Interfaces.way(null, null).mcs, null);
+        const mcs = value => `MCS ${value}`;
+        machine("a figure the same each way, said once", Interfaces.eachWay(10, 10, mcs),
+            "MCS 10");
+        machine("a figure each way", Interfaces.eachWay(10, 9, mcs), "MCS 10 in \u00b7 MCS 9 out");
+        machine("a figure only sent", Interfaces.eachWay(null, 9, mcs), "MCS 9 out");
+        machine("a figure only heard", Interfaces.eachWay(0, undefined, mcs), "MCS 0 in");
+        machine("a figure neither way", Interfaces.eachWay(null, null, mcs), "");
+        const tenths = (value, decimals) => value.toFixed(decimals);
+        machine("idle for milliseconds", Interfaces.idle(12, tenths), "12 ms");
+        machine("idle for seconds", Interfaces.idle(2430, tenths), "2.4 s");
+        machine("idle for tens of seconds", Interfaces.idle(42000, tenths), "42 s");
+        machine("idle for minutes", Interfaces.idle(3 * 60000, tenths), "3 min");
 
         // How each Bluetooth link is doing, from what bluetooth-links writes.
         const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;

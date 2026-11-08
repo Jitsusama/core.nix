@@ -2,7 +2,8 @@
 // says it, by what it is (Wi-Fi, wired, a tunnel, a virtual bridge or
 // another virtual network), named the same from sysfs for the network's
 // speed, the gateways from the kernel's routing tables, the name servers
-// from resolv.conf, and a Wi-Fi card's link as iw reads it. Networks.qml,
+// from resolv.conf, and a Wi-Fi card's link as iw reads it, and as wifid
+// and iw together say each way of it. Networks.qml,
 // Wireless.qml and Traffic.qml read the files and run the programs;
 // everything here is plain reading of what they said, so it's tested
 // offscreen (tests/answers.qml).
@@ -35,6 +36,10 @@ const DEFAULT_SIX = "00000000000000000000000000000000";
 const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86_400;
+// Milliseconds in a second, and the seconds under which one keeps a
+// decimal.
+const SECOND = 1000;
+const TEN_SECONDS = 10;
 // The weakest and strongest signals a card is likely to hear, in dBm, as
 // the ends of a signal's graph.
 const FAINTEST = -90;
@@ -454,4 +459,45 @@ function lasted(seconds) {
 // for the strongest.
 function level(dbm) {
     return Math.max(0, Math.min(1, (dbm - FAINTEST) / (LOUDEST - FAINTEST)));
+}
+
+// One way of a card's link, as wifid read it, with what iw read of it
+// (a rate, as rate() makes it) filling whatever wifid doesn't say, such as
+// each way's width, or the coding of Wi-Fi 7, which wpa_supplicant doesn't
+// read: { mbps, width, generation, mcs, streams, guard, bytes, packets },
+// each null where neither says.
+function way(wifid, iw) {
+    const keys = ["mbps", "width", "generation", "mcs", "streams", "guard", "bytes", "packets"];
+    const said = {};
+    for (const key of keys) {
+        said[key] = wifid?.[key] ?? iw?.[key] ?? null;
+    }
+    return said;
+}
+
+// A figure each way, as the network's speed says one: once when both ways
+// agree, "MCS 10 in \u00b7 MCS 9 out" when they don't, "MCS 9 out" when only
+// one way is known, and "" when neither is. `say` writes one way's.
+function eachWay(inward, outward, say) {
+    const known = (value) => value !== null && value !== undefined;
+    if (!known(inward)) {
+        return known(outward) ? `${say(outward)} out` : "";
+    }
+    if (!known(outward)) {
+        return `${say(inward)} in`;
+    }
+    return inward === outward ? say(inward) : `${say(inward)} in \u00b7 ${say(outward)} out`;
+}
+
+// How long since a frame came or went, from milliseconds: "1 ms", "2.4 s",
+// or as long as lasted() says, for a card idle a minute or more.
+function idle(milliseconds, number) {
+    if (milliseconds < SECOND) {
+        return `${Math.round(milliseconds)} ms`;
+    }
+    if (milliseconds < MINUTE * SECOND) {
+        const seconds = milliseconds / SECOND;
+        return `${number(seconds, seconds < TEN_SECONDS ? 1 : 0)} s`;
+    }
+    return lasted(Math.floor(milliseconds / SECOND));
 }

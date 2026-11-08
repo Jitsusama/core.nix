@@ -6553,6 +6553,11 @@
       "name": "Out"
     },
     {
+      "id": "wifi:expected",
+      "in": "wifi:speed",
+      "name": "Expected"
+    },
+    {
       "id": "wifi:generation",
       "in": "wifi:speed",
       "name": "Generation"
@@ -6561,6 +6566,16 @@
       "id": "wifi:coding",
       "in": "wifi:speed",
       "name": "Coding"
+    },
+    {
+      "id": "wifi:streams",
+      "in": "wifi:speed",
+      "name": "Streams"
+    },
+    {
+      "id": "wifi:guard",
+      "in": "wifi:speed",
+      "name": "Guard Interval"
     },
     {
       "id": "wifi:width",
@@ -6577,6 +6592,26 @@
       "id": "wifi:retries",
       "in": "wifi:speed",
       "name": "Retries"
+    },
+    {
+      "id": "wifi:carried",
+      "in": "wifi",
+      "name": "Carried"
+    },
+    {
+      "id": "wifi:received",
+      "in": "wifi:carried",
+      "name": "Received"
+    },
+    {
+      "id": "wifi:sent",
+      "in": "wifi:carried",
+      "name": "Sent"
+    },
+    {
+      "id": "wifi:idle",
+      "in": "wifi:carried",
+      "name": "Idle For"
     },
     {
       "id": "wifi:retried",

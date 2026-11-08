@@ -1328,6 +1328,17 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
     machine.send_chars("cc", delay=KEY_PACE)
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
+    # What it's carried each way since it connected, as wifid reads it,
+    # each way's packets a step in.
+    desktop.type_in("carried", selecting="Carried")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: {"Received", "Sent"} <= set(shown["rows"]))
+    desktop.step_out()
+    desktop.launcher_until(
+        lambda shown: len(shown["held"]) == office and shown["typed"] == "carried"
+    )
+    machine.send_chars("cc", delay=KEY_PACE)
+    desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them; the figure's
     # own Copy last (docs/design.md, "Copy ... is always the last").
