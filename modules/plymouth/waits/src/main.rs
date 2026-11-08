@@ -216,8 +216,13 @@ fn running(bus: &Channel, id: u32) -> Option<bool> {
 /// What kind of thing a unit is, as the theme says it: a person's session,
 /// which is their user manager or a login's scope, or anything else.
 fn kind(unit: &str) -> &'static str {
-    let session = (unit.starts_with("user@") && unit.ends_with(".service"))
-        || (unit.starts_with("session-") && unit.ends_with(".scope"));
+    // A unit's name is case-sensitive, as systemd matches it.
+    let session = unit
+        .strip_suffix(".service")
+        .is_some_and(|name| name.starts_with("user@"))
+        || unit
+            .strip_suffix(".scope")
+            .is_some_and(|name| name.starts_with("session-"));
     if session { "session" } else { "other" }
 }
 
