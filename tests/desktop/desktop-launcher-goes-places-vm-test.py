@@ -201,6 +201,24 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
     desktop.close_launcher()
 
 
+def foot(desktop: Desktop, moved_from: str) -> tuple[int, int]:
+    """Give where the foot's keys start, and how long how things stand reads.
+
+    It's read once the selection has left `moved_from` and nothing is told over the keys: an act
+    an earlier subtest ran, as the catalogue's reopening of Lighthouse, may say how it ended while
+    the next walks, and what the foot is told isn't a row's keys.
+    """
+    read: list[Json] = []
+
+    def keys_alone(shown: Json) -> bool:
+        read[:] = [shown]
+        moved = (shown["selected"] or {}).get("is", "") != moved_from
+        return moved and not shown["saying"]
+
+    desktop.launcher_until(keys_alone)
+    return read[0]["keysAt"], len(read[0]["glance"])
+
+
 def at_rotation(shown: Json) -> bool:
     """Say whether the launcher holds a screen, inside Desktop's Screens, its Rotation selected."""
     return bool(
@@ -821,24 +839,16 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         """Give what the launcher's selected row is, or nothing."""
         return cast("str", (desktop.showing()["selected"] or {}).get("is", ""))
 
-    def foot() -> tuple[int, int]:
-        """Give where the foot's keys start, and how long how things stand reads."""
-        shown = desktop.showing()
-        return shown["keysAt"], len(shown["glance"])
-
     # Down through every row to the last. The foot holds still on the
     # way, whatever each row's keys say: the keys in their places, and
     # how things stand beside them as long (a minute turning keeps its
     # length).
-    feet = {selected_is(): foot()}
+    feet = {selected_is(): foot(desktop, "")}
     for _row in home[1:]:
         before = selected_is()
         desktop.next_row()
         # The wait ends before the loop moves on, so it reads this pass's row.
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
-        )
-        feet[selected_is()] = foot()
+        feet[selected_is()] = foot(desktop, before)
     assert selected_is() == "collection:keyboard"
     assert len(set(feet.values())) == 1, f"the foot moved as the arrows went: {feet}"
     # Each says what it holds after its name, in its own order, from the
