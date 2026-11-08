@@ -10,6 +10,7 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
 
+use jiff::tz::TimeZone;
 use serde::Deserialize;
 
 use crate::mesh::{Mesh, Presence};
@@ -206,11 +207,22 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
         .ok()
         .map(|id| id.trim().to_owned());
+    let zone = TimeZone::system();
+    let records = mesh.root.join("quest-workflow/sessions");
     mesh.all()
         .into_iter()
         .filter_map(|p: Presence| {
             let address = p.addresses.first()?.clone();
+            let orchestrates = p
+                .groups
+                .iter()
+                .any(|g| g.eq_ignore_ascii_case(&format!("#orchestration/{address}")));
+            let ended = fs::read_to_string(records.join(format!("{}.json", p.session)))
+                .ok()
+                .and_then(|record| revive::ended_on_purpose(&record, &zone));
             Some(Seen {
+                orchestrates,
+                ended,
                 this_boot: boot.is_some()
                     && p.owner.as_ref().and_then(|o| o.boot_id.as_ref()) == boot.as_ref(),
                 running: p.owner.as_ref().and_then(|o| o.pid).is_some_and(is_pi),

@@ -11,8 +11,8 @@
 //!
 //! Given `--restart`, each tick first revives, before anything that needs
 //! the network: every orchestrator (each `--orchestrator`, and any that
-//! others name as theirs) and every session of the steward's whose pi
-//! died is started again on its own log, its window put back, and the
+//! hears its own orchestration's group or that others name as theirs) and
+//! every session of one whose pi died is started again on its own log, its window put back, and the
 //! steward told (revive.rs says which are left down).
 //!
 //!     cadence tick [--watcher ADDRESS --steward ADDRESS]

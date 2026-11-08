@@ -12,7 +12,7 @@
 # so it needs no builder and holds nothing between ticks.
 #
 # Given `revive.restart`, each tick first starts again every orchestrator
-# and every session of the steward's whose pi died, in a terminal on the
+# and every orchestrator's session whose pi died, in a terminal on the
 # account's own PATH, so a crash overnight costs minutes, not the night.
 {
   config,
