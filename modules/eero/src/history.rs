@@ -132,8 +132,14 @@ impl History {
     fn connect(path: &Path) -> Result<History, String> {
         let db = Connection::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
         db.busy_timeout(Duration::from_secs(5)).map_err(sql)?;
-        db.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
-            .map_err(sql)?;
+        // SQLite otherwise keeps the write-ahead log at the largest it ever
+        // grew, every frame of it long since checkpointed, as spend-watch
+        // found with its own.
+        db.execute_batch(
+            "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;
+             PRAGMA journal_size_limit = 4194304;",
+        )
+        .map_err(sql)?;
         Ok(History { db, pruned: None })
     }
 
