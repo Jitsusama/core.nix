@@ -70,6 +70,11 @@ Provider {
         return asked === program ? SlackUnreads.recent.map(conversation) : [];
     }
 
+    // Slack's Recent is this one's to give, so it stands while none is read.
+    function keepsRecentOf(asked) {
+        return asked === program;
+    }
+
     // Unread, which steps in to each conversation as it stands when
     // stepped into.
     function unread() {

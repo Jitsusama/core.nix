@@ -4,8 +4,8 @@
 // what's playing (launcher/Playing.qml) stood in. A running program with a
 // player, a stream and notices holds, in order, Go To the window used
 // last, New window, New window below, its desktop entry's own actions (one
-// shortened, one left to New window), Recent, its other window by title,
-// Notices, Quit, then Media and Sound, each doing what it says: Quit asks once
+// shortened, one left to New window), its other window by title, Recent,
+// saying how many and the first one's name, Notices, Quit, then Media and Sound, each doing what it says: Quit asks once
 // and closes each window, the media and sound acts reach the player and
 // the program's streams only, and its figures follow what they did. A
 // program with nothing of the sort holds only New window and New window
@@ -24,7 +24,10 @@
 // desktop opens them. A program whose sites are read only as it's stepped
 // into reads them then, once each time the launcher opens, each site by
 // its title beside its host, opened by its own command, and Copy the Link
-// last. What it has open leads: every page open, one row a page newest
+// last, its Recent standing and waiting until they're first read. What it
+// has open comes before its other windows and Recent, in the step itself,
+// and a window titled by a page it has open in front isn't listed again:
+// every page open, one row a page newest
 // looked at first, saying first that it's open and in how many tabs, then
 // its host, so a side cut short keeps the state, Return going to
 // it through its source's command and its window, Close It closing each of
@@ -33,7 +36,7 @@
 // source leaves out has no row but still finds the window it's in front
 // of, and a source that only says what's open, as Chrome's session file
 // does, gives Go To bringing the window forward and no Close It. A file
-// source saying what's open, as mpv's does, leads the same way, one row a
+// source saying what's open, as mpv's does, comes first the same way, one row a
 // file only while its process has a window, Return going to that window,
 // Close It closing it and leaving the file dimmed, the rest of its Recent
 // still the list programs share; a file open in two windows says so, and
@@ -282,7 +285,9 @@ ShellRoot {
         same("sites aren't read before their program is stepped into",
             applications.recents.of("browser").length, 0);
         root.waiting = "the sites";
-        program("browser").verbs();
+        const asking = program("browser").verbs().find(row => row.name === "Recent");
+        same("Recent stands while its sites are first read, waiting",
+            asking ? `${asking.side} ${asking.empty}` : "no Recent", "\u2026 \u2026");
     }
 
     function browsed(reading) {
@@ -291,12 +296,17 @@ ShellRoot {
             return;
         try {
             const rows = program("browser").verbs();
-            same("stepped into, it reads its sites as its Recent", names(rows),
-                "Go To, New Window, New Window Below, Recent, Another, Left out, Quit");
-            const sites = rows[3].targets();
-            same("what's open first, one row a page, newest looked at first, then what was "
+            same("stepped into, what it has open comes before its other windows and Recent, "
+                + "a window its front tab stands for not listed again", names(rows),
+                "Go To, New Window, New Window Below, Open A, Older page, Another, Behind, "
+                + "Left out, Recent, Quit");
+            const visited = rows[8].targets();
+            const sites = rows.slice(3, 7).concat(visited);
+            same("what's open, one row a page, newest looked at first, then in Recent what was "
                 + "open, never a page open now nor one left out", names(sites),
                 `Open A, Older page, Another, Behind, Page ${reading}`);
+            same("Recent says how many, and their names",
+                `${rows[8].side} ${rows[8].count}`, `1 Page ${reading}`);
             same("each saying it's open and in how many tabs, then its host",
                 sites.map(row => row.side).join(" | "),
                 "open in 2 tabs \u00b7 open.example.com | open \u00b7 other.example.net "
@@ -337,7 +347,7 @@ ShellRoot {
             inside[1].run();
             same("Close It closes each of its tabs", JSON.stringify(Niri.spawns),
                 '[["tabs","close","7"],["tabs","close","9"]]');
-            const shut = program("browser").verbs()[3].targets()[0];
+            const shut = program("browser").verbs()[3];
             same("the page stays where it was, dimmed and said closed, holding only its link",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
                 "site:https://open.example.com/a true closed \u00b7 open.example.com | Copy the Link");
@@ -354,7 +364,7 @@ ShellRoot {
                 const source = applications.settings.recents.find(one => one.app === "browser");
                 delete source.go;
                 delete source.close;
-                const bare = program("browser").verbs()[3].targets()
+                const bare = program("browser").verbs()
                     .find(row => row.key === "site:https://another.example.com/b");
                 same("with only what's open said, a page holds Go To, its window, then Copy the Link",
                     names(bare.verbs()), "Go To, Another, Copy the Link");
@@ -404,10 +414,14 @@ ShellRoot {
         if (applications.recents.openIn("org.example.viewer").length === 0)
             return;
         try {
-            const recent = program("org.example.viewer").verbs().find(row => row.name === "Recent");
-            const files = recent.targets();
-            same("what it has open first, one row a file while its window is open, newest "
-                + "looked at first, then the list programs share, never a file open now",
+            const rows = program("org.example.viewer").verbs();
+            same("what it has open comes before Recent, no window it stands for listed again",
+                names(rows), "Go To, New Window, New Window Below, open.pdf, paper.pdf, notes.md, "
+                + "Recent, Quit");
+            const recent = rows[6];
+            const files = rows.slice(3, 6).concat(recent.targets());
+            same("what it has open, one row a file while its window is open, newest "
+                + "looked at first, then in Recent the list programs share, never a file open now",
                 names(files), "open.pdf, paper.pdf, notes.md, old.pdf");
             same("each made as every file is, saying it's open, and in how many, then its folder",
                 files.map(row => `${row.component} ${row.key} ${row.side}`).join(" | "),
@@ -438,7 +452,7 @@ ShellRoot {
             same("Close It keeps the launcher", inside[1].stays, true);
             inside[1].run();
             same("Close It closes that window", acted(), '[{"CloseWindow":{"id":31}}]');
-            const shut = recent.targets()[0];
+            const shut = program("org.example.viewer").verbs()[3];
             same("the file stays where it was, dimmed and said closed, holding only its path",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
                 `file:${root.home}/open.pdf true closed \u00b7 ~ | Copy the Path`);
@@ -490,8 +504,10 @@ ShellRoot {
             same("in the program's order, each part where it applies, what's given it to copy last",
                 names(tester),
                 "Go To, New Window, New Window Below, Private window, Open the logbook, "
-                + "Recent, Draft, Notices, Quit, Media, Sound, Copy a New Log's Link");
-            const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
+                + "Draft, Recent, Notices, Quit, Media, Sound, Copy a New Log's Link");
+            const [switching, , , secret, logbook, draft, shared, told, quit, media, sound] = tester;
+            same("Recent says how many it holds, and their names",
+                `${shared.side} ${shared.count}`, "3 notes.md, plan.md, Plan Doc");
             const files = shared.targets();
             same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",
                 `${names(files)} ${files.map(row => row.key).join(" ")}`,

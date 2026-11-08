@@ -257,6 +257,7 @@ let
     "launcher/Standing.js"
     "launcher/Steady.js"
     "launcher/Becoming.js"
+    "launcher/Recent.js"
     "launcher/SessionRow.js"
     "launcher/SessionDrawer.js"
     "launcher/Trials.js"
