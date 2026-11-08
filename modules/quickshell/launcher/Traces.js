@@ -5,8 +5,10 @@
 // need to get proper observability working, including tracing for stuff
 // like this", of a void above a menu's first row). Nothing is written per
 // key: spans are kept in memory, a fixed number of them, and each opening
-// is sent whole as it closes (Traces.qml). Apart from the launcher, so
-// tests/traces.qml can hold it in Qt's own engine.
+// is sent whole as it closes (Traces.qml). The held notices are traced the
+// same way, each hold a trace, as the service "notices" (Y2YBTS,
+// 2026-11-07). Apart from the launcher, so tests/traces.qml can hold it in
+// Qt's own engine.
 .pragma library
 
 // How many hex digits OTLP's JSON mapping gives a trace's id and a span's.
@@ -80,16 +82,18 @@ function nanos(ms) {
 }
 
 // The ended spans as one ExportTraceServiceRequest, in OTLP's JSON mapping,
-// from the service "launcher": one line for the collector. A span not yet
-// ended is left out.
-function request(spans) {
-    const done = spans.filter(span => span.end !== null);
+// from `service`, the launcher's unless it's another's, as the held
+// notices' are: one line for the collector. A span not yet ended is left
+// out.
+function request(spans, service) {
+    const finished = spans.filter(span => span.end !== null);
+    const named = service ?? "launcher";
     return {
         resourceSpans: [{
-            resource: { attributes: [attribute("service.name", "launcher")] },
+            resource: { attributes: [attribute("service.name", named)] },
             scopeSpans: [{
-                scope: { name: "launcher" },
-                spans: done.map(span => Object.assign({
+                scope: { name: named },
+                spans: finished.map(span => Object.assign({
                     traceId: span.trace,
                     spanId: span.span,
                     name: span.name,
