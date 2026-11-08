@@ -1372,6 +1372,53 @@ def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Sh
         shutil.rmtree(said)
 
 
+# How often a person might ask a terminal again: more often than WARP is read afresh while
+# shown (Warp.qml's fresh), so a read kept from outside is said before it's asked again.
+ASKED_AGAIN = 0.5
+
+
+def terminal_shown_until(shell: Shell, test: Callable[[Json], object], *steps: str) -> Json:
+    """Ask `launcher show` again, as a person would, until what it's told passes the test.
+
+    A terminal's ask is answered at once, so a provider still asking says so, and what it
+    hears is said to the next ask (Warp.qml's askedOutside).
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    shown = shown_to_terminal(shell, *steps)
+    while not test(shown):
+        assert time.monotonic() < deadline, f"a terminal was never shown what's wanted: {shown}"
+        time.sleep(ASKED_AGAIN)
+        shown = shown_to_terminal(shell, *steps)
+    return shown
+
+
+def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Shell) -> None:
+    """`launcher show network warp` says WARP's state and Health, and Round Trip's drawer.
+
+    What warp prints for a terminal's ask is kept for the next while the launcher stays
+    closed, and each read after sparks as it does while shown, so once two are in, Round
+    Trip's drawer says whose figures they are. The launcher never opens.
+    """
+    said = warp_said()
+    try:
+        warp = terminal_shown_until(
+            shell,
+            lambda shown: "connected" in (shown["row"] or {}).get("side", ""),
+            "network",
+            "warp",
+        )
+        assert warp["in"] == ["Network", "WARP"], warp
+        health = next(row for row in warp["rows"] if row["name"] == "Health")
+        assert health["side"] == "healthy", health
+        trip = terminal_shown_until(
+            shell, lambda shown: "drawer" in (shown["row"] or {}), "network", "warp", "round trip"
+        )
+        assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
+        assert not shell.showing()["open"]
+    finally:
+        shutil.rmtree(said)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

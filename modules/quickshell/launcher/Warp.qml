@@ -18,11 +18,12 @@
 // warp-cli and keeps nothing, so it's run as the answer is wanted and
 // again every two seconds while it's shown, never between: warp-cli's
 // answers take about 80 ms together, and nothing is spawned while the
-// launcher is closed or shows something else. Whatever warp printed last
-// stands until the next, so the figures move in place rather than
-// flickering back to waiting. What was read while it's shown is kept for
-// the tunnel's sparks, whose drawers say once whose figures they are, and
-// forgotten as the launcher closes. The switch is warp's too, `warp
+// launcher is closed or shows something else, but for a terminal's ask
+// (`launcher show`). Whatever warp printed last stands until the next, so
+// the figures move in place rather than flickering back to waiting. What
+// was read while it's shown is kept for the tunnel's sparks, whose
+// drawers say once whose figures they are, and forgotten as the launcher
+// opens or closes. The switch is warp's too, `warp
 // connect` and `warp disconnect`, which leave one the organisation holds
 // as it is and say so.
 import qs
@@ -53,6 +54,14 @@ Provider {
     // What the last switch said, for its row's note, until the launcher
     // closes.
     property string switchSaid: ""
+    // Whether warp was last asked for a terminal (`launcher show`) or the
+    // catalogue while the launcher is closed. Their ask is answered at
+    // once and can't wait on warp, so what it prints is kept for the next
+    // ask, and the reads after spark as they do while shown.
+    property bool askedOutside: false
+    // How old what an ask from outside kept may be and still be said to
+    // the next, rather than asked afresh.
+    readonly property int keptOutside: 60000
 
     // Whether anyone can see what it says, so warp is run only then.
     readonly property bool shown: launcher !== null && launcher.open
@@ -65,9 +74,16 @@ Provider {
     function answer(typed) {
         if (warp === "" || asks(typed) === "")
             return null;
+        const outside = launcher !== null && !launcher.open && launcher.cataloguing;
+        if (outside && said !== null && Date.now() - saidAt > keptOutside) {
+            said = null;
+            seen = null;
+        }
         if (launcher !== null && (launcher.open || launcher.cataloguing)
-            && (said === null || Date.now() - saidAt > fresh))
+            && (said === null || Date.now() - saidAt > fresh)) {
+            askedOutside = outside;
             look();
+        }
         if (said === null)
             return waitingAnswer();
         return said.error !== undefined ? failedAnswer() : told();
@@ -219,10 +235,12 @@ Provider {
     }
 
     // What warp printed, kept until the next, unless the launcher closed
-    // meanwhile, so the next opening asks afresh; and what the sparks keep
-    // of it.
+    // meanwhile, so the next opening asks afresh, or it was asked from
+    // outside, so the next ask says it; and what the sparks keep of it.
     function heard(text) {
-        if (launcher === null || !(launcher.open || launcher.cataloguing))
+        const kept = askedOutside;
+        askedOutside = false;
+        if (launcher === null || !(launcher.open || launcher.cataloguing || kept))
             return;
         const printed = parsed(text);
         said = printed.status !== undefined || printed.error !== undefined
@@ -236,9 +254,9 @@ Provider {
     Connections {
         target: provider.launcher
 
+        // Opened or closed, it asks afresh, so what a terminal was told
+        // is never shown as though just asked.
         function onOpenChanged() {
-            if (provider.launcher.open)
-                return;
             provider.said = null;
             provider.seen = null;
             provider.switchSaid = "";
