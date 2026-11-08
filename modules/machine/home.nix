@@ -1,0 +1,45 @@
+# The machine daemon: how this machine is doing, its processor, memory,
+# disks, boot and the programs using it most, held ready over
+# $XDG_RUNTIME_DIR/daemons/machine.sock in the shell's daemon interface,
+# for the launcher's Machine place and anything else that asks
+# (src/main.rs says how). The shell imports it, since what Machine shows
+# is what it holds.
+{ lib, pkgs, ... }:
+let
+  machine = pkgs.callPackage ./package.nix { };
+in
+{
+  # It isn't in background.slice: what it holds is what the launcher shows
+  # as Joel opens it, so it answers ahead of the work behind. It reads
+  # nothing while nobody watches, so it costs nothing idle.
+  systemd.user.services.machine = {
+    Unit = {
+      Description = "Holds how this machine is doing ready for the shell";
+      # Restarted after a switch reloads the units, it comes back as the
+      # new one.
+      X-SwitchMethod = "restart";
+      # Its socket is systemd's, handed to it as it starts.
+      Requires = [ "machine.socket" ];
+      After = [ "machine.socket" ];
+    };
+    Service = {
+      ExecStart = "${lib.getExe machine} %t/daemons/machine.sock";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  # Its socket, held by systemd whether or not the daemon runs, so the
+  # shell asking while it starts, or starts again, waits on it rather than
+  # finding no socket; asking starts it, should it have stopped.
+  systemd.user.sockets.machine = {
+    Unit.Description = "Where the shell asks the machine daemon";
+    Socket = {
+      ListenStream = "%t/daemons/machine.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+    Install.WantedBy = [ "sockets.target" ];
+  };
+}
