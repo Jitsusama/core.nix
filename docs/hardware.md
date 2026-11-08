@@ -45,8 +45,11 @@ drives it: core builds Asahi's kernel itself ([its kernel folder][34]), with
 Asahi's fairydust branch on top for a screen on the front-left port, and
 its boot chain too ([its boot folder][35]): m1n1's second stage, which the
 m1n1 in a macOS stub's place loads, with the Air's own device tree and
-U-Boot, which gives systemd-boot a plain UEFI. The rest of Asahi's support
-comes from [nixos-apple-silicon][32]. Asahi's installer, run from macOS, shrinks macOS,
+U-Boot, which gives systemd-boot a plain UEFI. The firmware unpacking
+(`modules/asahi-firmware`) and the speakers (`modules/asahi-audio`, with
+`modules/speakersafetyd`) are core's too; all of it began from
+[nixos-apple-silicon][32]'s modules, under their MIT notice. Asahi's
+installer, run from macOS, shrinks macOS,
 makes the stub and the EFI system partition, and copies the firmware for
 Wi-Fi, Bluetooth and the camera out of macOS onto that partition. The kernel
 is Asahi's tree rather than core's mainline one, so `jitsusama.kernel.cpu`
@@ -58,6 +61,7 @@ isn't set.
 | Loaders  | m1n1's second stage and U-Boot, core's own, starting core's kernel     |
 | Boot     | systemd-boot under U-Boot's UEFI, which keeps no variables             |
 | Firmware | Asahi's copy from macOS, unpacked from the EFI partition at each boot  |
+| Sound    | asahi-audio's speaker filters, behind speakersafetyd                   |
 | Stick    | how to start one from U-Boot, for the guide to say                     |
 | Guide    | no Secure Boot or TPM steps, since the model has neither               |
 

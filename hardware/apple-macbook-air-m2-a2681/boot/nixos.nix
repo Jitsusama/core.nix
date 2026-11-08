@@ -6,8 +6,8 @@
 # contributors), whose options it leaves out, since nothing here sets one.
 { config, pkgs, ... }:
 let
-  inherit (config.hardware.asahi.pkgs) m1n1;
-  uBoot = config.hardware.asahi.pkgs.callPackage ./u-boot.nix { };
+  inherit (pkgs) m1n1;
+  uBoot = pkgs.callPackage ./u-boot.nix { };
 
   # This Mac's device tree alone, from the kernel it starts, so a change to
   # the kernel's device trees, fairydust's screen among them, reaches the

@@ -13,8 +13,7 @@ nixos-apple-silicon, so core chooses its tag and its patches.
 
 `package.nix` and `nixos.nix` follow nixos-apple-silicon's
 packages/linux-asahi and modules/kernel at the commit core pins,
-which are MIT, under the notice in `../LICENSE.nixos-apple-silicon`;
-the hardware module leaves that kernel module out.
+which are MIT, under the notice in `../LICENSE.nixos-apple-silicon`.
 The kernel and the patch are the Linux kernel's, GPL-2.0.
 
 ## fairydust
