@@ -743,12 +743,18 @@ mod tests {
     #[test]
     fn a_builder_answers_only_while_something_listens() {
         // On a loopback address of its own, since a port it frees on the
-        // one every other test binds may be taken by one of them at once,
-        // as it was beside the proofs' tests.
+        // one every other test binds may be taken by one of them at once.
         let listening = TcpListener::bind("127.0.0.3:0").expect("a port");
         let address = listening.local_addr().expect("its address").to_string();
         assert!(answers(&address));
         drop(listening);
+        // A child another test forks holds the listener open until it
+        // execs, which beside the proofs' tests took long enough to be
+        // answered, so it's given a moment to go.
+        let ending = std::time::Instant::now() + Duration::from_secs(5);
+        while answers(&address) && std::time::Instant::now() < ending {
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert!(!answers(&address));
         assert!(!answers("not an address"));
     }
