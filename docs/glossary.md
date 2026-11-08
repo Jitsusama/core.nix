@@ -314,6 +314,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | backhaul | how a node reaches the node before it, over Ethernet or Wi-Fi | mesh link, backbone | |
 | device | a thing on the home network, as eero lists it | client, station | `clients` |
 | internet | the home network's way out, through its gateway node | WAN, ISP connection | |
+| internet provider | who carries the internet to the home network, as eero names it | carrier | `isp` |
 | outage | a time the internet was down | downtime | |
 | radio | a Wi-Fi transmitter on one band: the machine's card's, or one of a node's | | |
 | band | the frequencies a radio uses: 2.4, 5 or 6 GHz | frequency band | |

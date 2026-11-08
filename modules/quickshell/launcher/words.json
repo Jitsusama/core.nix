@@ -1944,7 +1944,8 @@
     {
       "id": "eero:internet:isp",
       "in": "eero:internet",
-      "name": "ISP"
+      "name": "Provider",
+      "term": "Network/internet provider"
     },
     {
       "id": "eero:internet:addressing",

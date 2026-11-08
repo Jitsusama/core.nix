@@ -64,7 +64,7 @@ Provider {
     function plate(scope, said) {
         return {
             eyebrow: said.eyebrow,
-            // An eyebrow naming a node or an ISP keeps its case, as a name
+            // An eyebrow naming a node or an internet provider keeps its case, as a name
             // from the world is never re-cased (Drawer.qml).
             eyebrowNames: said.names === true,
             title: said.title,

@@ -89,7 +89,7 @@ function internet(model, now, settings) {
         names: known(net.isp),
         title: "Internet",
         facts: kept([
-            fact("state", joined([net.state, net.isp_up === false ? "ISP down" : ""])),
+            fact("state", joined([net.state, net.isp_up === false ? "provider down" : ""])),
             fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
                 Home.when(net.speed_test?.at, now)])),
             fact("nodes", Home.nodesSaid(net.nodes)),
