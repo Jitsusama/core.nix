@@ -1078,9 +1078,10 @@ def test_zzz_the_shells_memory_after_the_walk(desktop: Desktop) -> None:
     desktop.machine.succeed(
         f"{home}/lib/heaptrack/libexec/heaptrack_interpret < {HEAP} | zstd -q > /tmp/heap.zst"
     )
+    desktop.machine.copy_from_vm("/tmp/heap.zst")
     summary = desktop.machine.succeed(
         f"{home}/bin/heaptrack_print -f /tmp/heap.zst -p 1 -a 0 -T 0 -l 0"
-        " -n 20 -s 3 2>&1 | cut -c1-220 | head -900"
+        " -n 20 -s 3 > /tmp/heap.txt 2>&1; cut -c1-220 /tmp/heap.txt | head -c 80000; true"
     )
     print("HEAP summary:\n" + summary)
     desktop.as_account(
