@@ -22,6 +22,11 @@
 //   closed) counts for nothing, and a row named what's typed is first
 //   over another latched, unless that other was picked for exactly this
 //   at least twice. It only orders: every match still shows.
+// - A program's own act found from the top (its row `sinks`, as Programs
+//   makes it) comes after everything else found, whatever its tier, a row
+//   gathered late too, unless it was picked for what's typed: "image" is
+//   the Clipboard's picture before GIMP's New Image from the Copied
+//   Picture (docs/design.md).
 // - The rest, within a tier: what was picked for what's typed, most
 //   first; then what's picked most of all, as counted when the launcher
 //   opened, so nothing moves while it's open; then the better match, the
@@ -308,7 +313,9 @@ function order(found, ask) {
     const weight = f => (picked[f.choice.key] ?? { weight: 0 }).weight ?? 0;
     const count = f => weight(f) > 0 ? 0 : often[f.choice.key] ?? 0;
     const first = f => latchedKey !== "" && f.choice.key === latchedKey ? 0 : 1;
+    const sunk = f => f.choice.sinks === true && weight(f) === 0 ? 1 : 0;
     return found.slice().sort((a, b) => first(a) - first(b)
+        || sunk(a) - sunk(b)
         || a.tier - b.tier
         || weight(b) - weight(a)
         || count(b) - count(a)
@@ -319,14 +326,16 @@ function order(found, ask) {
 
 // Where rows found later, such as a collection's best, go among the rows
 // already ordered: after the rows of their tier and the better ones, never
-// above them, but the one latched for what's typed goes first.
+// above them, but above a program's act not picked for what's typed (its
+// `kept`), and the one latched for what's typed goes first.
 function placed(rows, later, latchedKey) {
     const all = rows.slice();
+    const sunk = f => f.sinks === true && f.kept !== true;
     for (const row of later) {
         if (latchedKey !== "" && row.key === latchedKey) {
             all.unshift(row);
         } else {
-            const at = all.findIndex(f => (f.tier ?? 1) > (row.tier ?? 1));
+            const at = all.findIndex(f => sunk(f) || (f.tier ?? 1) > (row.tier ?? 1));
             all.splice(at < 0 ? all.length : at, 0, row);
         }
     }

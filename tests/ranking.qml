@@ -249,6 +249,31 @@ QtObject {
         expect("late but latched", keys(Rank.placed(ordered, [row("copy:x", "X", { tier: 1 })],
             "copy:x")), "copy:x program:a program:b program:c");
 
+        // A program's own act found from the top comes after anything else
+        // found, whatever its tier, unless Joel picked it for what's typed
+        // (docs/design.md): "image" is the Clipboard's picture before
+        // GIMP's New Image from the Copied Picture.
+        const act = (tier, fields) => ({
+            choice: row("program-act:gimp:paste", "New Image from the Copied Picture",
+                { sinks: true }),
+            tier: tier, score: 9
+        });
+        const among = [act(0.5), f("program:magick", "Image Magick", 1, 1)];
+        expect("an act after the rest", keys(Rank.order(among, {})),
+            "program:magick program-act:gimp:paste");
+        expect("an act picked keeps its tier", keys(Rank.order(among, {
+            picked: { "program-act:gimp:paste": { weight: 0.5 } }
+        })), "program-act:gimp:paste program:magick");
+        const sinking = [row("program:a", "A", { tier: 0 }),
+            row("program-act:gimp:paste", "New Image", { tier: 0.5, sinks: true })];
+        expect("late above an act", keys(Rank.placed(sinking,
+            [row("copy:image", "Image", { tier: 1 })], "")),
+            "program:a copy:image program-act:gimp:paste");
+        const picked = sinking.map(one => Object.assign({}, one, { kept: true }));
+        expect("late below an act picked", keys(Rank.placed(picked,
+            [row("copy:image", "Image", { tier: 1 })], "")),
+            "program:a program-act:gimp:paste copy:image");
+
         // The selection stays on its row as rows come before it.
         const before = [row("a", "A"), row("b", "B", { is: "window:2" })];
         expect("pinned", Rank.pinned([row("x", "X")].concat(before), "window:2", 1), 2);
