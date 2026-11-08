@@ -1,0 +1,71 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] bluetooth: take BlueZ up whenever it starts
+
+Bluez asked the bus for BlueZ's object manager once, as the shell
+started, and gave up if BlueZ wasn't there yet, so a shell started
+before bluetoothd, or one whose bluetoothd restarted, as a system switch
+restarts it, had no adapter and no devices until the shell itself was
+restarted. It now watches for org.bluez coming onto the system bus and
+takes up its objects each time it does; adapters and devices it already
+knew are kept, and take what BlueZ says of them again.
+
+---
+diff --git a/src/bluetooth/bluez.cpp b/src/bluetooth/bluez.cpp
+index f2c4300..630cfc6 100644
+--- a/src/bluetooth/bluez.cpp
++++ b/src/bluetooth/bluez.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <qcontainerfwd.h>
+ #include <qdbusconnection.h>
++#include <qdbusservicewatcher.h>
+ #include <qdbusextratypes.h>
+ #include <qlogging.h>
+ #include <qloggingcategory.h>
+@@ -58,12 +59,33 @@ void Bluez::init() {
+ 	    &Bluez::onInterfacesRemoved
+ 	);
+ 
++	// BlueZ may start after the shell, or start again, so it's taken up
++	// whenever it comes onto the bus, not only if it's there now.
++	auto* watcher = new QDBusServiceWatcher(
++	    "org.bluez",
++	    bus,
++	    QDBusServiceWatcher::WatchForRegistration,
++	    this
++	);
++
++	QObject::connect(
++	    watcher,
++	    &QDBusServiceWatcher::serviceRegistered,
++	    this,
++	    &Bluez::onBluezRegistered
++	);
++
+ 	if (!this->objectManager->setInterface("org.bluez", "/", bus)) {
+-		qCDebug(logBluetooth) << "BlueZ is not running. Bluetooth integration will not work.";
++		qCDebug(logBluetooth) << "BlueZ is not running yet. Waiting for it to start.";
+ 		return;
+ 	}
+ }
+ 
++void Bluez::onBluezRegistered() {
++	qCDebug(logBluetooth) << "BlueZ started";
++	this->objectManager->setInterface("org.bluez", "/", QDBusConnection::systemBus());
++}
++
+ void Bluez::onInterfacesAdded(
+     const QDBusObjectPath& path,
+     const DBusObjectManagerInterfaces& interfaces
+diff --git a/src/bluetooth/bluez.hpp b/src/bluetooth/bluez.hpp
+index 9d7c93c..dac3682 100644
+--- a/src/bluetooth/bluez.hpp
++++ b/src/bluetooth/bluez.hpp
+@@ -38,6 +38,7 @@ private slots:
+ 	onInterfacesAdded(const QDBusObjectPath& path, const DBusObjectManagerInterfaces& interfaces);
+ 	void onInterfacesRemoved(const QDBusObjectPath& path, const QStringList& interfaces);
+ 	void updateDefaultAdapter();
++	void onBluezRegistered();
+ 
+ private:
+ 	explicit Bluez();

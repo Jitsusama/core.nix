@@ -7533,6 +7533,7 @@
       "id": "bluetooth:nearby",
       "in": "bluetooth",
       "name": "Nearby",
+      "term": "Machine/Nearby",
       "words": ["find a device", "pair a device"],
       "glyph": "nearby",
       "empty": "Nothing heard yet."

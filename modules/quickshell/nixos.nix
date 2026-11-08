@@ -90,6 +90,7 @@ in
       quickshell = prev.quickshell.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
           ./activation-token.patch
+          ./bluetooth-finds-bluez-late.patch
           ./bluetooth-rssi-and-failures.patch
           ./desktop-entries-heard-only-when-theirs.patch
           ./fileview-quiet.patch

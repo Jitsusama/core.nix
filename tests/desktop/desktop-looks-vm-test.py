@@ -3007,8 +3007,10 @@ def looking(desktop: Desktop) -> str:
 # Nearby lists the devices the radio hears only while it's open (VKCF3Z, 2026-11-07): two
 # controllers of btvirt's, one the launcher's and one made visible as Buds, so the launcher's
 # radio looks once Nearby is stepped into, and Buds is listed with its signal as Quickshell's
-# patch says it (modules/quickshell/bluetooth-rssi-and-failures.patch), never paired. Last of
-# the area's tests, since BlueZ starting moves what the launcher holds.
+# patch says it (modules/quickshell/bluetooth-rssi-and-failures.patch), never paired. BlueZ
+# starts here after the shell, as a restarted bluetoothd does, which the shell takes up
+# (bluetooth-finds-bluez-late.patch). Last of the area's tests, since BlueZ starting moves what
+# the launcher holds.
 
 
 def test_nearby_lists_a_device_it_hears_at_each_scale(
