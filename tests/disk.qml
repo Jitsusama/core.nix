@@ -7,8 +7,9 @@
 // to run, the worse of the two guards' words wins for a disk both watch, a
 // disk only the machine's guard watches counts, a disk full within a few
 // days says when and how fast whatever its band, and is a warning within a
-// day, a writer frozen wants Joel with a way to let it go on, a guard gone quiet whose unit says it's starting again shows
-// nothing, one whose heartbeat ages past silence with nothing written after
+// day, with one forecast when it's the worst disk too, a writer frozen
+// wants Joel with a way to let it go on, a guard gone quiet whose unit
+// says it's starting again shows nothing, one whose heartbeat ages past silence with nothing written after
 // it and whose unit failed is a warning of its own saying why, with a way to
 // start it, and the machine's guard stopped says a restart starts it, with
 // no way of its own, what holds the disks is one list
@@ -83,7 +84,8 @@ ShellRoot {
                 === "/home/joel/trees/lamp /var/lib/containers /home/joel/.cache/karst"
             && piece.holders[0].bytes === 41 * root.gib && piece.holdersAt === root.now
             && piece.holding("/home/joel/trees/lamp").path === "/"
-            && piece.holding("/boot/efi").path === "/boot" && piece.holding("/bootstrap").path === "/"
+            && piece.holding("/boot/efi").path === "/boot"
+            && piece.holding("/bootstrap").path === "/"
     }, {
         what: "a disk filling slowly",
         // Nearly full in three days, or never: only the margin says so.
@@ -117,6 +119,14 @@ ShellRoot {
         machine: status([disk("/", "healthy", 286)]),
         holds: piece => !piece.active && piece.role === "text"
             && piece.context === "/ full in 2 days at 4.4 GiB an hour"
+    }, {
+        what: "the worst disk filling",
+        // Its band's forecast and its full one would be two forecasts of
+        // one disk, so it says the nearer, with how fast it fills.
+        account: status([filling(disk("/", "pressure", 120.5, 5400), 20000, 4)]),
+        machine: status([disk("/", "healthy", 400)]),
+        holds: piece => piece.active && piece.role === "warning"
+            && piece.context === "nearly full in 1:30 at 4.0 GiB an hour"
     }, {
         what: "a disk full past a few days",
         account: status([filling(disk("/", "healthy", 286), 5 * 24 * 3600, 2)]),

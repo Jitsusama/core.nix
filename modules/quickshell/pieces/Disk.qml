@@ -125,9 +125,14 @@ Piece {
     context: {
         const parts = [];
         const next = short ? bands[bands.indexOf(worst.band) + 1] : undefined;
-        if (next && typeof worst.forecast === "number")
-            parts.push(`${banded(next)} in ${duration(worst.forecast)}`);
-        if (filling !== null)
+        const banding = next && typeof worst.forecast === "number";
+        // The worst disk filling says one forecast, its band's, which is the
+        // nearer, with how fast it fills.
+        const same = banding && filling !== null && filling.path === worst.path;
+        if (banding)
+            parts.push(`${banded(next)} in ${duration(worst.forecast)}`
+                + (same ? ` at ${shown(filling.fill_per_hour)} an hour` : ""));
+        if (filling !== null && !same)
             parts.push(`${filling.path} full in ${duration(Math.max(0, filling.full_at
                 - Date.now() / 1000))} at ${shown(filling.fill_per_hour)} an hour`);
         if (last !== null && last.band !== "healthy") {
