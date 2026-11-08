@@ -61,7 +61,7 @@
     '';
 }
 // {
-  # The profile follows the charger: performance on mains, balanced on
+  # The profile follows the charger: performance on it, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is
   # back. It acts only when that choice changes, so a profile picked by hand
@@ -149,7 +149,7 @@
             pkgs.gnugrep
           ])
           (pkgs.writeText "said" ''
-            power profile: performance, on mains power
+            power profile: performance, on the charger
             <4>power profile: power-saver wasn't taken: Operation not supported
             power profile: power-saver, the battery at 17%
           '')
