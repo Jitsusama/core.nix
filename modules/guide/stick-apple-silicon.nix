@@ -13,11 +13,18 @@
     # both. Asahi's kernel holds every Apple model's device trees; this
     # moves to where every model takes it when a second one comes.
     ../../hardware/apple-macbook-air-m2-a2681/kernel/nixos.nix
+    # Its boot chain too, carried on the stick, so an install has m1n1
+    # and U-Boot without fetching them.
+    ../../hardware/apple-macbook-air-m2-a2681/boot/nixos.nix
   ];
 
-  # core builds the kernel itself, so nixos-apple-silicon's kernel module,
-  # which would set its own, is left out.
-  disabledModules = [ "${nixos-apple-silicon}/apple-silicon-support/modules/kernel" ];
+  # core builds the kernel and the boot chain itself, so
+  # nixos-apple-silicon's modules for them, which would set their own, are
+  # left out.
+  disabledModules = [
+    "${nixos-apple-silicon}/apple-silicon-support/modules/kernel"
+    "${nixos-apple-silicon}/apple-silicon-support/modules/boot-m1n1"
+  ];
 
   nixpkgs.hostPlatform = "aarch64-linux";
 

@@ -3,7 +3,7 @@
 # its own GPU, a 2560x1664 Liquid Retina panel, Broadcom's BCM4387 Wi-Fi 6
 # and Bluetooth, two USB-C ports and MagSafe. Asahi Linux drives it: core's
 # own build of its kernel (kernel/), with a screen on the front-left port,
-# and its m1n1 and U-Boot through nixos-apple-silicon, with the firmware for
+# and core's own boot chain (boot/), with the firmware for
 # Wi-Fi, Bluetooth and the camera taken from macOS by Asahi's installer.
 # It has no TPM and no Secure Boot a Linux system can use. docs/hardware.md
 # says what works and what's left.
@@ -13,6 +13,7 @@
   imports = [
     nixos-apple-silicon.nixosModules.apple-silicon-support
     ../../modules/firmware-settings/nixos.nix
+    ./boot/nixos.nix
     ./kernel/nixos.nix
   ];
 
@@ -20,6 +21,9 @@
     # core builds the kernel itself, so nixos-apple-silicon's kernel module,
     # which would set its own, is left out.
     "${nixos-apple-silicon}/apple-silicon-support/modules/kernel"
+    # core builds the boot chain too (boot/), with the Air's own device
+    # tree.
+    "${nixos-apple-silicon}/apple-silicon-support/modules/boot-m1n1"
     # The laptop role hibernates, which here can't come back: systemd keeps
     # where the image went in an EFI variable, and U-Boot keeps none, so
     # the next start would begin afresh and the session would be lost. No
@@ -44,8 +48,8 @@
   # m1n1, which Asahi's installer puts in the macOS stub's place, starts
   # U-Boot, which gives a plain UEFI with no Secure Boot and no variables
   # for systemd-boot to keep its entries in, so it's installed where
-  # firmware looks without any. The module installs m1n1's second stage
-  # beside it on each switch.
+  # firmware looks without any. boot/ installs m1n1's second stage beside
+  # it on each switch.
   boot.loader.systemd-boot.enable = true;
 
   # With neither Secure Boot nor a TPM, the guide makes no Secure Boot keys
