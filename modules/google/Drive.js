@@ -38,11 +38,15 @@ function kindOf(program) {
 }
 
 // What its row says at the right: only when he last opened it, in the
-// words a mail says when it came in (`said`'s). A stream's rows say only
-// when, so a Recent reads down one column of times (VKCF3Z, 2026-11-08),
-// and who owns it is its drawer's. One never opened says nothing there.
-function beside(document, now, said) {
-    return document.viewed ? Mail.came(document.viewed, now, said) : "";
+// words a mail says when it came in (`said`'s), within `opened`'s, "opened
+// {when}", since its drawer's Changed is another time (VKCF3Z,
+// 2026-11-08). A stream's rows say only when, so a Recent reads down one
+// column of times, and who owns it is its drawer's. One never opened says
+// nothing there.
+function beside(document, now, said, opened) {
+    return document.viewed
+        ? String(opened ?? "{when}").replace("{when}", Mail.came(document.viewed, now, said))
+        : "";
 }
 
 // Its details, as the launcher's drawer shows them beside its row: its

@@ -268,6 +268,13 @@ QtObject {
             "the passwords daemon isn't answering"), now, said),
         "GitHub's password not copied \u00b7 the passwords daemon isn't answering");
         check("nothing copied says nothing", Passwords.told(null, now, said), "");
+        // The row and the foot say a copy only while it's asked, or why it
+        // was refused; once on the clipboard, the margin's mark says it.
+        check("a copy asked is the row's to say", Passwords.speaks(asking), true);
+        check("one on the clipboard is the margin's", Passwords.speaks(copied), false);
+        check("one refused is the row's", Passwords.speaks(Passwords.answered(asking, null, now,
+            "away")), true);
+        check("nothing copied isn't", Passwords.speaks(null), false);
 
         // By vault, as Programs › 1Password holds them, each by title.
         check("by vault", Passwords.vaults([gitHub, bank, door]).map(vault =>

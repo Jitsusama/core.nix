@@ -89,7 +89,7 @@ Singleton {
             verb: Words.verb(words.open),
             glyph: Words.glyph(words.thing, document.kind),
             hue: "program",
-            side: Said.beside(document, Calendar.now, Mail.dates),
+            side: Said.beside(document, Calendar.now, Mail.dates, root.said.said.opened),
             drawer: Places.drawn(details, document, Object.assign({
                     drives: root.places?.drives?.files ?? [],
                     now: Calendar.now,

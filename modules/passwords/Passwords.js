@@ -457,6 +457,15 @@ function told(copy, now, said) {
     return fill(said.copied, Object.assign(values, { seconds }));
 }
 
+// Whether a copy is still for its row and the foot to say: while it's
+// asked, and once refused, why. Once it's on the clipboard the launcher has
+// gone and the margin's clipboard mark says it till it clears, so the row
+// opened again says its username alone, rather than its title again in a
+// copy's words cut short (VKCF3Z, 2026-11-08).
+function speaks(copy) {
+    return Boolean(copy) && (!copy.clears || (copy.why ?? "") !== "");
+}
+
 // A copy as the daemon answered it, heard at `now`: when it clears, and
 // for a one-time code when it lapses and its period; or why it wasn't,
 // `away` when the daemon wasn't there to ask.

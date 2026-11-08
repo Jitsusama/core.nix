@@ -505,9 +505,10 @@ in
     means = "on another machine, named after it";
   };
   # A screen joined to a network, so a machine kitty reaches over SSH wears
-  # a mark of its own rather than an address's @ (VKCF3Z, 2026-11-08).
+  # a mark of its own rather than an address's @ (VKCF3Z, 2026-11-08):
+  # md-console_network, f08a9; f0c74 beside it is a neutral face.
   sshMachine = {
-    glyph = nerd "f0c74";
+    glyph = nerd "f08a9";
     console = ">";
     means = "a machine reached over SSH";
   };

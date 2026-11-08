@@ -290,11 +290,13 @@ Provider {
 
     // A repository as every folder is (Files.qml), opening a window there,
     // its side when zoxide last saw it, and the folder holding it where
-    // that isn't ~/src, which every row would say again (VKCF3Z).
+    // that isn't ~/src, which every row would say again (VKCF3Z), or that
+    // it was never opened.
     function repositoryRow(path) {
         const id = "verb:path:folder:window";
         const side = Opens.repositorySide(path, { src: provider.settings.src ?? "",
-            home: Files.home }, provider.visits, Date.now());
+            home: Files.home }, provider.visits, Date.now(),
+            provider.words("verb:kitty:repository").never);
         const sided = fields => thing(fields.what === "folder"
             ? Object.assign(fields, { side: side }) : fields);
         return Files.folder(path, sided, [provider.said(id, `${id}:${path}`, {
