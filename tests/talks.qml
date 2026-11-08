@@ -1,14 +1,12 @@
-// Drives the orchestrators' talk readers (modules/quickshell/launcher/
-// Orchestrators.qml) through Quickshell itself, over a steer folder of 120
-// inboxes, two of them holding talks, with 120 sessions running and pi's
-// sessions stood in. Only the two inboxes holding talks are read, and each
-// talk is heard; the sessions reordered as focus moves 30 times, and the
-// launcher opened, make no reader again, so the shell's readers stay as
-// many as they were (each reader is a thread and a file watcher of Qt's
-// own, and a reader per session ran the shell out of files on 2026-10-29). A talk
-// made while the launcher was shut, in an inbox that held none, is read
-// once it opens. It exits 0 once every case holds, and otherwise 1,
-// saying which didn't.
+pragma ComponentBehavior: Bound
+// Drives the talks Agents shows (modules/quickshell/launcher/
+// Orchestrators.qml) through Quickshell itself, over a stand-in for the
+// realm's node that serves each talk as one record of its lines, as
+// mycelium's does (its PROTOCOL.md, The Daemon Interface). Each talk is
+// heard by its session's address, in either case, newest first; a line
+// its session writes, told as only what differs, moves it on to its
+// reply; one made since is heard; and one the node lets go goes. It exits
+// 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -18,10 +16,7 @@ import "launcher" as Launcher
 ShellRoot {
     id: root
 
-    readonly property string here: Quickshell.env("PWD")
     property string waiting: "the talks heard"
-    property int readersAtFirst: 0
-    property int moved: 0
 
     function expect(what, holds, said) {
         if (!holds)
@@ -31,31 +26,6 @@ ShellRoot {
     function fail(message) {
         console.warn(`FAIL ${message}`);
         Qt.callLater(() => Qt.exit(1));
-    }
-
-    // The shell's readers now, told to `then`: each folder Qt lists is read
-    // by a thread of its own, which takes its class's name, FileInfoThread,
-    // as a thread given none does. Only those are counted, since the
-    // reloads the launcher's opening sets off can start pooled threads that
-    // idle a while, and a count of every thread took three of those for
-    // readers under load (Y2YBTS, 2026-11-07).
-    function readers(then) {
-        counting.then = then;
-        counting.running = true;
-    }
-
-    Process {
-        id: counting
-        property var then: null
-        command: ["sh", "-c", 'cat /proc/"$PPID"/task/*/comm | grep -cx FileInfoThread',
-            "count"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const then = counting.then;
-                counting.then = null;
-                then(Number(text.trim()));
-            }
-        }
     }
 
     QtObject {
@@ -72,7 +42,6 @@ ShellRoot {
         launcher: launcher
         settings: ({ name: "orchestrators" })
         onTalksChanged: Qt.callLater(root.check)
-        onTalkingChanged: Qt.callLater(root.check)
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
@@ -86,32 +55,49 @@ ShellRoot {
         return orchestrators.talksOf(address).map(talk => talk.name).join(", ");
     }
 
+    // A talk as the node serves it: its address, its id and its lines.
+    function talk(address, id, lines) {
+        return { key: `talk:${address}/${id}`, kind: "talk", heard: Date.now(),
+            address: address, id: id, lines: lines };
+    }
+    function delivered(at, words) {
+        return { stage: "delivered", at: `2026-10-29T10:${at}:00Z`, text: words };
+    }
+
     function check() {
         try {
             if (root.waiting === "the talks heard") {
                 if (heard("A003") === "" || heard("A117") === "")
                     return;
-                expect("only inboxes holding talks are read", orchestrators.talking.join(" ")
-                    === "A003 A117", orchestrators.talking.join(" "));
-                expect("a talk is heard", heard("A003") === "wrap up the release",
-                    heard("A003"));
-                root.waiting = "the readers counted";
-                readers(count => {
-                    try {
-                        root.expect("its readers are counted", count > 0, count);
-                        root.readersAtFirst = count;
-                        root.waiting = "focus moved";
-                        focusing.start();
-                    } catch (error) {
-                        root.fail(error.message);
-                    }
-                });
-            } else if (root.waiting === "the talk made since" && heard("A050") !== "") {
-                expect("a talk made since is heard", heard("A050") === "look at the disk",
+                expect("each talk is heard by its session's address, newest first",
+                    heard("a003") === "check the lights, wrap up the release", heard("a003"));
+                expect("an inbox's talks are its own", heard("A117") === "look at the disk",
+                    heard("A117"));
+                expect("a talk delivered says so", orchestrators.talksOf("A117")[0].side
+                    === orchestrators.stageSaid({ stage: "delivered", after: "" }),
+                    orchestrators.talksOf("A117")[0].side);
+                root.waiting = "the reply heard";
+                tell({ changed: [{ key: "talk:A117/t-3", lines: [delivered("20", "look at the disk"),
+                    { stage: "replied", text: "It has room." }] }] });
+            } else if (root.waiting === "the reply heard") {
+                const told = orchestrators.talksOf("A117")[0];
+                if (told?.reads !== "It has room.")
+                    return;
+                expect("a line its session writes moves it on", told.side
+                    === orchestrators.stageSaid({ stage: "replied", after: "" }), told.side);
+                root.waiting = "the talk made since";
+                tell({ changed: [talk("A050", "t-4", [delivered("30", "keep the lamp lit")])] });
+            } else if (root.waiting === "the talk made since") {
+                if (heard("A050") === "")
+                    return;
+                expect("a talk made since is heard", heard("A050") === "keep the lamp lit",
                     heard("A050"));
-                expect("the inbox holding it is read", orchestrators.talking.join(" ")
-                    === "A003 A050 A117", orchestrators.talking.join(" "));
-                console.log("PASS the talks are read from the inboxes holding them alone");
+                root.waiting = "the talk let go";
+                tell({ gone: ["talk:A003/t-1"] });
+            } else if (root.waiting === "the talk let go") {
+                if (heard("A003") !== "check the lights")
+                    return;
+                console.log("PASS the talks are heard from the node");
                 Qt.callLater(() => Qt.exit(0));
             }
         } catch (error) {
@@ -119,51 +105,46 @@ ShellRoot {
         }
     }
 
-    // Focus moving reorders the sessions running, as Sessions.qml does.
-    Timer {
-        id: focusing
-        interval: 10
-        repeat: true
-        onTriggered: {
-            Sessions.running = Sessions.running.slice(1).concat(Sessions.running.slice(0, 1));
-            root.moved += 1;
-            if (root.moved < 30)
-                return;
-            stop();
-            launcher.open = true;
-            launcher.open = false;
-            settle.start();
-        }
+    // The node's end of the shell's watch, so the node can tell it more.
+    property var answering: null
+    property var watchId: null
+
+    // Tells the shell's watch a change, as the node does.
+    function tell(change) {
+        answering.write(`${JSON.stringify(Object.assign({ id: root.watchId }, change))}\n`);
+        answering.flush();
     }
 
-    // Long enough for any reader made again to have started its thread.
-    Timer {
-        id: settle
-        interval: 500
-        onTriggered: {
-            root.readers(now => {
-                try {
-                    root.expect("focus moving makes no reader again",
-                        now === root.readersAtFirst,
-                        `${root.readersAtFirst} readers became ${now}`);
-                    root.expect("still only inboxes holding talks",
-                        orchestrators.talking.join(" ") === "A003 A117",
-                        orchestrators.talking.join(" "));
-                    root.waiting = "the talk made since";
-                    making.running = true;
-                } catch (error) {
-                    root.fail(error.message);
+    // A stand-in for the machine's node, speaking the daemon interface:
+    // hello, and a watch of talks answered with each whole, then each
+    // change saying only what differs.
+    SocketServer {
+        active: true
+        path: Sessions.nodePath
+        handler: Socket {
+            id: asked
+            Component.onCompleted: root.answering = asked
+            parser: SplitParser {
+                onRead: line => {
+                    const ask = JSON.parse(line);
+                    let answer;
+                    if (ask.ask === "hello") {
+                        answer = { id: ask.id, version: 1, domain: "node", state: "running" };
+                    } else if (ask.ask === "watch" && ask.kind === "talk") {
+                        root.watchId = ask.id;
+                        answer = { id: ask.id, records: [
+                            root.talk("A003", "t-1", [root.delivered("00", "wrap up the release")]),
+                            root.talk("A003", "t-2", [root.delivered("10", "check the lights")]),
+                            root.talk("A117", "t-3", [root.delivered("20", "look at the disk")])
+                        ] };
+                    } else {
+                        root.fail(`an ask the talks have no need of: ${line}`);
+                        answer = { id: ask.id, error: { code: "unknown-ask", message: line } };
+                    }
+                    asked.write(`${JSON.stringify(answer)}\n`);
+                    asked.flush();
                 }
-            });
+            }
         }
-    }
-
-    Process {
-        id: making
-        command: ["sh", "-c",
-            'mkdir -p "$1/A050/replies" && printf "%s\\n" "$2" > "$1/A050/replies/t-3.jsonl"',
-            "make", Sessions.inboxes,
-            '{"stage":"delivered","at":"2026-10-29T10:20:00Z","text":"look at the disk"}']
-        onExited: launcher.open = true
     }
 }

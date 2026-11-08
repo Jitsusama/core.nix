@@ -1749,11 +1749,6 @@ Singleton {
         Report.say(`started a session on ${asked.quest} on ${begun.machine}`);
     }
 
-    // Where each session on the mesh takes words and acts from, by its
-    // address: the harness's steer inbox, which every session reads, an
-    // orchestrator or not (mesh-workflow's steer()).
-    readonly property string inboxes: `${state}/steer`
-
     // Puts a steer in a session's inbox: `{ text, id }` talks to it,
     // `{ act }` pauses, resumes or stops it. The realm's node is asked on
     // the connection the shell keeps to it, here or elsewhere alike: it
