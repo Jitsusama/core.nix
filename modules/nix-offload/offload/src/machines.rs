@@ -7,6 +7,13 @@
 //! code must never reach one by default. Builders beside are the other
 //! kind, machines that may take any of this one's work, and are named to
 //! every build while they answer, for their big work, as the one lent is.
+//! A builder beside that fails two proofs in a row (src/proof.rs) is left
+//! out of every list until one passes.
+//!
+//! While the builder lent for every build fails its proofs, or none is
+//! lent, the file for any work names stand-ins that passed theirs: the
+//! second lent builder, else the warm VM builders, in their own lines for
+//! any work. The one lent here is named alone again once it passes.
 
 use serde_json::{Value, json};
 use std::fs;
@@ -14,7 +21,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, TcpStream, ToSocketAddrs};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use crate::proof::{self, Health, Keeper, State};
+use crate::there;
 
 /// How long a standing builder has to answer before it's left out.
 const ANSWER: Duration = Duration::from_secs(2);
@@ -120,6 +130,134 @@ pub fn standing(text: &str) -> Vec<Standing> {
             })
         })
         .collect()
+}
+
+/// Who the file for any work names, as [`for_anything`] decides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Named {
+    /// The one lent here, which answers or is yet to be proven.
+    Lent,
+    /// The second lent builder, standing in.
+    Second,
+    /// This many warm VM builders, standing in.
+    Vm(usize),
+    /// One lent here that doesn't answer, or none since one was left out,
+    /// with nothing to stand in.
+    Unanswered,
+    /// None is lent, and nothing stands in.
+    Nothing,
+}
+
+/// The file for any work's text, and who it names: the one lent here, as
+/// `lent` names it for any work, while it answers or is yet to be proven,
+/// as its proofs' `state` says; else the `second` lent builder's lines
+/// beside it while that answers, else the warm `vm` builders' that do.
+/// The one lent is named first while it's lent, since one failing once
+/// may yet answer.
+pub fn for_anything(
+    lent: Option<&str>,
+    state: State,
+    second: &[String],
+    vm: &[String],
+) -> (String, Named) {
+    let answers = lent.is_some() && matches!(state, State::None | State::Unproven | State::Passing);
+    let (stand_ins, named): (&[String], Named) = if answers {
+        (&[], Named::Lent)
+    } else if !second.is_empty() {
+        (second, Named::Second)
+    } else if !vm.is_empty() {
+        (vm, Named::Vm(vm.len()))
+    } else if lent.is_some() || state == State::Dropped {
+        (&[], Named::Unanswered)
+    } else {
+        (&[], Named::Nothing)
+    };
+    let lines = lent.into_iter().chain(stand_ins.iter().map(String::as_str));
+    (text(lines, None), named)
+}
+
+/// Say who the file for any work names, once it changes from `was`.
+fn say_named(was: Named, named: Named) {
+    let stood_in = matches!(was, Named::Second | Named::Vm(_) | Named::Unanswered);
+    let said = match named {
+        _ if named == was => return,
+        Named::Lent if stood_in => {
+            "the lent builder answers again, so it alone is named for any work".to_owned()
+        }
+        Named::Second => {
+            "no lent builder answers here; the second lent builder stands in".to_owned()
+        }
+        Named::Vm(1) => "no lent builder answers; 1 VM builder stands in".to_owned(),
+        Named::Vm(count) => format!("no lent builder answers; {count} VM builders stand in"),
+        Named::Unanswered => "no builder answers at all".to_owned(),
+        Named::Nothing if stood_in => "nothing stands in any more, and none is lent".to_owned(),
+        Named::Lent | Named::Nothing => return,
+    };
+    eprintln!("nix-offload: {said}");
+}
+
+/// The lines for any work of the builders that may stand in, the `second`
+/// lent builder's while it passed its last proof, and each warm VM
+/// builder's of `vm` that did, as of `at`.
+fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String>) {
+    let lines = |dir: &Path| -> Vec<String> {
+        fs::read_to_string(dir.join("machines-for-anything"))
+            .map(|text| {
+                text.lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let second = if proof::passes_in(second, at) {
+        lines(second)
+    } else {
+        Vec::new()
+    };
+    let vm = vm
+        .iter()
+        .filter(|dir| proof::passes_in(dir, at) && there::warm(dir))
+        .flat_map(|dir| lines(dir))
+        .collect();
+    (second, vm)
+}
+
+/// Prove the builder beside `line` names when due, with `nix`, keeping
+/// its proofs in `kept`: whether it's left out, saying so as that changes.
+fn kept_beside(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Instant) -> bool {
+    let index = kept
+        .iter()
+        .position(|(kept, _)| kept == line)
+        .unwrap_or_else(|| {
+            kept.push((line.to_owned(), Keeper::of(&proof::named(line))));
+            kept.len() - 1
+        });
+    let keeper = &mut kept[index].1;
+    let was = keeper.health.dropped();
+    let (proving, nix) = (line.to_owned(), nix.to_owned());
+    keeper.keep(now, seconds(), move || {
+        proof::through_daemon(&proving, &nix, proof::WITHIN)
+    });
+    let dropped = keeper.health.dropped();
+    let name = &keeper.health.builder;
+    if dropped && !was {
+        eprintln!(
+            "nix-offload: {name} failed {} proofs in a row, so no build goes there until one \
+             passes",
+            proof::FAILS
+        );
+    } else if was && !dropped {
+        eprintln!("nix-offload: {name} passed its proof again, so builds go there again");
+    }
+    dropped
+}
+
+fn seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }
 
 /// The file's text, as it should read now.
@@ -269,6 +407,19 @@ pub struct Machines {
     /// Where the one lent is named for any work, once `for_anything`
     /// gives it.
     anything: Option<File>,
+    /// The line of the one lent as `proven` last said it, and how its
+    /// proofs stood then.
+    proven: (Option<String>, State),
+    /// The second lent builder's folder and the VM builders', whose
+    /// builders stand in for the one lent here, once `stand_ins_from`
+    /// gives them.
+    stand_ins: Option<(PathBuf, Vec<PathBuf>)>,
+    /// Who the file for any work named last.
+    named: Named,
+    /// Each builder beside's proofs, by its line.
+    kept: Vec<(String, Keeper)>,
+    /// The nix the builders beside are proven through.
+    nix: String,
 }
 
 impl Machines {
@@ -293,7 +444,50 @@ impl Machines {
             lists: [None, None],
             alone: None,
             anything: None,
+            proven: (None, State::None),
+            stand_ins: None,
+            named: Named::Nothing,
+            kept: Vec::new(),
+            nix: "nix".to_owned(),
         }
+    }
+
+    /// With the folders whose builders stand in for the one lent here in
+    /// the file for any work while it fails its proofs or none is lent: the
+    /// `second` lent builder's, then the `vm` builders'.
+    #[must_use]
+    pub fn stand_ins_from(self, second: PathBuf, vm: Vec<PathBuf>) -> Self {
+        Self {
+            stand_ins: Some((second, vm)),
+            ..self
+        }
+    }
+
+    /// With `nix` to prove the builders beside through.
+    #[cfg(test)]
+    #[must_use]
+    pub fn proving_with(self, nix: &str) -> Self {
+        Self {
+            nix: nix.to_owned(),
+            ..self
+        }
+    }
+
+    /// Say how the proofs of the one lent, whose line is `line`, stand, or
+    /// of the last, once it's gone.
+    pub fn proven(&mut self, line: Option<&str>, state: State) {
+        self.proven = (line.map(str::to_owned), state);
+    }
+
+    /// How the builders beside stand, where there are builders beside.
+    pub fn beside_health(&self) -> Option<Vec<Health>> {
+        self.alone.as_ref()?;
+        Some(
+            self.kept
+                .iter()
+                .map(|(_, keeper)| keeper.health.clone())
+                .collect(),
+        )
     }
 
     /// With `anything`, the one lent named alone with nothing mandatory,
@@ -376,7 +570,24 @@ impl Machines {
         );
         if let Some(anything) = &mut self.anything {
             let any = lending.map(|lending| for_any_work(lending.line));
-            anything.say(text(std::iter::empty(), any.as_deref()));
+            let (line, state) = &self.proven;
+            let state = match lending {
+                Some(lending) if line.as_deref() == Some(lending.line) => *state,
+                Some(_) => State::Unproven,
+                None if line.is_none() => *state,
+                None => State::None,
+            };
+            let (second, vm) = self
+                .stand_ins
+                .as_ref()
+                .map(|(second, vm)| stand_ins(second, vm, seconds()))
+                .unwrap_or_default();
+            let (said, named) = for_anything(any.as_deref(), state, &second, &vm);
+            if self.stand_ins.is_some() {
+                say_named(self.named, named);
+            }
+            self.named = named;
+            anything.say(said);
         }
         let lent = lending.map(|lending| for_big_work(lending.line));
         let lent = lent.as_deref();
@@ -386,12 +597,18 @@ impl Machines {
             .filter(|builder| answers(&builder.address))
             .map(|builder| builder.line.as_str());
         self.with_standing.say(text(answering, lent));
-        let beside: Vec<&str> = self
-            .beside
-            .iter()
-            .filter(|builder| answers(&builder.address))
-            .map(|builder| builder.line.as_str())
-            .collect();
+        // Proofs are kept only of those still listed.
+        self.kept
+            .retain(|(line, _)| self.beside.iter().any(|builder| &builder.line == line));
+        let now = Instant::now();
+        let mut beside: Vec<&str> = Vec::new();
+        for builder in &self.beside {
+            if answers(&builder.address)
+                && !kept_beside(&mut self.kept, &builder.line, &self.nix, now)
+            {
+                beside.push(builder.line.as_str());
+            }
+        }
         if let Some(alone) = &mut self.alone {
             alone.say(text(beside.iter().copied(), None));
         }
@@ -699,6 +916,244 @@ mod tests {
         );
         machines.show(None);
         assert_eq!(read(&anything), "", "emptied while none is lent");
+        drop(listening);
+    }
+
+    #[test]
+    fn the_lent_builder_is_named_for_any_work_while_it_answers_else_a_stand_in() {
+        let lines = |lines: &[&str]| lines.iter().map(|line| (*line).to_owned()).collect();
+        let (second, vm): (Vec<String>, Vec<String>) = (lines(&["second"]), lines(&["vm", "vm-3"]));
+        for state in [State::None, State::Unproven, State::Passing] {
+            assert_eq!(
+                for_anything(Some("lent"), state, &second, &vm),
+                ("lent\n".to_owned(), Named::Lent),
+                "{state:?}"
+            );
+        }
+        assert_eq!(
+            for_anything(Some("lent"), State::Failing, &second, &vm),
+            ("lent\nsecond\n".to_owned(), Named::Second),
+            "one failing once is still named, the second first beside it"
+        );
+        assert_eq!(
+            for_anything(Some("lent"), State::Failing, &[], &vm),
+            ("lent\nvm\nvm-3\n".to_owned(), Named::Vm(2))
+        );
+        assert_eq!(
+            for_anything(None, State::Dropped, &[], &vm),
+            ("vm\nvm-3\n".to_owned(), Named::Vm(2))
+        );
+        assert_eq!(
+            for_anything(None, State::None, &[], &vm),
+            ("vm\nvm-3\n".to_owned(), Named::Vm(2)),
+            "none lent"
+        );
+        assert_eq!(
+            for_anything(Some("lent"), State::Failing, &[], &[]),
+            ("lent\n".to_owned(), Named::Unanswered)
+        );
+        assert_eq!(
+            for_anything(None, State::Dropped, &[], &[]),
+            (String::new(), Named::Unanswered)
+        );
+        assert_eq!(
+            for_anything(None, State::None, &[], &[]),
+            (String::new(), Named::Nothing)
+        );
+    }
+
+    /// A lender's folder whose builder passed its last proof just now,
+    /// naming `line` for any work.
+    fn passing(dir: &Path, line: &str) {
+        fs::create_dir_all(dir).expect("a folder");
+        let mut health = Health::of("builder");
+        health.heard(true, seconds());
+        proof::write(dir, Some(&health), None, seconds());
+        fs::write(dir.join("machines-for-anything"), format!("{line}\n")).expect("write");
+        fs::write(dir.join("store"), "ssh-ng://far\n").expect("write");
+    }
+
+    #[test]
+    fn builders_that_passed_stand_in_for_one_lent_that_fails_until_it_passes_again() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let folder = |name: &str| dir.path().join(name);
+        let anything = folder("machines-for-anything");
+        let mut machines = Machines::new(
+            folder("machines"),
+            folder("machines-with-standing"),
+            folder("store"),
+            folder("lending"),
+            vec![],
+        )
+        .for_anything(anything.clone())
+        .stand_ins_from(
+            folder("more"),
+            vec![folder("vm"), folder("vm-2"), folder("vm-3")],
+        );
+        passing(
+            &folder("vm"),
+            "ssh-ng://vm x86_64-linux /k 4 1 big-parallel - K",
+        );
+        passing(
+            &folder("vm-2"),
+            "ssh-ng://vm-2 x86_64-linux /k 4 1 big-parallel - K",
+        );
+        // Warming, so its tests would build the desktop first.
+        fs::write(
+            folder("vm-2").join(there::WARMING),
+            format!("{} vm-2\n", std::process::id()),
+        )
+        .expect("write");
+        // Failed its last proof.
+        passing(
+            &folder("vm-3"),
+            "ssh-ng://vm-3 x86_64-linux /k 4 1 big-parallel - K",
+        );
+        let mut failed = Health::of("vm-3");
+        failed.heard(false, seconds());
+        proof::write(&folder("vm-3"), Some(&failed), None, seconds());
+        let read = |path| fs::read_to_string(path).expect("read");
+        let line = "ssh-ng://lent x86_64-linux /k 8 1 big-parallel - K";
+        let lent = Some(Lending { line, store: None });
+        machines.proven(Some(line), State::Passing);
+        machines.show(lent);
+        assert_eq!(read(&anything), format!("{line}\n"));
+        machines.proven(Some(line), State::Failing);
+        machines.show(lent);
+        assert_eq!(
+            read(&anything),
+            format!("{line}\nssh-ng://vm x86_64-linux /k 4 1 big-parallel - K\n"),
+            "the warm VM builder that passed stands in"
+        );
+        machines.proven(None, State::Dropped);
+        machines.show(None);
+        assert_eq!(
+            read(&anything),
+            "ssh-ng://vm x86_64-linux /k 4 1 big-parallel - K\n"
+        );
+        passing(
+            &folder("more"),
+            "ssh-ng://more x86_64-linux /k 8 1 big-parallel - K",
+        );
+        machines.show(None);
+        assert_eq!(
+            read(&anything),
+            "ssh-ng://more x86_64-linux /k 8 1 big-parallel - K\n",
+            "the second lent builder stands in first"
+        );
+        // A new builder stands, its line not yet proven.
+        let next = "ssh-ng://next x86_64-linux /k 8 1 big-parallel - K";
+        machines.show(Some(Lending {
+            line: next,
+            store: None,
+        }));
+        assert_eq!(read(&anything), format!("{next}\n"), "named alone again");
+        fs::remove_file(folder("more").join(proof::HEALTH)).expect("remove");
+        fs::remove_file(folder("vm").join(proof::HEALTH)).expect("remove");
+        machines.proven(None, State::Dropped);
+        machines.show(None);
+        assert_eq!(read(&anything), "", "no builder answers at all");
+    }
+
+    /// A stand-in for nix that exits as the `status` file beside it says.
+    fn nix_in(dir: &Path) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let nix = dir.join("nix");
+        let draft = dir.join("nix.draft");
+        let status = dir.join("status");
+        fs::write(
+            &draft,
+            format!("#!/bin/sh\nexit \"$(cat '{}')\"\n", status.display()),
+        )
+        .expect("write");
+        let copied = std::process::Command::new("cp")
+            .arg(&draft)
+            .arg(&nix)
+            .status()
+            .expect("cp");
+        assert!(copied.success());
+        fs::set_permissions(&nix, fs::Permissions::from_mode(0o755)).expect("executable");
+        nix.display().to_string()
+    }
+
+    /// Whether the builder beside `line` names is left out, once the proof
+    /// due at `now` has ended, waiting at most 5 s.
+    fn left_out(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Instant) -> bool {
+        let heard = |kept: &Vec<(String, Keeper)>| {
+            kept.first().map(|(_, keeper)| {
+                (
+                    keeper.health.last_success,
+                    keeper.health.last_failure,
+                    keeper.health.failures,
+                )
+            })
+        };
+        let before = heard(kept);
+        let ending = Instant::now() + Duration::from_secs(5);
+        let mut dropped = kept_beside(kept, line, nix, now);
+        while heard(kept) == before && Instant::now() < ending {
+            std::thread::sleep(Duration::from_millis(10));
+            dropped = kept_beside(kept, line, nix, now);
+        }
+        assert_ne!(heard(kept), before, "no proof ended");
+        dropped
+    }
+
+    #[test]
+    fn a_builder_beside_failing_two_proofs_in_a_row_is_left_out_until_one_passes() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let nix = nix_in(dir.path());
+        let status = dir.path().join("status");
+        let every = dir.path().join("machines");
+        let alone = dir.path().join("machines-beside");
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let line = "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark";
+        let mut machines = Machines::new(
+            every.clone(),
+            dir.path().join("machines-with-standing"),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![],
+        )
+        .beside(
+            alone.clone(),
+            vec![Standing {
+                address,
+                line: line.to_owned(),
+            }],
+        )
+        .proving_with(&nix);
+        let read = |path| fs::read_to_string(path).expect("read");
+        let began = Instant::now();
+        fs::write(&status, "1").expect("write");
+        assert!(
+            !left_out(&mut machines.kept, line, &nix, began),
+            "one failure is a blip"
+        );
+        machines.show(None);
+        assert_eq!(read(&alone), format!("{line}\n"));
+        assert!(left_out(
+            &mut machines.kept,
+            line,
+            &nix,
+            began + proof::EVERY
+        ));
+        machines.show(None);
+        assert_eq!(read(&alone), "");
+        assert_eq!(read(&every), "");
+        let health = machines.beside_health().expect("builders beside");
+        assert_eq!(health[0].builder, "work");
+        assert_eq!(health[0].state(), State::Dropped);
+        fs::write(&status, "0").expect("write");
+        assert!(!left_out(
+            &mut machines.kept,
+            line,
+            &nix,
+            began + proof::EVERY * 2
+        ));
+        machines.show(None);
+        assert_eq!(read(&alone), format!("{line}\n"), "back once one passes");
         drop(listening);
     }
 

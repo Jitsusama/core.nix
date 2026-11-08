@@ -771,9 +771,9 @@
     one passes, one past any margin fails saying its figures, and one missing a signal or a figure
     fails; a run fits in five minutes, climbs to twenty builds, reads free memory as the kernel's
     MemAvailable, builds its own source only from the vendored crates, copies that source whole
-    and writable, reads the line as the default route's link and what it carried in megabits a
-    second, and passes only when every step did and nothing stopped it; and a command given more
-    than it takes, `run --help` among them, is refused before anything starts
+    and writable, reads the connection as the default route's link and what it carried in
+    megabits a second, and passes only when every step did and nothing stopped it; and a command
+    given more than it takes, `run --help` among them, is refused before anything starts
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
@@ -1044,7 +1044,13 @@
     as themselves in a file of their own that's empty while none answers; the one lent is also
     named alone with nothing mandatory, still offering nothing a VM test needs, in a file for
     builds that may send any piece away, never with a builder beside or standing, and emptied
-    while none is lent; a day's journal sums to its hours and cost, each at its price; and
+    while none is lent, unless the second lent builder, else the warm VM builders, passed their
+    last proofs and stand in, until the one lent passes again; a proof builds a derivation no
+    store holds, over ssh with the store's key, host key and a 10 s connect timeout, or through
+    the daemon in slots of its own for a builder beside, runs one at a time a minute apart, and
+    fails at its time limit, ending what it started; a lent builder failing two in a row is named
+    nowhere, its relay ended and given back as lost, a builder beside failing two is left out
+    until one passes, and each folder's health.json says how they stand; a day's journal sums to its hours and cost, each at its price; and
     `there` sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, waiting afresh for each loss after the build sent again ran a
     while and for a lender restarting, saying how long, or, when none stands or none answers,
