@@ -6157,7 +6157,7 @@
     {
       "id": "on:recording:showing",
       "in": "on",
-      "name": "Showing"
+      "name": "Records"
     },
     {
       "id": "on:quiet",
