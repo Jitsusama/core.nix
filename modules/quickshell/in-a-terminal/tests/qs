@@ -3,14 +3,16 @@
 # <path>` as a running shell would for a home of three rows and a Machine
 # of two, so launcher's completion is typed against what a shell says
 # without one running. Any other path names nothing, as the shell says.
+# The step's mark is matched by its bytes, since $'\u203a' is only the
+# mark in a UTF-8 locale, which the build sandbox has none of.
 case $6 in
-$'\u203a')
+$'\xe2\x80\xba')
   echo '{"in":[],"path":[],"row":null,"rows":[
     {"id":"on","name":"Now","count":"2 need you"},
     {"id":"computer","name":"Machine","count":"Disk"},
     {"id":"reopen","name":"Sessions to Reopen"}]}'
   ;;
-$'\u203a'machine)
+$'\xe2\x80\xba'machine)
   echo '{"in":["Machine"],"path":["computer"],"row":{"id":"computer","name":"Machine"},
     "rows":[{"id":"disk","name":"Disk","side":"412 GB free"},{"id":"power","name":"Power"}]}'
   ;;
