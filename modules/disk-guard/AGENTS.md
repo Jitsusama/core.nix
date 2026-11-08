@@ -33,8 +33,9 @@ or launchd, and [`home.nix`][2] the account's.
   be tidied. Only an overloaded one, its tasks stalled on the disk, memory
   or the processors 75% of the time, holds upkeep and the store's routine
   listing until it recovers; a disk past healthy is answered all the
-  same. It comes at once, too, when an owner ends: the guard looks
-  each minute, and a tree newly spent, a new boot, a guard with new
+  same, its listing at idle priority until the disk is urgent. It comes
+  at once, too, when an owner ends: the guard looks each minute, and a
+  tree newly spent, a new boot, a guard with new
   rules or a path a producer watches saying something new since it last
   ran makes upkeep due, so what an owner leaves never waits hours for the
   routine. What a path says is a link's target, a file's length and

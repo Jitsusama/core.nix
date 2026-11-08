@@ -673,6 +673,33 @@ fn a_filling_store_is_listed_however_overloaded_the_machine() {
 }
 
 #[test]
+fn a_filling_store_on_an_overloaded_machine_is_listed_at_idle_priority() {
+    // On 8 November the listing took half a processor at load 74, beside
+    // work that already stalled most of the time; at idle priority it
+    // takes only what the rest leaves.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later_until(&store, &mut guard, 0.0, &OVERLOADED, |store, _| {
+        lists(store) == 1
+    });
+    assert_eq!(store.log()[0], "list 5", "at idle priority");
+}
+
+#[test]
+fn an_urgent_store_is_listed_at_full_priority_however_overloaded_the_machine() {
+    // Near full, what the listing finds is what keeps the disk from
+    // filling, and idle priority on a busy machine may never finish.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &OVERLOADED, |store, _| {
+        lists(store) == 1
+    });
+    assert_ne!(store.log()[0], "list 5", "at full priority");
+}
+
+#[test]
 fn routine_upkeep_waits_while_the_machine_is_overloaded() {
     let store = Store::new();
     let old = store.dead("aaa-old", 10.0 * DAY, 4096);
