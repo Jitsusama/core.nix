@@ -57,19 +57,22 @@ pub struct Seen {
 }
 
 /// How a session's pi ended on purpose, by the record pi keeps of each
-/// session: its last ending, when that came after its newest process
-/// started. A quit, a signal (`mesh_end`'s, or a window closing) or a
-/// swap to another session is on purpose; a crash or a `kill -9` writes
-/// none. A start time that can't be read says nothing, as before.
+/// session: the ending its newest process stamped, at the record's top,
+/// when that came after the process started. `endings` holds only the
+/// endings of the processes before it, moved there as each reopened: on
+/// 8 November reading the newest of those missed a `mesh_end`. A quit or
+/// a signal (`mesh_end`'s, or a window closing) is on purpose; a crash
+/// or a `kill -9` stamps none, and a swap may leave its process running
+/// the session, so it counts for nothing. A start time that can't be
+/// read says nothing, as before.
 #[must_use]
 pub fn ended_on_purpose(record: &str, zone: &TimeZone) -> Option<String> {
     let record: serde_json::Value = serde_json::from_str(record).ok()?;
-    let last = record.get("endings")?.as_array()?.last()?;
-    let reason = last.get("endReason")?.as_str()?;
-    if !matches!(reason, "quit" | "signalled" | "swapped") {
+    let reason = record.get("endReason")?.as_str()?;
+    if !matches!(reason, "quit" | "signalled") {
         return None;
     }
-    let closed: Timestamp = last.get("closedAt")?.as_str()?.parse().ok()?;
+    let closed: Timestamp = record.get("closedAt")?.as_str()?.parse().ok()?;
     // The start is the process's own clock line, such as
     // "Sat Nov  7 23:15:03 2026", in the machine's time zone.
     let token = record.pointer("/process/startToken")?.as_str()?;
@@ -582,9 +585,12 @@ mod tests {
         );
     }
 
-    fn record(endings: &str) -> String {
+    /// A record as pi writes it: `ending` at its top, as its newest
+    /// process stamped it, and an older one in `endings`.
+    fn record(ending: &str) -> String {
         format!(
-            r#"{{"sessionId": "s-A-1", "endings": [{endings}],
+            r#"{{"sessionId": "s-A-1", {ending}
+                "endings": [{{"closedAt": "2026-11-08T00:00:00.000Z", "endReason": "quit"}}],
                 "process": {{"pid": 9, "startToken": "Sat Nov  7 23:15:03 2026"}}}}"#
         )
     }
@@ -593,7 +599,7 @@ mod tests {
     fn a_session_ended_through_mesh_end_stays_down_and_a_kill_does_not() {
         let utc = TimeZone::UTC;
         let by_mesh_end =
-            record(r#"{"closedAt": "2026-11-07T23:20:00.000Z", "endReason": "signalled"}"#);
+            record(r#""closedAt": "2026-11-08T05:02:56.924Z", "endReason": "signalled","#);
         let ended = ended_on_purpose(&by_mesh_end, &utc);
         assert_eq!(ended.as_deref(), Some("signalled"));
         let gone = Seen {
@@ -605,13 +611,13 @@ mod tests {
             judge(&gone, Some(&q), |_| false, false),
             Verdict::Left("it was ended on purpose (signalled)".into())
         );
-        // A kill writes no ending, and one written before this process
-        // started belongs to the pi it replaced.
+        // A kill stamps no ending, though one an earlier pi stamped
+        // stays in `endings`; one stamped before this process started
+        // belongs to the pi it replaced; and a reader stamps `died`.
         assert_eq!(ended_on_purpose(&record(""), &utc), None);
-        let before =
-            record(r#"{"closedAt": "2026-11-07T23:13:39.371Z", "endReason": "signalled"}"#);
+        let before = record(r#""closedAt": "2026-11-07T23:13:39.371Z", "endReason": "signalled","#);
         assert_eq!(ended_on_purpose(&before, &utc), None);
-        let crashed = record(r#"{"closedAt": "2026-11-08T01:00:00.000Z", "endReason": "died"}"#);
+        let crashed = record(r#""closedAt": "2026-11-08T01:00:00.000Z", "endReason": "died","#);
         assert_eq!(ended_on_purpose(&crashed, &utc), None);
     }
 
