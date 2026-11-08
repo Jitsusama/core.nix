@@ -5,7 +5,7 @@ use super::clock::Clock;
 use super::figures::{count, figure, maybe, rate, said, signed, unknown, words, yes};
 use super::marks::marks;
 use super::text::{Align, Line, Page, Table, muted, plain, strong};
-use super::{counted, device_name, facts, head, labelled, location, titled, when};
+use super::{counted, device_name, facts, head, labelled, location, on_node, titled, when};
 use crate::model::{Device, HomeNetwork, Rate};
 
 #[derive(serde::Serialize)]
@@ -53,11 +53,7 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
     }
     let mut first = true;
     for id in groups {
-        let on: Vec<&Device> = model
-            .devices
-            .iter()
-            .filter(|d| d.node.as_deref() == id)
-            .collect();
+        let on = on_node(model, id);
         if on.is_empty() {
             continue;
         }

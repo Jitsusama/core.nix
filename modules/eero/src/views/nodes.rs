@@ -198,11 +198,7 @@ pub fn one(model: &HomeNetwork, node: &Node, clock: &Clock, ink: &Ink) -> Page {
     page.line(vec![strong("ports")]);
     page.extend(ports(node).lines(2));
 
-    let on: Vec<_> = model
-        .devices
-        .iter()
-        .filter(|device| device.node.as_deref() == Some(node.id.as_str()))
-        .collect();
+    let on = super::on_node(model, Some(node.id.as_str()));
     page.blank();
     page.line(vec![
         strong("devices"),
