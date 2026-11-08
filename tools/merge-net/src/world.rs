@@ -356,11 +356,8 @@ impl World for Real {
             .state
             .join("logs")
             .join(format!("changed-{}.log", short(head)));
-        // While no builder answers, the comparison waits for an idle
-        // machine rather than evaluate every check beside Joel's work.
         let ran = Command::new("changed-checks")
             .args(["--base", base, "--name-only", "--system", &self.system])
-            .env("CHANGED_CHECKS_HERE_WHEN_IDLE", "1")
             .current_dir(self.checkout())
             .stderr(file(&log)?)
             .output()

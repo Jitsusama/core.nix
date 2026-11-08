@@ -67,8 +67,9 @@ pub fn stalled(text: &str) -> bool {
 
 /// The CPU stall, as PSI's "some" over a minute, in percent, at or past
 /// which the machine isn't idle: the person's work stays ahead of a run
-/// that no builder took. On 7 November the net's evaluations, run here
-/// while the builders didn't answer, held optimus near 70% with Joel at it.
+/// that no builder took. On 7 November the net's evaluations and a
+/// session's, run here while the builders didn't answer, held the machine
+/// near 70% with Joel at it.
 pub const BUSY_AT: f64 = 15.0;
 
 /// Whether the machine's CPU is busy now. A reading that can't be had is
@@ -79,10 +80,10 @@ pub fn cpu_busy() -> bool {
     busy(&fs::read_to_string(file).unwrap_or_default())
 }
 
-/// Whether a run nowhere else took waits rather than run here: asked to
-/// run here only when idle, not asked to run here, and the machine busy.
-pub fn waits_for_idle(here: bool, when_idle: bool, busy: bool) -> bool {
-    when_idle && !here && busy
+/// Whether a run nowhere else took waits rather than run here: not asked
+/// to run here, and the machine busy.
+pub fn waits_for_idle(here: bool, busy: bool) -> bool {
+    !here && busy
 }
 
 /// What names the CPU pressure file read in place of the machine's.
@@ -128,17 +129,10 @@ mod tests {
     }
 
     #[test]
-    fn a_run_no_builder_took_waits_only_when_asked_and_busy() {
-        assert!(waits_for_idle(false, true, true));
-        assert!(
-            !waits_for_idle(false, true, false),
-            "an idle machine runs it"
-        );
-        assert!(!waits_for_idle(true, true, true), "--here runs it anyway");
-        assert!(
-            !waits_for_idle(false, false, true),
-            "a person's run isn't held"
-        );
+    fn a_run_no_builder_took_waits_while_the_machine_is_busy() {
+        assert!(waits_for_idle(false, true));
+        assert!(!waits_for_idle(false, false), "an idle machine runs it");
+        assert!(!waits_for_idle(true, true), "--here runs it anyway");
     }
 
     #[test]
