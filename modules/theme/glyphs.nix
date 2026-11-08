@@ -642,6 +642,16 @@ in
     glyph = nerd "f014d";
     console = "C";
     means = "the clipboard and what it's kept";
+    # A board under its clip, filled as the glyph is, its lines cut out of
+    # it: in the margin while a copied password waits to clear. Its board
+    # is the grid's full width and its clip half of it, so it never reads
+    # as the low battery, narrower under a narrower cap and hollow.
+    drawn = drawing [
+      "M1 1.5H3V0H9V1.5H11V12H1Z"
+      "M3 4.5H9V5.75H3Z"
+      "M3 7H9V8.25H3Z"
+      "M3 9.5H7V10.75H3Z"
+    ];
   };
   notifications = {
     glyph = nerd "f009c";
@@ -1026,6 +1036,145 @@ in
       "M0 5.25H4V6.75H0Z"
       "M4 2.5L7.5 6L4 9.5Z"
     ];
+  };
+  # What Joel's password managers keep, each entry by its kind, as
+  # 1Password sorts its items, so a card never reads as a login. Each is a
+  # kind every password manager has, or one of 1Password's own categories;
+  # a kind no mark here names wears `entry`. Each one's console stand-in is
+  # its own among them, so a list of entries on the console still tells
+  # the kinds apart; an identity's mark is `identityCard`, since identity
+  # is the glossary's word for who Joel is on a machine.
+  passwords = {
+    glyph = nerd "f1574";
+    console = "J";
+    means = "what Joel's password managers keep, and the place holding it";
+  };
+  login = {
+    glyph = nerd "f000b";
+    console = "l";
+    means = "a login a password manager keeps: an account's name and its password";
+  };
+  storedPassword = {
+    glyph = nerd "f07f5";
+    console = "*";
+    means = "a password a password manager keeps on its own, with no account's name";
+  };
+  paymentCard = {
+    glyph = nerd "f019b";
+    console = "$";
+    means = "a payment card a password manager keeps";
+  };
+  secureNote = {
+    glyph = nerd "f11d7";
+    console = "n";
+    means = "a note a password manager keeps";
+  };
+  identityCard = {
+    glyph = nerd "f0dab";
+    console = "I";
+    means = "who Joel is, as a password manager keeps it: his name, address and numbers";
+  };
+  sshKey = {
+    glyph = nerd "f030b";
+    console = "k";
+    means = "an SSH key a password manager keeps";
+  };
+  apiCredential = {
+    glyph = nerd "f109b";
+    console = "a";
+    means = "a credential for a service's API a password manager keeps";
+  };
+  database = {
+    glyph = nerd "f01bc";
+    console = "d";
+    means = "a database's address and sign-in a password manager keeps";
+  };
+  server = {
+    glyph = nerd "f048b";
+    console = "s";
+    means = "a server's address and sign-in a password manager keeps";
+  };
+  router = {
+    glyph = nerd "f0469";
+    console = "r";
+    means = "a wireless router's name and passwords a password manager keeps";
+  };
+  bankAccount = {
+    glyph = nerd "f0070";
+    console = "b";
+    means = "a bank account a password manager keeps";
+  };
+  emailAccount = {
+    glyph = nerd "f01f1";
+    console = "@";
+    means = "an email account's servers and sign-in a password manager keeps";
+  };
+  driversLicence = {
+    glyph = nerd "f010b";
+    console = "c";
+    means = "a driver's licence a password manager keeps";
+  };
+  outdoorLicence = {
+    glyph = nerd "f023a";
+    console = "f";
+    means = "a hunting or fishing licence a password manager keeps";
+  };
+  softwareLicence = {
+    glyph = nerd "f0fc3";
+    console = "Y";
+    means = "a program's licence a password manager keeps";
+  };
+  membership = {
+    glyph = nerd "f0e0d";
+    console = "m";
+    means = "a membership a password manager keeps";
+  };
+  passport = {
+    glyph = nerd "f07e3";
+    console = "p";
+    means = "a passport a password manager keeps";
+  };
+  rewardProgram = {
+    glyph = nerd "f0e44";
+    console = "g";
+    means = "a reward program's card a password manager keeps";
+  };
+  socialSecurityNumber = {
+    glyph = nerd "f088f";
+    console = "#";
+    means = "a social security or social insurance number a password manager keeps";
+  };
+  medicalRecord = {
+    glyph = nerd "f06ef";
+    console = "+";
+    means = "a medical record a password manager keeps";
+  };
+  cryptoWallet = {
+    glyph = nerd "f0584";
+    console = "w";
+    means = "a crypto wallet's recovery words and addresses a password manager keeps";
+  };
+  keptFile = {
+    glyph = nerd "f0221";
+    console = "Z";
+    means = "a file a password manager keeps as an entry of its own";
+  };
+  entry = {
+    glyph = nerd "f0b8d";
+    console = "E";
+    means = "an entry a password manager keeps of a kind no other mark names";
+  };
+  # What's inside an entry and holds them: its one-time code, a clock's
+  # padlock since it lapses, and the vault its manager keeps it in.
+  oneTimeCode = {
+    glyph = nerd "f097f";
+    console = "t";
+    means = "an entry's one-time code, which lapses when its period ends";
+  };
+  vault = {
+    glyph = nerd "f0a6a";
+    console = "v";
+    means = "where a password manager keeps a set of entries, as 1Password's vaults";
   };
   # A network card, not the cable, since an address is a card's whether it
   # joins through the air or by wire.

@@ -8,6 +8,7 @@
   onLinux,
   passesClippy,
   pkgs,
+  shellFolderLint,
   ...
 }:
 # Passwords serves the Linux desktop's shell, and builds only on Linux.
@@ -17,7 +18,8 @@ onLinux {
   # one a manager gives with its secrets on; a held list or get asks no
   # manager anything; a secret goes only to the client that asked to see
   # it, or to the clipboard marked sensitive, cleared when its time is up;
-  # a one-time code says its period; a manager signed out is said so and
+  # a one-time code says its period, and its detail gives the code, never
+  # its seed; a manager signed out is said so and
   # gives no secret; a watch hears entries arrive; and an ask or kind it
   # doesn't know is refused. The command's tests run too: each answer set
   # in columns under a header for a person and tab-separated for a
@@ -109,4 +111,25 @@ onLinux {
         && lib.hasSuffix "/op" (lib.last home.jitsusama.passwords.managers."1password".command)
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
+  # Each kind's mark, who's listed with nothing typed and in what order,
+  # what a row says, an entry's acts and their order, its link in its
+  # manager's program, its drawer's eyebrow, and its facts saying every
+  # figure and never a secret, its health and a weak strength warning,
+  # and the foot counting a copy down are
+  # Passwords.js's, run in Qt's own engine (tests/passwords.qml), beside
+  # the launcher's own wording of how long ago (Ago.js).
+  the-passwords-show-every-figure-but-the-secret =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-passwords-show-every-figure-but-the-secret" { } ''
+      cp ${../../tests/passwords.qml} passwords.qml
+      cp ${./Passwords.js} Passwords.js
+      cp ${../quickshell/launcher/Ago.js} Ago.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml passwords.qml
+      touch $out
+    '';
 }

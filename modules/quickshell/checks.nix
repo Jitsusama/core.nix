@@ -312,6 +312,23 @@ onLinux {
     given = [ "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}" ];
   };
 
+  # The Passwords place asks the passwords daemon over its socket, its one
+  # manager a stand-in for 1Password's that never runs op: nothing until
+  # Joel steps in, unlocking it from its first row, an entry's Return
+  # copying its password through wl-copy as the launcher goes, the margin
+  # wearing the clipboard's mark and the foot, opened again, counting to
+  # its clearing, resting on one reading it in full, and stepping into one
+  # holding its acts in order (tests/passwords-on-niri-test.py). A VM adds only the units, which
+  # passwords-runs-each-password-manager reads.
+  the-passwords-place-copies-through-its-daemon-on-niri = launcherOnNiri {
+    name = "the-passwords-place-copies-through-its-daemon-on-niri";
+    tests = ../../tests/passwords-on-niri-test.py;
+    given = [
+      "PASSWORDS=${lib.getExe (pkgs.callPackage ../passwords/package.nix { })}"
+      "PASSWORDS_STAND_IN=${../../tests/passwords-stand-in.sh}"
+    ];
+  };
+
   # The launcher, the held notices and a window share the keys by one rule:
   # the newest Joel opened takes them, a notice arriving never does, and a
   # click on a window gives it them (tests/focus-on-niri-test.py).
@@ -395,6 +412,7 @@ onLinux {
           "wide"
           "mail"
           "profile"
+          "clearing"
           "microphone"
           "capslock"
           "layer"

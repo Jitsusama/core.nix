@@ -1043,6 +1043,7 @@ it. Owners go by layer:
 | A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; Now               |
 | In a call                                                              | the margin mark, while in one                      | Programs › Tuple; Now        |
 | Notifications waiting                                                  | the margin mark                                    | Notifications (Super+N); Now |
+| A password or one-time code copied                                     | the margin mark, until the clipboard clears it, since the launcher goes as it copies | Passwords' foot; Now |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend, a part of Agents (Super+U); Now |
@@ -1347,9 +1348,10 @@ works the same way everywhere.
   did, not each time what they're made from moves.
 - **Home is a few places.** With nothing typed, the launcher shows Now,
   then after a gap the places, each a context with its own words: Agents,
-  Programs and People, what Joel works with; then Desktop, Machine,
-  Network and Keyboards, what he works on; always in that order, eight
-  rows, so home's shape never changes. Disk is a
+  Programs, People and Passwords, what Joel works with; then Desktop,
+  Machine, Network and Keyboards, what he works on; always in that order,
+  nine rows, so home's shape never changes, and Passwords only on a
+  machine with a password manager, beside People (VKCF3Z). Disk is a
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
   fast shows in Now. Now's top never changes: Needs You first, always,

@@ -48,12 +48,13 @@ the-launcher-names-each-thing-its-term holds the row's name to it.
 
 ## The Context Map
 
-Nine contexts have places in the launcher. Seven are home's rows, in its
-order after Now: Agents, Programs, People, Desktop, Machine, Network and
-Keyboards, so home has eight rows. Disk's place is inside Machine, beside
-Processor, Memory and Heat, and Mail and Calendar are places inside Programs.
-Security, which the others lean on, has one place, Passwords. The Library and
-Checks, which are core.nix's own, are never places.
+Nine contexts have places in the launcher. Eight are home's rows, in its
+order after Now: Agents, Programs, People, Passwords, Desktop, Machine,
+Network and Keyboards, so home has nine rows. Disk's place is inside Machine,
+beside Processor, Memory and Heat, and Mail and Calendar are places inside
+Programs. Security, which the others lean on, has one place, Passwords, on a
+machine with a password manager. The Library and Checks, which are core.nix's
+own, are never places.
 
 - **People reaches across Programs**: a person is found in mail, meetings,
   calls and chat at once, each program a source of people.
@@ -247,7 +248,7 @@ or a copy, can be opened, copied or forgotten.
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
-| home | the launcher's first place: Now, Agents, Programs, People, Desktop, Machine, Network and Keyboards | | |
+| home | the launcher's first place: Now, Agents, Programs, People, Passwords, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
 | Recent | the group of the last things done with what holds it, as in a program, a person or Capture: newest first, each once, never one open or shown already | | `*:recent` |
 | field | the line at the top of every place: the find line, or the command line in its place | | |
@@ -476,6 +477,7 @@ entry can be copied from, opened at its site and filled in.
 | Passwords | the place holding Joel's entries from every password manager | | |
 | password manager | a program keeping Joel's entries, such as 1Password, each one an option | | |
 | entry | one thing a password manager keeps, called by its kind: a login, a card, a note, an identity or a key | | 1Password's items |
+| detail | one part of an entry, as its username, its password or its one-time code | | 1Password's fields |
 | one-time code | the code an entry gives for signing in, new every half-minute | OTP, TOTP | |
 | hidden | of a part of an entry, shown only when asked, as a password is | concealed | 1Password's `CONCEALED` |
 | greeter | what asks Joel to sign in when the machine starts | | greetd, tuigreet |
