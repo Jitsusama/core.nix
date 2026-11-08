@@ -426,8 +426,6 @@ fn cut(name: &str, room: usize) -> String {
     format!("{kept}{CUT}")
 }
 
-/// Words wrapped to `measure` cells at whole words; a word longer than the
-/// measure stands on its own line, never broken.
 /// Words set after something `lead` cells wide, as a failure's are after
 /// its mark: wrapped at whole words to the room, each further line under
 /// the first's words, so a name is never cut where the terminal ends.
@@ -436,22 +434,46 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
     wrapped(words, measure).join(&format!("\n{}", " ".repeat(lead)))
 }
 
+/// Words wrapped to `measure` cells at whole words, never parting what
+/// `held` keeps together; a piece longer than the measure stands on its
+/// own line, never broken.
 fn wrapped(words: &str, measure: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
-    for word in words.split_whitespace() {
-        if !line.is_empty() && width(&line) + 1 + width(word) > measure {
+    for word in held(words) {
+        if !line.is_empty() && width(&line) + 1 + width(&word) > measure {
             lines.push(std::mem::take(&mut line));
         }
         if !line.is_empty() {
             line.push(' ');
         }
-        line.push_str(word);
+        line.push_str(&word);
     }
     if !line.is_empty() || lines.is_empty() {
         lines.push(line);
     }
     lines
+}
+
+/// What a break mustn't part: a figure and the word after it (`60 Hz`), a
+/// `\u{d7}` and both its sides (`1272 \u{d7} 768`), and a `\u{b7}` and what
+/// it follows, so a line never starts by parting items. Each comes as one
+/// piece, its words a space apart.
+fn held(words: &str) -> Vec<String> {
+    let mut pieces: Vec<String> = Vec::new();
+    let mut joins = false;
+    for word in words.split_whitespace() {
+        let follows = word == "\u{d7}" || word == "\u{b7}";
+        match pieces.last_mut() {
+            Some(last) if joins || follows => {
+                last.push(' ');
+                last.push_str(word);
+            }
+            _ => pieces.push(word.to_string()),
+        }
+        joins = word == "\u{d7}" || word.starts_with(|first: char| first.is_ascii_digit());
+    }
+    pieces
 }
 
 #[cfg(test)]
@@ -625,6 +647,10 @@ mod tests {
     fn words_wrap_at_whole_words_and_never_break_one() {
         assert_eq!(wrapped("one two three", 7), vec!["one two", "three"]);
         assert_eq!(wrapped("unbreakable", 4), vec!["unbreakable"]);
+        assert_eq!(
+            wrapped("1 \u{b7} preferred 1272 \u{d7} 768 at 60 Hz", 22),
+            vec!["1 \u{b7} preferred", "1272 \u{d7} 768 at 60 Hz"]
+        );
         assert_eq!(wrapped("", 4), vec![""]);
     }
 
