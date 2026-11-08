@@ -50,21 +50,35 @@ fn digest(text: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// What a provider said to the person in the last quarter hour: a warning
-/// when it was one of its own, a note otherwise. Its text is drawn as
-/// plain words, never markup.
+/// What a sentence says without its figures, so a meter that says the same
+/// thing with a newer total says it once: on 8 November four findings stood
+/// at once, each "7d AI spend has exceeded the $4,000.00 budget" with a
+/// total a few dollars on from the last.
+fn shape(text: &str) -> String {
+    digest(&text.replace(|c: char| c.is_ascii_digit(), ""))
+}
+
+/// What a provider said to the person in the last quarter hour, each thing
+/// once, as it said it last: a warning when it was one of its own, a note
+/// otherwise. Its text is drawn as plain words, never markup.
 pub fn said(picture: &Picture) -> Vec<Finding> {
-    picture
-        .said
-        .iter()
-        .map(|(severity, text)| {
+    // The picture holds them oldest first, so the last of each shape is
+    // the one kept.
+    let mut last: Vec<(String, &(String, String))> = Vec::new();
+    for said in &picture.said {
+        let shape = shape(&said.1);
+        last.retain(|(kept, _)| *kept != shape);
+        last.push((shape, said));
+    }
+    last.into_iter()
+        .map(|(shape, (severity, text))| {
             let plain: String = text.chars().filter(|c| !matches!(c, '<' | '>')).collect();
             let severity = match severity.as_str() {
                 "critical" | "error" | "alert" | "warning" => Severity::Warning,
                 _ => Severity::Note,
             };
             let mut f = finding(
-                format!("said:{}", digest(text)),
+                format!("said:{shape}"),
                 "said",
                 severity,
                 // The meter's, never the cap's: its budget isn't what
@@ -1627,6 +1641,46 @@ mod tests {
 
     // A window is named in a sentence as its feed names it, with the
     // glossary's word for what it is after it.
+    // A meter saying the same thing with a newer total each time is one
+    // finding, the newest, and a thing of another shape stands beside it.
+    #[test]
+    fn a_thing_said_again_with_new_figures_is_said_once() {
+        let history = History::memory();
+        let said = |text: &str, ago: f64| {
+            let line =
+                serde_json::json!({"v": 1, "kind": "said", "severity": "warning", "text": text});
+            let record = crate::feed::parse(&line.to_string()).unwrap();
+            crate::feed::store(&history, "proxy", &record, NOW - ago).unwrap();
+        };
+        said(
+            "7d AI spend has exceeded the $4,000.00 budget ($26,601.81 of $4,000.00)",
+            600.0,
+        );
+        said(
+            "7d AI spend has exceeded the $4,000.00 budget ($26,685.44 of $4,000.00)",
+            60.0,
+        );
+        said(
+            "7d AI spend has exceeded the $4,000.00 budget ($26,635.59 of $4,000.00)",
+            300.0,
+        );
+        said("The token was rotated", 120.0);
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        let found = said_findings(&picture);
+        assert_eq!(
+            found,
+            [
+                "the provider's meter says: The token was rotated",
+                "the provider's meter says: 7d AI spend has exceeded the $4,000.00 budget \
+                 ($26,685.44 of $4,000.00)",
+            ]
+        );
+    }
+
+    fn said_findings(picture: &Picture) -> Vec<String> {
+        said(picture).into_iter().map(|found| found.title).collect()
+    }
+
     #[test]
     fn a_window_s_name_is_said_with_its_allowance() {
         let history = History::memory();

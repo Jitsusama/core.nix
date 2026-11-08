@@ -580,7 +580,7 @@ fn read_actions(history: &History) -> Result<Vec<FeedAction>, String> {
 fn read_said(history: &History, now: f64) -> Result<Vec<(String, String)>, String> {
     let mut statement = history
         .db
-        .prepare("SELECT severity, text FROM said WHERE at >= ?1 ORDER BY severity, text")
+        .prepare("SELECT severity, text FROM said WHERE at >= ?1 ORDER BY at, text")
         .map_err(fail)?;
     statement
         .query_map([now - 900.0], |row| Ok((row.get(0)?, row.get(1)?)))
