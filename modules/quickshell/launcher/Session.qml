@@ -3,7 +3,6 @@
 // session by accident. While the machine is kept awake or notices are held,
 // undoing it leads the home screen, since a mode should never hold unseen.
 import qs
-import Qt.labs.folderlistmodel
 import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
@@ -236,10 +235,20 @@ Provider {
             Words.of("session:profile:drawer").said));
     }
 
+    // How many firmware platform profile drivers are looked for, the kernel
+    // naming each platform-profile-<n> from 0.
+    readonly property int profileDrivers: 8
+
+    // What the power profile's drawer reads, only while it's asked: sysfs
+    // says nothing of a change, so nothing is watched while it isn't.
     function readProfile() {
         const drivers = [];
-        for (let i = 0; i < platformProfiles.count; i++)
-            drivers.push(sysfs(`${platformProfiles.get(i, "filePath")}/name`));
+        for (let n = 0; n < profileDrivers; n++) {
+            const name = sysfs(`/sys/class/platform-profile/platform-profile-${n}/name`);
+            if (name === "")
+                break;
+            drivers.push(name);
+        }
         const policy = "/sys/devices/system/cpu/cpufreq/policy0";
         const read = {
             firmware: sysfs("/sys/firmware/acpi/platform_profile"),
@@ -283,14 +292,6 @@ Provider {
         id: probe
         blockLoading: true
         printErrors: false
-    }
-
-    // The firmware's platform profile drivers, listed by Qt as they change.
-    FolderListModel {
-        id: platformProfiles
-        folder: "file:///sys/class/platform-profile"
-        showFiles: false
-        showDotAndDotDot: false
     }
 
     // Starting a recording is Capture's (Capture.qml). While anything
