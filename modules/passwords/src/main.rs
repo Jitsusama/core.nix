@@ -834,7 +834,7 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         .collect();
     let mut passwords = Vec::new();
     let mut read = Vec::new();
-    let mut refused = None;
+    let mut first_failure = None;
     for thread in reading {
         let Ok((manager, answer)) = thread.join() else {
             continue;
@@ -859,13 +859,13 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
                 read.push(manager);
             }
             Err(failed) => {
-                refused.get_or_insert(failed);
+                first_failure.get_or_insert(failed);
             }
         }
     }
     if read.is_empty() {
         let (code, message) =
-            refused.unwrap_or(("refused", "no password manager could be read".to_owned()));
+            first_failure.unwrap_or(("refused", "no password manager could be read".to_owned()));
         return error(id, code, &message);
     }
     let audited = passwords.len();
@@ -995,27 +995,7 @@ fn command_line(command: cli::Command, json: bool) -> i32 {
             });
             0
         }
-        cli::Command::Audit => {
-            // Reading every password may wait on Joel letting a manager in.
-            let answer = talk.ask(json!({"ask": "audit", "asked": true}));
-            if let Some(failed) = failed(&answer) {
-                return failed;
-            }
-            say(&if json {
-                cli::as_json(&answer)
-            } else {
-                cli::audit(&answer, terminal)
-            });
-            if !terminal {
-                for said in cli::standings(&answer["sources"]) {
-                    eprintln!("{said}");
-                }
-            }
-            if let Some(why) = answer["unreached"].as_str() {
-                eprintln!("{why}; no password was checked for breaches.");
-            }
-            0
-        }
+        cli::Command::Audit => talk.audit(json, terminal),
         cli::Command::Names(names) => {
             talk.names(&names);
             0
@@ -1311,6 +1291,31 @@ impl Talk {
             (false, Secret::Show) => format!("{}\n", answer["value"].as_str().unwrap_or("")),
             (false, Secret::Copy) => cli::copied(&answer, now(), terminal),
         });
+        0
+    }
+
+    /// Every password audited, as Joel asked, and each entry with a
+    /// problem said; a program is told on standard error of a manager not
+    /// answering, and anyone of breaches that couldn't be asked about.
+    fn audit(&mut self, json: bool, terminal: bool) -> i32 {
+        // Reading every password may wait on Joel letting a manager in.
+        let answer = self.ask(json!({"ask": "audit", "asked": true}));
+        if let Some(failed) = failed(&answer) {
+            return failed;
+        }
+        say(&if json {
+            cli::as_json(&answer)
+        } else {
+            cli::audit(&answer, terminal)
+        });
+        if !terminal {
+            for said in cli::standings(&answer["sources"]) {
+                eprintln!("{said}");
+            }
+        }
+        if let Some(why) = answer["unreached"].as_str() {
+            eprintln!("{why}; no password was checked for breaches.");
+        }
         0
     }
 

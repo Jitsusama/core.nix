@@ -114,7 +114,7 @@ in
     # A password or a one-time code on the clipboard until it clears, in
     # the margin wearing the clipboard's mark, since the launcher goes as
     # it copies; after what Joel left on himself, before what's on air.
-    jitsusama.quickshell.overview.pieces.clearing = {
+    jitsusama.quickshell.margin.pieces.clearing = {
       order = 66;
       source = ./Copied.qml;
       label = "clearing";
