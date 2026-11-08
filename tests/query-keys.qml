@@ -1038,20 +1038,20 @@ QtObject {
             holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
     }
 
-    // How tall a drawer's preview stands, on a pitch of 24: a picture its
-    // own height, so the facts start the groups' gap below it rather than
-    // below a band rounded up to the pitch (VKCF3Z, 2026-11-08); lines
-    // whole lines of the pitch.
+    // How tall a drawer's preview stands, on a pitch of 24 with groups 20
+    // apart: a picture its own height less the pitch's lead of 4, so the
+    // facts start the groups' gap below it rather than below a band rounded
+    // up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch.
     function drawerPreviewHeights(holds) {
         // [what, the picture's height, lines of words, what it stands]
         const previews = [
-            ["a picture shorter than a pitch line stands its own height", 12, 0, 12],
-            ["a picture stands its own height, never rounded up to the pitch", 100.2, 0, 101],
+            ["a picture stands short by the pitch's lead over the groups' gap", 12, 0, 8],
+            ["a picture is never rounded up to the pitch", 100.2, 0, 97],
             ["lines stand whole lines of the pitch", 0, 3, 72],
             ["nothing yet stands nothing", 0, 0, 0]
         ];
         for (const [what, picture, lines, want] of previews)
-            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, 24), want);
+            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, 24, 20), want);
     }
 
     function drawerRefusals(holds) {

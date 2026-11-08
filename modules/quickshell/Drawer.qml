@@ -1828,17 +1828,25 @@ Floating {
                         + drawer.pitch : 0) - drawer.pitch)
 
                     width: parent.width
-                    visible: picture !== "" || lines.length > 0
+                    // A picture waits for its size, held empty rather than
+                    // drawn square and then jumping to its shape.
+                    visible: (picture !== "" && previewFrame.height > 0) || lines.length > 0
                     height: Page.previewHeight(picture !== "" ? previewFrame.height : 0,
-                        lines.length, drawer.pitch)
+                        lines.length, drawer.pitch, Theme.space.rung.groups)
 
                     Rectangle {
                         id: previewFrame
                         readonly property real across: drawer.preview?.across > 0
                             ? drawer.preview.across : parent.width
+                        // Its size as given, else its shape once it's read;
+                        // nothing before either.
                         readonly property real down: drawer.preview?.down > 0
-                            ? drawer.preview.down : across
-                        readonly property real shrunk: Math.min(1, parent.width / across,
+                            ? drawer.preview.down
+                            : previewDrawn.status === Image.Ready && previewDrawn.implicitWidth > 0
+                                ? across * previewDrawn.implicitHeight / previewDrawn.implicitWidth
+                                : 0
+                        readonly property real shrunk: down <= 0 ? 0 : Math.min(1,
+                            parent.width / across,
                             Math.floor(previewBox.room / drawer.pitch) * drawer.pitch / down)
 
                         visible: previewBox.picture !== ""
@@ -1857,8 +1865,10 @@ Floating {
                             source: Pictures.source(previewBox.picture)
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
-                            sourceSize.width: 2 * width
-                            sourceSize.height: 2 * height
+                            // Read at the width it may take, never its
+                            // drawn size, which waits on its shape, so it's
+                            // read once rather than again as it's sized.
+                            sourceSize.width: 2 * previewFrame.across
                             opacity: status === Image.Ready ? 1 : 0
                             layer.enabled: true
                             layer.effect: MultiEffect {

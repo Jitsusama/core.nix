@@ -407,12 +407,14 @@ function middled(words, room, width) {
     return "\u2026";
 }
 
-// How tall a preview stands: a picture its own height, so what follows it
-// is the groups' gap below the picture rather than below a band rounded
-// up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch, so
-// the words after them stay on the card's.
-function previewHeight(picture, lines, pitch) {
-    return picture > 0 ? Math.ceil(picture) : lines * pitch;
+// How tall a preview stands, in a column that sets `pitch` after it: a
+// picture its own height, less the pitch's lead over the groups' `gap`,
+// so what follows is that gap below the picture rather than below a band
+// rounded up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the
+// pitch, so the words after them stay on the card's; nothing while a
+// picture's size isn't known yet.
+function previewHeight(picture, lines, pitch, gap) {
+    return picture > 0 ? Math.ceil(picture) + gap - pitch : lines * pitch;
 }
 
 // The face a fact's value is set in, given the script its plate is in, ""
