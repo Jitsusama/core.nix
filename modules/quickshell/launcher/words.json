@@ -6626,7 +6626,8 @@
     {
       "id": "wifi:carried",
       "in": "wifi",
-      "name": "Carried"
+      "name": "Traffic",
+      "term": "Network/traffic"
     },
     {
       "id": "wifi:received",

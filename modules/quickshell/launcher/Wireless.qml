@@ -15,7 +15,7 @@
 // the coding, streams, guard interval, dual carrier and width each way, the
 // channel, how its frames are framed and wait for the air, and Retries a
 // step in),
-// what it's Carried each way since it connected (the packets, and how long
+// its Traffic each way since it connected (the packets, and how long
 // since a frame, a step in), its Protection, said for what it means, its
 // Access points, each a step into its own parts, with the one wifid would
 // pick and why, and how long it's been Connected for. A network wanting a
