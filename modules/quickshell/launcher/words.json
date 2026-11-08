@@ -5949,7 +5949,9 @@
       "said": {
         "eyebrow": "on this desktop \u00b7 do not disturb",
         "one": "1 notice",
-        "many": "{count} notices",
+        "many": "{count} notices"
+      },
+      "tells": {
         "kept": "Turned on by hand.",
         "shared": "On while the screen is shared."
       }
@@ -7852,6 +7854,51 @@
       "name": "Power Profile",
       "term": "Machine/power profile",
       "glyph": "balanced"
+    },
+    {
+      "id": "session:profile:drawer",
+      "in": "session:profile",
+      "said": {
+        "eyebrow": "on this machine \u00b7 power profile",
+        "held": "{app} for {reason}",
+        "lap": "on a lap",
+        "heat": "too hot"
+      }
+    },
+    {
+      "id": "session:profile:held",
+      "in": "session:profile",
+      "name": "Held By"
+    },
+    {
+      "id": "session:profile:slowed",
+      "in": "session:profile",
+      "name": "Slowed"
+    },
+    {
+      "id": "session:profile:firmware",
+      "in": "session:profile",
+      "name": "Firmware"
+    },
+    {
+      "id": "session:profile:offers",
+      "in": "session:profile",
+      "name": "Firmware Offers"
+    },
+    {
+      "id": "session:profile:processor",
+      "in": "session:profile",
+      "name": "Processor"
+    },
+    {
+      "id": "session:profile:processor-driver",
+      "in": "session:profile",
+      "name": "Processor Driver"
+    },
+    {
+      "id": "session:profile:firmware-driver",
+      "in": "session:profile",
+      "name": "Firmware Driver"
     },
     {
       "id": "session:power:Power Saver",

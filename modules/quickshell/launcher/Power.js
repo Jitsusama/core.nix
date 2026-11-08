@@ -3,14 +3,47 @@
 // run it in Qt's own engine, as the shell does: which of a list the kernel
 // marks as in use, what a USB-C port's protocol is called, what each port
 // gives, the date a battery was made, the order a charge limit's two files
-// are written in, and how bright a room is. Power.qml and Light.qml read the
-// files and say the figures.
+// are written in, how bright a room is, and what the power profile's drawer
+// says. Power.qml, Light.qml and Session.qml read the files and say the
+// figures.
 .pragma library
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
 const MARKED = /\[([^\]]+)\]/;
 const BRACKETS = /^\[|\]$/g;
 const SPACES = /\s+/;
+
+// A template's {fields}, filled.
+const FIELD = /\{(\w+)\}/g;
+
+function filled(template, fields) {
+    return template.replace(FIELD, (_whole, name) => String(fields[name] ?? ""));
+}
+
+// The power profile's drawer: who holds it, why it's slowed, and what the
+// firmware and the processor were told, each as written, then the drivers
+// that tell them. `known` holds what power-profiles-daemon says (`holds`
+// as { app, reason }, `slowed` as a said key or "") and what sysfs does
+// (`firmware`, `offers`, `processor`, `processorDriver`,
+// `firmwareDrivers`). The holds are one fact, parted by dots, so a dot
+// only ever parts holds (VKCF3Z, 2026-11-08).
+function profileDrawer(known, named, said) {
+    const fact = (id, value) => ({ label: named(`session:profile:${id}`), value });
+    const held = (known.holds ?? []).map(hold => hold.reason === "" ? hold.app
+        : filled(said.held, hold)).join(" \u00b7 ");
+    return {
+        eyebrow: said.eyebrow,
+        facts: [
+            fact("held", held),
+            fact("slowed", known.slowed === "" ? "" : said[known.slowed] ?? ""),
+            fact("firmware", known.firmware),
+            fact("offers", String(known.offers ?? "").trim().split(SPACES).join(" \u00b7 ")),
+            fact("processor", known.processor),
+            fact("processor-driver", known.processorDriver),
+            fact("firmware-driver", (known.firmwareDrivers ?? []).join(" \u00b7 "))
+        ].filter(each => (each.value ?? "") !== "")
+    };
+}
 
 // What a list the kernel marks one of says: the one in use and all of
 // them, in its order. A file saying one thing alone, as an older kernel's

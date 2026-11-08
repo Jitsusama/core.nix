@@ -3,8 +3,11 @@
 // session by accident. While the machine is kept awake or notices are held,
 // undoing it leads the home screen, since a mode should never hold unseen.
 import qs
+import Qt.labs.folderlistmodel
+import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
+import "Power.js" as Power
 
 Provider {
     id: provider
@@ -196,11 +199,92 @@ Provider {
         return choice ? `session:power:${choice.was}` : "";
     }
     readonly property var profile: thingRow({
+        thing: true,
         key: "session:profile",
         name: Words.name("session:profile"),
         side: profileChosen !== "" ? Words.of(profileChosen).part : "",
-        glyph: profileChosen !== "" ? Words.glyph(profileChosen) : Words.glyph("session:profile")
+        glyph: profileChosen !== "" ? Words.glyph(profileChosen) : Words.glyph("session:profile"),
+        // Who holds it and what the firmware and processor were told, under
+        // the row (Power.js's profileDrawer).
+        drawer: () => provider.profileDrawer()
     }, () => [])
+
+    // What the power profile's drawer read of sysfs: read just after the
+    // drawer asks, since reading moves the reader its binding would follow,
+    // and again each second while the launcher is open, as
+    // power-profiles-daemon writes the firmware's and the processor's files
+    // after it says the profile changed.
+    property var profileRead: null
+    property bool profileAsked: false
+
+    function profileDrawer() {
+        if (profileRead === null) {
+            Qt.callLater(() => provider.readProfile());
+            return null;
+        }
+        const slowed = PowerProfiles.degradationReason;
+        return Object.assign({ title: Words.name("session:profile") }, Power.profileDrawer(
+            Object.assign({
+                holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
+                    app: hold.applicationId,
+                    reason: hold.reason
+                })),
+                slowed: slowed === PerformanceDegradationReason.LapDetected ? "lap"
+                    : slowed === PerformanceDegradationReason.HighTemperature ? "heat" : ""
+            }, profileRead),
+            id => Words.name(id),
+            Words.of("session:profile:drawer").said));
+    }
+
+    function readProfile() {
+        const drivers = [];
+        for (let i = 0; i < platformProfiles.count; i++)
+            drivers.push(sysfs(`${platformProfiles.get(i, "filePath")}/name`));
+        const policy = "/sys/devices/system/cpu/cpufreq/policy0";
+        const read = {
+            firmware: sysfs("/sys/firmware/acpi/platform_profile"),
+            offers: sysfs("/sys/firmware/acpi/platform_profile_choices"),
+            processor: sysfs(`${policy}/energy_performance_preference`),
+            processorDriver: sysfs(`${policy}/scaling_driver`),
+            firmwareDrivers: drivers.filter(name => name !== "")
+        };
+        profileAsked = true;
+        if (JSON.stringify(read) !== JSON.stringify(profileRead))
+            profileRead = read;
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: provider.profileAsked && (provider.launcher?.open ?? false)
+        onRunningChanged: {
+            if (!running) {
+                provider.profileRead = null;
+                provider.profileAsked = false;
+            }
+        }
+        onTriggered: provider.readProfile()
+    }
+
+    // What a file in /sys says, or "" when it says nothing.
+    function sysfs(file) {
+        probe.path = file;
+        return read(probe).trim();
+    }
+
+    FileView {
+        id: probe
+        blockLoading: true
+        printErrors: false
+    }
+
+    // The firmware's platform profile drivers, listed by Qt as they change.
+    FolderListModel {
+        id: platformProfiles
+        folder: "file:///sys/class/platform-profile"
+        showFiles: false
+        showDotAndDotDot: false
+    }
 
     // Starting a recording is Capture's (Capture.qml). While anything
     // records, stopping it leads the home screen, so it never runs unseen.

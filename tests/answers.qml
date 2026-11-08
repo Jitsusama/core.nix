@@ -1961,6 +1961,29 @@ QtObject {
         machine("no charge type", Power.chosen(""), { now: "", all: [] });
         machine("power delivery", Power.protocol("C [PD] PD_PPS"), "USB PD");
         machine("programmable power", Power.protocol("C PD [PD_PPS]"), "USB PD PPS");
+
+        // The power profile's drawer: its holds one fact parted by dots,
+        // why it's slowed in words, the firmware's and the processor's
+        // settings as written, and the drivers last.
+        const profileWords = { eyebrow: "on this machine \u00b7 power profile",
+            held: "{app} for {reason}", lap: "on a lap", heat: "too hot" };
+        const profileDrawn = Power.profileDrawer({
+            holds: [{ app: "Steam", reason: "a game" }, { app: "Firefox", reason: "a video" }],
+            slowed: "heat", firmware: "performance", offers: "cool quiet balanced performance\n",
+            processor: "balance_performance", processorDriver: "intel_pstate",
+            firmwareDrivers: ["SoC Power Slider", "dell-pc"]
+        }, id => `[${id.slice("session:profile:".length)}]`, profileWords);
+        machine("the power profile's drawer", [profileDrawn.eyebrow].concat(profileDrawn.facts
+            .map(fact => `${fact.label} ${fact.value}`)), ["on this machine \u00b7 power profile",
+            "[held] Steam for a game \u00b7 Firefox for a video", "[slowed] too hot",
+            "[firmware] performance",
+            "[offers] cool \u00b7 quiet \u00b7 balanced \u00b7 performance",
+            "[processor] balance_performance", "[processor-driver] intel_pstate",
+            "[firmware-driver] SoC Power Slider \u00b7 dell-pc"]);
+        machine("an unheld profile on a machine whose firmware says nothing",
+            Power.profileDrawer({ holds: [{ app: "Steam", reason: "" }], slowed: "",
+                processorDriver: "amd-pstate-epp" }, id => id, profileWords).facts
+                .map(fact => fact.value), ["Steam", "amd-pstate-epp"]);
         machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
         machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
         const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };
