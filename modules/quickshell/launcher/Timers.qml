@@ -263,6 +263,7 @@ Provider {
             // of a second, its rows made again only when the daemon says
             // it changed (Launcher.qml's counts).
             counts: running ? now => Timing.tenths(Timing.counted(watch, now)) : undefined,
+            sideWidest: running ? Timing.widest(Timing.counted(watch, Date.now())) : undefined,
             note: watchNote(watch),
             record: watch,
             verb: Words.verb("verb:stopwatch:run", running ? "running" : ""),
@@ -434,6 +435,30 @@ Provider {
     // closed, nor while every timer is paused or rung.
     readonly property bool counts: launcher !== null && launcher.open
         && HeldTimers.timers.some(record => record.state === "running")
+
+    // While the stopwatch runs and the launcher is open, its rows are made
+    // again as its count grows a figure, at ten minutes, an hour and on, so
+    // the room its side keeps grows with it (Timing.widest).
+    readonly property bool widens: launcher !== null && launcher.open
+        && HeldTimers.stopwatch?.state === "running"
+
+    function untilWider() {
+        const count = Timing.counted(HeldTimers.stopwatch, Date.now());
+        return Math.max(1, Timing.grows(count) - count);
+    }
+
+    Timer {
+        repeat: true
+        running: provider.widens
+        onRunningChanged: {
+            if (running)
+                interval = provider.untilWider();
+        }
+        onTriggered: {
+            provider.changedTo(provider.rows());
+            interval = provider.untilWider();
+        }
+    }
 
     Timer {
         interval: 1000

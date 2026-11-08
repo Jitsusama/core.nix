@@ -5,8 +5,9 @@
 // what's typed after "timer" in every way Joel might type them, the time
 // left is told as a clock and a span in its largest units, and timers
 // are listed rung first, then by what they have left; and the stopwatch
-// counts on while it runs, shows its count to the tenth, and lists its
-// laps newest first; and Now says timers are on while any runs, is
+// counts on while it runs, shows its count to the tenth, keeps room for
+// the widest it reads until it grows a figure, and lists its laps newest
+// first; and Now says timers are on while any runs, is
 // paused or has rung, or the stopwatch runs, told by the one Timers
 // lists first and naming them in that order, the stopwatch last.
 import QtQuick
@@ -124,6 +125,16 @@ QtObject {
                 { number: 1, lap: 42100, at: 42100 }
             ]);
         check(failures, "no laps", Timing.laps({ laps: [] }), []);
+        check(failures, "the widest below ten minutes",
+            Timing.widest(9 * minute + 59 * second + 900), "9:59.9");
+        check(failures, "from ten minutes", Timing.widest(10 * minute), "59:59.9");
+        check(failures, "the widest below an hour",
+            Timing.widest(59 * minute + 59 * second + 900), "59:59.9");
+        check(failures, "from an hour", Timing.widest(hour), "9:59:59.9");
+        check(failures, "from ten hours", Timing.widest(10 * hour), "99:59:59.9");
+        check(failures, "it grows a figure at ten minutes",
+            Timing.grows(9 * minute + 59 * second + 900), 10 * minute);
+        check(failures, "and at an hour", Timing.grows(59 * minute + 59 * second + 900), hour);
 
         const said = { pausedSide: "paused \u00b7 {left}", rung: "rang {clock}",
             late: "rang late, {clock}" };
@@ -165,13 +176,12 @@ QtObject {
         check(failures, "and is named last", onNow([tea], running),
             [true, false, "timer:1", ["timer:1", "stopwatch"]]);
         check(failures, "a running timer ticks Now's row while it's open",
-            Timing.ticks([tea], null, true), true);
-        check(failures, "and never while the launcher is closed",
-            Timing.ticks([tea], running, false), false);
-        check(failures, "nor while nothing counts", Timing.ticks([held, eggs], stopped, true),
+            Timing.ticks([tea], true), true);
+        check(failures, "and never while the launcher is closed", Timing.ticks([tea], false),
             false);
-        check(failures, "the stopwatch alone running ticks it", Timing.ticks([], running, true),
-            true);
+        check(failures, "nor while nothing counts down", Timing.ticks([held, eggs], true), false);
+        check(failures, "nor for the stopwatch alone, which the launcher draws",
+            Timing.ticks([], true), false);
 
         if (failures.length > 0) {
             for (const failure of failures)
