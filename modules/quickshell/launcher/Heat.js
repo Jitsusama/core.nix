@@ -10,6 +10,7 @@
 // level, so the two say them alike.
 .pragma library
 .import "Machine.js" as Machine
+.import "Order.js" as Order
 
 // A sensor on a chip that measures many, as dell_ddv's are, by its label,
 // as the part it stands for. One labelled "CPU" or "Other" is left out: the
@@ -113,7 +114,7 @@ function electricSaid(value, unit) {
 // since the rest say nothing of what they measure; a fan whose speed
 // can't be read is left out.
 function chipsOf(records) {
-    return records.slice().sort((a, b) => String(a.key).localeCompare(String(b.key)))
+    return Order.sorted(records, Order.byName(record => record.key))
         .map(record => {
             const part = CHIP_PARTS.includes(record.part) ? record.part : "";
             const chip = record.chip ?? "";
@@ -188,7 +189,7 @@ function tripsFor(zones, part) {
 // state, max }, its state the furthest any of them is stepped, from the
 // machine daemon's cooling records, by type.
 function coolingOf(records) {
-    return records.slice().sort((a, b) => String(a.type).localeCompare(String(b.type)))
+    return Order.sorted(records, Order.byName(record => record.type))
         .filter(each => given(each.max_state) && each.max_state > 0)
         .map(each => ({
             type: each.type ?? "",

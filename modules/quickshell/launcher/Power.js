@@ -9,6 +9,7 @@
 // what the power profile's drawer says, and why a profile picked didn't
 // take. Power.qml, Light.qml and Session.qml say the figures.
 .pragma library
+.import "Order.js" as Order
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
 const MARKED = /\[([^\]]+)\]/;
@@ -215,10 +216,9 @@ const USB_C = /USBC\d+:0*(\d+)$/;
 // battery whose scope is a device's, as a mouse's is, is that device's.
 function batteryOf(records) {
     return (
-        records
-            .slice()
-            .sort((a, b) => String(a.key).localeCompare(String(b.key)))
-            .find((each) => each.type === "Battery" && each.scope !== "Device") ?? null
+        Order.sorted(records, Order.byName((each) => each.key)).find(
+            (each) => each.type === "Battery" && each.scope !== "Device",
+        ) ?? null
     );
 }
 
