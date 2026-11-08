@@ -1211,8 +1211,10 @@ works the same way everywhere.
   each is laid out by the one rule (Recent.js). It always
   stands where its thing keeps any, so it never arrives late at the
   bottom: how many at its right, "none" while it holds nothing and an
-  ellipsis while its source first answers, the newest one's name as its
-  note, and "Nothing yet." stepped into empty. What waits on Joel is
+  ellipsis while its source first answers, as its note the names it
+  holds, newest first, as many whole as fit, then how many more
+  ("Wikipedia, Kayak", "Wikipedia and 8 more"; VKCF3Z, 2026-11-07), and
+  "Nothing yet." stepped into empty. What waits on Joel is
   never Recent: a person's unread mail is their Unread, before it,
   standing only while there's any.
 - **Acts in one order.** Every kind of thing lists what's inside it in
