@@ -30,4 +30,17 @@
     holds "sshd-lets-a-gone-caller-go"
       "sshd never asks a quiet caller whether it's still there, so what a caller that went to sleep started there runs for hours."
       ((settings.ClientAliveInterval or null) == 15 && (settings.ClientAliveCountMax or null) == 4);
+
+  # And takes only keys, never as root.
+  sshd-takes-only-keys =
+    let
+      settings = workstation.config.services.openssh.settings;
+    in
+    holds "sshd-takes-only-keys"
+      "sshd takes a password or signs root in, so anyone on the laptop's network can guess their way in."
+      (
+        settings.PasswordAuthentication == false
+        && settings.KbdInteractiveAuthentication == false
+        && settings.PermitRootLogin == "no"
+      );
 }

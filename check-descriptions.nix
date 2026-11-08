@@ -1576,6 +1576,9 @@
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
+  sshd-takes-only-keys = ''
+    every NixOS machine's sshd refuses passwords, typed or asked for, and never signs root in
+  '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
   '';
