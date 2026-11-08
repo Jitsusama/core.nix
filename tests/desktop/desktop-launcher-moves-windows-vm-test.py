@@ -1,7 +1,7 @@
 """The desktop test's launcher moves windows area.
 
-Here the launcher opens kitty, finds, frames and moves windows, goes back by Super+Tab, and
-shows each layer's shortcuts.
+Here the launcher opens kitty, goes to one of its tabs, finds, frames and moves windows, goes
+back by Super+Tab, and shows each layer's shortcuts.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -171,6 +171,36 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
         desktop.in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
         timeout=dt.timedelta(seconds=10),
     )
+
+
+def test_the_launcher_goes_to_a_kitty_tab_inside_its_window(desktop: Desktop) -> None:
+    """The launcher lists kitty's tabs, and Return on one goes to it through kitty.
+
+    One path through the connection: open-now asking a real kitty over its socket, the tab
+    matched to niri's window, and kitty's remote control bringing it forward once niri has
+    focused the window. Each case of the rows' words and order is tests/kitty-tabs.qml's.
+    """
+    machine = desktop.machine
+    kitty = f"kitten @ --to unix:@kitty-{desktop.focused_kitty()['pid']}"
+    # A second tab, named so its row is known, with the first in front again.
+    desktop.as_account(f"{kitty} launch --type=tab --tab-title 'Second Tab' --cwd /tmp")
+    desktop.as_account(f"{kitty} focus-tab --match index:0")
+    focused = f'{kitty} ls --match-tab state:focused | grep -qF \'"title": "Second Tab"\''
+    machine.wait_until_fails(desktop.in_session(focused), timeout=dt.timedelta(seconds=10))
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.into_program()
+    desktop.launcher_until(lambda shown: "Tabs" in shown["rows"])
+    desktop.down_to("Tabs")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Second Tab" in shown["rows"])
+    desktop.down_to("Second Tab")
+    desktop.photograph("launcher-kitty-tabs")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(desktop.in_session(focused), timeout=dt.timedelta(seconds=10))
+    # kitty's match takes a space as "and", so the tab is matched by its first word.
+    desktop.as_account(f"{kitty} close-tab --match title:^Second")
 
 
 # Super+Tab opens the launcher on every other window, the one used last
