@@ -170,9 +170,9 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     assert re.search("^-?\\d+ \\u00b0C$", desktop.showing()["selected"]["side"])
 
     def in_battery(shown: Json) -> bool:
-        """Say whether the launcher holds the battery's heat, its history selected."""
+        """Say whether the launcher holds the battery's heat, its Last Reads selected."""
         return bool(
-            shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
+            shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Last Reads"
         )
 
     desktop.follow()

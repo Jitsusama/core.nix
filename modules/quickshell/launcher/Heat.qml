@@ -6,7 +6,7 @@
 // Engine and Display Engine, the Disk, the Memory, the Wi-Fi card, the
 // Battery, the Air inside and each fan. Each temperature is drawn
 // against the most its chip says it may reach, warning near it, and holds,
-// a step in, what it's read Lately while shown, its other sensors (a
+// a step in, its Last Reads while shown, its other sensors (a
 // disk's second, hottest one), the processor's Cores, and its High and
 // Critical points. A fan is drawn against what it's rated for and holds
 // its history, its Power and what it's Aiming for. Throttled counts the
@@ -242,7 +242,7 @@ Provider {
             : label.charAt(0).toUpperCase() + label.slice(1);
     }
 
-    // What it's read Lately, while shown, as a spark and its range.
+    // Its Last Reads, while shown, as a spark and its range.
     function lately(values, said, drawn) {
         const least = Math.min(...values);
         const most = Math.max(...values);

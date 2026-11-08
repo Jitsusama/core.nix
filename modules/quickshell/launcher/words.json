@@ -2384,7 +2384,7 @@
     {
       "id": "heat:lately",
       "in": "heat",
-      "name": "Lately"
+      "name": "Last Reads"
     },
     {
       "id": "heat:high",
@@ -6631,7 +6631,7 @@
       "term": "Desktop/For You",
       "verb": "go to",
       "glyph": "forYou",
-      "empty": "Nothing needs you.",
+      "empty": "Nothing waits on you.",
       "tells": {
         "known": "Known done {how}.",
         "person": "Only you can say it's done.",
