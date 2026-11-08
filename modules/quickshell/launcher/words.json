@@ -2056,6 +2056,24 @@
       "name": "Out"
     },
     {
+      "id": "warp:power",
+      "command": "disconnect",
+      "in": "warp",
+      "name": "Disconnect WARP",
+      "verb": "disconnect",
+      "glyph": "disconnect",
+      "act": "ending",
+      "ends": "disconnect",
+      "states": {
+        "off": {
+          "command": "connect",
+          "name": "Connect WARP",
+          "verb": "connect",
+          "glyph": "connect"
+        }
+      }
+    },
+    {
       "id": "warp:tunnel",
       "in": "warp",
       "name": "Tunnel"
@@ -12008,6 +12026,7 @@
         "recording": "Recording"
       },
       "did": {
+        "connect": "connected",
         "disconnect": "disconnected",
         "distrust": "untrusted",
         "forget": "forgotten",

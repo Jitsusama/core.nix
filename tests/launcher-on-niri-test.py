@@ -1304,6 +1304,74 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         shutil.rmtree(said)
 
 
+def warp_said(**settings: object) -> Path:
+    """Write the contract's answers where the stand-in warp-cli reads them, settings changed.
+
+    Its disconnect answers as warp-cli's does, and the stand-in, asked it, says WARP is
+    disconnected after, as WARP's service would; nothing here reaches a real WARP.
+    """
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    for question in ("status", "tunnel-stats", "settings", "dns-stats", "override-show"):
+        shutil.copyfile(contract / f"{question}.json", said / f"{question}.json")
+    written = json.loads((said / "settings.json").read_text())
+    written["settings"].update(settings)
+    (said / "settings.json").write_text(json.dumps(written))
+    (said / "disconnect.json").write_text('"Success"\n')
+    return said
+
+
+def asked(said: Path) -> list[str]:
+    """Give each question the stand-in warp-cli was asked, in turn."""
+    where = said / "asked"
+    return where.read_text().splitlines() if where.exists() else []
+
+
+def disconnect_from_its_switch(shell: Shell) -> None:
+    """Step into WARP and run :disconnect on its switch, as Joel types it."""
+    shell.answer("warp")
+    shell.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "connected \u00b7 127 ms"
+    )
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == ["Disconnect WARP"])
+    shell.down_to("Disconnect WARP")
+    shell.normal()
+    shell.send_chars(":disconnect")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "disconnect")
+    shell.send_key("ret")
+
+
+def test_warps_disconnect_runs_warp_and_says_when_it_comes_back(shell: Shell) -> None:
+    """WARP's :disconnect has warp disconnect it, and says when WARP, always on, comes back.
+
+    The stand-in warp-cli writes each question it's asked, so the check sees the switch reach
+    warp-cli through warp (tests/warp-cli-stand-in.sh).
+    """
+    said = warp_said()
+    try:
+        disconnect_from_its_switch(shell)
+        shell.launcher_until(lambda _: "disconnect" in asked(said))
+        shell.launcher_until(lambda shown: "comes back by itself in 2 min" in shown["footer"])
+        shell.close_launcher()
+    finally:
+        shutil.rmtree(said)
+
+
+def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Shell) -> None:
+    """A WARP switch the organisation holds says who holds it, and warp-cli is never asked."""
+    said = warp_said(switch_locked=True)
+    try:
+        with shell.told("not become warp:power: example holds the switch"):
+            disconnect_from_its_switch(shell)
+        assert "settings" in asked(said), asked(said)
+        assert "disconnect" not in asked(said), asked(said)
+        shell.close_launcher()
+    finally:
+        shutil.rmtree(said)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

@@ -47,13 +47,6 @@ itself after `auto_connect_after_min`. warp-cli refusing ends 7, in its
 words. warp-cli decides the rest, as it does for anyone, so nothing here
 needs root.
 
-## What Comes Next
-
-- The drawer: sparks of latency and loss, kept by the shell while it's
-  shown as Traffic's are.
-- `:connect` and `:disconnect` in the launcher, running `warp connect`
-  and `warp disconnect`.
-
 [contract]: contract/README.md
 [record]: warp.json
 [golden]: src/golden/

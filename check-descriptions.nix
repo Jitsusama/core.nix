@@ -1891,7 +1891,9 @@
     figures and its parts' heat answer, and WARP says how its link stands from the record warp
     prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli,
     every figure of the record a part in its own unit and in words.json's words, its settings
-    saying who set each, its TLS and DNS a step in
+    saying who set each, its TLS and DNS a step in; what it read while shown sparks Round Trip,
+    Loss and Traffic, each with a drawer over the tunnel, one read sparking nothing; and its
+    switch says who holds it, when WARP always on comes back, and a switch held or refused
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
@@ -1924,7 +1926,8 @@
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
     WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
-    after Speed, and its service not answering;
+    after Speed, and its service not answering, and its :disconnect runs warp disconnect and
+    says when WARP comes back, or, its switch held, leaves it and says who holds it;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';

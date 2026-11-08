@@ -42,11 +42,11 @@ figure it shows is in `warp --json` too.
 | `status`                                 | place: the row and State; page: its head       |
 | `reason`                                 | place: Health, or State's note; page: its head |
 | a reason's figures                       | place: Health's note; page: its head           |
-| `estimated_latency_ms`                   | place: the row and Round Trip; page            |
-| `estimated_loss`                         | place: Loss, as a percentage; page             |
+| `estimated_latency_ms`                   | place: the row and Round Trip, sparked with its drawer while shown; page |
+| `estimated_loss`                         | place: Loss, as a percentage, sparked with its drawer while shown; page |
 | `protocol`                               | place: Protocol, how it's carried its note; page |
 | `edge.colo`, `edge.metal`                | place: Data Centre, the metal its note; page   |
-| `bytes_sent`, `bytes_received`           | place: Traffic, in and out; page               |
+| `bytes_sent`, `bytes_received`           | place: Traffic, in and out, its drawer the speed each way between reads; page |
 | `v4_endpoint`, `v6_endpoint`             | place: Endpoint; page; `::` is none            |
 | `secs_since_last_handshake`              | place: Last Handshake; page                    |
 | `warp_is_on`                             | place: Tunnel, when it's off; page             |
@@ -60,10 +60,10 @@ figure it shows is in `warp --json` too.
 
 ## Left Out, and Why
 
-- The drawer's, still to come: sparks of latency and loss, kept while
-  WARP is shown, since the record holds one reading of each.
 - `switch_locked`, `always_on` and `auto_connect_after_min` say, besides,
-  what `warp connect` and `warp disconnect` do (`../src/switch.rs`).
+  what `warp connect` and `warp disconnect` do (`../src/switch.rs`), which
+  the place's switch runs as `:connect` and `:disconnect`, its note saying
+  who holds a held switch and when WARP always on comes back.
 - Identifiers that mean nothing read: `profile_id`, and `registration
   show`'s ids and public key. Its organisation is `settings`' own.
 - About the app, not the link: `onboarding`, `allow_updates`,

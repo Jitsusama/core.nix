@@ -1652,6 +1652,17 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
         desktop.shoot(f"launcher-warp-at-{at}")
+        # Read again while shown, Round Trip sparks, its drawer saying once whose
+        # figures they are.
+        desktop.down_to("Round Trip")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "Round Trip"
+                and shown["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel"
+            )
+        )
+        desktop.shoot(f"launcher-warp-round-trip-at-{at}")
         # WARP finds the network degraded, which its Health says a step in, and its
         # row in Network, in the warning colour.
         warp_answers(desktop, ("status.degraded.json", "status.json"))
