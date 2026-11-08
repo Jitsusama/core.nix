@@ -8,7 +8,8 @@
 //! signal, so nothing here asks on a clock.
 //!
 //! Each position far enough from the last one said (fix.rs) is named, its
-//! town and the zone it keeps asked of the web (named.rs), and written to
+//! town, its country and the zone it keeps asked of the web (named.rs),
+//! and written to
 //! the file it's given, a small JSON object replaced whole, which the
 //! launcher watches (Location.qml). The file is read back as it starts, so
 //! a restart says nothing new of a laptop that hasn't moved; one whose
@@ -101,7 +102,10 @@ async fn set(path: &Path, pin: &Path, words: &str) -> ExitCode {
         eprintln!("<3>the place found is nowhere on the Earth");
         return ExitCode::FAILURE;
     };
-    let fix = fix.named(Some(found.place), found.zone).by_hand();
+    let fix = fix
+        .named(Some(found.place), found.zone)
+        .countried(found.country)
+        .by_hand();
     let pinned = pin
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
@@ -175,7 +179,7 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
             };
             if let Some(fix) = renamed {
                 let said = named::name(fix.latitude, fix.longitude).await;
-                let fix = fix.named(said.place, said.zone);
+                let fix = fix.named(said.place, said.zone).countried(said.country);
                 fix.write(path)?;
                 if last.as_ref().is_some_and(|was| was.distance(&fix) < 1.0) {
                     println!("<6>here named");

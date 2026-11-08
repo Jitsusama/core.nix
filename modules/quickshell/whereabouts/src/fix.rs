@@ -41,6 +41,10 @@ pub struct Fix {
     /// The time zone kept there, "America/Toronto", or null likewise.
     #[serde(default)]
     pub zone: Option<String>,
+    /// The country it's in, "Canada", left out of the file while it
+    /// couldn't be asked, as a file older than it never says it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
     /// Whether Joel said where the laptop is himself, rather than GeoClue
     /// finding it. Left out of the file when it didn't.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -59,15 +63,17 @@ impl Fix {
             when,
             place: None,
             zone: None,
+            country: None,
             hand: false,
         };
         fix.holds().then_some(fix)
     }
 
-    /// Whether it still lacks its name or its zone, so it's asked again
-    /// when GeoClue next says anything, as it does once a network comes.
+    /// Whether it still lacks its name, its country or its zone, so it's
+    /// asked again when GeoClue next says anything, as it does once a
+    /// network comes, and a few minutes on.
     pub fn unnamed(&self) -> bool {
-        self.place.is_none() || self.zone.is_none()
+        self.place.is_none() || self.zone.is_none() || self.country.is_none()
     }
 
     /// The fix with what it's called and its zone, each kept where the new
@@ -75,6 +81,13 @@ impl Fix {
     pub fn named(mut self, place: Option<String>, zone: Option<String>) -> Fix {
         self.place = place.or(self.place);
         self.zone = zone.or(self.zone);
+        self
+    }
+
+    /// The fix with the country it's in, the one kept where the new asking
+    /// couldn't say.
+    pub fn countried(mut self, country: Option<String>) -> Fix {
+        self.country = country.or(self.country);
         self
     }
 
@@ -162,7 +175,12 @@ mod tests {
         let fix = fix.named(None, Some("America/Halifax".into()));
         assert_eq!(fix.place.as_deref(), Some("Cove"));
         assert_eq!(fix.zone.as_deref(), Some("America/Halifax"));
+        assert!(fix.unnamed(), "its country isn't known yet");
+        let fix = fix.countried(Some("Canada".into())).countried(None);
+        assert_eq!(fix.country.as_deref(), Some("Canada"));
         assert!(!fix.unnamed());
+        let text = serde_json::to_string(&fix).unwrap();
+        assert!(text.ends_with(r#""zone":"America/Halifax","country":"Canada"}"#));
     }
 
     #[test]

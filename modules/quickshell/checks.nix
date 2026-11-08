@@ -1287,6 +1287,7 @@ onLinux {
       cp ${./launcher/Moment.js} Moment.js
       cp ${./launcher/Keeping.js} Keeping.js
       cp ${./launcher/Warmth.js} Warmth.js
+      cp ${./launcher/Here.js} Here.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1844,6 +1845,8 @@ onLinux {
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/Ago.js} launcher/Ago.js
+      cp ${./launcher/Here.js} launcher/Here.js
+      cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
@@ -1856,7 +1859,8 @@ onLinux {
       export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       echo '{"v":2,"latitude":43.6748,"longitude":-79.3794,"accuracy":26000,'\
-      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto"}' \
+      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto",'\
+      '"country":"Canada"}' \
         > $XDG_RUNTIME_DIR/whereabouts.json
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

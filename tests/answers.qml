@@ -18,6 +18,7 @@ import "Zones.js" as Zones
 import "Moment.js" as Moment
 import "Keeping.js" as Keeping
 import "Warmth.js" as Warmth
+import "Here.js" as Here
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
@@ -745,7 +746,21 @@ QtObject {
                 KeepingCases.servers).join(", "), ""],
             ["activity beyond the count", Keeping.activity({ online: 1, offline: 1,
                 burstOnline: 1, burstOffline: 1, unresolved: 1 }, KeepingCases.servers)
-                .join(", "), "1 offline, 2 in a burst, 1 unresolved"]
+                .join(", "), "1 offline, 2 in a burst, 1 unresolved"],
+            // Where the laptop is claims no more places than it knows: four
+            // under 100 m, three under a kilometre, two under ten, else one;
+            // and when it was found is how long ago within a day, else its
+            // day and time (VKCF3Z, 2026-11-08).
+            ["a position to 80 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 80 }), "12.3457\u00b0 N \u00b7 98.7654\u00b0 W"],
+            ["a position to 5 km, south and east", Here.coordinates({ latitude: -21.456_7,
+                longitude: 123.456_7, accuracy: 5000 }), "21.46\u00b0 S \u00b7 123.46\u00b0 E"],
+            ["near, in metres", Here.within(80, { metres: "within {n} m",
+                kilometres: "within {n} km" }), "within 80 m"],
+            ["located within the day", Here.located(1000, 1000 * 1000 + 720_000,
+                { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
+            ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
+                { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

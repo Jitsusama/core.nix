@@ -188,15 +188,32 @@ ShellRoot {
             location.note === "it keeps America/Toronto, not the clock's America/Halifax"
                 && location.hue === "strong", `${location.note} ${location.hue}`);
         const inside = location.verbs();
-        // In the design's order: its town, how it knows, setting it by
-        // hand, and Copy of its position last; Find It Again only once a
-        // place was set by hand. The zone is Time's.
-        expect("inside, its town, how it knows, setting it by hand, and Copy",
-            JSON.stringify(inside.map(row => [row.name, row.side]))
-                === JSON.stringify([["Town", "Lighthouse, Ontario"],
-                    ["How It Knows", "GeoClue, within 26 km"], ["Set It by Hand", ""],
-                    ["Copy", "43.67, -79.38"]]),
+        // In the design's order: its town and country, how it knows and
+        // when it was located, setting it by hand, and Copy of its
+        // position last; Find It Again only once a place was set by hand.
+        expect("inside, its town, country, how it knows, when, setting it by hand, and Copy",
+            JSON.stringify(inside.map(row => row.name))
+                === JSON.stringify(["Town", "Country", "How It Knows", "Located",
+                    "Set It by Hand", "Copy"]),
             JSON.stringify(inside.map(row => [row.name, row.side])));
+        expect("its country is the one whereabouts named", inside[1].side === "Canada",
+            inside[1].side);
+        // Its plate: how it was found, its town, then when, how near, where
+        // on a map to no more places than it knows, its country and its
+        // zone last as the identifier it is (VKCF3Z, 2026-11-08).
+        const plate = location.thing === true ? location.drawer() : null;
+        expect("its plate is via GeoClue, titled by its town",
+            plate?.eyebrow === "via GeoClue" && plate?.title === "Lighthouse",
+            JSON.stringify(plate));
+        expect("its plate's facts, from what moves most, the zone an identifier",
+            JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifier]))
+                === JSON.stringify([["Located", false], ["Accuracy", false],
+                    ["Coordinates", false], ["Country", false], ["Zone", true]]),
+            JSON.stringify(plate.facts));
+        expect("a position within 26 km says a tenth of a degree",
+            plate.facts[2].value === "43.7\u00b0 N \u00b7 79.4\u00b0 W"
+                && plate.facts[1].value === "within 26 km",
+            JSON.stringify(plate.facts));
         expect("it's found by its name too, Now being its home",
             now.things.some(row => row.key === "on:location"),
             JSON.stringify(now.things.map(row => row.key)));

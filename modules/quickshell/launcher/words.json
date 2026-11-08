@@ -4160,7 +4160,14 @@
       "id": "location",
       "in": "on",
       "name": "Location",
-      "term": "Desktop/location"
+      "term": "Desktop/location",
+      "said": {
+        "via": "via GeoClue",
+        "hand": "set by hand",
+        "metres": "within {n} m",
+        "kilometres": "within {n} km",
+        "yesterday": "yesterday"
+      }
     },
     {
       "id": "location:town",
@@ -4168,9 +4175,34 @@
       "name": "Town"
     },
     {
+      "id": "location:country",
+      "in": "location",
+      "name": "Country"
+    },
+    {
       "id": "location:knows",
       "in": "location",
       "name": "How It Knows"
+    },
+    {
+      "id": "location:located",
+      "in": "location",
+      "name": "Located"
+    },
+    {
+      "id": "location:accuracy",
+      "in": "location",
+      "name": "Accuracy"
+    },
+    {
+      "id": "location:coordinates",
+      "in": "location",
+      "name": "Coordinates"
+    },
+    {
+      "id": "location:zone",
+      "in": "location",
+      "name": "Zone"
     },
     {
       "id": "verb:location:copy",
