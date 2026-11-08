@@ -13,6 +13,7 @@ tests read them as warp-cli's answers (`src/contract.rs`) and hold what
 | `tunnel-stats.json`    | `tunnel stats`        | the tunnel's figures                           |
 | `settings.json`        | `settings`            | every setting, and who set each (`sources`)    |
 | `dns-stats.json`       | `dns stats`           | what the DNS proxy answered on this connection |
+| `override-show.json`   | `override show`       | no administrator's override in force           |
 | `daemon-down.json`     | any, service stopped  | warp-cli unable to reach WARP's service        |
 | `refused.json`         | `registration devices` | an error, as warp-cli says any, exiting 1     |
 
@@ -22,6 +23,13 @@ it. A status reason is a word (`NetworkHealthy`) or, as `NetworkDegraded`
 is, a word holding figures under keys naming their units. What `tunnel
 stats` says with no tunnel hasn't been seen, so a refusal there leaves the
 tunnel unknown rather than guessing its shape.
+
+What `warp-cli connect` and `disconnect` print hasn't been seen with
+`--json`, since neither is run on a machine in use to find out: without
+it each prints `Success`. So `warp connect` and `warp disconnect`
+(`src/switch.rs`) take a run that ends well as done and an error as
+warp-cli says any, `{ code, error }`, as refused, and leave how the link
+then goes to its status.
 
 ## Where Each Figure Shows
 
@@ -52,11 +60,12 @@ figure it shows is in `warp --json` too.
 - The drawer's, still to come: sparks of latency and loss, and the split
   tunnel's hosts and networks themselves, with `doh_hostname`,
   `doh_resolver_ips`, `fallback_domains`, `lan_subnet_size`, the captive
-  portal's settings, `emergency_disconnect`, `enable_pmtud`, and
-  `support_url` once one is set. Each is a setting or a detail worth a
-  look, not how the link stands.
-- For `:connect` and `:disconnect`, to come with them: `allowed_to_leave`,
-  `allow_mode_switch` and `override show`, which say whether Joel may.
+  portal's settings, `emergency_disconnect`, `enable_pmtud`,
+  `allowed_to_leave`, `allow_mode_switch`, `override show` and
+  `support_url` once one is set, each on the page already. Each is a
+  setting or a detail worth a look, not how the link stands.
+- `switch_locked`, `always_on` and `auto_connect_after_min` say, besides,
+  what `warp connect` and `warp disconnect` do (`../src/switch.rs`).
 - Identifiers that mean nothing read: `profile_id`, and `registration
   show`'s ids and public key. Its organisation is `settings`' own.
 - About the app, not the link: `onboarding`, `allow_updates`,

@@ -17,6 +17,16 @@ pub struct Warp {
     pub tunnel: Option<Tunnel>,
     pub settings: Option<Settings>,
     pub dns: Option<Dns>,
+    /// An administrator's override, which unlocks a held switch for a
+    /// while, as `warp-cli override show` gives it.
+    pub r#override: Option<Override>,
+}
+
+/// Whether an override is in force, and the seconds it has left.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct Override {
+    pub set: Option<bool>,
+    pub ends_in_secs: Option<u64>,
 }
 
 /// How the link stands, in warp-cli's own words: its state
@@ -79,8 +89,43 @@ pub struct Settings {
     pub organisation: Option<String>,
     pub tunnel_protocol: Option<String>,
     pub post_quantum: Option<String>,
+    /// The server names are looked up at over `DoH`, and the addresses
+    /// it's found at.
+    pub doh_hostname: Option<String>,
+    pub doh_resolver_ips: Vec<String>,
+    /// The domains looked up on the network's own servers instead.
+    pub fallback_domains: Vec<FallbackDomain>,
+    pub captive_portal: Option<CaptivePortal>,
+    /// Whether it finds the largest packet the way carries.
+    pub enable_pmtud: Option<bool>,
+    pub allow_mode_switch: Option<bool>,
+    /// Whether this machine may leave the organisation.
+    pub allowed_to_leave: Option<bool>,
+    /// Where the organisation says to ask for help, none when it names none.
+    pub support_url: Option<String>,
+    /// The prefix of the largest local network an override lets it reach.
+    pub lan_subnet_size: Option<u64>,
+    /// Whether the organisation has disconnected every device at once.
+    pub emergency_disconnect: Option<bool>,
     pub split_tunnel: Option<SplitTunnel>,
     pub set_by: BTreeMap<String, String>,
+}
+
+/// A domain looked up on the network's own servers, which ones, and what
+/// it's for.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct FallbackDomain {
+    pub domain: String,
+    pub description: Option<String>,
+    pub dns_servers: Vec<String>,
+}
+
+/// How WARP meets a sign-in page: whether it looks for one, and how long
+/// it opens its firewall for one to be signed in to.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct CaptivePortal {
+    pub detection: Option<bool>,
+    pub firewall_off_s: Option<u64>,
 }
 
 /// Which traffic the tunnel takes: `include`, only the hosts and networks
@@ -90,6 +135,16 @@ pub struct SplitTunnel {
     pub mode: Option<String>,
     pub hosts: usize,
     pub ips: usize,
+    /// Each domain and network, as warp-cli lists them, with what it's for.
+    pub host_list: Vec<Listed>,
+    pub ip_list: Vec<Listed>,
+}
+
+/// A domain or network listed, and what it's for, none where it says nothing.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct Listed {
+    pub value: String,
+    pub description: Option<String>,
 }
 
 /// What WARP's DNS proxy has answered on this connection.

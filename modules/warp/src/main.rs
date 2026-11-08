@@ -2,8 +2,11 @@
 //! every figure it gives in its own unit.
 //!
 //! Usage:
-//!   warp           the page: the link, the tunnel, TLS, the settings, DNS
-//!   warp --json    the same as one record (model.rs; warp.json beside this)
+//!   warp             the page: the link, the tunnel, TLS, the settings, DNS
+//!   warp --json      the same as one record (model.rs; warp.json beside this)
+//!   warp connect     bring WARP up, as the launcher's :connect does
+//!   warp disconnect  take it down, as :disconnect does (switch.rs says when
+//!                    each is left as it is), with --json as a record
 //!
 //! `WARP_CLI` names the warp-cli to ask, as the shell names the one the
 //! system runs; without it, it's the one on the PATH.
@@ -15,10 +18,12 @@
 //! older. The shell asks it every couple of seconds while WARP is shown,
 //! and nothing otherwise.
 //!
-//! It exits 0 having read WARP, 2 on a word it doesn't know, 3 when
-//! there's no warp-cli, so no WARP to read, 4 when WARP's service isn't
-//! answering, and 5 when warp-cli said what it can't read, each said in a
-//! line, never a trace; with --json, as { error, said } too.
+//! It exits 0 having read WARP or switched it, 2 on a word it doesn't
+//! know, 3 when there's no warp-cli, so no WARP to read, 4 when WARP's
+//! service isn't answering, 5 when warp-cli said what it can't read, 6
+//! when the organisation holds the switch and 7 when warp-cli wouldn't
+//! switch it, each said in a line, never a trace; with --json, as
+//! { error, said } or the switch's record too.
 
 mod ask;
 #[cfg(test)]
@@ -26,6 +31,7 @@ mod contract;
 mod model;
 mod page;
 mod read;
+mod switch;
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -33,7 +39,7 @@ use std::process::ExitCode;
 use ask::{Ask, WarpCli};
 use read::Failure;
 
-const USAGE: &str = "usage: warp [--json]";
+const USAGE: &str = "usage: warp [connect | disconnect] [--json]";
 
 /// What a run prints, and how it ends.
 #[derive(Debug, PartialEq)]
@@ -45,11 +51,34 @@ struct Ran {
 
 fn run(args: &[String], cli: &impl Ask) -> Ran {
     let json = args.iter().any(|arg| arg == "--json");
-    if let Some(word) = args.iter().find(|arg| *arg != "--json") {
-        return Ran {
-            code: 2,
-            out: String::new(),
-            err: format!("warp: {word} isn't a word warp knows\n{USAGE}\n"),
+    let words: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|arg| *arg != "--json")
+        .collect();
+    let act = match words.as_slice() {
+        [] => None,
+        ["connect"] => Some(switch::Act::Connect),
+        ["disconnect"] => Some(switch::Act::Disconnect),
+        [word] => {
+            return Ran {
+                code: 2,
+                out: String::new(),
+                err: format!("warp: {word} isn't a word warp knows\n{USAGE}\n"),
+            };
+        }
+        _ => {
+            return Ran {
+                code: 2,
+                out: String::new(),
+                err: format!("warp: one word at a time\n{USAGE}\n"),
+            };
+        }
+    };
+    if let Some(act) = act {
+        return match switch::switch(cli, act) {
+            Ok(switched) => switched_ran(&switched, json),
+            Err(failure) => failed(&failure, json),
         };
     }
     match read::read(cli) {
@@ -96,6 +125,36 @@ fn failed(failure: &Failure, json: bool) -> Ran {
             String::new()
         },
         err: format!("warp: {line}\n"),
+    }
+}
+
+/// A switch, said in a line, on the output where it was done and as an
+/// error where it wasn't, and with --json as its record, ending with its
+/// code.
+fn switched_ran(switched: &switch::Switched, json: bool) -> Ran {
+    let code = match switched.refused {
+        None => 0,
+        Some("held") => 6,
+        Some(_) => 7,
+    };
+    let line = format!("{}\n", switched.said);
+    Ran {
+        code,
+        out: if json {
+            format!(
+                "{}\n",
+                serde_json::to_string(switched).expect("the record is JSON")
+            )
+        } else if code == 0 {
+            line.clone()
+        } else {
+            String::new()
+        },
+        err: if code == 0 {
+            String::new()
+        } else {
+            format!("warp: {line}")
+        },
     }
 }
 
@@ -205,14 +264,140 @@ mod tests {
 
     #[test]
     fn a_word_it_doesnt_know_is_refused_with_its_usage() {
-        let ran = run(&args(&["connect"]), &Contract::whole());
+        let ran = run(&args(&["reconnect"]), &Contract::whole());
         assert_eq!(
             (ran.code, ran.out.as_str(), ran.err.as_str()),
             (
                 2,
                 "",
-                "warp: connect isn't a word warp knows\nusage: warp [--json]\n"
+                "warp: reconnect isn't a word warp knows\n\
+                 usage: warp [connect | disconnect] [--json]\n"
             )
         );
+        let two = run(&args(&["connect", "disconnect"]), &Contract::whole());
+        assert_eq!(two.code, 2);
+    }
+
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "it's an answer as `Contract::with` takes one"
+    )]
+    fn done() -> Result<ask::Said, Unasked> {
+        Ok(ask::Said {
+            ok: true,
+            text: "Success\n".into(),
+        })
+    }
+
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "it's an answer as `Contract::with` takes one"
+    )]
+    fn disconnected() -> Result<ask::Said, Unasked> {
+        Ok(ask::Said {
+            ok: true,
+            text: r#"{"status": "Disconnected", "reason": "ManualDisconnection"}"#.into(),
+        })
+    }
+
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "it's an answer as `Contract::with` takes one"
+    )]
+    fn held() -> Result<ask::Said, Unasked> {
+        let mut said: Value =
+            serde_json::from_str(&contract::file("settings.json")).expect("it's JSON");
+        said["settings"]["switch_locked"] = Value::Bool(true);
+        Ok(ask::Said {
+            ok: true,
+            text: said.to_string(),
+        })
+    }
+
+    #[test]
+    fn disconnect_takes_warp_down_and_says_when_it_comes_back() {
+        let cli = Contract::whole().with("disconnect", done());
+        let ran = run(&args(&["disconnect"]), &cli);
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (
+                0,
+                "WARP is disconnected, and comes back by itself in 2 min\n",
+                ""
+            )
+        );
+        let record = run(&args(&["disconnect", "--json"]), &cli);
+        assert_eq!(record.code, 0);
+        let said: Value = serde_json::from_str(&record.out).expect("it prints JSON");
+        assert_eq!(
+            (
+                &said["act"],
+                &said["done"],
+                &said["refused"],
+                &said["comes_back_after_min"]
+            ),
+            (
+                &Value::from("disconnect"),
+                &Value::Bool(true),
+                &Value::Null,
+                &Value::from(2)
+            )
+        );
+    }
+
+    #[test]
+    fn connect_brings_warp_up() {
+        let cli = Contract::whole()
+            .with("status", disconnected())
+            .with("connect", done());
+        let ran = run(&args(&["connect"]), &cli);
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (0, "WARP is connecting\n", "")
+        );
+    }
+
+    #[test]
+    fn a_switch_the_organisation_holds_ends_with_its_own_code() {
+        let cli = Contract::whole()
+            .with("settings", held())
+            .with("disconnect", done());
+        let ran = run(&args(&["disconnect"]), &cli);
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (
+                6,
+                "",
+                "warp: example holds WARP's switch, so it's left connected\n"
+            )
+        );
+        let record = run(&args(&["disconnect", "--json"]), &cli);
+        assert_eq!(record.code, 6);
+        let said: Value = serde_json::from_str(&record.out).expect("it prints JSON");
+        assert_eq!(
+            (&said["refused"], &said["organisation"]),
+            (&Value::from("held"), &Value::from("example"))
+        );
+    }
+
+    #[test]
+    fn a_switch_warp_cli_refuses_ends_with_its_own_code() {
+        // The contract refuses a question it isn't given.
+        let cli = Contract::whole().with("status", disconnected());
+        let ran = run(&args(&["connect"]), &cli);
+        assert_eq!(
+            (ran.code, ran.out.as_str(), ran.err.as_str()),
+            (
+                7,
+                "",
+                "warp: warp-cli wouldn't connect: Invalid account type.\n"
+            )
+        );
+    }
+
+    #[test]
+    fn a_switch_with_no_warp_to_ask_fails_as_a_reading_does() {
+        let ran = run(&args(&["disconnect"]), &missing());
+        assert_eq!(ran.code, 3);
     }
 }

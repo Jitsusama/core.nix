@@ -38,7 +38,42 @@ pub fn page(warp: &Warp) -> String {
         );
     }
     match &warp.settings {
-        Some(settings) => block(&mut out, Some("settings"), &settings_lines(settings)),
+        Some(settings) => {
+            let mut lines = settings_lines(settings);
+            lines.extend(allowed_lines(settings));
+            lines.push((
+                "override",
+                maybe(warp.r#override.as_ref().map(|held| match held.set {
+                    Some(true) => match held.ends_in_secs {
+                        Some(left) if left > 0 => format!("on{AND}{} left", ago(left)),
+                        _ => "on".to_string(),
+                    },
+                    Some(false) => "none".to_string(),
+                    None => UNKNOWN.to_string(),
+                })),
+            ));
+            block(&mut out, Some("settings"), &lines);
+            if let Some(split) = &settings.split_tunnel {
+                let listed: Vec<(&str, String)> = split
+                    .host_list
+                    .iter()
+                    .map(|entry| ("domain", entry))
+                    .chain(split.ip_list.iter().map(|entry| ("network", entry)))
+                    .map(|(kind, entry)| {
+                        (
+                            kind,
+                            entry.description.as_ref().map_or_else(
+                                || entry.value.clone(),
+                                |what| format!("{}{AND}{what}", entry.value),
+                            ),
+                        )
+                    })
+                    .collect();
+                if !listed.is_empty() {
+                    block(&mut out, Some("split tunnel"), &listed);
+                }
+            }
+        }
         None => lone(&mut out, "settings", &unknown("warp-cli gave none")),
     }
     match &warp.dns {
@@ -208,11 +243,64 @@ fn settings_lines(settings: &Settings) -> Vec<(&'static str, String)> {
                     format!(
                         "{}{AND}{}{AND}{}",
                         split.mode.as_deref().unwrap_or(UNKNOWN),
-                        counted(split.hosts, "host", "hosts"),
+                        counted(split.hosts, "domain", "domains"),
                         counted(split.ips, "network", "networks")
                     )
                 })),
             ),
+        ),
+    ]
+}
+
+/// The settings that say where names are looked up, how a sign-in page
+/// is met, and what the organisation allows, after those that shape the
+/// link.
+fn allowed_lines(settings: &Settings) -> Vec<(&'static str, String)> {
+    vec![
+        ("DoH server", maybe(settings.doh_hostname.clone())),
+        ("DoH resolvers", listed(&settings.doh_resolver_ips)),
+        (
+            "local domains",
+            listed(
+                &settings
+                    .fallback_domains
+                    .iter()
+                    .map(|domain| {
+                        if domain.dns_servers.is_empty() {
+                            domain.domain.clone()
+                        } else {
+                            format!("{} at {}", domain.domain, domain.dns_servers.join(", "))
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        (
+            "sign-in pages",
+            maybe(settings.captive_portal.as_ref().map(|portal| {
+                match (portal.detection, portal.firewall_off_s) {
+                    (Some(true), Some(off)) if off > 0 => {
+                        format!("found{AND}firewall open {} to sign in", ago(off))
+                    }
+                    (detection, _) => switch(detection),
+                }
+            })),
+        ),
+        ("path MTU discovery", switch(settings.enable_pmtud)),
+        ("mode switch allowed", switch(settings.allow_mode_switch)),
+        ("may leave", switch(settings.allowed_to_leave)),
+        ("support", maybe(settings.support_url.clone())),
+        (
+            "local network",
+            maybe(
+                settings
+                    .lan_subnet_size
+                    .map(|size| format!("/{size} at most, by override")),
+            ),
+        ),
+        (
+            "emergency disconnect",
+            switch(settings.emergency_disconnect),
         ),
     ]
 }
@@ -263,6 +351,15 @@ fn unknown(why: &str) -> String {
 
 fn maybe(value: Option<String>) -> String {
     value.unwrap_or_else(|| UNKNOWN.to_string())
+}
+
+/// A list as one line, its parts apart, or a dash for none.
+fn listed(parts: &[String]) -> String {
+    if parts.is_empty() {
+        UNKNOWN.to_string()
+    } else {
+        parts.join(AND)
+    }
 }
 
 fn switch(value: Option<bool>) -> String {

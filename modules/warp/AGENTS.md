@@ -1,11 +1,13 @@
 # WARP
 
 WARP, the VPN, read from warp-cli, WARP's own client, which asks
-WARP's service over its socket. A Rust program, `warp`, reads and changes
-nothing. Joel's bar for every integration (2026-11-07): "every integration
-has an insanely high bar of nerdiness and integration and each should be
-given the same care", so every figure warp-cli gives is shown where he
-looks, or named as left out with its reason.
+WARP's service over its socket. A Rust program, `warp`, reads it, and
+changes only its switch, `warp connect` and `warp disconnect`, as the
+launcher's `:connect` and `:disconnect` run them. Joel's bar for every
+integration (2026-11-07): "every integration has an insanely high bar
+of nerdiness and integration and each should be given the same care",
+so every figure warp-cli gives is shown where he looks, or named as
+left out with its reason.
 
 ## What It Reads
 
@@ -27,7 +29,7 @@ test`.
 
 ## No Daemon
 
-Each run asks warp-cli four questions at once and keeps nothing: WARP's
+Each run asks warp-cli five questions at once and keeps nothing: WARP's
 service is already the daemon, holding every figure and answering in
 about 20 ms, so a copy kept here would only be older. The shell runs
 `warp --json` while WARP is shown, every two seconds, and never otherwise
@@ -35,15 +37,25 @@ about 20 ms, so a copy kept here would only be older. The shell runs
 line of JSON on every change of state, which a piece in the margin can
 listen to when one is wanted, rather than anything polling.
 
+## The Switch
+
+`src/switch.rs` decides what a switch says before it asks warp-cli: a
+switch the organisation holds (`switch_locked`) is left as it is and
+says who holds it, ending 6; WARP already as asked is said, and nothing
+asked; and WARP always on says, once disconnected, that it comes back by
+itself after `auto_connect_after_min`. warp-cli refusing ends 7, in its
+words. warp-cli decides the rest, as it does for anyone, so nothing here
+needs root.
+
 ## What Comes Next
 
 - The drawer: sparks of latency and loss, kept by the shell while it's
-  shown as Traffic's are, and the split tunnel's hosts and networks, which
-  `read.rs` counts and would list. Every other figure in the record is
-  already a part in the launcher's WARP.
-- `:connect` and `:disconnect`, which need `allowed_to_leave`,
-  `switch_locked` and `override show` read first, so the act is offered
-  only where policy lets Joel take it.
+  shown as Traffic's are, and the figures the record holds for it that no
+  part says yet: the split tunnel's hosts and networks, where names are
+  looked up, sign-in pages, what the organisation allows, an emergency
+  disconnect and an administrator's override.
+- `:connect` and `:disconnect` in the launcher, running `warp connect`
+  and `warp disconnect`.
 
 [contract]: contract/README.md
 [record]: warp.json

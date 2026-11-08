@@ -34,10 +34,32 @@
     "organisation": "example",
     "tunnel_protocol": "masque",
     "post_quantum": "enabled_with_downgrades",
+    "doh_hostname": "0000.doh.example.com",
+    "doh_resolver_ips": ["192.0.2.53", "192.0.2.54", "2001:db8::53", "2001:db8::54"],
+    "fallback_domains": [
+      { "domain": "home.arpa", "description": null, "dns_servers": [] },
+      { "domain": "local", "description": null, "dns_servers": [] },
+      { "domain": "example.com", "description": null, "dns_servers": ["192.0.2.1"] }
+    ],
+    "captive_portal": { "detection": true, "firewall_off_s": 300 },
+    "enable_pmtud": true,
+    "allow_mode_switch": true,
+    "allowed_to_leave": false,
+    "support_url": null,
+    "lan_subnet_size": 24,
+    "emergency_disconnect": false,
     "split_tunnel": {
       "mode": "include",
       "hosts": 2,
-      "ips": 2
+      "ips": 2,
+      "host_list": [
+        { "value": "intranet.example.com", "description": "example" },
+        { "value": "*.corp.example.com", "description": "example" }
+      ],
+      "ip_list": [
+        { "value": "10.0.0.0/8", "description": "lan" },
+        { "value": "2001:db8:1::/48", "description": "lan" }
+      ]
     },
     "set_by": {
       "mode": "local_policy",
@@ -58,5 +80,6 @@
     "no_records_found": 4,
     "timed_out": 0,
     "other_error": 0
-  }
+  },
+  "override": { "set": false, "ends_in_secs": 0 }
 }

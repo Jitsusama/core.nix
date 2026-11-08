@@ -3136,7 +3136,9 @@
     reason's own figures, an endpoint given as no address as none and a figure left out as unknown;
     tells no warp-cli, a service not answering or hanging, and a status refused or garbled apart,
     each said in a line with a code of its own and with --json as a record; still reads the rest
-    when a part besides the status isn't given; and draws each page as its golden one
+    when a part besides the status isn't given; draws each page as its golden one; and connects
+    and disconnects only where the organisation doesn't hold the switch, saying when WARP always
+    on comes back and warp-cli refusing in its words
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
