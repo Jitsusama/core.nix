@@ -151,6 +151,11 @@ pub struct Standing {
     pub session: Option<Session>,
 }
 
+/// Whether an allowance is over: reached, or refusing as its feed says.
+pub fn over(allowance: &Allowance) -> bool {
+    allowance.nearest.unwrap_or(0.0) >= 1.0 || allowance.state.as_deref() == Some("refused")
+}
+
 /// How every budget stands now, and one session's spend when asked.
 pub fn standing(picture: &Picture, config: &Config, session: Option<&str>) -> Standing {
     let budgets = &picture.budgets;
