@@ -149,8 +149,9 @@ QtObject {
 
         // Looping in Joel's words, MPRIS's None being Off, and back.
         asked++;
+        const states = ["off", "Track", "playlist", "none"].map(Music.loopState);
         if ([0, 1, 2].map(Music.loopOf).join() !== "off,track,playlist"
-                || ["off", "Track", "playlist", "none"].map(Music.loopState).join() !== "0,1,2,0")
+                || states.join() !== "0,1,2,0")
             failures.push("a loop isn't said as off, track and playlist");
 
         asked++;
