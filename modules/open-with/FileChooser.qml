@@ -71,6 +71,7 @@ import QtQuick
 import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
 import "../FileFacts.js" as FileFacts
+import "Recents.js" as Recents
 
 Provider {
     id: provider
@@ -1298,8 +1299,7 @@ Provider {
     }
 
     // The files opened lately, read once an ask: of each line recent-files
-    // prints (a program, a file and when), the file: what lies between the
-    // first tab and the last, kept whole though it holds a tab.
+    // prints (a program, a file and when), the file, as Recent reads it.
     Process {
         id: listing
 
@@ -1308,8 +1308,7 @@ Provider {
             id: said
 
             onStreamFinished: {
-                const paths = said.text.split("\n")
-                    .map(line => line.slice(line.indexOf("\t") + 1, line.lastIndexOf("\t")))
+                const paths = said.text.split("\n").map(line => Recents.openedPath(line))
                     .filter(path => path.startsWith("/"));
                 provider.lately = Array.from(new Set(paths));
                 provider.changed();

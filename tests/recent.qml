@@ -121,6 +121,15 @@ QtObject {
         check(failures, "an undated source's line is whole, tabs and all",
             JSON.stringify(Lines.dated("a\tb\t17", false)), JSON.stringify({ line: "a\tb\t17" }));
 
+        // What recent-files prints a line: a program, a path and when.
+        check(failures, "a file opened lately is its line's middle",
+            Lines.openedPath("zathura\t/a.pdf\t1700000000"), "/a.pdf");
+        check(failures, "whole though it holds a tab",
+            Lines.openedPath("zathura\t/tab\there.pdf\t"), "/tab\there.pdf");
+        check(failures, "the rest of a line with no time", Lines.openedPath("zathura\t/a.pdf"),
+            "/a.pdf");
+        check(failures, "and nothing from a line with no tab", Lines.openedPath("/a.pdf"), "");
+
         // The list many programs share: a program, a tab and a path, its
         // time kept apart already, newest first.
         const appOf = program => ({ zathura: "org.pwmt.zathura", imv: "imv" })[program] ?? "";

@@ -2348,6 +2348,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
+      cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
       cp ${./FileFacts.js} FileFacts.js

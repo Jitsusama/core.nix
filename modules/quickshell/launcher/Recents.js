@@ -30,6 +30,19 @@ function sharedLine(line, appOf) {
     return { app: tab > 0 ? appOf(line.slice(0, tab)) : "", path: line.slice(tab + 1) };
 }
 
+// The path a line recent-files printed names, a program, a path and when
+// with a tab between each: what lies between the first tab and the last,
+// whole though it holds a tab, or the rest of a line with one tab, or ""
+// from a line with none.
+function openedPath(line) {
+    const first = line.indexOf("\t");
+    const last = line.lastIndexOf("\t");
+    if (first < 0) {
+        return "";
+    }
+    return first === last ? line.slice(first + 1) : line.slice(first + 1, last);
+}
+
 // The shared list's lines, each program's paths newest first, each once,
 // at most `most` a program.
 function sharedFrom(lines, appOf, most) {
