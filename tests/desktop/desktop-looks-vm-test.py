@@ -3020,11 +3020,11 @@ def test_shortcuts_over_googles_programs_lead_with_theirs_at_each_scale(
                 machine.send_key("meta_l-shift-slash")
                 desktop.launcher_ready()
                 desktop.launcher_until(partial(on_layer, layer))
-                desktop.photograph(f"launcher-shortcuts-over-{picture}-at-{named}")
+                desktop.shoot(f"launcher-shortcuts-over-{picture}-at-{named}")
                 desktop.step_out()
                 desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
                 assert desktop.showing()["rows"][0] == layer, desktop.showing()["rows"]
-                desktop.photograph(f"launcher-shortcut-layers-over-{picture}-at-{named}")
+                desktop.shoot(f"launcher-shortcut-layers-over-{picture}-at-{named}")
                 desktop.close_launcher()
         finally:
             desktop.close(window)
