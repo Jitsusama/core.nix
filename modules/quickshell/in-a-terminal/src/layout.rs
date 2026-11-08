@@ -42,20 +42,29 @@ impl Room {
     /// The terminal's width: `COLUMNS` where the shell exports it, else
     /// what the terminal says, else eighty.
     pub fn of_stdout() -> Self {
+        Self::of(1)
+    }
+
+    /// The width failures are set to: stderr's terminal's, as stdout's is.
+    pub fn of_stderr() -> Self {
+        Self::of(2)
+    }
+
+    fn of(fd: i32) -> Self {
         let columns = env::var("COLUMNS")
             .ok()
             .and_then(|columns| columns.parse().ok());
         Self(
             columns
-                .or_else(terminal_width)
+                .or_else(|| terminal_width(fd))
                 .filter(|width| *width > 0)
                 .unwrap_or(80),
         )
     }
 }
 
-/// What the terminal on stdout says its width is.
-fn terminal_width() -> Option<usize> {
+/// What the terminal on a file descriptor says its width is.
+fn terminal_width(fd: i32) -> Option<usize> {
     #[repr(C)]
     struct WindowSize {
         rows: u16,
@@ -75,7 +84,7 @@ fn terminal_width() -> Option<usize> {
     };
     // SAFETY: TIOCGWINSZ writes one winsize, which WindowSize lays out as
     // the kernel does, into memory this frame owns, and reads nothing else.
-    let done = unsafe { ioctl(1, TIOCGWINSZ, &raw mut size) };
+    let done = unsafe { ioctl(fd, TIOCGWINSZ, &raw mut size) };
     (done == 0 && size.columns > 0).then_some(usize::from(size.columns))
 }
 
@@ -386,6 +395,14 @@ fn cut(name: &str, room: usize) -> String {
 
 /// Words wrapped to `measure` cells at whole words; a word longer than the
 /// measure stands on its own line, never broken.
+/// Words set after something `lead` cells wide, as a failure's are after
+/// its mark: wrapped at whole words to the room, each further line under
+/// the first's words, so a name is never cut where the terminal ends.
+pub fn hung(words: &str, lead: usize, room: Room) -> String {
+    let measure = room.0.saturating_sub(lead).max(1);
+    wrapped(words, measure).join(&format!("\n{}", " ".repeat(lead)))
+}
+
 fn wrapped(words: &str, measure: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
@@ -527,5 +544,15 @@ mod tests {
         assert_eq!(wrapped("one two three", 7), vec!["one two", "three"]);
         assert_eq!(wrapped("unbreakable", 4), vec!["unbreakable"]);
         assert_eq!(wrapped("", 4), vec![""]);
+    }
+
+    #[test]
+    fn a_failure_wraps_under_its_own_words() {
+        let said = "nothing called mahcine \u{b7} did you mean Machine?";
+        assert_eq!(
+            hung(said, 2, Room(42)),
+            "nothing called mahcine \u{b7} did you mean\n  Machine?"
+        );
+        assert_eq!(hung(said, 2, Room(80)), said);
     }
 }

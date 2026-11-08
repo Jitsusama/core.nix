@@ -28,6 +28,8 @@ use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::asking::Answer;
 use crate::layout::Room;
 use crate::look::{Ink, Look};
@@ -128,13 +130,20 @@ fn show(steps: &[String], json: bool, words: &Words) -> ExitCode {
     }
 }
 
-/// Says what went wrong on stderr, after the theme's failure mark in alert.
+/// Says what went wrong on stderr, after the theme's failure mark in alert,
+/// fitted to the terminal by whole words as everything it shows is.
 fn fail(look: &Look, said: &str) {
     let mark = look.failure();
+    let room = Room::of_stderr();
     let line = if mark.is_empty() {
-        said.to_string()
+        layout::hung(said, 0, room)
     } else {
-        format!("{} {said}", look.ink("alert", &mark))
+        let lead = UnicodeWidthStr::width(mark.as_str()) + 1;
+        format!(
+            "{} {}",
+            look.ink("alert", &mark),
+            layout::hung(said, lead, room)
+        )
     };
     eprintln!("{line}");
     let _ = io::stderr().flush();

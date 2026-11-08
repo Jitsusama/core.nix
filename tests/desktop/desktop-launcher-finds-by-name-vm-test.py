@@ -1606,7 +1606,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
             window = desktop.opened(
                 picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
             )
-            desktop.photograph(f"{picture}-at-{scale}")
+            desktop.photograph(f"{picture}-at-{scale.replace('.', '-')}")
             desktop.close(window)
     desktop.as_account("niri msg output winit scale 1")
 
