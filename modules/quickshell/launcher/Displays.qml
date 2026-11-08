@@ -358,7 +358,8 @@ Provider {
     // into it holds. The launcher builds both inside bindings, where reading
     // sysfs or asking the sensor writes state the binding reads, a loop; so
     // they read only this and `room`, which are asked for here, each second
-    // while a screen is selected or held.
+    // while the launcher is open, from the moment it opens, since the
+    // Brightness and Room Light answers are found through those rows too.
     property var light: null
     onLightChanged: changed()
 
@@ -368,15 +369,11 @@ Provider {
             light = now;
     }
 
-    readonly property bool screenSelected: launcher !== null && launcher.open
-        && [launcher.selected].concat((launcher.held ?? []).map(step => step.row))
-            .some(row => String(row?.key ?? "").startsWith("display:"))
-
     Timer {
         interval: 1000
         repeat: true
         triggeredOnStart: true
-        running: provider.screenSelected
+        running: provider.launcher !== null && provider.launcher.open
         onTriggered: {
             provider.askRoom();
             provider.readLight();
