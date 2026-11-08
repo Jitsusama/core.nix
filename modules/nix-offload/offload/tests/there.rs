@@ -15,6 +15,7 @@ use std::process::{Command, Output};
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
 /// is refused with 64, as a changed-checks from before it was refuses it.
+/// A host an `unreached-<host>` file names is never reached, exiting 255.
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
 /// beside it, when there is one, and nothing else, and a dry run of a
 /// build prints the `plans` file, when there is one, and nothing else.
@@ -31,6 +32,7 @@ printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
 printf '%s %s\n' "$1" "$2" >> "$here/ssh-sent"
+[ -f "$here/unreached-$1" ] && exit 255
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
@@ -1892,6 +1894,9 @@ impl Changed {
             )
             .env("NIX_OFFLOAD_DIR", &self.offload)
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_VM_DIR", self.folder.path().join("offload-vm"))
+            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
             .env("XDG_RUNTIME_DIR", self.folder.path())
             .env("XDG_STATE_HOME", self.folder.path())
             .env("XDG_CONFIG_HOME", self.folder.path())
@@ -1904,6 +1909,42 @@ impl Changed {
             .map(|given| given.lines().nth(1).unwrap().to_owned());
         (ran, sent)
     }
+}
+
+#[test]
+fn changed_checks_go_to_a_vm_builder_that_stands_while_no_lent_builder_answers() {
+    // From 01:00 to 08:05 on 8 November the lent builders' disks stalled
+    // them, and every `there --changed` waited on them and ended 69,
+    // while the VM builders took every VM test sent them by name.
+    let changed = Changed::new();
+    fs::write(
+        changed.offload.join("lender"),
+        std::process::id().to_string(),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("unreached-nix-offload"), "").unwrap();
+    let vm = changed.folder.path().join("offload-vm");
+    fs::create_dir(&vm).unwrap();
+    fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let began = std::time::Instant::now();
+    let (ran, sent) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        began.elapsed() < std::time::Duration::from_secs(60),
+        "sent on at once, not after waiting for a lent builder: {:?}",
+        began.elapsed()
+    );
+    let hosts = fs::read_to_string(changed.bin.join("ssh-hosts")).unwrap();
+    assert_eq!(hosts.lines().last(), Some("nix-offload-vm"), "{hosts}");
+    let sent = sent.unwrap();
+    assert!(sent.contains("changed-checks -- --name-only"), "{sent}");
+    assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
 }
 
 #[test]

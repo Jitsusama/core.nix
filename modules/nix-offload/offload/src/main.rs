@@ -1017,7 +1017,8 @@ fn standing(dir: &Path) -> Option<String> {
 }
 
 /// `there --changed`: changed-checks run for the tree here on the lent
-/// builder, else an evaluator with its builds sent on, else a builder
+/// builder, else a warm VM builder, else an evaluator with its builds
+/// sent on, else a builder
 /// waited for as `waiting` says (`changed.rs` says why). It exits with the
 /// run's status, or `NOT_TAKEN` when nowhere else took it.
 fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
@@ -1094,7 +1095,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         waiting,
     };
     let more_dir = more_dir();
-    let finished = sent.somewhere(arguments, [&dir, &more_dir], vm_apart);
+    let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
         // While a lender runs, this machine is one that sends its work
@@ -1188,12 +1189,14 @@ impl Sent<'_> {
     }
 
     /// Where `there --changed` runs, in its order, or none when nowhere
-    /// did. With `vm_apart`, VM tests go to a builder of their own, as any
-    /// `there` sends them.
+    /// did: a lent builder, else a warm VM builder of `vm`'s. With
+    /// `vm_apart`, VM tests go to a builder of their own, as any `there`
+    /// sends them.
     fn somewhere(
         &self,
         arguments: &[String],
         [dir, more]: [&Path; 2],
+        vm: &[PathBuf],
         vm_apart: bool,
     ) -> Option<Finished> {
         let Self {
@@ -1215,6 +1218,16 @@ impl Sent<'_> {
         }
         for lender in changed::in_turn([dir, more], std::process::id()) {
             if let Some(finished) = on_builder(standing(lender)) {
+                return Some(finished);
+            }
+        }
+        // A warm VM builder that stands takes the run while no lent
+        // builder answers, rather than its waiting minutes for one: from
+        // 01:00 to 08:05 on 8 November the lent builders' disks stalled
+        // them, and every run waited and ended 69, while the VM builders
+        // took every VM test sent them by name.
+        for builder in vm.iter().filter(|builder| there::warm(builder)) {
+            if let Some(finished) = on_builder(standing(builder)) {
                 return Some(finished);
             }
         }
