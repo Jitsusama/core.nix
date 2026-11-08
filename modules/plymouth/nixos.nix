@@ -543,10 +543,16 @@ in
       # status sent before the splash is made, as the generation is when
       # the graphics card comes late, reached nothing and was lost, so the
       # second (statuses-kept.patch) keeps each for a splash made later.
+      # A laptop's panel under a shut lid still reads as connected, so the
+      # splash laid itself out and chose its size for it beside a monitor;
+      # the third (shut-panel-left-out.patch) leaves it out while another
+      # screen is there, reading the lid from ACPI's button module, loaded
+      # in the initrd below.
       package = pkgs.plymouth.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
           ./frame-timer.patch
           ./statuses-kept.patch
+          ./shut-panel-left-out.patch
         ];
       });
       theme = "jitsusama";
@@ -569,6 +575,9 @@ in
     # so its lines showed until the GPU's own screen came for Plymouth, 1.8 s
     # later, and again as a shutdown began. A failure is still written.
     boot.kernelParams = [ "systemd.show_status=error" ];
+    # The lid's state, which shut-panel-left-out.patch reads, is ACPI's
+    # button module's, a module of its own in the kernels here.
+    boot.initrd.kernelModules = [ "button" ];
 
     # The kernel stops every program before it reads a hibernation's image
     # back, Plymouth with them, so the screen keeps the last frame drawn until
