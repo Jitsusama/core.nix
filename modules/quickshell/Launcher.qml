@@ -939,6 +939,22 @@ Scope {
     // for the walk too.
     property bool cataloguing: false
 
+    // The rows a terminal's `launcher show` last walked through (`walked`)
+    // and listed (`listed`), held a few seconds after it asks, so a
+    // provider that reads only while its rows are seen, as Machine reads
+    // its daemon and its disks, reads for a terminal with the launcher
+    // closed, and the terminal's next ask has the figures (Y2YBTS's
+    // review of #2404). Let go once nothing has asked for a while, so a
+    // daemon read for one show isn't read for ever.
+    property var terminalSees: ({ walked: [], listed: [] })
+
+    Timer {
+        id: terminalSeeing
+
+        interval: 3000
+        onTriggered: root.terminalSees = { walked: [], listed: [] }
+    }
+
     function catalogue() {
         cataloguing = true;
         try {
@@ -1285,7 +1301,12 @@ Scope {
         const isAct = one => String(one.key ?? "").startsWith("return:")
             || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
+        terminalSees = { walked: trail, listed: sayable };
+        terminalSeeing.restart();
         return {
+            // Whether a provider is still reading what it shows for the
+            // first time, so the terminal asks again for its figures.
+            reading: sources.some(source => source.reading),
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),

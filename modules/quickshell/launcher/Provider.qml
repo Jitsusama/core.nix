@@ -55,6 +55,12 @@ Scope {
     property real weight: 1
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
+    // Whether what it shows is still being read for the first time, as
+    // Machine's daemon's first answer is, so a terminal's `launcher show`
+    // asks again for its figures rather than saying the placeholder
+    // (Launcher.qml's shownToTerminal). One that reads nothing it waits
+    // on leaves it false.
+    property bool reading: false
     property var things: []
     // The options :set takes from it, by name, as the command line reads
     // them (SetWords.setting): { kind: "switch" | "number" | "choice",

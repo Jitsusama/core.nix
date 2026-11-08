@@ -1509,11 +1509,22 @@ Provider {
     // alone) watches too, or Machine's own place would wait for a read
     // nothing asks. Kept From Resting, which Power holds, is read from
     // the telemetry rather than the daemon, so it isn't one of them.
-    readonly property bool shown: launcher !== null && launcher.open
+    // A terminal's `launcher show` sees them too, with the launcher closed,
+    // while the rows it walked through or listed are Machine's
+    // (Launcher.qml's terminalSees), so a place asked cold is read.
+    readonly property bool shown: launcher !== null && (launcher.open
         && (launcher.answer?.live === provider
             || launcher.held.some(step => step.row.live === provider)
             || launcher.matches.some(row => row.live === provider)
             || launcher.placed.some(id => /^machine:[a-z]+$/.test(id)))
+        || terminalWalked.concat(terminalListed).some(row => row?.live === provider))
+    readonly property var terminalWalked: launcher?.terminalSees.walked ?? []
+    readonly property var terminalListed: launcher?.terminalSees.listed ?? []
+
+    // Whether a daemon it watches hasn't yet said its kind once, so what
+    // it shows is the placeholder still being read (Provider.reading).
+    reading: [daemon, diskWatch, users].some(watch => watch.live && !watch.answered
+        && watch.state !== "not answering")
 
     // Whether a Using row can be seen, so the daemon is asked for the
     // programs: the processor's or the memory's parts stepped into, or
@@ -1524,7 +1535,9 @@ Provider {
     readonly property bool usingWanted: shown && (launcher.held.some(step =>
         step.row?.live === provider
             && (step.row.about === kinds.cpu || step.row.about === kinds.memory))
-        || launcher.answer?.live === provider && usingNames.includes(launcher.answer.title))
+        || launcher.answer?.live === provider && usingNames.includes(launcher.answer.title)
+        || terminalWalked.some(row => row?.live === provider
+            && (row.about === kinds.cpu || row.about === kinds.memory)))
 
     // Whether a Disk answer or row is shown, listed or stepped into, so the
     // daemon reads the disks: each read asks an NVMe disk its temperature,
@@ -1532,7 +1545,9 @@ Provider {
     readonly property bool disksWanted: shown && ([launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.about === kinds.disks)
-        || launcher.placed.includes("machine:disk"))
+        || launcher.placed.includes("machine:disk")
+        || terminalWalked.concat(terminalListed)
+            .some(row => row?.live === provider && row.about === kinds.disks))
 
     // The processor's telemetry is watched while a Processor answer is
     // listed, shown or stepped into, so what held it back is there once its

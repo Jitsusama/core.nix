@@ -306,7 +306,7 @@ fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, ExitCode> {
     let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
     let answer = match how {
         Ask::Names => asking::show(&qs, steps, false),
-        Ask::Settled { drawers } => asking::settled(&qs, steps, drawers, &words.waiting()),
+        Ask::Settled { drawers } => asking::settled(&qs, steps, drawers),
     };
     heard(answer, words)
 }

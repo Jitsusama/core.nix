@@ -30,6 +30,9 @@ if TYPE_CHECKING:
 
     from launcher_on_niri import Json, Shell
 
+# How long a place asked cold may take to be read: a daemon's first answer, well under one.
+READ = timedelta(seconds=5)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -89,6 +92,41 @@ def answer_is_whole(shell: Shell, answer: str) -> None:
     words = json.loads(shell.as_account(shell.ipc("laidOut")))["rows"][0]["words"]
     name = next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == answer)
     assert not name["cut"], words
+
+
+def shown_to_terminal(shell: Shell, *steps: str) -> Json:
+    """Give what `launcher show` is answered at these steps, asked as the program asks."""
+    # Each step after the mark, since qs takes no empty argument, and after `--`, since
+    # `show` is also qs ipc's own command otherwise.
+    path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
+    asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+    return cast("Json", json.loads(shell.as_account(asked)))
+
+
+def test_a_place_asked_cold_from_a_terminal_is_read_for_it(shell: Shell) -> None:
+    """A place nothing has shown yet is read for a terminal, with the launcher closed.
+
+    Machine asks its daemon only while its rows are seen (launcher/Machine.qml's shown), and
+    a terminal's walk counts as seeing them for a few seconds (Launcher.qml's terminalSees),
+    so the answer says `reading` until the daemon's first answer comes and the next ask has
+    the figures. It runs first, before anything opens Machine, since a record read once
+    stays held.
+    """
+
+    def processor(answer: Json) -> object:
+        return next(row.get("side") for row in answer["rows"] if row["name"] == "Processor")
+
+    first = shown_to_terminal(shell, "machine")
+    assert first["reading"], first
+    assert processor(first) == "\u2026", first["rows"]
+    answer = first
+    deadline = time.monotonic() + READ.total_seconds()
+    while answer["reading"] and time.monotonic() < deadline:
+        time.sleep(launcher_on_niri.POLL)
+        answer = shown_to_terminal(shell, "machine")
+    assert not answer["reading"], answer
+    assert processor(answer) not in {None, "\u2026"}, answer["rows"]
+    assert not shell.showing()["open"]
 
 
 def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> None:
@@ -1010,11 +1048,7 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     """
 
     def shown(*steps: str) -> Json:
-        # Asked as the program asks: each step after the mark, since qs takes no empty
-        # argument, and after `--`, since `show` is also qs ipc's own command otherwise.
-        path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
-        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
-        return cast("Json", json.loads(shell.as_account(asked)))
+        return shown_to_terminal(shell, *steps)
 
     home = shown()
     names = [row["name"] for row in home["rows"]]
