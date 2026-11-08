@@ -1335,13 +1335,17 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             """Say whether the drawer is out, holding this plate's first fact, its facts laid.
 
             A busy VM has reported a plate out before its facts were placed, all on one line,
-            so it's waited for laid rather than held to the pitch at once.
+            and a fact that arrives late, as Learned does when the backlight daemon writes its
+            curve, lays them out again; so the plate is waited for laid, on the pitch, every
+            name whole and one way, rather than held to it in a later snapshot.
             """
             drawer = shown["drawer"]
             return (
                 drawer["out"] is True
                 and first in drawer["facts"]
                 and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+                and drawer["labelsWhole"] is True
+                and drawer["laidOneWay"] is True
             )
 
         desktop.launcher_until(plated)
@@ -1350,11 +1354,6 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         assert drawer["facts"][: len(leading)] == leading, (
             f"at {scale} {typed or kind} leads wrong: {drawer}"
         )
-        assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
-            f"at {scale} {typed or kind}'s facts are off the pitch: {drawer}"
-        )
-        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
-        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
         desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
