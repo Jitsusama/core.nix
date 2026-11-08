@@ -60,12 +60,25 @@ def heaptrack_home(desktop: Desktop) -> str:
 def test_aaa_the_shell_starts_under_heaptrack(desktop: Desktop) -> None:
     """Throwaway: restart the shell with heaptrack preloaded, so the walk is recorded."""
     home = heaptrack_home(desktop)
+    # heaptrack takes itself out of LD_PRELOAD before quickshell's wrapper execs the real
+    # program, so the service runs that program itself, in the environment the wrapper gave it.
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    program = desktop.as_account(f"readlink -f /proc/{pid}/exe").strip()
+    arguments = desktop.as_account(f"tr '\\0' ' ' < /proc/{pid}/cmdline | cut -d' ' -f2-").strip()
     desktop.as_account(
-        "systemctl --user stop quickshell; "
-        f"systemctl --user set-environment LD_PRELOAD={home}/lib/heaptrack/libheaptrack_preload.so"
-        f" DUMP_HEAPTRACK_OUTPUT={HEAP}; "
-        "systemctl --user start quickshell; "
-        "systemctl --user unset-environment LD_PRELOAD DUMP_HEAPTRACK_OUTPUT"
+        f"tr '\\0' '\\n' < /proc/{pid}/environ | grep -v -E '^(LD_PRELOAD|INVOCATION_ID)=' > /tmp/qs.env"
+    )
+    drop_in = (
+        "[Service]\nEnvironmentFile=/tmp/qs.env\n"
+        f"Environment=LD_PRELOAD={home}/lib/heaptrack/libheaptrack_preload.so\n"
+        f"Environment=DUMP_HEAPTRACK_OUTPUT={HEAP}\n"
+        f"ExecStart=\nExecStart={program} {arguments}\n"
+    )
+    print("HEAP drop-in:\n" + drop_in)
+    desktop.as_account(
+        "mkdir -p ~/.config/systemd/user/quickshell.service.d && "
+        f"printf %s {shlex.quote(drop_in)} > ~/.config/systemd/user/quickshell.service.d/heap.conf"
+        " && systemctl --user daemon-reload && systemctl --user restart quickshell"
     )
     desktop.machine.wait_until_succeeds(
         desktop.in_session("qs ipc show | grep -q launcher"), timeout=120
@@ -1070,7 +1083,10 @@ def test_zzz_the_shells_memory_after_the_walk(desktop: Desktop) -> None:
         " -n 20 -s 3 2>&1 | cut -c1-220 | head -900"
     )
     print("HEAP summary:\n" + summary)
-    desktop.as_account("systemctl --user start quickshell")
+    desktop.as_account(
+        "rm ~/.config/systemd/user/quickshell.service.d/heap.conf && "
+        "systemctl --user daemon-reload && systemctl --user start quickshell"
+    )
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
