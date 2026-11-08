@@ -436,8 +436,8 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     # Found before its letters, Return would step into the first row at home, Now.
-    typed_at_once(shell, "'needs you' -k Return")
-    shell.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
+    typed_at_once(shell, "'for you' -k Return")
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
     shell.close_launcher()
 
 

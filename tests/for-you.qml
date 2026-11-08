@@ -176,6 +176,24 @@ QtObject {
         expect("one cleared by Joel", side("D"), "cleared by you 13:30");
         expect("one saying no how, by its state", side("F"), "resolved 12:00");
 
+        // A look written again as it's done with, whole, with what it was.
+        const opened = JSON.parse(ForYou.rewritten(read.waiting[0], "opened", "opened", now));
+        expect("a look opened, written whole", [opened.v, opened.id, opened.state, opened.how,
+            opened.resolvedAt, opened.title, opened.target, opened.since, opened.file],
+            [1, "B", "opened", "opened", "2026-11-08T14:00:00.000Z", "Review the change",
+                "https://github.com/o/r/pull/1", undefined, undefined]);
+
+        // Needs You's items Joel said were done, newest first, and none
+        // he put off or that still waits.
+        const identity = each => `${each.quest}:${each.id}`;
+        const asked = [{ quest: "Q", id: "1" }, { quest: "Q", id: "2" }, { quest: "Q", id: "3" },
+            { quest: "Q", id: "4" }];
+        expect("the items done, newest first", ForYou.settledItems(asked,
+            { done: { "Q:1": now - hour, "Q:2": now - 30 * 60 * 1000 },
+                notNow: { "Q:3": { said: "", at: now } } }, identity)
+            .map(one => [one.item.id, one.resolved]),
+        [["2", now - 30 * 60 * 1000], ["1", now - hour]]);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

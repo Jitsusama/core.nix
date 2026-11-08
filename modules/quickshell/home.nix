@@ -294,6 +294,7 @@ let
     "launcher/KeyCounts.js"
     "launcher/Media.js"
     "launcher/NowGroups.js"
+    "launcher/ForYou.js"
     "launcher/Program.js"
     "launcher/Captured.js"
     "launcher/Notice.js"

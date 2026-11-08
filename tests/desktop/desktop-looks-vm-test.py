@@ -3273,7 +3273,7 @@ def lasting_window(now: int) -> Json:
 def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
     """Open Now by Super+O, move down to a piece's row, and photograph its drawer."""
     desktop.machine.send_key("meta_l-o")
-    desktop.in_now("Needs You")
+    desktop.in_now("For You")
     desktop.launcher_until(lambda shown: row in shown["rows"])
     desktop.down_to(row)
     desktop.launcher_until(

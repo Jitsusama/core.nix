@@ -6062,14 +6062,15 @@
     {
       "id": "on:waiting",
       "in": "on",
-      "name": "Needs You",
-      "term": "Desktop/Needs You",
+      "name": "For You",
+      "term": "Desktop/For You",
       "verb": "go to",
       "glyph": "waitsOnJoel",
       "empty": "Nothing needs you.",
       "tells": {
         "known": "Known done {how}.",
-        "person": "Only you can say it's done."
+        "person": "Only you can say it's done.",
+        "ready-to-deal": "I'm ready to deal with \"{title}\" now, if it's still valid. Check it's still true before you ask me anything."
       },
       "said": {
         "first": "{title} \u00b7 {minutes} min",
@@ -6085,18 +6086,123 @@
         "signin": "once signed in to {value}",
         "device": "once the {value} is seen",
         "file": "once its file is written",
-        "check": "once its check passes"
+        "check": "once its check passes",
+        "from": "from {from} \u00b7 {kind}",
+        "blocks": "blocks {count} session",
+        "blocksMany": "blocks {count} sessions",
+        "due": "due {time}",
+        "overdue": "overdue since {time}",
+        "ready": "ready now",
+        "waitedFor": "waiting {span}",
+        "spanMinutes": "{count} min",
+        "spanHours": "{count} h",
+        "spanDays": "{count} d",
+        "todo": "to do",
+        "look": "to look at",
+        "ended": "session ended",
+        "concluded": "quest concluded",
+        "takes": "{minutes} min",
+        "history": "{how} {time}",
+        "opened": "opened",
+        "cleared": "cleared",
+        "resolved": "resolved",
+        "openedHow": "opened",
+        "clearedHow": "cleared by you",
+        "doneByYou": "done by you",
+        "clearsLook": "you open or clear it",
+        "clearsPr": "it merges or closes"
       }
+    },
+    {
+      "id": "on:waiting:weight",
+      "in": "on:waiting",
+      "name": "Weight"
+    },
+    {
+      "id": "on:waiting:since",
+      "in": "on:waiting",
+      "name": "Waiting Since"
+    },
+    {
+      "id": "on:waiting:clears",
+      "in": "on:waiting",
+      "name": "Clears When"
+    },
+    {
+      "id": "on:waiting:takes",
+      "in": "on:waiting",
+      "name": "Takes"
+    },
+    {
+      "id": "on:waiting:checked",
+      "in": "on:waiting",
+      "name": "Last Checked"
+    },
+    {
+      "id": "on:waiting:resolved",
+      "in": "on:waiting",
+      "name": "Resolved"
+    },
+    {
+      "id": "on:waiting:quest",
+      "in": "on:waiting",
+      "name": "Quest"
+    },
+    {
+      "id": "on:waiting:session",
+      "in": "on:waiting",
+      "name": "Session"
+    },
+    {
+      "id": "on:waiting:look",
+      "in": "on:waiting",
+      "name": "Look"
+    },
+    {
+      "id": "on:waiting:target",
+      "in": "on:waiting",
+      "name": "Target"
+    },
+    {
+      "id": "on:waiting:item",
+      "in": "on:waiting",
+      "name": "Item"
+    },
+    {
+      "id": "on:waiting:history",
+      "in": "on",
+      "name": "History",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing resolved yet.",
+      "said": {
+        "note": "what no longer needs you"
+      }
+    },
+    {
+      "id": "verb:on:look:open",
+      "command": "open",
+      "in": "on",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:on:look:clear",
+      "command": "delete",
+      "in": "on",
+      "name": "Clear It",
+      "verb": "clear",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "clear"
     },
     {
       "id": "on:waiting:later",
       "in": "on",
       "name": "Later",
       "verb": "more",
-      "glyph": "queued",
-      "said": {
-        "note": "what can't be done yet"
-      }
+      "glyph": "queued"
     },
     {
       "id": "verb:on:waiting:go",
@@ -6107,18 +6213,34 @@
       "glyph": "windows"
     },
     {
+      "id": "verb:on:waiting:deal",
+      "command": "talk",
+      "in": "on",
+      "name": "Deal With It",
+      "verb": "deal",
+      "glyph": "reply"
+    },
+    {
       "id": "verb:on:waiting:done",
       "command": "delete",
       "in": "on",
-      "name": "Done",
+      "name": "Mark It Done",
       "verb": "done",
       "glyph": "done"
+    },
+    {
+      "id": "verb:on:waiting:quest",
+      "command": "open",
+      "in": "on",
+      "name": "Open Its Quest",
+      "verb": "open",
+      "glyph": "agent"
     },
     {
       "id": "verb:on:waiting:notNow",
       "command": "snooze",
       "in": "on",
-      "name": "Not Now",
+      "name": "Put It Off",
       "verb": "later",
       "glyph": "queued"
     },
