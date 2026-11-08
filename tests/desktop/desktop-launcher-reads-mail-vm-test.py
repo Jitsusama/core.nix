@@ -416,10 +416,12 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
         assert rows.index("Unread") < rows.index("Recent"), rows
         assert "Sign In" not in rows, rows
         desktop.down_to("Unread")
+        # Names after its name, as many whole as fit, and nothing in the foot.
         desktop.launcher_until(
             lambda shown: (
                 shown["selected"]["side"] == "6 to read"
-                and shown["selected"]["note"] == "Ada Lovelace, #deploys and 2 more"
+                and shown["selected"]["count"] == "Ada Lovelace, #deploys, Threads, #random"
+                and shown["selected"]["note"] == ""
             )
         )
         desktop.step_in("ret")

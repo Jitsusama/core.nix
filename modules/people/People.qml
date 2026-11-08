@@ -390,14 +390,16 @@ Provider {
     }
 
     // Their Unread: what of theirs waits on Joel, unread mail, newest
-    // first, standing only while there's any, how many at its side and the
-    // newest one's name as its note, as Slack's Unread says. It comes
-    // before Recent, which holds only what he's had with them.
+    // first, standing only while there's any, how many at its side and
+    // their names after its name, as many whole as fit, as Recent's and
+    // Slack's Unread say theirs. It comes before Recent, which holds only
+    // what he's had with them.
     function unread(person) {
         const rows = [].concat(...sources.map(source => source.unread(person, provider)))
             .sort((a, b) => b.at - a.at).map(one => one.row);
+        const stands = Recent.said(rows.map(row => row.name), false, {});
         return rows.length === 0 ? []
-            : [holding("person:unread", rows, String(rows.length), rows[0]?.name ?? "")];
+            : [holding("person:unread", rows, stands.side, stands.note)];
     }
 
     // A row holding some of their things, by the words `key` names. Its
