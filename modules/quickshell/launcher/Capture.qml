@@ -34,6 +34,7 @@
 import Quickshell
 import qs
 import QtQuick
+import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Recent.js" as Recent
 
@@ -302,6 +303,15 @@ Provider {
 
     onTakenChanged: changed()
 
+    // When each thing taken was, by its path, so its row says it.
+    readonly property var takenAt: Object.fromEntries(Taken.files
+        .map(file => [file.path, file.at]))
+    // When is said as a file's row says it (FileFacts.js), in the
+    // launcher's words and the locale's days, as everywhere (Y2YBTS,
+    // 2026-11-03).
+    readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
+
     Component.onCompleted: {
         for (const folder of provider.takenIn)
             Taken.want(folder);
@@ -394,7 +404,10 @@ Provider {
     // or mpv, and a picture is shown in the drawer. After Open come what
     // other providers give it (`fileActs(path)`), as GIMP gives Edit in
     // GIMP, then Copy the Path. One found by its words says below it the
-    // line that holds them (`line`).
+    // line that holds them (`line`). Each says when it was taken at its
+    // right, and its folder only where it's not Screenshots; a picture's
+    // folder is said once, in its drawer's eyebrow, with what it is
+    // (VKCF3Z, 2026-11-08).
     function takenRow(path, line) {
         const key = "verb:path:file:open";
         const act = thing({
@@ -409,8 +422,19 @@ Provider {
             .filter(other => other !== provider && typeof other.fileActs === "function")
             .reduce((acts, other) => acts.concat(other.fileActs(path)), []);
         const row = Files.file(path, thing, [act].concat(given));
+        const at = provider.takenAt[path];
+        const folder = Files.within(path);
+        const shots = Files.shown(`${provider.home}/Pictures/Screenshots`);
+        row.side = Recent.takenSide(at === undefined ? ""
+            : FileFacts.when(at, Date.now(), provider.factWords), folder, shots);
+        const said = Words.of("capture:recent").said ?? {};
         if (/\.(png|jpe?g|webp)$/i.test(path))
-            row.drawer = { title: row.name, picture: path };
+            row.drawer = {
+                eyebrow: Recent.takenEyebrow(folder, folder === shots ? said.screenshot
+                    : said.photo, said),
+                title: row.name,
+                picture: path
+            };
         if (line)
             row.note = line;
         return row;

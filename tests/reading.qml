@@ -85,8 +85,9 @@ QtObject {
         expect("a note's last item gives way whole",
             noted(note, 410) === "Example ISP \u00b7 370 Mb/s down", noted(note, 410));
         expect("a note's first item alone", noted(note, 200) === "Example ISP", noted(note, 200));
-        expect("its first item at a whole word", noted(note, 100) === "Example\u2026",
-            noted(note, 100));
+        // And no ellipsis on a note: its first item, where it alone
+        // doesn't fit, isn't said (VKCF3Z, 2026-11-08: never "found by\u2026").
+        expect("its first item whole or not at all", noted(note, 100) === "", noted(note, 100));
         // The path's steps: the program's ask, a folder's path, the place,
         // a step's mark between each, three characters wide. Each gives
         // way at whole names, never a piece of one (VKCF3Z, 2026-11-05:

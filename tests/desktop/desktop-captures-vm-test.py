@@ -318,8 +318,9 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == newest.rsplit("/", 1)[1]
-            and shown["selected"]["side"] == "~/Pictures/Screenshots"
+            and shown["selected"]["side"] in {"just now", "1 min ago"}
             and (shown["selected"]["drawer"] or {}).get("picture") == newest
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
             and shown["drawer"]["out"]
         )
     )

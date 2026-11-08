@@ -5547,7 +5547,10 @@
       "glyph": "recent",
       "empty": "Nothing yet.",
       "said": {
-        "none": "none"
+        "none": "none",
+        "in": "in {folder}",
+        "screenshot": "screenshot",
+        "photo": "photo"
       }
     },
     {
