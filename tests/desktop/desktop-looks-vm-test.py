@@ -1594,13 +1594,15 @@ def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
 
     It answers from what's written in ~/warp-cli (tests/warp-cli-stand-in.sh); a question
     named with .error is said as warp-cli says an error. Each lands whole, by a rename, so
-    warp never reads half of one.
+    warp never reads half of one, and writable, since mv and rm on a terminal ask before
+    replacing a file that isn't, as the store's are.
     """
     contract = desktop.values["warp_contract"]
     desktop.as_account(
         "mkdir -p ~/warp-cli && "
         + " && ".join(
-            f"cp {contract}/{file} ~/warp-cli/.next && mv ~/warp-cli/.next ~/warp-cli/{asked}"
+            f"install -m 644 {contract}/{file} ~/warp-cli/.next"
+            f" && mv -f ~/warp-cli/.next ~/warp-cli/{asked}"
             for file, asked in answers
         )
     )
@@ -1647,7 +1649,7 @@ def test_warp_stands_in_network_and_says_when_degraded_or_not_answering_at_each_
             )
             desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
             # Its service gone, WARP says so in its place, and why in the foot.
-            desktop.as_account("rm ~/warp-cli/status.json")
+            desktop.as_account("rm -f ~/warp-cli/status.json")
             warp_answers(desktop, ("daemon-down.json", "status.error.json"))
             desktop.launcher_until(
                 lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
