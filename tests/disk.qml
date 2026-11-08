@@ -5,10 +5,9 @@
 // pass that left it short but asks for nothing, an urgent one is a warning
 // that still asks for nothing, a critical one wants Joel with nothing slow
 // to run, the worse of the two guards' words wins for a disk both watch, a
-// disk only the
-// machine's guard watches counts, a disk full within a few days says when
-// and how fast whatever its band, and is a warning within a day, a writer frozen wants Joel with a way to let
-// it go on, a guard gone quiet whose unit says it's starting again shows
+// disk only the machine's guard watches counts, a disk full within a few
+// days says when and how fast whatever its band, and is a warning within a
+// day, a writer frozen wants Joel with a way to let it go on, a guard gone quiet whose unit says it's starting again shows
 // nothing, one whose heartbeat ages past silence with nothing written after
 // it and whose unit failed is a warning of its own saying why, with a way to
 // start it, and the machine's guard stopped says a restart starts it, with
