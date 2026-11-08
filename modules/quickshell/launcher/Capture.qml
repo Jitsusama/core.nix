@@ -432,12 +432,9 @@ Provider {
             : FileFacts.when(at, Date.now(), provider.factWords), folder, shots);
         const said = Words.of("capture:recent").said ?? {};
         if (/\.(png|jpe?g|webp)$/i.test(path))
-            row.drawer = {
-                eyebrow: Recent.takenEyebrow(folder, folder === shots ? said.screenshot
-                    : said.photo, said),
-                title: row.name,
-                picture: path
-            };
+            row.drawer = Object.assign(Recent.takenEyebrow(folder,
+                folder === shots ? said.screenshot : said.photo, said),
+                { title: row.name, picture: path });
         if (line)
             row.note = line;
         return row;

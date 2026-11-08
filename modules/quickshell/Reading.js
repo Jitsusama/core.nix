@@ -67,7 +67,27 @@ function keptItems(items, room, width) {
         const least = kept.reduce((low, item) => (item.keep < low.keep ? item : low));
         kept.splice(kept.indexOf(least), 1);
     }
-    return kept.map(item => item.said);
+    return pathsFitted(kept, room, width);
+}
+
+// The items kept, as said: one naming its `path`, where they still don't
+// fit, gives that way from its middle as a path does (pathTries: "in
+// ~/\u2026/Screenshots"), its last folder whole, so a folder kept is never
+// lost (VKCF3Z, 2026-11-08); the longest that fits, or the shortest
+// where none does.
+function pathsFitted(kept, room, width) {
+    const ways = kept.map(item => (item.path
+        ? pathTries(item.path, true).map(way => item.said.replace(item.path, way))
+        : [item.said]));
+    const most = Math.max(1, ...ways.map(way => way.length));
+    let said = [];
+    for (let step = 0; step < most; step += 1) {
+        said = ways.map(way => way[Math.min(step, way.length - 1)]);
+        if (width(said.join(ITEMS_APART)) <= room) {
+            break;
+        }
+    }
+    return said;
 }
 
 // What a styled text needs written as its entity, so a side's words are

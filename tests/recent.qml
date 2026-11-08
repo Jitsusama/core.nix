@@ -95,11 +95,16 @@ QtObject {
             "5 min ago \u00b7 ~/Pictures/Camera");
         check(failures, "and one whose time isn't known says its folder",
             Recent.takenSide("", shots, shots), shots);
-        check(failures, "its drawer says its folder and what it is",
-            Recent.takenEyebrow(shots, "screenshot", { in: "in {folder}" }),
+        const eyebrow = Recent.takenEyebrow(shots, "screenshot", { in: "in {folder}" });
+        check(failures, "its drawer says its folder and what it is", eyebrow.eyebrow,
             "in ~/Pictures/Screenshots \u00b7 screenshot");
+        check(failures, "short of room, what it is goes before its folder",
+            eyebrow.eyebrowItems.map(item => `${item.said}:${item.keep}`).join(", "),
+            "in ~/Pictures/Screenshots:2, screenshot:1");
+        check(failures, "and the folder is set as written", eyebrow.eyebrowNames, true);
         check(failures, "or its folder alone where it's no kind of its own",
-            Recent.takenEyebrow(shots, "", { in: "in {folder}" }), "in ~/Pictures/Screenshots");
+            Recent.takenEyebrow(shots, "", { in: "in {folder}" }).eyebrow,
+            "in ~/Pictures/Screenshots");
 
         for (const failure of failures)
             console.warn(failure);

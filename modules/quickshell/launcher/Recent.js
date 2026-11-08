@@ -90,13 +90,25 @@ function takenSide(when, folder, usual) {
     return folder === usual || folder === "" ? when : `${when}${BETWEEN}${folder}`;
 }
 
-// The eyebrow over a picture taken, in its drawer: the folder it's in,
-// as its row no longer says, then what it is, a screenshot or a photo
-// (`kind`), "in ~/Pictures/Screenshots \u00b7 screenshot". `words` gives
-// how the folder is said, its `in`.
+// The eyebrow over a picture taken, as its drawer takes it: the folder
+// it's in, as its row no longer says, then what it is, a screenshot or a
+// photo (`kind`), "in ~/Pictures/Screenshots \u00b7 screenshot". `words`
+// gives how the folder is said, its `in`. It's set as written, since a
+// folder is a name never re-cased (VKCF3Z, 2026-11-06). Short of room,
+// what it is goes first, since the folder says it too, then the folder
+// gives way from its middle, "in ~/\u2026/Screenshots", and it never goes
+// (VKCF3Z, 2026-11-08).
 function takenEyebrow(folder, kind, words) {
     const within = folder === "" ? "" : (words?.in ?? "{folder}").replace("{folder}", folder);
-    return [within, kind ?? ""].filter(part => part !== "").join(BETWEEN);
+    const items = [
+        { said: within, keep: 2, path: folder },
+        { said: kind ?? "", keep: 1 }
+    ].filter(item => item.said !== "");
+    return {
+        eyebrow: items.map(item => item.said).join(BETWEEN),
+        eyebrowItems: items,
+        eyebrowNames: true
+    };
 }
 
 // The names that fit in `room`, whole, the first always.

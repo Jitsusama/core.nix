@@ -174,6 +174,21 @@ QtObject {
         expect("the cost whole", kept(50) === "$5.10 today", kept(50));
         expect("no items, nothing", Reading.wholeItems([], 100, width) === "",
             Reading.wholeItems([], 100, width));
+        // An item naming a path, once the items it outlasts have gone
+        // whole, gives it way from its middle, its last folder whole
+        // (VKCF3Z, 2026-11-08).
+        const shots = "~/Pictures/Screenshots";
+        const pathed = [{ said: `in ${shots}`, keep: 2, path: shots },
+            { said: "screenshot", keep: 1 }];
+        const eyebrow = room => Reading.wholeItems(pathed, room, width);
+        expect("a path whole where it fits", eyebrow(380) === `in ${shots} \u00b7 screenshot`,
+            eyebrow(380));
+        expect("the kind first", eyebrow(370) === `in ${shots}`, eyebrow(370));
+        expect("then the path from its middle", eyebrow(200) === "in ~/\u2026/Screenshots",
+            eyebrow(200));
+        expect("then down to its last folder", eyebrow(170) === "in \u2026/Screenshots",
+            eyebrow(170));
+        expect("which is never lost", eyebrow(50) === "in \u2026/Screenshots", eyebrow(50));
         // Styled, the kept items keep their words and take a dot in the
         // colour given between them, so a selected agent row reads
         // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and
