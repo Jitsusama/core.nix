@@ -350,7 +350,6 @@ Provider {
         ] : [];
         const sampledNow = server.lastSample !== null && server.lastSample !== undefined;
         return [
-            part("mode", Keeping.mode(server, said)),
             part("address", server.address !== server.name ? server.address : ""),
             part("why", Keeping.why(server, said)),
             part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
@@ -391,7 +390,9 @@ Provider {
             glyph: Theme.glyph.clock,
             thing: true,
             drawer: () => ({
-                eyebrow: Words.name("time:server"),
+                // What kind of thing it is, as chronyd asks it: a time
+                // server, a peer or a reference clock (VKCF3Z, 2026-11-08).
+                eyebrow: Keeping.mode(server, serversSaid) || Words.name("time:server"),
                 title: name,
                 facts: parts.map(each => ({ label: Words.name(`time:server:${each.id}`),
                     value: Keeping.told(each) }))

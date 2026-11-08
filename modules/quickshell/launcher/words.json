@@ -4343,8 +4343,8 @@
         "offline": "{count} offline",
         "burst": "{count} in a burst",
         "unresolved": "{count} unresolved",
-        "kind:server": "server",
-        "kind:peer": "peer",
+        "kind:server": "time server",
+        "kind:peer": "time peer",
         "kind:reference": "reference clock",
         "interleaved": "interleaved",
         "basic": "basic",
@@ -4394,11 +4394,6 @@
       "in": "time:servers",
       "name": "Time Server",
       "term": "Desktop/time server"
-    },
-    {
-      "id": "time:server:mode",
-      "in": "time:server",
-      "name": "Mode"
     },
     {
       "id": "time:server:address",
