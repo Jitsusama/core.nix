@@ -1283,6 +1283,39 @@ short = "pow"
 kinds = ["list"]
 changes = true
 
+# A VM's own acts, each apart from the machine's so no line meant for a VM
+# can reach the machine it runs on. Started, Start It, as :boot, since
+# :start is Neovim's :startinsert: nothing is lost by it, and a system
+# VM's password, asked by polkit, is its asking, so it asks nothing more.
+# Its short form clears Neovim's :botright.
+[acts.boot]
+command = "boot"
+short = "boo"
+kinds = ["list"]
+changes = true
+guarded = true
+
+# Told to power itself off, as its power button would, Power It Off: it
+# ends what it runs, but its own system closes its programs, which ask
+# where work would be lost, as a window's do.
+[acts.off]
+ends = true
+command = "off"
+short = "off"
+kinds = ["list"]
+changes = true
+guarded = true
+
+# Its power cut, as pulling its plug would, Force It Off: whatever it
+# hadn't written is lost, so it asks once. Its short form clears Vim's
+# :for.
+[acts.forceoff]
+ends = true
+command = "forceoff"
+short = "forc"
+kinds = ["list"]
+changes = true
+
 # To the window that way, as his splits go. No kind holds these: a surface
 # with windows side by side takes them.
 

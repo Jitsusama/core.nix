@@ -75,6 +75,10 @@ let
       cp ${../slack/SlackUnreads.js} qs/SlackUnreads.js
       cp ${../slack/NewSlack.qml} qs/pieces/slack.qml
       cp ${../slack/SlackProgram.qml} qs/launcher/slack-program.qml
+      # The VMs come with a workstation's libvirt, which the account here
+      # isn't, so its provider and what it imports are read as if it were.
+      cp ${../libvirt/Machines.qml} qs/launcher/vms.qml
+      cp ${../libvirt/Machines.js} qs/launcher/Machines.js
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${

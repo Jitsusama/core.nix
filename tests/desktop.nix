@@ -14,7 +14,8 @@
 # copied, a meeting on the calendar is found by its name and Return joins
 # its call, the clipboard takes and gives text, a picture opens floating in
 # swayimg and a key takes it to GIMP, a document opens in zathura beside
-# the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
+# the rest, a VM virsh lists is in Programs and starts from its acts,
+# and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # shots show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
 # start without a single QML error.
@@ -56,6 +57,9 @@ let
   # and its two lists read from files the test writes, in chrome-recent-sites'
   # form, since no browser runs here.
   bringsChrome = area == "opens-files";
+  # The area whose launcher lists VMs, as a workstation's does
+  # (modules/libvirt/home.nix): what the machine has to open and set.
+  listsMachines = area == "opens-and-sets";
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
   # from the node alone. It links nothing, so it needs no key.
@@ -182,6 +186,13 @@ let
   standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-google.py);
+
+  # Stands in for virsh, which would ask libvirt, giving the launcher one
+  # session machine to list and start (desktop/stand-in-virsh.sh), since
+  # the VM runs no libvirt.
+  standInVirsh = pkgs.writeShellScriptBin "virsh" ''
+    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/stand-in-virsh.sh} "$@"
+  '';
 
   # Stands in for Slack's daemon, which would ask Slack, on its socket
   # (desktop/stand-in-slack.py).
@@ -715,6 +726,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # an area reads it.
         imports =
           lib.optional bringsSlack self.homeModules.slack
+          ++ lib.optional listsMachines self.homeModules.libvirt
           ++ lib.optionals runsTheNode [
             self.homeModules.mycelium
             { jitsusama.mycelium.realm = "harbour"; }
@@ -737,6 +749,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
               exec = "true %U";
             };
           };
+        # The launcher's VMs read the stand-in, the virsh on the account's
+        # path, in the daemon's place.
+        jitsusama.quickshell.launcher.providers.vms = lib.mkIf listsMachines {
+          virsh = lib.mkForce (lib.getExe' standInVirsh "virsh");
+        };
+        home.packages = lib.optional listsMachines standInVirsh;
         jitsusama.quickshell.launcher.recents = lib.optionals bringsChrome [
           {
             app = "google-chrome";

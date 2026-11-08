@@ -969,6 +969,14 @@ in
       "9.15 L5.35 8.85 L5.65 8.65 L6 8.6 L6.35 8.65 L6.65 8.85Z"
     ];
   };
+  # A cube's outline, a computer boxed up inside this one, rather than a
+  # monitor, which is a screen's (VKCF3Z, 2026-11-08); on the console a
+  # bracket, the box's side, which no other mark is.
+  vm = {
+    glyph = nerd "f01a7";
+    console = "[";
+    means = "a VM: a computer run as a program on this one";
+  };
   connect = {
     glyph = nerd "f00b1";
     console = "+";

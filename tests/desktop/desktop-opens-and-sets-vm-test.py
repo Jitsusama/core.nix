@@ -1,7 +1,7 @@
 """The desktop test's opens and sets area.
 
 Here the launcher opens and sets what the machine has: sound and its outputs' parts, the
-power profile, displays, Wi-Fi, the addresses and Joel's timers.
+power profile, displays, Wi-Fi, the addresses, Joel's timers and the VMs virsh lists.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -1867,6 +1867,54 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
         desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
+
+
+def test_a_vm_virsh_lists_is_in_programs_with_its_figures_and_starts_from_its_acts(
+    desktop: Desktop,
+) -> None:
+    """A VM virsh lists is in Programs with its state and figures, and Start It starts it."""
+    machine = desktop.machine
+    # tests/desktop.nix gives the launcher a stand-in virsh, whose session
+    # holds web, which libvirt says is shut off, and which keeps each run
+    # in virsh-asked.
+    asked = "/run/user/1000/virsh-asked"
+    uuid = "3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10"
+    machine.succeed(f"rm -f {asked} /run/user/1000/virsh-web")
+    desktop.answer("vms")
+    # Programs lists VMs only once virsh has said a machine exists, which
+    # it's asked as the launcher opens: the system's read-only.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "VMs")
+    lines = machine.succeed(f"cat {asked}").splitlines()
+    assert "-c qemu:///session list --all --name" in lines, lines
+    assert "-r -c qemu:///system list --all --name" in lines, lines
+    assert "-c qemu:///session dominfo --domain web" in lines, lines
+    desktop.into_program()
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "web"
+            and shown["selected"]["side"] == "off"
+            and shown["drawer"]["out"] is True
+        )
+    )
+    drawer = desktop.showing()["drawer"]
+    assert drawer["title"] == "web", drawer
+    assert {"Most Memory", "Processors", "UUID"} <= set(drawer["facts"]), drawer
+    assert "Memory in Use" not in drawer["facts"], drawer
+    # What a machine that's off can't say is named, never left to look forgotten.
+    known = "Known only while it runs: Processor Time, Memory in Use and ID."
+    assert known in drawer["body"], drawer
+    desktop.shoot("launcher-virtual-machines")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[0] == "Start It")
+    desktop.down_to("Start It")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF -- '-c qemu:///session start --domain {uuid}' {asked}",
+        timeout=timedelta(seconds=30),
+    )
+    # Read again once it's done, so a running machine's acts take its place.
+    desktop.launcher_until(lambda shown: "Power It Off" in shown["rows"])
+    desktop.close_launcher()
 
 
 # A binding that throws or assigns the wrong type only warns, and
