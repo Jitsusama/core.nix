@@ -199,6 +199,15 @@ QtObject {
             ["read", "22:54 \u00b7 answering"]
         ])
             expect(`the internet's ${id}`, value(internet, id), wanted);
+        // What the head says leads, as it's what a narrow drawer has room
+        // for before its more; the addresses and switches follow, each
+        // under a heading of its own.
+        const internetFacts = Drawers.internet(model, now).facts;
+        expect("the internet's drawer leads with what its row says", internetFacts.slice(0, 7)
+            .map(fact => fact.id), ["state", "speed-test", "nodes", "devices", "outages",
+            "isp", "mesh"]);
+        expect("the internet's groups", internetFacts.filter(fact => fact.heading !== undefined)
+            .map(fact => fact.heading), ["speed-tests", "addressing", "settings", "events"]);
         expect("the speed tests sparked", internet.down.figure.shape, "spark");
         expect("a spark's newest last, scaled to the most", internet.up.figure.values.slice(-1)[0]
             <= 1 && internet.up.figure.values.length, 15);
@@ -259,7 +268,7 @@ QtObject {
             ["kind", "generic"],
             ["node", "Den \u00b7 eero Pro 6"],
             ["signal", "-37 dBm \u00b7 71 dB over the noise"],
-            ["score", "1 \u00b7 5 of 5 bars"],
+            ["score", "100% \u00b7 5 of 5 bars"],
             ["band", "5 GHz, channel 52 \u00b7 5,260 MHz"],
             ["bssid", "02:00:00:00:00:02"],
             ["rx", "1,200.9 Mb/s \u00b7 MCS 11 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
@@ -290,6 +299,8 @@ QtObject {
         expect("a Wi-Fi 4 device's rate", value(older, "rx"),
             "72.2 Mb/s \u00b7 MCS 7 \u00b7 1 stream \u00b7 20 MHz \u00b7 400 ns guard \u00b7 Wi-Fi 4");
         expect("no rate up it never gave", older.tx, undefined);
+        expect("eero's score as a share", byId(Drawers.device(model, model.devices.find(one =>
+            one.mac === "02:00:00:00:00:05"), now)).score.value.split(" \u00b7 ")[0], "78%");
         const inProfile = byId(Drawers.device(Object.assign({}, model, {
             profiles: [{ id: "3001", name: "profile 1", paused: true, devices: [] }]
         }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));

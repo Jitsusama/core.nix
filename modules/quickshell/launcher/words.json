@@ -1947,6 +1947,11 @@
       "name": "ISP"
     },
     {
+      "id": "eero:internet:addressing",
+      "in": "eero:internet",
+      "name": "Addressing"
+    },
+    {
       "id": "eero:internet:public",
       "in": "eero:internet",
       "name": "Public Address"

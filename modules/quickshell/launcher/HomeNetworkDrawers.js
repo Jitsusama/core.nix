@@ -16,7 +16,6 @@
 const GRAPHED = 20;
 const PERCENT = 100;
 const NANO = "ns";
-const SCORE_PLACES = 2;
 const DOT = " \u00b7 ";
 
 function known(value) {
@@ -75,8 +74,11 @@ function trafficFact(usage, settings) {
     return fact("traffic", value, { figure: spark(hourly(usage)) });
 }
 
-// The internet's drawer: how it stands, who carries it and how it's set,
-// its speed tests, firmware and switches, and the day's traffic.
+// The internet's drawer: first what its row says, how it stands, the last
+// speed test, the nodes, devices and outages, who carries it, the
+// firmware and the day's traffic, so a narrow drawer shows those before
+// its more; then every speed test, how its addresses are had, and its
+// switches, each under a heading.
 function internet(model, now, settings) {
     const net = model?.internet ?? {};
     const lease = net.lease ?? {};
@@ -88,8 +90,22 @@ function internet(model, now, settings) {
         title: "Internet",
         facts: kept([
             fact("state", joined([net.state, net.isp_up === false ? "ISP down" : ""])),
-            fact("mesh", net.mesh),
+            fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
+                Home.when(net.speed_test?.at, now)])),
+            fact("nodes", Home.nodesSaid(net.nodes)),
+            fact("devices", known(net.devices) ? `${net.devices} eero counts` : ""),
+            fact("outages", outages(net.outages)),
             fact("isp", joined([net.isp, known(net.asn) ? `AS${net.asn}` : ""])),
+            fact("mesh", net.mesh),
+            fact("firmware", joined([firmware.running, firmware.has_update
+                ? `${firmware.next ?? "an update"} ready` : "up to date"])),
+            fact("updates", joined([known(firmware.update_hour)
+                ? `at ${String(firmware.update_hour).padStart(2, "0")}:00` : "",
+                firmware.last_started ? `last ${Home.when(firmware.last_started, now)}` : ""])),
+            trafficFact(net.usage, settings),
+            fact("read", joined([Home.when(model?.read, now), model?.cloud?.state])),
+        ]).concat(speedTests(net, now, settings), kept([
+            { heading: "addressing" },
             fact("public", joined([net.public_address, net.double_nat ? "behind another NAT" : ""])),
             fact("lease", joined([net.wan_type, lease.address && lease.mask
                 ? `${lease.address} / ${lease.mask}` : lease.address,
@@ -101,18 +117,7 @@ function internet(model, now, settings) {
                 known(dns.caching) ? `caching ${onOff(dns.caching)}` : "",
                 dns.ipv6_mode ? `IPv6 ${dns.ipv6_mode}` : ""])),
             fact("ipv6", onOff(net.ipv6)),
-        ]).concat(speedTests(net, now, settings), switches(net), kept([
-            fact("outages", outages(net.outages)),
-            fact("nodes", Home.nodesSaid(net.nodes)),
-            fact("devices", known(net.devices) ? `${net.devices} eero counts` : ""),
-            fact("firmware", joined([firmware.running, firmware.has_update
-                ? `${firmware.next ?? "an update"} ready` : "up to date"])),
-            fact("updates", joined([known(firmware.update_hour)
-                ? `at ${String(firmware.update_hour).padStart(2, "0")}:00` : "",
-                firmware.last_started ? `last ${Home.when(firmware.last_started, now)}` : ""])),
-            trafficFact(net.usage, settings),
-            fact("read", joined([Home.when(model?.read, now), model?.cloud?.state])),
-        ]), happened(model?.events ?? [], now)),
+        ]), switches(net), happened(model?.events ?? [], now)),
     };
 }
 
@@ -152,13 +157,11 @@ function profile(model, one) {
     };
 }
 
-// The last speed test, then a spark of each way over every one kept.
+// Every speed test kept, a spark of each way, the last's figures beside.
 function speedTests(net, now, settings) {
     const tests = (net.speed_tests ?? []).slice().reverse();
     const oldest = tests.length > 0 ? tests[0].at : null;
     return kept([
-        fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
-            Home.when(net.speed_test?.at, now)])),
         tests.length > 1 ? { heading: "speed-tests" } : null,
         tests.length > 1 ? fact("down", `${Home.mbps(net.speed_test?.down_mbps, settings)} Mb/s`,
             { figure: spark(tests.map((test) => test.down_mbps)) }) : null,
@@ -369,8 +372,10 @@ function device(model, one, now, asked) {
                 ? `${one.snr_db} dB over the noise` : ""]), {
                 figure: signalFigure(one, seen.signal),
             }),
-            fact("score", joined([known(one.score) ? Home.number(one.score, SCORE_PLACES, settings)
-                : "", known(one.bars) ? `${one.bars} of 5 bars` : ""])),
+            // eero's score is a share, from nothing to all, said as a
+            // percentage as every other share here is.
+            fact("score", joined([known(one.score) ? `${Home.number(one.score * PERCENT, 0,
+                settings)}%` : "", known(one.bars) ? `${one.bars} of 5 bars` : ""])),
             fact("band", one.ethernet ? null : joined([Home.bandOf(one), known(one.frequency_mhz)
                 ? `${Home.number(one.frequency_mhz, 0, settings)} MHz` : ""])),
             fact("bssid", one.bssid),
