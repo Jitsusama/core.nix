@@ -52,6 +52,7 @@ const BY_REASON = [
     [/profile-unavailable/, "nothing"]
 ];
 const SPACED = /[-_]/g;
+const CAPITAL = /([A-Z])/g;
 const STOP = /\.$/;
 
 function isHeard(device) {
@@ -65,8 +66,27 @@ function isHeard(device) {
 // name is left out, as nothing could find it and Joel couldn't tell it
 // from the next.
 function heard(devices) {
-    return devices.filter(device => isHeard(device) && (device.deviceName ?? "") !== "")
-        .sort((a, b) => b.rssi - a.rssi || a.name.localeCompare(b.name));
+    return devices.filter(device => isHeard(device) && isNamed(device)).sort(strongest);
+}
+
+// Those heard that never said their names, strongest first, which Nearby
+// counts after the rest rather than hiding, and lists by their addresses
+// only when asked, as BlueZ names them.
+function nameless(devices) {
+    return devices.filter(device => isHeard(device) && !isNamed(device)).sort(strongest);
+}
+
+function isNamed(device) {
+    return (device.deviceName ?? "") !== "";
+}
+
+function strongest(a, b) {
+    return b.rssi - a.rssi || a.name.localeCompare(b.name);
+}
+
+// A device's signal as words say it, in dBm with a real minus.
+function dbm(device) {
+    return String(device.rssi).replace("-", "\u2212");
 }
 
 // How strong a device is heard: its share of the bar, 0 to 1, and the word
@@ -97,7 +117,11 @@ function failure(name, message) {
 }
 
 // BlueZ's own words for a failure "other" stands for, as the foot says
-// them: lowercase, its reason's dashes as spaces, with no full stop.
-function plain(message) {
-    return (message ?? "").trim().replace(SPACED, " ").replace(STOP, "").toLowerCase();
+// them: its message, lowercase, its reason's dashes as spaces, with no
+// full stop; or with no message, its error's own name, never "failed".
+function plain(name, message) {
+    const said = (message ?? "").trim();
+    const error = (name ?? "").startsWith(ERROR) ? name.slice(ERROR.length) : name ?? "";
+    const words = said === "" ? error.replace(CAPITAL, " $1").trim() : said;
+    return words.replace(SPACED, " ").replace(STOP, "").toLowerCase();
 }

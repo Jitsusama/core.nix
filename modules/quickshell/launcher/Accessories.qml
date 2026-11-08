@@ -132,12 +132,15 @@ Provider {
 
     // Those Nearby hears, strongest first, as their rows say them: a list
     // shown keeps its order as they move (Steady.js), so only the first
-    // look orders them. Heard again, Nearby's rows say so.
-    readonly property var heard: on && looksNearby ? Nearby.heard(adapter.devices.values) : []
-    readonly property string heardSaid: heard
+    // look orders them. Heard again, Nearby's rows say so. Those that never
+    // said their names are only counted, after the rest.
+    readonly property var nearby: on && looksNearby ? Nearby.heard(adapter.devices.values) : []
+    readonly property var nameless: on && looksNearby
+        ? Nearby.nameless(adapter.devices.values) : []
+    readonly property string nearbySaid: nearby.concat(nameless)
         .map(device => [device.address, device.rssi, device.paired, device.connected].join(" "))
         .join(",")
-    onHeardSaidChanged: changed()
+    onNearbySaidChanged: changed()
 
     // The device being connected, and what it said if it wouldn't be.
     property var joining: null
@@ -149,16 +152,22 @@ Provider {
         return Words.of("bluetooth").said?.[id] ?? id;
     }
 
-    function saidOf(id, device, why) {
-        return word(id).replace("{device}", device.name).replace("{why}", why ?? "");
+    function saidOf(id, device) {
+        return word(id).replace("{device}", device.name);
     }
 
     // What BlueZ answered a pairing or connecting that failed, in Joel's
-    // words (Nearby.js's failure); nothing for one done already.
+    // words (Nearby.js's failure), as a live act says it didn't happen:
+    // "Buds not paired \u00b7 it wants a passkey"; a reason Joel has no
+    // words for in BlueZ's own. Nothing for one done already. Quickshell
+    // says it before the device stops pairing, so which it was is known.
     function failed(device, name, message) {
         const failure = Nearby.failure(name, message);
-        if (failure !== "")
-            trouble = saidOf(failure, device, Nearby.plain(message));
+        if (failure === "")
+            return;
+        const why = failure === "other" ? Nearby.plain(name, message) : word(failure);
+        trouble = word("because").replace("{failed}",
+            saidOf(device.pairing ? "notPaired" : "notConnected", device)).replace("{why}", why);
     }
 
     // A new device is trusted before it pairs. Headphones start their audio
@@ -252,7 +261,7 @@ Provider {
     function nearbyRow(device, joined) {
         const strength = Nearby.strength(device);
         const note = strength === null ? ""
-            : word("heard").replace("{dbm}", `${device.rssi}`)
+            : word("heard").replace("{dbm}", Nearby.dbm(device))
                 .replace("{strength}", word(strength.word));
         return member({
             thing: true,
@@ -280,11 +289,23 @@ Provider {
         key: "bluetooth:nearby",
         name: Words.name("bluetooth:nearby"),
         keywords: (Words.of("bluetooth:nearby").words ?? []).join(" "),
-        side: heard.length > 0 ? word("heardCount").replace("{count}", heard.length) : "",
+        side: nearby.length > 0 ? word("heardCount").replace("{count}", nearby.length) : "",
         note: word("looks"),
         glyph: Words.glyph("bluetooth:nearby"),
         empty: Words.of("bluetooth:nearby").empty
-    }, () => provider.heard.map(device => provider.made(device, undefined, true)))
+    }, () => provider.nearby.map(device => provider.made(device, undefined, true))
+        .concat(provider.namelessRow === null ? [] : [provider.namelessRow]))
+
+    // Those heard without a name, counted as Nearby's last row, so nothing
+    // heard is hidden and nothing unreadable is listed among the rest.
+    // Stepped into, it lists them by the addresses BlueZ names them by, so
+    // one whose name comes only once it's paired can still be.
+    readonly property var namelessRow: nameless.length === 0 ? null : thingRow({
+        key: "bluetooth:nearby:nameless",
+        name: word("nameless").replace("{count}", nameless.length),
+        glyph: "",
+        hue: "machine"
+    }, () => provider.nameless.map(device => provider.made(device, undefined, true)))
 
     readonly property var all: devices.map(device => made(device))
         .concat(nearbyPlace === null ? [] : [nearbyPlace])
@@ -819,7 +840,7 @@ Provider {
             if (device && !device.pairing && !device.paired) {
                 device.trusted = false;
                 if (provider.trouble === "")
-                    provider.trouble = provider.saidOf("unpaired", device);
+                    provider.trouble = provider.saidOf("notPaired", device);
             }
         }
 
@@ -833,7 +854,7 @@ Provider {
             const device = provider.joining;
             if (device && device.paired && device.state === BluetoothDeviceState.Disconnected
                 && !device.connected && provider.trouble === "")
-                provider.trouble = provider.saidOf("unreached", device);
+                provider.trouble = provider.saidOf("notConnected", device);
         }
     }
 

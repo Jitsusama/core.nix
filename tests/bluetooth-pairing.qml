@@ -117,7 +117,13 @@ ShellRoot {
         trusted: true
         rssi: -81
     }
-    Device { id: beacon; name: ""; address: "AA:00:00:00:00:03"; rssi: -40 }
+    Device {
+        id: beacon
+        name: "AA-00-00-00-00-03"
+        deviceName: ""
+        address: "AA:00:00:00:00:03"
+        rssi: -40
+    }
     Device { id: unheard; name: "Keys"; address: "AA:00:00:00:00:04"; icon: "input-keyboard" }
 
     QtObject {
@@ -141,7 +147,7 @@ ShellRoot {
     }
 
     function nearbyHolds() {
-        expect("not looking until Nearby opens", !air.discovering && finding.heard.length === 0,
+        expect("not looking until Nearby opens", !air.discovering && finding.nearby.length === 0,
             `discovering ${air.discovering}`);
         expect("Bluetooth lists the paired, then Nearby, then the Adapter",
             finding.all.map(row => row.key).join(",") === [`bluetooth:${across.address}`,
@@ -154,14 +160,18 @@ ShellRoot {
         launcher.held = [{ row: { key: "bluetooth:nearby" } }];
         expect("looking while Nearby is open", air.discovering, "the radio isn't looking");
         const rows = finding.nearbyPlace.verbs();
-        expect("the named heard, strongest first", said(rows)
-            === "Speaker=,Studio Buds=paired", said(rows));
-        expect("how many it heard", finding.nearbyPlace.side === "2 heard",
+        expect("the named heard, strongest first, then how many more had no name", said(rows)
+            === "Speaker=,Studio Buds=paired,1 more without a name=", said(rows));
+        expect("how many it heard by name", finding.nearbyPlace.side === "2 heard",
             finding.nearbyPlace.side);
+        const unnamed = rows[2].verbs();
+        expect("the nameless stepped into, by address, to pair", rows[2].verb === "more"
+            && said(unnamed) === "AA-00-00-00-00-03=" && unnamed[0].verb === "pair",
+            said(unnamed));
         expect("a stranger is paired", rows[0].verb === "pair" && rows[1].verb === "connect",
             `${rows[0].verb}, ${rows[1].verb}`);
-        expect("each heard in dBm", rows[0].note === "-48 dBm, strong"
-            && rows[1].note === "-81 dBm, weak", `${rows[0].note}; ${rows[1].note}`);
+        expect("each heard in dBm, with a real minus", rows[0].note === "\u221248 dBm, strong"
+            && rows[1].note === "\u221281 dBm, weak", `${rows[0].note}; ${rows[1].note}`);
         expect("each its signal as a bar", rows[0].graph.shape === "bar"
             && Math.abs(rows[0].graph.values[0] - 52 / 70) < 0.001 && !rows[0].graph.warn,
             JSON.stringify(rows[0].graph));
@@ -170,7 +180,7 @@ ShellRoot {
             && rows[1].key === finding.made(across).key, rows[1].glyph);
         speaker.rssi = -70;
         expect("heard again, said again", finding.nearbyPlace.verbs()[0].note
-            === "-70 dBm, fair", finding.nearbyPlace.verbs()[0].note);
+            === "\u221270 dBm, fair", finding.nearbyPlace.verbs()[0].note);
         launcher.held = [];
         expect("done looking once Nearby closes", !air.discovering, "the radio's still looking");
 
@@ -198,19 +208,23 @@ ShellRoot {
         speaker.failed("org.bluez.Error.AuthenticationFailed", "Authentication Failed");
         speaker.pairing = false;
         expect("what BlueZ answered said", finding.said(speaker, "")
-            === "Speaker didn't pair: it wants a passkey", finding.said(speaker, ""));
+            === "Speaker not paired \u00b7 it wants a passkey", finding.said(speaker, ""));
         expect("a failed pairing untrusted", !speaker.trusted, "it's still trusted");
         finding.join(across);
-        expect("connecting said", finding.said(across, "") === "connecting Studio Buds\u2026",
+        expect("connecting said", finding.said(across, "") === "connecting Studio Buds",
             finding.said(across, ""));
         across.failed("org.bluez.Error.Failed", "Input/output error");
         expect("anything else in BlueZ's own words", finding.said(across, "")
-            === "Studio Buds: input/output error", finding.said(across, ""));
+            === "Studio Buds not connected \u00b7 input/output error", finding.said(across, ""));
+        finding.join(across);
+        across.failed("org.bluez.Error.NotSupported", "");
+        expect("with no message, BlueZ's name for it", finding.said(across, "")
+            === "Studio Buds not connected \u00b7 not supported", finding.said(across, ""));
         finding.join(speaker);
-        expect("pairing said", finding.said(speaker, "") === "pairing with Speaker\u2026",
+        expect("pairing said", finding.said(speaker, "") === "pairing with Speaker",
             finding.said(speaker, ""));
         speaker.pairing = false;
-        expect("no answer, unpaired said", finding.said(speaker, "") === "Speaker didn't pair",
+        expect("no answer, not paired said", finding.said(speaker, "") === "Speaker not paired",
             finding.said(speaker, ""));
     }
 

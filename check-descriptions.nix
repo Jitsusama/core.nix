@@ -203,8 +203,9 @@
     visibility and pairing as settings, its traffic as a spark and what it is; answers how the
     links are doing; says a device running low at its row's side; lists only devices paired,
     then Nearby, which has the radio look only while it's open and lists the named devices heard,
-    strongest first, each with its signal in dBm and as a bar; and says what BlueZ answered a
-    pairing or connecting that failed, in the launcher's words
+    strongest first, each with its signal in dBm and as a bar, then counts those without a name,
+    which it lists by address when stepped into; and says what BlueZ answered a pairing or
+    connecting that failed, in the launcher's words
   '';
   bluetooth-seal-keeps-only-what-a-keyboard-needs = ''
     the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to
