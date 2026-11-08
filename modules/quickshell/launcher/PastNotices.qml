@@ -78,6 +78,8 @@ Provider {
             verb: nowhere ? "more" : opened || !from.window ? "open" : "go to",
             name: named.name,
             count: named.note,
+            // Its note gives way by whole words, never an ellipsis (Choice.qml).
+            countWords: true,
             noteFor: noteFor,
             // Stepped into, the head says its title alone, its words being
             // the drawer's (VKCF3Z, 2026-11-08).
