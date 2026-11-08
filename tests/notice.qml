@@ -1,7 +1,8 @@
 // A notice's acts, in the order its card and its row in the launcher both
 // list them, and how its drawer tells it, run in Qt's own JavaScript
-// engine, the one the shell runs it in. The `a-notice-is-one-thing` check copies Notice.js beside this file
-// and runs `qml -platform offscreen notice.qml`.
+// engine, the one the shell runs it in. The `a-notice-is-one-thing` check
+// copies Notice.js beside this file and runs
+// `qml -platform offscreen notice.qml`.
 import QtQuick
 import "Notice.js" as Notice
 
@@ -129,7 +130,8 @@ QtObject {
         expect("still open, Left tells no time",
             Notice.facts(arrived, { label: "Left", said: "still on the screen", at: "" },
                 { label: "Urgency", said: "" }),
-            [{ label: "Arrived", value: "10:51" }, { label: "Left", value: "still on the screen" }]);
+            [{ label: "Arrived", value: "10:51" },
+                { label: "Left", value: "still on the screen" }]);
 
         for (const failure of failures)
             console.warn(failure);

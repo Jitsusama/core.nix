@@ -150,10 +150,10 @@ Provider {
 
     // What its drawer says of a notice beyond its words: when it arrived,
     // how it left the screen and when, or that it's still open; and the
-    // urgency its sender asked (Notice.js). What the spec gives besides is left out: a sound, which the desktop never
-    // plays for a sender; the icons of its actions, since its acts wear the
-    // desktop's marks; and how long it asked to stay, which its leaving
-    // already tells.
+    // urgency its sender asked (Notice.js). What the spec gives besides is
+    // left out: a sound, which the desktop never plays for a sender; the
+    // icons of its actions, since its acts wear the desktop's marks; and
+    // how long it asked to stay, which its leaving already tells.
     function facts(notice) {
         const how = notice.left ?? (notice.id in Notices.resting ? "resting"
             : notice.id in Notices.live ? "shown" : "");
