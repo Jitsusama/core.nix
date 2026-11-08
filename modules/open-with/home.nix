@@ -49,6 +49,10 @@ in
     orderIn = "${config.xdg.stateHome}/open-with/order";
   };
 
+  # Capture's Recent asks the same of what was taken, for a picture's
+  # dimensions and a recording's length and frame in its drawer.
+  jitsusama.quickshell.launcher.providers.capture.preview = [ (lib.getExe file-preview) ];
+
   home.packages = [ recent-files ];
 
   jitsusama.quickshell.launcher.recents = [

@@ -2588,6 +2588,7 @@ onLinux {
       cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./FileFacts.js} FileFacts.js
@@ -3334,6 +3335,27 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml program-drawer.qml
+      touch $out
+    '';
+
+  # What Capture took says where it is and what kind, when it was taken,
+  # its size and a picture's dimensions or a recording's length, as
+  # tests/captured.qml holds launcher/Captured.js to what Taken.qml reads
+  # and file-preview says.
+  a-capture-says-what-it-took =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-capture-says-what-it-took" { } ''
+      mkdir launcher
+      cp ${../../tests/captured.qml} captured.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml captured.qml
       touch $out
     '';
 

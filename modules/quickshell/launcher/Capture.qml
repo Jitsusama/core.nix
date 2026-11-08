@@ -32,10 +32,12 @@
 // their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
 // program that edits it gives (`fileActs`), as Edit in GIMP.
 import Quickshell
+import Quickshell.Io
 import qs
 import QtQuick
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
+import "Captured.js" as Captured
 import "Recent.js" as Recent
 
 Provider {
@@ -430,14 +432,102 @@ Provider {
         const shots = Files.shown(`${provider.home}/Pictures/Screenshots`);
         row.side = Recent.takenSide(at === undefined ? ""
             : FileFacts.when(at, Date.now(), provider.factWords), folder, shots);
-        const said = Words.of("capture:recent").said ?? {};
-        if (/\.(png|jpe?g|webp)$/i.test(path))
-            row.drawer = Object.assign(Recent.takenEyebrow(folder,
-                folder === shots ? said.screenshot : said.photo, said),
-                { title: row.name, picture: path });
+        // A picture's mark or a video's, as files wear them, rather than a
+        // file's (VKCF3Z, 2026-11-08).
+        const mark = Captured.mark(path);
+        if (mark !== "")
+            row.glyph = Theme.glyph[mark];
+        row.drawer = () => provider.takenDrawer(path, row.name);
         if (line)
             row.note = line;
         return row;
+    }
+
+    // What each folder's captures are, by the folder, for the drawer's
+    // eyebrow.
+    readonly property var kinds: ({
+            [`${home}/Pictures/Screenshots`]: "screenshot",
+            [`${home}/Videos/Recordings`]: "recording",
+            [`${home}/Pictures/Camera`]: "photo",
+            [`${home}/Videos/Camera`]: "video"
+        })
+
+    // The drawer under one thing taken (Captured.js): where and what it is,
+    // the picture, when it was taken and its size, as Taken read them, then
+    // its dimensions or length once file-preview has said, which is asked
+    // a frame later, never while the drawer's binding reads, since that
+    // would change what it reads.
+    function takenDrawer(path, name) {
+        const read = Taken.files.find(file => file.path === path) ?? { path };
+        const folder = path.slice(0, path.lastIndexOf("/"));
+        const shown = provider.previews[path];
+        if (shown === undefined && provider.canPreview && !provider.previewAsked[path]) {
+            provider.previewAsked[path] = true;
+            Qt.callLater(() => provider.preview(path));
+        }
+        const said = Object.assign({}, Words.of("capture:recent").said, {
+            date: (date, format) => Qt.formatDate(date, format)
+        });
+        return Captured.drawer({
+            path,
+            name,
+            where: Files.within(path),
+            kind: provider.kinds[folder] ?? "",
+            at: read.at,
+            size: read.size
+        }, shown ?? null, {
+            now: Date.now(),
+            named: id => Words.name(id === "size" ? "file-chooser:size" : `capture:${id}`),
+            said
+        });
+    }
+
+    // What file-preview said of each thing taken, by its path (null where
+    // it couldn't), and which were asked; the file it's asked of now, and
+    // the next wanted while it answers.
+    readonly property bool canPreview: (settings.preview ?? []).length > 0
+    property var previews: ({})
+    property var previewAsked: ({})
+    property string previewNext: ""
+
+    function preview(path) {
+        if (previewing.running) {
+            provider.previewNext = path;
+            return;
+        }
+        previewing.path = path;
+        previewing.command = settings.preview.concat(["show", path]);
+        previewing.running = true;
+    }
+
+    function previewed(path, text) {
+        let shown = null;
+        try {
+            const parsed = JSON.parse(text);
+            shown = typeof parsed === "object" && parsed !== null && !parsed.error
+                ? parsed : null;
+        } catch (error) {
+            shown = null;
+        }
+        provider.previews = Object.assign({}, provider.previews, { [path]: shown });
+    }
+
+    Process {
+        id: previewing
+
+        property string path: ""
+
+        stdout: StdioCollector {
+            onStreamFinished: provider.previewed(previewing.path, text)
+        }
+        // The next is asked once this one has ended, its answer read.
+        onRunningChanged: {
+            if (running || provider.previewNext === "")
+                return;
+            const next = provider.previewNext;
+            provider.previewNext = "";
+            provider.preview(next);
+        }
     }
 
     // A row's words, its name's and those beside it, made ready once.

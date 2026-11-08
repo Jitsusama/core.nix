@@ -289,6 +289,7 @@ let
     "launcher/Media.js"
     "launcher/NowGroups.js"
     "launcher/Program.js"
+    "launcher/Captured.js"
     "launcher/Notice.js"
   ];
 
