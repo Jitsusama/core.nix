@@ -1,0 +1,14 @@
+// An account in wheel may start and stop the shaper, and nothing more,
+// without a password: modules/shaper/nixos.nix says why. polkit's own
+// engine reads this, in the JavaScript it knows.
+polkit.addRule(function (action, subject) {
+  if (
+    action.id === "org.freedesktop.systemd1.manage-units" &&
+    (action.lookup("verb") === "start" || action.lookup("verb") === "stop") &&
+    action.lookup("unit") === "shaper.service" &&
+    subject.isInGroup("wheel")
+  ) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

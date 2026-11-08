@@ -109,6 +109,14 @@ in
     linkConfig.MACAddressPolicy = "none";
   };
 
+  # The machine's administrators, agents included since they work as the
+  # account, may start and stop the shaper without a password
+  # (shaper.rules), so an A/B of it against the router alone can turn it
+  # on and off around each call without anyone at the keyboard. Wheel
+  # could already do it with its password, so this gives it nothing more.
+  config.security.polkit.enable = true;
+  config.security.polkit.extraConfig = builtins.readFile ./shaper.rules;
+
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
     # Wanted by nothing, so no boot or switch starts it, until its rebuild
