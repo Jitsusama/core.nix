@@ -376,18 +376,24 @@ impl Daemon {
             }
             "act" => {
                 drop(held);
-                let act = said.get("act").map(Value::to_string).unwrap_or_default();
-                if ask::read(&act).is_none() {
-                    return error(&id, "unknown-ask", "no such act");
-                }
-                if asks.send(act).is_err() {
-                    return error(&id, "not-ready", "the account isn't being held");
-                }
-                json!({"id": id, "taken": true})
+                act(&id, &said, asks)
             }
             _ => error(&id, "unknown-ask", &format!("no ask {asked:?}")),
         }
     }
+}
+
+/// An act asked of the account, handed to what holds it, or why it can't
+/// be: one this program doesn't know, or no account held to do it.
+fn act(id: &Value, said: &Value, asks: &Sender<String>) -> Value {
+    let act = said.get("act").map(Value::to_string).unwrap_or_default();
+    if ask::read(&act).is_none() {
+        return error(id, "unknown-ask", "no such act");
+    }
+    if asks.send(act).is_err() {
+        return error(id, "not-ready", "the account isn't being held");
+    }
+    json!({"id": id, "taken": true})
 }
 
 /// Whether two records hold the same, whenever each was heard.
