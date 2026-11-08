@@ -1050,6 +1050,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           floating_room = 2 * (space.rung.screen + shape.border);
           shots = gallery;
         }
+        # BlueZ's emulator, for the looks area to hear a device in Nearby
+        # by: two controllers of the machine's own, one looking and one
+        # heard. Only there, so no other area's test moves with it.
+        // pkgs.lib.optionalAttrs (area == "looks") {
+          btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
+        }
       );
     in
     values;

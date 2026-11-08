@@ -6,7 +6,8 @@ and 2, as the laptop does. Its drawer is a plate whose every line lies on one of
 (docs/design.md, the drawer), measured from what the launcher reports of both to a hundredth of a
 pixel, and shot in the gallery for a person to measure too; the file picker's plate is
 held to the same lines for each kind of file it previews. An ErgoDox unplugged goes from the
-keyboard's layout and the launcher, and comes back plugged in. tests/desktop.nix runs this
+keyboard's layout and the launcher, and comes back plugged in. Bluetooth's Nearby hears a
+device of BlueZ's emulator while it's open, and only then. tests/desktop.nix runs this
 through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
 test proves. Every test asks for the desktop, started once a run (desktop_session.py), and leaves
 it as it found it.
@@ -2978,3 +2979,85 @@ def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
             )
     finally:
         desktop.as_account("systemctl --user stop player || true")
+
+
+# The device Nearby hears: btvirt's second controller, named as BlueZ names a device by what it
+# calls itself, and how strong btvirt says every device is heard (emulator/btdev.c's inquiry).
+HEARD = "Buds"
+HEARD_AT = "\u221260 dBm, strong"
+# BlueZ's adapters, the first the launcher's, the second the device it hears.
+LOOKING = "/org/bluez/hci0"
+LOOKED_FOR = "/org/bluez/hci1"
+
+
+def bluez_set(desktop: Desktop, adapter: str, name: str, kind: str, value: str) -> None:
+    """Set one of an adapter's properties over BlueZ's D-Bus, as bluetoothctl would."""
+    desktop.machine.succeed(
+        f"busctl set-property org.bluez {adapter} org.bluez.Adapter1 {name} {kind} {value}"
+    )
+
+
+def looking(desktop: Desktop) -> str:
+    """Say whether the launcher's adapter is looking for devices, as busctl says it."""
+    return desktop.machine.succeed(
+        f"busctl get-property org.bluez {LOOKING} org.bluez.Adapter1 Discovering"
+    ).strip()
+
+
+# Nearby lists the devices the radio hears only while it's open (VKCF3Z, 2026-11-07): two
+# controllers of btvirt's, one the launcher's and one made visible as Buds, so the launcher's
+# radio looks once Nearby is stepped into, and Buds is listed with its signal as Quickshell's
+# patch says it (modules/quickshell/bluetooth-rssi-and-failures.patch), never paired. Last of
+# the area's tests, since BlueZ starting moves what the launcher holds.
+
+
+def test_nearby_lists_a_device_it_hears_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]
+) -> None:
+    """Nearby looks once it's open and lists Buds, heard, with its signal, at each scale."""
+    machine = desktop.machine
+    machine.succeed("modprobe bluetooth && modprobe hci_vhci")
+    machine.succeed(f"systemd-run --unit=btvirt {values['btvirt']} -l2")
+    machine.succeed("systemctl start bluetooth.service")
+    try:
+        for adapter in (LOOKING, LOOKED_FOR):
+            machine.wait_until_succeeds(
+                f"busctl get-property org.bluez {adapter} org.bluez.Adapter1 Address",
+                timeout=timedelta(seconds=30),
+            )
+            bluez_set(desktop, adapter, "Powered", "b", "true")
+        bluez_set(desktop, LOOKED_FOR, "Alias", "s", HEARD)
+        bluez_set(desktop, LOOKED_FOR, "DiscoverableTimeout", "u", "0")
+        bluez_set(desktop, LOOKED_FOR, "Discoverable", "b", "true")
+        for scale in at_each_scale:
+            named = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            desktop.answer("bluetooth")
+            desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Bluetooth")
+            desktop.step_in()
+            desktop.launcher_until(lambda shown: "Nearby" in shown["rows"])
+            # Not looking yet: only Nearby looks.
+            assert looking(desktop) == "b false"
+            desktop.down_to("Nearby")
+            desktop.step_in()
+            desktop.launcher_until(
+                lambda shown: HEARD in shown["rows"], timeout=timedelta(seconds=60)
+            )
+            assert looking(desktop) == "b true"
+            desktop.down_to(HEARD)
+            selected = desktop.showing()["selected"]
+            assert selected["side"] == "", selected
+            assert selected["note"] == HEARD_AT, selected
+            desktop.photograph(f"launcher-nearby-at-{named}")
+            desktop.step_out()
+            # Out of Nearby, the radio stops looking, and Bluetooth lists only what's paired.
+            machine.wait_until_succeeds(
+                f"busctl get-property org.bluez {LOOKING} org.bluez.Adapter1 Discovering"
+                " | grep -qx 'b false'",
+                timeout=timedelta(seconds=30),
+            )
+            assert HEARD not in desktop.showing()["rows"]
+            desktop.photograph(f"launcher-bluetooth-at-{named}")
+            desktop.close_launcher()
+    finally:
+        machine.succeed("systemctl stop bluetooth.service btvirt || true")
