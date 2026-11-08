@@ -423,7 +423,7 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         lambda shown: shown["selected"]["side"].startswith(("live \u00b7 ", "muted \u00b7 "))
     )
     desktop.step_in()
-    inside = ["Microphone", "People", "Go To the Call", "Leave the Call", "Copy the Link"]
+    inside = ["Microphone", "People", "Go To the Call", "Leave It", "Copy the Link"]
     desktop.launcher_until(lambda shown: shown["rows"] == inside)
     desktop.down_to("Go To the Call")
     machine.send_key("ret")
@@ -432,9 +432,19 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         desktop.in_session(f'niri msg --json focused-window | grep -qF \'"app_id":"{call}"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    # Its window closed, the call is over, and Now no longer lists it.
-    desktop.as_account("niri msg action close-window")
+    # Leave It ends the call, so Return only writes its line, and the call
+    # stays until a fresh Return there runs it, closing its window.
     desktop.close(other)
+    now_rows(desktop)
+    desktop.down_to("Standup")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == inside)
+    desktop.down_to("Leave It")
+    desktop.line("leave")
+    machine.succeed(desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''))
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Its window closed, the call is over, and Now no longer lists it.
     machine.wait_until_fails(
         desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''),
         timeout=dt.timedelta(seconds=10),

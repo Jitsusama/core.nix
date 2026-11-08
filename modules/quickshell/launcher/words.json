@@ -10488,8 +10488,9 @@
     },
     {
       "id": "meet:call:leave",
+      "command": "leave",
       "in": "meet:call",
-      "name": "Leave the Call",
+      "name": "Leave It",
       "verb": "leave"
     }
   ],

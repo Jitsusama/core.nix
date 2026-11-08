@@ -584,7 +584,9 @@ Provider {
         // A piece standing for things of the launcher's own, such as the
         // mail that wants Joel, lists them on Return, each the row it is
         // everywhere else, and its own acts after them (Piece.qml's rows).
-        const holding = piece.rows ? () => piece.rows(thing).concat(actions) : null;
+        // Its rows say what they hold after their names as its own row
+        // does, giving way by whole items (listedAfter).
+        const holding = piece.rows ? () => piece.rows(thing, listedAfter).concat(actions) : null;
         // Everything its source says, under the row, where the piece gives
         // it (Piece.qml's drawer), as the network allows, read again as the
         // drawn clock turns.
@@ -635,11 +637,16 @@ Provider {
     // from the end as a place's are (Launcher.qml's listed), or all of them
     // where no launcher says the room.
     function parted(piece) {
-        const parts = piece.parts ?? [];
+        return listedAfter(piece.parts ?? [], piece.title, piece.value);
+    }
+
+    // Parts said after a row's name, in the room its name and side leave,
+    // giving way by whole parts.
+    function listedAfter(parts, name, side) {
         const launcher = provider.launcher;
         if (parts.length === 0 || !launcher)
             return parts.join(", ");
-        const beside = piece.title.length + piece.value.length + "  ".length;
+        const beside = name.length + side.length + "  ".length;
         return launcher.listed(parts, launcher.rowRoom() - beside);
     }
 

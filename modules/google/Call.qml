@@ -8,11 +8,13 @@
 // stands first, whether the microphone lets him be heard and how long it
 // has gone on, "muted · 23 min"; after its name who's in it, giving way
 // by whole names, and its note when its meeting runs. Return steps in to
-// the Microphone, a switch that keeps its name as it flips; People, each
+// the Microphone, a switch that keeps its name as it flips; People, how
+// many are in it on its side and their names after its own, each a step in
 // since when they're in or when they left, as Meet says it to the google
 // program (src/meet.rs) while the launcher is open; then going to the
-// call's window, and leaving it, which closes the window as Meet's own Leave
-// does, and copying its link last. Its plate says the rest (Meet.js's
+// call's window, and Leave It, which closes the window as Meet's own Leave
+// does and, as it ends the call, Return only writes `:leave` for (the key
+// language's leave-call); and copying its link last. Its plate says the rest (Meet.js's
 // details).
 //
 // The microphone is the machine's default source, as the Microphone
@@ -74,7 +76,7 @@ Piece {
         }))
     // The microphone and who's in the call, each a row of the launcher's,
     // before the acts.
-    rows: !call ? null : thing => [thing({
+    rows: !call ? null : (thing, listed) => [thing({
         key: "meet:call:microphone",
         name: Words.name("meet:call:microphone"),
         side: piece.muted ? piece.said.muted : piece.said.live,
@@ -90,6 +92,8 @@ Piece {
         key: "meet:call:people",
         name: Words.name("meet:call:people"),
         side: Said.counted(piece.heard, piece.said),
+        count: listed(Said.inIt(piece.heard), Words.name("meet:call:people"),
+            Said.counted(piece.heard, piece.said)),
         glyph: Theme.glyph.people,
         hue: "person",
         verbs: () => Said.people(piece.heard).map(person => thing({
