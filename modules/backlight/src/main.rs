@@ -172,33 +172,30 @@ async fn switched(said: &mut Option<watch::Receiver<bool>>) -> bool {
 }
 
 /// Waits for the machine to wake from sleep, however it slept: an idle
-/// suspend or a suspend asked for wakes with no lid moving. Forever once
-/// logind stops saying, or where it couldn't be heard.
-async fn woke(sleeps: &mut Option<Pin<Box<PrepareForSleepStream>>>) {
-    let Some(stream) = sleeps else {
-        return std::future::pending().await;
-    };
+/// suspend or a suspend asked for wakes with no lid moving. Once logind
+/// stops saying, as when the system bus goes, it fails, so the daemon
+/// stops and systemd starts it again hearing it afresh.
+async fn woke(sleeps: &mut Pin<Box<PrepareForSleepStream>>) -> zbus::Result<()> {
     loop {
-        let Some(said) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await else {
-            *sleeps = None;
-            return std::future::pending().await;
+        let Some(said) = std::future::poll_fn(|cx| sleeps.as_mut().poll_next(cx)).await else {
+            return Err(zbus::Error::Failure(
+                "logind stopped saying when it sleeps".into(),
+            ));
         };
         if said.args().is_ok_and(|args| !*args.start()) {
-            return;
+            return Ok(());
         }
     }
 }
 
-/// Waits for the lid to open or shut, or forever once logind stops saying.
-async fn lid_moved(lid: &mut Option<Pin<Box<PropertyStream<'_, bool>>>>) -> zbus::Result<bool> {
-    let Some(stream) = lid else {
-        return std::future::pending().await;
-    };
-    if let Some(changed) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
-        changed.get().await
-    } else {
-        *lid = None;
-        std::future::pending().await
+/// Waits for the lid to open or shut. Once logind stops saying, as when
+/// the system bus goes, it fails, as `woke` does.
+async fn lid_moved(lid: &mut Pin<Box<PropertyStream<'_, bool>>>) -> zbus::Result<bool> {
+    match std::future::poll_fn(|cx| lid.as_mut().poll_next(cx)).await {
+        Some(changed) => changed.get().await,
+        None => Err(zbus::Error::Failure(
+            "logind stopped saying where the lid is".into(),
+        )),
     }
 }
 
@@ -521,8 +518,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let session = SessionProxy::new(&bus).await?;
     let manager = ManagerProxy::new(&bus).await?;
     // Heard before it's read, so a change between the two isn't missed.
-    let mut lid = Some(Box::pin(manager.receive_lid_closed_changed().await));
-    let mut sleeps = manager.receive_prepare_for_sleep().await.ok().map(Box::pin);
+    let mut lid = Box::pin(manager.receive_lid_closed_changed().await);
+    let mut sleeps = Box::pin(manager.receive_prepare_for_sleep().await?);
     let shut = manager.lid_closed().await?;
     let mut watch = screen.watch()?;
     let seen = screen.brightness()?;
@@ -583,7 +580,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
             }
             kelvin = light(&mut warm) => backlight.warmed(kelvin?),
             shut = lid_moved(&mut lid) => backlight.lid(shut?),
-            () = woke(&mut sleeps) => backlight.woke(),
+            woke = woke(&mut sleeps) => {
+                woke?;
+                backlight.woke();
+            }
             follows = switched(&mut said) => backlight.switched(follows),
             on = switched(&mut said_night) => backlight.night_switched(on),
             again = relay_started(&mut started) => if again {
