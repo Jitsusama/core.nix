@@ -33,6 +33,7 @@ import QtQuick
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Interfaces.js" as Interfaces
+import "WifiLink.js" as WifiLink
 import "Numbers.js" as Numbers
 
 Provider {
@@ -416,7 +417,7 @@ Provider {
         : (Wifi.cards.find(card => card.network === looking) ?? { name: "" }).name
     readonly property string reader: settings.iw ?? ""
 
-    // What iw last read of that card's link (Interfaces.radio), as
+    // What iw last read of that card's link (WifiLink.radio), as
     // { card, said }, and the signal it's read since the network was shown,
     // each from 0 to 1, the newest last.
     property var linkRead: null
@@ -451,7 +452,7 @@ Provider {
     function readOf(card, text) {
         if (card !== looked)
             return;
-        const said = Interfaces.radio(text);
+        const said = WifiLink.radio(text);
         linkRead = said ? { card: card, said: said } : null;
         if (said && said.signal !== null)
             saw(said.signal);
@@ -593,11 +594,11 @@ Provider {
     }
 
     // Each way of a card's link, as wifid and iw together read it
-    // (Interfaces.way).
+    // (WifiLink.way).
     function waysOf(link, read) {
         return {
-            in: Interfaces.way(link.receive, read?.receive),
-            out: Interfaces.way(link.send, read?.send)
+            in: WifiLink.way(link.receive, read?.receive),
+            out: WifiLink.way(link.send, read?.send)
         };
     }
 
@@ -608,7 +609,7 @@ Provider {
         if (link === null)
             return null;
         const ways = waysOf(link, readOfCard(card));
-        const side = Interfaces.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed);
+        const side = WifiLink.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed);
         if (side === "")
             return null;
         return holds(`wifi:link:${card}:carried`, "carried", side, {
@@ -630,7 +631,7 @@ Provider {
                 note: each[1].packets !== null ? packets(each[1].packets) : ""
             }));
         if (link.idle !== null)
-            rows.push(fact(key("idle"), "idle", Interfaces.idle(link.idle,
+            rows.push(fact(key("idle"), "idle", WifiLink.idle(link.idle,
                 (value, decimals) => Numbers.format(value, decimals, settings.group,
                     settings.point)), {
                 copy: `${link.idle} ms`,
@@ -740,14 +741,14 @@ Provider {
         const ways = waysOf(link, read);
         const generation = ways.in.generation ?? ways.out.generation;
         if (generation !== null)
-            rows.push(fact(key("generation"), "generation", Interfaces.eachWay(
+            rows.push(fact(key("generation"), "generation", WifiLink.eachWay(
                 ways.in.generation, ways.out.generation, each => `Wi-Fi ${each}`), {
                 note: generationSaid[generation] ?? ""
             }));
         // The coding, streams, guard interval and width, each said once
         // where both ways agree and each way where they don't.
         const each = (id, figure, say, note) => {
-            const side = Interfaces.eachWay(ways.in[figure], ways.out[figure], say);
+            const side = WifiLink.eachWay(ways.in[figure], ways.out[figure], say);
             if (side !== "")
                 rows.push(fact(key(id), id, side, { note: note }));
         };

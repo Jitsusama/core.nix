@@ -245,6 +245,7 @@ let
     "launcher/Firmware.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
+    "launcher/WifiLink.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
     "launcher/Plate.js"

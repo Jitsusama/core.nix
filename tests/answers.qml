@@ -32,6 +32,7 @@ import "Cameras.js" as Cameras
 import "Firmware.js" as Firmware
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
+import "WifiLink.js" as WifiLink
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -1325,7 +1326,7 @@ QtObject {
             + "\tconnected time:\t11744 seconds\n"
             + "@@ info\nInterface wlp0s20f3\n\tifindex 2\n"
             + "\tchannel 149 (5745 MHz), width: 80 MHz, center1: 5775 MHz\n\ttxpower 22.00 dBm\n";
-        const networkRadio = Interfaces.radio(networkIw);
+        const networkRadio = WifiLink.radio(networkIw);
         machine("the signal at each antenna", [networkRadio.signal, networkRadio.antennas],
             [-43, [-52, -43]]);
         machine("the signal on average and of the beacons",
@@ -1340,24 +1341,24 @@ QtObject {
         machine("its preamble, slot time and traffic sorted by kind",
             [networkRadio.preamble, networkRadio.shortSlot, networkRadio.wmm], ["long", true, true]);
         machine("an access point that says none of its timing",
-            [Interfaces.radio("@@ station\n\tsignal: -43 dBm\n").dtim,
-                Interfaces.radio("@@ station\n\tsignal: -43 dBm\n").wmm], [null, null]);
+            [WifiLink.radio("@@ station\n\tsignal: -43 dBm\n").dtim,
+                WifiLink.radio("@@ station\n\tsignal: -43 dBm\n").wmm], [null, null]);
         machine("its channel and frequency", [networkRadio.channel, networkRadio.frequency],
             [149, 5745]);
         machine("a Wi-Fi 6 rate", networkRadio.receive,
             { mbps: 1200.9, width: 80, generation: 6, mcs: 11, streams: 2, guard: 0.8,
                 dcm: false });
         machine("a Wi-Fi 6 rate's longer guard", networkRadio.send.guard, 1.6);
-        machine("a Wi-Fi 7 rate", Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")
+        machine("a Wi-Fi 7 rate", WifiLink.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")
             .generation, 7);
-        machine("a Wi-Fi 4 rate's streams", Interfaces.rate("144.4 MBit/s MCS 15 short GI"),
+        machine("a Wi-Fi 4 rate's streams", WifiLink.rate("144.4 MBit/s MCS 15 short GI"),
             { mbps: 144.4, width: null, generation: 4, mcs: 7, streams: 2, guard: 0.4,
                 dcm: null });
         machine("a Wi-Fi 5 rate's usual guard",
-            Interfaces.rate("866.7 MBit/s 80MHz VHT-MCS 9 VHT-NSS 2").guard, 0.8);
-        machine("an older rate", Interfaces.rate("54.0 MBit/s"), { mbps: 54, width: null,
+            WifiLink.rate("866.7 MBit/s 80MHz VHT-MCS 9 VHT-NSS 2").guard, 0.8);
+        machine("an older rate", WifiLink.rate("54.0 MBit/s"), { mbps: 54, width: null,
             generation: null, mcs: null, streams: null, guard: null, dcm: null });
-        machine("a card on no network", Interfaces.radio("@@ link\nNot connected.\n@@ station\n"),
+        machine("a card on no network", WifiLink.radio("@@ link\nNot connected.\n@@ station\n"),
             null);
         machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
         machine("how long, in days", Interfaces.lasted(200000), "2 d 7 h");
@@ -1369,27 +1370,27 @@ QtObject {
         const wifidWay = { mbps: 1081, generation: 6, mcs: 10, streams: 2, guard: 0.8,
             dcm: null, bytes: 23661070224, packets: 27210952 };
         machine("a way of a link, as wifid says it, with iw's width",
-            Interfaces.way(wifidWay, networkRadio.receive), { mbps: 1081, width: 80,
+            WifiLink.way(wifidWay, networkRadio.receive), { mbps: 1081, width: 80,
                 generation: 6, mcs: 10, streams: 2, guard: 0.8, dcm: false,
                 bytes: 23661070224, packets: 27210952 });
-        machine("a Wi-Fi 7 way, its coding as iw says it", Interfaces.way(
+        machine("a Wi-Fi 7 way, its coding as iw says it", WifiLink.way(
             { mbps: 2882, generation: null, mcs: null, streams: null, guard: null },
-            Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")), { mbps: 2882,
+            WifiLink.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")), { mbps: 2882,
                 width: 160, generation: 7, mcs: 13, streams: 2, guard: null, dcm: null,
                 bytes: null, packets: null });
-        machine("a way neither says", Interfaces.way(null, null).mcs, null);
+        machine("a way neither says", WifiLink.way(null, null).mcs, null);
         const mcs = value => `MCS ${value}`;
-        machine("a figure the same each way, said once", Interfaces.eachWay(10, 10, mcs),
+        machine("a figure the same each way, said once", WifiLink.eachWay(10, 10, mcs),
             "MCS 10");
-        machine("a figure each way", Interfaces.eachWay(10, 9, mcs), "MCS 10 in \u00b7 MCS 9 out");
-        machine("a figure only sent", Interfaces.eachWay(null, 9, mcs), "MCS 9 out");
-        machine("a figure only heard", Interfaces.eachWay(0, undefined, mcs), "MCS 0 in");
-        machine("a figure neither way", Interfaces.eachWay(null, null, mcs), "");
+        machine("a figure each way", WifiLink.eachWay(10, 9, mcs), "MCS 10 in \u00b7 MCS 9 out");
+        machine("a figure only sent", WifiLink.eachWay(null, 9, mcs), "MCS 9 out");
+        machine("a figure only heard", WifiLink.eachWay(0, undefined, mcs), "MCS 0 in");
+        machine("a figure neither way", WifiLink.eachWay(null, null, mcs), "");
         const tenths = (value, decimals) => value.toFixed(decimals);
-        machine("idle for milliseconds", Interfaces.idle(12, tenths), "12 ms");
-        machine("idle for seconds", Interfaces.idle(2430, tenths), "2.4 s");
-        machine("idle for tens of seconds", Interfaces.idle(42000, tenths), "42 s");
-        machine("idle for minutes", Interfaces.idle(3 * 60000, tenths), "3 min");
+        machine("idle for milliseconds", WifiLink.idle(12, tenths), "12 ms");
+        machine("idle for seconds", WifiLink.idle(2430, tenths), "2.4 s");
+        machine("idle for tens of seconds", WifiLink.idle(42000, tenths), "42 s");
+        machine("idle for minutes", WifiLink.idle(3 * 60000, tenths), "3 min");
 
         // How each Bluetooth link is doing, from what bluetooth-links writes.
         const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;
