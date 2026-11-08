@@ -63,7 +63,7 @@ function hourly(usage) {
     return down.map((hour, at) => hour.bytes + (up[at]?.bytes ?? 0));
 }
 
-// The day's traffic, "150.2 MB down · 3.1 MB up", sparked by the hour.
+// The day's traffic, "150 MB down · 3.10 MB up", sparked by the hour.
 function trafficFact(usage, settings) {
     if (!usage) {
         return null;
@@ -74,31 +74,33 @@ function trafficFact(usage, settings) {
     return fact("traffic", value, { figure: spark(hourly(usage)) });
 }
 
-// The internet's drawer: first what its row says, how it stands, the last
-// speed test, the nodes, devices and outages, who carries it, the
-// firmware and the day's traffic, so a narrow drawer shows those before
-// its more; then every speed test, how its addresses are had, and its
-// switches, each under a heading.
+// The internet's drawer: first the last speed test, the nodes, devices
+// and outages, who carries it, the firmware and the day's traffic, so a
+// narrow drawer shows those before its more; then every speed test, how
+// its addresses are had, and its switches, each under a heading. How it
+// stands is its row's side, so the drawer doesn't say it again.
+// Its eyebrow is where it comes from, as every drawer's here is where
+// the thing is, then its kind (VKCF3Z, 2026-11-07).
 function internet(model, now, settings) {
     const net = model?.internet ?? {};
     const lease = net.lease ?? {};
     const dns = net.dns ?? {};
     const firmware = net.firmware ?? {};
     return {
-        eyebrow: joined([net.isp, Home.stateWords(model)]),
-        names: known(net.isp),
+        eyebrow: known(net.isp) ? `via ${net.isp}` : "",
+        names: true,
         title: "Internet",
         facts: kept([
-            fact("state", joined([net.state, net.isp_up === false ? "provider down" : ""])),
             fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
                 Home.when(net.speed_test?.at, now)])),
             fact("nodes", Home.nodesSaid(net.nodes)),
             // eero's count is every device it knows, on now or not, so the
-            // ones on now are said beside it.
+            // ones on now are counted beside it, by how each is on.
             fact("devices", joined([known(net.devices) ? `${net.devices} known` : "",
-                `${(model.devices ?? []).length} on now`])),
+                devicesOn(model.devices ?? [])])),
             fact("outages", outages(net.outages)),
-            fact("isp", joined([net.isp, known(net.asn) ? `AS${net.asn}` : ""])),
+            fact("isp", joined([net.isp, known(net.asn) ? `AS${net.asn}` : "",
+                net.isp_up === false ? "down" : ""])),
             fact("mesh", net.mesh),
             fact("firmware", joined([firmware.running, firmware.has_update
                 ? `${firmware.next ?? "an update"} ready` : "up to date"])),
@@ -116,12 +118,27 @@ function internet(model, now, settings) {
             fact("gateway", net.gateway_address),
             fact("mode", joined([String(net.mode ?? "").toUpperCase(),
                 net.dhcp ? `addresses ${net.dhcp}` : ""])),
-            fact("dns", joined([dns.mode, (dns.servers ?? []).join(", "),
+            fact("dns", joined([dns.mode, (dns.servers ?? []).join(DOT),
                 known(dns.caching) ? `caching ${onOff(dns.caching)}` : "",
                 dns.ipv6_mode ? `IPv6 ${dns.ipv6_mode}` : ""])),
             fact("ipv6", onOff(net.ipv6)),
         ]), switches(net), happened(model?.events ?? [], now)),
     };
+}
+
+// The devices on now as counts of what they count, a part that's none
+// giving way: "12 on Wi-Fi \u00b7 3 on Ethernet", "15 on Wi-Fi".
+function devicesOn(listed) {
+    const ethernet = listed.filter((each) => each.ethernet).length;
+    const wifi = listed.length - ethernet;
+    return joined([wifi > 0 ? `${wifi} on Wi-Fi` : "",
+        ethernet > 0 ? `${ethernet} on Ethernet` : ""]);
+}
+
+// Whether something eero's activity list says is about a device: its
+// words start with the device's name, as "tablet 1 connected to Den".
+function about(event, one) {
+    return String(event.text ?? "").startsWith(`${Home.nameOf(one)} `);
 }
 
 // What happened, newest first, each by when, as eero's activity list says
@@ -136,19 +153,21 @@ function happened(events, now) {
     })));
 }
 
-// A profile's drawer: how it stands, and each device in it, saying which
-// node it's on now or that it isn't on.
+// A profile's drawer: how many devices it lists, and each of them, saying
+// which node it's on now or that it isn't on. How it stands is its row's
+// side, so the drawer doesn't say it again.
 function profile(model, one) {
     const devices = model?.devices ?? [];
     const listed = one.devices ?? [];
     const nodes = model?.nodes ?? [];
     const onNow = listed.filter((mac) => devices.some((each) => each.mac === mac)).length;
     return {
-        eyebrow: joined(["profile", Home.profileState(one)]),
+        eyebrow: "profile",
+        names: true,
         title: one.name ?? one.id,
         facts: kept([
-            fact("state", joined([one.state, one.paused ? "paused" : ""])),
-            fact("devices", joined([listed.length, `${onNow} on now`])),
+            fact("devices", joined([`${listed.length} listed`,
+                onNow > 0 ? `${onNow} on now` : ""])),
         ]).concat(listed.length > 0 ? [{ heading: "listed" }] : [], listed.map((mac) => {
             const on = devices.find((each) => each.mac === mac) ?? null;
             const where = on ? nodes.find((each) => each.id === on.node) ?? null : null;
@@ -166,9 +185,9 @@ function speedTests(net, now, settings) {
     const oldest = tests.length > 0 ? tests[0].at : null;
     return kept([
         tests.length > 1 ? { heading: "speed-tests" } : null,
-        tests.length > 1 ? fact("down", `${Home.mbps(net.speed_test?.down_mbps, settings)} Mb/s`,
+        tests.length > 1 ? fact("down", Home.rate(net.speed_test?.down_mbps, settings),
             { figure: spark(tests.map((test) => test.down_mbps)) }) : null,
-        tests.length > 1 ? fact("up", `${Home.mbps(net.speed_test?.up_mbps, settings)} Mb/s`,
+        tests.length > 1 ? fact("up", Home.rate(net.speed_test?.up_mbps, settings),
             { figure: spark(tests.map((test) => test.up_mbps)) }) : null,
         tests.length > 1 ? fact("kept", `${tests.length} since ${Home.when(oldest, now)}`) : null,
     ]);
@@ -211,24 +230,28 @@ function outages(list) {
     return recorded === 0 ? "none recorded" : `${recorded} recorded`;
 }
 
-// A node's drawer: how it stands, reaches the one before it and how many
-// devices are on it, first, as a narrow drawer has room for those before
-// its more; then which node it is, each radio and port, its firmware,
-// uptime and addresses, its light, and the day's traffic through it.
+// A node's drawer: when it was last heard from, how it reaches the one
+// before it and how many devices are on it, first, as a narrow drawer has
+// room for those before its more; then which node it is, each radio and
+// port, its firmware, uptime and addresses, its light, and the day's
+// traffic through it. Its state is said only where it isn't online, which
+// its row says too, as the first fact. Its eyebrow is what it is, then
+// its kind: "eero Pro 6 \u00b7 node".
 function node(model, one, now, settings) {
     const devices = one.devices ?? {};
+    const state = Home.stateOf(one);
     return {
-        eyebrow: joined([one.gateway ? "gateway node" : "node", Home.stateOf(one)]),
+        eyebrow: joined([one.model, one.gateway ? "gateway node" : "node"]),
+        names: true,
         title: Home.nodeName(one),
         facts: kept([
-            fact("state", joined([Home.stateOf(one), heartbeat(one, now)])),
+            fact("state", state !== "online" ? state : null),
+            fact("heard", heartbeat(one, now)),
             fact("backhaul", joined([Home.backhaulOf(one), known(one.backhaul?.bars)
                 ? `${one.backhaul.bars} of 5 bars` : ""]), {
                 figure: Home.backhaulLevel(one) === null ? null : stroke(Home.backhaulLevel(one)),
             }),
-            fact("devices", joined([devices.all, known(devices.ethernet)
-                ? `${devices.ethernet} Ethernet` : "",
-                known(devices.wifi) ? `${devices.wifi} Wi-Fi` : ""])),
+            fact("devices", devicesCount(devices)),
             fact("model", joined([one.model, one.model_number])),
             fact("serial", one.serial),
         ]).concat(radios(one), ports(one, settings), kept([
@@ -240,7 +263,7 @@ function node(model, one, now, settings) {
             fact("cloud", known(one.cloud_s) ? Interfaces.lasted(one.cloud_s) : null),
             fact("added", one.joined ? Home.when(one.joined, now) : null),
             fact("address", one.address),
-            fact("ipv6", (one.ipv6 ?? []).join(", ")),
+            fact("ipv6", (one.ipv6 ?? []).join(DOT)),
             fact("mac", one.mac),
             fact("light", one.light ? joined([onOff(one.light.on), known(one.light.brightness)
                 ? `${one.light.brightness}%` : ""]) : null),
@@ -274,11 +297,31 @@ function updateWords(available) {
     return available ? "update available" : "up to date";
 }
 
+// When a node was last heard from, "2 h 15 min ago", and late where eero
+// says it is.
 function heartbeat(one, now) {
     if (!one.last_heartbeat) {
-        return one.heartbeat_ok === false ? "no heartbeat" : "";
+        return one.heartbeat_ok === false ? "never" : "";
     }
-    return `heard ${Home.ago(one.last_heartbeat, now)}${one.heartbeat_ok === false ? ", late" : ""}`;
+    return joined([Home.ago(one.last_heartbeat, now), one.heartbeat_ok === false ? "late" : ""]);
+}
+
+// How many devices are on a node, by how each is on, a part that's none
+// giving way: "9, all on Wi-Fi", or "9 \u00b7 6 on Wi-Fi \u00b7 3 on Ethernet".
+function devicesCount(devices) {
+    if (!known(devices.all)) {
+        return "";
+    }
+    const wifi = devices.wifi ?? 0;
+    const ethernet = devices.ethernet ?? 0;
+    if (devices.all > 0 && wifi === devices.all) {
+        return `${devices.all}, all on Wi-Fi`;
+    }
+    if (devices.all > 0 && ethernet === devices.all) {
+        return `${devices.all}, all on Ethernet`;
+    }
+    return joined([String(devices.all), wifi > 0 ? `${wifi} on Wi-Fi` : "",
+        ethernet > 0 ? `${ethernet} on Ethernet` : ""]);
 }
 
 // Each radio by band: its channel, width, power, devices and how busy, a
@@ -292,7 +335,7 @@ function radios(one) {
         label: radio.band,
         value: joined([known(radio.channel) ? `channel ${radio.channel}` : "",
             known(radio.width_mhz) ? `${radio.width_mhz} MHz` : "",
-            known(radio.power_dbm) ? `${radio.power_dbm} dBm` : "",
+            known(radio.power_dbm) ? `${Home.signed(radio.power_dbm)} dBm` : "",
             known(radio.devices) ? Home.counted(radio.devices, "device") : "",
             known(radio.busy_pct) ? `${radio.busy_pct}% busy` : ""]),
         figure: known(radio.busy_pct) ? stroke(radio.busy_pct / PERCENT) : null,
@@ -307,7 +350,7 @@ function radios(one) {
 
 // A link speed in Mb/s as the machine says one: "1 Gb/s", "100 Mb/s".
 function linkSpeed(value, settings) {
-    return known(value) ? Home.speed(value, settings) : "";
+    return known(value) ? Home.rate(value, settings) : "";
 }
 
 // Each port: linked at what speed of its best, whether it's the internet's
@@ -327,23 +370,24 @@ function ports(one, settings) {
     })));
 }
 
-// How a port is linked: "1 Gb/s of 1 Gb/s", or "not linked, up to 1 Gb/s".
+// How a port is linked: "1.00 Gb/s of 1.00 Gb/s", or "not linked \u00b7 up
+// to 1.00 Gb/s".
 function portLink(port, settings) {
     const best = known(port.best_mbps) ? linkSpeed(port.best_mbps, settings) : "";
     if (!port.linked) {
-        return best === "" ? "not linked" : `not linked, up to ${best}`;
+        return best === "" ? "not linked" : `not linked${DOT}up to ${best}`;
     }
     const now = linkSpeed(port.mbps, settings);
     return best === "" ? now : `${now} of ${best}`;
 }
 
-// A rate and how the radio makes it: "1,200.9 Mb/s · MCS 11 · 2 streams ·
+// A rate and how the radio makes it: "1.20 Gb/s · MCS 11 · 2 streams ·
 // 80 MHz · 800 ns guard · Wi-Fi 6".
 function rateOf(rate, settings) {
     if (!rate) {
         return "";
     }
-    return joined([known(rate.mbps) ? `${Home.mbps(rate.mbps, settings)} Mb/s` : "",
+    return joined([Home.rate(rate.mbps, settings),
         known(rate.mcs) ? `MCS ${rate.mcs}` : "",
         known(rate.streams) ? Home.counted(rate.streams, "stream") : "",
         known(rate.width_mhz) ? `${rate.width_mhz} MHz` : "",
@@ -405,7 +449,7 @@ function device(model, one, now, asked) {
                 one.guest ? "guest" : ""])),
             fact("address", one.address),
             fact("addresses", (one.addresses ?? []).filter((each) => each !== one.address)
-                .join(", ")),
+                .join(DOT)),
             fact("mac", joined([one.mac, one.private ? "private" : ""])),
             fact("hostname", one.hostname !== Home.nameOf(one) ? one.hostname : null),
             fact("nickname", one.nickname),
@@ -415,7 +459,7 @@ function device(model, one, now, asked) {
             fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ]).concat(happened((model?.events ?? []).filter((event) => Home.about(event,
+        ]).concat(happened((model?.events ?? []).filter((event) => about(event,
             one)), now)),
     };
 }

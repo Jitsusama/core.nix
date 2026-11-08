@@ -1144,7 +1144,6 @@ onLinux {
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
       cp ${./launcher/Numbers.js} Numbers.js
-      cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Machine.js} Machine.js
       cp ${../eero/home-network.json} home-network.json

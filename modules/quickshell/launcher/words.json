@@ -2130,6 +2130,11 @@
       "name": "State"
     },
     {
+      "id": "eero:node:heard",
+      "in": "eero:node",
+      "name": "Last Heard"
+    },
+    {
       "id": "eero:node:backhaul",
       "in": "eero:node",
       "name": "Backhaul",

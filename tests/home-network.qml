@@ -45,16 +45,20 @@ QtObject {
         const node = id => model.nodes.find(one => one.id === id);
         const device = name => model.devices.find(one => one.name === name);
 
-        // The figures, each in its own unit, said one way.
-        expect("a rate", Home.mbps(1200.9), "1,200.9");
-        expect("a whole rate", Home.mbps(48.0), "48");
-        expect("a speed in Mb/s", Home.speed(11.452299), "11 Mb/s");
-        expect("a slow speed", Home.speed(0.0239604), "24 kb/s");
-        expect("a crawl", Home.speed(0.0000982), "98 b/s");
-        expect("a link speed", Home.speed(1000), "1 Gb/s");
+        // The figures, each in its own unit, said one way, to three
+        // significant digits (VKCF3Z, 2026-11-07).
+        expect("a rate past a thousand Mb/s", Home.rate(1200.9), "1.20 Gb/s");
+        expect("a rate to three digits", Home.rate(369.86), "370 Mb/s");
+        expect("a rate's zero kept", Home.rate(48.0), "48.0 Mb/s");
+        expect("a rate that rounds up a unit", Home.rate(999.96), "1.00 Gb/s");
+        expect("a speed in Mb/s", Home.rate(11.452299), "11.5 Mb/s");
+        expect("a slow speed", Home.rate(0.0239604), "24.0 kb/s");
+        expect("a crawl", Home.rate(0.0000982), "98.2 b/s");
+        expect("a link speed", Home.rate(1000), "1.00 Gb/s");
+        expect("a figure under nothing takes the real minus", Home.signed(-48), "\u221248");
         expect("bytes", Home.bytes(153124674), "153 MB");
-        expect("few bytes", Home.bytes(53741), "54 kB");
-        expect("bytes under ten", Home.bytes(2400000), "2.4 MB");
+        expect("few bytes", Home.bytes(53741), "53.7 kB");
+        expect("bytes under ten", Home.bytes(2400000), "2.40 MB");
         expect("no bytes", Home.bytes(0), "0 B");
         expect("an unknown size", Home.bytes(null), "");
         expect("the upper 5 GHz radio", Home.radioBand("5.8GHz"), "5 GHz high");
@@ -95,9 +99,9 @@ QtObject {
         expect("the internet's row", Home.internetRow(model, now), {
             name: "Internet",
             side: "connected",
-            note: "Example ISP \u00b7 369.9 Mb/s down, 11.9 Mb/s up on 5 Nov \u00b7 "
+            note: "Example ISP \u00b7 370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 on 5 Nov \u00b7 "
                 + "conferencing and gaming on \u00b7 no outages \u00b7 3 nodes online \u00b7 "
-                + "24 devices"
+                + "15 devices on now"
         });
         expect("the home network's state where it isn't connected",
             Home.internetRow(Object.assign({}, model, { internet: Object.assign({},
@@ -117,7 +121,8 @@ QtObject {
         expect("a node over Wi-Fi", Home.nodeRow(node("2002")), {
             name: "Study",
             side: "9 devices",
-            note: "Wi-Fi from Hall over 5 GHz high, 5 of 5 bars \u00b7 eero Pro 6 \u00b7 v7.17.4-5"
+            note: "Wi-Fi from Hall over 5 GHz high \u00b7 5 of 5 bars \u00b7 eero Pro 6 \u00b7 "
+                + "v7.17.4-5"
         });
         expect("a node offline", Home.nodeRow(Object.assign({}, node("2001"),
             { state: "OFFLINE" })).note.split(" \u00b7 ")[0], "offline");
@@ -125,20 +130,20 @@ QtObject {
         // A device: its signal, band and channel, rate each way, speed now.
         expect("a quiet device", Home.deviceRow(device("generic 2")), {
             name: "generic 2",
-            side: "-37 dBm",
-            note: "5 GHz, channel 52 \u00b7 1,200.9 Mb/s down, 1,080.6 Mb/s up \u00b7 idle \u00b7 "
+            side: "\u221237 dBm",
+            note: "5 GHz \u00b7 channel 52 \u00b7 1.20 Gb/s down \u00b7 1.08 Gb/s up \u00b7 idle \u00b7 "
                 + "10.0.0.45",
             mark: "wireless"
         });
         expect("a busy computer", Home.deviceRow(device("unknown computer 1")).note,
-            "5 GHz, channel 149 \u00b7 1,200.9 Mb/s down, 1,200.9 Mb/s up \u00b7 "
-            + "11 Mb/s down, 9.9 Mb/s up \u00b7 10.0.0.20");
+            "5 GHz \u00b7 channel 149 \u00b7 1.20 Gb/s down \u00b7 1.20 Gb/s up \u00b7 "
+            + "11.5 Mb/s down \u00b7 9.86 Mb/s up \u00b7 10.0.0.20");
         expect("a computer's mark", Home.deviceRow(device("unknown computer 1")).mark, "computer");
         expect("a device rated one way", Home.deviceRow(device("printer 1")).note,
-            "2.4 GHz, channel 6 \u00b7 72.2 Mb/s down \u00b7 idle \u00b7 10.0.0.31");
+            "2.4 GHz \u00b7 channel 6 \u00b7 72.2 Mb/s down \u00b7 idle \u00b7 10.0.0.31");
         expect("a trickle", Home.deviceRow(device("generic 3")).note,
-            "2.4 GHz, channel 6 \u00b7 72.2 Mb/s down \u00b7 98 b/s down, 154 b/s up \u00b7 "
-            + "10.0.0.99");
+            "2.4 GHz \u00b7 channel 6 \u00b7 72.2 Mb/s down \u00b7 98.2 b/s down \u00b7 154 b/s up "
+            + "\u00b7 10.0.0.99");
         expect("a device in a profile", Home.deviceRow(Object.assign({}, device("printer 1"),
             { profile: "3002" }), {}, model.profiles).note.split(" \u00b7 ").slice(-1)[0],
             "profile 2");
@@ -154,28 +159,31 @@ QtObject {
         expect("a device over Ethernet", Home.deviceRow(cabled), {
             name: "generic 3",
             side: "Ethernet",
-            note: "Ethernet \u00b7 98 b/s down, 154 b/s up \u00b7 10.0.0.99",
+            note: "Ethernet \u00b7 98.2 b/s down \u00b7 154 b/s up \u00b7 10.0.0.99",
             mark: "wired"
         });
         expect("a device named only by its address", Home.nameOf({ mac: "02:00:00:00:00:99" }),
             "02:00:00:00:00:99");
 
-        // The internet's drawer: every figure the contract places there.
+        // The internet's drawer: every figure the contract places there,
+        // but how it stands, which its row's side says.
         const internet = byId(Drawers.internet(model, now));
         const value = (facts, id) => facts[id] ? facts[id].value : null;
+        expect("the internet's eyebrow, where it comes from", [Drawers.internet(model, now)
+            .eyebrow, Drawers.internet(model, now).names], ["via Example ISP", true]);
+        expect("no state the row says", internet.state, undefined);
         for (const [id, wanted] of [
-            ["state", "connected"],
             ["mesh", "connected"],
             ["isp", "Example ISP \u00b7 AS64496"],
             ["public", "203.0.113.1"],
             ["lease", "DHCP \u00b7 203.0.113.1 / 255.255.254.0 \u00b7 router 203.0.113.2"],
             ["gateway", "10.0.0.1"],
             ["mode", "NAT \u00b7 addresses automatic"],
-            ["dns", "automatic \u00b7 203.0.113.3, 203.0.113.4 \u00b7 caching off \u00b7 "
+            ["dns", "automatic \u00b7 203.0.113.3 \u00b7 203.0.113.4 \u00b7 caching off \u00b7 "
                 + "IPv6 automatic"],
             ["ipv6", "off"],
-            ["speed-test", "369.9 Mb/s down, 11.9 Mb/s up \u00b7 5 Nov 10:52"],
-            ["down", "369.9 Mb/s"],
+            ["speed-test", "370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 5 Nov 10:52"],
+            ["down", "370 Mb/s"],
             ["up", "11.9 Mb/s"],
             ["kept", "15 since 24 Sep 09:53"],
             ["sqm", "optimized"],
@@ -192,10 +200,10 @@ QtObject {
             ["power-saving", "off"],
             ["outages", "none recorded"],
             ["nodes", "3 nodes online"],
-            ["devices", "24 known \u00b7 15 on now"],
+            ["devices", "24 known \u00b7 15 on Wi-Fi"],
             ["firmware", "v7.17.4-5 \u00b7 up to date"],
             ["updates", "at 02:00 \u00b7 last 07:19"],
-            ["traffic", "167 GB down \u00b7 73 GB up"],
+            ["traffic", "167 GB down \u00b7 72.7 GB up"],
             ["read", "22:54 \u00b7 answering"]
         ])
             expect(`the internet's ${id}`, value(internet, id), wanted);
@@ -203,9 +211,9 @@ QtObject {
         // for before its more; the addresses and switches follow, each
         // under a heading of its own.
         const internetFacts = Drawers.internet(model, now).facts;
-        expect("the internet's drawer leads with what its row says", internetFacts.slice(0, 7)
-            .map(fact => fact.id), ["state", "speed-test", "nodes", "devices", "outages",
-            "isp", "mesh"]);
+        expect("the internet's drawer leads with what its row says", internetFacts.slice(0, 6)
+            .map(fact => fact.id), ["speed-test", "nodes", "devices", "outages", "isp",
+            "mesh"]);
         expect("the internet's groups", internetFacts.filter(fact => fact.heading !== undefined)
             .map(fact => fact.heading), ["speed-tests", "addressing", "settings", "events"]);
         expect("the speed tests sparked", internet.down.figure.shape, "spark");
@@ -218,29 +226,32 @@ QtObject {
         for (const [id, wanted] of [
             ["model", "eero Pro 6 \u00b7 K010011"],
             ["serial", "SERIAL0003"],
-            ["state", "online \u00b7 heard 6 min ago"],
+            ["heard", "6 min ago"],
             ["backhaul", "Ethernet \u00b7 5 of 5 bars"],
-            ["devices", "2 \u00b7 0 Ethernet \u00b7 2 Wi-Fi"],
+            ["devices", "2, all on Wi-Fi"],
             ["2.4 GHz", "02:00:00:00:00:0c"],
-            ["port 1", "1 Gb/s of 1 Gb/s \u00b7 internet \u00b7 backhaul \u00b7 0 B in \u00b7 "
+            ["port 1", "1.00 Gb/s of 1.00 Gb/s \u00b7 internet \u00b7 backhaul \u00b7 0 B in \u00b7 "
                 + "153 MB out"],
-            ["port 2", "1 Gb/s of 1 Gb/s \u00b7 0 B in \u00b7 54 kB out"],
+            ["port 2", "1.00 Gb/s of 1.00 Gb/s \u00b7 0 B in \u00b7 53.7 kB out"],
             ["firmware", "v7.17.4-5 \u00b7 up to date"],
             ["up", "15 h 31 min \u00b7 since 07:22"],
             ["cloud", "15 h 6 min"],
             ["added", "13 Nov 2020"],
             ["address", "10.0.0.1"],
-            ["ipv6", "fe80::7/64, fe80::8/64"],
+            ["ipv6", "fe80::7/64 \u00b7 fe80::8/64"],
             ["mac", "02:00:00:00:00:21"],
             ["light", "on \u00b7 100%"],
             ["power", "USB"],
-            ["traffic", "150 MB down \u00b7 10 MB up"]
+            ["traffic", "150 MB down \u00b7 10.1 MB up"]
         ])
             expect(`the gateway node's ${id}`, value(hall, id), wanted);
         expect("no support end eero didn't give", hall.support, undefined);
-        expect("a node's drawer leads with how it stands", Drawers.node(model, node("2003"), now)
-            .facts.slice(0, 5).map(fact => fact.id), ["state", "backhaul", "devices", "model",
-            "serial"]);
+        expect("no state the row says", hall.state, undefined);
+        expect("a node's drawer leads with what its row lacks", Drawers.node(model, node("2003"),
+            now).facts.slice(0, 5).map(fact => fact.id), ["heard", "backhaul", "devices",
+            "model", "serial"]);
+        expect("a node offline says so first", Drawers.node(model, Object.assign({}, node("2003"),
+            { state: "OFFLINE" }), now).facts[0], { id: "state", value: "offline" });
         const radios = Drawers.node(model, node("2003"), now).facts
             .filter(fact => fact.label !== undefined && fact.figure);
         expect("each radio by band", radios.map(fact => [fact.label, fact.value]), [
@@ -254,15 +265,16 @@ QtObject {
         const study = byId(Drawers.node(model, node("2002"), now));
         expect("a node's backhaul over Wi-Fi", value(study, "backhaul"),
             "Wi-Fi from Hall over 5 GHz high \u00b7 5 of 5 bars");
-        expect("a port not linked", value(study, "port 1"), "not linked, up to 1 Gb/s");
+        expect("a port not linked", value(study, "port 1"), "not linked \u00b7 up to 1.00 Gb/s");
         const onHall = Drawers.node(model, node("2003"), now).facts;
         expect("the devices on a node, strongest first", onHall.slice(onHall.findIndex(fact =>
             fact.heading === "on-it") + 1), [
-            { label: "generic 3", value: "-48 dBm \u00b7 2.4 GHz, channel 6" },
-            { label: "phone 1", value: "-52 dBm \u00b7 5 GHz, channel 149" }
+            { label: "generic 3", value: "\u221248 dBm \u00b7 2.4 GHz \u00b7 channel 6" },
+            { label: "phone 1", value: "\u221252 dBm \u00b7 5 GHz \u00b7 channel 149" }
         ]);
-        expect("the eyebrow of a node", Drawers.node(model, node("2002"), now).eyebrow,
-            "node \u00b7 online");
+        expect("the eyebrow of a node, what it is then its kind", [Drawers.node(model,
+            node("2002"), now).eyebrow, Drawers.node(model, node("2002"), now).names],
+            ["eero Pro 6 \u00b7 node", true]);
 
         // A device's drawer: each way's rate and how it's made, and the rest.
         const generic = Drawers.device(model, device("generic 2"), now);
@@ -270,13 +282,13 @@ QtObject {
         for (const [id, wanted] of [
             ["kind", "generic"],
             ["node", "Den \u00b7 eero Pro 6"],
-            ["signal", "-37 dBm \u00b7 71 dB over the noise"],
+            ["signal", "\u221237 dBm \u00b7 71 dB over the noise"],
             ["score", "100% \u00b7 5 of 5 bars"],
-            ["band", "5 GHz, channel 52 \u00b7 5,260 MHz"],
+            ["band", "5 GHz \u00b7 channel 52 \u00b7 5,260 MHz"],
             ["bssid", "02:00:00:00:00:02"],
-            ["rx", "1,200.9 Mb/s \u00b7 MCS 11 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
+            ["rx", "1.20 Gb/s \u00b7 MCS 11 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
                 + "\u00b7 Wi-Fi 6"],
-            ["tx", "1,080.6 Mb/s \u00b7 MCS 10 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
+            ["tx", "1.08 Gb/s \u00b7 MCS 10 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
                 + "\u00b7 Wi-Fi 6"],
             ["speed", "idle"],
             ["retries", "0% \u00b7 quiet for 540 ms"],
@@ -364,11 +376,9 @@ QtObject {
         });
         expect("a profile held off", Home.profileRow(model, held).side, "paused");
         const plate = Drawers.profile(model, held);
-        expect("a profile's plate", [plate.eyebrow, plate.title], ["profile \u00b7 paused",
-            "profile 2"]);
+        expect("a profile's plate", [plate.eyebrow, plate.title], ["profile", "profile 2"]);
         expect("a profile's facts", plate.facts, [
-            { id: "state", value: "Active \u00b7 paused" },
-            { id: "devices", value: "2 \u00b7 1 on now" },
+            { id: "devices", value: "2 listed \u00b7 1 on now" },
             { heading: "listed" },
             { label: "generic 2", value: "on Den" },
             { label: "02:00:00:00:00:35", value: "not on now" }

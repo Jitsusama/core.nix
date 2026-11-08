@@ -9,20 +9,23 @@
 // record, and said by nothing here rather than guessed.
 .pragma library
 .import "Numbers.js" as Numbers
-.import "Traffic.js" as Traffic
 .import "Interfaces.js" as Interfaces
 
-const BITS = 8;
-const MEGA = 1e6;
 const KILO = 1000;
-const TENS = 10;
 const BARS = 5;
 const SECOND = 1000;
 const DAY_MS = 86_400_000;
 // Past this many seconds ago, a moment is said in minutes and hours.
 const SECONDS_SAID = 100;
-// One decimal for a rate or a speed test's figure, as eero gives them.
-const PLACES = 1;
+// Every figure takes three significant digits, so 369.9 reads 370 and
+// 1,200.9 Mb/s reads 1.20 Gb/s (VKCF3Z, 2026-11-07).
+const DIGITS = 3;
+// A rate's units from Mb/s, as eero gives one, each a thousand of the
+// one before.
+const RATE_UNITS = [[1e-6, "b/s"], [1e-3, "kb/s"], [1, "Mb/s"], [KILO, "Gb/s"]];
+// The real minus, never a hyphen, before a figure under nothing.
+const MINUS = "\u2212";
+const DOT = " \u00b7 ";
 // Bytes in SI units, as the file picker says a size.
 const BYTE_UNITS = ["B", "kB", "MB", "GB", "TB"];
 // How eero names a backhaul's radio, by the band the node's own radios
@@ -57,32 +60,54 @@ function number(value, places, settings) {
     return Numbers.format(value, places, set.group, set.point);
 }
 
-// A rate or a speed test's figure in Mb/s, to eero's tenth.
-function mbps(value, settings) {
-    return value === null || value === undefined ? "" : number(value, PLACES, settings);
+// A figure to three significant digits, its zeros kept so each says as
+// much: 369.9 as "370", 11.94 as "11.9", 1.2 as "1.20". A whole figure
+// past three digits keeps them all.
+function significant(value, settings) {
+    const rounded = Number(Number(value).toPrecision(DIGITS));
+    if (rounded === 0) {
+        return "0";
+    }
+    const places = Math.max(0, DIGITS - 1 - Math.floor(Math.log10(Math.abs(rounded))));
+    const said = number(rounded, places, settings).replace("-", MINUS);
+    if (places === 0) {
+        return said;
+    }
+    const point = settings?.point ?? ".";
+    const [whole, fraction] = said.split(point);
+    return `${whole}${point}${(fraction ?? "").padEnd(places, "0")}`;
 }
 
-// A device's speed now, given in Mb/s, as the machine's own Speed says a
-// rate: in b/s, kb/s, Mb/s or Gb/s, whichever reads.
-function speed(value, settings) {
+// A figure that may be under nothing, with the real minus: "\u221248".
+function signed(value) {
+    return value < 0 ? `${MINUS}${Math.abs(value)}` : String(value);
+}
+
+// A rate given in Mb/s, in whichever unit reads it in three digits:
+// "370 Mb/s", "1.20 Gb/s", "98.0 b/s".
+function rate(value, settings) {
     if (value === null || value === undefined) {
         return "";
     }
-    return Traffic.bits((value * MEGA) / BITS, (figure, places) => number(figure, places, settings));
+    const size = Math.abs(Number(Number(value).toPrecision(DIGITS)));
+    const unit = RATE_UNITS.slice().reverse().find((each) => size >= each[0])
+        ?? RATE_UNITS[0];
+    return `${significant(value / unit[0], settings)} ${unit[1]}`;
 }
 
-// Bytes in SI units, one decimal under ten: "940 kB", "2.4 MB".
+// Bytes in SI units, to three digits: "940 kB", "2.40 MB".
 function bytes(value, settings) {
     if (value === null || value === undefined) {
         return "";
     }
-    let scaled = value;
+    let scaled = Number(Number(value).toPrecision(DIGITS));
     let unit = 0;
     while (scaled >= KILO && unit < BYTE_UNITS.length - 1) {
         scaled /= KILO;
         unit += 1;
     }
-    return `${number(scaled, scaled < TENS && unit > 0 ? 1 : 0, settings)} ${BYTE_UNITS[unit]}`;
+    return `${unit === 0 ? number(scaled, 0, settings) : significant(scaled, settings)} `
+        + BYTE_UNITS[unit];
 }
 
 // A backhaul's radio as the node's radios name their bands.
@@ -188,12 +213,12 @@ function counted(count, noun) {
     return `${count} ${count === 1 ? noun : `${noun}s`}`;
 }
 
-// A backhaul with its bars over Wi-Fi: "Wi-Fi from Hall over 5 GHz high,
-// 5 of 5 bars".
+// A backhaul with its bars over Wi-Fi: "Wi-Fi from Hall over 5 GHz high
+// \u00b7 5 of 5 bars".
 function backhaulSaid(node) {
     const way = node.backhaul ?? {};
     const bars = way.kind !== "ethernet" && way.bars !== null && way.bars !== undefined
-        ? `, ${way.bars} of ${BARS} bars`
+        ? `${DOT}${way.bars} of ${BARS} bars`
         : "";
     return `${backhaulOf(node)}${bars}`;
 }
@@ -220,7 +245,7 @@ function nodeRow(node) {
     };
 }
 
-// A device's band and channel: "5 GHz, channel 52".
+// A device's band and channel: "5 GHz \u00b7 channel 52".
 function bandOf(device) {
     if (device.ethernet) {
         return "Ethernet";
@@ -228,17 +253,17 @@ function bandOf(device) {
     const channel = device.channel === null || device.channel === undefined
         ? ""
         : `channel ${device.channel}`;
-    return [device.band ?? "", channel].filter((part) => part !== "").join(", ");
+    return [device.band ?? "", channel].filter((part) => part !== "").join(DOT);
 }
 
-// Figures each way in Mb/s, as one: "1,200.9 Mb/s down, 1,080.6 Mb/s up",
-// or one way where eero says only one.
+// Rates each way, given in Mb/s, as items: "1.20 Gb/s down \u00b7 1.08 Gb/s
+// up", or one way where eero says only one.
 function eachWay(down, up, settings) {
     const ways = [
-        mbps(down, settings) === "" ? "" : `${mbps(down, settings)} Mb/s down`,
-        mbps(up, settings) === "" ? "" : `${mbps(up, settings)} Mb/s up`,
+        rate(down, settings) === "" ? "" : `${rate(down, settings)} down`,
+        rate(up, settings) === "" ? "" : `${rate(up, settings)} up`,
     ];
-    return ways.filter((way) => way !== "").join(", ");
+    return ways.filter((way) => way !== "").join(DOT);
 }
 
 // A device's rate each way.
@@ -246,26 +271,27 @@ function ratesOf(device, settings) {
     return eachWay(device.rx?.mbps, device.tx?.mbps, settings);
 }
 
-// A device's speed now each way, "1.2 Mb/s down, 24 kb/s up", or idle
+// A device's speed now each way, "1.20 Mb/s down \u00b7 24.0 kb/s up", or idle
 // when it moves nothing either way.
 function speedOf(device, settings) {
     const now = device.speed ?? {};
     if (now.down_mbps === 0 && now.up_mbps === 0) {
         return "idle";
     }
-    const down = speed(now.down_mbps, settings);
-    const up = speed(now.up_mbps, settings);
+    const down = rate(now.down_mbps, settings);
+    const up = rate(now.up_mbps, settings);
     return [down === "" ? "" : `${down} down`, up === "" ? "" : `${up} up`]
         .filter((way) => way !== "")
-        .join(", ");
+        .join(DOT);
 }
 
-// A signal in dBm, as Wi-Fi says one.
+// A signal in dBm, as Wi-Fi says one, with the real minus.
 function signalOf(device) {
     return device.signal_dbm === null || device.signal_dbm === undefined
         ? ""
-        : `${device.signal_dbm} dBm`;
+        : `${signed(device.signal_dbm)} dBm`;
 }
+
 
 // What a device's row says: its signal at its side, as a bar too, and
 // after its name its band and channel, its rate each way, its speed now,
@@ -300,10 +326,10 @@ function nodesSaid(counts) {
         counts.offline > 0 ? `${counts.offline} offline` : "",
         counts.pending > 0 ? `${counts.pending} pending` : "",
     ].filter((part) => part !== "");
-    return [`${counted(online, "node")} online`].concat(rest).join(", ");
+    return [`${counted(online, "node")} online`].concat(rest).join(DOT);
 }
 
-// The last speed test, "369.9 Mb/s down, 11.9 Mb/s up".
+// The last speed test, "370 Mb/s down \u00b7 11.9 Mb/s up".
 function speedTestOf(test, settings) {
     return test ? eachWay(test.down_mbps, test.up_mbps, settings) : "";
 }
@@ -317,18 +343,18 @@ function outagesOf(outages) {
 // What the internet's row says, the place's head: its state at its side,
 // and after its name who carries it, the last speed test and when, how
 // it's optimized, its outages, the nodes by state and how many devices
-// eero counts. Asked at `now`, in milliseconds, for when.
+// are on now. Asked at `now`, in milliseconds, for when. Each is an item,
+// so the row gives them way whole from the end (Choice.qml).
 function internetRow(model, now, settings) {
     const internet = model?.internet ?? {};
     const test = internet.speed_test ?? null;
     const tested = speedTestOf(test, settings);
-    const day = test?.at ? ` ${dayOf(test.at, now)}` : "";
+    const day = test?.at ? `${DOT}${dayOf(test.at, now)}` : "";
     const optimized = internet.sqm === null || internet.sqm === undefined
         ? ""
         : `conferencing and gaming ${internet.sqm ? "on" : "off"}`;
-    const devices = internet.devices === null || internet.devices === undefined
-        ? ""
-        : counted(internet.devices, "device");
+    const onNow = (model?.devices ?? []).length;
+    const devices = onNow === 0 ? "" : `${counted(onNow, "device")} on now`;
     // The nodes' network as a whole is said only once it isn't connected,
     // as the internet's state is what the head is about.
     const mesh = String(internet.mesh ?? "");
@@ -337,6 +363,7 @@ function internetRow(model, now, settings) {
         side: stateWords(model),
         note: [
             mesh !== "" && mesh !== "connected" ? `home network ${mesh}` : "",
+            internet.isp_up === false ? "provider down" : "",
             internet.isp ?? "",
             tested === "" ? "" : `${tested}${day}`,
             optimized,
@@ -440,14 +467,6 @@ function profileRow(model, profile) {
         side: profileState(profile),
         note: `${counted(listed.length, "device")} \u00b7 ${onNow === 0 ? "none" : onNow} on now`,
     };
-}
-
-// Whether something eero's activity list says is about a device: its
-// words start with the device's name, as "tablet 1 connected to Den".
-function about(event, device) {
-    const name = nameOf(device);
-    const text = String(event.text ?? "");
-    return text.startsWith(`${name} `);
 }
 
 // Each device's readings since the shell started, by hardware address,
