@@ -5,6 +5,7 @@
 // engine. The file is a header and a row for each board, layer, modifiers
 // held and key: `ergodox	coal	ctrl	a	4355	12`, "-" for no modifiers.
 .pragma library
+.import "Order.js" as Order
 
 // How many keys the drawer names as most pressed.
 const MOST = 5;
@@ -55,7 +56,8 @@ function rows(text) {
 }
 
 // Each key's presses summed over the layers and modifiers it was pressed
-// under, keyed by how it's drawn, so the two shifts are one.
+// under, keyed by how it's drawn, so the two shifts are one: amounts, the
+// most pressed first.
 function tallied(each, by) {
     const sums = new Map();
     for (const row of each) {
@@ -64,7 +66,7 @@ function tallied(each, by) {
     }
     return Array.from(sums, ([name, presses]) => ({ name, presses }))
         .filter(one => one.presses > 0)
-        .sort((a, b) => b.presses - a.presses || a.name.localeCompare(b.name));
+        .sort(Order.amounts({ amount: one => one.presses, name: one => one.name }));
 }
 
 // What one board has tallied, or null for one it has nothing of:

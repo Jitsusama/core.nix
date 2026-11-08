@@ -208,12 +208,11 @@ function landingKey(session, one) {
     return `${session.presence?.session ?? session.address} ${one.ref} ${one.at}`;
 }
 
-// What sessions landed that Joel hasn't read, for Now's Landed (VKCF3Z,
-// 2026-11-06), newest first: each change merged, and anything else that
-// says what he should try (`person`). A plan item ticked, which a session
-// lands too, is its own progress, 27 of the 77 landings on 2026-11-07,
-// so it's left out unless it says what to try. Each is { key, at, ref,
-// what, person, url, session }, `url` only a web link.
+// What sessions landed that Joel hasn't read, for Now's Landed (VKCF3Z, 2026-11-06), newest
+// first: each change merged, and anything else that says what he should try (`person`). A plan
+// item ticked, which a session lands too, is its own progress, 27 of the 77 landings on
+// 2026-11-07, so it's left out unless it says what to try. Each is { key, at, ref, what, person,
+// url, session }, `url` only a web link.
 function landed(sessions, read) {
     const rows = [].concat(...sessions.map(session => (session.presence?.landings ?? [])
         .filter(one => isChange(String(one.ref ?? "")) || String(one.person ?? "") !== "")

@@ -1199,6 +1199,7 @@ onLinux {
       cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${./launcher/KeyCounts.js} KeyCounts.js
+      cp ${./launcher/Order.js} Order.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -3149,6 +3150,7 @@ onLinux {
       cp ${./launcher/Keyboards.qml} launcher/Keyboards.qml
       cp ${./launcher/Keyboards.js} launcher/Keyboards.js
       cp ${./launcher/KeyCounts.js} launcher/KeyCounts.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json

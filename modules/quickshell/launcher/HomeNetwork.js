@@ -147,9 +147,8 @@ function stateOf(node) {
     return String(node.state ?? "").toLowerCase();
 }
 
-// The nodes as the place lists them: the gateway node first, then each
-// node after the one it hangs from, as the backhaul runs, siblings by
-// location, and any whose upstream eero didn't name last.
+// The nodes as the place lists them: the gateway node first, then each node after the one it hangs
+// from, as the backhaul runs, siblings by location, and any whose upstream eero didn't name last.
 function nodesInOrder(nodes) {
     const byName = Order.byName(nodeName);
     const listed = [];
