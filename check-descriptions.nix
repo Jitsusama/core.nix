@@ -857,6 +857,10 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  m4-pro-kernel-describes-both-external-screens = ''
+    the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware
+    memory and their crossbars as its own ADT has them
+  '';
   machine-holds-the-machine-ready = ''
     the machine daemon says hello on the socket systemd hands it, says every record of a watch's
     kinds at once and their rates as of now a moment later, a disk's rates, sensors, link and file

@@ -1042,6 +1042,7 @@ gather (
     (onLinux vmTests)
   ]
   ++ map (file: import file given) [
+    ./hardware/apple-macbook-pro-m4-pro-a3401/checks.nix
     ./hardware/dell-xps-14-da14260/checks.nix
     ./hardware/microsoft-surface-laptop-4-1958/checks.nix
     ./modules/backlight/checks.nix
