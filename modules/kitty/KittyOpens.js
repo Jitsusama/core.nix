@@ -16,18 +16,28 @@
 // @cert-authority or @revoked line, which names a signer or a key
 // refused rather than a machine reached; and a Host block's own
 // UserKnownHostsFile, whose keys aren't said, since each block may name
-// another. A repository is its path, as every folder is. zoxide keeps
-// when each folder was last visited and a score, but `query` prints only
-// the score, and the order is by the visit, so neither is said: a score
-// of its own frecency has no unit Joel could read.
+// another. A repository is its path, as every folder is, and says when
+// zoxide last saw it, read from zoxide's own database, since `query`
+// prints only a score; that score is left out, since its frecency has no
+// unit Joel could read.
 //
-// Each figure of a machine is from a file read once as kitty is stepped
-// into, so nothing here asks the network or ssh-agent anything.
+// Each figure of a machine is from a file read ahead of the launcher
+// opening, so nothing here asks the network or ssh-agent anything.
 .pragma library
 .import "Ago.js" as Ago
 .import "Kitty.js" as Kitty
 
 const MILLISECONDS_A_SECOND = 1000;
+
+// zoxide's database, as bincode lays it out: a version, which this reads
+// only at 3, zoxide's since 0.8, then how many folders, each its path's
+// length and bytes, its score, eight bytes, and when it was last visited,
+// in seconds since 1970; each number little-endian, a count in eight
+// bytes.
+const ZOXIDE_VERSION = 3;
+const BYTE = 256;
+const WORD = 4;
+const LONG = 8;
 
 // A line of ~/.ssh/config: a keyword, then its value after spaces or an
 // equals sign; and what a Host line's names are told apart by.
@@ -270,16 +280,16 @@ function machineSide(one, state, said) {
     return use.length > 0 ? use.join(" \u00b7 ") : goesTo(one);
 }
 
-// A machine's drawer: when it was last reached and how many times, which
-// file named it, then every setting its own block gives it, by ssh's own
-// keyword, as written, then its known_hosts port, other names and kinds
-// of key.
+// A machine's drawer: over its name, the file naming it and what it is,
+// "in ~/.ssh/config \u00b7 machine", in Note since a path is the world's
+// (VKCF3Z, 2026-11-08); then when it was last reached and how many times,
+// every setting its own block gives it, by ssh's own keyword, as written,
+// and its known_hosts port, other names and kinds of key.
 function machineDrawer(one, state, words) {
     const { said } = words;
     const facts = [
         ["connected", lastReached(one, state, said)],
-        ["times", timesOf(one, state, said)],
-        ["from", said[one.from] ?? ""]
+        ["times", timesOf(one, state, said)]
     ].map(fact => ({ label: words.named(fact[0]), value: fact[1] }))
         .concat(one.options.map(each => ({ label: each.keyword, value: each.value })))
         .concat([
@@ -287,12 +297,67 @@ function machineDrawer(one, state, words) {
             ["also", one.also.join(" \u00b7 ")],
             ["keys", one.keys.join(" \u00b7 ")]
         ].map(fact => ({ label: words.named(fact[0]), value: fact[1] })));
-    return { title: one.name, facts: facts.filter(fact => fact.value !== "") };
+    return {
+        eyebrow: Kitty.fill(said.eyebrow ?? "", { file: said[one.from] ?? "" }),
+        eyebrowNames: true,
+        title: one.name,
+        facts: facts.filter(fact => fact.value !== "")
+    };
 }
 
 // The repositories fd finds under ~/src, each by the folder holding its
 // .git: those zoxide knows first, in its order, where a visit to a folder
 // inside one counts as the repository's, then the rest by path.
+// A little-endian number of `size` bytes at `at`.
+function numberAt(bytes, at, size) {
+    let value = 0;
+    for (let index = size - 1; index >= 0; index--) {
+        value = value * BYTE + bytes[at + index];
+    }
+    return value;
+}
+
+// When zoxide last saw each folder, in milliseconds by its path, from its
+// database as `od -An -v -tu1` prints it, a byte a number; nothing from
+// a database of another version or one cut short.
+function visits(printed) {
+    const bytes = String(printed ?? "").trim().split(/\s+/).filter(each => each !== "")
+        .map(Number);
+    const seen = {};
+    if (bytes.length < WORD + LONG || numberAt(bytes, 0, WORD) !== ZOXIDE_VERSION) {
+        return seen;
+    }
+    const count = numberAt(bytes, WORD, LONG);
+    let at = WORD + LONG;
+    for (let index = 0; index < count; index++) {
+        const length = numberAt(bytes, at, LONG);
+        const end = at + LONG + length + LONG + LONG;
+        if (end > bytes.length) {
+            return seen;
+        }
+        const encoded = bytes.slice(at + LONG, at + LONG + length)
+            .map(each => `%${each.toString(16).padStart(2, "0")}`).join("");
+        const when = numberAt(bytes, end - LONG, LONG);
+        seen[decodeURIComponent(encoded)] = when * MILLISECONDS_A_SECOND;
+        at = end;
+    }
+    return seen;
+}
+
+// What's said beside a repository: the folder holding it, said from ~,
+// where that isn't `src`, which every row would say again, then when
+// zoxide last saw it or a folder inside it.
+function repositorySide(path, src, seen, now, home) {
+    const parent = path.slice(0, path.lastIndexOf("/"));
+    const inHome = home !== "" && (parent === home || parent.startsWith(`${home}/`));
+    const folder = parent === src ? "" : (inHome ? `~${parent.slice(home.length)}` : parent);
+    const last = Object.keys(seen ?? {})
+        .filter(each => each === path || each.startsWith(`${path}/`))
+        .reduce((most, each) => Math.max(most, seen[each]), 0);
+    return [folder, last > 0 ? Ago.ago(last, now) : ""].filter(part => part !== "")
+        .join(" \u00b7 ");
+}
+
 function repositories(found, visited) {
     const all = String(found ?? "").split("\n").map(line => line.replace(GIT, ""))
         .filter(path => path !== "");

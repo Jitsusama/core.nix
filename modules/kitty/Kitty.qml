@@ -21,12 +21,14 @@
 //
 // A window opens through the kitty behind the window used last, as a new
 // OS window of it, or as a new kitty while none runs. Everything is read
-// as kitty is stepped into, once each time the launcher opens, and never
-// otherwise (VKCF3Z): kitty's own state through open-now, which asks every
-// kitty at once, fd for the repositories, zoxide for their order, grep for
-// the ssh lines of the history, and ~/.ssh/config and ~/.ssh/known_hosts
-// themselves. What kitty says
-// is read in Kitty.js, and the rest in KittyOpens.js.
+// ahead, as the shell starts and again as the launcher closes, and
+// ~/.ssh/config and ~/.ssh/known_hosts as they change: kitty's own state
+// through open-now, which asks every kitty at once, and is asked again as
+// kitty is stepped into for what changed since; fd for the repositories,
+// zoxide for their order and grep for the ssh lines of the history. So
+// each act is there from the first frame kitty's page draws, in its place, since a row that arrives once the page is drawn
+// joins its end until a key makes the list afresh (Y2YBTS, 2026-11-08).
+// What kitty says is read in Kitty.js, and the rest in KittyOpens.js.
 pragma ComponentBehavior: Bound
 
 import qs
@@ -41,12 +43,14 @@ Provider {
 
     what: "tab"
 
-    // Whether what kitty's step shows was asked for since the launcher
-    // opened; what each said is kept until it says it again.
+    // Whether kitty's own state was asked for since the launcher opened;
+    // what each read said is kept until it says it again.
     property bool looked: false
     property var kitties: []
     property string found: ""
     property string visited: ""
+    // When zoxide last saw each folder, in milliseconds by its path.
+    property var visits: ({})
     property string history: ""
     property string config: ""
     property string hosts: ""
@@ -58,7 +62,8 @@ Provider {
         kitty: provider.settings.kitty ?? "kitty"
     })
 
-    // The launcher closed, so the next step into kitty reads it all again.
+    // The launcher closed, so the next step into kitty asks kitty again,
+    // and the repositories and history are read for the next opening.
     Connections {
         target: provider.launcher
 
@@ -66,20 +71,34 @@ Provider {
             if (!provider.launcher.open) {
                 provider.looked = false;
                 provider.closed = [];
+                provider.readAhead();
             }
         }
+    }
+
+    Component.onCompleted: provider.readAhead()
+    // The settings name the programs each read runs, and may be given
+    // after the provider is made.
+    onSettingsChanged: provider.readAhead()
+
+    function run(readers) {
+        for (const reader of readers) {
+            if ((reader.command[0] ?? "") !== "" && !reader.running)
+                reader.running = true;
+        }
+    }
+
+    // kitty's own state is read ahead too, so Tabs has its place from the
+    // first frame, and asked again on opening for what changed since.
+    function readAhead() {
+        provider.run([listing, finding, ranking, dating, searching]);
     }
 
     function look() {
         if (looked)
             return;
         looked = true;
-        // ~/.ssh/config and ~/.ssh/known_hosts are read as their paths are
-        // given, below.
-        for (const reader of [listing, finding, ranking, searching]) {
-            if ((reader.command[0] ?? "") !== "" && !reader.running)
-                reader.running = true;
-        }
+        provider.run([listing]);
     }
 
     // Each answer draws kitty's step again, once a frame however many come
@@ -136,6 +155,23 @@ Provider {
         }
     }
 
+    // zoxide's database as od prints its bytes, for when each folder was
+    // visited, which zoxide's own query never says.
+    Process {
+        id: dating
+
+        command: (provider.settings.zoxideData ?? "") === "" ? [] : [provider.settings.od,
+            "-An", "-v", "-tu1", provider.settings.zoxideData]
+        stdout: StdioCollector {
+            id: dated
+
+            onStreamFinished: {
+                provider.visits = Opens.visits(dated.text);
+                provider.heard();
+            }
+        }
+    }
+
     // Only the history's ssh lines, of however many it keeps.
     Process {
         id: searching
@@ -156,17 +192,16 @@ Provider {
     FileView {
         id: sshConfig
 
-        path: provider.looked ? provider.settings.sshConfig ?? "" : ""
+        path: provider.settings.sshConfig ?? ""
         printErrors: false
+        watchChanges: true
+        onFileChanged: sshConfig.reload()
         onLoaded: {
             provider.config = sshConfig.text();
             provider.heard();
         }
-        // One that isn't there names no machine; letting go of the path as
-        // the launcher closes keeps what it said until it's read again.
+        // One that isn't there names no machine.
         onLoadFailed: {
-            if (sshConfig.path === "")
-                return;
             provider.config = "";
             provider.heard();
         }
@@ -175,15 +210,15 @@ Provider {
     FileView {
         id: knownHosts
 
-        path: provider.looked ? provider.settings.knownHosts ?? "" : ""
+        path: provider.settings.knownHosts ?? ""
         printErrors: false
+        watchChanges: true
+        onFileChanged: knownHosts.reload()
         onLoaded: {
             provider.hosts = knownHosts.text();
             provider.heard();
         }
         onLoadFailed: {
-            if (knownHosts.path === "")
-                return;
             provider.hosts = "";
             provider.heard();
         }
@@ -242,10 +277,16 @@ Provider {
         })];
     }
 
-    // A repository as every folder is (Files.qml), opening a window there.
+    // A repository as every folder is (Files.qml), opening a window there,
+    // its side when zoxide last saw it, and the folder holding it where
+    // that isn't ~/src, which every row would say again (VKCF3Z).
     function repositoryRow(path) {
         const id = "verb:path:folder:window";
-        return Files.folder(path, thing, [provider.said(id, `${id}:${path}`, {
+        const side = Opens.repositorySide(path, provider.settings.src ?? "", provider.visits,
+            Date.now(), Files.home);
+        const sided = fields => thing(fields.what === "folder"
+            ? Object.assign(fields, { side: side }) : fields);
+        return Files.folder(path, sided, [provider.said(id, `${id}:${path}`, {
             run: () => provider.open({ folder: path })
         })]);
     }

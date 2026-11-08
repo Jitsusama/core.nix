@@ -342,7 +342,8 @@ QtObject {
         const state = { open: ["build"], reached: reached, time: 1700000100000 + 3 * 86400000 };
         const now = {
             now: "connected now", once: "once", times: "{count} times",
-            config: "~/.ssh/config", known: "~/.ssh/known_hosts"
+            config: "~/.ssh/config", known: "~/.ssh/known_hosts",
+            eyebrow: "in {file} \u00b7 machine"
         };
         // Its use alone, its address being the drawer's; where it goes
         // only for one never reached.
@@ -360,18 +361,19 @@ QtObject {
         check("one on a port", Opens.machineSide(machines[5], state, now),
             "2 d ago \u00b7 once");
         const named = { said: now, named: id => `<${id}>` };
+        // The file naming it is its eyebrow's, so no fact says it again.
         check("a machine's drawer", Opens.machineDrawer(machines[2], state, named), {
+            eyebrow: "in ~/.ssh/config \u00b7 machine", eyebrowNames: true,
             title: "quoted", facts: [
                 { label: "<connected>", value: "2 d ago" },
                 { label: "<times>", value: "once" },
-                { label: "<from>", value: "~/.ssh/config" },
                 { label: "ProxyJump", value: "devbox" },
                 { label: "<keys>", value: "ecdsa-sha2-nistp256" }] });
         check("a known machine's drawer", Opens.machineDrawer(machines[5], state, named), {
+            eyebrow: "in ~/.ssh/known_hosts \u00b7 machine", eyebrowNames: true,
             title: "nas", facts: [
                 { label: "<connected>", value: "2 d ago" },
                 { label: "<times>", value: "once" },
-                { label: "<from>", value: "~/.ssh/known_hosts" },
                 { label: "<port>", value: "2200" },
                 { label: "<keys>", value: "ssh-ed25519" }] });
         check("its other names", Opens.machineDrawer(machines[4], state, named).facts
@@ -385,6 +387,31 @@ QtObject {
         check("the repositories", Opens.repositories(found, visited),
             ["/src/c", "/src/d", "/src/a", "/src/b"]);
         check("none found", Opens.repositories("", visited), []);
+
+        // zoxide's database as od prints it, a byte a number: version 3,
+        // two folders, each its path, a score and when it was visited.
+        const le = (value, size) => Array.from({ length: size },
+            (_, index) => Math.floor(value / 256 ** index) % 256);
+        const folder = (bytes, seconds) => le(bytes.length, 8).concat(bytes,
+            [0, 0, 0, 0, 0, 0, 240, 63], le(seconds, 8));
+        const database = le(3, 4).concat(le(2, 8),
+            folder([47, 115, 47, 97], 1700000000), folder([47, 115, 47, 195, 169], 1700003600));
+        const printed = database.join(" ");
+        check("when zoxide saw each folder", Opens.visits(printed),
+            { "/s/a": 1700000000000, "/s/\u00e9": 1700003600000 });
+        check("another version's database", Opens.visits([4].concat(database.slice(1)).join(" ")),
+            {});
+        check("a database cut short", Opens.visits(database.slice(0, 30).join(" ")), {});
+        check("no database", Opens.visits(""), {});
+
+        // A repository says when it, or a folder in it, was seen last, and
+        // the folder holding it only where that isn't ~/src.
+        const seen = { "/h/src/a": 1700000000000, "/h/src/a/docs": 1700003600000 };
+        const later = 1700003600000 + 2 * 3600000;
+        check("a repository in ~/src", Opens.repositorySide("/h/src/a", "/h/src", seen, later, "/h"),
+            "2 h ago");
+        check("one deeper, never seen", Opens.repositorySide("/h/src/work/b", "/h/src", seen, later,
+            "/h"), "~/src/work");
 
         for (const failure of failures)
             console.warn(failure);

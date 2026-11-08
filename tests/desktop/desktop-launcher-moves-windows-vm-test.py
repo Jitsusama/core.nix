@@ -257,22 +257,19 @@ def test_the_launcher_goes_to_a_kitty_tab_inside_its_window(desktop: Desktop) ->
     desktop.as_account(f"{kitty} focus-tab --match index:0")
     focused = f'{kitty} ls --match-tab state:focused | grep -qF \'"title": "Second Tab"\''
     machine.wait_until_fails(desktop.in_session(focused), timeout=dt.timedelta(seconds=10))
+    # The shell reads kitty's repositories, machines and tabs ahead, as the launcher closes, so
+    # the stand-ins made since it started are read once it has opened and closed.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("kitty", selecting="kitty")
-    desktop.into_program()
+    desktop.close_launcher()
 
     def counted(shown: Json) -> bool:
         return "Tabs" in shown["rows"] and all(
             said_of(shown, act)[1:2] == ["2"] for act in KITTY_ACTS
         )
 
-    # Each act comes as what it lists is read, and says how many it holds. The first time the
-    # shell steps into kitty, each comes after the rows drawn already, which the launcher holds
-    # still, in whichever order its read ends. What was read is kept, so every opening after it
-    # draws the page in its own order from the start, which is how Joel sees it from then on.
-    desktop.launcher_until(counted)
-    desktop.close_launcher()
+    # Each act says how many it holds, in its place from the page's first frame, since a row
+    # arriving once a page is drawn would join its end.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
@@ -325,8 +322,11 @@ def walks_kittys_repositories(desktop: Desktop) -> None:
     desktop.down_to("New Window in a Repository")
     desktop.step_in()
     desktop.launcher_until(lambda shown: set(REPOSITORIES) <= set(shown["rows"]))
-    rows = desktop.showing()["rows"]
+    shown = desktop.showing()
+    rows = shown["rows"]
     assert [row for row in rows if row in REPOSITORIES] == list(REPOSITORIES), rows
+    # When zoxide saw it, read from its database, and never ~/src, which every row would say.
+    assert said_of(shown, "tide-tables")[1:] == ["1 h ago"], shown["things"]
     desktop.shoot("launcher-kitty-repositories")
     desktop.step_out()
 

@@ -8963,7 +8963,7 @@
       "once": ["Host"],
       "name": "SSH to a Machine",
       "verb": "ssh",
-      "glyph": "elsewhere",
+      "glyph": "sshMachine",
       "ask": "which machine?"
     },
     {
@@ -8971,13 +8971,14 @@
       "in": "verb:kitty:ssh",
       "name": "Machine",
       "verb": "ssh",
-      "glyph": "elsewhere",
+      "glyph": "sshMachine",
       "said": {
         "now": "connected now",
         "once": "once",
         "times": "{count} times",
         "config": "~/.ssh/config",
-        "known": "~/.ssh/known_hosts"
+        "known": "~/.ssh/known_hosts",
+        "eyebrow": "in {file} \u00b7 machine"
       }
     },
     {
@@ -8989,11 +8990,6 @@
       "id": "kitty:machine:times",
       "in": "kitty:machine",
       "name": "Times Connected"
-    },
-    {
-      "id": "kitty:machine:from",
-      "in": "kitty:machine",
-      "name": "Named In"
     },
     {
       "id": "kitty:machine:port",
@@ -9016,7 +9012,7 @@
       "in": "kitty:machine",
       "name": "SSH to It",
       "verb": "ssh",
-      "glyph": "elsewhere"
+      "glyph": "sshMachine"
     },
     {
       "id": "verb:kitty:machine:copy",

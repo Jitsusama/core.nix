@@ -483,6 +483,13 @@ in
     console = "@";
     means = "on another machine, named after it";
   };
+  # A screen joined to a network, so a machine kitty reaches over SSH wears
+  # a mark of its own rather than an address's @ (VKCF3Z, 2026-11-08).
+  sshMachine = {
+    glyph = nerd "f0c74";
+    console = ">";
+    means = "a machine reached over SSH";
+  };
   branch = {
     glyph = nerd "f418";
     console = "b";

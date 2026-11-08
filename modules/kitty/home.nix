@@ -181,8 +181,10 @@ in
   # a new window in a repository fd finds under ~/src, most recently
   # visited first where zoxide knows one, and one running ssh to a machine
   # ~/.ssh/config or ~/.ssh/known_hosts names, by how many times zsh's
-  # history ran ssh to it. Each is read as kitty is stepped into, once each
-  # time the launcher opens.
+  # history ran ssh to it. Each is read ahead, as the shell starts and as
+  # the launcher closes, so its act is in its place from the first frame.
+  # zoxide's database is read whole, through od, since only it holds when
+  # each folder was visited, which a repository's row says.
   config.jitsusama.quickshell.launcher.providers.kitty = {
     order = 52;
     source = ./Kitty.qml;
@@ -191,6 +193,8 @@ in
     zoxide = lib.optionalString config.programs.zoxide.enable (
       lib.getExe config.programs.zoxide.package
     );
+    zoxideData = lib.optionalString config.programs.zoxide.enable "${config.xdg.dataHome}/zoxide/db.zo";
+    od = lib.getExe' pkgs.coreutils "od";
     grep = lib.getExe pkgs.gnugrep;
     history = lib.optionalString config.programs.zsh.enable config.programs.zsh.history.path;
     sshConfig = "${config.home.homeDirectory}/.ssh/config";
