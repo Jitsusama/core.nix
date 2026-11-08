@@ -209,7 +209,7 @@ Provider {
             part: record.name,
             name: ours ? Words.name("spotify:liked") : record.name,
             verb: Words.verb("verb:spotify:play"),
-            glyph: Words.glyph(ours ? "spotify:liked" : "spotify:context"),
+            glyph: kindGlyph(record.kind),
             hue: "program",
             side: side,
             note: Spotify.noted(record, kinded, said),
@@ -217,6 +217,16 @@ Provider {
             run: play,
             verbs: () => provider.acts(record, play)
         });
+    }
+
+    // The mark of a row's kind, the one its list inside wears, so a
+    // playlist and an album tell apart at a glance in Recent, which mixes
+    // them; a kind Spotify adds later wears what plays.
+    function kindGlyph(kind) {
+        if (kind === "collection")
+            return Words.glyph("spotify:liked");
+        return ["playlist", "album", "artist", "show"].includes(kind)
+            ? Words.glyph(`spotify:${kind}s`) : Words.glyph("spotify:context");
     }
 
     // What Recent says beside a row, what plays now by Spotify's player

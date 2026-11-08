@@ -1571,6 +1571,7 @@ def test_spotify_signed_out_offers_sign_in_and_says_so(desktop: Desktop) -> None
     # Spotify is read as it's stepped into, so its acts come once it answers, and the launcher
     # keeps what it showed in place, a row come later at the end (Steady.js).
     desktop.launcher_until(lambda shown: "Sign In" in shown["rows"])
+    desktop.shoot("launcher-spotify-signed-out")
     desktop.step_out()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("note") == "signed out",

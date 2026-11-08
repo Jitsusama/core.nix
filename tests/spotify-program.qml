@@ -18,6 +18,7 @@
 // once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -186,6 +187,12 @@ ShellRoot {
             ["playlist \u00b7 46 songs \u00b7 Joel", "album \u00b7 1 song \u00b7 Singer, Guest",
                 "show \u00b7 1,212 episodes \u00b7 A Publisher"]);
         same("each keyed by what it is", recent[0].key, "spotify:context:spotify:playlist:p9");
+        same("each wearing its kind's mark, the one its list inside wears",
+            recent.map(row => row.glyph), ["playlist", "album", "show"].map(kind => Words.glyph(
+                `spotify:${kind}s`)));
+        expect("a playlist, an album and a show tell apart at a glance, none wearing playing's",
+            new Set(recent.map(row => row.glyph).concat([Words.glyph("spotify:context")])).size
+            === 4, JSON.stringify(recent.map(row => row.glyph)));
         expect("what plays now is played at this moment", recent[0].at >= before
             && recent[0].at <= Date.now(), String(recent[0].at));
         expect("the rest at when they played, newest first", Number.isFinite(recent[2].at)

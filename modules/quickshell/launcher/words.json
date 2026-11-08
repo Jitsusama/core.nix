@@ -5525,28 +5525,28 @@
       "of": "program:spotify",
       "name": "Playlists",
       "verb": "more",
-      "glyph": "playing"
+      "glyph": "playlist"
     },
     {
       "id": "spotify:albums",
       "of": "program:spotify",
       "name": "Albums",
       "verb": "more",
-      "glyph": "playing"
+      "glyph": "album"
     },
     {
       "id": "spotify:artists",
       "of": "program:spotify",
       "name": "Artists",
       "verb": "more",
-      "glyph": "playing"
+      "glyph": "artist"
     },
     {
       "id": "spotify:shows",
       "of": "program:spotify",
       "name": "Shows",
       "verb": "more",
-      "glyph": "playing"
+      "glyph": "show"
     },
     {
       "id": "verb:spotify:play",
