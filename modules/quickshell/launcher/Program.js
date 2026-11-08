@@ -56,11 +56,16 @@ function percent(share) {
 
 // What a program's processes use, from what the machine daemon says of
 // each of its windows' processes and every one it started (its `tree`
-// kind, each { share_ratio, resident_b, processes }): their share of the
-// processors, the memory they hold and how many there are, summed; null
-// while it says nothing.
+// kind, each { pid, share_ratio, resident_b, processes, pids }): their
+// share of the processors, the memory they hold and how many there are,
+// summed; null while it says nothing. A window's process started from
+// another's is in that one's tree, its `pids`, so it's counted there
+// alone rather than twice.
 function usage(trees) {
-    const said = trees.filter(tree => tree !== null && tree !== undefined);
+    const known = trees.filter(tree => tree !== null && tree !== undefined);
+    const within = (tree, other) => other !== tree && other.pid !== tree.pid
+        && Array.from(other.pids ?? []).includes(tree.pid);
+    const said = known.filter(tree => !known.some(other => within(tree, other)));
     if (said.length === 0) {
         return null;
     }

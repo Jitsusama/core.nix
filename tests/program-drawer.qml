@@ -53,6 +53,11 @@ QtObject {
             null
         ]), { processor: 0.25, memory: 741376000, count: 4 });
         expect("nothing while the daemon says nothing", Program.usage([null, undefined]), null);
+        // A window's kitty started from another window's, so in its tree.
+        expect("a process another window's tree holds counted once", Program.usage([
+            { pid: 2, share_ratio: 0.1, resident_b: 300, processes: 3, pids: [2, 3, 4] },
+            { pid: 3, share_ratio: 0.05, resident_b: 200, processes: 2, pids: [3, 4] }
+        ]), { processor: 0.1, memory: 300, count: 3 });
         expect("no share past the whole", Program.usage([{ share_ratio: 0.8 },
             { share_ratio: 0.7 }]).processor, 1);
 
