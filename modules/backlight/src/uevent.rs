@@ -147,8 +147,9 @@ pub mod tests {
         // The prefix, then eight words: magic, header size, where the fields
         // begin and how long they run, and four filter hashes.
         let size: u32 = 8 + 8 * 4;
+        let length = u32::try_from(body.len()).expect("a test's fields are short");
         let mut event = b"libudev\0".to_vec();
-        for word in [0xFEED_CAFE_u32.to_be(), size, size, body.len() as u32, 0, 0, 0, 0] {
+        for word in [0xFEED_CAFE_u32.to_be(), size, size, length, 0, 0, 0, 0] {
             event.extend_from_slice(&word.to_ne_bytes());
         }
         event.extend_from_slice(&body);
