@@ -27,6 +27,11 @@ Piece {
 
     // Only while the daemon runs, since a stopped one's figures are old; the
     // spend piece says then that nothing watches.
+    // The drawer of the Spend row for the cap it speaks for, by that row's
+    // key as spend-watch gives it (launcher/Now.qml's borrowed); none
+    // where spend-watch names no row.
+    drawnBy: tokens?.row ? { place: "spend", key: `spend:${tokens.row}` } : null
+
     present: shown !== null && !status.silent
     active: present
     wants: active

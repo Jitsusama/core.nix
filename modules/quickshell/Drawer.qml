@@ -1804,8 +1804,10 @@ Floating {
                 // picture in its own shape, as wide as the plate at most and
                 // never so tall it pushes the facts after it out of sight, or
                 // lines in the mono at body size, each whole or cut short,
-                // a folder's items quiet. It takes whole lines of the pitch,
-                // so everything after it stays on the card's.
+                // a folder's items quiet. Lines take whole lines of the
+                // pitch, so everything after them stays on the card's; a
+                // picture its own height, what follows a gap below it
+                // (DrawerPage.previewHeight).
                 Item {
                     id: previewBox
                     readonly property string picture: drawer.preview?.picture ?? ""
@@ -1822,8 +1824,8 @@ Floating {
 
                     width: parent.width
                     visible: picture !== "" || lines.length > 0
-                    height: Math.ceil((picture !== "" ? previewFrame.height
-                        : lines.length * drawer.pitch) / drawer.pitch) * drawer.pitch
+                    height: Page.previewHeight(picture !== "" ? previewFrame.height : 0,
+                        lines.length, drawer.pitch)
 
                     Rectangle {
                         id: previewFrame
@@ -2046,7 +2048,10 @@ Floating {
 
                             // Its figure, or a placeholder while it's
                             // asked, on the one edge every value starts
-                            // at, a long one breaking onto the pitch.
+                            // at, a long one breaking onto the pitch: one
+                            // given as items (`valueItems`, `between`) on
+                            // the lines DrawerPage.valueLines lays them on,
+                            // its `value` still what's copied.
                             PageText {
                                 id: value
                                 sought: drawer.washing
@@ -2055,8 +2060,14 @@ Floating {
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
-                                plain: fact.known ? drawer.itemsKept(fact.modelData.value,
-                                    drawer.faceOf(fact.modelData), fact.valueWide) : "\u2026"
+                                plain: !fact.known ? "\u2026"
+                                    : fact.modelData.valueItems
+                                    ? Page.valueLines(fact.modelData.valueItems,
+                                        fact.modelData.between ?? " \u00b7 ", fact.valueWide,
+                                        text => drawer.faceOf(fact.modelData).advanceWidth(text))
+                                        .join("\n")
+                                    : drawer.itemsKept(fact.modelData.value,
+                                        drawer.faceOf(fact.modelData), fact.valueWide)
                                 leading: drawer.pitch
                                 // A fact that warns, as an entry's weak
                                 // password does, says so in the warning's

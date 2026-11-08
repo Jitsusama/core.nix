@@ -128,8 +128,8 @@ function facts(player, said) {
         { id: "track", value: track(metadata, said) },
         { id: "genre", value: listed(metadata["xesam:genre"]) },
         { id: "rating", value: Number.isFinite(rating) ? percent(rating) : "" },
-        { id: "link", value: String(metadata["xesam:url"] ?? "").trim() },
-        { id: "bus-name", value: String(player.dbusName ?? "") }
+        { id: "link", value: String(metadata["xesam:url"] ?? "").trim(), identifies: true },
+        { id: "bus-name", value: String(player.dbusName ?? ""), identifies: true }
     ];
     return parts.filter(part => part.value !== "");
 }
@@ -148,7 +148,10 @@ function drawer(player, named, said, lookups) {
         eyebrowNames: true,
         title: title === "" ? String(player.identity ?? "") : title,
         preview: picture === "" ? null : { picture, across: 0, down: 0 },
-        facts: facts(player, said).map(part => ({ label: named(part.id), value: part.value })),
+        // Its identifiers in the Name face (DrawerPage.faceOf).
+        facts: facts(player, said).map(part => (part.identifies
+            ? { label: named(part.id), value: part.value, identifies: true }
+            : { label: named(part.id), value: part.value })),
         body: String(metadata["xesam:asText"] ?? "").trim()
     };
 }

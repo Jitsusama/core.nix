@@ -1408,12 +1408,20 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
-      mkdir runtime launcher && chmod 700 runtime
-      cp ${./pieces/Piece.qml} Piece.qml
-      cp ${./pieces/Disk.qml} Disk.qml
+      # The piece says sizes and folders as a file does, from the shell's
+      # folder above its own, so it's laid in pieces/ as the shell has it,
+      # where the lint reads the whole shell.
+      mkdir -p runtime shell/launcher shell/pieces && chmod 700 runtime
+      cd shell
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      cp ${./Files.qml} Files.qml
+      cp ${./pieces/Piece.qml} pieces/Piece.qml
+      cp ${./pieces/Disk.qml} pieces/Disk.qml
+      cp ${./pieces/Drawers.js} pieces/Drawers.js
+      cp ${./pieces/StatusFile.qml} pieces/StatusFile.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
-      cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
@@ -2242,6 +2250,8 @@ onLinux {
         Name=Tester
         GenericName=Logbook
         Exec=tester %U
+        MimeType=text/html;x-scheme-handler/https;
+        Categories=Office;TextEditor;
         Actions=private;new;logbook;
 
         [Desktop Action private]
@@ -2287,7 +2297,9 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
-      mkdir -p launcher share/applications
+      mkdir -p launcher share/applications share/mime
+      # The kinds of file the tester opens end as shared-mime-info says.
+      printf '50:text/html:*.html\n' > share/mime/globs2
       cp ${tester} share/applications/tester.desktop
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
@@ -2303,6 +2315,10 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Media.js} launcher/Media.js
+      cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Music.js} Music.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
@@ -2603,6 +2619,7 @@ onLinux {
       cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./FileFacts.js} FileFacts.js
@@ -3333,6 +3350,71 @@ onLinux {
       touch $out
     '';
 
+  # A program's drawer says what it is, where its windows are, what it
+  # opens and how it starts, in the order every drawer keeps, as
+  # tests/program-drawer.qml holds launcher/Program.js to a desktop file
+  # and shared-mime-info's globs made up there.
+  a-program-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-program-says-all-it-knows" { } ''
+      mkdir launcher
+      cp ${../../tests/program-drawer.qml} program-drawer.qml
+      cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml program-drawer.qml
+      touch $out
+    '';
+
+  # Now's own pieces say in their drawers all their source holds, in the
+  # order every drawer keeps, as tests/piece-drawers.qml holds
+  # pieces/Drawers.js to what the disk guards, Notices, lag-watch, niri,
+  # the recorder and Quiet say.
+  a-piece-says-all-it-knows =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-piece-says-all-it-knows" { } ''
+      mkdir pieces
+      cp ${../../tests/piece-drawers.qml} piece-drawers.qml
+      cp ${./pieces/Drawers.js} pieces/Drawers.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml piece-drawers.qml
+      touch $out
+    '';
+
+  # What Capture took says where it is and what kind, when it was taken,
+  # its size and a picture's dimensions or a recording's length, as
+  # tests/captured.qml holds launcher/Captured.js to what Taken.qml reads
+  # and file-preview says.
+  a-capture-says-what-it-took =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-capture-says-what-it-took" { } ''
+      mkdir launcher
+      cp ${../../tests/captured.qml} captured.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
+      cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml captured.qml
+      touch $out
+    '';
+
   # Once a notice is opened, its sender's window comes forward when it
   # doesn't by itself, as tests/notice-comes-forward.qml holds Forward.js
   # to niri's windows.
@@ -3665,6 +3747,7 @@ onLinux {
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
       cp ${./Search.js} Search.js
+      cp ${./Reading.js} Reading.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./launcher/words.json} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

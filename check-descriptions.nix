@@ -72,9 +72,23 @@
     a notice's body keeps its links, bare addresses included, and only the spec's bold, italics,
     underline and links as markup, everything else escaped as its sender's words
   '';
+  a-capture-says-what-it-took = ''
+    a screenshot's or a recording's drawer says where it is and what kind, when it was taken to
+    the second, its size, and a picture's dimensions or a recording's length once they're known
+  '';
+  a-piece-says-all-it-knows = ''
+    the drawers of Now's own pieces, the disk, the notices waiting, lag, a screen share, a
+    recording and do not disturb, say where and what they are, then what moves first, and their
+    identifiers last, leaving out what they can't say and what the row's side already says
+  '';
   a-player-says-all-it-knows = ''
     a media player's drawer says everything its player tells MPRIS, what moves first and what
     identifies it last, leaving out what it can't say, and its art only from where it may be drawn
+  '';
+  a-program-says-all-it-knows = ''
+    a program's drawer says where its windows are and what it is, then what it plays and what
+    others say of it, the kinds of file and links it opens and its categories, and its command
+    and desktop id last, leaving out what it can't say
   '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's

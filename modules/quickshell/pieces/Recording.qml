@@ -8,6 +8,7 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Drawers.js" as Drawers
 
 Piece {
     id: piece
@@ -35,6 +36,14 @@ Piece {
     onActiveChanged: seen = active ? Date.now() : 0
     value: length
     title: "Recording"
+    // Where it lands and what it shows, and for how long, under Now's row
+    // (Drawers.js); its length ticks as Now's drawn clock turns.
+    drawer: () => Object.assign({ title: piece.title }, Drawers.recording(piece.length,
+        Recorder.what, {
+            named: id => Words.name(id),
+            said: Words.of("on:recording").said,
+            where: Files.within(Recorder.folder)
+        }))
     hint: `Recording ${Recorder.what}, ${length}`
     context: Recorder.what
     actions: Recorder.stoppable ? [{

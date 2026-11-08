@@ -10,7 +10,7 @@ import QtQuick
 Piece {
     present: KeyboardLayer.present && ConnectedKeyboards.board !== null
     active: KeyboardLayer.locked
-    value: KeyboardLayer.locked ? `${KeyboardLayer.name}, locked` : KeyboardLayer.name
+    value: KeyboardLayer.locked ? `${KeyboardLayer.name} \u00b7 locked` : KeyboardLayer.name
     title: "Keyboard Layer"
     hint: `The keyboard is locked on ${KeyboardLayer.name}`
     context: "the layer lock key lets it go"

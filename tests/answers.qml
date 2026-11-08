@@ -1726,6 +1726,41 @@ QtObject {
             ["streaming", "field of view", "USB", "firmware"]);
         machine("a camera with no facts", Cameras.formats(undefined), { modes: [], rest: [] });
 
+        // A camera's drawer says its parts, what moves first and what
+        // identifies it last, its holders left to its row's side, how long
+        // its sensor's been on to the second and its modes parted by dots.
+        const cameraWords = { builtIn: "built in \u00b7 camera", plugged: "on USB \u00b7 camera",
+            powered: "{state} \u00b7 {lasted} since start" };
+        const cameraParts = [
+            { key: "camera:camera:holders", name: "In Use", side: "Zoom" },
+            { key: "camera:camera:privacy", name: "Privacy Light", side: "on" },
+            { key: "camera:camera:sensor", name: "Sensor", side: "OmniVision OV08X40" },
+            { key: "camera:camera:where", name: "Where", side: "front, centre" },
+            { key: "camera:camera:powered", name: "Powered", side: "on", active: 192400 },
+            { key: "camera:camera:modes", name: "Modes", side: "MJPEG, YUYV",
+                listed: ["MJPEG", "YUYV"] },
+            { key: "fact:cameras:camera:usb", name: "Connection", side: "5 Gbit/s" },
+            { key: "fact:cameras:camera:field of view", name: "Field of View", side: "90\u00b0" },
+            { key: "camera:camera:streaming", name: "Streaming",
+                side: "NV12 1920 \u00d7 1080 at 30" },
+            { key: "camera:camera:flood", name: "IR Light", side: "" }
+        ];
+        const cameraDrawn = Cameras.drawer(cameraParts,
+            { name: "Built-In Camera", builtIn: true, said: cameraWords });
+        machine("a camera's drawer, in its order", cameraDrawn.facts.map(fact => fact.label),
+            ["Streaming", "Privacy Light", "Powered", "Modes", "Sensor", "Where",
+                "Field of View", "Connection"]);
+        machine("a camera's drawer, as it says each", [cameraDrawn.eyebrow,
+            cameraDrawn.facts[2].value, cameraDrawn.facts[3].value],
+            ["built in \u00b7 camera", "on \u00b7 3 min 12 s since start", "MJPEG \u00b7 YUYV"]);
+        machine("a plugged-in camera's eyebrow", Cameras.drawer([],
+            { name: "Logitech BRIO", builtIn: false, said: cameraWords }).eyebrow,
+            "on USB \u00b7 camera");
+        machine("powered for hours, to its two largest units", Cameras.drawer([
+            { key: "camera:camera:powered", name: "Powered", side: "on", active: 7500000 }],
+            { builtIn: true, said: cameraWords }).facts[0].value,
+            "on \u00b7 2 h 5 min since start");
+
         // The keyboards in the kernel's list of input devices, as the
         // laptop's and an ErgoDox's read, with the hotkeys and keyd's own
         // keyboard left out, and the ErgoDox's second keyboard, its keypad's
@@ -1912,6 +1947,7 @@ QtObject {
         machine("a layer locked", boardDrawer.facts[0].value, "Numb \u00b7 locked");
         machine("only the locks on", boardDrawer.facts[1].value, "num");
         machine("its polling rate in Hz", boardDrawer.facts[3].value, "1,000 Hz");
+        machine("its USB id in the Name face", boardDrawer.facts[10].identifies, true);
         const bareBoard = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
             locks: [{ id: "caps", on: false }], connection: "USB" }, keyNamed, boardSaid);
         machine("no lock on, and a bus the eyebrow says", bareBoard.facts.map(fact =>
@@ -1927,13 +1963,71 @@ QtObject {
         machine("no charge type", Power.chosen(""), { now: "", all: [] });
         machine("power delivery", Power.protocol("C [PD] PD_PPS"), "USB PD");
         machine("programmable power", Power.protocol("C PD [PD_PPS]"), "USB PD PPS");
+
+        // The power profile's drawer: its holds one fact parted by dots,
+        // why it's slowed in words, the firmware's and the processor's
+        // settings as written, and the drivers last.
+        const profileWords = { eyebrow: "on this machine \u00b7 power profile",
+            held: "{app} for {reason}", lap: "on a lap", heat: "too hot" };
+        const profileDrawn = Power.profileDrawer({
+            holds: [{ app: "Steam", reason: "a game" }, { app: "Firefox", reason: "a video" }],
+            slowed: "heat", firmware: "performance", offers: "cool quiet balanced performance\n",
+            processor: "balance_performance", processorDriver: "intel_pstate",
+            firmwareDrivers: ["SoC Power Slider", "dell-pc"]
+        }, id => `[${id.slice("session:profile:".length)}]`, profileWords);
+        machine("the power profile's drawer", [profileDrawn.eyebrow].concat(profileDrawn.facts
+            .map(fact => `${fact.label} ${fact.value}`)), ["on this machine \u00b7 power profile",
+            "[held] Steam for a game \u00b7 Firefox for a video", "[slowed] too hot",
+            "[firmware] performance",
+            "[offers] cool \u00b7 quiet \u00b7 balanced \u00b7 performance",
+            "[processor] balance_performance", "[processor-driver] intel_pstate",
+            "[firmware-driver] SoC Power Slider \u00b7 dell-pc"]);
+        machine("an unheld profile on a machine whose firmware says nothing",
+            Power.profileDrawer({ holds: [{ app: "Steam", reason: "" }], slowed: "",
+                processorDriver: "amd-pstate-epp" }, id => id, profileWords).facts
+                .map(fact => fact.value), ["Steam", "amd-pstate-epp"]);
         machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
         machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
         const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };
-        machine("a port charging", Power.port(powerPort, number), "100 W, 20 V at 5.0 A, USB PD");
+        machine("a port charging", Power.port(powerPort, number),
+            "100 W \u00b7 20.0 V \u00b7 5.00 A \u00b7 USB PD");
+        machine("a port charging slowly, to three figures", Power.port({ online: true,
+            volts: 15, amps: 3, protocol: "" }, number), "45.0 W \u00b7 15.0 V \u00b7 3.00 A");
         machine("a port charging, its figures unsaid",
             Power.port({ online: true, volts: null, amps: null, protocol: "" }, number),
             "charging");
+        machine("a port charging, its protocol said",
+            Power.port({ online: true, volts: null, amps: null, protocol: "USB-C" }, number),
+            "charging \u00b7 USB-C");
+
+        // A USB-C port's drawer: its roles as the kernel marks them, how it
+        // negotiates in words, what the charger offers, and its revisions
+        // last, a partner's that says none left out.
+        const portWords = { eyebrow: "on port {n} \u00b7 charger", accessory: "{mode} accessory",
+            "mode:usb_power_delivery": "USB Power Delivery", "mode:default": "USB default" };
+        const portNamed = id => `[${id.slice("power:port:".length)}]`;
+        const portDrawn = Power.portDrawer({
+            n: 1, power: "source [sink]", data: "[host] device", mode: "usb_power_delivery",
+            accessory: "none", revision: "3.0", partnerRevision: "0.0",
+            capabilities: [{ volts: 5, amps: 3 }, { volts: 9, amps: 3 }, { volts: 15, amps: 3 },
+                { volts: 20, amps: 3 }],
+            usbType: "C [PD] PD_PPS PD_DRP", supply: "ucsi-source-psy-USBC000:001"
+        }, number, portNamed, portWords);
+        machine("a port's drawer", [portDrawn.eyebrow].concat(portDrawn.facts
+            .map(fact => `${fact.label} ${fact.value}`)), ["on port 1 \u00b7 charger",
+            "[power-role] sink", "[data-role] host", "[mode] USB Power Delivery",
+            "[offers] 5 V \u00b7 9 V \u00b7 15 V \u00b7 20 V at 3.00 A",
+            "[protocols] USB-C \u00b7 USB PD \u00b7 USB PD PPS", "[revision] 3.0",
+            "[supply] ucsi-source-psy-USBC000:001"]);
+        machine("a port's supply in the Name face",
+            portDrawn.facts[portDrawn.facts.length - 1].identifies, true);
+        machine("a charger's offers at their own currents, a programmable one too",
+            Power.offers([{ volts: 5, amps: 3 }, { volts: 20, amps: 4.5 },
+                { volts: 3.3, to: 21, amps: 5 }], number),
+            "5 V at 3.00 A \u00b7 20 V at 4.50 A \u00b7 3.3 to 21 V at 5.00 A");
+        machine("an audio accessory in an empty port", Power.portDrawer({ n: 2,
+            accessory: "audio", partnerRevision: "2.0" }, number, portNamed, portWords).facts
+            .map(fact => fact.value), ["audio accessory", "2.0"]);
         machine("a port powering a phone", Power.port({ online: false, giving: true }, number),
             "powering what's plugged in");
         machine("a port with something in", Power.port({ online: false, partner: true }, number),

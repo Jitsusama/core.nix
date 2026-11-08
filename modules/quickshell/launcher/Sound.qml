@@ -1256,6 +1256,14 @@ Provider {
         return bar(!node || !node.audio || node.audio.muted ? 0 : node.audio.volume);
     }
 
+    // A player's drawer, as the programs' Media row has it (Applications'
+    // mediaDrawer), or none where no source draws one.
+    function playerDrawn(player) {
+        const drawing = (launcher?.sources ?? [])
+            .find(other => typeof other.mediaDrawer === "function");
+        return drawing && player ? drawing.mediaDrawer(player) : null;
+    }
+
     function told() {
         const out = Pipewire.defaultAudioSink;
         const into = Pipewire.defaultAudioSource;
@@ -1277,11 +1285,16 @@ Provider {
         // The track playing, as the music mark has it (Music.qml), then
         // each program with a stream open to play through, by the name it
         // gives, and each recording; a stream may be open and silent, so it
-        // says only that it's open.
+        // says only that it's open. The track's drawer is its player's, the
+        // one its program's Media row opens, since one thing gets one
+        // drawer (VKCF3Z, 2026-11-08).
         if (Music.playing)
             rows.push(copyRow({
-                name: Music.artist === "" ? Music.title : `${Music.title}, ${Music.artist}`,
-                side: said("playing")
+                name: Music.artist === "" ? Music.title
+                    : `${Music.title} \u00b7 ${Music.artist}`,
+                side: said("playing"),
+                thing: true,
+                drawer: () => provider.playerDrawn(Music.player)
             }));
         const names = list => list.filter(node => provider.own(node))
             .map(node => provider.programOf(node).name)

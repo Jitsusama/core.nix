@@ -306,7 +306,9 @@ function drawer(known, named, said) {
         // Anything else desk-facts comes to say of it, by its own name.
         (known.desk ?? []).filter(one => !told.has(one.name))
             .map(one => fact(one.name, one.value)),
+        // Its identifiers in the Name face (DrawerPage.faceOf).
         [fact("usb-id", known.usbId), fact("serial", known.serial)]
+            .map(one => Object.assign(one, { identifies: true }))
     ).filter(one => one.heading !== undefined || one.keys !== undefined
         || String(one.value ?? "").trim() !== "");
     return {

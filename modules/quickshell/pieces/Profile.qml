@@ -28,6 +28,10 @@ Piece {
     readonly property var current: Object.values(named)
         .find(each => each.profile === PowerProfiles.profile) ?? machine
 
+    // Who holds the profile and what the firmware says, as the session
+    // place's Power Profile row draws it (launcher/Now.qml's borrowed).
+    drawnBy: ({ place: "session", key: "session:profile" })
+
     active: current !== machine
     // The profile's own glyph, which the margin and Now draw in place of
     // the entry's mark, so the mark says which one is on.

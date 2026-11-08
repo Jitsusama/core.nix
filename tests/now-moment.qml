@@ -65,6 +65,18 @@ ShellRoot {
         })
     }
 
+    // A place that keeps its rows as a provider's things, as Cameras does,
+    // whose row's drawer a piece of Now's borrows (Piece.qml's drawnBy).
+    QtObject {
+        id: cameras
+
+        readonly property var settings: ({ name: "cameras" })
+        readonly property var things: [{
+            key: "camera:front",
+            drawer: () => ({ eyebrow: "built in \u00b7 camera", facts: [] })
+        }]
+    }
+
     // The launcher's placing of an answered thing, as Launcher.qml's
     // resolved gives it: named by the thing, what it says beside, its
     // parts a step in. Each row it gives is marked, so the test knows Now
@@ -73,7 +85,7 @@ ShellRoot {
         id: launcher
 
         property bool open: false
-        readonly property var sources: [weather, calendar]
+        readonly property var sources: [weather, calendar, cameras]
         property int placed: 0
 
         function resolved(id) {
@@ -193,6 +205,11 @@ ShellRoot {
                 && Location.hereOf('{"v":2,"latitude":"1","longitude":2}') === null
                 && Location.hereOf("{\"v\":2,") === null, "it was read");
 
+        expect("a piece borrows its place's row's drawer, and none the place doesn't list",
+            now.borrowed({ place: "cameras", key: "camera:front" })?.eyebrow
+                === "built in \u00b7 camera"
+                && now.borrowed({ place: "cameras", key: "camera:rear" }) === null
+                && now.borrowed({ place: "sound", key: "sound:mic" }) === null, "it was drawn");
         expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
         launcher.open = true;
         expect("and turns while it's open", now.drawing, "it rested");

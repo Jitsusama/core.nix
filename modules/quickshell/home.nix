@@ -230,6 +230,7 @@ let
     "Reported.qml"
     "Frames.qml"
     "Counted.qml"
+    "pieces/Drawers.js"
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
@@ -289,6 +290,8 @@ let
     "launcher/KeyCounts.js"
     "launcher/Media.js"
     "launcher/NowGroups.js"
+    "launcher/Program.js"
+    "launcher/Captured.js"
     "launcher/Notice.js"
   ];
 

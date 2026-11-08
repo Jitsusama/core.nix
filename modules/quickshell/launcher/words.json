@@ -1848,6 +1848,63 @@
       "name": "Port {n}"
     },
     {
+      "id": "power:port:drawer",
+      "in": "power:port",
+      "said": {
+        "eyebrow": "on port {n} \u00b7 charger",
+        "accessory": "{mode} accessory",
+        "mode:usb_power_delivery": "USB Power Delivery",
+        "mode:default": "USB default",
+        "mode:1.5A": "USB-C at 1.50 A",
+        "mode:3.0A": "USB-C at 3.00 A"
+      }
+    },
+    {
+      "id": "power:port:power-role",
+      "in": "power:port",
+      "name": "Power Role"
+    },
+    {
+      "id": "power:port:data-role",
+      "in": "power:port",
+      "name": "Data Role"
+    },
+    {
+      "id": "power:port:mode",
+      "in": "power:port",
+      "name": "Power Mode"
+    },
+    {
+      "id": "power:port:offers",
+      "in": "power:port",
+      "name": "Offers"
+    },
+    {
+      "id": "power:port:protocols",
+      "in": "power:port",
+      "name": "Protocols"
+    },
+    {
+      "id": "power:port:partner",
+      "in": "power:port",
+      "name": "Partner"
+    },
+    {
+      "id": "power:port:revision",
+      "in": "power:port",
+      "name": "PD Revision"
+    },
+    {
+      "id": "power:port:partner-revision",
+      "in": "power:port",
+      "name": "Partner's PD Revision"
+    },
+    {
+      "id": "power:port:supply",
+      "in": "power:port",
+      "name": "Supply"
+    },
+    {
       "id": "power:charge",
       "in": "power",
       "name": "Charge"
@@ -5830,6 +5887,146 @@
       "empty": "Nothing's on or waiting."
     },
     {
+      "id": "on:disk",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this machine \u00b7 disk",
+        "free": "{amount} free",
+        "day": "a day",
+        "days": "{count} days",
+        "hourly": "{amount} an hour",
+        "grew": "{path} +{amount}",
+        "cleared": "{amount} from {path} at {time}"
+      }
+    },
+    {
+      "id": "on:disk:filling",
+      "in": "on",
+      "name": "Filling"
+    },
+    {
+      "id": "on:disk:growing",
+      "in": "on",
+      "name": "Growing Most"
+    },
+    {
+      "id": "on:disk:cleared",
+      "in": "on",
+      "name": "Last Cleared"
+    },
+    {
+      "id": "on:notices",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 notices"
+      }
+    },
+    {
+      "id": "on:lag",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this machine \u00b7 lag",
+        "over": "{what} \u00b7 over the last {seconds} s"
+      }
+    },
+    {
+      "id": "on:lag:waiting",
+      "in": "on",
+      "name": "Waiting On"
+    },
+    {
+      "id": "on:lag:session",
+      "in": "on",
+      "name": "The Desktop"
+    },
+    {
+      "id": "on:lag:app",
+      "in": "on",
+      "name": "Its Programs"
+    },
+    {
+      "id": "on:lag:jobs",
+      "in": "on",
+      "name": "Jobs"
+    },
+    {
+      "id": "on:lag:build",
+      "in": "on",
+      "name": "Builds"
+    },
+    {
+      "id": "on:lag:swap",
+      "in": "on",
+      "name": "Swap"
+    },
+    {
+      "id": "on:sharing",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 screen share",
+        "several": "{count} things",
+        "held": "held",
+        "shown": "still show",
+        "window": "window",
+        "screen": "screen"
+      }
+    },
+    {
+      "id": "on:sharing:what",
+      "in": "on",
+      "name": "Sharing"
+    },
+    {
+      "id": "on:sharing:notices",
+      "in": "on",
+      "name": "Notices"
+    },
+    {
+      "id": "on:sharing:kind",
+      "in": "on",
+      "name": "Kind"
+    },
+    {
+      "id": "on:sharing:stream",
+      "in": "on",
+      "name": "Stream ID"
+    },
+    {
+      "id": "on:recording",
+      "in": "on",
+      "said": {
+        "eyebrow": "in {where} \u00b7 recording"
+      }
+    },
+    {
+      "id": "on:recording:showing",
+      "in": "on",
+      "name": "Showing"
+    },
+    {
+      "id": "on:quiet",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 do not disturb",
+        "one": "1 notice",
+        "many": "{count} notices"
+      },
+      "tells": {
+        "kept": "Turned on by hand.",
+        "shared": "On while the screen is shared."
+      }
+    },
+    {
+      "id": "on:quiet:since",
+      "in": "on",
+      "name": "Since"
+    },
+    {
+      "id": "on:quiet:held",
+      "in": "on",
+      "name": "Held"
+    },
+    {
       "id": "on:plate",
       "in": "on",
       "said": {
@@ -6764,8 +6961,25 @@
         "none": "none",
         "in": "in {folder}",
         "screenshot": "screenshot",
-        "photo": "photo"
+        "recording": "recording",
+        "photo": "photo",
+        "video": "video"
       }
+    },
+    {
+      "id": "capture:taken",
+      "in": "capture",
+      "name": "Taken"
+    },
+    {
+      "id": "capture:dimensions",
+      "in": "capture",
+      "name": "Dimensions"
+    },
+    {
+      "id": "capture:length",
+      "in": "capture",
+      "name": "Length"
     },
     {
       "id": "cameras",
@@ -6868,6 +7082,15 @@
       "id": "cameras:field-of-view",
       "in": "cameras",
       "name": "Field of View"
+    },
+    {
+      "id": "cameras:drawer",
+      "in": "cameras",
+      "said": {
+        "builtIn": "built in \u00b7 camera",
+        "plugged": "on USB \u00b7 camera",
+        "powered": "{state} \u00b7 {lasted} since start"
+      }
     },
     {
       "id": "emoji",
@@ -7597,7 +7820,14 @@
       "name": "Programs",
       "term": "Programs/program",
       "noun": "programs",
-      "glyph": "program"
+      "glyph": "program",
+      "said": {
+        "on": "on {places}",
+        "and": "and",
+        "program": "program",
+        "kind": "1 kind",
+        "kinds": "{count} kinds"
+      }
     },
     {
       "id": "windows",
@@ -7678,6 +7908,51 @@
       "name": "Power Profile",
       "term": "Machine/power profile",
       "glyph": "balanced"
+    },
+    {
+      "id": "session:profile:drawer",
+      "in": "session:profile",
+      "said": {
+        "eyebrow": "on this machine \u00b7 power profile",
+        "held": "{app} for {reason}",
+        "lap": "on a lap",
+        "heat": "too hot"
+      }
+    },
+    {
+      "id": "session:profile:held",
+      "in": "session:profile",
+      "name": "Held By"
+    },
+    {
+      "id": "session:profile:slowed",
+      "in": "session:profile",
+      "name": "Held Back"
+    },
+    {
+      "id": "session:profile:firmware",
+      "in": "session:profile",
+      "name": "Firmware"
+    },
+    {
+      "id": "session:profile:offers",
+      "in": "session:profile",
+      "name": "Firmware Offers"
+    },
+    {
+      "id": "session:profile:processor",
+      "in": "session:profile",
+      "name": "Processor"
+    },
+    {
+      "id": "session:profile:processor-driver",
+      "in": "session:profile",
+      "name": "Processor Driver"
+    },
+    {
+      "id": "session:profile:firmware-driver",
+      "in": "session:profile",
+      "name": "Firmware Driver"
     },
     {
       "id": "session:power:Power Saver",
@@ -9053,6 +9328,51 @@
       "id": "program:media:bus-name",
       "in": "program:media",
       "name": "Bus Name"
+    },
+    {
+      "id": "applications:processor",
+      "in": "applications",
+      "name": "Processor"
+    },
+    {
+      "id": "applications:memory",
+      "in": "applications",
+      "name": "Memory"
+    },
+    {
+      "id": "applications:processes",
+      "in": "applications",
+      "name": "Processes"
+    },
+    {
+      "id": "applications:playing",
+      "in": "applications",
+      "name": "Playing"
+    },
+    {
+      "id": "applications:opens",
+      "in": "applications",
+      "name": "Opens"
+    },
+    {
+      "id": "applications:handles",
+      "in": "applications",
+      "name": "Handles"
+    },
+    {
+      "id": "applications:categories",
+      "in": "applications",
+      "name": "Categories"
+    },
+    {
+      "id": "applications:command",
+      "in": "applications",
+      "name": "Command"
+    },
+    {
+      "id": "applications:desktop-id",
+      "in": "applications",
+      "name": "Desktop ID"
     },
     {
       "id": "verb:program:play",

@@ -3,14 +3,47 @@
 // run it in Qt's own engine, as the shell does: which of a list the kernel
 // marks as in use, what a USB-C port's protocol is called, what each port
 // gives, the date a battery was made, the order a charge limit's two files
-// are written in, and how bright a room is. Power.qml and Light.qml read the
-// files and say the figures.
+// are written in, how bright a room is, and what the power profile's drawer
+// says. Power.qml, Light.qml and Session.qml read the files and say the
+// figures.
 .pragma library
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
 const MARKED = /\[([^\]]+)\]/;
 const BRACKETS = /^\[|\]$/g;
 const SPACES = /\s+/;
+
+// A template's {fields}, filled.
+const FIELD = /\{(\w+)\}/g;
+
+function filled(template, fields) {
+    return template.replace(FIELD, (_whole, name) => String(fields[name] ?? ""));
+}
+
+// The power profile's drawer: who holds it, why it's slowed, and what the
+// firmware and the processor were told, each as written, then the drivers
+// that tell them. `known` holds what power-profiles-daemon says (`holds`
+// as { app, reason }, `slowed` as a said key or "") and what sysfs does
+// (`firmware`, `offers`, `processor`, `processorDriver`,
+// `firmwareDrivers`). The holds are one fact, parted by dots, so a dot
+// only ever parts holds (VKCF3Z, 2026-11-08).
+function profileDrawer(known, named, said) {
+    const fact = (id, value) => ({ label: named(`session:profile:${id}`), value });
+    const held = (known.holds ?? []).map(hold => hold.reason === "" ? hold.app
+        : filled(said.held, hold)).join(" \u00b7 ");
+    return {
+        eyebrow: said.eyebrow,
+        facts: [
+            fact("held", held),
+            fact("slowed", known.slowed === "" ? "" : said[known.slowed] ?? ""),
+            fact("firmware", known.firmware),
+            fact("offers", String(known.offers ?? "").trim().split(SPACES).join(" \u00b7 ")),
+            fact("processor", known.processor),
+            fact("processor-driver", known.processorDriver),
+            fact("firmware-driver", (known.firmwareDrivers ?? []).join(" \u00b7 "))
+        ].filter(each => (each.value ?? "") !== "")
+    };
+}
 
 // What a list the kernel marks one of says: the one in use and all of
 // them, in its order. A file saying one thing alone, as an older kernel's
@@ -48,18 +81,38 @@ function protocol(usbType) {
     return PROTOCOLS[now] ?? "USB";
 }
 
+// Every protocol a USB-C port's power supply names, in use or not, once
+// each as a person calls them: "C [PD] PD_PPS" is "USB-C \u00b7 USB PD
+// \u00b7 USB PD PPS".
+function protocols(usbType) {
+    const each = chosen(usbType).all.map(one => PROTOCOLS[one] ?? "USB");
+    return each.filter((one, at) => each.indexOf(one) === at).join(" \u00b7 ");
+}
+
+// The figures a value is said to: three, "45.0", "3.00", "100".
+const SIGNIFICANT = 3;
+
+// A figure to three significant figures, written by `number` to so many
+// places.
+function significant(value, number) {
+    const whole = Math.floor(Math.log10(Math.max(Math.abs(value), 1))) + 1;
+    return number(value, Math.max(0, SIGNIFICANT - whole));
+}
+
 // What a USB-C port gives, in a few words: its watts, volts, amps and
-// protocol while it charges the machine, that it's the machine powering
-// what's plugged in, that something's plugged in giving nothing, or that
-// it's empty. `number` writes a figure to so many places.
+// protocol while it charges the machine, each figure its own part
+// (VKCF3Z, 2026-11-08: "45.0 W \u00b7 15.0 V \u00b7 3.00 A", never a comma),
+// that it's the machine powering what's plugged in, that something's
+// plugged in giving nothing, or that it's empty. `number` writes a figure
+// to so many places.
 function port(said, number) {
     if (said.online && said.volts > 0 && said.amps > 0) {
-        const watts = number(said.volts * said.amps, 0);
-        const figures = `${watts} W, ${number(said.volts, 0)} V at ${number(said.amps, 1)} A`;
-        return said.protocol === "" ? figures : `${figures}, ${said.protocol}`;
+        return [`${significant(said.volts * said.amps, number)} W`,
+            `${significant(said.volts, number)} V`, `${significant(said.amps, number)} A`,
+            said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.online) {
-        return said.protocol === "" ? "charging" : `charging, ${said.protocol}`;
+        return ["charging", said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.giving) {
         return "powering what's plugged in";
@@ -68,6 +121,56 @@ function port(said, number) {
         return "plugged in, giving nothing";
     }
     return "empty";
+}
+
+// Volts as a power source offers them: whole, or to a tenth ("3.3").
+function volts(value) {
+    return String(Math.round(value * 10) / 10);
+}
+
+// What a charger offers, from its source capabilities, each { volts, amps }
+// or a programmable one's { volts, to, amps }: "5 V \u00b7 9 V \u00b7 20 V at
+// 3.00 A" when every one gives the same current, or each with its own.
+function offers(capabilities, number) {
+    const each = offer => offer.to === undefined ? `${volts(offer.volts)} V`
+        : `${volts(offer.volts)} to ${volts(offer.to)} V`;
+    const at = offer => `at ${significant(offer.amps, number)} A`;
+    if (capabilities.length === 0) {
+        return "";
+    }
+    if (capabilities.every(offer => offer.amps === capabilities[0].amps)) {
+        return `${capabilities.map(each).join(" \u00b7 ")} ${at(capabilities[0])}`;
+    }
+    return capabilities.map(offer => `${each(offer)} ${at(offer)}`).join(" \u00b7 ");
+}
+
+// A USB-C port's drawer, from what the kernel's USB-C class says of it:
+// which way its power and data go, how it negotiates, what's plugged in
+// and what that offers, then the power delivery revisions that identify
+// them, and its power supply's name, in the Name face, last. `known`
+// holds the port's number (`n`), its `power` and `data` roles as the
+// kernel lists them, its `mode`, the partner's `accessory` mode,
+// `capabilities` (offers' input), its supply's `usbType` and `supply`
+// name, and the `revision` and `partnerRevision`.
+function portDrawer(known, number, named, said) {
+    const fact = (id, value) => ({ label: named(`power:port:${id}`), value });
+    const accessory = known.accessory ?? "";
+    const partnerRevision = known.partnerRevision ?? "";
+    return {
+        eyebrow: filled(said.eyebrow, { n: known.n }),
+        facts: [
+            fact("power-role", chosen(known.power).now),
+            fact("data-role", chosen(known.data).now),
+            fact("mode", known.mode ? said[`mode:${known.mode}`] ?? known.mode : ""),
+            fact("offers", offers(known.capabilities ?? [], number)),
+            fact("protocols", protocols(known.usbType ?? "")),
+            fact("partner", accessory === "" || accessory === "none" ? ""
+                : filled(said.accessory, { mode: accessory })),
+            fact("revision", known.revision ?? ""),
+            fact("partner-revision", partnerRevision === "0.0" ? "" : partnerRevision),
+            Object.assign(fact("supply", known.supply ?? ""), { identifies: true })
+        ].filter(each => (each.value ?? "") !== "")
+    };
 }
 
 // The years a battery's date can be, and the months and days of one.

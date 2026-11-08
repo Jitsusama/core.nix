@@ -4,8 +4,11 @@
 // A window being recorded streams the same way, and is left to Recording.
 import qs
 import QtQuick
+import "Drawers.js" as Drawers
 
 Piece {
+    id: piece
+
     readonly property var casts: Object.values(Niri.casts)
         .filter(cast => cast.kind === "PipeWire" && cast.is_active
             && cast.session_id !== Recorder.windowSession)
@@ -22,6 +25,13 @@ Piece {
     kind: "onAir"
     value: seen.length === 1 ? seen[0] : `${seen.length} things`
     title: "Sharing"
+    // What's shared, as its title, whether notices are held meanwhile,
+    // what kind it is and its stream, under Now's row (Drawers.js).
+    drawer: casts.length === 0 ? null : () => Drawers.sharing(piece.casts, piece.seen, {
+        named: id => Words.name(id),
+        said: Words.of("on:sharing").said,
+        held: Quiet.on
+    })
     hint: seen.length === 1 ? `Sharing ${seen[0]}` : `Sharing ${seen.length} things`
     context: casts.length === 1 ? Quiet.shared ? "notices are held" : "notices still show"
         : seen.join(", ")

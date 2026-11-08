@@ -307,7 +307,11 @@ def apart(one: Image.Image, other: Image.Image, where: Image.Image) -> float:
 
 
 def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop: Desktop) -> None:
-    """Capture holds what it took lately, newest first, a picture shown in the drawer."""
+    """Capture holds what it took lately, newest first, its drawer saying what it is.
+
+    Its drawer says where and what it is, then when it was taken and its size from the folder's
+    read, then its dimensions once file-preview has said them.
+    """
     desktop.capture()
     with desktop.captured():
         desktop.machine.send_key("ret")
@@ -319,9 +323,9 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
         lambda shown: (
             (shown["selected"] or {}).get("name") == newest.rsplit("/", 1)[1]
             and shown["selected"]["side"] in {"just now", "1 min ago"}
-            and (shown["selected"]["drawer"] or {}).get("picture") == newest
-            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
             and shown["drawer"]["out"]
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
+            and shown["drawer"]["facts"] == ["Taken", "Size", "Dimensions"]
         )
     )
     desktop.shoot("capture-recent")

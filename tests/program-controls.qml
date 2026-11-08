@@ -563,13 +563,27 @@ ShellRoot {
                 "on The Tester \u00b7 track: Song of the test");
             same("where it is leading", `${drawn.facts[0].label} ${drawn.facts[0].value}`,
                 "Position 1:38 of 6:43");
+
+            // A program's drawer, its desktop file read once it's asked
+            // (Program.js), where its windows are leading.
+            applications.readDesktop("tester");
+            const described = program("tester").drawer();
+            same("a program's drawer says where and what it is",
+                `${described.eyebrow}: ${described.title}`, "on 1 and 2 \u00b7 program: Tester");
+            same("what it plays, then opens, then how it starts",
+                described.facts.map(fact => fact.label).join(", "),
+                "Playing, Opens, Handles, Categories, Command, Desktop ID");
+            same("what it opens, from its desktop file", described.facts[1].value,
+                "1 kind \u00b7 HTML");
+            same("its categories, as words", described.facts[3].value, "Office, Text Editor");
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");
             same("what's playing says by whom", played[3].side, "The Testers");
             same("as a figure", played[3].figure, true);
             same("Next keeps the launcher", played[1].stays, true);
-            same("saying what's on", played[1].state(), "Song of the test, The Testers");
+            same("saying what's on", played[1].state(),
+                "Song of the test \u00b7 The Testers");
             played[1].run();
             played[2].run();
             same("Next and Previous reach its player", `${player.nexts} ${player.previouses}`,

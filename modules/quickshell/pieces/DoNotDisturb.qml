@@ -3,8 +3,11 @@
 // turned it on or the screen being shared did.
 import qs
 import QtQuick
+import "Drawers.js" as Drawers
 
 Piece {
+    id: piece
+
     readonly property string ends: Quiet.kept && Quiet.until > 0
         ? Qt.formatDateTime(new Date(Quiet.until), "HH:mm") : ""
     // The chord that opens the notices, beside the action that does.
@@ -18,6 +21,17 @@ Piece {
     hue: "voice"
     value: Quiet.lasts
     title: "Do Not Disturb"
+    // Since when, how many it has held and why it's on, under Now's row
+    // (Drawers.js).
+    drawer: () => Object.assign({ title: piece.title }, Drawers.quiet({
+        since: Quiet.began > 0 ? Qt.formatDateTime(new Date(Quiet.began), "HH:mm") : "",
+        held: piece.held,
+        kept: Quiet.kept
+    }, {
+        named: id => Words.name(id),
+        said: Words.of("on:quiet").said,
+        tells: Words.of("on:quiet").tells
+    }))
     hint: `Do Not Disturb ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{

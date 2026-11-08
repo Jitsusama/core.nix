@@ -2,9 +2,10 @@
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // a loopback camera's format as its sysfs file says it, where a sensor sits
 // as its firmware says, how long it's been powered, which of a camera's
-// facts are the formats it offers, and which of its sensor's lights are
-// which. Cameras.qml reads the files and draws the rows; nothing here opens
-// a camera, since a camera opened is a camera in use.
+// facts are the formats it offers, which of its sensor's lights are which,
+// and what its drawer says, in what order. Cameras.qml reads the files and
+// draws the rows; nothing here opens a camera, since a camera opened is a
+// camera in use.
 .pragma library
 
 // A loopback's format file: its four letters, its size, and its frames a
@@ -24,6 +25,14 @@ const FORMATS = [["MJPG", "MJPEG"], ["H264", "H.264"], ["HEVC", "H.265"], ["H265
 const SECOND = 1000;
 const MINUTE = 60;
 const HOUR = 3600;
+// A camera's parts in the order its drawer says them, by the ends of their
+// keys: what moves most, then what describes it; desk-facts' others follow,
+// and what identifies it comes last. Who has it is its row's side, so the
+// drawer leaves it out.
+const DRAWN = ["streaming", "privacy", "flood", "powered", "modes", "sensor", "where"];
+const LAST = ["usb", "firmware"];
+const UNDRAWN = ["holders"];
+const FIELD = /\{(\w+)\}/g;
 
 function mode(width, height, rate) {
     return `${width} \u00d7 ${height} at ${rate}`;
@@ -101,5 +110,61 @@ function formats(facts) {
     return {
         modes: all.filter(isFormat),
         rest: all.filter(fact => !isFormat(fact))
+    };
+}
+
+function filled(template, fields) {
+    return template.replace(FIELD, (_whole, name) => String(fields[name] ?? ""));
+}
+
+// A time in milliseconds in its two largest units, to the second: "3 min
+// 12 s", "2 h 5 min", as a drawer says how long a sensor has been on
+// (VKCF3Z, 2026-11-08: never a clock-like "3:12").
+function spanned(milliseconds) {
+    const seconds = Math.floor(Math.max(0, milliseconds) / SECOND);
+    const units = [[Math.floor(seconds / HOUR), "h"],
+        [Math.floor(seconds % HOUR / MINUTE), "min"], [seconds % MINUTE, "s"]];
+    const first = units.findIndex(unit => unit[0] > 0);
+    if (first < 0) {
+        return "0 s";
+    }
+    return units.slice(first, first + 2).filter(unit => unit[0] > 0)
+        .map(unit => `${unit[0]} ${unit[1]}`).join(" ");
+}
+
+// Where a part comes in a camera's drawer.
+function rank(id) {
+    const drawn = DRAWN.indexOf(id);
+    if (drawn >= 0) {
+        return drawn;
+    }
+    const last = LAST.indexOf(id);
+    return last >= 0 ? DRAWN.length + 1 + last : DRAWN.length;
+}
+
+// A camera's drawer, from the parts Cameras.qml reads for it, each
+// { key, name, side }, with a powered part's `active` milliseconds and the
+// modes' own `listed` names: { title, eyebrow, facts }, its eyebrow saying
+// whether it's the machine's own or plugged in (told.builtIn), in
+// told.said's words.
+function drawer(parts, told) {
+    const idOf = part => part.key.slice(part.key.lastIndexOf(":") + 1);
+    const said = part => {
+        const id = idOf(part);
+        if (id === "powered" && Number.isFinite(part.active)) {
+            return filled(told.said.powered,
+                { state: part.side, lasted: spanned(part.active) });
+        }
+        return id === "modes" && part.listed ? part.listed.join(" \u00b7 ") : part.side;
+    };
+    const facts = parts.filter(part => !UNDRAWN.includes(idOf(part)))
+        .map((part, at) => ({ at, id: idOf(part), label: part.name, value: said(part) }))
+        .filter(fact => (fact.value ?? "") !== "")
+        .sort((one, other) => rank(one.id) - rank(other.id) || one.at - other.at)
+        .map(fact => ({ label: fact.label, value: fact.value }));
+    return {
+        title: told.name,
+        eyebrow: told.builtIn ? told.said.builtIn : told.said.plugged,
+        facts
     };
 }

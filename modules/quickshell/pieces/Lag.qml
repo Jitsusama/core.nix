@@ -10,6 +10,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Marks.js" as Marks
+import "Drawers.js" as Drawers
 
 Piece {
     id: piece
@@ -43,10 +44,18 @@ Piece {
     kind: "leftOn"
     value: lasting ? `waiting on ${what}` : "nothing waits"
     title: "Lag"
+    // What lag-watch said of its last ten seconds, under Now's row
+    // (Drawers.js): what keeps them waiting and how much, how each slice
+    // stalled, the swap held, and its own sentences, which the row leaves
+    // to it, saying what waits once (VKCF3Z, 2026-11-08).
+    drawer: window === null ? null : () => Object.assign({ title: piece.title },
+        Drawers.lag(piece.window, piece.lasting ? piece.what : "", {
+            named: id => Words.name(id),
+            said: Words.of("on:lag").said
+        }))
     // Held and lasting change one after the other, so each is asked.
     hint: lasting && held !== null ? `${who} waited on ${what} for ${Math.round((Date.now()
         / 1000 - held.since) / 60)} min` : value
-    context: (window?.trouble ?? [])[0] ?? ""
 
     StatusFile {
         id: file
