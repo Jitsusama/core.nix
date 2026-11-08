@@ -56,6 +56,11 @@ Provider {
     // Counted each second something plays, so the rows say where it's got.
     property int tick: 0
 
+    // The words a player's standing is said in (Music.js standing).
+    function standingSaid() {
+        return { through: said("through"), paused: said("paused") };
+    }
+
     function said(key, fill) {
         let text = Words.of("media").said?.[key] ?? key;
         for (const name of Object.keys(fill ?? {}))
@@ -140,7 +145,7 @@ Provider {
             glyph: provider.programGlyph(player.desktopEntry),
             hue: "program",
             side: loaded || player.isPlaying
-                ? Players.standing(position, player.length, player.isPlaying, said("paused"))
+                ? Players.standing(position, player.length, player.isPlaying, standingSaid())
                 : "",
             verb: Words.verb("verb:media:pause", player.isPlaying ? "" : "paused"),
             wordsId: "verb:media:pause",
@@ -225,7 +230,7 @@ Provider {
         return setting({
             key: `player:${player.dbusName}:position`,
             name: Words.name("media:position"),
-            side: Players.standing(position, player.length, true, said("paused")),
+            side: Players.standing(position, player.length, true, standingSaid()),
             glyph: Theme.glyph.position,
             graph: known ? bar(position / player.length) : null
         }, () => [act("verb:media:back", "", Theme.glyph.previous,

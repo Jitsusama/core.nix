@@ -67,11 +67,14 @@ function where(position, length, playing) {
 
 // How a player stands, as the Media place's row says it at its far end,
 // its state first as a timer's is (VKCF3Z, 2026-11-08): "1:38 of 6:43"
-// playing, and paused as `paused` says it (words.json's media said,
-// "paused \u00b7 {at}"), and a stream with no length only how far it's come.
-function standing(position, length, playing, paused) {
-    const at = length > 0 ? `${time(position)} of ${time(length)}` : time(position);
-    return playing ? at : paused.replace("{at}", at);
+// playing, and paused as `paused` says it, in words.json's media said
+// (`through`, "{at} of {length}", and `paused`, "paused \u00b7 {at}"), and a
+// stream with no length only how far it's come.
+function standing(position, length, playing, said) {
+    const at = length > 0
+        ? said.through.replace("{at}", time(position)).replace("{length}", time(length))
+        : time(position);
+    return playing ? at : said.paused.replace("{at}", at);
 }
 
 // Why a player didn't do what it was asked, as the launcher's other refused

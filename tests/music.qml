@@ -111,7 +111,8 @@ QtObject {
         ];
         for (const [position, length, playing, expected] of standings) {
             asked++;
-            const got = Music.standing(position, length, playing, "paused \u00b7 {at}");
+            const got = Music.standing(position, length, playing,
+                { through: "{at} of {length}", paused: "paused \u00b7 {at}" });
             if (got !== expected)
                 failures.push(`standing at ${position}s said "${got}", not "${expected}"`);
         }
@@ -157,7 +158,8 @@ QtObject {
             failures.push("a loop isn't said as off, track and playlist");
 
         asked++;
-        if ([1, 0.5, 1.25, 2.0001].map(Music.speed).join() !== "1\u00d7,0.5\u00d7,1.25\u00d7,2\u00d7")
+        const sped = [1, 0.5, 1.25, 2.0001].map(Music.speed);
+        if (sped.join() !== "1\u00d7,0.5\u00d7,1.25\u00d7,2\u00d7")
             failures.push("a speed isn't said in as few figures as say it");
 
         // A track's file, as a person reads it.
