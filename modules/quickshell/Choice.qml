@@ -511,15 +511,18 @@ Rectangle {
     // Where it may start: past the name, and its words where there are any.
     readonly property real sayFrom: (row.detail !== "" ? countText.x + countText.width
         : nameBox.x + nameBox.width) + Theme.space.rung.groups
-    // The say as much as fits its room, given way by whole items from its
-    // end, and not said at all where its first item doesn't fit whole:
-    // no ellipsis is drawn on it (VKCF3Z, 2026-11-07: "A b\u2026 84% full",
-    // never "11.9 Mb/s\u2026"; 2026-11-08: never "found by\u2026"). Qt
-    // elides with a pixel to spare, so each is measured with one.
+    // The say as much as fits its room: a note of items between dots given
+    // way by whole items from its end, and not said at all where its first
+    // doesn't fit whole (VKCF3Z, 2026-11-07: never "11.9 Mb/s\u2026";
+    // 2026-11-08: never "found by\u2026"); a sentence given way at a whole
+    // word, and not said where only its first word and an ellipsis would
+    // fit (2026-11-07: never "A b\u2026 84% full"). Qt elides with a pixel
+    // to spare, so each is measured with one.
     readonly property string sayWhole: {
         void sayFace.font;
-        return Reading.wholeItemsFromEnd(row.say, row.sayEnd - row.sayFrom,
+        const cut = Reading.wholeItemsFromEnd(row.say, row.sayEnd - row.sayFrom,
             words => Math.ceil(sayFace.advanceWidth(words)) + 1);
+        return !cut.endsWith("\u2026") || cut.includes(" ") ? cut : "";
     }
 
     FontMetrics {

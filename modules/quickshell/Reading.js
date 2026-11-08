@@ -256,10 +256,15 @@ function wholeWords(words, room, width) {
 // Words said as items between dots, given way by whole items from their
 // end, never inside one, so a note reads "Example ISP \u00b7 370 Mb/s down",
 // or "Example ISP" alone, never "11.9 Mb/s\u2026" (VKCF3Z, 2026-11-07).
-// The first item, where it alone doesn't fit, isn't said at all, since no
-// ellipsis is drawn on a note, never "found by\u2026" (VKCF3Z, 2026-11-08).
+// Where it's several items, its first, where it alone doesn't fit, isn't
+// said at all, since no ellipsis is drawn on a note, never "found
+// by\u2026" (VKCF3Z, 2026-11-08); words that are one item, a sentence,
+// give way at a whole word, as any words do.
 function wholeItemsFromEnd(words, room, width) {
     const items = words.split(ITEMS_APART);
+    if (items.length === 1) {
+        return wholeWords(words, room, width);
+    }
     while (items.length > 0 && width(items.join(ITEMS_APART)) > room) {
         items.pop();
     }
