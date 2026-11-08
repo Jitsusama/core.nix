@@ -28,7 +28,6 @@
 mod find;
 mod read;
 mod shelf;
-mod watch;
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -40,11 +39,11 @@ use std::time::{Duration, Instant};
 use dictation::daemon::{self, Shared};
 use dictation::openvino::Core;
 use dictation::picture::Picture;
+use dictation::watch::{self, Change};
 
 use crate::find::Finder;
 use crate::read::Reader;
 use crate::shelf::{Shelf, Shot, is_picture, stamp};
-use crate::watch::Change;
 
 const USAGE: &str = "usage: screen-text serve SOCKET MODELS FOLDER RECORDS
        screen-text read MODELS PICTURE...";

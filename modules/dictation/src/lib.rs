@@ -5,9 +5,11 @@
 //! language model (language.rs). The two share OpenVINO's calls and the
 //! cache of what's compiled. screen-text
 //! (bin/screen-text), which reads the words in screenshots, and meaning
-//! (bin/meaning), which finds the launcher's things by what they mean,
-//! share its OpenVINO calls and its reading of pictures (picture.rs),
-//! and they and call-transcripts serve the shell alike (daemon.rs).
+//! (bin/meaning), which finds the launcher's things and pictures by what
+//! they mean, share its OpenVINO calls, its reading of pictures
+//! (picture.rs) and its hearing of the folders they're kept in
+//! (watch.rs), and they and call-transcripts serve the shell alike
+//! (daemon.rs).
 
 pub mod cache;
 pub mod daemon;
@@ -22,6 +24,7 @@ pub mod speech;
 pub mod takes;
 pub mod transcript;
 pub mod vocab;
+pub mod watch;
 pub mod wav;
 pub mod whisper;
 pub mod words;
