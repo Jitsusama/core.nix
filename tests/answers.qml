@@ -2974,10 +2974,10 @@ QtObject {
                 { what: ["sleep"], who: "swayidle", why: "Again", mode: "delay" }],
             last_sleep: { began_at_ms: awakeAt - 7_200_000 - 21_780_000,
                 ended_at_ms: awakeAt - 7_200_000 } };
-        const told = plugged => ({ now: awakeAt, plugged, when: clock,
+        const awakeTold = plugged => ({ now: awakeAt, plugged, when: clock,
             lasted: Interfaces.lasted });
         machine("keep awake's drawer, others' locks first, its own left out",
-            Awake.facts(logind, awakeWords, told(false)), [
+            Awake.facts(logind, awakeWords, awakeTold(false)), [
             { id: "awake:idle-held",
                 value: "Google Chrome Playing video \u00b7 mycelium holding work" },
             { id: "awake:sleep-held", value: "mycelium holding work" },
@@ -2988,10 +2988,10 @@ QtObject {
         const idleNow = Object.assign({}, logind, { idle: true, idle_since_ms: awakeAt - 60_000,
             inhibitors: [], last_sleep: { began_at_ms: awakeAt, ended_at_ms: null } });
         machine("an idle machine says when it sleeps, a sleep still going says nothing",
-            Awake.facts(idleNow, awakeWords, told(false)),
+            Awake.facts(idleNow, awakeWords, awakeTold(false)),
             [{ id: "awake:idle-sleep", value: "suspends at 4 min" }]);
         const idleSaid = (action, plugged) => Awake.facts({ idle_action: action,
-            idle_action_ms: 300_000 }, awakeWords, told(plugged))[0]?.value ?? "";
+            idle_action_ms: 300_000 }, awakeWords, awakeTold(plugged))[0]?.value ?? "";
         machine("idle sleep as logind is set", [idleSaid("lock", true), idleSaid("lock", false),
             idleSaid("ignore", true), idleSaid("hibernate", false), idleSaid("halt", false),
             idleSaid("", false)], ["never on the charger \u00b7 it only locks",
