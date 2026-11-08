@@ -7248,6 +7248,7 @@
         "audio": "audio",
         "speed": "{figure}\u00d7",
         "volume": "{figure}%",
+        "seconds": "{figure} s",
         "off": "off",
         "now": "just now",
         "minutes": "{minutes} min ago",

@@ -64,6 +64,10 @@ const FIGURE = /^-?\d+(?:\.\d+)?$/;
 const QUOTED = /^%\d+%/;
 // The most decimals a figure mpv kept is said with.
 const DECIMALS = 3;
+// The options mpv keeps in seconds, each said with its unit and to the
+// millisecond, "0.500 s", since a bare figure names no unit (VKCF3Z,
+// 2026-11-08).
+const IN_SECONDS = ["sub-delay", "secondary-sub-delay", "audio-delay"];
 
 // An address's host, as its site is known by.
 function siteOf(host) {
@@ -209,7 +213,8 @@ function kept(one) {
 
 // A kept option's value as the drawer says it: a figure without mpv's
 // trailing zeros, a speed as so many times ("1.5×") and a volume as
-// a share ("80%"), by the words' "speed" and "volume", a track turned
+// a share ("80%"), by the words' "speed" and "volume", a delay in
+// seconds to the millisecond ("0.500 s") by "seconds", a track turned
 // off as "off", and anything else as mpv wrote it, less any length mpv
 // quoted it by.
 function keptValue(each, said) {
@@ -217,6 +222,10 @@ function keptValue(each, said) {
     const figure = FIGURE.test(plain) ? String(Number(Number(plain).toFixed(DECIMALS))) : null;
     if (figure !== null && (each.option === "speed" || each.option === "volume")) {
         return String(said[each.option] ?? "{figure}").replace("{figure}", figure);
+    }
+    if (figure !== null && IN_SECONDS.includes(each.option)) {
+        return String(said.seconds ?? "{figure}")
+            .replace("{figure}", Number(plain).toFixed(DECIMALS));
     }
     if ((each.option === "aid" || each.option === "sid") && plain === "no") {
         return said.off ?? plain;
